@@ -14,3 +14,6 @@ frontend/dist/
 # 日志与临时
 *.log
 frontend/*.tmp.mjs
+
+# 历史文档归档（2026-09-02 负责人指示不共享，仅本地保留）
+docs/历史文档归档-*.zip
