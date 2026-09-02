@@ -1,0 +1,384 @@
+{
+  "exportedAt": "2026-09-02T03:35:50.415Z",
+  "entries": {
+    "unifiedSkill": {
+      "v": 1,
+      "data": {
+        "idSeq": 400,
+        "skills": [
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我把这周的工作记录整理成周报",
+            "triggers": [],
+            "toolRefs": [
+              "mcp__baoxiao",
+              "api__customer",
+              "mcp__zhishiku"
+            ],
+            "refNames": [
+              "经营分析岗",
+              "财务审核岗"
+            ],
+            "files": {
+              "SKILL.md": "# 日报周报生成\n\n根据工作记录自动整理日报与周报\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n",
+              "references/写作规范.md": "# 写作规范\n\n日报三段式：进展 / 风险 / 明日计划。"
+            },
+            "snapshots": [
+              {
+                "version": "v1.2.0",
+                "status": "ACTIVE",
+                "size": "18.6 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-23 18:10",
+                "disabledAt": "",
+                "notes": "当前线上版本"
+              },
+              {
+                "version": "v1.1.0",
+                "status": "DELISTED",
+                "size": "17.9 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-20 16:30",
+                "disabledAt": "2026-08-23 10:15",
+                "notes": "历史稳定版本"
+              }
+            ],
+            "id": "sk_301",
+            "type": "POSITION",
+            "name": "日报周报生成",
+            "icon": "▤",
+            "description": "根据工作记录自动整理日报与周报",
+            "category": "办公效率",
+            "status": "published",
+            "version": "v1.2.0",
+            "createdAt": "2026-08-23 17:20",
+            "updatedAt": "2026-08-23 17:20",
+            "publishedAt": "2026-08-23 18:10"
+          },
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我分析上个月的经营数据异常",
+            "triggers": [],
+            "toolRefs": [
+              "mcp__zhishiku",
+              "api__customer",
+              "api__search",
+              "mcp__baoxiao",
+              "biz__renshi"
+            ],
+            "refNames": [
+              "经营分析专家",
+              "企业知识助手",
+              "研究报告专家"
+            ],
+            "files": {
+              "SKILL.md": "---\n---\n# 经营数据分析\n\n读取经营数据并生成趋势分析和异常说明\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果@tool[mcp__baoxiao]\n"
+            },
+            "snapshots": [
+              {
+                "version": "v1.4.0",
+                "status": "ACTIVE",
+                "size": "22.4 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-24 16:18",
+                "disabledAt": "",
+                "notes": "当前线上版本"
+              },
+              {
+                "version": "v1.3.0",
+                "status": "DELISTED",
+                "size": "21.8 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-20 16:30",
+                "disabledAt": "2026-08-23 10:15",
+                "notes": "历史稳定版本"
+              }
+            ],
+            "id": "sk_302",
+            "type": "PLATFORM",
+            "name": "经营数据分析",
+            "icon": "⌕",
+            "description": "读取经营数据并生成趋势分析和异常说明",
+            "category": "数据分析",
+            "status": "published",
+            "version": "v1.4.0",
+            "createdAt": "2026-08-24 09:18",
+            "updatedAt": "2026-09-02 11:14",
+            "publishedAt": "2026-08-24 16:18"
+          },
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我整理今天例会的会议纪要",
+            "triggers": [],
+            "toolRefs": [
+              "mcp__zhishiku",
+              "api__search"
+            ],
+            "refNames": [],
+            "files": {
+              "SKILL.md": "# 会议纪要整理\n\n提取会议结论、待办事项与责任人\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [
+              {
+                "version": "v2.1.0",
+                "status": "ACTIVE",
+                "size": "12.1 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-22 16:05",
+                "disabledAt": "",
+                "notes": "当前线上版本"
+              }
+            ],
+            "id": "sk_303",
+            "type": "SYSTEM_DEFAULT",
+            "name": "会议纪要整理",
+            "icon": "◎",
+            "description": "提取会议结论、待办事项与责任人",
+            "category": "办公效率",
+            "status": "published",
+            "version": "v2.1.0",
+            "createdAt": "2026-08-22 15:36",
+            "updatedAt": "2026-08-22 15:36",
+            "publishedAt": "2026-08-22 16:05"
+          },
+          {
+            "pendingAction": "publish",
+            "pendingVersion": "v1.1.1",
+            "pendingReleaseNotes": "补充违约条款识别规则",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我检查这份采购合同的风险条款",
+            "triggers": [],
+            "toolRefs": [
+              "api__search",
+              "mcp__zhishiku",
+              "api__customer",
+              "mcp__baoxiao"
+            ],
+            "refNames": [
+              "经营分析专家",
+              "法务审阅专家"
+            ],
+            "files": {
+              "SKILL.md": "# 合同风险检查\n\n识别合同条款中的风险点并给出说明\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [
+              {
+                "version": "v1.1.0",
+                "status": "ACTIVE",
+                "size": "19.3 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-20 15:30",
+                "disabledAt": "",
+                "notes": "当前线上版本"
+              }
+            ],
+            "id": "sk_304",
+            "type": "PLATFORM",
+            "name": "合同风险检查",
+            "icon": "§",
+            "description": "识别合同条款中的风险点并给出说明",
+            "category": "行业专业",
+            "status": "published",
+            "version": "v1.1.0",
+            "createdAt": "2026-08-20 11:08",
+            "updatedAt": "2026-08-25 10:12",
+            "publishedAt": "2026-08-20 15:30"
+          },
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我准备明天拜访这家客户的提纲",
+            "triggers": [],
+            "toolRefs": [
+              "api__customer",
+              "mcp__baoxiao"
+            ],
+            "refNames": [
+              "客户成功岗"
+            ],
+            "files": {
+              "SKILL.md": "# 客户拜访准备\n\n汇总客户资料并生成拜访提纲\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [
+              {
+                "version": "v1.0.0",
+                "status": "ACTIVE",
+                "size": "10.3 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-21 15:00",
+                "disabledAt": "",
+                "notes": "首个版本"
+              }
+            ],
+            "id": "sk_305",
+            "type": "POSITION",
+            "name": "客户拜访准备",
+            "icon": "✦",
+            "description": "汇总客户资料并生成拜访提纲",
+            "category": "办公效率",
+            "status": "published",
+            "version": "v1.0.0",
+            "createdAt": "2026-08-21 10:40",
+            "updatedAt": "2026-08-21 10:40",
+            "publishedAt": "2026-08-21 15:00"
+          },
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我把这段通知润色得正式一些",
+            "triggers": [],
+            "toolRefs": [
+              "api__search"
+            ],
+            "refNames": [],
+            "files": {
+              "SKILL.md": "# 公文润色\n\n对公文进行语言润色\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [
+              {
+                "version": "v3.0.2",
+                "status": "ACTIVE",
+                "size": "8.6 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-19 09:40",
+                "disabledAt": "",
+                "notes": "当前线上版本"
+              }
+            ],
+            "id": "sk_306",
+            "type": "SYSTEM_DEFAULT",
+            "name": "公文润色",
+            "icon": "◈",
+            "description": "",
+            "category": "智能创作",
+            "status": "published",
+            "version": "v3.0.2",
+            "createdAt": "2026-08-18 10:42",
+            "updatedAt": "2026-08-19 09:40",
+            "publishedAt": "2026-08-19 09:40"
+          },
+          {
+            "pendingAction": null,
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我汇总本周主要竞品的产品动态",
+            "triggers": [],
+            "toolRefs": [
+              "api__search",
+              "mcp__zhishiku",
+              "api__customer"
+            ],
+            "refNames": [
+              "研究报告专家"
+            ],
+            "files": {
+              "SKILL.md": "# 竞品信息汇总\n\n汇总公开渠道的竞品动态\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [],
+            "id": "sk_307",
+            "type": "PLATFORM",
+            "name": "竞品信息汇总",
+            "icon": "▤",
+            "description": "汇总公开渠道的竞品动态",
+            "category": "数据分析",
+            "status": "draft",
+            "version": "",
+            "createdAt": "2026-08-19 14:26",
+            "updatedAt": "2026-08-19 14:26",
+            "publishedAt": ""
+          },
+          {
+            "pendingAction": "publish",
+            "pendingVersion": "v1.0.0",
+            "pendingReleaseNotes": "首次发布",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我把这张发票录成报销单",
+            "triggers": [],
+            "toolRefs": [
+              "mcp__baoxiao",
+              "biz__renshi"
+            ],
+            "refNames": [],
+            "files": {
+              "SKILL.md": "# 报销单智能填报\n\n按发票信息自动填写并提交报销单\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [],
+            "id": "sk_308",
+            "type": "POSITION",
+            "name": "报销单智能填报",
+            "icon": "⌕",
+            "description": "按发票信息自动填写并提交报销单",
+            "category": "办公效率",
+            "status": "draft",
+            "version": "",
+            "createdAt": "2026-08-24 14:02",
+            "updatedAt": "2026-08-25 09:30",
+            "publishedAt": ""
+          },
+          {
+            "pendingAction": "stop",
+            "pendingVersion": "",
+            "pendingReleaseNotes": "",
+            "delisted": false,
+            "defaultInstall": false,
+            "exampleQuestion": "帮我生成一份行业调研报告提纲",
+            "triggers": [],
+            "toolRefs": [
+              "api__search",
+              "mcp__zhishiku"
+            ],
+            "refNames": [],
+            "files": {
+              "SKILL.md": "# 行业研究助手\n\n汇总行业资料、竞品动态并生成结构化研究结论\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n"
+            },
+            "snapshots": [
+              {
+                "version": "v1.0.0",
+                "status": "ACTIVE",
+                "size": "15.2 KB",
+                "publisher": "管理员",
+                "publishedAt": "2026-08-18 10:00",
+                "disabledAt": "",
+                "notes": "首个版本"
+              }
+            ],
+            "id": "sk_309",
+            "type": "PLATFORM",
+            "name": "行业研究助手",
+            "icon": "◎",
+            "description": "汇总行业资料、竞品动态并生成结构化研究结论",
+            "category": "知识与学习",
+            "status": "published",
+            "version": "v1.0.0",
+            "createdAt": "2026-08-17 09:12",
+            "updatedAt": "2026-08-25 11:26",
+            "publishedAt": "2026-08-18 10:00"
+          }
+        ],
+        "exampleCursor": {}
+      }
+    }
+  }
+}

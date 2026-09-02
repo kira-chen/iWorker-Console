@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Agent",
+      "Task",
+      "TodoWrite",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(*)"
+    ],
+    "ask": [
+      "Bash(rm:*)",
+      "Bash(rmdir:*)",
+      "Bash(unlink:*)"
+    ]
+  }
+}

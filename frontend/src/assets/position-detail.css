@@ -1,0 +1,125 @@
+/* =============================================================================
+ * 岗位详情 Tab · 共享段落 / 列表 / 抽屉表单类（2026-08-28 上收）
+ *
+ * 【为什么】PositionDetailTabs 的「段标题 + 列表头 + el-table + 抽屉表单」是岗位各 Tab 的统一范式
+ *（采集字段 / Agent 与技能 已在用）。工作档案 Tab 内嵌的 PositionDataTableStage 要走同一范式，
+ * 而 scoped 样式不跨组件，故把这组类上收为全局，规则原文不变；页面与内嵌组件只加 class、不再复制 CSS。
+ *
+ * 【口径】
+ *   .pd-sec / .pd-sec-title / .pd-sec-sub / .pd-hint     段标题：fs-sm semibold + fs-xs muted 副题 + 右侧 fs-xs 提示
+ *   .pd-list-head / .pd-list-title / .pd-list-sub        列表头：标题左、主操作右（el-button type=primary size=small）
+ *   .pd-table                                            el-table 100% 宽；外套 .table-wrap（theme.css）
+ *   .pd-mono / .pd-faint                                 单元格：等宽标识 / 空值占位
+ *   .pd-drawer-form / .pd-opts / .pd-opt-row             DrawerEditor（480px）内 label-position=top 表单
+ * 只用 tokens.css 语义令牌；双主题自动适配。
+ * ========================================================================== */
+
+.pd-sec {
+  display: flex;
+  flex-direction: column;
+}
+.pd-sec-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  margin: 0 0 var(--space-2);
+}
+/* 段标题后接灰显描述（2026-08-28 负责人：标题放大 + 描述灰显；各 Tab 统一） */
+.pd-sec-sub {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.pd-hint {
+  margin-left: auto;
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.pd-hint.over {
+  color: var(--c-warning);
+}
+.pd-mde {
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+/* 空态 / 开发中占位 */
+.pd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 320px;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+.pd-empty-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.pd-dev {
+  font-size: var(--fs-md);
+  color: var(--c-text-faint);
+}
+/* ---- 标准列表 + 抽屉（2026-08-22 列表化） ---- */
+.pd-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.pd-list-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.pd-list-sub {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+/* 不需要整行宽度的控件 / 段落对半分（2026-08-28）：窄屏回落满宽 */
+.pd-half {
+  width: 50%;
+  max-width: 720px;
+}
+@media (max-width: 900px) {
+  .pd-half {
+    width: 100%;
+  }
+}
+.pd-table {
+  width: 100%;
+}
+.pd-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.pd-faint {
+  color: var(--c-text-faint);
+}
+.pd-drawer-form {
+  padding: 0 var(--space-2);
+}
+.pd-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+.pd-opt-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

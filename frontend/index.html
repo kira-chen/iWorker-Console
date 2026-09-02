@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 首屏无闪：样式渲染前按持久化主题写 data-theme（key/合法值/默认须与 stores/theme.js 一致） -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('ai_theme')
+          document.documentElement.setAttribute(
+            'data-theme',
+            t === 'light' || t === 'dark' ? t : 'light'
+          )
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light')
+        }
+      })()
+    </script>
+    <!-- 首屏防黑闪（关键）：在任何 JS 注入的 CSS 就位前，于 <head> 内联锁定画布背景 + color-scheme。
+         否则 dev 下 CSS 由 JS 异步注入，首帧空文档在 OS 暗色模式会被浏览器画成黑底 → 黑闪。
+         背景值须与 tokens.css 的 --bg-app 保持一致（light #ffffff / dark #191919）。 -->
+    <style>
+      html { background-color: #ffffff; color-scheme: light; }
+      html[data-theme='dark'] { background-color: #191919; color-scheme: dark; }
+    </style>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>你的iWorker · 越用越懂你</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

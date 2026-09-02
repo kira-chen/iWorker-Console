@@ -1,0 +1,134 @@
+/* 全局基础样式：引入设计令牌与主题，奠定 Notion 风基线 */
+@import './tokens.css';
+@import './theme.css';
+@import './connector.css';
+@import './list-page.css';
+@import './position-detail.css';
+
+* {
+  box-sizing: border-box;
+}
+
+/* 首屏/整页切换内容淡入：从主题底色平滑浮现，避免「主题底 → 内容」生硬弹出（配合 index.html 内联背景，
+   暗色下也是「暗底 → 内容渐显」而非黑闪）。布局根（#app 直接子元素）淡入一次；同布局内换子页不重放。 */
+@keyframes app-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+#app > * {
+  animation: app-fade-in 0.18s var(--ease-out, ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  #app > * {
+    animation: none;
+  }
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--c-text);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--c-text-strong);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  margin: 0;
+}
+
+/* =============================================================================
+ * 共享卡片工具类（np- = Notion Personalized，WP-A 立底，WP-C/WP-D 直接套用）
+ *
+ * 全部走 tokens 语义变量，不硬编码色值；双主题自动适配。
+ *
+ * 用法速查：
+ *   .np-card               —— 手写卡片基底（圆角 + 细边 + 表面色），替代 el-card 默认观感。
+ *                             配 padding 自行加（如内联 style 或页面局部类）。
+ *   .np-card--hover        —— 在 .np-card 上叠加：hover 抬升（浅阴影）+ 浅底，用于可点选卡片
+ *                             （如岗位卡、会话卡）。示例：class="np-card np-card--hover"
+ *   .np-card--selected     —— 选中态（强调蓝描边 + 蓝淡底），与 --hover 配合做单选高亮。
+ *   .np-row                —— 行卡：横向 flex 行容器（圆角 + 细边 + 表面色 + 内边距），
+ *                             用于列表行（任务/会话/MCP/API 行）。内部自行排版。
+ *   .np-row--hover         —— 行卡 hover 浅底（列表行通用悬停反馈）。
+ *   .np-row-actions        —— 行尾操作区：默认透明，父级 .np-row:hover 时淡入显示
+ *                             （放 ✎ / 🗑 等行内操作）。需与 .np-row 同层使用。
+ *
+ * 组合范式：
+ *   <div class="np-row np-row--hover">
+ *     ...行内容...
+ *     <div class="np-row-actions"> ✎ 🗑 </div>
+ *   </div>
+ * ========================================================================== */
+.np-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.np-card--hover {
+  cursor: pointer;
+}
+.np-card--hover:hover {
+  background: var(--bg-hover);
+  box-shadow: var(--shadow-card);
+  border-color: var(--border-strong);
+}
+.np-card--selected {
+  border-color: var(--c-accent);
+  background: var(--bg-selected);
+}
+
+.np-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.np-row--hover:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.np-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.np-row:hover .np-row-actions,
+.np-row:focus-within .np-row-actions {
+  /* hover 浮现 + 键盘聚焦兜底（Tab 聚焦到行内隐藏操作时也显形，a11y，CR 建议）。 */
+  opacity: 1;
+}

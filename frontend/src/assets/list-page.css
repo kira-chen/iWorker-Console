@@ -1,0 +1,68 @@
+/* =============================================================================
+ * 管理后台列表页 · 共享骨架（2026-08-26 统一）
+ *
+ * 【解决什么】改造前 15 个列表页的「根容器 / 工具栏 / 搜索框宽 / 筛选框宽 / 新建按钮右对齐」
+ * 在各文件逐字重复，且已漂移：搜索框 240/260/280/300 四种宽、筛选框 140/150 两种宽、
+ * 工具栏 gap 有的走令牌有的裸 12px、有的不换行、新建按钮有的在页头 actions 有的在工具行。
+ * 现全部收敛到这里（全局类）+ components/admin/ListToolbar.vue（结构），页面不再各写。
+ *
+ * 【口径】（写进 docs/frontend/规范-管理后台列表页.md §7）
+ *   根容器      .list-page          纵向 flex，段间 space-5（页头 / 工具栏 / 表格 / 分页）
+ *   工具栏      <ListToolbar>       一行：左 = 搜索 → 筛选 →（查询）；右 = 主操作「新建 X」
+ *   搜索框      .lt-search  280px   带 Search 前缀图标，永远排第一位
+ *   筛选下拉    .lt-filter  150px   一律 el-select clearable（不再用 radio 按钮组）
+ *   主操作      .lt-create          min-width 132px 使各页「新建 XX」等宽；放 #right 插槽
+ *   表格外壳    .table-wrap         （theme.css）表头上缘细分隔线，el-table 页一律套
+ *
+ * 约束：只用 tokens.css 语义令牌，双主题自动适配；不在页面里再写同名规则。
+ * 连接器域旧类 .conn-page / .conn-toolbar / .conn-search / .conn-status（connector.css）
+ * 语义与本文件一致，保留作兼容，新页一律用本文件的类。
+ * ========================================================================== */
+
+.list-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+/* 页头→工具栏间距只由 gap 给一次：PageHeader 自带的 margin-bottom(20px) 在 flex-gap 容器里会叠成 40px，
+ * 这里清零（用 header 标签提升特异性以压过组件 scoped 规则）。非列表页不受影响，那里页头边距仍是唯一来源。
+ * 连接器页根容器 .connector-page 同为 gap 容器，同样处理，保证「页头→首个内容块」全后台同为 20px。 */
+.list-page > header.page-header,
+.connector-page > header.page-header {
+  margin-bottom: 0;
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* 右对齐组：主操作按钮（及将来可能的角标），推到工具行最右、与搜索框水平平齐 */
+.list-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* 窄屏（≤640px）：工具栏换行后右组取消推右，随左侧控件自然换行，避免「左搜索 / 右下孤立按钮」割裂 */
+@media (max-width: 640px) {
+  .list-toolbar-right {
+    margin-left: 0;
+  }
+}
+
+.lt-search {
+  width: 280px;
+}
+.lt-filter {
+  width: 150px;
+}
+/* 「新建 XX」文案长度各页不一（新建岗位 / 新建业务系统…），统一 min-width 取能容纳 6 字 + 图标的值使各页等宽 */
+.lt-create {
+  min-width: 132px;
+  white-space: nowrap;
+}

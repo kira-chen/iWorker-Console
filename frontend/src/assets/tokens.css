@@ -1,0 +1,193 @@
+/* =============================================================================
+ * 工作搭子 · 设计令牌（Design Tokens）—— Notion 风格 · 浅/暗双主题
+ * 单一事实来源：所有页面只引用本文件定义的语义变量，禁止散落硬编码色值。
+ *
+ * 分两层：
+ *   1) 主题无关常量（圆角 / 间距 / 字体 / 动效 / 层级）—— 放在 :root，两主题共用。
+ *   2) 主题相关语义变量（背景层级 / 文字 / 边框 / hover / 强调 / 语义色 / 阴影）
+ *      —— 在 :root[data-theme="light"] / :root[data-theme="dark"] 各给一套值。
+ *      业务样式只引用语义变量（如 --bg-app / --c-text / --border-base），
+ *      切 data-theme 即整体换皮，无需逐页改色。
+ *
+ * data-theme 挂在 <html> 上（见 stores/theme.js），确保 Element Plus 挂到 body
+ * 的弹层 / 消息也命中主题。
+ * ========================================================================== */
+
+:root {
+  /* ---------- 圆角（Notion 克制小圆角） ---------- */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* ---------- 间距（4 基准） ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---------- 字体（系统无衬线栈，含中文兜底） ---------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas,
+    'Courier New', monospace;
+
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --fs-3xl: 34px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --lh-tight: 1.3;
+  --lh-base: 1.6;
+
+  /* ---------- 动效（克制、快速） ---------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 0.12s;
+  --dur-base: 0.2s;
+  --dur-slow: 0.32s;
+
+  /* ---------- 层级 ---------- */
+  --z-base: 1;
+  --z-sticky: 100;
+  --z-overlay: 1000;
+  --z-modal: 2000;
+
+  /* ---------- 品牌绿 emerald（两主题共用品牌绿；hover/soft 在主题内细调） ---------- */
+  --accent: #059669;
+}
+
+/* ===========================================================================
+ * 浅色主题（Notion 经典文档感）—— 默认兜底也走浅色，避免无主题时裸样式
+ * ======================================================================== */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* 背景层级：页面底 → 表面 → 抬升表面（卡片/浮层） */
+  --bg-app: #ffffff;
+  --bg-sunken: #f7f7f5; /* 凹陷区：侧栏 / 代码块底 */
+  --bg-surface: #ffffff; /* 卡片 / 内容表面 */
+  --bg-elevated: #ffffff; /* 浮层 / 菜单 / 弹窗 */
+
+  /* hover：浅灰块（Notion 标志性的轻 hover） */
+  --bg-hover: rgba(55, 53, 47, 0.06);
+  --bg-active: rgba(55, 53, 47, 0.09);
+  --bg-selected: rgba(16, 185, 129, 0.1); /* 选中态（品牌绿淡底） */
+
+  /* 文字层级 */
+  --c-text-strong: #37352f; /* 标题 / 正文强调（Notion 近黑墨） */
+  --c-text: #37352f; /* 正文 */
+  --c-text-muted: #787774; /* 次级 / 说明 */
+  --c-text-faint: #9b9a97; /* 弱化 / 占位 */
+  --c-text-on-accent: #ffffff; /* 强调底上的文字 */
+
+  /* 边框（极淡，弱细边框非重阴影） */
+  --border-base: rgba(55, 53, 47, 0.1);
+  --border-soft: rgba(55, 53, 47, 0.06);
+  --border-strong: rgba(55, 53, 47, 0.16);
+
+  /* 强调色（品牌绿 emerald） */
+  --c-accent: var(--accent);
+  --c-accent-hover: #047857;
+  --c-accent-soft: rgba(16, 185, 129, 0.14); /* 半透明可叠色晕：聚焦/选中外环 box-shadow */
+  --c-accent-fill: #ecfdf5; /* emerald-50 不透明浅填充：EP light-9 / plain 底 */
+
+  /* 语义色（柔和、低饱和，与 Notion 中性调协调） */
+  --c-success: #047857;
+  --c-warning: #cb912f;
+  --c-danger: #e03e3e;
+  --c-success-soft: rgba(16, 185, 129, 0.12);
+  --c-warning-soft: rgba(203, 145, 47, 0.14);
+  --c-danger-soft: rgba(224, 62, 62, 0.1);
+  /* 紫（2026-09-01 治理三页 PRD 对齐新增）：业务类型「岗位」/ 终端「Windows」标签用 */
+  --c-purple: #6940a5;
+  --c-purple-soft: rgba(105, 64, 165, 0.12);
+
+  /* 阴影（仅浮层 / 菜单，很淡） */
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 15, 15, 0.1);
+  --shadow-lg: 0 8px 28px rgba(15, 15, 15, 0.14);
+  --shadow-card: var(--shadow-sm);
+
+  /* 遮罩 */
+  --mask: rgba(15, 15, 15, 0.45);
+  /* v-loading 遮罩：贴近页面底色（≈ --bg-app），仅靠 spinner 指示加载，不再压一层深色 →
+     避免页面挂载时 loading 遮罩在暗色下呈现为「黑闪」。 */
+  --loading-mask: rgba(255, 255, 255, 0.7);
+}
+
+/* ===========================================================================
+ * 暗色主题（承接科技感 / 沉浸感，仍是 Notion 克制调性）
+ * ======================================================================== */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-app: #191919;
+  --bg-sunken: #202020; /* 侧栏 / 代码块底 */
+  --bg-surface: #1f1f1f; /* 卡片 / 内容表面 */
+  --bg-elevated: #2a2a2a; /* 浮层 / 菜单 / 弹窗 */
+
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-active: rgba(255, 255, 255, 0.09);
+  --bg-selected: rgba(16, 185, 129, 0.22);
+
+  --c-text-strong: #ffffff;
+  --c-text: #e9e9e7;
+  --c-text-muted: #9b9a97;
+  --c-text-faint: #6f6f6c;
+  --c-text-on-accent: #0f172a; /* 暗色亮绿主按钮底配深墨字，对比达标 */
+
+  --border-base: rgba(255, 255, 255, 0.09);
+  --border-soft: rgba(255, 255, 255, 0.055);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --c-accent: #10b981; /* 暗底下提亮绿，保持可读 */
+  --c-accent-hover: #34d399;
+  --c-accent-soft: rgba(16, 185, 129, 0.2); /* 半透明可叠色晕：聚焦/选中外环 box-shadow */
+  --c-accent-fill: #123a2c; /* 暗色不透明深 emerald 浅填充：EP light-9 / plain 底，层级高于 surface(#1f1f1f) 更清晰可辨（架构师 CR 采纳值） */
+
+  --c-success: #34d399;
+  --c-warning: #e0b250;
+  --c-danger: #f06b6b;
+  --c-success-soft: rgba(16, 185, 129, 0.16);
+  --c-warning-soft: rgba(224, 178, 80, 0.16);
+  --c-danger-soft: rgba(240, 107, 107, 0.16);
+  /* 紫（2026-09-01 治理三页 PRD 对齐新增）：暗底下提亮保持可读 */
+  --c-purple: #a78bda;
+  --c-purple-soft: rgba(167, 139, 218, 0.18);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.6);
+  --shadow-card: var(--shadow-sm);
+
+  --mask: rgba(0, 0, 0, 0.6);
+  /* 暗色 v-loading 遮罩：≈ --bg-app(#191919)，近乎不可见，消除挂载时的「黑闪」（仅留 spinner 指示）。 */
+  --loading-mask: rgba(25, 25, 25, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

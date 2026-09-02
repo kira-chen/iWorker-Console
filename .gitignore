@@ -1,0 +1,16 @@
+# 依赖与构建产物（协作者本地 npm install / npm run build 生成；
+# 需要即开即用静态包的场景用根目录版本包 zip，不走 git）
+frontend/node_modules/
+frontend/dist/
+
+# 版本快照 zip（2026-09-02 起工程改由 git 管理，快照包不入库；历史归档 zip 在 docs/ 内保留入库）
+版本包-*.zip
+
+# 系统与本地文件
+.DS_Store
+*.local
+.claude/settings.local.json
+
+# 日志与临时
+*.log
+frontend/*.tmp.mjs

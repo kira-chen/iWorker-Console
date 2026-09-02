@@ -1,0 +1,427 @@
+/* =============================================================================
+ * Element Plus 深度主题映射 + 通用工具类（Notion 风 · 浅/暗双主题）
+ * 目标：把 EP 默认的「蓝白企业风」覆盖为本产品 Notion 调性，业务无需逐组件 :deep。
+ * 做法：把 EP 暴露的 --el-* 变量映射到我们的 design tokens（单一真相源）。
+ * 两主题共享同一套 EP 基础样式（圆角/输入/按钮/卡片），仅变量取值随主题变。
+ * ========================================================================== */
+
+/* ---------- EP 变量映射：浅色 ---------- */
+:root[data-theme='light'] {
+  --el-color-primary: var(--c-accent);
+  --el-color-primary-light-3: #34d399;
+  --el-color-primary-light-5: #6ee7b7;
+  --el-color-primary-light-7: #a7f3d0;
+  --el-color-primary-light-8: #d1fae5;
+  --el-color-primary-light-9: var(--c-accent-fill);
+  --el-color-primary-dark-2: var(--c-accent-hover);
+
+  --el-color-success: var(--c-success);
+  --el-color-warning: var(--c-warning);
+  --el-color-danger: var(--c-danger);
+  --el-color-error: var(--c-danger);
+  --el-color-info: var(--c-text-muted);
+
+  --el-bg-color: var(--bg-surface);
+  --el-bg-color-overlay: var(--bg-elevated);
+  --el-bg-color-page: var(--bg-app);
+  --el-fill-color-blank: var(--bg-surface);
+  --el-fill-color: var(--bg-hover);
+  --el-fill-color-light: var(--bg-hover);
+  --el-fill-color-lighter: var(--border-soft);
+  --el-fill-color-dark: var(--bg-active);
+  --el-fill-color-darker: var(--bg-active);
+
+  --el-text-color-primary: var(--c-text-strong);
+  --el-text-color-regular: var(--c-text);
+  --el-text-color-secondary: var(--c-text-muted);
+  --el-text-color-placeholder: var(--c-text-faint);
+  --el-text-color-disabled: var(--c-text-faint);
+
+  --el-border-color: var(--border-base);
+  --el-border-color-light: var(--border-base);
+  --el-border-color-lighter: var(--border-soft);
+  --el-border-color-extra-light: var(--border-soft);
+  --el-border-color-hover: var(--border-strong);
+  --el-border-color-dark: var(--border-strong);
+
+  --el-mask-color: var(--loading-mask);
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow-lighter: var(--shadow-sm);
+}
+
+/* ---------- EP 变量映射：暗色 ---------- */
+:root[data-theme='dark'] {
+  --el-color-primary: var(--c-accent);
+  --el-color-primary-light-3: #0d9668;
+  --el-color-primary-light-5: #0a7554;
+  --el-color-primary-light-7: #075640;
+  --el-color-primary-light-8: #053d2d;
+  --el-color-primary-light-9: var(--c-accent-fill);
+  --el-color-primary-dark-2: var(--c-accent-hover);
+
+  --el-color-success: var(--c-success);
+  --el-color-warning: var(--c-warning);
+  --el-color-danger: var(--c-danger);
+  --el-color-error: var(--c-danger);
+  --el-color-info: var(--c-text-muted);
+
+  --el-bg-color: var(--bg-surface);
+  --el-bg-color-overlay: var(--bg-elevated);
+  --el-bg-color-page: var(--bg-app);
+  --el-fill-color-blank: var(--bg-surface);
+  --el-fill-color: var(--bg-hover);
+  --el-fill-color-light: var(--bg-hover);
+  --el-fill-color-lighter: var(--border-soft);
+  --el-fill-color-dark: var(--bg-active);
+  --el-fill-color-darker: var(--bg-active);
+
+  --el-text-color-primary: var(--c-text-strong);
+  --el-text-color-regular: var(--c-text);
+  --el-text-color-secondary: var(--c-text-muted);
+  --el-text-color-placeholder: var(--c-text-faint);
+  --el-text-color-disabled: var(--c-text-faint);
+
+  --el-border-color: var(--border-base);
+  --el-border-color-light: var(--border-base);
+  --el-border-color-lighter: var(--border-soft);
+  --el-border-color-extra-light: var(--border-soft);
+  --el-border-color-hover: var(--border-strong);
+  --el-border-color-dark: var(--border-strong);
+
+  --el-mask-color: var(--loading-mask);
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow-lighter: var(--shadow-sm);
+}
+
+/* ---------- EP 基础变量（两主题共用） ---------- */
+:root[data-theme] {
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+  --el-font-size-base: var(--fs-base);
+  --el-transition-duration: var(--dur-base);
+  --el-transition-duration-fast: var(--dur-fast);
+
+  /* -------------------------------------------------------------------------
+   * 管理后台列表：列宽令牌（2026-08-20 统一）
+   *
+   * 【为什么要收敛】改造前 11 个列表页各写各的宽度，同语义列宽度不一：
+   *   「操作」7 种（120/150/160/180/200/280/300）、「状态」3 种（90/100/110）、
+   *   「名称」3 种（150/160/200）、「提交时间」2 种。页面间横向扫读时列不成竖线。
+   *
+   * 【怎么定的】按内容实测定量推导，不是拍脑袋：
+   *   时间列 = "2026-08-20 17:35" 16 字符 × 等宽数字 + padding；
+   *   状态列 = 最长标签「部分已上架」5 字 + 徽标 padding；
+   *   计数列 = 4 位数字居中；标签列 = 最长「streamable-http」按标签缩略。
+   *
+   * 【怎么用】列上写 :width="'var(--col-status)'" 不生效——EP 的 width 要数值，
+   *   故令牌值同时以数字常量形式在 utils/tableLayout.js 导出，模板绑定那份常量。
+   *   本处 CSS 变量供样式侧（如 min-width、占位框）引用，两者同源同值。
+   * ---------------------------------------------------------------------- */
+  /* 2026-08-22 按实测重分配（与 utils/tableLayout.js 同源同值，改一处必须改两处） */
+  --col-status: 84px;      /* 状态徽标列 */
+  --col-time: 152px;       /* 时间戳列（等宽数字，定宽对齐） */
+  --col-user: 132px;       /* 用户名 / 提交人 / 上传用户 */
+  --col-count: 80px;       /* 纯数字列（工具数 / 被引用 / 上下文），居中 */
+  --col-tag: 104px;        /* 单标签列（类别 / 传输 / 来源 / 用途） */
+  --col-name-min: 180px;   /* 名称主列最小宽（不定宽，吃剩余空间） */
+  --col-desc-min: 240px;   /* 描述列最小宽（配 show-overflow-tooltip） */
+}
+
+/* ===========================================================================
+ * EP 组件 Notion 化（弱边框、小圆角、克制 hover；作用域限定在 [data-theme] 内）
+ * ======================================================================== */
+
+/* 输入框 / 文本域：弱边框、聚焦细蓝环（非粗框） */
+[data-theme] .el-input__wrapper,
+[data-theme] .el-textarea__inner {
+  box-shadow: 0 0 0 1px var(--border-base) inset;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+[data-theme] .el-input__wrapper:hover,
+[data-theme] .el-textarea__inner:hover {
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+[data-theme] .el-input__wrapper.is-focus,
+[data-theme] .el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--c-accent) inset, 0 0 0 3px var(--c-accent-soft);
+}
+
+/* 默认按钮：纯净弱边框，hover 浅灰块 */
+[data-theme] .el-button {
+  border-radius: var(--radius-md);
+  transition: background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+[data-theme] .el-button--default:not(.is-link):hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--c-text-strong);
+}
+
+/* 主按钮：实心强调蓝，克制 hover（不加辉光/位移） */
+[data-theme] .el-button--primary {
+  --el-button-hover-bg-color: var(--c-accent-hover);
+  --el-button-hover-border-color: var(--c-accent-hover);
+  --el-button-active-bg-color: var(--c-accent-hover);
+  font-weight: var(--fw-medium);
+}
+
+/* 卡片：弱边框 + 极淡阴影，块/文档感 */
+[data-theme] .el-card {
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--bg-surface);
+}
+[data-theme] .el-card__header {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* 表格：去重边框，行 hover 浅灰，表头弱化 */
+[data-theme] .el-table {
+  --el-table-border-color: var(--border-soft);
+  --el-table-header-bg-color: var(--bg-sunken);
+  --el-table-header-text-color: var(--c-text-muted);
+  --el-table-row-hover-bg-color: var(--bg-hover);
+  background: transparent;
+}
+[data-theme] .el-table th.el-table__cell {
+  font-weight: var(--fw-medium);
+}
+/* 固定列防透底：EP 固定列是 sticky + background:inherit，行 hover / 斑马纹用的
+   半透明 token（--bg-hover / --border-soft）会让固定列透出底下横向滚动的内容。
+   修法：不透明表面色打底，半透明色改叠 background-image 渐变层，合成色与非固定列一致 */
+/* 固定列基线：不透明表面色打底（防透出底下横向滚动的内容）。
+   叠色不用 background-image——linear-gradient 之间浏览器不做插值，
+   纳入 transition 也仍是瞬变，正是「操作区底色与其它列不同时变」的成因。
+   改用可插值的 inset box-shadow 承载叠色：无内容/无阴影时为 transparent，
+   hover / 斑马纹时过渡到目标色，与普通列的 background-color 过渡同步。 */
+[data-theme] .el-table__body > tr > td.el-table-fixed-column--left,
+[data-theme] .el-table__body > tr > td.el-table-fixed-column--right {
+  background-color: var(--bg-surface);
+  box-shadow: inset 0 0 0 9999px transparent;
+}
+[data-theme] .el-table__body tr.hover-row > td.el-table-fixed-column--left,
+[data-theme] .el-table__body tr.hover-row > td.el-table-fixed-column--right,
+[data-theme] .el-table__body tr > td.hover-cell.el-table-fixed-column--left,
+[data-theme] .el-table__body tr > td.hover-cell.el-table-fixed-column--right {
+  background-color: var(--bg-surface);
+  box-shadow: inset 0 0 0 9999px var(--bg-hover);
+}
+[data-theme] .el-table--striped .el-table__body tr.el-table__row--striped:not(.hover-row) > td.el-table-fixed-column--left,
+[data-theme] .el-table--striped .el-table__body tr.el-table__row--striped:not(.hover-row) > td.el-table-fixed-column--right {
+  background-color: var(--bg-surface);
+  box-shadow: inset 0 0 0 9999px var(--border-soft);
+}
+/* 固定列与普通列同步渐变：EP 只给单元格过渡了 background-color，
+   固定列的叠色走 box-shadow，须一并纳入才能同时长同缓动地淡入淡出。 */
+[data-theme] .el-table__body td.el-table__cell {
+  transition: background-color var(--el-transition-duration, 0.25s) ease,
+    box-shadow var(--el-transition-duration, 0.25s) ease;
+}
+
+/* ---------------------------------------------------------------------------
+ * 列表容器（2026-08-20）：表格不再包 el-card
+ *
+ * 【为什么去掉卡片】卡片给列表加了一圈边框 + 内边距，视觉上把表格"框"起来，
+ * 且内边距实打实吃掉可用宽度——列表页的主体本来就是表格，外面再套一层框既多余
+ * 又挤压内容。去掉后表格横向铺满内容区，与 AdminUsers/AdminExperts 等
+ * 本来就没套卡片的页面统一。
+ *
+ * 【为什么不是简单去边框】只去 border 留 el-card 的话，`.el-card__body` 的
+ * padding 仍在（EP 默认 20px，左右合计吃掉 40px），宽度问题不解决。故直接换成
+ * 裸 div，宽度 100% 由表格自己撑。
+ * ------------------------------------------------------------------------ */
+[data-theme] .table-wrap {
+  width: 100%;
+  min-width: 0;
+}
+/* 表头上缘一条细线：卡片边框去掉后，给表格与上方工具栏一个轻分隔，
+   避免表头直接"浮"在空白里。用 border-soft 而非 base——它是分隔不是框。 */
+[data-theme] .table-wrap .el-table {
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ---------------------------------------------------------------------------
+ * 列表通用工具类（2026-08-20 统一）：操作区 / 空值占位
+ *
+ * 改造前 4 个页面各自定义了 .conn-ops / .mc-ops / .md-ops / .rev-ops，
+ * 内容是同一份「flex + nowrap + gap + 清零 EP 默认 margin」CSS 的复制品；
+ * 空值占位则有 .cell-na（各页 scoped 各写各的、无全局定义）与裸 '—' 两套写法。
+ * 此处收敛为全局单一实现，各页只加 class 不再自带样式。
+ * ------------------------------------------------------------------------ */
+
+/* 表格横向滚动条：溢出时常显，不做 hover 才浮现。
+   ------------------------------------------------------------------------
+   【为什么】列多的页面（岗位 10 列、平台技能 8 列）在 1280px 窄屏仍会溢出，
+   而右侧「操作」是 fixed 列、会盖住被挤出的列。EP 默认横向滚动条 display:none、
+   仅在 hover 表格时淡入——用户看不到任何"右边还有内容"的提示，会误以为列丢了
+   （2026-08-22 实测反馈即由此而来）。故溢出时让滚动条常驻，把"可以横滚"这件事说出来。
+   只作用于确实溢出的表格：EP 会给溢出表格加 .el-table--scrollable-x，不溢出的页面零影响。 */
+[data-theme] .el-table--scrollable-x .el-scrollbar__bar.is-horizontal {
+  /* !important 是必需的：EP 的 scrollbar 组件用 JS 写 inline style="display:none"
+     （鼠标移出表格即隐藏），普通选择器权重再高也压不过行内样式。 */
+  display: block !important;
+  opacity: 0.9;
+}
+/* 滚动条占位：常显后给表格底部留出条的高度，避免压住最后一行 */
+[data-theme] .el-table--scrollable-x .el-scrollbar__wrap {
+  padding-bottom: 2px;
+}
+
+/* 操作区：各行按钮从同一条竖线起排，扫读时不必左右找。
+   用 flex gap 统一控距，取代 EP 按钮默认外边距——默认值在「有/无 tooltip 包裹」时
+   不一致，正是改造前各行疏密不均的成因。 */
+[data-theme] .tbl-ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: var(--space-3);
+}
+[data-theme] .tbl-ops .el-button + .el-button,
+[data-theme] .tbl-ops .el-button {
+  margin: 0;
+}
+/* 定高：避免 loading 态出现/消失时按钮高度跳动带动整行抖动 */
+[data-theme] .tbl-ops .el-button.is-link {
+  height: 22px;
+  padding: 0;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+/* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实 */
+[data-theme] .tbl-ops .el-button.is-link.is-disabled {
+  color: var(--c-text-faint);
+}
+/* 主操作 ↔ 状态/危险操作 的分隔线：细、弱、不抢眼，仅作分组暗示 */
+[data-theme] .tbl-ops-sep {
+  flex: none;
+  width: 1px;
+  height: 12px;
+  background: var(--border-strong);
+  opacity: 0.7;
+}
+/* disabled 按钮需外层包裹才能触发 tooltip（EP 禁用态不派发事件） */
+[data-theme] .tbl-ops-wrap {
+  display: inline-flex;
+  align-items: center;
+  cursor: not-allowed;
+}
+
+/* 空值占位：弱色，与真实内容拉开层次（"没有值"不该和"有值"一样重） */
+[data-theme] .cell-na {
+  color: var(--c-text-faint);
+}
+
+/* 数字列：等宽数字，让各行数字按位对齐成竖线，便于比大小 */
+[data-theme] .cell-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 浮层：菜单 / 下拉 / 弹窗 / 抽屉 —— 弱边框 + 浮层阴影 */
+[data-theme] .el-popper,
+[data-theme] .el-dropdown__popper,
+[data-theme] .el-select__popper {
+  border: 1px solid var(--border-base) !important;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md) !important;
+}
+[data-theme] .el-dialog {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+[data-theme] .el-drawer {
+  box-shadow: var(--shadow-lg);
+}
+[data-theme] .el-drawer__header {
+  margin-bottom: 0;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--c-text-strong);
+  font-weight: var(--fw-semibold);
+}
+
+/* 下拉 / 选择项 hover：浅灰块、强调选中 */
+[data-theme] .el-dropdown-menu__item:not(.is-disabled):hover,
+[data-theme] .el-select-dropdown__item.is-hovering {
+  background: var(--bg-hover);
+  color: var(--c-text-strong);
+}
+[data-theme] .el-select-dropdown__item.is-selected {
+  color: var(--c-accent);
+  font-weight: var(--fw-medium);
+}
+
+/* ===========================================================================
+ * 通用工具类（业务页面可复用，全部走 tokens）
+ * ======================================================================== */
+
+/* Notion 块容器：弱边框 + 表面色，文档卡片基底 */
+.surface-block {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+}
+
+/* 品牌标记块（克制强调底） */
+.brand-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.3px;
+  color: var(--c-text-on-accent);
+  background: var(--c-accent);
+  border-radius: var(--radius-sm);
+}
+
+/* 内容外壳：统一最大宽度 + 居中 + 统一上下左右内边距。
+ * 用于使用端主页（定时任务 / 个人空间 / 设置）统一内容栏宽与对齐基线。
+ * 统一宽度 960px（用户拍板 2026-06-13：三页同宽，不再按内容类型分档）。
+ * 关键：左右 padding 由 .page-shell 统一给出，使「页面标题左边缘」与
+ *       「下方卡片/正文左边缘」落在同一条对齐线（标题与内容均在 shell 内）。
+ * 对话页（Chat）为满宽特例，不套用本类。 */
+.page-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5);
+}
+
+/* 入场动效：上浮淡入（克制） */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in var(--dur-slow) var(--ease-out) both;
+}
+
+/* 滚动条（两主题统一弱化样式，颜色随 tokens） */
+[data-theme] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-theme] ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+[data-theme] ::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-faint);
+  background-clip: padding-box;
+}
+[data-theme] ::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,180 @@
+/* =============================================================================
+ * 连接器后管统一范式 · 共享页面骨架（连接器页同源）
+ *
+ * 适用页：AdminMcp / AdminApis / AdminBizSystems。
+ * （数据表已迁出连接器，改在岗位白板「数据底座」区块管理，见 PositionDataTableLane.vue。）
+ * 设计稿：docs/frontend/交互设计-连接器后管统一范式.md。
+ *
+ * 目的：此前 4 页的「页头 / toolbar / 行卡 / 三态 / table-foot」局部 CSS 在各文件
+ *       逐字重复粘贴，易漂移。统一抽到这里（全局类），4 页复用同一套类名/结构/令牌，
+ *       改一处即四页同步，消除重复。
+ *
+ * 约束：全部走 tokens.css 语义令牌，浅/暗双主题自动适配，不硬编码色值。
+ *       行卡基底复用 main.css 的 .np-row / .np-row--hover / .np-row-actions。
+ *
+ * 注：页头（标题/副标题/emoji/红点/作用域）已统一收敛到 components/PageHeader.vue，
+ *     原 .conn-head / .conn-title / .conn-sub / .conn-scope 等类已移除（见全站格式化规范 §6）。
+ *
+ * 类名速查：
+ *   .conn-page        —— 页根容器（纵向 flex，段间 space-5）
+ *   .conn-toolbar     —— 操作区（搜索 + 状态筛选 + 查询）
+ *   .conn-search      —— 搜索框宽度
+ *   .conn-status      —— 状态下拉宽度
+ *   .conn-list        —— 列表容器（纵向堆叠，gap space-3，含最小高度撑空态）
+ *   .conn-row         —— 行卡（在 .np-row 基础上垂直居中）
+ *   .conn-main        —— 行主体（line1 / line2 纵向）
+ *   .conn-line1       —— 标识行（名称 / 类型徽标 / 检活 / 启停）
+ *   .conn-name        —— 行主名
+ *   .conn-line2       —— 元信息行（计数 · 被引用 · 时间）
+ *   .conn-meta        —— 元信息文本
+ *   .conn-meta-stat   —— 运行时使用统计段（更弱色，与配置信息区分）
+ *   .conn-actions     —— 行尾操作（与 .np-row-actions 同层，hover 浮现）
+ *   .conn-pager       —— 列表分页器容器（右对齐 + 上间距）
+ *   .conn-state       —— 三态（加载/空/错误）占位容器
+ * ========================================================================== */
+
+.conn-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- 单行 toolbar（与岗位/技能 .toolbar 同款范式） ----
+ * 一行内：左侧 = 搜索 + 状态筛选（+ 数据表岗位作用域选择器）；
+ *        右对齐组（.conn-tb-right，用 margin-left:auto 推到最右）= 红点徽标 + 新建按钮。
+ * 收口前红点/作用域/新建分散在 PageHeader 的 #badge/#scope/#actions，现统一落入本行，功能零回归。 */
+.conn-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.conn-search {
+  width: 280px;
+}
+.conn-status {
+  width: 150px;
+}
+/* 右对齐组：红点徽标 + 新建按钮，推到工具行最右、与搜索框水平平齐 */
+.conn-tb-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+/* 窄屏（≤640px）：toolbar 换行后，右对齐组取消 margin-left:auto，
+ * 随左侧控件自然左对齐换行，避免「左搜索 / 右下孤立按钮」割裂（三页一致断点）。 */
+@media (max-width: 640px) {
+  .conn-tb-right {
+    margin-left: 0;
+  }
+}
+/* 主行动「新建 XXX」按钮：四页文案长度不一（新建 MCP / 新建 API / 新建数据表 / 新建业务系统）
+ * 会让默认自适应宽度的按钮四页不等宽。统一 min-width 取能容纳最长文案「新建业务系统」(6 字)
+ * + 图标 + 默认 padding 的值，使四页等宽；高度仍用 el-button 默认尺寸（四页不传 size、无自定义 height）。
+ * 仅作用于这一个主行动按钮，行内 link 按钮（编辑/删除/检活）不受影响。 */
+.conn-create-btn {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
+/* 红点徽标（原 PageHeader 的 :slotted(.ph-reddot) 样式，收口后落到本行需就地复刻） */
+.conn-toolbar .ph-reddot {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+}
+
+/* ---- 列表 ---- */
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 80px;
+}
+.conn-row {
+  align-items: center;
+}
+.conn-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.conn-line1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.conn-name {
+  font-weight: var(--fw-medium);
+  color: var(--c-text-strong);
+}
+.conn-line2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.conn-meta {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+/* 运行时使用统计段（§3.1.1 D/G）：同字号、更弱一档颜色，与配置类 conn-meta 拉开层次；
+ * 不染色、不加图标/色块（成功率健康度交给 line1 HealthTag），保持 Notion 克制。 */
+.conn-meta-stat {
+  color: var(--c-text-faint);
+}
+/* MCP 服务级发布态段（改造一）：每 target 一段「目标名 状态」，"·"并列；弱色降权不抢 line1。
+ * 不染色（沿用 conn-meta 弱色），状态语义靠文案承载，保持 Notion 克制。 */
+.conn-meta-pub {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.conn-pub-seg + .conn-pub-seg::before {
+  content: '·';
+  margin-right: var(--space-1);
+  color: var(--c-text-faint);
+}
+/* 状态文案默认弱色（与 conn-meta 同档）；仅异常态着克制语义色（P-1，PM 拍板）：
+ * 部分已上架=warning 警觉、已驳回=danger，用极弱底色块 + 语义文字色，双主题均走 --c-* 语义令牌，
+ * 不硬编码色值、视觉克制不抢 line1 状态徽标。 */
+.conn-pub-state {
+  color: inherit;
+}
+.conn-pub-state--warn {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+.conn-pub-state--danger {
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+.conn-actions {
+  flex-shrink: 0;
+}
+
+/* ---- 分页器容器：右对齐 + 列表上间距；颜色走 Element Plus / Notion 令牌，不硬编码 ---- */
+.conn-pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* ---- 三态 ---- */
+.conn-state {
+  padding: var(--space-5) 0;
+}
