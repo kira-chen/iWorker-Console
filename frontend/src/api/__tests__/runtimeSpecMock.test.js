@@ -11,7 +11,7 @@ describe('runtimeSpecMock —— 运行规格（用户绑定口径，截图 5 �
   it('种子：5 档规格、截图行序（轻在前）、无默认规格概念、汇总口径（N 规格 · M 用户已配置）', async () => {
     const { list, total, summary } = await listRuntimeSpecs()
     expect(total).toBeGreaterThanOrEqual(5)
-    expect(list.slice(0, 5).map((s) => s.name)).toEqual(['轻', '标准', '重', '高敏离网', '专属 · 生产计划员'])
+    expect(list.slice(0, 5).map((s) => s.name)).toEqual(['轻', '标准', '重', '高敏', '专属 · 生产计划员'])
     expect(list.every((s) => !('isDefault' in s))).toBe(true)
     expect(summary.specCount).toBe(total)
     expect(summary.userCount).toBe(list.reduce((n, s) => n + s.usedCount, 0))
@@ -32,17 +32,17 @@ describe('runtimeSpecMock —— 运行规格（用户绑定口径，截图 5 �
     expect(byName['重'].approvalSummary).toBe('PENDING') // 何静待审
     expect(byName['专属 · 生产计划员'].approvalSummary).toBe('APPROVED')
     expect(byName['轻'].approvalSummary).toBeNull() // 无需审批
-    expect(byName['高敏离网'].approvalSummary).toBeNull() // 无绑定
+    expect(byName['高敏'].approvalSummary).toBeNull() // 无绑定
   })
 
   it('新建/编辑/删除全链：名称唯一护栏、字段校验、删除放行', async () => {
-    await expect(createRuntimeSpec({ name: '标准', boundaryDesc: 'x', cpu: 1, memoryGi: 1, diskGi: 1, timeoutMin: 1, idleRecycleMin: 1, concurrency: 1, egress: 'ALLOW' }))
+    await expect(createRuntimeSpec({ name: '标准', boundaryDesc: 'x', cpu: 1, memoryGi: 1, diskGi: 1, timeoutMin: 1, idleRecycleMin: 1, concurrency: 1 }))
       .rejects.toThrow('规格名称已存在')
-    await expect(createRuntimeSpec({ name: '临时档', boundaryDesc: '', cpu: 1, memoryGi: 1, diskGi: 1, timeoutMin: 1, idleRecycleMin: 1, concurrency: 1, egress: 'ALLOW' }))
+    await expect(createRuntimeSpec({ name: '临时档', boundaryDesc: '', cpu: 1, memoryGi: 1, diskGi: 1, timeoutMin: 1, idleRecycleMin: 1, concurrency: 1 }))
       .rejects.toThrow('能力边界说明必填')
     const created = await createRuntimeSpec({
       name: `临时档-${Date.now()}`, boundaryDesc: '测试档', cpu: 1, memoryGi: 2, diskGi: 5,
-      timeoutMin: 5, idleRecycleMin: 5, concurrency: 10, egress: 'DENY'
+      timeoutMin: 5, idleRecycleMin: 5, concurrency: 10
     })
     expect(created.usedCount).toBe(0)
     const updated = await updateRuntimeSpec(created.id, { ...created, concurrency: 12 })

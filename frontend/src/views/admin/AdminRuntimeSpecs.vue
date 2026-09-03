@@ -6,8 +6,8 @@
  * PageHeader + 说明条（D17 口径）+ ListToolbar（右侧新建）+ ListStates + el-table（COL 列宽）
  * + 底部汇总「N 个规格 · M 个用户已配置」+ ListPagination + RuntimeSpecEditor 抽屉（DrawerEditor 收壳）。
  *
- * 列（照截图 + 2026-09-02 修正：绑定对象=用户、不设默认规格）：规格（名称+能力边界说明两行）|
- * CPU / 内存 | 临时磁盘 | 任务超时 | 空闲回收 | 并发 | 出网（允许绿/禁止红）|
+ * 列（照截图 + 2026-09-02 修正：绑定对象=用户、不设默认规格；2026-09-03 拍板取消出网列）：
+ * 规格（名称+能力边界说明两行）| CPU / 内存 | 临时磁盘 | 任务超时 | 空闲回收 | 并发 |
  * 在用用户（数量 + 需审批/已审批 标签，悬停用户名单）| 操作。短期版本为每个用户分配 Pod。
  *
  * 删除护栏（mock 同口径）：被用户使用不可删（提示窗携用户名单）。
@@ -153,13 +153,6 @@ function usedTip(row) {
           </el-table-column>
           <el-table-column label="并发" :width="COL.COUNT" align="center">
             <template #default="{ row }">{{ row.concurrency }}</template>
-          </el-table-column>
-          <el-table-column label="出网" :width="COL.STATUS">
-            <template #default="{ row }">
-              <StatusTag :type="row.egress === 'ALLOW' ? 'success' : 'danger'">
-                {{ row.egress === 'ALLOW' ? '允许' : '禁止' }}
-              </StatusTag>
-            </template>
           </el-table-column>
           <!-- 在用用户：数量 + 需审批/已审批 标签，悬停用户名单 -->
           <el-table-column label="在用用户" width="132">

@@ -6,12 +6,14 @@
  * 运行规格 = 一档 k8s Pod 资源模板（demo 语义：requests=limits，QoS Guaranteed）+ 运行策略。
  * 管理员在此定义；FDE 只见「规格名 + 能力边界说明」，看不到任何技术参数（D17）。
  *
- * 字段 ↔ k8s 映射（供抽屉提示，demo 不真连集群）：
+ * 字段 ↔ 落地映射（供抽屉提示，demo 不真连集群；2026-09-03 负责人拍板修订）：
  *   cpu → resources.requests/limits.cpu（核）
  *   memoryGi → resources.requests/limits.memory（Gi）
  *   diskGi → resources.requests/limits.ephemeral-storage（Gi）
- *   egress=DENY → NetworkPolicy 断外网（仅内部服务可访问）
- *   timeoutMin / idleRecycleMin / concurrency → 平台侧运行策略（activeDeadline/回收器/调度并发）
+ *   timeoutMin / idleRecycleMin / concurrency → 全部为平台侧业务策略，不映射 k8s 字段：
+ *     任务超时=调用方发起任务后计时、N 分钟无结果主动结束该任务（非 activeDeadlineSeconds，
+ *     运行模型为用户级常驻 Pod，做不到任务级 Pod）；空闲回收=平台回收器；并发=平台限流。
+ *   （出网 egress 配置项已于 2026-09-03 取消，见 docs/调研讨论/2026-09-03-K8s-Node与Pod管理调研.md）
  *
  * 护栏：规格名平台内唯一；被用户使用（usedUsers 非空）不可删除。
  *
@@ -39,7 +41,7 @@ const specs = [
     boundaryDesc: '可处理 20MB 以内文件，单次任务最长 3 分钟',
     cpu: 1, memoryGi: 2, diskGi: 5,
     timeoutMin: 3, idleRecycleMin: 10, concurrency: 200,
-    egress: 'ALLOW', requireApproval: false,
+    requireApproval: false,
     usedUsers: [uu('chenyu', '陈宇'), uu('yangfan', '杨帆'), uu('wujie', '吴杰'), uu('ma.chao', '马超')],
     createdAt: '2026-08-15 10:20', updatedAt: '2026-08-28 09:40'
   },
@@ -49,7 +51,7 @@ const specs = [
     boundaryDesc: '大多数用户的常用配置。可处理 100MB 以内文件，单次任务最长 10 分钟',
     cpu: 2, memoryGi: 4, diskGi: 20,
     timeoutMin: 10, idleRecycleMin: 20, concurrency: 80,
-    egress: 'ALLOW', requireApproval: false,
+    requireApproval: false,
     usedUsers: [
       uu('zhangwei', '张伟'), uu('li.na', '李娜'), uu('wangfang', '王芳'),
       uu('sun.xin', '孙欣'), uu('liuqiang', '刘强'), uu('xulin', '徐琳')
@@ -62,17 +64,17 @@ const specs = [
     boundaryDesc: '文档处理、数据分析、报告生成。可处理 500MB 以内文件，单次任务最长 30 分钟',
     cpu: 4, memoryGi: 16, diskGi: 100,
     timeoutMin: 30, idleRecycleMin: 30, concurrency: 20,
-    egress: 'ALLOW', requireApproval: true,
+    requireApproval: true,
     usedUsers: [uu('zhaomin', '赵敏', 'APPROVED'), uu('hejing', '何静', 'PENDING')],
     createdAt: '2026-08-16 09:05', updatedAt: '2026-08-29 16:55'
   },
   {
     id: 4,
-    name: '高敏离网',
-    boundaryDesc: '处理敏感数据的用户。断外网，只能访问内部系统',
+    name: '高敏',
+    boundaryDesc: '处理敏感数据的用户',
     cpu: 2, memoryGi: 8, diskGi: 50,
     timeoutMin: 15, idleRecycleMin: 15, concurrency: 10,
-    egress: 'DENY', requireApproval: false,
+    requireApproval: false,
     usedUsers: [],
     createdAt: '2026-08-18 11:30', updatedAt: '2026-08-18 11:30'
   },
@@ -82,7 +84,7 @@ const specs = [
     boundaryDesc: '排产表体积大，需处理 800MB 以内文件',
     cpu: 8, memoryGi: 32, diskGi: 200,
     timeoutMin: 60, idleRecycleMin: 30, concurrency: 6,
-    egress: 'ALLOW', requireApproval: true,
+    requireApproval: true,
     usedUsers: [uu('zhouming', '周明', 'APPROVED')],
     createdAt: '2026-08-20 15:48', updatedAt: '2026-08-26 10:08'
   }
@@ -114,7 +116,6 @@ function validatePayload(p) {
   ]) {
     if (!(Number(p[k]) > 0)) throw err(`${label}须为大于 0 的数值`, 40001, k)
   }
-  if (!['ALLOW', 'DENY'].includes(p.egress)) throw err('出网策略取值不合法', 40001, 'egress')
 }
 
 // 出参行（列表与详情同构；usedUsers 给拷贝）
@@ -140,14 +141,13 @@ function applyPayload(s, p) {
     cpu: Number(p.cpu), memoryGi: Number(p.memoryGi), diskGi: Number(p.diskGi),
     timeoutMin: Number(p.timeoutMin), idleRecycleMin: Number(p.idleRecycleMin),
     concurrency: Number(p.concurrency),
-    egress: p.egress,
     requireApproval: !!p.requireApproval
   }
 }
 
 /* ============================ 接口 ============================ */
 
-// 列表（按创建序，照截图行序：轻→标准→重→高敏离网→专属）。summary 供底部「N 个规格 · M 个用户已配置」。
+// 列表（按创建序，照截图行序：轻→标准→重→高敏→专属）。summary 供底部「N 个规格 · M 个用户已配置」。
 export async function listRuntimeSpecs(params = {}) {
   await delay()
   const kw = String(params.keyword || '').trim().toLowerCase()

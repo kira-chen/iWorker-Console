@@ -8,7 +8,8 @@
  *     D17：FDE 只见「规格名 + 能力边界说明」，此字段是 FDE 唯一可见内容）
  *   → 资源配置（k8s Pod：CPU 核 / 内存 Gi / 临时磁盘 Gi，映射 resources.requests=limits，
  *     demo 不真连集群，映射关系以弱色提示展示）
- *   → 运行策略（任务超时 / 空闲回收 / 并发上限 / 出网 允许|禁止 / 使用需审批）
+ *   → 运行策略（任务超时 / 空闲回收 / 并发上限 / 使用需审批；均为平台侧业务策略——
+ *     任务超时=调用方计时 N 分钟无结果主动结束任务。出网配置项 2026-09-03 拍板取消）
  *   → 在用用户（编辑态只读：用户名 tag + 审批态；短期版本按用户分配 Pod，
  *     用户侧分配字段落地后双向联动）。
  *
@@ -39,7 +40,6 @@ const form = reactive({
   timeoutMin: 10,
   idleRecycleMin: 20,
   concurrency: 80,
-  egress: 'ALLOW',
   requireApproval: false
 })
 const meta = reactive({ createdAt: '', updatedAt: '', usedUsers: [], requireApprovalStored: false })
@@ -56,8 +56,7 @@ function clearErrors() {
 function resetForm() {
   Object.assign(form, {
     name: '', boundaryDesc: '', cpu: 2, memoryGi: 4, diskGi: 20,
-    timeoutMin: 10, idleRecycleMin: 20, concurrency: 80,
-    egress: 'ALLOW', requireApproval: false
+    timeoutMin: 10, idleRecycleMin: 20, concurrency: 80, requireApproval: false
   })
   Object.assign(meta, { createdAt: '', updatedAt: '', usedUsers: [], requireApprovalStored: false })
   clearErrors()
@@ -74,7 +73,7 @@ async function load() {
       name: d.name, boundaryDesc: d.boundaryDesc,
       cpu: d.cpu, memoryGi: d.memoryGi, diskGi: d.diskGi,
       timeoutMin: d.timeoutMin, idleRecycleMin: d.idleRecycleMin, concurrency: d.concurrency,
-      egress: d.egress, requireApproval: d.requireApproval
+      requireApproval: d.requireApproval
     })
     Object.assign(meta, {
       createdAt: d.createdAt, updatedAt: d.updatedAt,
@@ -152,7 +151,7 @@ async function save() {
       <div class="rs-sec-title">基本信息</div>
       <el-form label-position="top">
         <el-form-item label="规格名称" :error="fieldErrors.name" required>
-          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 标准、高敏离网" />
+          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 标准、高敏" />
         </el-form-item>
         <el-form-item label="能力边界说明" :error="fieldErrors.boundaryDesc" required>
           <el-input
@@ -194,7 +193,7 @@ async function save() {
         <div class="rs-row3">
           <el-form-item label="任务超时（分钟）" :error="fieldErrors.timeoutMin" required>
             <el-input-number v-model="form.timeoutMin" :min="1" class="rs-num" />
-            <div class="rs-hint">单次任务超时即终止</div>
+            <div class="rs-hint">调用方发起任务后计时，超时未返回结果则主动结束该任务</div>
           </el-form-item>
           <el-form-item label="空闲回收（分钟）" :error="fieldErrors.idleRecycleMin" required>
             <el-input-number v-model="form.idleRecycleMin" :min="1" class="rs-num" />
@@ -206,13 +205,6 @@ async function save() {
           </el-form-item>
         </div>
         <div class="rs-row2">
-          <el-form-item label="出网">
-            <el-radio-group v-model="form.egress">
-              <el-radio value="ALLOW">允许</el-radio>
-              <el-radio value="DENY">禁止</el-radio>
-            </el-radio-group>
-            <div class="rs-hint">禁止 = NetworkPolicy 断外网，仅可访问内部系统</div>
-          </el-form-item>
           <el-form-item label="使用需审批">
             <el-switch v-model="form.requireApproval" />
             <div class="rs-hint">开启后，为用户分配该规格需管理员审批通过</div>
