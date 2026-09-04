@@ -60,6 +60,49 @@ describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
   })
 })
 
+describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-20260903 对齐）', () => {
+  it('详情树带新字段种子：认领说明 / 示例问题 3 条 / 岗位 SOP / businessSystemIds', async () => {
+    const d = await getPosition(401)
+    expect(d.claimDescriptions).toEqual(['自动汇总各业务线经营数据', '识别异常波动并分析原因', '生成周度经营分析报告'])
+    expect(d.exampleQuestions).toHaveLength(3)
+    expect(d.exampleQuestions.every((q) => q.trim())).toBe(true)
+    expect(d.positionSop.startsWith('1. ')).toBe(true)
+    expect(d.businessSystemIds).toEqual(['biz_2101'])
+    // 空白岗位（市场研究岗）新字段为空态
+    const empty = await getPosition(404)
+    expect(empty.claimDescriptions).toEqual([])
+    expect(empty.exampleQuestions).toEqual(['', '', ''])
+    expect(empty.positionSop).toBe('')
+    expect(empty.businessSystemIds).toEqual([])
+  })
+
+  it('updatePosition 部分更新新字段并回详情树；businessSystemIds 引用可写', async () => {
+    const d = await updatePosition(404, {
+      claimDescriptions: ['第一条说明'],
+      exampleQuestions: ['q1', 'q2', 'q3'],
+      positionSop: '1. 第一步。',
+      businessSystemIds: ['biz_2101']
+    })
+    expect(d.claimDescriptions).toEqual(['第一条说明'])
+    expect(d.exampleQuestions).toEqual(['q1', 'q2', 'q3'])
+    expect(d.positionSop).toBe('1. 第一步。')
+    expect(d.businessSystemIds).toEqual(['biz_2101'])
+    // 未含字段 = 不改
+    const after = await updatePosition(404, { persona: 'x' })
+    expect(after.claimDescriptions).toEqual(['第一条说明'])
+  })
+
+  it('mock 校验：描述 >500 / 认领说明 >6 条或单条 >100 / 示例问题单条 >60 / SOP >4000 均被拦', async () => {
+    await expect(updatePosition(404, { description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
+    await expect(updatePosition(404, { claimDescriptions: Array.from({ length: 7 }, (_, i) => `条${i}`) })).rejects.toMatchObject({ field: 'claimDescriptions' })
+    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
+    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(61), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
+    await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
+    // createPosition 同口径校验描述 500
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
+  })
+})
+
 describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
   it('createAgent 追加 Agent 并回写列表 agentCount；重名自动加序号', async () => {
     const a1 = await createAgent(404, { name: '新 Agent' })

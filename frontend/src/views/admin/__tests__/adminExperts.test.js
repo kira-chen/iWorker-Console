@@ -147,10 +147,12 @@ async function flush(n = 4) {
 const rowEls = () => [...container.querySelectorAll('.el-row')]
 const rowBtn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
-// 三行覆盖三态：已发布 / 未发布（0 技能）/ 审核中
+// 三行覆盖三态：已发布 / 未发布（0 技能）/ 审核中。
+// 2026-09-04 PRD-20260903 对齐：行带 backgroundColor（mock toRow 归一化出参），头像按其着色；
+// 第 3 行故意不带 → 覆盖缺省回落（不写内联背景，走令牌底色）。
 const EXPERTS = [
-  { id: 201, name: '经营分析专家', intro: '汇总经营数据', avatar: '▤', category: '投资', skillCount: 2, status: 'published', pendingAction: null, latestVersionLabel: 'v2.3.0', updatedAt: '2026-08-24T14:12:00+08:00' },
-  { id: 203, name: '法务审阅专家', intro: '辅助审阅合同', avatar: '§', category: '法律', skillCount: 0, status: 'draft', pendingAction: null, latestVersionLabel: '', updatedAt: '2026-08-22T10:30:00+08:00' },
+  { id: 201, name: '经营分析专家', intro: '汇总经营数据', avatar: '▤', backgroundColor: '#DCF5E4', category: '投资', skillCount: 2, status: 'published', pendingAction: null, latestVersionLabel: 'v2.3.0', updatedAt: '2026-08-24T14:12:00+08:00' },
+  { id: 203, name: '法务审阅专家', intro: '辅助审阅合同', avatar: '§', backgroundColor: '#FAE9DF', category: '法律', skillCount: 0, status: 'draft', pendingAction: null, latestVersionLabel: '', updatedAt: '2026-08-22T10:30:00+08:00' },
   { id: 204, name: '研究报告专家', intro: '行业研究', avatar: '◎', category: '投资', skillCount: 2, status: 'published', pendingAction: 'PUBLISH', latestVersionLabel: 'v1.1.0', updatedAt: '2026-08-24T09:18:00+08:00' }
 ]
 
@@ -193,6 +195,16 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(rows[0].querySelector('.ex-primary .ex-avatar')).toBeTruthy()
     expect(rows[0].textContent).toContain('投资') // 分类列
     expect(rows[1].textContent).toContain('-') // 无版本占位
+  })
+
+  it('头像按行「背景色」着色（2026-09-04 PRD-20260903）；行无背景色 → 不写内联背景（回落令牌底色）', async () => {
+    await mount()
+    const rows = rowEls()
+    // jsdom 把 hex 归一成 rgb() 串，按 rgb 断言（#DCF5E4=rgb(220,245,228)、#FAE9DF=rgb(250,233,223)）
+    const avatarBg = (row) => row.querySelector('.ex-primary .ex-avatar').style.backgroundColor
+    expect(avatarBg(rows[0])).toBe('rgb(220, 245, 228)')
+    expect(avatarBg(rows[1])).toBe('rgb(250, 233, 223)')
+    expect(avatarBg(rows[2])).toBe('')
   })
 
   it('加载失败 → 「加载失败」；无数据 → 「还没有专家，点击「新建专家」创建第一个」', async () => {

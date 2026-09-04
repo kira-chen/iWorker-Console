@@ -25,7 +25,9 @@ defineProps({
   /** 无数据（非加载中、非失败） */
   empty: { type: Boolean, default: false },
   /** 空态文案，见上方口径 */
-  emptyText: { type: String, default: '暂无数据' }
+  emptyText: { type: String, default: '暂无数据' },
+  /** 空态副文案（可选，2026-09-04 岗位申请审批空态「新的用户岗位申请会显示在这里」补充） */
+  emptySubText: { type: String, default: '' }
 })
 defineEmits(['retry'])
 </script>
@@ -36,7 +38,16 @@ defineEmits(['retry'])
     <el-button @click="$emit('retry')">重试</el-button>
   </el-empty>
 
-  <el-empty v-else-if="empty" :image-size="96" :description="emptyText" />
+  <el-empty v-else-if="empty" :image-size="96" :description="emptyText">
+    <span v-if="emptySubText" class="ls-subtext">{{ emptySubText }}</span>
+  </el-empty>
 
   <slot v-else />
 </template>
+
+<style scoped>
+.ls-subtext {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+</style>

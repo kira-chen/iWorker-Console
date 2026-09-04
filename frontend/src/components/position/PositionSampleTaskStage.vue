@@ -20,6 +20,7 @@ import {
   listSampleTasks,
   reorderSampleTasks,
   deleteSampleTask,
+  setSampleTaskStatus,
   testRunSampleTask
 } from '@/api/sampleTask'
 import { LIMITS } from '@/utils/positionModel'
@@ -70,13 +71,34 @@ function missingPrompt(it) {
 }
 
 // 副行：周期人话摘要 · 引用 N 个工具（无工具显「未引用工具」）· 引用 M 平台技能（有才显）
+// 副行摘要（2026-09-04 PRD-20260903 对齐 md 三.7 命名）：触发条件（定时周期）· 执行动作（引用的技能/工具）
 function subLine(it) {
   const n = (it.toolRefs || []).length
-  const tool = n > 0 ? `引用 ${n} 个工具` : '未引用工具'
-  const sched = it.scheduleSummary || '未设置周期'
+  const tool = n > 0 ? `执行动作引用 ${n} 个工具` : '未配置执行动作'
+  const sched = it.scheduleSummary ? `触发条件：${it.scheduleSummary}` : '未设置触发条件'
   const m = (it.skillRefs || []).length
-  const skill = m > 0 ? ` · 引用 ${m} 平台技能` : ''
+  const skill = m > 0 ? ` · ${m} 个技能` : ''
   return `${sched} · ${tool}${skill}`
+}
+
+/* ---------- 单任务启停（2026-09-04 PRD-20260903 对齐 md 三.7.2：支持启用/停用单个任务） ---------- */
+const statusBusy = ref(null)
+function taskEnabled(it) {
+  return (it.status || 'ENABLED') === 'ENABLED'
+}
+async function toggleTaskStatus(it) {
+  if (statusBusy.value != null) return
+  const next = taskEnabled(it) ? 'DISABLED' : 'ENABLED'
+  statusBusy.value = it.id
+  try {
+    await setSampleTaskStatus(props.positionId, it.id, next)
+    it.status = next
+    ElMessage.success(next === 'ENABLED' ? '任务已启用' : '任务已停用')
+  } catch (e) {
+    ElMessage.error(e?.message || '操作失败')
+  } finally {
+    statusBusy.value = null
+  }
 }
 
 /* ============================ ② 选中态（detail） ============================ */
@@ -122,7 +144,7 @@ async function startCreate() {
     return
   }
   if (atLimit.value) {
-    ElMessage.warning(`样例任务建议不超过 ${LIMITS.SAMPLE_TASK_MAX} 条，把最推荐的放前面`)
+    ElMessage.warning(`自动化任务建议不超过 ${LIMITS.SAMPLE_TASK_MAX} 条，把最推荐的放前面`)
     return
   }
   if (selectedId.value === NEW) return
@@ -169,8 +191,8 @@ const delBusy = ref(null)
 async function removeItem(it) {
   try {
     await ElMessageBox.confirm(
-      `删除样例「${it.name}」？删除后随下次发布从客户端下载中移除，不可恢复。`,
-      '删除样例任务',
+      `删除任务「${it.name}」？删除后随下次发布从客户端下载中移除，不可恢复。`,
+      '删除自动化任务',
       {
         type: 'warning',
         confirmButtonText: '删除',
@@ -184,7 +206,7 @@ async function removeItem(it) {
   delBusy.value = it.id
   try {
     await deleteSampleTask(props.positionId, it.id)
-    ElMessage.success('样例已删除')
+    ElMessage.success('任务已删除')
     if (selectedId.value === it.id) clearSelection()
     await loadList()
     emit('saved')
@@ -339,7 +361,7 @@ async function requestClose() {
     <div v-if="!embedded" class="ed-crumb">
       <span class="crumb-link" @click="requestClose">⏰ {{ positionName }}</span>
       <span class="crumb-sep">/</span>
-      <span class="crumb-cur">样例定时任务</span>
+      <span class="crumb-cur">自动化任务</span>
       <span class="crumb-sp"></span>
       <span class="ed-close" @click="requestClose">↩ 返回总览</span>
       <button type="button" class="crumb-x" title="关闭" aria-label="关闭" @click="requestClose">✕</button>
@@ -357,7 +379,7 @@ async function requestClose() {
         <template v-else>
           <!-- 软上限提示（>0 条时才提，克制） -->
           <div v-if="atLimit" class="st-limit-tip">
-            样例任务建议不超过 {{ LIMITS.SAMPLE_TASK_MAX }} 条，把最推荐的放前面
+            自动化任务建议不超过 {{ LIMITS.SAMPLE_TASK_MAX }} 条，把最推荐的放前面
           </div>
 
           <div
@@ -392,6 +414,15 @@ async function requestClose() {
               <div class="st-sub">{{ subLine(it) }}</div>
             </div>
             <div class="st-ops">
+              <!-- 单任务启停（md 三.7.2） -->
+              <el-button
+                link
+                size="small"
+                :type="taskEnabled(it) ? 'warning' : 'success'"
+                :loading="statusBusy === it.id"
+                :title="taskEnabled(it) ? '停用后该任务不再自动执行' : '启用后该任务恢复自动执行'"
+                @click.stop="toggleTaskStatus(it)"
+              >{{ taskEnabled(it) ? '停用' : '启用' }}</el-button>
               <el-button link size="small" @click.stop="selectItem(it)">编辑</el-button>
               <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js） -->
               <el-button
@@ -427,8 +458,8 @@ async function requestClose() {
             :class="{ disabled: atLimit || selectedId === NEW }"
             @click="startCreate"
           >
-            <template v-if="atLimit">已达 {{ LIMITS.SAMPLE_TASK_MAX }} 条样例上限</template>
-            <template v-else>＋ 新增样例任务</template>
+            <template v-if="atLimit">已达 {{ LIMITS.SAMPLE_TASK_MAX }} 条任务上限</template>
+            <template v-else>＋ 新增自动化任务</template>
           </div>
         </template>
       </aside>
@@ -437,10 +468,10 @@ async function requestClose() {
       <div v-if="!hasSelection" class="st-placeholder">
         <div class="ph-icon">⏰</div>
         <div class="ph-title">
-          {{ items.length ? '从左侧选一条样例' : '还没有样例定时任务' }}
+          {{ items.length ? '从左侧选一条任务' : '还没有自动化任务' }}
         </div>
         <div class="ph-sub">
-          {{ items.length ? '或 ＋ 新增样例任务' : '加一条帮领用者快速上手（会随岗位发布，供客户端下载展示）' }}
+          {{ items.length ? '或 ＋ 新增自动化任务' : '加一条帮领用者快速上手（会随岗位发布，供客户端下载展示）' }}
         </div>
       </div>
 

@@ -23,9 +23,11 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let mcpSeq = 2
 
 /* ---------------- 工具全集（server 端权威；拉取工具返回本表） ---------------- */
+// 2026-09-04 PRD-20260903 对齐：工具种子补 server 显示名 title（编辑器工具卡「中文名 + 灰色代码名」双层）
 const SPARK_TOOLS = [
   {
     name: 'spark_agent_chat',
+    title: '智能体对话',
     description: '调用星火平台已发布的智能体进行对话，返回助手回复文本（多轮传 sessionId 续聊）',
     writeClass: 'READ',
     writeClassSource: 'HEURISTIC',
@@ -41,6 +43,7 @@ const SPARK_TOOLS = [
   },
   {
     name: 'spark_scene_run',
+    title: '任务链执行',
     description: '触发星火任务链编排执行并返回节点输出',
     writeClass: 'WRITE',
     writeClassSource: 'HEURISTIC',
@@ -55,6 +58,7 @@ const SPARK_TOOLS = [
   },
   {
     name: 'spark_knowledge_qa',
+    title: '知识库问答',
     description: '基于星火平台知识库进行检索问答',
     writeClass: 'READ',
     writeClassSource: 'HEURISTIC',
@@ -89,6 +93,8 @@ const mkMcp = (over) => ({
   authHeaderName: '',
   authSecret: '',
   tools: [],
+  // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉示例问题区，固定 3 条）
+  exampleQuestions: ['', '', ''],
   referencedBySkills: [],
   // 连接元信息 + 使用统计。注意双口径：connStatus 供编辑器 connMeta（旧三态 ok/failed/unknown），
   // displayStatus 供列表 resolveDisplayStatus（四态 HEALTHY/UNHEALTHY/UNKNOWN/DISABLED）。
@@ -123,6 +129,12 @@ let mcps = [
     authType: 'bearer',
     authSecret: '9a7f3c21:e4b8d6f2a1c95370',
     tools: SPARK_TOOLS,
+    // 示例问题种子（照新原型 MCP rows 兜底种子逐字）
+    exampleQuestions: [
+      '帮我发起一个明天下午的请假审批',
+      '帮我查询当前可用的工具',
+      '帮我执行一次常用业务操作'
+    ],
     referencedBySkills: [{ skillId: 'sk_6', skillName: '产品知识问答' }],
     protocolVersion: '2025-06-18',
     serverVersion: '1.4.2',
@@ -146,7 +158,8 @@ const pubAgg = { spark_bridge_mcp: 'PUBLISHED' }
 // pubAgg 为 const 对象 → restore 就地覆写（不换引用）。种子里 tools 与 SPARK_TOOLS 同引用，
 // 但全部写路径只读或整体替换 tools，不依赖对象同一性，JSON 往返断开别名无影响。
 const persist = attachPersist('mcpConnector', {
-  version: 1,
+  // v2（2026-09-04 PRD-20260903 对齐）：种子结构新增工具 title 与 exampleQuestions，旧快照丢弃重播种
+  version: 2,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -220,6 +233,10 @@ function applyMcpPayload(m, payload) {
   if (Array.isArray(payload.args)) m.args = payload.args
   if ('timeoutMs' in payload) m.timeoutMs = payload.timeoutMs
   if (payload.status) m.status = payload.status
+  // 示例问题（2026-09-04 PRD-20260903 对齐）：固定 3 行落库 + 回显（缺省补空串）
+  if (Array.isArray(payload.exampleQuestions)) {
+    m.exampleQuestions = [0, 1, 2].map((i) => String(payload.exampleQuestions[i] || '').trim())
+  }
   // Env（stdio）：按 KEY merge，留空=保留旧明文；clientFill 行不存值
   if (Array.isArray(payload.env)) {
     const oldEnv = m.env || []
@@ -355,6 +372,11 @@ export async function getMcpServicePublishStatus(id) {
 
 function setAgg(id, status) {
   pubAgg[id] = status
+  // 2026-09-04 PRD-20260903 对齐：转入已发布时刷新最近发布时间（publishedAt 出参；从未发布保持 null → 界面显「—」）
+  if (status === 'PUBLISHED') {
+    const m = findMcp(id)
+    if (m) m.publishedAt = nowIso()
+  }
   persist()
   return { affected: (findMcp(id)?.tools || []).length, skipped: 0 }
 }

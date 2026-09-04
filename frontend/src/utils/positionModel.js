@@ -150,6 +150,71 @@ export function validateRecommendedQuestions(list) {
   return { ok: errors.every((e) => !e), errors }
 }
 
+/* ============================ 人格页签必填要素（2026-09-04 PRD-20260903 对齐） ============================ */
+// 岗位描述：必填，最多 500 字（新建弹窗 / 人格页签 / mock 校验三处同口径）。
+export const DESCRIPTION_MAX_LEN = 500
+// 岗位认领说明：动态列表，至少 1 条为发布必填项、最多 6 条、每条 100 字。
+export const CLAIM_NOTE_MAX = 6
+export const CLAIM_NOTE_LEN = 100
+// 示例问题：固定 3 条，每条不超过 60 字（原 N4「推荐问题 4 条」口径由本组替代）。
+export const EXAMPLE_Q_COUNT = 3
+export const EXAMPLE_Q_MAX_LEN = 60
+// 岗位 SOP：必填，最多 4000 字。
+export const SOP_MAX_LEN = 4000
+
+// 归一为固定 3 格数组（不足补空、超出截断），编辑器 3 个输入框稳定绑定用。
+export function normalizeExampleQuestions(list) {
+  const arr = Array.isArray(list) ? list.map((q) => (q == null ? '' : String(q))) : []
+  return [0, 1, 2].map((i) => arr[i] ?? '')
+}
+
+// 3 条是否全部填写（去空白后非空）。发布前置校验用。
+export function exampleQuestionsComplete(list) {
+  return normalizeExampleQuestions(list).every((q) => String(q || '').trim().length > 0)
+}
+
+// 归一岗位认领说明为字符串数组（去 null、截 6 条上限交由交互层控制，这里只清洗类型）。
+export function normalizeClaimNotes(list) {
+  return Array.isArray(list) ? list.map((s) => (s == null ? '' : String(s))) : []
+}
+
+/* ---------- 本地 AI 生成（demo：无后端，纯前端拟真；原型 questionSet / SOP 模板口径） ---------- */
+function shortText(text, max) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  const chars = Array.from(clean)
+  return chars.length > max ? chars.slice(0, max).join('') + '…' : clean
+}
+function limitLen(text, max) {
+  const chars = Array.from(String(text || ''))
+  return chars.length > max ? chars.slice(0, max).join('') : chars.join('')
+}
+
+/**
+ * 基于岗位名称 + 岗位描述本地生成 3 条示例问题（原型 questionSet('position') 模板）。
+ * 每条截断到 60 字。描述为空时由调用方禁用入口（title 提示「请先填写岗位描述」）。
+ */
+export function genExampleQuestions(name, description) {
+  const subject = shortText(description || name, 18)
+  return [
+    limitLen(`这个岗位可以如何协助我完成"${subject}"？`, EXAMPLE_Q_MAX_LEN),
+    limitLen(`请围绕"${subject}"分析关键问题并给出建议`, EXAMPLE_Q_MAX_LEN),
+    limitLen(`请基于"${subject}"整理一份可执行的工作方案`, EXAMPLE_Q_MAX_LEN)
+  ]
+}
+
+/**
+ * 基于岗位名称 + 岗位描述本地生成编号步骤式岗位 SOP（原型 sop 模板）。截断到 4000 字。
+ */
+export function genPositionSop(name, description) {
+  const subject = shortText(description || name, 48)
+  const sop =
+    `1. 理解用户目标，并结合岗位描述"${subject}"确认任务范围。\n` +
+    '2. 收集完成任务所需的信息，必要时向用户补充提问。\n' +
+    '3. 选择合适的 Agent、技能、知识库与工具执行任务。\n' +
+    '4. 核对关键结果与数据口径，输出结论、依据和后续建议。'
+  return limitLen(sop, SOP_MAX_LEN)
+}
+
 /* ============================ 岗位展示版本号（语义化 vX.Y.Z） ============================ */
 // 2026-09-02 口径统一：原 N5 的 v001~v999 三位数字格式废止，与列表页版本抽屉 / PRD 版本管理
 // （修订/功能/重大三段式）统一为语义化版本号 vX.Y.Z（如 v2.1.0）。
@@ -434,7 +499,8 @@ export function computePublishCheck(detail) {
   const agents = Array.isArray(d.agents) ? d.agents : []
   const intake = Array.isArray(d.intakeSchema) ? d.intakeSchema : []
   const unhealthyTools = Array.isArray(d.unhealthyTools) ? d.unhealthyTools : []
-  const rqComplete = recommendedQuestionsComplete(d.recommendedQuestions)
+  // 2026-09-04 PRD-20260903 对齐：原 N4「推荐问题 4 条」改为「示例问题 3 条」。
+  const eqComplete = exampleQuestionsComplete(d.exampleQuestions)
 
   const items = []
 
@@ -471,14 +537,13 @@ export function computePublishCheck(detail) {
     detail: badIntake.length ? `缺选项：${badIntake.map((f) => f.label || f.key).join('、')}` : ''
   })
 
-  // 4. N4 推荐问题 4 格必填（硬）——岗位下发的 4 个客户端引导问题必须全部非空，
-  // 否则半填会被后端发布门拦下且不下发（验收 N4.5#3）。发布门在此硬阻断，配合逐格红框提示。
+  // 4. 示例问题 3 条必填（硬，2026-09-04 PRD-20260903 对齐：替代原 N4 推荐问题 4 条口径）。
   items.push({
-    key: 'recommendedQuestions',
-    label: '4 个推荐问题都已填写',
-    ok: rqComplete,
+    key: 'exampleQuestions',
+    label: '3 条示例问题已填写',
+    ok: eqComplete,
     blocking: true,
-    detail: rqComplete ? '' : '推荐问题固定 4 个，需全部填写才能发布'
+    detail: eqComplete ? '' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
   // 5. 引用 UNHEALTHY 工具 → warning

@@ -6,22 +6,48 @@ import { createApp, h, nextTick } from 'vue'
  * ExpertEditor.vue 单测。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：先建后挂的 add/removeExpertSkill 弹窗选择器 /
  * 无分类无示例问题 / 编辑态才校验技能），本文件按新契约重写：
- * - 基本信息补「分类」必选；「专家帮你做」固定 3 条 + 【AI 生成】（本地模板）；
+ * - 基本信息补「分类」必选；「专家帮你做」固定 3 条 + 【AI 生成】；
  * - 市场技能引用内嵌卡片勾选（默认收起前 2 + 展开更多；搜索；新建态即可勾选，选择随 create/update 落库）；
  * - footer：新建=取消/创建专家，编辑=取消/发布/保存；【发布】静默保存后 emit publish 并收抽屉；
  * - toast：创建「专家已创建」、保存「专家配置已保存」；
  * - 只读查看态（原型 openExpertViewer）：状态/分类/编号示例问题/技能引用 N 个技能/底部时间条/仅【关闭】。
+ *
+ * 2026-09-04 PRD-20260903 对齐（基准=新交互原型最终覆写态）按新口径更新：
+ * - 【AI 生成】改统一 AI 实况生成机制（源=简介：空禁用+title、生成中… 420ms、本地模板 3 条、
+ *   toast「AI 内容已生成，请确认后保存」）；
+ * - 基本信息新增「背景色」必填（7 色板单选，默认 #DCF5E4，字段顺序 图标→背景色→简介）；
+ * - 示例问题校验收紧（专用 toast + 空框标红 + focus 首个空输入框 + 区标题红星）；
+ * - 技能引用区后只读「知识库」区块（既有 listKnowledgeBases 只读接口 + 可见范围过滤 +
+ *   默认露 2 行/展开更多（N）/搜索；查看/检索测试跳知识库路由带参）。
  */
 
 const getExpert = vi.fn()
 const createExpert = vi.fn()
 const updateExpert = vi.fn()
 const listExpertSkillCandidates = vi.fn()
+const getExpertKbScopeRefId = vi.fn()
 vi.mock('@/api/domainExpert', () => ({
   getExpert: (...a) => getExpert(...a),
   createExpert: (...a) => createExpert(...a),
   updateExpert: (...a) => updateExpert(...a),
-  listExpertSkillCandidates: (...a) => listExpertSkillCandidates(...a)
+  listExpertSkillCandidates: (...a) => listExpertSkillCandidates(...a),
+  getExpertKbScopeRefId: (...a) => getExpertKbScopeRefId(...a)
+}))
+
+// 只读「知识库」区块数据源（既有只读接口，签名不动）
+const listKnowledgeBases = vi.fn()
+vi.mock('@/api/knowledgeBase', () => ({
+  listKnowledgeBases: (...a) => listKnowledgeBases(...a)
+}))
+
+// 「查看/检索测试」跳知识库模块路由。
+// createRouter/createWebHistory 补最小桩：ExpertEditor 的间接依赖链会加载真实 src/router/index.js
+//（request.js → router），整模块 mock 后需喂它能跑通的工厂函数。
+const routerPush = vi.fn()
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: routerPush }),
+  createRouter: () => ({ beforeEach: vi.fn(), afterEach: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  createWebHistory: () => ({})
 }))
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
@@ -60,6 +86,12 @@ const elInput = {
   name: 'el-input',
   props: { modelValue: { default: '' }, disabled: Boolean, placeholder: String },
   emits: ['update:modelValue', 'input'],
+  // focus 供「示例问题校验失败 focus 首个空输入框」断言（真 el-input 同名公开方法）
+  methods: {
+    focus() {
+      this.$el?.focus?.()
+    }
+  },
   template: '<input class="el-input" :disabled="disabled" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
 }
 const elSelect = {
@@ -169,11 +201,20 @@ const CANDIDATES = [
   { id: 307, name: '竞品信息汇总', description: '汇总公开渠道的竞品动态', category: '内容创作' }
 ]
 
+// 可见范围过滤用知识库行（vo 形状；kb_pos 为 POSITION 型 → 专家不可见，任何态都不该出现）
+const KBS = [
+  { id: 'kb_1', name: '产品与解决方案库', description: '公司全线产品的规格书与典型案例', kbType: 'ENTERPRISE', scopeRefId: null, status: 'PUBLISHED', pendingAction: null, docCount: 128, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'ENABLED' }] },
+  { id: 'kb_2', name: '报价政策与折扣权限', description: '', kbType: 'ENTERPRISE', scopeRefId: null, status: 'PUBLISHED', pendingAction: null, docCount: 46, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_6', name: '2026 产品白皮书库', description: '', kbType: 'EXPERT', scopeRefId: 'ex_1', status: 'DRAFT', pendingAction: null, docCount: 52, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_pos', name: '销售话术与异议处理', description: '', kbType: 'POSITION', scopeRefId: 'ps_1', status: 'PUBLISHED', pendingAction: null, docCount: 312, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] }
+]
+
 const DETAIL = {
   id: 201,
   name: '经营分析专家',
   category: '投资',
   avatar: '▤',
+  backgroundColor: '#DCF5E4',
   intro: '汇总经营数据',
   roleDesc: '你是一名经营分析专家。',
   status: 'published',
@@ -192,9 +233,12 @@ const DETAIL = {
 
 beforeEach(() => {
   for (const fn of [getExpert, createExpert, updateExpert, listExpertSkillCandidates,
+    getExpertKbScopeRefId, listKnowledgeBases, routerPush,
     ElMessage.success, ElMessage.error, ElMessage.warning]) fn.mockReset()
   getExpert.mockResolvedValue({ ...DETAIL })
   listExpertSkillCandidates.mockResolvedValue(CANDIDATES)
+  listKnowledgeBases.mockResolvedValue({ list: KBS.map((k) => ({ ...k })), total: KBS.length })
+  getExpertKbScopeRefId.mockReturnValue('ex_1')
 })
 afterEach(() => {
   app?.unmount()
@@ -226,11 +270,11 @@ describe('ExpertEditor — 新建', () => {
     expect(errs).toContain('请选择图标')
     expect(errs).toContain('请填写简介')
     expect(errs).toContain('请填写职责描述')
-    expect(errs).toContain('请填写 3 条不超过 60 个字符的示例问题')
+    expect(errs).toContain('请填写 3 条"专家帮你做"示例问题')
     expect(errs).toContain('请至少添加 1 个技能')
   })
 
-  it('填满创建 → createExpert 带分类/示例问题/skillIds → 「专家已创建」+ emit saved + 收抽屉', async () => {
+  it('填满创建 → createExpert 带分类/背景色/示例问题/skillIds → 「专家已创建」+ emit saved + 收抽屉', async () => {
     createExpert.mockResolvedValueOnce({ ...DETAIL, id: 205, name: '新专家' })
     await mount({ expertId: null })
     await fillRequired('  新专家  ')
@@ -240,6 +284,7 @@ describe('ExpertEditor — 新建', () => {
       name: '新专家',
       category: '通用',
       avatar: '🧑',
+      backgroundColor: '#DCF5E4', // 背景色默认色随建落库
       intro: '一句话简介',
       roleDesc: '我是新专家',
       exampleQuestions: ['问题一', '问题二', '问题三'],
@@ -250,13 +295,175 @@ describe('ExpertEditor — 新建', () => {
     expect(visibleSpy).toHaveBeenCalledWith(false)
   })
 
-  it('【AI 生成】一次填满 3 条示例问题（本地模板）+ toast', async () => {
+  // 2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制（取代旧「固定文案即填」断言）
+  it('【AI 生成】实况机制：简介空→禁用+title「请先填写专家简介」；填简介→点击「生成中…」420ms 后按简介模板填 3 条 + toast', async () => {
+    vi.useFakeTimers()
+    try {
+      await mount({ expertId: null })
+      let ai = btn('AI 生成')
+      expect(ai.disabled).toBe(true)
+      expect(ai.getAttribute('title')).toBe('请先填写专家简介')
+
+      await type(inputs()[1], '汇总经营数据') // 简介 = 生成源
+      ai = btn('AI 生成')
+      expect(ai.disabled).toBe(false)
+      expect(ai.getAttribute('title')).toBeFalsy()
+
+      ai.click()
+      await flush(2)
+      expect(btn('生成中…')).toBeTruthy() // 生成中态按钮文案
+      expect(ElMessage.success).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(420)
+      await flush(2)
+      expect([inputs()[2], inputs()[3], inputs()[4]].map((i) => i.value)).toEqual([
+        '请围绕"汇总经营数据"给出专业分析',
+        '请基于"汇总经营数据"识别关键问题并提出建议',
+        '请针对"汇总经营数据"整理一份可执行方案'
+      ])
+      expect(ElMessage.success).toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
+      expect(btn('AI 生成')).toBeTruthy() // 完成后按钮复原
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('ExpertEditor — 背景色（2026-09-04 新增必填字段）', () => {
+  const swatches = () => [...container.querySelectorAll('input[name="expertBackgroundColor"]')]
+
+  it('固定 7 色板单选，默认选中 #DCF5E4；hint 照原型；字段顺序 图标→背景色→简介', async () => {
     await mount({ expertId: null })
-    btn('AI 生成').click()
+    const radios = swatches()
+    expect(radios.map((r) => r.value)).toEqual([
+      '#FAE9DF', '#DCECF7', '#DCF5E4', '#E7E4F7', '#F7E6F2', '#F7EFCD', '#DDF0EF'
+    ])
+    expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
+    expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
+    // 字段顺序（原型 finalizeExpertLayout）：专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述
+    const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
+    expect(labels).toEqual(['专家名', '分类', '图标', '背景色', '简介', '职责描述'])
+  })
+
+  it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 205, name: '新专家' })
+    await mount({ expertId: null })
+    const target = swatches().find((r) => r.value === '#FAE9DF')
+    target.checked = true
+    target.dispatchEvent(new Event('change'))
     await flush(2)
-    const qs = [inputs()[2], inputs()[3], inputs()[4]].map((i) => i.value)
-    expect(qs.every((q) => q.trim().length > 0)).toBe(true)
-    expect(ElMessage.success).toHaveBeenCalledWith('已生成示例问题')
+    expect(swatches().filter((r) => r.checked).map((r) => r.value)).toEqual(['#FAE9DF'])
+    expect(container.querySelector('.ee-icon-wrap').getAttribute('style')).toContain('#FAE9DF')
+    await fillRequired('新专家')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ backgroundColor: '#FAE9DF' }))
+  })
+
+  it('编辑态回填详情背景色', async () => {
+    getExpert.mockResolvedValueOnce({ ...DETAIL, backgroundColor: '#E7E4F7' })
+    await mount({ expertId: 201 })
+    expect(swatches().filter((r) => r.checked).map((r) => r.value)).toEqual(['#E7E4F7'])
+  })
+})
+
+describe('ExpertEditor — 示例问题校验收紧（2026-09-04）', () => {
+  it('区块标题带必填红星', async () => {
+    await mount({ expertId: null })
+    const heads = [...container.querySelectorAll('.ee-sec-head')]
+    const qHead = heads.find((h) => h.textContent.includes('专家帮你做'))
+    expect(qHead.querySelector('.ee-req')).toBeTruthy()
+    expect(qHead.querySelector('.ee-req').textContent).toBe('*')
+  })
+
+  it('3 条未全填保存 → 专用 toast『请填写 3 条"专家帮你做"示例问题』+ 空框标红 + focus 首个空输入框', async () => {
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    await type(inputs()[3], '') // 清空第 2 条
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).not.toHaveBeenCalled()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请填写 3 条"专家帮你做"示例问题')
+    // 仅空的那条标红
+    expect(inputs()[3].classList.contains('ee-q-invalid')).toBe(true)
+    expect(inputs()[2].classList.contains('ee-q-invalid')).toBe(false)
+    // focus 首个空输入框
+    expect(document.activeElement).toBe(inputs()[3])
+  })
+})
+
+describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
+  const kbSec = () => container.querySelector('.ee-kb-sec')
+  const kbRows = () => [...container.querySelectorAll('.ee-kb-row')]
+  const kbBtn = (text) => [...kbSec().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
+
+  it('技能引用区后渲染；副标题/表头照原型；编辑态按可见范围过滤（企业级 + 本专家专属，岗位级不可见）；默认露 2 行 + 展开更多（N）', async () => {
+    await mount({ expertId: 201 })
+    const sec = kbSec()
+    expect(sec).toBeTruthy()
+    // 位置：紧随市场技能引用区之后
+    expect(sec.previousElementSibling.textContent).toContain('市场技能引用')
+    expect(sec.textContent).toContain('当前专家可见范围内的知识库')
+    for (const th of ['知识库名称', '数据源', '文档数量', '状态', '操作']) {
+      expect(sec.textContent).toContain(th)
+    }
+    expect(listKnowledgeBases).toHaveBeenCalled()
+    // 可见 3 行（kb_1/kb_2 企业级 + kb_6 本专家专属），默认露 2 行
+    expect(kbRows()).toHaveLength(2)
+    expect(sec.textContent).not.toContain('销售话术与异议处理') // POSITION 型不可见
+    const more = kbBtn('展开更多（1）')
+    expect(more).toBeTruthy()
+    more.click()
+    await flush(2)
+    expect(kbRows()).toHaveLength(3)
+    expect(sec.textContent).toContain('2026 产品白皮书库')
+    expect(kbBtn('收起')).toBeTruthy()
+  })
+
+  it('行内容：数据源连排 / 文档数量 / 状态；搜索过滤全量匹配并隐藏展开钮；无匹配显「未找到匹配的知识库」', async () => {
+    await mount({ expertId: 201 })
+    const firstRow = kbRows()[0]
+    expect(firstRow.textContent).toContain('产品与解决方案库')
+    // 数据源连排复用站内 sourcesText 标准件口径（「上传 ×2 / API ×1」；分隔符以该 util 为准，归知识库批次）
+    expect(firstRow.textContent).toContain('上传 ×2 / API ×1')
+    expect(firstRow.textContent).toContain('128')
+    expect(firstRow.textContent).toContain('已发布')
+    // 搜索：命中的全量展示（不受默认 2 行限制），展开钮隐藏
+    const search = [...container.querySelectorAll('.ee-kb-search .el-input')][0]
+    await type(search, '白皮书')
+    expect(kbRows()).toHaveLength(1)
+    expect(kbRows()[0].textContent).toContain('2026 产品白皮书库')
+    expect(kbBtn('展开更多（1）')).toBeUndefined()
+    await type(search, '不存在的库')
+    expect(kbRows()).toHaveLength(0)
+    expect(kbSec().textContent).toContain('未找到匹配的知识库')
+  })
+
+  it('「查看」/「检索测试」→ 收抽屉并跳知识库路由带参（kbId/kbAction 为知识库批次预留 deep-link）', async () => {
+    await mount({ expertId: 201 })
+    const firstRow = kbRows()[0]
+    const [view, test] = [...firstRow.querySelectorAll('.el-button')]
+    expect(view.textContent.trim()).toBe('查看')
+    expect(test.textContent.trim()).toBe('检索测试')
+    view.click()
+    await flush(2)
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+    expect(routerPush).toHaveBeenCalledWith({
+      name: 'AdminKnowledgeBase',
+      query: { tab: 'kb', kbId: 'kb_1', kbAction: 'view' }
+    })
+  })
+
+  it('新建态：无专属映射 → 仅企业级可见（2 行、无展开钮）；只读查看态不渲染本区块', async () => {
+    await mount({ expertId: null })
+    expect(getExpertKbScopeRefId).not.toHaveBeenCalled()
+    expect(kbRows()).toHaveLength(2)
+    expect(kbSec().textContent).not.toContain('展开更多')
+    app.unmount(); container.remove()
+
+    await mount({ expertId: 201, readonly: true })
+    expect(kbSec()).toBeNull()
+    expect(listKnowledgeBases).toHaveBeenCalledTimes(1) // 仅前面新建态那次；只读态不拉取
   })
 })
 
@@ -322,6 +529,7 @@ describe('ExpertEditor — 编辑', () => {
       name: '改名后',
       category: '投资',
       avatar: '▤',
+      backgroundColor: '#DCF5E4',
       intro: '汇总经营数据',
       roleDesc: '你是一名经营分析专家。',
       exampleQuestions: DETAIL.exampleQuestions,

@@ -101,6 +101,15 @@ describe('mergeFetchedTools — 拉取刷新（工具清单只读化：server �
     expect(merged.writeClass).toBe('WRITE') // 界面标注优先
   })
 
+  it('title 随拉取透传（2026-09-04 PRD-20260903 对齐：工具卡双层标题；无 title 空串回落代码名）', () => {
+    const out = mergeFetchedTools([], [
+      { name: 'with_title', title: '智能体对话' },
+      { name: 'no_title' }
+    ])
+    expect(out[0].title).toBe('智能体对话')
+    expect(out[1].title).toBe('')
+  })
+
   it('新工具：服务端携带 writeClass（已存=合并结果、草稿=后端启发式回填）直接采用；缺失/非法 READ 兜底', () => {
     const fetched = [
       { name: 'create_ticket', description: '建单', writeClass: 'WRITE' },

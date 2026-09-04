@@ -30,6 +30,24 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 
 let expertSeq = 205
 
+/* ---------------- 背景色（2026-09-04 PRD-20260903 新增字段，原型 expert-background-color 覆写） ----------------
+ * 固定 7 色板；safeBackground 归一化（非法/缺失一律回落默认 #DCF5E4——旧持久化快照无此字段时
+ * 读路径 toRow/toDetail 兜底补齐，写路径 create/update 落库前归一）。 */
+export const EXPERT_BACKGROUND_COLORS = ['#FAE9DF', '#DCECF7', '#DCF5E4', '#E7E4F7', '#F7E6F2', '#F7EFCD', '#DDF0EF']
+export const EXPERT_BACKGROUND_FALLBACK = '#DCF5E4'
+const safeBackground = (v) =>
+  /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toUpperCase() : EXPERT_BACKGROUND_FALLBACK
+
+/* ---------------- 专家 ↔ 知识库可见范围映射种子（2026-09-04） ----------------
+ * 【注明】编辑抽屉只读「知识库」区块按「专家可见范围」过滤：企业级知识库全可见 +
+ * EXPERT 型且 scopeRefId 命中本专家。但 knowledgeBaseMock 的专家 id 自成体系（ex_1/ex_2），
+ * 与本模块 201-204 不同源——mock 数据不够，故在本侧做桥接映射种子（demo 演示用；
+ * 真实后端应由知识库接口按专家过滤，接通后删除本映射）。 */
+const EXPERT_KB_SCOPE_SEED = { 201: 'ex_1', 202: 'ex_2' }
+export function getExpertKbScopeRefId(expertId) {
+  return EXPERT_KB_SCOPE_SEED[String(expertId)] || null
+}
+
 // 北京时间「现在」→ ISO 串（mock 内时间统一带 +08:00，展示走 fmtTime 精确到分钟）
 function nowIso() {
   const d = new Date()
@@ -55,6 +73,7 @@ function seedExperts() {
       name: '经营分析专家',
       intro: '汇总经营数据，识别异常并形成管理建议',
       avatar: '▤',
+      backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       category: '投资',
       roleDesc: '你是一名经营分析专家。围绕收入、成本、效率和风险提供可追溯的分析结论。',
       exampleQuestions: ['帮我生成一份行业调研报告', '帮我分析本月经营数据中的异常', '帮我整理一份管理层决策建议'],
@@ -71,6 +90,7 @@ function seedExperts() {
       name: '企业知识助手',
       intro: '帮助员工检索制度、流程和业务知识',
       avatar: '⌕',
+      backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       category: '通用',
       roleDesc: '你负责准确回答企业知识问题，引用知识来源，并在信息不足时说明限制。',
       exampleQuestions: ['帮我查一下公司的差旅报销制度', '帮我解释这个业务流程', '帮我整理相关制度依据'],
@@ -87,6 +107,7 @@ function seedExperts() {
       name: '法务审阅专家',
       intro: '辅助审阅合同条款并提示风险',
       avatar: '§',
+      backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       category: '法律',
       roleDesc: '你是一名严谨的合同审阅专家，按风险等级说明问题并给出修改建议。',
       exampleQuestions: ['帮我审阅这份合同的风险条款', '帮我生成一份合同修改建议', '帮我解释这条违约责任'],
@@ -103,6 +124,7 @@ function seedExperts() {
       name: '研究报告专家',
       intro: '从公开资料生成行业研究与竞品报告',
       avatar: '◎',
+      backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       category: '投资',
       roleDesc: '你负责完成结构化研究，区分事实、推断和待验证信息。',
       exampleQuestions: ['帮我生成一份行业调研报告', '帮我对比三家主要竞品', '帮我整理一份投资研究摘要'],
@@ -182,6 +204,7 @@ function toRow(e) {
     name: e.name,
     intro: e.intro,
     avatar: e.avatar,
+    backgroundColor: safeBackground(e.backgroundColor), // 读路径归一化（旧快照无此字段 → 默认色）
     category: e.category,
     skillIds: [...e.skillIds],
     skillCount: e.skillIds.length,
@@ -254,6 +277,7 @@ export async function createExpert(payload = {}) {
     name,
     intro: String(payload.intro || '').trim(),
     avatar: String(payload.avatar || '').trim(),
+    backgroundColor: safeBackground(payload.backgroundColor),
     category: String(payload.category || '').trim(),
     roleDesc: String(payload.roleDesc || ''),
     exampleQuestions: normQuestions(payload.exampleQuestions),
@@ -285,6 +309,7 @@ export async function updateExpert(id, payload = {}) {
   }
   if (payload.intro !== undefined) e.intro = String(payload.intro || '').trim()
   if (payload.avatar !== undefined) e.avatar = String(payload.avatar || '').trim()
+  if (payload.backgroundColor !== undefined) e.backgroundColor = safeBackground(payload.backgroundColor)
   if (payload.category !== undefined) e.category = String(payload.category || '').trim()
   if (payload.roleDesc !== undefined) e.roleDesc = String(payload.roleDesc || '')
   if (payload.exampleQuestions !== undefined) e.exampleQuestions = normQuestions(payload.exampleQuestions)

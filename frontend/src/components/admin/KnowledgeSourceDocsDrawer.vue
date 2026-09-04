@@ -1,9 +1,11 @@
 <script setup>
 /**
- * 上传类数据源的文档管理抽屉（2026-08-31 负责人定：与库维度配置拆开，列表入口层面分开）。
+ * 上传类数据源的文档管理抽屉（md §五.3，2026-09-04 PRD-20260903 对齐）。
  *
- * 只管文档清单：列表（解析状态轮询）+ 上传 + 删除；库维度配置（文档类型 / 预处理 / Embedding / 检索策略）
- * 在「配置」抽屉（KnowledgeSourceEditor）里改。外壳用 DrawerEditor 只读态（底部仅「关闭」）。
+ * 只管文档清单：多选上传 + 列表（文件名 / 大小 / 切片数 / 解析状态 / 失败原因 / 操作）+ 删除（二次确认，
+ * 删除文件、切片和索引内容）；存在解析中任务时每 3 秒自动刷新，全部结束后停止轮询；
+ * 顶部汇总文档总数与解析成功数（判断是否满足发布条件）。格式 / 大小不符合的文件在上传前拦截并说明支持范围。
+ * 库维度配置（文档类型 / 预处理 / 向量模型 / 检索方式）在「编辑」抽屉（KnowledgeSourceEditor）里改。
  */
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -94,13 +96,14 @@ async function doUpload({ file }) {
 }
 async function removeDoc(d) {
   try {
+    // 删除文档前二次确认；确认后删除文件、切片和索引内容（md §五.3；文案照交互原型）
     await ElMessageBox.confirm(`删除文档「${d.fileName}」及其全部切片？`, '删除文档', { type: 'warning', confirmButtonText: '删除' })
   } catch (e) {
     return
   }
   try {
     await deleteKnowledgeDoc(props.source.id, d.id)
-    ElMessage.success('已删除')
+    ElMessage.success('文档已删除')
     await refresh()
     emit('changed')
   } catch (e) {
@@ -128,44 +131,50 @@ function close() {
     @retry="load"
   >
     <template #title-extra>
-      <span class="kdoc-count">{{ docs.length }} 篇 · 已解析 {{ parsedCount }}</span>
+      <!-- 顶部汇总文档总数和解析成功数，便于判断是否满足发布条件（md §五.3） -->
+      <span class="kdoc-count">共 {{ docs.length }} 篇 · 解析成功 {{ parsedCount }} 篇</span>
     </template>
 
     <div class="kdoc-body">
       <div class="kdoc-toolbar">
         <el-upload :show-file-list="false" :before-upload="beforeUpload" :http-request="doUpload" :accept="acceptExt.join(',')" multiple>
-          <el-button type="primary" :loading="uploading">上传文档</el-button>
+          <el-button type="primary" :loading="uploading">＋ 选择文件上传</el-button>
         </el-upload>
         <span class="kdoc-hint">
-          「{{ DOC_KIND_LABELS[docKind] }}」类型 · 支持 {{ acceptExt.join(' / ') }}，单个 ≤ {{ MAX_DOC_MB }} MB；上传后自动解析并切片
+          「{{ DOC_KIND_LABELS[docKind] }}」类型 · 支持 {{ acceptExt.join('、').replaceAll('.', '').toUpperCase() }}，单文件最大 {{ MAX_DOC_MB }}MB；可一次选择多个文件
         </span>
       </div>
 
       <el-table v-if="docs.length" :data="docs" size="small" class="kdoc-table">
-        <el-table-column label="文件名" prop="fileName" min-width="180" show-overflow-tooltip />
+        <el-table-column label="文件名" prop="fileName" min-width="170" show-overflow-tooltip />
         <el-table-column label="大小" width="90">
           <template #default="{ row }"><span class="kdoc-num">{{ fmtSize(row.size) }}</span></template>
         </el-table-column>
-        <el-table-column label="切片" width="70" align="center">
+        <el-table-column label="切片数" width="76" align="center">
           <template #default="{ row }">
             <span v-if="row.parseStatus === 'PARSED'" class="kdoc-num">{{ row.chunkCount }}</span>
             <span v-else class="cell-na">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="解析状态" min-width="150">
+        <el-table-column label="解析状态" width="100">
           <template #default="{ row }">
             <span class="kdoc-dot" :class="DOC_PARSE_META[row.parseStatus]?.type || 'info'" />
             {{ DOC_PARSE_META[row.parseStatus]?.label || row.parseStatus }}
-            <span v-if="row.parseStatus === 'FAILED' && row.errorReason" class="kdoc-err">：{{ row.errorReason }}</span>
           </template>
         </el-table-column>
-        <el-table-column width="64" align="right">
+        <el-table-column label="失败原因" min-width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.parseStatus === 'FAILED' && row.errorReason" class="kdoc-err">{{ row.errorReason }}</span>
+            <span v-else class="cell-na">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="64" align="right">
           <template #default="{ row }">
             <el-button link type="danger" size="small" @click="removeDoc(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div v-else class="kdoc-empty">还没有文档 · 点「上传文档」添加第一篇</div>
+      <div v-else class="kdoc-empty">还没有文档 · 点「＋ 选择文件上传」添加第一篇</div>
     </div>
   </DrawerEditor>
 </template>

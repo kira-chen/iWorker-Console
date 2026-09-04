@@ -16,6 +16,7 @@
  * 【查询】搜索系统名称或描述 + 状态筛选（未发布/审核中/已发布），点【查询】按当前条件刷新（Enter 同）。
  */
 import { ref, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listBizSystems,
@@ -94,7 +95,18 @@ function search() {
   fetchList()
 }
 
-onMounted(fetchList)
+// 深链打开查看抽屉（2026-09-04 PRD-20260903 对齐：岗位详情页「业务系统」页签点名称跳转
+// AdminConnector?tab=bizsystem&view=<id> → 本页消费 query.view，进入即只读打开该业务系统详情）。
+const route = useRoute()
+onMounted(async () => {
+  await fetchList()
+  const viewId = route.query.view
+  if (viewId) {
+    editingId.value = String(viewId)
+    editorReadonly.value = true
+    editorVisible.value = true
+  }
+})
 
 function openCreate() {
   editingId.value = null

@@ -328,7 +328,11 @@ async function stopExpert(row) {
           <el-table-column label="专家名" :min-width="COL.NAME_MIN" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="ex-primary">
-                <span class="ex-avatar">
+                <!-- 2026-09-04 PRD-20260903：头像按行「背景色」着色（原型 paintExpertList；缺省回落令牌底色） -->
+                <span
+                  class="ex-avatar"
+                  :style="row.backgroundColor ? { backgroundColor: row.backgroundColor } : undefined"
+                >
                   <img v-if="iconIsUrl(row.avatar)" :src="row.avatar" alt="" class="ex-avatar-img" />
                   <span v-else>{{ row.avatar || '☆' }}</span>
                 </span>

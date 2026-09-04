@@ -30,6 +30,14 @@ export function listExperts(params) {
   return request.get('/fde/experts', { params })
 }
 
+// 专家可见范围的知识库 scopeRefId（2026-09-04：编辑抽屉只读「知识库」区块按可见范围过滤用）。
+// mock 路径走 domainExpertMock 的桥接映射种子（知识库 mock 专家 id 自成体系）；真实接口路径
+// 暂无端点——知识库批次并行改造中，接通后应由后端按专家过滤，此函数随之退役。同步函数、不发请求。
+export function getExpertKbScopeRefId(expertId) {
+  if (USE_MOCK) return mock.getExpertKbScopeRefId(expertId)
+  return null
+}
+
 // 详情（含引用的市场技能清单 skills[] + 示例问题 exampleQuestions[3]）。
 export function getExpert(expertId) {
   if (USE_MOCK) return mock.getExpert(expertId)

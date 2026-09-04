@@ -22,9 +22,21 @@
  *
  * 【发布动作仍不在这里】版本管理（提交发布/撤回/版本启停）在统一 VersionDrawer（列表页持有）；
  * 本抽屉的【发布】只是「保存 + 转交」入口。审核期读发布态用于锁编辑（审核对象=提交那刻的快照）。
+ *
+ * 【2026-09-04 PRD-20260903 对齐（基准=新交互原型最终覆写态）】
+ * - 基本信息字段顺序重排（finalizeExpertLayout）：专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述；
+ * - 新增「背景色」必填字段（固定 7 色板单选 + 选中打勾，默认 #DCF5E4；选色实时同步图标预览背景）；
+ * - 「专家帮你做」区级【AI 生成】改统一 AI 实况生成机制（utils/aiLiveGenerate：源=简介，
+ *   空简介禁用 + 生成中… + 本地模板 3 条 + toast「AI 内容已生成，请确认后保存」）；
+ * - 示例问题校验收紧：3 条必须全填，空则标红 + toast『请填写 3 条"专家帮你做"示例问题』+
+ *   focus 首个空输入框；区块标题补必填红星；
+ * - 技能引用区后新增只读「知识库」区块（当前专家可见范围内的知识库：搜索 + 默认露 2 行 +
+ *   展开更多（N）；数据走 api/knowledgeBase.listKnowledgeBases 既有只读接口，按专家可见范围过滤——
+ *   mock 侧映射种子见 domainExpertMock.getExpertKbScopeRefId；查看/检索测试跳知识库模块路由带参）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import StatusTag from '@/components/StatusTag.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
@@ -34,8 +46,12 @@ import {
   getExpert,
   createExpert,
   updateExpert,
-  listExpertSkillCandidates
+  listExpertSkillCandidates,
+  getExpertKbScopeRefId
 } from '@/api/domainExpert'
+import { listKnowledgeBases } from '@/api/knowledgeBase'
+import { stateMeta as kbStateMeta, sourcesText as kbSourcesText, hasUploadSource as kbHasUploadSource } from '@/utils/knowledgeBaseMeta'
+import { useAiLiveGenerate, expertQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { fmtTime } from '@/utils/docMeta'
 
@@ -58,18 +74,26 @@ const detail = ref(null)
 // 专家分类选项：同源字段字典（8 类），不本组件硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
 
+/* ==================== 背景色（2026-09-04 新增必填字段，原型 expert-background-color 覆写） ====================
+ * 固定 7 色板单选（不提供自定义取色），默认 #DCF5E4；选色实时同步图标预览背景 +
+ * 专家列表头像按行背景色着色（列表侧见 AdminExperts.vue）。 */
+const BACKGROUND_COLORS = ['#FAE9DF', '#DCECF7', '#DCF5E4', '#E7E4F7', '#F7E6F2', '#F7EFCD', '#DDF0EF']
+const BACKGROUND_FALLBACK = '#DCF5E4'
+const safeBackground = (v) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toUpperCase() : BACKGROUND_FALLBACK)
+
 /* ==================== 表单 ==================== */
 const form = reactive({
   name: '',
   category: '',
   avatar: '',
+  backgroundColor: BACKGROUND_FALLBACK,
   intro: '',
   roleDesc: '',
   exampleQuestions: ['', '', ''],
   skillIds: []
 })
 
-const errors = reactive({ name: '', category: '', avatar: '', intro: '', roleDesc: '', examples: '', skills: '' })
+const errors = reactive({ name: '', category: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
 
 function clearErrors() {
   for (const k of Object.keys(errors)) errors[k] = ''
@@ -79,11 +103,19 @@ function resetForm(d) {
   form.name = d?.name || ''
   form.category = d?.category || ''
   form.avatar = d?.avatar || ''
+  form.backgroundColor = safeBackground(d?.backgroundColor)
   form.intro = d?.intro || ''
   form.roleDesc = d?.roleDesc || ''
   form.exampleQuestions = [0, 1, 2].map((i) => String((d?.exampleQuestions || [])[i] || ''))
   form.skillIds = (d?.skillIds || (d?.skills || []).map((s) => s.skillId)).slice()
   clearErrors()
+}
+
+// 选色：单选即落值并清红框（选中打勾样式在模板/CSS；图标预览背景经 --ee-bg 变量实时联动）
+function pickBackground(color) {
+  if (disabled.value) return
+  form.backgroundColor = safeBackground(color)
+  errors.backgroundColor = ''
 }
 
 // 图标走岗位配置同款 IconPickerPopover（图标库 / 上传 / AI 生成），选中回吐仅取 icon 值。
@@ -96,19 +128,25 @@ function onPickIcon({ icon }) {
 const SOUL_SOFT_LIMIT = 2000
 const soulLen = computed(() => (form.roleDesc || '').length)
 
-/* ==================== 「专家帮你做」AI 生成（Z2：本地模板随机 + toast） ==================== */
-const AI_QUESTION_TEMPLATES = [
-  ['帮我生成一份行业调研报告', '帮我分析最近的市场趋势', '帮我制定一份工作计划'],
-  ['帮我查一下本周的工作进展', '帮我总结今天的工作日志', '帮我安排明天的会议日程'],
-  ['帮我梳理这个业务的关键风险', '帮我对比两套方案的优劣', '帮我整理一份汇报提纲']
-]
-
-function aiGenerateQuestions() {
-  const pick = AI_QUESTION_TEMPLATES[Math.floor(Math.random() * AI_QUESTION_TEMPLATES.length)]
-  form.exampleQuestions = [...pick]
-  errors.examples = ''
-  ElMessage.success('已生成示例问题')
-}
+/* ==================== 「专家帮你做」AI 生成（2026-09-04：统一 AI 实况生成机制） ====================
+ * 取代旧「固定文案即填」实现：源=专家简介（空则禁用 + title「请先填写专家简介」），
+ * 点击进「生成中…」约 420ms，按简介本地模板生成 3 条『请围绕"…"给出专业分析』式问题（60 字截断），
+ * 完成 toast「AI 内容已生成，请确认后保存」。机制细节见 utils/aiLiveGenerate.js。 */
+const {
+  disabled: aiQuestionsDisabled,
+  title: aiQuestionsTitle,
+  label: aiQuestionsLabel,
+  run: aiGenerateQuestions
+} = useAiLiveGenerate({
+  getSourceText: () => form.intro,
+  sourceLabel: '专家简介',
+  generate: expertQuestionSet,
+  apply: (questions) => {
+    form.exampleQuestions = [...questions]
+    errors.examples = ''
+  },
+  isReadonly: () => disabled.value
+})
 
 /* ==================== 发布态 ==================== */
 // 审核中锁编辑（安全兜底：列表已把审核中行的「编辑」置灰，此处防直开）。
@@ -171,9 +209,67 @@ function toggleSkill(id, checked) {
 // 查看态：已引用技能明细（详情 skills[] 实时取市场技能本体——引用非复制）
 const viewSkills = computed(() => detail.value?.skills || [])
 
+/* ==================== 只读「知识库」区块（2026-09-04 原型 expert-knowledge-card-module） ====================
+ * 技能引用区后；副标题「当前专家可见范围内的知识库」。数据走 api/knowledgeBase.listKnowledgeBases
+ * 既有只读接口（签名不动），按专家可见范围过滤：企业级全可见 + 本专家专属（EXPERT 型且
+ * scopeRefId 命中——mock 数据里知识库用自己的专家 id（ex_1/ex_2），与本模块 201-204 不同源，
+ * 桥接映射种子见 domainExpertMock.getExpertKbScopeRefId）。
+ * 默认露 2 行 + 【展开更多（N）】（N=总数-2）；搜索时显示全部匹配、隐藏展开钮（原型 filterRows 口径）。 */
+const router = useRouter()
+const kbRows = ref([])
+const kbLoading = ref(false)
+const kbKeyword = ref('')
+const kbExpanded = ref(false)
+
+async function loadKnowledge() {
+  if (props.readonly) return // 原型只在编辑器挂本区块，openExpertViewer 查看态不挂
+  kbLoading.value = true
+  try {
+    const data = await listKnowledgeBases({ page: 1, size: 200 })
+    const all = Array.isArray(data) ? data : data?.list || []
+    const scopeRefId = isEdit.value ? getExpertKbScopeRefId(props.expertId) : null
+    kbRows.value = all.filter(
+      (r) => r.kbType === 'ENTERPRISE' || (r.kbType === 'EXPERT' && scopeRefId && r.scopeRefId === scopeRefId)
+    )
+  } catch {
+    kbRows.value = []
+  } finally {
+    kbLoading.value = false
+  }
+}
+
+const kbFiltered = computed(() => {
+  const q = kbKeyword.value.trim().toLowerCase()
+  if (!q) return kbRows.value
+  return kbRows.value.filter((r) =>
+    [r.name, r.description].some((v) => String(v || '').toLowerCase().includes(q))
+  )
+})
+const kbCollapsed = computed(() => !kbKeyword.value.trim() && !kbExpanded.value)
+const kbShown = computed(() => (kbCollapsed.value ? kbFiltered.value.slice(0, 2) : kbFiltered.value))
+// N=总行数-2（原型 extra 口径：与搜索过滤无关）
+const kbExtraCount = computed(() => Math.max(0, kbRows.value.length - 2))
+const kbShowMore = computed(() => !kbKeyword.value.trim() && kbExtraCount.value > 0)
+
+// 文档数量：仅引用了启用中上传源的库有意义，否则「—」（同知识库列表页口径）
+function kbDocText(row) {
+  return kbHasUploadSource(row) ? Number(row.docCount || 0).toLocaleString('en-US') : '—'
+}
+
+/**
+ * 「查看」/「检索测试」→ 收抽屉、跳知识库模块路由（带 kbId/kbAction 参数）。
+ * 【注明】知识库批次并行改造中：AdminKnowledgeBase 当前只消费 ?tab，kbId/kbAction 为
+ * 预留 deep-link 参数（按参直开配置抽屉/检索测试弹窗的深联动由知识库批次接住）。
+ */
+function jumpKnowledge(row, action) {
+  close()
+  router.push({ name: 'AdminKnowledgeBase', query: { tab: 'kb', kbId: String(row.id), kbAction: action } })
+}
+
 /* ==================== 加载 ==================== */
 async function load() {
   loadCandidates()
+  loadKnowledge()
   if (!isEdit.value) {
     detail.value = null
     resetForm(null)
@@ -208,6 +304,11 @@ function validate() {
     errors.avatar = '请选择图标'
     ok = false
   }
+  // 背景色必填（固定 7 色板；默认 #DCF5E4，正常交互不会为空，兜底防持久化脏数据）
+  if (!BACKGROUND_COLORS.includes(form.backgroundColor)) {
+    errors.backgroundColor = '请选择背景色'
+    ok = false
+  }
   if (!String(form.intro || '').trim()) {
     errors.intro = '请填写简介'
     ok = false
@@ -219,9 +320,10 @@ function validate() {
     errors.roleDesc = `职责描述不超过 ${SOUL_SOFT_LIMIT} 字，当前 ${soulLen.value} 字`
     ok = false
   }
-  // 示例问题：固定 3 条全填（每条 ≤60 字由 maxlength 把守，原型 expert-save 校验口径）
+  // 示例问题校验收紧（2026-09-04 原型 expert-final-layout-required-module）：3 条必须全填，
+  // 空则标红（空输入框红框，见模板 ee-q-invalid）+ 专用 toast + focus 首个空输入框（toast/focus 在 save 侧）。
   if (!form.exampleQuestions.every((q) => String(q || '').trim())) {
-    errors.examples = '请填写 3 条不超过 60 个字符的示例问题'
+    errors.examples = '请填写 3 条"专家帮你做"示例问题'
     ok = false
   }
   // 市场技能：新建态即可勾选，创建/保存均要求 ≥1（原型 validateExpert 同口径）
@@ -237,6 +339,7 @@ function buildPayload() {
     name: String(form.name).trim(),
     category: form.category,
     avatar: form.avatar,
+    backgroundColor: safeBackground(form.backgroundColor),
     intro: form.intro,
     roleDesc: form.roleDesc,
     exampleQuestions: form.exampleQuestions.map((q) => String(q || '').trim()),
@@ -244,10 +347,30 @@ function buildPayload() {
   }
 }
 
+/* 示例问题输入框 ref（v-for 收集）：校验失败 focus 首个空输入框（原型 validateExpert 覆写行为） */
+const questionInputRefs = ref([])
+function setQuestionRef(el, i) {
+  questionInputRefs.value[i] = el
+}
+function focusFirstEmptyQuestion() {
+  const i = form.exampleQuestions.findIndex((q) => !String(q || '').trim())
+  if (i >= 0) questionInputRefs.value[i]?.focus?.()
+}
+
+// 校验失败提示分流：示例问题缺 → 专用 toast + focus 首个空输入框（原型逐字）；其余走通用「请先补齐必填项」。
+function warnInvalid() {
+  if (errors.examples) {
+    ElMessage.warning('请填写 3 条"专家帮你做"示例问题')
+    focusFirstEmptyQuestion()
+  } else {
+    ElMessage.warning('请先补齐必填项')
+  }
+}
+
 async function save() {
   if (disabled.value) return
   if (!validate()) {
-    ElMessage.warning('请先补齐必填项')
+    warnInvalid()
     return
   }
   saving.value = true
@@ -284,7 +407,7 @@ async function publishFromEditor() {
     return
   }
   if (!validate()) {
-    ElMessage.warning('请先补齐必填项')
+    warnInvalid()
     return
   }
   saving.value = true
@@ -315,6 +438,8 @@ watch(
     } else {
       skillKeyword.value = ''
       skillExpanded.value = false
+      kbKeyword.value = ''
+      kbExpanded.value = false
     }
   },
   { immediate: true }
@@ -454,14 +579,43 @@ const metaItems = computed(() => {
               </el-select>
             </el-form-item>
             <el-form-item label="图标" required :error="errors.avatar">
-              <!-- 沿用现有 IconPickerPopover（图标库 / 上传裁剪 / AI 生成；2026-09-02 组件已升级 PRD 统一规则）。 -->
-              <IconPickerPopover
-                v-if="!disabled"
-                :icon="form.avatar"
-                :position-name="form.name"
-                @pick="onPickIcon"
-              />
-              <span v-else class="ee-avatar-ro">{{ form.avatar || '—' }}</span>
+              <!-- 沿用现有 IconPickerPopover（图标库 / 上传裁剪 / AI 生成；2026-09-02 组件已升级 PRD 统一规则）。
+                   2026-09-04：外层 --ee-bg 变量把「背景色」实时同步到图标预览背景（原型 syncEditorColor）。 -->
+              <span class="ee-icon-wrap" :style="{ '--ee-bg': form.backgroundColor }">
+                <IconPickerPopover
+                  v-if="!disabled"
+                  :icon="form.avatar"
+                  :position-name="form.name"
+                  @pick="onPickIcon"
+                />
+                <span v-else class="ee-avatar-ro">{{ form.avatar || '—' }}</span>
+              </span>
+            </el-form-item>
+            <!-- 背景色（2026-09-04 新增必填，字段顺序：图标之后、简介之前——原型 finalizeExpertLayout）：
+                 固定 7 色板单选 + 选中打勾；hint 照原型逐字。 -->
+            <el-form-item label="背景色" required :error="errors.backgroundColor">
+              <div class="ee-bg-field">
+                <div class="ee-bg-picker" role="radiogroup" aria-label="背景色">
+                  <label
+                    v-for="(c, i) in BACKGROUND_COLORS"
+                    :key="c"
+                    class="ee-bg-swatch"
+                    :title="c"
+                  >
+                    <input
+                      type="radio"
+                      name="expertBackgroundColor"
+                      :value="c"
+                      :checked="form.backgroundColor === c"
+                      :disabled="disabled"
+                      :aria-label="`背景色 ${i + 1}，${c}`"
+                      @change="pickBackground(c)"
+                    />
+                    <span class="ee-bg-chip" :style="{ '--swatch': c }"></span>
+                  </label>
+                </div>
+                <div class="ee-bg-hint">用于专家图标和客户端卡片背景，固定提供 7 种颜色</div>
+              </div>
             </el-form-item>
             <el-form-item label="简介" required :error="errors.intro">
               <el-input
@@ -494,22 +648,34 @@ const metaItems = computed(() => {
           </el-form>
         </section>
 
-        <!-- ② 专家帮你做（示例问题，必填固定 3 条；区标题右侧【AI 生成】——Z2 拍板） -->
+        <!-- ② 专家帮你做（示例问题，必填固定 3 条；区标题补必填红星——2026-09-04 原型 finalizeExpertLayout；
+             区级【AI 生成】走统一 AI 实况生成机制：源=简介，空则禁用 + title 引导） -->
         <section class="ee-sec">
           <div class="ee-sec-headrow">
             <h3 class="ee-sec-head">
+              <span class="ee-req">*</span>
               专家帮你做
               <span class="ee-sec-sub">必填，最多填写 3 条示例问题</span>
             </h3>
-            <el-button v-if="!disabled" plain size="small" @click="aiGenerateQuestions">AI 生成</el-button>
+            <el-button
+              v-if="!disabled"
+              plain
+              size="small"
+              :disabled="aiQuestionsDisabled"
+              :title="aiQuestionsTitle || undefined"
+              @click="aiGenerateQuestions"
+            >{{ aiQuestionsLabel }}</el-button>
           </div>
           <div class="ee-q-list">
             <div v-for="(q, i) in form.exampleQuestions" :key="i" class="ee-q-row">
               <span class="ee-q-index">{{ i + 1 }}</span>
+              <!-- 校验收紧（2026-09-04）：3 条全填；空输入框在校验失败时标红（ee-q-invalid） -->
               <el-input
+                :ref="(el) => setQuestionRef(el, i)"
                 v-model="form.exampleQuestions[i]"
                 maxlength="60"
                 :disabled="disabled"
+                :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
                 :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"
                 @input="errors.examples = ''"
               />
@@ -565,6 +731,52 @@ const metaItems = computed(() => {
             </el-button>
           </div>
           <div v-if="errors.skills" class="ee-field-err">{{ errors.skills }}</div>
+        </section>
+
+        <!-- ④ 只读「知识库」区块（2026-09-04 原型 expert-knowledge-card-module：技能引用区后）。
+             列=知识库名称/数据源/文档数量/状态/操作；默认露 2 行 + 展开更多（N）；搜索时全量匹配。 -->
+        <section class="ee-sec ee-kb-sec">
+          <h3 class="ee-sec-head">
+            知识库
+            <span class="ee-sec-sub">当前专家可见范围内的知识库</span>
+          </h3>
+          <div class="ee-kb-search">
+            <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable />
+          </div>
+          <div v-loading="kbLoading" class="ee-kb-tablewrap">
+            <table class="ee-kb-table">
+              <thead>
+                <tr>
+                  <th>知识库名称</th>
+                  <th>数据源</th>
+                  <th>文档数量</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in kbShown" :key="r.id" class="ee-kb-row">
+                  <td>
+                    <strong>{{ r.name }}</strong>
+                    <small v-if="r.description" :title="r.description">{{ r.description }}</small>
+                  </td>
+                  <td><span class="ee-kb-source">{{ kbSourcesText(r) || '—' }}</span></td>
+                  <td>{{ kbDocText(r) }}</td>
+                  <td><span class="ee-kb-status">{{ kbStateMeta(r).label }}</span></td>
+                  <td class="ee-kb-ops">
+                    <el-button link type="primary" @click="jumpKnowledge(r, 'view')">查看</el-button>
+                    <el-button link type="primary" @click="jumpKnowledge(r, 'search')">检索测试</el-button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-if="!kbLoading && !kbShown.length" class="ee-kb-empty">未找到匹配的知识库</div>
+          </div>
+          <div v-if="kbShowMore" class="ee-kb-more">
+            <el-button plain size="small" @click="kbExpanded = !kbExpanded">
+              {{ kbExpanded ? '收起' : `展开更多（${kbExtraCount}）` }}
+            </el-button>
+          </div>
         </section>
 
         <!-- 底部时间条（编辑态；原型 metaHtml：创建/最近更新/最近发布/最新版本） -->
@@ -650,6 +862,94 @@ const metaItems = computed(() => {
 .ee-avatar-ro {
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
+}
+
+/* —— 必填红星（区块标题级，2026-09-04 原型 expert-required-mark） —— */
+.ee-req {
+  color: var(--c-danger);
+  font-weight: var(--fw-normal);
+}
+
+/* —— 图标预览背景实时联动背景色（原型 syncEditorColor；--ee-bg 由模板落值） —— */
+.ee-icon-wrap :deep(.ip-avatar) {
+  background: var(--ee-bg, transparent);
+  transition: background-color 0.15s ease;
+}
+
+/* —— 背景色 7 色板（原型 expert-background-color-style 移植，令牌化描边/勾选态） —— */
+.ee-bg-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ee-bg-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+.ee-bg-swatch {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  cursor: pointer;
+}
+.ee-bg-swatch input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.ee-bg-chip {
+  width: 30px;
+  height: 30px;
+  display: block;
+  border: 1px solid var(--border-base);
+  border-radius: 7px;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.ee-bg-swatch:hover .ee-bg-chip {
+  transform: translateY(-1px);
+  border-color: var(--c-text-faint);
+}
+.ee-bg-swatch input:focus-visible + .ee-bg-chip {
+  outline: 2px solid var(--c-primary, #409eff);
+  outline-offset: 2px;
+}
+.ee-bg-swatch input:checked + .ee-bg-chip {
+  border-color: var(--c-primary, #409eff);
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--c-primary, #409eff);
+}
+/* 选中打勾（原型 :checked span:after content:"\2713"） */
+.ee-bg-swatch input:checked + .ee-bg-chip::after {
+  content: '\2713';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #26342d;
+  font-size: 14px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+.ee-bg-swatch input:disabled + .ee-bg-chip {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ee-bg-hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  line-height: 1.5;
+}
+
+/* —— 示例问题校验红框（3 条未全填时的空输入框） —— */
+.ee-q-invalid :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
 }
 
 /* —— 职责描述内嵌编辑器 —— */
@@ -859,6 +1159,79 @@ const metaItems = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* —— 只读「知识库」区块（原型 expert-knowledge-card-style 移植，令牌化） —— */
+.ee-kb-search {
+  padding-left: var(--space-4);
+}
+.ee-kb-tablewrap {
+  margin-left: var(--space-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  overflow-x: auto;
+}
+.ee-kb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+}
+.ee-kb-table th {
+  height: 36px;
+  padding: 0 var(--space-3);
+  text-align: left;
+  color: var(--c-text-faint);
+  background: var(--bg-sunken);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.ee-kb-table td {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+  vertical-align: middle;
+  color: var(--c-text-muted);
+  line-height: 1.45;
+}
+.ee-kb-table td strong {
+  display: block;
+  color: var(--c-text-strong);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+.ee-kb-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+.ee-kb-source {
+  color: var(--c-text-muted);
+}
+.ee-kb-status {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+.ee-kb-ops {
+  white-space: nowrap;
+}
+.ee-kb-empty {
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  color: var(--c-text-faint);
+  font-size: var(--fs-sm);
+}
+.ee-kb-more {
+  display: flex;
+  justify-content: center;
+  padding-left: var(--space-4);
 }
 
 /* —— 底部时间条（原型 page-time） —— */

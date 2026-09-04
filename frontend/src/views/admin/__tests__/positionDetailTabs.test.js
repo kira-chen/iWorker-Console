@@ -3,20 +3,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * PositionDetailTabs · 9-Tab 信息架构契约（2026-08-22 白板→Tab 改造）。
- * 只钉页面这一层：9 个 sheet 页都在、label 正确；未实现的「知识 / 运行」显「开发中」占位；
- * 已有功能 Tab 内联了对应编辑器/组件（非弹窗入口）。不测子组件内部（全桩）。
+ * PositionDetailTabs · 页签信息架构契约。
+ *
+ * 2026-09-04 PRD-20260903 对齐重写（原 9-Tab 断言过时）：
+ * - 新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统；
+ *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本=Q2 冻结）。
+ * - 人格页签为 md 三.2 六区块（岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格）。
+ * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
+ * - 只读态（query.view=1）：顶部隐藏【保存】【发布岗位】。
+ * 只钉页面这一层，不测子组件内部（全桩）。
  */
 
 const store = {
   positionId: 5,
   loading: false,
   error: '',
-  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], intakeSchema: [], recommendedQuestions: ['', '', '', ''] },
+  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [], recommendedQuestions: ['', '', '', ''] },
   agents: [],
   allSkills: [],
   isPublished: false,
-  detail: { positionId: 5, status: 'draft' },
+  detail: { positionId: 5, status: 'draft', pendingAction: null },
   checkInput: {},
   load: vi.fn(() => Promise.resolve()),
   reset: vi.fn(),
@@ -28,8 +34,10 @@ vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
   ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() }
 }))
+// 路由 mock：query 可按用例改写（只读态用 view=1）
+const routeMock = { params: { id: '5' }, query: {}, meta: {} }
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { id: '5' }, query: {}, meta: {} }),
+  useRoute: () => routeMock,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   onBeforeRouteLeave: () => {}
 }))
@@ -37,6 +45,8 @@ vi.mock('@/api/position', () => ({
   createPosition: vi.fn(), publishPosition: vi.fn(() => Promise.resolve({})), getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')), listPositionPublications: vi.fn(() => Promise.resolve([]))
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn(() => Promise.resolve([])) }))
+// 知识页签只读列表（2026-09-04 新增）：懒加载，Tab 骨架测试给空列表即可
+vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [], total: 0 })) }))
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
@@ -45,13 +55,11 @@ vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
-  '@/components/position/PositionIdentityCard.vue', '@/components/position/AgentLane.vue',
-  '@/components/position/SkillPickerDialog.vue', '@/components/position/PersonaEditDialog.vue',
-  '@/components/position/IntakeEditDialog.vue', '@/components/position/PublishCheckDialog.vue',
+  '@/components/position/SkillPickerDialog.vue', '@/components/position/PublishCheckDialog.vue',
   '@/components/position/PositionVersionHistoryDialog.vue', '@/components/position/PositionDataTableStage.vue',
-  '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimDescEditor.vue',
-  '@/components/position/RecommendedQuestionsEditor.vue', '@/components/position/SkillMilkdownEditor.vue',
-  '@/components/position/IntakeFieldEditor.vue', '@/components/test/EffectTestStage.vue'
+  '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/IconPickerPopover.vue', '@/components/position/PositionBizSystemsPane.vue',
+  '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue'
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))
 }
@@ -69,7 +77,8 @@ async function mount() {
   app = createApp(PositionDetailTabs)
   app.component('el-tabs', elTabs); app.component('el-tab-pane', elTabPane)
   for (const t of ['el-button', 'el-input', 'el-skeleton', 'el-empty',
-    'el-form', 'el-form-item', 'el-select', 'el-option', 'el-switch', 'el-tag', 'el-table']) app.component(t, passthrough(t))
+    'el-form', 'el-form-item', 'el-select', 'el-option', 'el-switch', 'el-tag', 'el-table',
+    'el-icon', 'el-dialog', 'el-tooltip']) app.component(t, passthrough(t))
   // el-table-column 的 #default 是行作用域插槽（需 { row }）；本组测试只钉 Tab 骨架，不渲染行内容，
   // 故桩成不调用插槽的空节点——否则真组件会以 undefined 作用域触发 "Cannot destructure property 'row'"。
   app.component('el-table-column', { name: 'el-table-column', props: ['prop', 'label'], template: '<div class="el-table-column"></div>' })
@@ -78,42 +87,68 @@ async function mount() {
   await nextTick(); await Promise.resolve(); await nextTick()
   return container
 }
-beforeEach(() => { store.load.mockClear() })
+beforeEach(() => { store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('PositionDetailTabs · 9-Tab 结构', () => {
-  it('渲染全部 9 个 sheet 页，label 与顺序正确', async () => {
+describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）', () => {
+  it('渲染新 PRD 七页签 + demo 扩展三页签，label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '运行', '版本', '效果测试'])
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试', '版本'])
   })
 
-  it('「人格」Tab 内联「岗位描述」编辑分区（2026-08-26 开放 expert.description 后台编辑入口）', async () => {
+  it('「人格」Tab 含 md 三.2 六区块：岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格', async () => {
     await mount()
     const persona = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'persona')
-    expect(persona?.textContent).toContain('岗位描述')
+    for (const sec of ['岗位描述', '岗位图标', '岗位认领说明', '示例问题', '岗位 SOP', '岗位人格']) {
+      expect(persona?.textContent).toContain(sec)
+    }
     expect(persona?.querySelector('.pd-desc-input')).toBeTruthy()
+    // 示例问题为 3 格 + 区级【AI 生成】
+    expect(persona?.querySelectorAll('.pd-eq-row').length).toBe(3)
+    expect(persona?.textContent).toContain('AI 生成')
   })
 
-  it('顶栏（2026-08-28 统筹）：「返回」+ 分隔 + 可编辑名称；无技能搜索框、无「还差 N 项」进度条、无自动保存文案', async () => {
+  it('顶栏：「返回」+ 分隔 + 可编辑名称 + 保存/发布岗位；未改动时不显「有未保存的修改」', async () => {
     await mount()
     const top = container.querySelector('.topbar')
     expect(top.querySelector('.tb-back').textContent.trim()).toBe('← 返回')
     expect(top.querySelector('.tb-sep')).toBeTruthy()
     expect(top.querySelector('.tb-name-input')).toBeTruthy()
-    expect(top.textContent).not.toContain('搜技能')
-    expect(top.textContent).not.toContain('还差')
-    expect(top.textContent).not.toContain('自动保存')
-    // 未改动时不显「有未保存的修改」；且不会自动触发 saveBasic
+    expect(top.textContent).toContain('保存')
+    expect(top.textContent).toContain('发布岗位')
     expect(top.querySelector('.tb-dirty').textContent.trim()).toBe('')
     expect(store.saveBasic).not.toHaveBeenCalled()
   })
 
-  it('未实现的「知识」「运行」显「开发中」占位', async () => {
+  it('只读态（query.view=1，列表【查看】进入）：顶部隐藏【保存】【发布岗位】', async () => {
+    routeMock.query = { view: '1' }
+    await mount()
+    const top = container.querySelector('.topbar')
+    expect(top.textContent).not.toContain('保存')
+    expect(top.textContent).not.toContain('发布岗位')
+  })
+
+  it('审核中（detail.pendingAction 非空）：同样隐藏【保存】【发布岗位】', async () => {
+    store.detail.pendingAction = 'PUBLISH'
+    await mount()
+    const top = container.querySelector('.topbar')
+    expect(top.textContent).not.toContain('保存')
+    expect(top.textContent).not.toContain('发布岗位')
+  })
+
+  it('「知识」不再是开发中占位（轻量列表 + 新建知识库入口）；「运行」仍为占位', async () => {
     await mount()
     const paneText = (name) => [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === name)?.textContent || ''
-    expect(paneText('knowledge')).toContain('开发中')
+    expect(paneText('knowledge')).not.toContain('开发中')
+    expect(paneText('knowledge')).toContain('新建知识库')
     expect(paneText('runtime')).toContain('开发中')
+  })
+
+  it('「业务系统」页签挂载引用面板（PositionBizSystemsPane，桩渲染）', async () => {
+    await mount()
+    const biz = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'bizSystems')
+    expect(biz?.querySelector('.stub')).toBeTruthy()
   })
 
   it('效果测试在 EFFECT_TEST_ENABLED=false 时显「开发中」占位（不擅自开启被关链路）', async () => {

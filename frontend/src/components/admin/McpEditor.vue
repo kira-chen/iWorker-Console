@@ -11,6 +11,11 @@
  * 编辑页不展示使用统计（§三.4）；工具卡不展示序号/读写性质/引用限定名（§三.6.1，writeClass 数据透传保留）。
  * stdio Env 保持 V110 声明式行（2026-08-31 拍板，新于 PRD md 文本，不回退——差异记 PRD-review）。
  * 工具清单唯一来源是「拉取工具」；允许保存无工具的 MCP（发布另有非空门禁）。
+ *
+ * 2026-09-04 PRD-20260903 对齐（基准=新交互原型最终覆写态）：时间行标签全称（含最近发布时间）、
+ * Bearer 分支文案（Token/只填 Token 本体）、抽屉末尾示例问题区（固定 3 条 + AI 生成走
+ * useAiLiveGenerate + connectorQuestionSet）、工具卡 title 随拉取透传。示例问题区标「必填」
+ * 但新原型 validateMcpEditor 覆写未强校验非空——按原型行为不拦保存（PRD 内部差异待裁决）。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -24,7 +29,8 @@ import {
   fetchMcpTools,
   fetchMcpToolsDraft
 } from '@/api/admin'
-import { validateMcpForm, MCP_TRANSPORTS, MCP_AUTH_TYPES, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
+import { validateMcpForm, MCP_TRANSPORTS, MCP_AUTH_TYPES, MCP_COMMAND_OPTIONS, BIZ_QUESTION_MAX } from '@/utils/defValidate'
+import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 import { parseMcpConfig } from '@/utils/mcpImport'
 import { envRowsFromDetail, buildEnvSubmit, buildProbeEnv } from '@/utils/mcpEnv'
 import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
@@ -67,8 +73,12 @@ const form = reactive({
   // —— 鉴权录入（仅 streamable-http；MCP_AUTH_CONFIG_ENABLED 开放）——
   authType: 'none', // none | bearer | header（与后端 applyAuth 对齐，小写）
   authHeaderName: '', // 自定义 Header 名（仅 header）
-  authValue: '' // 密钥明文（仅提交瞬间存在；永不回显，编辑态留空=保留原值）
+  authValue: '', // 密钥明文（仅提交瞬间存在；永不回显，编辑态留空=保留原值）
+  // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾示例问题区，固定 3 条）
+  exampleQuestions: ['', '', '']
 })
+// 示例问题每条上限（与业务系统连接器同口径 60 字；AI 生成器 connectorQuestionSet 同上限截断）
+const QUESTION_MAX = BIZ_QUESTION_MAX
 // 鉴权录入区开关 + 类型枚举（构建期常量）
 const authEnabled = MCP_AUTH_CONFIG_ENABLED
 const authTypes = MCP_AUTH_TYPES
@@ -158,6 +168,7 @@ function resetForm() {
   form.authType = 'none'
   form.authHeaderName = ''
   form.authValue = ''
+  form.exampleQuestions = ['', '', '']
   authInfoLoaded.value = null
   envRows.value = []
   tools.value = []
@@ -249,6 +260,8 @@ async function load() {
     // env 声明式回填（V110）：后端回 [{ key, valueMasked, description?, clientFill? }]，
     // 绝不回明文/密文；平台值行 value 恒空（留空=保留旧值，重填=覆盖）。
     envRows.value = envRowsFromDetail(d.env)
+    // 示例问题回填（固定 3 行；缺省补空串）
+    form.exampleQuestions = [0, 1, 2].map((i) => d.exampleQuestions?.[i] || '')
     tools.value = (d.tools || []).map((t) => ({
       name: t.name || '',
       description: t.description || '',
@@ -439,6 +452,8 @@ function adoptToolRows(merged) {
     name: merged.name || '',
     description: merged.description || '',
     writeClass: merged.writeClass === 'WRITE' ? 'WRITE' : 'READ',
+    // 2026-09-04 PRD-20260903 对齐：拉取结果透传 server 显示名 title（工具卡「中文名 + 灰色代码名」双层；无 title 回落代码名）
+    title: merged.title || '',
     inputSchema: merged.inputSchema ?? null,
     _flatRows: flattenRows(schemaToRows(merged.inputSchema))
   }
@@ -491,6 +506,24 @@ async function fetchTools() {
   }
 }
 
+/** 示例问题 AI 生成（2026-09-04 PRD-20260903 对齐：接入统一 AI 实况生成机制 useAiLiveGenerate，
+ * 生成器 connectorQuestionSet 一次 3 条）：源=服务描述（空则按钮禁用 + title「请先填写服务描述」），
+ * 点击进「生成中…」约 420ms，本地模板生成后写入 3 行，完成 toast「AI 内容已生成，请确认后保存」。 */
+const {
+  disabled: aiDisabled,
+  title: aiTitle,
+  label: aiLabel,
+  run: generateQuestions
+} = useAiLiveGenerate({
+  getSourceText: () => form.description,
+  sourceLabel: '服务描述',
+  generate: connectorQuestionSet,
+  apply: (questions) => {
+    form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))
+  },
+  isReadonly: () => props.readonly
+})
+
 function buildPayload() {
   const payload = {
     name: form.name.trim(),
@@ -508,6 +541,8 @@ function buildPayload() {
     })),
     // 鉴权：{type, headerName?, token?/value?}（密钥留空=保留旧值；none=清空；录入区未开放为 null=整体保留）
     authConfig: buildAuthConfig(),
+    // 示例问题（固定 3 行原样下发；新原型未在保存时强校验非空，随行落库）
+    exampleQuestions: form.exampleQuestions.map((q) => (q || '').trim()),
     status: form.status
   }
   // 连接字段按 transport 分流下发（设计 §1.2）：http 只传 endpoint；stdio 只传 command/args/env。
@@ -578,9 +613,10 @@ async function save() {
   >
       <!-- 首行元信息（2026-09-01 拍板：与 API 弹窗同款，时间行上移首行；覆盖 PRD §三.9 底部位置） -->
       <div v-if="isEdit" class="md-times">
+        <!-- 2026-09-04 PRD-20260903 对齐：标签照新原型 page-time 全称（含「最近发布时间」，未发布显「—」） -->
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
-        <span>最近更新：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
-        <span>最近发布：{{ times.publishedAt ? fmtTime(times.publishedAt) : '—' }}</span>
+        <span>最近更新时间：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
+        <span>最近发布时间：{{ times.publishedAt ? fmtTime(times.publishedAt) : '—' }}</span>
       </div>
 
       <!-- 一键导入：粘贴整段 MCP 配置 JSON，自动解析回填下方字段（仅登记/编辑态，PRD §三.2） -->
@@ -747,8 +783,11 @@ async function save() {
               </el-form-item>
               <el-form-item v-if="form.authType !== 'none'" :error="fieldErrors.authConfig">
                 <template #label>
-                  <span>{{ form.authType === 'bearer' ? 'Bearer Token' : '访问凭证' }} <em v-if="!authConfigured" class="req">*</em></span>
-                  <span class="lbl-hint">（密钥不回显{{ authConfigured ? '，留空保留原值、重填覆盖' : '' }}）</span>
+                  <!-- Bearer 分支文案（2026-09-04 PRD-20260903 对齐：照新原型 authFields 覆写「Token」+
+                       hint「只填 Token 本体；加密存储，不回显明文」）；API Key 分支沿用既有口径 -->
+                  <span>{{ form.authType === 'bearer' ? 'Token' : '访问凭证' }} <em v-if="!authConfigured" class="req">*</em></span>
+                  <span v-if="form.authType === 'bearer'" class="lbl-hint">只填 Token 本体；加密存储，不回显明文</span>
+                  <span v-else class="lbl-hint">（密钥不回显{{ authConfigured ? '，留空保留原值、重填覆盖' : '' }}）</span>
                 </template>
                 <!-- 已配置掩码提示（全站密钥掩码口径，模型页同款形态）：明文不回显，掩码供核对 -->
                 <div v-if="authConfigured" class="md-auth-masked">
@@ -763,7 +802,7 @@ async function save() {
                   show-password
                   autocomplete="new-password"
                   :class="{ 'md-bearer-input': form.authType === 'bearer' }"
-                  :placeholder="form.authType === 'bearer' ? '粘贴 Bearer Token（不含 Bearer 前缀）' : '粘贴 API Key'"
+                  :placeholder="form.authType === 'bearer' ? '请输入 Token' : '粘贴 API Key'"
                 >
                   <template v-if="form.authType === 'bearer'" #prepend>Authorization: Bearer</template>
                 </el-input>
@@ -918,6 +957,39 @@ async function save() {
           </el-tag>
         </div>
         <div v-else class="md-refs-empty">暂无技能引用</div>
+      </section>
+
+      <!-- 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾追加示例问题区，
+           固定 3 条带序号 +【AI 生成】走统一 AI 实况生成机制；文案照原型逐字） -->
+      <section class="md-sec">
+        <div class="md-sec-title md-eq-title">
+          <span>
+            示例问题
+            <span class="md-sec-sub">必填，固定 3 条</span>
+          </span>
+          <el-button
+            v-if="!props.readonly"
+            class="md-eq-ai"
+            size="small"
+            :disabled="aiDisabled"
+            :title="aiTitle || undefined"
+            @click="generateQuestions"
+          >
+            {{ aiLabel }}
+          </el-button>
+        </div>
+        <div class="md-eq-list">
+          <div v-for="i in 3" :key="i" class="md-eq-row">
+            <span class="md-eq-index">{{ i }}</span>
+            <el-input
+              v-model="form.exampleQuestions[i - 1]"
+              :maxlength="QUESTION_MAX"
+              show-word-limit
+              :disabled="props.readonly"
+              :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
+            />
+          </div>
+        </div>
       </section>
 
   </DrawerEditor>
@@ -1173,6 +1245,40 @@ async function save() {
 .md-refs-empty {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
+}
+
+/* ---- 示例问题（2026-09-04 PRD-20260903 对齐；行样式与 BizSystemEditor 同款） ---- */
+.md-eq-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.md-eq-ai {
+  white-space: nowrap;
+}
+.md-eq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.md-eq-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.md-eq-index {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  border: 1px solid var(--border-base);
+  border-radius: 50%;
+  background: var(--bg-sunken);
 }
 
 /* ===== 图标 / 超时（V97） ===== */

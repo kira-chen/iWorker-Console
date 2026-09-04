@@ -92,9 +92,9 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     it('stdio 合法表单通过', () => {
       expect(validateMcpForm(validStdio).ok).toBe(true)
     })
-    it('stdio 必填 command', () => {
-      expect(validateMcpForm({ ...validStdio, command: '' }).errors.command).toBeTruthy()
-      expect(validateMcpForm({ ...validStdio, command: '   ' }).errors.command).toBeTruthy()
+    it('stdio 必填 command（2026-09-04 PRD-20260903 对齐：错误文案照新原型「请选择启动命令」）', () => {
+      expect(validateMcpForm({ ...validStdio, command: '' }).errors.command).toBe('请选择启动命令')
+      expect(validateMcpForm({ ...validStdio, command: '   ' }).errors.command).toBe('请选择启动命令')
     })
     it('stdio args 每项非空', () => {
       expect(validateMcpForm({ ...validStdio, args: ['-y', ''] }).errors.args).toBeTruthy()

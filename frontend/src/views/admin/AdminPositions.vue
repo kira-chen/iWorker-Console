@@ -163,7 +163,8 @@ async function submitCreate() {
       description: createForm.description.trim() || undefined
     })
     createVisible.value = false
-    ElMessage.success('岗位已创建')
+    // 2026-09-04 PRD-20260903 对齐：新建保存后跳详情页 toast 照新原型
+    ElMessage.success('岗位已创建，请完善必填项后发布')
     router.push({ name: 'PositionWorkbench', params: { id: data.positionId } })
   } catch (e) {
     // 名称重复(1005 唯一冲突)等字段级错误：在名称输入框内联红框回显，不弹全局 toast、不跳转
@@ -179,6 +180,12 @@ async function submitCreate() {
 
 function goConfig(row) {
   router.push({ name: 'PositionWorkbench', params: { id: row.positionId } })
+}
+
+// 【查看】（2026-09-04 PRD-20260903 对齐）：进入岗位详情页只读态（工作台 query.view=1 →
+// 全页签只读、顶部无保存/发布）。所有状态可用（md 三.二.3.1 固定操作）。
+function goView(row) {
+  router.push({ name: 'PositionWorkbench', params: { id: row.positionId }, query: { view: '1' } })
 }
 
 /* ---------- 效果测试台（纯前端 demo，就地扮演终端用户试跑该岗位） ---------- */
@@ -299,8 +306,9 @@ const versionAdapter = computed(() => {
 async function withdrawFromList(row) {
   if (busyId.value != null) return
   try {
+    // md 三.二.3.4：确认窗口说明撤回后恢复提交审核前的状态
     await ElMessageBox.confirm(
-      `「${row.name}」当前处于审核中。撤回后回到修改前状态。`,
+      `「${row.name}」当前处于审核中。撤回后恢复提交审核前的状态。`,
       '撤回审核申请',
       { type: 'warning', confirmButtonText: '撤回申请' }
     )
@@ -311,7 +319,8 @@ async function withdrawFromList(row) {
   try {
     // mock 侧同步清 pendingVersion / pendingReleaseNotes
     await withdrawPosition(row.positionId)
-    ElMessage.success('审核申请已撤回')
+    // md 三.二.3.4：撤回成功提示「已撤回」（2026-09-04 PRD-20260903 对齐）
+    ElMessage.success('已撤回')
     fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '撤回失败')
@@ -325,17 +334,18 @@ async function stopPosition(row) {
   if (busyId.value != null) return
   const claimCount = row.claimedUserCount ?? 0
   if (claimCount > 0) {
-    // 有领用：提示窗（单按钮「知道了」，不执行停用）
+    // 有领用：提示窗（单按钮「知道了」，不执行停用；文案照新 md 三.二.3.5，2026-09-04 对齐）
     await ElMessageBox.alert(
-      `当前有 ${claimCount} 个用户领用该岗位，请先解除领用后再停用。`,
+      `该岗位已被 ${claimCount} 个用户领用，需先解除领用后再停用`,
       '停用岗位',
       { confirmButtonText: '知道了' }
     ).catch(() => {})
     return
   }
   try {
+    // md 三.二.3.5：确认文案与按钮逐字
     await ElMessageBox.confirm(
-      `停用「${row.name}」需提交审核。审核通过前客户端仍可使用。`,
+      `停用「${row.name}」需提交停用审核。审核通过前客户端仍可正常使用。`,
       '停用岗位',
       { type: 'warning', confirmButtonText: '提交停用审核', confirmButtonClass: 'el-button--warning' }
     )
@@ -362,13 +372,22 @@ async function onVersionDone() {
   if (id) versionDlgRow.value = rows.value.find((r) => r.positionId === id) || versionDlgRow.value
 }
 
-/* ---------- 删除（Q5 降级：普通二次确认，原型 position-delete modal） ---------- */
+/* ---------- 删除（2026-09-04 PRD-20260903 对齐：领用护栏 + 确认文案照新 md 三.二.3.6） ---------- */
 async function remove(row) {
   if (busyId.value != null) return
-  const skillCount = row.skillCount ?? (Array.isArray(row.skillIds) ? row.skillIds.length : 0)
+  const claimCount = row.claimedUserCount ?? 0
+  if (claimCount > 0) {
+    // 有领用：不可删除，提示先解除领用（文案照新 md）
+    await ElMessageBox.alert(
+      `该岗位已被 ${claimCount} 个用户领用，需先解除领用后再删除`,
+      '删除岗位',
+      { confirmButtonText: '知道了' }
+    ).catch(() => {})
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `删除「${row.name}」后会解除 ${skillCount} 条岗位技能关联。确认删除？`,
+      `删除后「${row.name}」将不可用，确认删除？`,
       '删除岗位',
       { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
     )
@@ -387,8 +406,8 @@ async function remove(row) {
   }
 }
 
-// 操作列按钮数上限：已发布行 编辑/[测试]/停用/版本管理
-const OPS_MAX = EFFECT_TEST_ENABLED ? 4 : 3
+// 操作列按钮数上限（2026-09-04 PRD-20260903 对齐补【查看】）：未发布行 查看/编辑/[测试]/发布/删除
+const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
 </script>
 
 <template>
@@ -497,11 +516,12 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 4 : 3
             </template>
           </el-table-column>
 
-          <!-- 操作列（照原型 positionActions）：编辑恒显（审核中置灰）；
-               审核中→撤回；未发布→发布+删除；已发布→停用+版本管理。【查看】暂不实现（Q4 待拍板）。 -->
+          <!-- 操作列（2026-09-04 PRD-20260903 对齐 md 三.二.3.1）：查看/编辑固定恒显（审核中编辑置灰——Q口径冻结保持展示型置灰）；
+               审核中→撤回；未发布→发布+删除（带悬停提示）；已发布→停用+版本管理（版本管理按钮为冻结区保留）。 -->
           <el-table-column label="操作" :width="opsWidth(OPS_MAX)" fixed="right">
             <template #default="{ row }">
               <div class="tbl-ops">
+                <el-button link type="primary" @click="goView(row)">查看</el-button>
                 <el-button
                   link
                   type="primary"
@@ -527,13 +547,21 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 4 : 3
                   撤回
                 </el-button>
 
-                <!-- 未发布：发布（先校验技能数，Q3 不弹确认窗）+ 删除 -->
+                <!-- 未发布：发布（先校验技能数，Q3 不弹确认窗）+ 删除；悬停提示照 md 三.二.3.1 -->
                 <template v-else-if="row.status === 'draft'">
-                  <el-button link type="primary" @click="onPublish(row)">发布</el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    title="发布将提交审核，审核通过后生成版本快照并上线"
+                    @click="onPublish(row)"
+                  >
+                    发布
+                  </el-button>
                   <el-button
                     v-if="canDelete(KIND.POSITION, { status: row.status, pendingAction: row.pendingAction })"
                     link
                     type="danger"
+                    title="删除前需二次确认"
                     :loading="busyId === row.positionId"
                     @click="remove(row)"
                   >
@@ -616,6 +644,8 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 4 : 3
             placeholder="一句话说明这个岗位是做什么的（可稍后在详情页修改）"
           />
         </el-form-item>
+        <!-- 岗位描述（2026-09-04 PRD-20260903 对齐：500 字上限+计数与人格页签/mock 全链同口径；
+             发布必填在详情页发布校验时兜底，新建时可留空稍后补） -->
         <el-form-item label="岗位描述">
           <el-input
             v-model="createForm.description"
@@ -623,7 +653,7 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 4 : 3
             :rows="3"
             maxlength="500"
             show-word-limit
-            placeholder="展示给使用者的一段介绍话术，可空；未填时对外回落「岗位定位」（可稍后在详情页修改）"
+            placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作（可稍后在详情页修改）"
           />
         </el-form-item>
       </el-form>

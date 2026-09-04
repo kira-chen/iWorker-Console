@@ -140,6 +140,8 @@ export function mergeFetchedTools(current = [], fetched = []) {
     merged.push({
       name: f.name,
       description: f.description || '',
+      // 2026-09-04 PRD-20260903 对齐：server 显示名 title 随拉取结果透传（工具卡双层标题；无则空串回落代码名）
+      title: f.title || '',
       inputSchema: f.inputSchema,
       writeClass: cWc || fWc || 'READ'
     })

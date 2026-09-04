@@ -14,7 +14,13 @@ const props = defineProps({
   // 目标行：{ userId, username, displayName, positionId, positionName }
   row: { type: Object, default: null },
   // 已发布岗位选项：[{ positionId, name }]
-  positionOptions: { type: Array, default: () => [] }
+  positionOptions: { type: Array, default: () => [] },
+  /**
+   * 选项未变化时也照常保存并上抛 saved（默认 false=未变化直接关窗不打扰）。
+   * 岗位申请审批「重新绑定」场景传 true（2026-09-04 PRD-20260903 §4.3.3）：
+   * 点【保存】即视为处理完成，须触发 saved 才能把申请标记「已重新绑定」。
+   */
+  forceSave: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -43,7 +49,7 @@ const changed = computed(() => (selected.value || '') !== (props.row?.positionId
 
 async function onSubmit() {
   if (!props.row?.userId) return
-  if (!changed.value) {
+  if (!changed.value && !props.forceSave) {
     dialogVisible.value = false
     return
   }

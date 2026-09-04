@@ -127,7 +127,8 @@ async function removeOption(idx) {
       ? '删除后，已使用该分类的技能将显示为未分类。'
       : '删除后，已有记录中的该值不会被自动替换。'
   try {
-    await ElMessageBox.confirm(`确认删除“${name}”？${impact}`, '删除选项', {
+    // 2026-09-04 PRD-20260903 对齐：确认文案引号照新原型直引号「确认删除"××"？」
+    await ElMessageBox.confirm(`确认删除"${name}"？${impact}`, '删除选项', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',

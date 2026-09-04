@@ -634,14 +634,15 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击编辑继续配置」+ 刷列表不跳编辑页', async () => {
+  // 2026-09-04 PRD-20260903 对齐：toast 文案「编辑」改带直引号（照新原型逐字）
+  it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击"编辑"继续配置」+ 刷列表不跳编辑页', async () => {
     const vm = await mountPage()
     pushSpy.mockClear()
     const before = listUnifiedSpy.mock.calls.length
     vm.onSkillsCreatedBatch({ skillIds: ['sk_a', 'sk_b'], skillType: 'PLATFORM' })
     await nextTick()
     const { ElMessage } = await import('element-plus')
-    expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击编辑继续配置')
+    expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击"编辑"继续配置')
     expect(pushSpy).not.toHaveBeenCalled()
     expect(listUnifiedSpy.mock.calls.length).toBe(before + 1)
   })

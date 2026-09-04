@@ -269,6 +269,8 @@ function confirmCreate() {
   selectedId.value = NEW
   loadError.value = false
   resetForm(label, (createDraft.description || '').trim())
+  // md 三.4.2（2026-09-04 PRD-20260903 对齐）：点【下一步】后提示继续配置编目信息与档案详情
+  ElMessage.success('工作档案已创建，请继续配置编目信息和档案详情')
 }
 
 /* ============================ 档案信息弹窗（名称 / 说明 / 状态 / 删除） ============================ */

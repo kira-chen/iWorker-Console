@@ -49,9 +49,10 @@ const activeComp = computed(() => TABS.find((t) => t.key === activeTab.value)?.c
 
 <template>
   <div class="kb-page">
+    <!-- 页面说明逐字照 PRD-20260903 md §二.1 -->
     <PageHeader
       title="知识库"
-      subtitle="集中管理企业、专家与岗位的知识来源：上传文档到平台内置 RAG 库，或接入第三方 RAG 的 API / MCP 检索"
+      subtitle="集中管理企业、专家和岗位知识来源，可将文件上传至平台 RAG，或通过 API、MCP 接入第三方知识服务。"
     />
 
     <el-tabs v-model="activeTab" class="kb-tabs">

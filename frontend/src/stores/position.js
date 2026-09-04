@@ -56,11 +56,12 @@ export const usePositionStore = defineStore('position', () => {
   })
 
   // 发布前检查所需的聚合数据（供 computePublishCheck）
+  // 2026-09-04 PRD-20260903 对齐：推荐问题 4 条 → 示例问题 3 条。
   const checkInput = computed(() => ({
     name: basic.value?.name,
     intro: basic.value?.intro,
     intakeSchema: basic.value?.intakeSchema || [],
-    recommendedQuestions: basic.value?.recommendedQuestions || [],
+    exampleQuestions: basic.value?.exampleQuestions || [],
     agents: agents.value
   }))
 
@@ -98,11 +99,22 @@ export const usePositionStore = defineStore('position', () => {
       iconSource: data.iconSource || 'library',
       // claimDesc 由 String → 数组 [{emoji,content}]（后端兜底恒为数组）；防御非数组回退空数组
       claimDesc: Array.isArray(data.claimDesc) ? data.claimDesc : [],
+      // 2026-09-04 PRD-20260903 对齐：岗位认领说明（纯文本列表）/ 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+      claimDescriptions: Array.isArray(data.claimDescriptions) ? data.claimDescriptions : [],
+      exampleQuestions: normalizeExample(data.exampleQuestions),
+      positionSop: data.positionSop || '',
+      businessSystemIds: Array.isArray(data.businessSystemIds) ? data.businessSystemIds : [],
       persona: data.persona || '',
       intakeSchema: Array.isArray(data.intakeSchema) ? data.intakeSchema : [],
       // N4 岗位推荐问题（客户端会谈 R2）：固定 4 格。存量未配置回填空 4 格，保证编辑器始终渲染 4 个输入框。
       recommendedQuestions: normalizeRecommended(data.recommendedQuestions)
     }
+  }
+
+  // 示例问题归一为固定 3 格（2026-09-04 PRD-20260903 对齐）。
+  function normalizeExample(list) {
+    const arr = Array.isArray(list) ? list.map((q) => (q == null ? '' : String(q))) : []
+    return [0, 1, 2].map((i) => arr[i] ?? '')
   }
 
   // N4：把后端返回的推荐问题归一为固定 4 格数组（不足补空、超出截断），供编辑器 4 个输入框稳定绑定。
@@ -121,6 +133,10 @@ export const usePositionStore = defineStore('position', () => {
       icon: '',
       iconSource: 'library',
       claimDesc: [], // 领用页文案多条数组（设计 §3）
+      claimDescriptions: [], // 岗位认领说明（2026-09-04 PRD-20260903 对齐）
+      exampleQuestions: ['', '', ''], // 示例问题固定 3 条
+      positionSop: '',
+      businessSystemIds: [],
       persona: '',
       intakeSchema: [],
       recommendedQuestions: ['', '', '', ''] // N4 固定 4 格

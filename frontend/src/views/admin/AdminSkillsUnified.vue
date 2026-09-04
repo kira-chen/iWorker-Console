@@ -457,7 +457,8 @@ function onSkillCreated(payload) {
 function onSkillsCreatedBatch(payload) {
   createVisible.value = false
   const n = payload?.skillIds?.length
-  if (n) ElMessage.success(`已导入 ${n} 个技能包，请从列表点击编辑继续配置`)
+  // 2026-09-04 PRD-20260903 对齐：文案照新原型（「编辑」带直引号）
+  if (n) ElMessage.success(`已导入 ${n} 个技能包，请从列表点击"编辑"继续配置`)
   fetchList()
 }
 

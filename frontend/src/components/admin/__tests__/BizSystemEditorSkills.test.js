@@ -31,7 +31,8 @@ const admin = {
   listBizSystemSkills: vi.fn(() => Promise.resolve([{ skillId: 'sk_1', name: '客户记录' }])),
   createBizSystemOwnedSkill: vi.fn(() => Promise.resolve({ skillId: 'sk_new', name: '新技能' })),
   deleteBizSystemOwnedSkill: vi.fn(() => Promise.resolve()),
-  // 2026-09-01 PRD 对齐改造：示例问题 AI 生成（编辑器新增依赖，桩返回固定 3 条）
+  // 2026-09-04 PRD-20260903 对齐：编辑器示例问题 AI 生成改走 utils/aiLiveGenerate 统一实况机制
+  //（源=系统描述本地模板），不再调本接口；api 层函数保留，桩一并保留防未来引用。
   aiGenerateBizExampleQuestions: vi.fn(() =>
     Promise.resolve({ questions: ['问题一', '问题二', '问题三'] })
   )

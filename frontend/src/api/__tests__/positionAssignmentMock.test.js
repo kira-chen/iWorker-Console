@@ -49,4 +49,10 @@ describe('positionAssignmentMock —— 岗位分配 mock（2026-09-01 PRD 对�
     expect(rows.find((r) => r.userId === 1).positionName).toBeNull()
     await expect(setUserPosition(2, 999)).rejects.toThrow('岗位不存在')
   })
+
+  it('focusUserId 置顶（2026-09-04 审批「重新绑定」回跳）：目标用户排第一，其余相对顺序不变', async () => {
+    const { list } = await listPositionAssignments({ focusUserId: 4 })
+    expect(list[0].username).toBe('wangfang')
+    expect(list.map((r) => r.username)).toEqual(['wangfang', 'zhangwei', 'li.na', 'chenyu', 'zhouming', 'sun.xin'])
+  })
 })

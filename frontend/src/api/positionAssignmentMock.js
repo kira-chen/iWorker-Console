@@ -49,16 +49,22 @@ function toRow(r) {
   }
 }
 
-// params: { page, size, keyword(用户名/显示名), status(active|disabled) }
+// params: { page, size, keyword(用户名/显示名), status(active|disabled), focusUserId }
+// focusUserId（2026-09-04 PRD-20260903 岗位申请审批「重新绑定」回跳）：照原型 paFocusUserId——
+// 将该用户置顶（stable sort，其余行相对顺序不变），供分配页签「置顶高亮聚焦」一次性使用。
 export async function listPositionAssignments(params = {}) {
   await delay()
   const kw = String(params.keyword || '').trim().toLowerCase()
   const status = params.status || ''
-  const list = assignments.filter(
+  let list = assignments.filter(
     (r) =>
       (!kw || [r.username, r.displayName].some((v) => String(v || '').toLowerCase().includes(kw))) &&
       (!status || r.status === status)
   )
+  if (params.focusUserId != null) {
+    const fid = String(params.focusUserId)
+    list = [...list.filter((r) => String(r.userId) === fid), ...list.filter((r) => String(r.userId) !== fid)]
+  }
   const total = list.length
   const page = Number(params.page) > 0 ? Number(params.page) : 1
   const size = Number(params.size) > 0 ? Number(params.size) : 20
@@ -78,6 +84,16 @@ export async function setUserPosition(userId, positionId) {
   }
   persist()
   return {}
+}
+
+/**
+ * 按 userId 取单条分配行（岗位名已实时解析）；不存在返回 null。
+ * 供 positionApplicationsMock 联表使用（2026-09-04 岗位申请审批：状态 / 现有绑定岗位
+ * 取分配列表实时值，照原型 renderPositionApplications 的 assignments.find 联查）。
+ */
+export function getAssignmentByUserId(userId) {
+  const row = assignments.find((r) => String(r.userId) === String(userId))
+  return row ? toRow(row) : null
 }
 
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位）。 */

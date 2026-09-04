@@ -19,6 +19,7 @@ import {
   listExpertPublications,
   delistExpertPublication,
   relistExpertPublication,
+  getExpertKbScopeRefId,
   __resetExpertMock
 } from '../domainExpertMock'
 
@@ -56,6 +57,21 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(d.skills.map((s) => s.name)).toEqual(['经营数据分析', '合同风险检查'])
     expect(d.createdAt).toBeTruthy()
     expect(d.publishedAt).toBeTruthy()
+  })
+
+  // 2026-09-04 PRD-20260903 对齐：背景色种子 + 归一化（读写路径均回落默认 #DCF5E4）
+  it('背景色：种子/详情出参带 backgroundColor；create/update 归一化，非法值回落默认 #DCF5E4', async () => {
+    const { list } = await listExperts()
+    expect(list.every((e) => e.backgroundColor === '#DCF5E4')).toBe(true) // 种子=原型归一化结果（默认色）
+    expect((await getExpert(201)).backgroundColor).toBe('#DCF5E4')
+    // create：合法 7 色板值大写落库；update 非法值回落默认
+    const created = await createExpert({ name: '带色专家', backgroundColor: '#fae9df' })
+    expect(created.backgroundColor).toBe('#FAE9DF')
+    const updated = await updateExpert(created.id, { backgroundColor: 'not-a-color' })
+    expect(updated.backgroundColor).toBe('#DCF5E4')
+    // 专家 ↔ 知识库可见范围桥接映射种子（编辑抽屉只读「知识库」区块用）
+    expect(getExpertKbScopeRefId(201)).toBe('ex_1')
+    expect(getExpertKbScopeRefId(203)).toBeNull()
   })
 
   it('市场技能候选：3 条种子；keyword 覆盖名称/描述/分类', async () => {

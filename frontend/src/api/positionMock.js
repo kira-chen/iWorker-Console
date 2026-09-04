@@ -133,6 +133,14 @@ function buildWorkbenchSeed() {
         { emoji: '📊', content: '每天自动汇总经营数据，异常主动提醒' },
         { emoji: '📝', content: '一句话生成经营分析周报' }
       ],
+      // 岗位认领说明（2026-09-04 PRD-20260903 对齐：新原型 ensure() 种子口径，纯文本一行一条）
+      claimDescriptions: ['自动汇总各业务线经营数据', '识别异常波动并分析原因', '生成周度经营分析报告'],
+      // 示例问题（3 条）+ 岗位 SOP（编号步骤式）
+      exampleQuestions: ['汇总昨天的经营数据', '本月营收有什么异常', '生成上周的经营周报'],
+      positionSop:
+        '1. 理解用户目标并确认所需信息。\n2. 根据任务选择合适的 Agent、技能、知识库与工具。\n3. 执行任务并核对关键结果与数据口径。\n4. 向用户输出结论、依据和后续建议。',
+      // 引用的已发布业务系统（bizSystemMock 同源取行；仅 biz_2101 是已发布种子）
+      businessSystemIds: ['biz_2101'],
       persona: '稳、细、主动。先给结论，再给数据依据；发现异常主动提示影响面与建议动作。',
       intakeSchema: [
         { label: '负责业务线', key: 'biz_line', type: 'text', required: true, options: [] },
@@ -149,6 +157,11 @@ function buildWorkbenchSeed() {
       intro: '负责客户资料准备与拜访跟进的客户成功 AI 同事',
       iconSource: 'library',
       claimDesc: [{ emoji: '🤝', content: '拜访前自动准备客户资料与提纲' }],
+      claimDescriptions: ['拜访前自动准备客户资料与提纲', '拜访后整理跟进记录并沉淀服务过程'],
+      exampleQuestions: ['帮我准备明天拜访的客户资料', '整理本周的客户跟进记录', '生成客户拜访提纲'],
+      positionSop:
+        '1. 确认拜访对象与目标，收集客户基础资料。\n2. 调用客户洞察 Agent 生成拜访提纲。\n3. 拜访后整理跟进记录，沉淀到工作档案。',
+      businessSystemIds: ['biz_2101'],
       persona: '热情、周到。拜访前主动准备资料，拜访后提醒记录跟进事项。',
       intakeSchema: [{ label: '负责客户区域', key: 'region', type: 'text', required: true, options: [] }],
       recommendedQuestions: ['帮我准备明天拜访的客户资料', '整理本周的客户跟进记录', '生成客户拜访提纲', '哪些客户超过两周没有跟进'],
@@ -161,6 +174,10 @@ function buildWorkbenchSeed() {
       intro: '负责报销材料核验与财务单据检查的审核 AI 同事',
       iconSource: 'library',
       claimDesc: [{ emoji: '🧾', content: '报销单据自动核验，风险提前提示' }],
+      claimDescriptions: ['报销单据自动核验，风险提前提示'],
+      exampleQuestions: ['核验这张报销单', '本月报销有哪些风险点', '检查这批发票的合规性'],
+      positionSop: '1. 接收报销材料并逐项核验。\n2. 标记风险项并给出风险等级。\n3. 输出核验结论与整改建议。',
+      businessSystemIds: [],
       persona: '严谨、克制。逐项核验，结论给出依据与风险等级。',
       intakeSchema: [],
       recommendedQuestions: ['核验这张报销单', '本月报销有哪些风险点', '检查这批发票的合规性', '汇总本周审核情况'],
@@ -172,6 +189,10 @@ function buildWorkbenchSeed() {
       intro: '',
       iconSource: 'library',
       claimDesc: [],
+      claimDescriptions: [],
+      exampleQuestions: ['', '', ''],
+      positionSop: '',
+      businessSystemIds: [],
       persona: '',
       intakeSchema: [],
       recommendedQuestions: ['', '', '', ''],
@@ -187,11 +208,22 @@ function emptyWorkbench(payload = {}) {
     intro: String(payload.intro || '').trim(),
     iconSource: payload.iconSource || 'library',
     claimDesc: Array.isArray(payload.claimDesc) ? payload.claimDesc.map((c) => ({ ...c })) : [],
+    // 2026-09-04 PRD-20260903 对齐新增：岗位认领说明 / 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+    claimDescriptions: Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map(String) : [],
+    exampleQuestions: normEq(payload.exampleQuestions),
+    positionSop: String(payload.positionSop || ''),
+    businessSystemIds: Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : [],
     persona: String(payload.persona || ''),
     intakeSchema: Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : [],
     recommendedQuestions: Array.isArray(payload.recommendedQuestions) && payload.recommendedQuestions.length ? [...payload.recommendedQuestions] : ['', '', '', ''],
     agents: []
   }
+}
+
+/** 示例问题归一为固定 3 格（不足补空、超出截断）。 */
+function normEq(list) {
+  const arr = Array.isArray(list) ? list.map((q) => String(q ?? '')) : []
+  return [0, 1, 2].map((i) => arr[i] ?? '')
 }
 
 function ensureWb(positionId) {
@@ -264,6 +296,8 @@ export async function createPosition(payload = {}) {
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写岗位名称', 'name')
   if (positions.some((p) => p.name === name)) throw err('已存在同名岗位', 'name', 1005)
+  // 岗位描述 500 字上限（2026-09-04 PRD-20260903 对齐，全链同口径：新建弹窗 / 人格页签 / mock 兜底）
+  if (String(payload.description || '').trim().length > 500) throw err('岗位描述不超过 500 字', 'description')
   const now = nowIso()
   const p = {
     positionId: posSeq++,
@@ -499,6 +533,11 @@ function detailVO(p) {
     icon: p.icon || '',
     iconSource: wb.iconSource || 'library',
     claimDesc: (wb.claimDesc || []).map((c) => ({ ...c })),
+    // 2026-09-04 PRD-20260903 对齐新增字段
+    claimDescriptions: [...(wb.claimDescriptions || [])],
+    exampleQuestions: normEq(wb.exampleQuestions),
+    positionSop: wb.positionSop || '',
+    businessSystemIds: [...(wb.businessSystemIds || [])],
     persona: wb.persona || '',
     intakeSchema: (wb.intakeSchema || []).map((r) => ({ ...r, options: [...(r.options || [])] })),
     recommendedQuestions: [...(wb.recommendedQuestions || ['', '', '', ''])],
@@ -567,11 +606,36 @@ export async function updatePosition(id, payload = {}) {
       p.name = name
     }
   }
-  if ('description' in payload) p.description = String(payload.description || '').trim()
+  if ('description' in payload) {
+    const description = String(payload.description || '').trim()
+    // 岗位描述 500 字上限（2026-09-04 PRD-20260903 对齐）
+    if (description.length > 500) throw err('岗位描述不超过 500 字', 'description')
+    p.description = description
+  }
   if ('intro' in payload) wb.intro = String(payload.intro || '').trim()
   if ('icon' in payload) p.icon = payload.icon || p.icon
   if ('iconSource' in payload) wb.iconSource = payload.iconSource || 'library'
   if ('claimDesc' in payload) wb.claimDesc = Array.isArray(payload.claimDesc) ? payload.claimDesc.map((c) => ({ ...c })) : []
+  // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）
+  if ('claimDescriptions' in payload) {
+    const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
+    if (notes.length > 6) throw err('岗位认领说明最多 6 条', 'claimDescriptions')
+    if (notes.some((s) => s.length > 100)) throw err('岗位认领说明每条不超过 100 字', 'claimDescriptions')
+    wb.claimDescriptions = notes
+  }
+  if ('exampleQuestions' in payload) {
+    const qs = normEq(payload.exampleQuestions)
+    if (qs.some((q) => q.trim().length > 60)) throw err('示例问题每条不超过 60 字', 'exampleQuestions')
+    wb.exampleQuestions = qs
+  }
+  if ('positionSop' in payload) {
+    const sop = String(payload.positionSop || '')
+    if (sop.length > 4000) throw err('岗位 SOP 不超过 4000 字', 'positionSop')
+    wb.positionSop = sop
+  }
+  if ('businessSystemIds' in payload) {
+    wb.businessSystemIds = Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : []
+  }
   if ('persona' in payload) wb.persona = String(payload.persona || '')
   if ('intakeSchema' in payload) {
     wb.intakeSchema = Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : []

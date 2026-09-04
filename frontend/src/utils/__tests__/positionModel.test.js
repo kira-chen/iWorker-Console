@@ -32,7 +32,19 @@ import {
   computePublishCheck,
   normalizeIntakeForSubmit,
   validateIntakeRows,
-  normalizePublishWarnings
+  normalizePublishWarnings,
+  // 2026-09-04 PRD-20260903 对齐新增
+  DESCRIPTION_MAX_LEN,
+  CLAIM_NOTE_MAX,
+  CLAIM_NOTE_LEN,
+  EXAMPLE_Q_COUNT,
+  EXAMPLE_Q_MAX_LEN,
+  SOP_MAX_LEN,
+  normalizeExampleQuestions,
+  exampleQuestionsComplete,
+  normalizeClaimNotes,
+  genExampleQuestions,
+  genPositionSop
 } from '@/utils/positionModel'
 
 describe('采集类型常量', () => {
@@ -144,6 +156,50 @@ describe('N4 推荐问题（固定 4 格）', () => {
   })
   it('单格硬上限 30 字（输入框 maxlength 用）', () => {
     expect(RECOMMENDED_Q_MAX_LEN).toBe(30)
+  })
+})
+
+describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', () => {
+  it('上限常量与新 md 口径一致：描述 500 / 认领说明 6×100 / 示例问题 3×60 / SOP 4000', () => {
+    expect(DESCRIPTION_MAX_LEN).toBe(500)
+    expect(CLAIM_NOTE_MAX).toBe(6)
+    expect(CLAIM_NOTE_LEN).toBe(100)
+    expect(EXAMPLE_Q_COUNT).toBe(3)
+    expect(EXAMPLE_Q_MAX_LEN).toBe(60)
+    expect(SOP_MAX_LEN).toBe(4000)
+  })
+  it('示例问题归一为恒 3 格：不足补空、超出截断、null→空串', () => {
+    expect(normalizeExampleQuestions(['a'])).toEqual(['a', '', ''])
+    expect(normalizeExampleQuestions(['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c'])
+    expect(normalizeExampleQuestions(null)).toEqual(['', '', ''])
+    expect(normalizeExampleQuestions([null, 1, 'x'])).toEqual(['', '1', 'x'])
+  })
+  it('示例问题全填才算完整（纯空白视为未填）', () => {
+    expect(exampleQuestionsComplete(['a', 'b', 'c'])).toBe(true)
+    expect(exampleQuestionsComplete(['a', 'b', '  '])).toBe(false)
+    expect(exampleQuestionsComplete(['a', 'b'])).toBe(false)
+  })
+  it('认领说明归一为字符串数组', () => {
+    expect(normalizeClaimNotes(['a', null, 2])).toEqual(['a', '', '2'])
+    expect(normalizeClaimNotes(null)).toEqual([])
+  })
+  it('AI 生成示例问题：基于描述产出 3 条、每条 ≤60 字、内容含主题词', () => {
+    const qs = genExampleQuestions('经营分析岗', '负责经营数据汇总与分析')
+    expect(qs).toHaveLength(3)
+    qs.forEach((q) => {
+      expect(q.trim().length).toBeGreaterThan(0)
+      expect(Array.from(q).length).toBeLessThanOrEqual(EXAMPLE_Q_MAX_LEN)
+    })
+    expect(qs[0]).toContain('负责经营数据汇总与分析')
+    // 描述为空回落岗位名做主题词
+    expect(genExampleQuestions('财务审核岗', '')[0]).toContain('财务审核岗')
+  })
+  it('AI 生成岗位 SOP：编号步骤式短文、≤4000 字、含岗位描述主题词', () => {
+    const sop = genPositionSop('经营分析岗', '负责经营数据汇总与分析')
+    expect(sop.startsWith('1. ')).toBe(true)
+    expect(sop).toContain('负责经营数据汇总与分析')
+    expect(sop.split('\n').length).toBeGreaterThanOrEqual(4)
+    expect(sop.length).toBeLessThanOrEqual(SOP_MAX_LEN)
   })
 })
 
@@ -275,43 +331,45 @@ describe('normalizePublishWarnings（发布告警归一，契约 §1.6.1）', ()
 })
 
 describe('computePublishCheck（发布前检查）', () => {
+  // 2026-09-04 PRD-20260903 对齐：原 N4「推荐问题 4 条」项改为「示例问题 3 条」（key=exampleQuestions），
+  // 本组断言按新口径重写。
   it('全满足 → blockingPassed=true', () => {
     const c = computePublishCheck({
       name: '销售',
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
       intakeSchema: [{ type: 'single_select', options: ['a'] }],
-      recommendedQuestions: ['q1', 'q2', 'q3', 'q4']
+      exampleQuestions: ['q1', 'q2', 'q3']
     })
     expect(c.blockingPassed).toBe(true)
     expect(c.doneRatio).toBe(1)
   })
-  it('N4：推荐问题半填（少 1 格）→ 硬阻断', () => {
+  it('示例问题半填（少 1 条）→ 硬阻断', () => {
     const c = computePublishCheck({
       name: '销售',
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
       intakeSchema: [{ type: 'single_select', options: ['a'] }],
-      recommendedQuestions: ['q1', 'q2', '', '']
+      exampleQuestions: ['q1', 'q2', '']
     })
-    const item = c.items.find((i) => i.key === 'recommendedQuestions')
+    const item = c.items.find((i) => i.key === 'exampleQuestions')
     expect(item.blocking).toBe(true)
     expect(item.ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
-  it('N4：推荐问题缺字段（未传）→ 硬阻断', () => {
+  it('示例问题缺字段（未传）→ 硬阻断', () => {
     const c = computePublishCheck({
       name: '销售',
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }]
     })
-    expect(c.items.find((i) => i.key === 'recommendedQuestions').ok).toBe(false)
+    expect(c.items.find((i) => i.key === 'exampleQuestions').ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
-  it('N4：推荐问题 4 格全填 → 该项通过', () => {
+  it('示例问题 3 条全填 → 该项通过', () => {
     const c = computePublishCheck({
       name: '销售',
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      recommendedQuestions: ['帮我查', '帮我生成', '最近', '怎么办']
+      exampleQuestions: ['帮我查', '帮我生成', '最近']
     })
-    expect(c.items.find((i) => i.key === 'recommendedQuestions').ok).toBe(true)
+    expect(c.items.find((i) => i.key === 'exampleQuestions').ok).toBe(true)
   })
   it('缺岗位名 → 阻断', () => {
     const c = computePublishCheck({ name: '', agents: [{ name: 'A', skills: [{ skillId: 1 }] }] })
@@ -336,7 +394,7 @@ describe('computePublishCheck（发布前检查）', () => {
     const c = computePublishCheck({
       name: 'x',
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      recommendedQuestions: ['q1', 'q2', 'q3', 'q4'],
+      exampleQuestions: ['q1', 'q2', 'q3'],
       // orphanSkills 已退役：即便传入也不应产生 warning（删 Agent 后技能脱离岗位、不属本岗位）。
       orphanSkills: [{ skillId: 9 }],
       unhealthyTools: ['crm']

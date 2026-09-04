@@ -33,9 +33,9 @@ import {
   getBizSystem,
   listBizSystemSkills,
   createBizSystemOwnedSkill,
-  deleteBizSystemOwnedSkill,
-  aiGenerateBizExampleQuestions
+  deleteBizSystemOwnedSkill
 } from '@/api/admin'
+import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 import {
   validateBizSystemForm,
   BIZ_NAME_MAX,
@@ -89,8 +89,7 @@ const bodyRef = ref(null)
 // 业务页分区默认收起（B12）；添加行时自动展开
 const pagesOpen = ref(false)
 
-// 示例问题 AI 生成 busy 态
-const aiBusy = ref(false)
+// 示例问题 AI 生成（2026-09-04 PRD-20260903：统一 AI 实况生成机制，定义见下方 generateQuestions）
 
 // 被引用列表（只读）：[{ skillId, skillName }]
 const referencedBySkills = ref([])
@@ -310,25 +309,25 @@ function removePage(idx) {
   })
 }
 
-/** 示例问题 AI 生成（BQ4）：一次生成 3 条整组填充（demo 本地模板随机填充）。 */
-async function generateQuestions() {
-  if (aiBusy.value || props.readonly) return
-  aiBusy.value = true
-  try {
-    const res = await aiGenerateBizExampleQuestions({
-      name: form.name,
-      description: form.description
-    })
-    const qs = Array.isArray(res?.questions) ? res.questions : []
-    form.exampleQuestions = [0, 1, 2].map((i) => (qs[i] || '').slice(0, QUESTION_MAX))
+/** 示例问题 AI 生成（2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制，取代旧
+ * aiGenerateBizExampleQuestions 随机模板即填——该 api/mock 函数保留在 api 层不删）：
+ * 源=系统描述（空则按钮禁用 + title「请先填写系统描述」），点击进「生成中…」约 420ms，
+ * 按描述本地模板生成 3 条连接器式问题，完成 toast「AI 内容已生成，请确认后保存」。 */
+const {
+  disabled: aiDisabled,
+  title: aiTitle,
+  label: aiLabel,
+  run: generateQuestions
+} = useAiLiveGenerate({
+  getSourceText: () => form.description,
+  sourceLabel: '系统描述',
+  generate: connectorQuestionSet,
+  apply: (questions) => {
+    form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))
     delete fieldErrors.exampleQuestions
-    ElMessage.success('已生成 3 条示例问题，可直接修改')
-  } catch (e) {
-    ElMessage.error(e?.message || '生成失败，请稍后重试')
-  } finally {
-    aiBusy.value = false
-  }
-}
+  },
+  isReadonly: () => props.readonly
+})
 
 function buildPayload() {
   // 空业务页列表提交为 []；每项做 trim 归一。
@@ -574,14 +573,16 @@ async function save() {
             示例问题
             <span class="ad-sec-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
           </span>
+          <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中文案「生成中…」 -->
           <el-button
             v-if="!readonly"
             class="ad-eq-ai"
             size="small"
-            :loading="aiBusy"
+            :disabled="aiDisabled"
+            :title="aiTitle || undefined"
             @click="generateQuestions"
           >
-            AI 生成
+            {{ aiLabel }}
           </el-button>
         </div>
         <div v-if="fieldErrors.exampleQuestions" class="ad-pages-err">{{ fieldErrors.exampleQuestions }}</div>

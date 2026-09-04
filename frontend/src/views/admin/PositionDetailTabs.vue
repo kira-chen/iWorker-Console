@@ -10,6 +10,16 @@
  * 保存（2026-08-28 负责人拍板：取消自动保存）：
  * - 一律手动：顶部「保存」显式提交并跑校验；「发布」前先保存一次再走发布检查；
  * - 脏检查：以最近一次 hydrate 的 basic 快照为基线，离开路由 / 关闭窗口时有未保存修改则提示。
+ *
+ * 2026-09-04 PRD-20260903 对齐改造：
+ * - 页签调整为新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统（新增）；
+ *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本页签为 Q2 冻结项，走现有版本侧栏链路）。
+ * - 人格页签重排为 md 三.2 六区块：岗位描述(500 必填) / 岗位图标 / 岗位认领说明 / 示例问题(3 条+AI 生成) /
+ *   岗位 SOP(4000+AI 生成) / 岗位人格；原「领用页文案 / 推荐问题 4 条」editor 退役（文件保留）。
+ * - 顶部栏对齐 md 三.1：名称 64 字 / 三态状态标签 / 版本号 / 未保存提示 / 保存 / 发布岗位；
+ *   只读态（列表【查看】进入 query.view=1）与审核中隐藏保存与发布、全页签只读。
+ * - 【发布岗位】仍走现有版本侧栏流程（冻结区）；新 PRD「发布前检查弹窗 + 7 项阻断校验」本轮不实现，
+ *   仅保留轻量人格必填前置门（toast「请先填写：…」+ 自动切人格页签）。
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
@@ -19,25 +29,41 @@ import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { createPosition, publishPosition, getNextVersionLabel, listPositionPublications } from '@/api/position'
 import { useVersionPublish } from '@/composables/useVersionPublish'
 import { listDataTables } from '@/api/dataTable'
-import { computePublishCheck, normalizeIntakeForSubmit, validateIntakeRows, normalizePublishWarnings, normalizeRecommendedQuestions, recommendedQuestionsComplete, LIMITS, INTAKE_TYPES, isSelectType, genKeyFromLabel } from '@/utils/positionModel'
+import {
+  computePublishCheck,
+  normalizeIntakeForSubmit,
+  validateIntakeRows,
+  normalizePublishWarnings,
+  normalizeRecommendedQuestions,
+  recommendedQuestionsComplete,
+  normalizeExampleQuestions,
+  exampleQuestionsComplete,
+  genExampleQuestions,
+  genPositionSop,
+  DESCRIPTION_MAX_LEN,
+  EXAMPLE_Q_MAX_LEN,
+  SOP_MAX_LEN,
+  LIMITS,
+  INTAKE_TYPES,
+  isSelectType,
+  genKeyFromLabel
+} from '@/utils/positionModel'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
+import { listKnowledgeBases } from '@/api/knowledgeBase'
 import SkillPickerDialog from '@/components/position/SkillPickerDialog.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import PositionIdentityCard from '@/components/position/PositionIdentityCard.vue'
-import PersonaEditDialog from '@/components/position/PersonaEditDialog.vue'
-import IntakeEditDialog from '@/components/position/IntakeEditDialog.vue'
-import AgentLane from '@/components/position/AgentLane.vue'
+import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
 import PositionDataTableStage from '@/components/position/PositionDataTableStage.vue'
 import PositionSampleTaskStage from '@/components/position/PositionSampleTaskStage.vue'
-import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
 import PositionVersionHistoryDialog from '@/components/position/PositionVersionHistoryDialog.vue'
 import AdminRail from '@/components/admin/AdminRail.vue'
-// Tab 内联编辑器（原在 PersonaEditDialog/IntakeEditDialog 弹窗内，改造为 Tab 内直接铺开，逻辑同源）
-import ClaimDescEditor from '@/components/position/ClaimDescEditor.vue'
-import RecommendedQuestionsEditor from '@/components/position/RecommendedQuestionsEditor.vue'
+// Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：认领说明列表 / 图标 popover / 业务系统页签）
+import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
+import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import PositionBizSystemsPane from '@/components/position/PositionBizSystemsPane.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
-import IntakeFieldEditor from '@/components/position/IntakeFieldEditor.vue'
+import { iconIsUrl } from '@/utils/iconDisplay'
 // 效果测试台异步加载：仅在点「效果测试」打开时拉取，避免把对话链路提前并入白板首屏 + 保持现有测试 import 图不变。
 const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
 
@@ -129,27 +155,65 @@ function onVisibilityChange() {
   }
 }
 
-/* ---------- 身份卡（双向） ---------- */
-const basic = computed({
-  get: () => store.basic,
-  set: (v) => {
-    store.basic = v
-  }
+/* ---------- 只读态（2026-09-04 PRD-20260903 对齐） ----------
+ * 列表【查看】进入携带 query.view=1 → 全页签只读、顶部无保存/发布；
+ * 审核中（detail.pendingAction 非空）同样锁定只读（md 三.10「审核中：全部页签只读」）。 */
+const isReadonly = computed(() => route.query.view === '1' || !!store.detail?.pendingAction)
+
+// 顶部状态标签三态（md 三.1：未发布 灰 / 审核中 橙 / 已发布 绿）
+const statusView = computed(() => {
+  if (store.detail?.pendingAction) return { label: '审核中', type: 'warning' }
+  if (store.isPublished) return { label: '已发布', type: 'success' }
+  return { label: '未发布', type: 'info' }
 })
 
-/* ---------- 人格 Tab 内联绑定（搬自 PersonaEditDialog，逻辑同源：patch→store.basic→debounce 自动保存） ---------- */
+/* ---------- 人格 Tab 内联绑定（md 三.2 六区块；改动 patch→store.basic，随顶部【保存】提交） ---------- */
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-const claimItems = computed({
-  get: () => (Array.isArray(store.basic?.claimDesc) ? store.basic.claimDesc : []),
-  set: (v) => patchBasic('claimDesc', v)
+// 岗位认领说明（纯文本动态列表，≤6 条 × 100 字）
+const claimNotesModel = computed({
+  get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
+  set: (v) => patchBasic('claimDescriptions', v)
 })
-const recommendedQuestionsModel = computed({
-  get: () => normalizeRecommendedQuestions(store.basic?.recommendedQuestions),
-  set: (v) => patchBasic('recommendedQuestions', v)
-})
+// 示例问题固定 3 格
+const exampleQuestions = computed(() => normalizeExampleQuestions(store.basic?.exampleQuestions))
+function onExampleInput(idx, val) {
+  const next = normalizeExampleQuestions(store.basic?.exampleQuestions)
+  next[idx] = val
+  patchBasic('exampleQuestions', next)
+}
+const eqShowErrors = ref(false)
+const eqPlaceholders = ['如：帮我分析本周经营数据', '请输入示例问题', '请输入示例问题']
 const personaLen = computed(() => (store.basic?.persona || '').length)
+
+// 图标选择回吐（IconPickerPopover 单次给 {icon, iconSource}）
+function onPickIcon({ icon, iconSource }) {
+  store.basic = { ...store.basic, icon, iconSource }
+}
+
+/* ---------- AI 生成（本地拟真：延迟 500ms；描述为空禁用并 title 提示） ---------- */
+const descEmpty = computed(() => !String(store.basic?.description || '').trim())
+const aiQuestionsBusy = ref(false)
+const aiSopBusy = ref(false)
+function aiGenQuestions() {
+  if (descEmpty.value || aiQuestionsBusy.value) return
+  aiQuestionsBusy.value = true
+  setTimeout(() => {
+    patchBasic('exampleQuestions', genExampleQuestions(store.basic?.name, store.basic?.description))
+    aiQuestionsBusy.value = false
+    ElMessage.success('AI 内容已生成，请确认后保存')
+  }, 500)
+}
+function aiGenSop() {
+  if (descEmpty.value || aiSopBusy.value) return
+  aiSopBusy.value = true
+  setTimeout(() => {
+    patchBasic('positionSop', genPositionSop(store.basic?.name, store.basic?.description))
+    aiSopBusy.value = false
+    ElMessage.success('AI 内容已生成，请确认后保存')
+  }, 500)
+}
 
 /* ---------- 采集 Tab 内联绑定（搬自 IntakeEditDialog） ---------- */
 const intakeRows = computed({
@@ -185,12 +249,16 @@ function saveIntakeDraft() {
   }
   intakeRows.value = next
   intakeDrawerOpen.value = false
+  // md 三.3.2：保存后提示「采集字段已保存」，列表刷新（本地即时）
+  ElMessage.success('采集字段已保存')
 }
 async function deleteIntakeRow(index) {
   try {
     await ElMessageBox.confirm('删除该采集字段？删除后员工领用时不再采集该项。', '删除字段', { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' })
   } catch { return }
   intakeRows.value = intakeRows.value.filter((_, i) => i !== index)
+  // md 三.3.3：删除后提示「采集字段已删除」
+  ElMessage.success('采集字段已删除')
 }
 function addIntakeOption() { intakeDraft.value.options = [...(intakeDraft.value.options || []), ''] }
 function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.options || []).filter((_, idx) => idx !== i) }
@@ -244,6 +312,11 @@ function buildBasicPayload() {
     iconSource: b.iconSource,
     // claimDesc 多条数组 [{emoji,content}]（content 富文本由后端 Jsoup 净化）；welcome/sopDoc 已退役不上送（设计 §2）
     claimDesc: b.claimDesc,
+    // 2026-09-04 PRD-20260903 对齐新增：认领说明 / 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+    claimDescriptions: Array.isArray(b.claimDescriptions) ? b.claimDescriptions : [],
+    exampleQuestions: normalizeExampleQuestions(b.exampleQuestions),
+    positionSop: b.positionSop || '',
+    businessSystemIds: Array.isArray(b.businessSystemIds) ? b.businessSystemIds : [],
     persona: b.persona,
     intakeSchema: normalizeIntakeForSubmit(b.intakeSchema)
   }
@@ -266,7 +339,8 @@ async function doSaveBasic(silent) {
   try {
     const { warnings } = await store.saveBasic(buildBasicPayload())
     if (!silent) {
-      ElMessage.success(warnings.length ? `已保存（${warnings.length} 项提示）` : '已保存')
+      // md 三.1：保存成功提示「岗位配置已保存」
+      ElMessage.success(warnings.length ? `岗位配置已保存（${warnings.length} 项提示）` : '岗位配置已保存')
     }
   } catch (e) {
     if (e?.field) {
@@ -282,7 +356,8 @@ async function doSaveBasic(silent) {
 async function ensurePersisted() {
   if (hasPositionId.value) return true
   if (!String(store.basic.name || '').trim()) {
-    ElMessage.warning('请先填写岗位名')
+    // md 三.1：岗位名称为空时提示「请填写岗位名称」
+    ElMessage.warning('请填写岗位名称')
     return false
   }
   try {
@@ -319,49 +394,23 @@ async function onAgentRename(agentId, payload) {
     ElMessage.error(e?.message || (e?.field === 'name' ? 'Agent 名已存在' : '保存失败'))
   }
 }
+// 删除 Agent（2026-09-04 PRD-20260903 对齐，md 三.6.3）：确认文案与 toast 逐字照 md。
 async function onAgentDelete(agentId) {
   try {
-    const res = await store.removeAgent(agentId)
-    const n = res?.orphanedSkillCount ?? 0
-    if (n > 0) {
-      // PRD §3.3：删后提示 N 个技能已变「未被引用」+ 直达技能页（自动应用「未被引用」筛选）的跳转链接。
-      ElMessage({
-        type: 'success',
-        duration: 6000,
-        showClose: true,
-        dangerouslyUseHTMLString: true,
-        message:
-          `已删除 Agent · ${n} 个技能已变为「未被引用」。` +
-          `<a class="wb-toast-link" data-goto-skills="1" style="margin-left:6px;color:var(--c-accent);cursor:pointer;text-decoration:underline">去技能页查看</a>`,
-        onClose: () => {}
-      })
-      // ElMessage 的 HTML 内 a 无法直接绑 Vue 事件 → 用一次性事件委托捕获点击跳转。
-      bindToastSkillsJump()
-    } else {
-      ElMessage.success('已删除空 Agent')
-    }
+    await ElMessageBox.confirm(
+      '删除该 Agent 后会解除其技能关联，技能本身不会被删除。确认删除？',
+      '删除 Agent',
+      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await store.removeAgent(agentId)
+    ElMessage.success('Agent 已删除')
   } catch (e) {
     ElMessage.error(e?.message || '删除失败')
   }
-}
-
-// 跳转技能页并自动应用「未被引用」筛选（PRD §3.3）。用路由 query 携带筛选意图，「技能」页进入时读取
-// （2026-08-23 三页合一：原 AdminSkills 已下线，合并页 AdminSkillsUnified 消费该 query 并同时钉类型=岗位私有）。
-function gotoUnreferencedSkills() {
-  router.push({ name: 'AdminSkillsUnified', query: { referenced: 'no' } })
-}
-// 给当前 toast 内「去技能页查看」链接绑一次性点击（ElMessage HTML 不支持 Vue 事件，用事件委托兜一次）。
-function bindToastSkillsJump() {
-  const handler = (e) => {
-    const t = e.target
-    if (t && t.getAttribute && t.getAttribute('data-goto-skills') === '1') {
-      document.removeEventListener('click', handler, true)
-      gotoUnreferencedSkills()
-    }
-  }
-  document.addEventListener('click', handler, true)
-  // 8s 后无论是否点击都解绑，防泄漏。
-  setTimeout(() => document.removeEventListener('click', handler, true), 8000)
 }
 
 /* ---------- 技能整页编辑（设计 §5：移除聚焦浮层，改新标签开整页编辑器） ---------- */
@@ -418,6 +467,8 @@ async function saveAgentDraft() {
   if (!String(agentDraft.value.name || '').trim()) { ElMessage.warning('请填写 Agent 名称'); return }
   await onAgentRename(agentEditId.value, { name: agentDraft.value.name.trim(), description: agentDraft.value.description })
   agentDrawerOpen.value = false
+  // md 三.6.2：保存后提示「Agent 已保存」
+  ElMessage.success('Agent 已保存')
 }
 
 function onPickSkill(agentId) {
@@ -508,16 +559,55 @@ async function onOpenSampleTasks() {
   sampleStageOpen.value = true
 }
 
-/* ---------- 人格 / 采集 编辑弹窗（设计 §4：替代原折叠块） ---------- */
-const personaDialogOpen = ref(false)
-const intakeDialogOpen = ref(false)
-// N4：推荐问题逐格红框开关。仅在发布门被拦（半填/空）或用户显式点开人格弹窗校验时置 true，
-// 日常打字不硬拦（半填静默不下发的现状保持），只在发布门显式校验时逐格标红。
-const rqShowErrors = ref(false)
-// 打开人格弹窗时复位红框（避免上次发布拦截的残留红框在下次编辑时突兀常驻）。
-watch(personaDialogOpen, (open) => {
-  if (!open) rqShowErrors.value = false
+/* ---------- 知识页签（2026-09-04 PRD-20260903 对齐，md 三.5 轻量口径） ----------
+ * 页签内只做只读列表（走现有 api/knowledgeBase.js，不改函数签名）：
+ * 取岗位知识库（kbType=POSITION）并按可见范围 = 当前岗位名过滤；
+ * 新建 / 查看 / 编辑 / 检索测试均跳知识库模块（query 携带岗位上下文，深度锁定由知识库批次承接）。 */
+const kbRows = ref([])
+const kbLoading = ref(false)
+const kbError = ref(false)
+const kbLoaded = ref(false)
+async function loadPositionKbs() {
+  kbLoading.value = true
+  kbError.value = false
+  try {
+    const data = await listKnowledgeBases({ kbType: 'POSITION', page: 1, size: 200 })
+    const list = Array.isArray(data) ? data : data?.list || []
+    const posName = String(store.basic?.name || '').trim()
+    kbRows.value = list.filter((r) => (r.scopeRefName || '') === posName)
+    kbLoaded.value = true
+  } catch {
+    kbError.value = true
+  } finally {
+    kbLoading.value = false
+  }
+}
+// 首次切到「知识」页签时懒加载
+watch(activeTab, (tab) => {
+  if (tab === 'knowledge' && !kbLoaded.value && !kbLoading.value) loadPositionKbs()
 })
+const kbStatusView = (row) => {
+  if (row.pendingAction) return { label: '审核中', type: 'warning' }
+  if (row.status === 'PUBLISHED') return { label: '已发布', type: 'success' }
+  return { label: '未发布', type: 'info' }
+}
+const kbSourcesText = (row) => {
+  const names = (row.sources || []).map((s) => s?.name).filter(Boolean)
+  return names.length ? names.join('、') : '—'
+}
+// 跳知识库模块：query 携带岗位上下文（fromPositionId/fromPositionName）；
+// kbId/kbAction 供知识库批次承接「打开查看/编辑抽屉、检索测试弹窗」的深链。
+function gotoKbModule(action, row) {
+  router.push({
+    name: 'AdminKnowledgeBase',
+    query: {
+      tab: 'kb',
+      fromPositionId: store.positionId,
+      fromPositionName: store.basic?.name || '',
+      ...(row ? { kbId: row.id, kbAction: action } : { kbAction: action })
+    }
+  })
+}
 
 // 白板画布滚动容器（数据底座弹窗 .focus-mode 复用其退背后视觉；非聚焦态用）
 const boardRef = ref(null)
@@ -537,8 +627,6 @@ onBeforeRouteLeave(async () => {
       return false
     }
   }
-  personaDialogOpen.value = false
-  intakeDialogOpen.value = false
   dtStageOpen.value = false
   sampleStageOpen.value = false
   // 同页其它 append-to-body 浮层一并复位，避免遮罩在卸载时残留闪烁（CR 一致性）。
@@ -551,13 +639,11 @@ onBeforeRouteLeave(async () => {
  * 从 Agent 移除 = 删该 Agent 对技能的引用行；技能本体留在库里、可在「技能」页查看，也可再拉入任意 Agent。
  * 取代旧「解绑=彻底游离、不可逆」语义（后端 detach 端点：DELETE /fde/agents/{agentId}/skills/{skillId}）。 */
 async function onDeleteSkill({ agentId, skillId }) {
-  // 取技能名让确认文案更明确（取不到则用「这个技能」兜底）。
-  const hit = store.allSkills.find((x) => x.skill?.skillId === skillId)
-  const skillName = hit?.skill?.name || '这个技能'
   try {
+    // md 三.6.4：确认文案逐字「仅解除技能与当前 Agent 的关联，不删除技能本身。确认移除？」
     await ElMessageBox.confirm(
-      `将「${skillName}」从当前 Agent 移除？技能不会被删除，仍可在「技能」页查看，也可再次拉入本 Agent 或其它 Agent。`,
-      '从 Agent 移除技能',
+      '仅解除技能与当前 Agent 的关联，不删除技能本身。确认移除？',
+      '移除技能',
       {
         type: 'warning',
         confirmButtonText: '移除',
@@ -569,7 +655,7 @@ async function onDeleteSkill({ agentId, skillId }) {
   }
   try {
     await store.detachSkillFromAgent(agentId, skillId)
-    ElMessage.success('已移除 · 技能留在「技能」页，可再次拉入')
+    ElMessage.success('已移除')
   } catch (e) {
     ElMessage.error(e?.message || '移除失败')
   }
@@ -607,12 +693,21 @@ async function openPublish() {
   if (!(await ensurePersisted())) return
   // 先存一遍身份卡当前内容
   await doSaveBasic(true)
-  // N4 发布门：4 个推荐问题必须全部填写，否则拦下发布并把用户带到人格弹窗逐格标红指出哪格空。
-  // （半填在 buildBasicPayload 里静默不下发，若不在此硬拦，用户填 2 格就能发布 → 客户端拿不到推荐问题。）
-  if (!recommendedQuestionsComplete(store.basic.recommendedQuestions)) {
-    rqShowErrors.value = true
-    personaDialogOpen.value = true
-    ElMessage.warning('请把 4 个推荐问题都填好再发布')
+  // 轻量人格必填前置门（2026-09-04 PRD-20260903 对齐 md 三.9.1 口径的 toast「请先填写：…」+
+  // 自动切人格页签；完整「发布前检查弹窗 + 7 项阻断校验」按冻结区 Q1-Q4 挂账本轮不实现，
+  // 通过前置门后仍走现有版本侧栏发布流程）。
+  const b = store.basic
+  const missing = []
+  if (!String(b.name || '').trim()) missing.push('岗位名称')
+  if (!b.icon) missing.push('岗位图标')
+  if (!String(b.description || '').trim()) missing.push('岗位描述')
+  if (!(Array.isArray(b.claimDescriptions) && b.claimDescriptions.some((s) => String(s).trim()))) missing.push('岗位认领说明')
+  if (!exampleQuestionsComplete(b.exampleQuestions)) missing.push('3 条示例问题')
+  if (!String(b.positionSop || '').trim()) missing.push('岗位 SOP')
+  if (missing.length) {
+    activeTab.value = 'persona'
+    eqShowErrors.value = missing.includes('3 条示例问题')
+    ElMessage.warning(`请先填写：${missing.join('、')}`)
     return
   }
   // N5：打开即带出建议的下一个版本号；load 内部会清空升级说明（每次发布重填，必填）。
@@ -672,25 +767,28 @@ function backToList() {
         <div class="tb-l">
           <span class="tb-back" @click="backToList">← 返回</span>
           <span class="tb-sep">|</span>
-          <!-- 岗位名称可直接编辑（2026-08-28）：写入 store.basic.name，随「保存」提交 -->
+          <!-- 岗位名称可直接编辑（md 三.1：最多 64 字；只读态禁用）：写入 store.basic.name，随「保存」提交 -->
           <el-input
             :model-value="store.basic?.name || ''"
             class="tb-name-input"
-            maxlength="40"
+            maxlength="64"
             placeholder="岗位名称"
+            :disabled="isReadonly"
             @update:model-value="patchBasic('name', $event)"
           />
-          <StatusTag :type="store.isPublished ? 'success' : 'info'">
-            {{ store.isPublished ? '已发布' : '草稿' }}
-          </StatusTag>
+          <!-- 状态标签三态（md 三.1：未发布 灰 / 审核中 橙 / 已发布 绿） -->
+          <StatusTag :type="statusView.type">{{ statusView.label }}</StatusTag>
           <span v-if="store.isPublished && currentVersionLabel" class="tb-version" title="当前已发布的最新版本">{{ currentVersionLabel }}</span>
         </div>
 
         <div class="tb-r">
           <span class="tb-dirty" :class="{ on: isDirty }">{{ isDirty ? '有未保存的修改' : '' }}</span>
           <ThemeToggle />
-          <el-button @click="explicitSave">保存</el-button>
-          <el-button type="primary" @click="openPublish">发布岗位</el-button>
+          <!-- md 三.1：只读状态和审核中状态隐藏【保存】和【发布岗位】 -->
+          <template v-if="!isReadonly">
+            <el-button @click="explicitSave">保存</el-button>
+            <el-button type="primary" @click="openPublish">发布岗位</el-button>
+          </template>
         </div>
       </header>
 
@@ -707,44 +805,128 @@ function backToList() {
         <div v-else-if="store.loading" class="board-state"></div>
 
         <el-tabs v-else-if="store.basic" v-model="activeTab" class="pd-tabs">
-          <!-- ① 人格 -->
+          <!-- ① 人格（2026-09-04 PRD-20260903 对齐，md 三.2 六区块纵向排列） -->
           <el-tab-pane label="人格" name="persona">
             <div class="pd-pane">
-              <!-- 岗位描述（2026-08-26 开放后台编辑入口）：expert.description 早已存在且对外下发（契约 positions[].description，
-                   有值取之、否则回落「岗位定位」intro），此前仅种子数据可写、后台无入口。走 patchBasic → store.basic → 2s 防抖自动保存。 -->
+              <!-- 1. 岗位描述（必填，≤500 字；全链同口径：新建弹窗 / mock 校验） -->
               <section class="pd-sec">
                 <div class="pd-sec-title">
-                  岗位描述<span class="pd-sec-sub">展示给使用者的一段介绍 · 可空，未填时对外回落「岗位定位」</span>
+                  岗位描述<i class="pd-req">*</i><span class="pd-sec-sub">向用户说明该岗位的职责范围</span>
                 </div>
                 <el-input
                   :model-value="store.basic.description || ''"
                   type="textarea"
                   :rows="3"
-                  maxlength="500"
+                  :maxlength="DESCRIPTION_MAX_LEN"
                   show-word-limit
-                  placeholder="例：面向 HR 岗位的 AI 同事，擅长招聘流程、入职手续、薪酬政策答疑。"
+                  placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作"
                   class="pd-desc-input pd-half"
+                  :disabled="isReadonly"
                   @update:model-value="patchBasic('description', $event)"
                 />
               </section>
-              <section class="pd-sec pd-half">
-                <div class="pd-sec-title">领用页文案<span class="pd-sec-sub">员工领用时看到的卖点 · 可多条</span></div>
-                <ClaimDescEditor v-model="claimItems" />
-              </section>
-              <section class="pd-sec">
-                <div class="pd-sec-title">推荐问题<span class="pd-sec-sub">客户端进入岗位后展示的 4 个引导问题 · 固定 4 个</span></div>
-                <RecommendedQuestionsEditor v-model="recommendedQuestionsModel" :show-errors="rqShowErrors" />
-              </section>
+
+              <!-- 2. 岗位图标（必填；IconPickerPopover：图标库 / 上传 + 方形裁剪） -->
               <section class="pd-sec">
                 <div class="pd-sec-title">
-                  岗位人格<span class="pd-sec-sub">用户端可个性化覆盖 · markdown</span>
+                  岗位图标<i class="pd-req">*</i><span class="pd-sec-sub">用于岗位列表与员工端展示</span>
+                </div>
+                <div class="pd-icon-row">
+                  <span class="pd-icon-preview">
+                    <img v-if="iconIsUrl(store.basic.icon)" :src="store.basic.icon" alt="" class="pd-icon-img" />
+                    <span v-else>{{ store.basic.icon || '♟' }}</span>
+                  </span>
+                  <IconPickerPopover
+                    :icon="store.basic.icon"
+                    :position-name="store.basic.name"
+                    :readonly="isReadonly"
+                    @pick="onPickIcon"
+                  />
+                </div>
+              </section>
+
+              <!-- 3. 岗位认领说明（动态列表：≥1 条为发布必填、≤6 条 × 100 字） -->
+              <section class="pd-sec pd-half">
+                <div class="pd-sec-title">岗位认领说明<span class="pd-sec-sub">一行一条，员工认领岗位时展示</span></div>
+                <ClaimNotesEditor v-model="claimNotesModel" :readonly="isReadonly" />
+              </section>
+
+              <!-- 4. 示例问题（3 条必填 × 60 字 + 区级 AI 生成） -->
+              <section class="pd-sec pd-half">
+                <div class="pd-sec-title">
+                  示例问题<i class="pd-req">*</i><span class="pd-sec-sub">帮助用户快速了解如何使用该岗位</span>
+                  <el-button
+                    v-if="!isReadonly"
+                    class="pd-ai-btn"
+                    size="small"
+                    plain
+                    :loading="aiQuestionsBusy"
+                    :disabled="descEmpty || aiQuestionsBusy"
+                    :title="descEmpty ? '请先填写岗位描述' : undefined"
+                    @click="aiGenQuestions"
+                  >
+                    {{ aiQuestionsBusy ? '生成中...' : 'AI 生成' }}
+                  </el-button>
+                </div>
+                <div class="pd-eq-list">
+                  <div v-for="(q, idx) in exampleQuestions" :key="idx" class="pd-eq-row">
+                    <span class="pd-eq-no">{{ idx + 1 }}</span>
+                    <el-input
+                      :model-value="q"
+                      :maxlength="EXAMPLE_Q_MAX_LEN"
+                      show-word-limit
+                      :placeholder="eqPlaceholders[idx]"
+                      :disabled="isReadonly"
+                      :class="{ 'pd-eq-err': eqShowErrors && !String(q).trim() }"
+                      @update:model-value="onExampleInput(idx, $event)"
+                    />
+                  </div>
+                </div>
+                <div class="pd-eq-hint">3 条均为必填，每条不超过 {{ EXAMPLE_Q_MAX_LEN }} 个字符</div>
+              </section>
+
+              <!-- 5. 岗位 SOP（必填，≤4000 字 + AI 生成） -->
+              <section class="pd-sec">
+                <div class="pd-sec-title">
+                  岗位 SOP<i class="pd-req">*</i><span class="pd-sec-sub">对该岗位绑定的所有能力进行综述</span>
+                  <el-button
+                    v-if="!isReadonly"
+                    class="pd-ai-btn"
+                    size="small"
+                    plain
+                    :loading="aiSopBusy"
+                    :disabled="descEmpty || aiSopBusy"
+                    :title="descEmpty ? '请先填写岗位描述' : undefined"
+                    @click="aiGenSop"
+                  >
+                    {{ aiSopBusy ? '生成中...' : 'AI 生成' }}
+                  </el-button>
+                </div>
+                <el-input
+                  :model-value="store.basic.positionSop || ''"
+                  type="textarea"
+                  :rows="6"
+                  :maxlength="SOP_MAX_LEN"
+                  show-word-limit
+                  placeholder="说明岗位如何组合使用 Agent、技能、知识与工具完成工作"
+                  class="pd-sop-input"
+                  :disabled="isReadonly"
+                  @update:model-value="patchBasic('positionSop', $event)"
+                />
+              </section>
+
+              <!-- 6. 岗位人格（富文本编辑器沿用现有 Milkdown） -->
+              <section class="pd-sec">
+                <div class="pd-sec-title">
+                  岗位人格<span class="pd-sec-sub">定义岗位的语气、表达方式和行为边界 · markdown</span>
                   <span class="pd-hint" :class="{ over: personaLen > LIMITS.PERSONA_SOFT }">{{ personaLen }} / {{ LIMITS.PERSONA_SOFT }}</span>
                 </div>
                 <div class="pd-mde">
                   <SkillMilkdownEditor
                     :model-value="store.basic.persona"
                     height="320px"
-                    placeholder="稳、细、主动、有分寸…"
+                    placeholder="你是一名严谨的经营分析助手。优先核对数据口径，先给结论，再展示关键依据和风险提示。"
+                    :readonly="isReadonly"
                     @update:model-value="patchBasic('persona', $event)"
                   />
                 </div>
@@ -756,8 +938,8 @@ function backToList() {
           <el-tab-pane label="采集字段" name="intake">
             <div class="pd-pane">
               <div class="pd-list-head">
-                <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时必填 · ≤{{ LIMITS.INTAKE_MAX }} 个</span></div>
-                <el-button type="primary" size="small" @click="openIntakeCreate">＋ 新增字段</el-button>
+                <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时填写 · ≤{{ LIMITS.INTAKE_MAX }} 个</span></div>
+                <el-button v-if="!isReadonly" type="primary" size="small" @click="openIntakeCreate">＋ 新增采集字段</el-button>
               </div>
               <el-table :data="intakeRows" class="pd-table" empty-text="暂无采集字段，点「新增字段」添加">
                 <el-table-column type="index" label="#" width="52" />
@@ -779,8 +961,11 @@ function backToList() {
                 </el-table-column>
                 <el-table-column label="操作" width="130" fixed="right">
                   <template #default="{ row, $index }">
-                    <el-button link type="primary" @click="openIntakeEdit(row, $index)">编辑</el-button>
-                    <el-button link type="danger" @click="deleteIntakeRow($index)">删除</el-button>
+                    <span v-if="isReadonly" class="pd-faint">只读</span>
+                    <template v-else>
+                      <el-button link type="primary" @click="openIntakeEdit(row, $index)">编辑</el-button>
+                      <el-button link type="danger" @click="deleteIntakeRow($index)">删除</el-button>
+                    </template>
                   </template>
                 </el-table-column>
               </el-table>
@@ -827,9 +1012,10 @@ function backToList() {
             </DrawerEditor>
           </el-tab-pane>
 
-          <!-- ③ 工作档案（对象类型配置：卡位 / 应沉淀清单 / 归纳规则 / 沉淀策略；原「数据底座 / 数据表」模型升级） -->
+          <!-- ③ 工作档案（对象类型配置：卡位 / 应沉淀清单 / 归纳规则 / 沉淀策略；原「数据底座 / 数据表」模型升级）
+               只读态：Stage 未提供 readonly prop，用 pointer-events 冻结兜底（demo 口径，见 PRD-review 记录）。 -->
           <el-tab-pane label="工作档案" name="workProfile">
-            <div class="pd-pane pd-pane--flush">
+            <div class="pd-pane pd-pane--flush" :class="{ 'pd-ro-freeze': isReadonly }">
               <PositionDataTableStage
                 v-if="store.positionId != null"
                 :position-id="store.positionId"
@@ -843,9 +1029,56 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ④ 知识（未实现） -->
+          <!-- ④ 知识（2026-09-04 PRD-20260903 对齐，md 三.5 轻量口径：只读列表 + 跳知识库模块） -->
           <el-tab-pane label="知识" name="knowledge">
-            <div class="pd-pane"><div class="pd-empty pd-dev">🚧 知识 · 开发中</div></div>
+            <div class="pd-pane">
+              <div class="pd-list-head">
+                <div class="pd-list-title">知识库<span class="pd-list-sub">该岗位可见范围内的知识库 · 新建与编辑在知识库模块完成</span></div>
+                <el-button v-if="!isReadonly" type="primary" size="small" @click="gotoKbModule('create')">＋ 新建知识库</el-button>
+              </div>
+              <div v-if="kbError" class="pd-empty">
+                知识库加载失败
+                <el-button link type="primary" @click="loadPositionKbs">重试</el-button>
+              </div>
+              <el-table
+                v-else
+                v-loading="kbLoading"
+                :data="kbRows"
+                class="pd-table"
+                :empty-text="'暂无知识库，点击&quot;新建知识库&quot;添加'"
+              >
+                <el-table-column label="知识库名称" min-width="200">
+                  <template #default="{ row }">
+                    <span class="pd-kb-name" :title="row.description || ''">{{ row.name }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="类型" width="120">
+                  <template #default>岗位知识库</template>
+                </el-table-column>
+                <el-table-column label="数据源" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">{{ kbSourcesText(row) }}</template>
+                </el-table-column>
+                <el-table-column label="状态" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="kbStatusView(row).type" effect="plain">{{ kbStatusView(row).label }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="200" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" @click="gotoKbModule('view', row)">查看</el-button>
+                    <el-button v-if="!isReadonly" link type="primary" @click="gotoKbModule('edit', row)">编辑</el-button>
+                    <el-button
+                      v-if="row.status === 'PUBLISHED'"
+                      link
+                      type="primary"
+                      @click="gotoKbModule('search', row)"
+                    >
+                      检索测试
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </el-tab-pane>
 
           <!-- ⑤ Agent 与技能 -->
@@ -853,8 +1086,8 @@ function backToList() {
             <div class="pd-pane">
               <div class="pd-list-head">
                 <div class="pd-list-title">Agent 与技能<span class="pd-list-sub">每个 Agent 是一组技能 · 主实例按职责描述委派子任务</span></div>
-                <el-button type="primary" size="small" :disabled="agentAtLimit" @click="addAgent">
-                  {{ agentAtLimit ? `已达 ${LIMITS.AGENT_MAX} 个上限` : '＋ 新 Agent' }}
+                <el-button v-if="!isReadonly" type="primary" size="small" :disabled="agentAtLimit" @click="addAgent">
+                  {{ agentAtLimit ? `已达 ${LIMITS.AGENT_MAX} 个上限` : '＋ 新增 Agent' }}
                 </el-button>
               </div>
               <el-table :data="agentSkillRows" class="pd-table pd-table--tree" row-key="rowKey"
@@ -880,7 +1113,8 @@ function backToList() {
                 </el-table-column>
                 <el-table-column label="操作" width="150" fixed="right">
                   <template #default="{ row }">
-                    <template v-if="row.kind === 'agent'">
+                    <span v-if="isReadonly" class="pd-faint">只读</span>
+                    <template v-else-if="row.kind === 'agent'">
                       <el-button link type="primary" @click="openAgentEdit(row)">编辑</el-button>
                       <el-button link type="primary" @click="onPickSkill(row.agentId)">＋技能</el-button>
                       <el-button link type="danger" @click="onAgentDelete(row.agentId)">删除</el-button>
@@ -912,9 +1146,9 @@ function backToList() {
             </DrawerEditor>
           </el-tab-pane>
 
-          <!-- ⑥ 自动化任务（样例定时任务） -->
+          <!-- ⑥ 自动化任务（样例定时任务承载；只读态 pointer-events 冻结兜底） -->
           <el-tab-pane label="自动化任务" name="sampleTasks">
-            <div class="pd-pane pd-pane--flush">
+            <div class="pd-pane pd-pane--flush" :class="{ 'pd-ro-freeze': isReadonly }">
               <PositionSampleTaskStage
                 v-if="store.positionId != null"
                 :position-id="store.positionId"
@@ -926,23 +1160,23 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ⑦ 运行（未实现） -->
+          <!-- ⑦ 业务系统（2026-09-04 PRD-20260903 对齐新增，md 三.8：引用已发布业务系统） -->
+          <el-tab-pane label="业务系统" name="bizSystems">
+            <div class="pd-pane">
+              <PositionBizSystemsPane
+                :business-system-ids="store.basic.businessSystemIds || []"
+                :readonly="isReadonly"
+                @update:business-system-ids="patchBasic('businessSystemIds', $event)"
+              />
+            </div>
+          </el-tab-pane>
+
+          <!-- 以下三页签为 demo 既有扩展，按 2026-09-04 对齐拍板保留在新 PRD 七页签之后：
+               运行（规划位）/ 效果测试（featureFlag 承载）/ 版本（Q2 冻结：版本管理全链保持现状）。 -->
           <el-tab-pane label="运行" name="runtime">
             <div class="pd-pane"><div class="pd-empty pd-dev">🚧 运行 · 开发中</div></div>
           </el-tab-pane>
 
-          <!-- ⑧ 版本 -->
-          <el-tab-pane label="版本" name="version">
-            <div class="pd-pane">
-              <div v-if="store.isPublished" class="pd-empty">
-                <el-button type="primary" @click="openVersionHistory">🗂 打开版本历史</el-button>
-                <p class="pd-empty-hint">查看已发布版本、下线 / 恢复历史版本。</p>
-              </div>
-              <div v-else class="pd-empty">岗位尚未发布，暂无版本记录。发布后可在此管理版本。</div>
-            </div>
-          </el-tab-pane>
-
-          <!-- ⑨ 效果测试（EFFECT_TEST_ENABLED 关闭时占位，与现有系统一致） -->
           <el-tab-pane label="效果测试" name="effectTest">
             <div class="pd-pane pd-pane--flush">
               <EffectTestStage
@@ -953,6 +1187,16 @@ function backToList() {
                 embedded
               />
               <div v-else class="pd-empty pd-dev">🚧 效果测试 · 开发中</div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="版本" name="version">
+            <div class="pd-pane">
+              <div v-if="store.isPublished" class="pd-empty">
+                <el-button type="primary" @click="openVersionHistory">🗂 打开版本历史</el-button>
+                <p class="pd-empty-hint">查看已发布版本、下线 / 恢复历史版本。</p>
+              </div>
+              <div v-else class="pd-empty">岗位尚未发布，暂无版本记录。发布后可在此管理版本。</div>
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -967,22 +1211,8 @@ function backToList() {
       @pick="onSkillPicked"
     />
 
-    <!-- 人格编辑弹窗（设计 §4 + 反馈 1/3：领用页文案多条 + 岗位人格 Milkdown；图标选择已移至头像 popover） -->
-    <PersonaEditDialog
-      v-if="store.basic"
-      v-model:visible="personaDialogOpen"
-      v-model:basic="basic"
-      :rq-show-errors="rqShowErrors"
-    />
-
-    <!-- 采集编辑弹窗（设计 §4：内嵌 IntakeFieldEditor） -->
-    <IntakeEditDialog
-      v-if="store.basic"
-      v-model:visible="intakeDialogOpen"
-      v-model:basic="basic"
-      :has-claims="store.isPublished"
-      :intake-errors="intakeErrors"
-    />
+    <!-- 人格 / 采集编辑弹窗已随 2026-09-04 PRD-20260903 对齐退役（内容全部内联进人格 / 采集字段页签），
+         PersonaEditDialog / IntakeEditDialog 组件文件保留备查。 -->
 
     <!-- 发布前检查 + N5 版本号/升级说明 -->
     <PublishCheckDialog
@@ -1260,5 +1490,87 @@ function backToList() {
 }
 .pd-table :deep(.pd-row-agent > td) {
   border-top: 1px solid var(--border-base);
+}
+
+/* ---- 2026-09-04 PRD-20260903 对齐新增 ---- */
+/* 必填红星（对齐 el-form required 视觉口径） */
+.pd-req {
+  color: var(--c-danger);
+  font-style: normal;
+  margin: 0 var(--space-2) 0 2px;
+}
+/* 人格 · 岗位图标行 */
+.pd-icon-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pd-icon-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  font-size: 24px;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+.pd-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* 人格 · 示例问题 3 格 */
+.pd-eq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pd-eq-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pd-eq-no {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+.pd-eq-hint {
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+:deep(.pd-eq-err .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
+}
+/* 区级 AI 生成按钮（示例问题 / 岗位 SOP 标题右侧） */
+.pd-ai-btn {
+  margin-left: auto;
+}
+/* 人格 · SOP 输入宽度与描述同口径 */
+.pd-sop-input {
+  max-width: 720px;
+}
+/* 知识页签：知识库名称 */
+.pd-kb-name {
+  color: var(--c-text-strong);
+  font-weight: var(--fw-medium);
+}
+/* 只读冻结兜底：工作档案 / 自动化任务两个内嵌 Stage 暂无 readonly prop，
+   查看态 / 审核中用 pointer-events 冻结（demo 口径，正式实现由后续批次下沉 readonly）。 */
+.pd-ro-freeze {
+  pointer-events: none;
+  opacity: 0.72;
 }
 </style>

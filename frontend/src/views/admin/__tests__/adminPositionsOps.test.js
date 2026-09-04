@@ -7,10 +7,12 @@ import { createApp, h, provide, inject, nextTick } from 'vue'
  *
  * 新口径（照交互原型 v2 positionActions，约 L1170）：
  * - 编辑恒显，审核中 disabled + title「审核中不可编辑」；
- * - 审核中 → 【撤回】（简单确认「撤回审核申请」，Q5 强确认已降级）；
- * - 未发布 → 【发布】（先校验技能数，Q3 不弹确认窗，直接开版本管理侧栏）+【删除】（简单确认）；
- * - 已发布 → 【停用】（领用数>0 先拦提示窗；否则简单确认提交停用审核）+【版本管理】；
- * - 【查看】暂不实现（Q4 待拍板）。
+ * - 审核中 → 【撤回】（确认说明撤回后恢复提交审核前状态，toast「已撤回」）；
+ * - 未发布 → 【发布】（先校验技能数，Q3 不弹确认窗，直接开版本管理侧栏）+【删除】（领用护栏 + 确认文案照新 md）；
+ * - 已发布 → 【停用】（领用护栏文案照新 md；否则确认提交停用审核）+【版本管理】（冻结保留）；
+ * - 【查看】固定恒显 → 岗位详情页只读态（query.view=1）。
+ *
+ * 2026-09-04 PRD-20260903 对齐：停用/删除/撤回文案、领用护栏与【查看】断言按新口径重写。
  */
 
 const push = vi.fn()
@@ -147,6 +149,17 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(push).toHaveBeenCalledTimes(1) // 置灰后点击不跳转
   })
 
+  it('①b 查看（固定操作，所有状态展示）→ 跳岗位详情页只读态（query.view=1）', async () => {
+    await mount()
+    // 已发布 / 未发布 / 审核中行均有【查看】
+    for (const name of ['销售', '草稿岗', '停用中岗']) {
+      expect(btn(rowByName(name), '查看')).toBeTruthy()
+    }
+    btn(rowByName('草稿岗'), '查看').click()
+    await nextTick()
+    expect(push).toHaveBeenCalledWith({ name: 'PositionWorkbench', params: { id: 'ps_draft' }, query: { view: '1' } })
+  })
+
   it('② 版本管理（仅已发布行）→ 打开版本管理抽屉，带岗位适配器与「版本管理」标题', async () => {
     await mount()
     const el = () => container.querySelector('.ver-dialog')
@@ -177,7 +190,7 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     btn(rowByName('零领用岗'), '停用').click()
     await Promise.resolve(); await Promise.resolve(); await nextTick()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '停用「零领用岗」需提交审核。审核通过前客户端仍可使用。',
+      '停用「零领用岗」需提交停用审核。审核通过前客户端仍可正常使用。',
       '停用岗位',
       expect.objectContaining({ confirmButtonText: '提交停用审核' })
     )
@@ -191,7 +204,7 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     btn(rowByName('销售'), '停用').click()
     await Promise.resolve(); await Promise.resolve(); await nextTick()
     expect(ElMessageBox.alert).toHaveBeenCalledWith(
-      '当前有 5 个用户领用该岗位，请先解除领用后再停用。',
+      '该岗位已被 5 个用户领用，需先解除领用后再停用',
       '停用岗位',
       expect.objectContaining({ confirmButtonText: '知道了' })
     )
@@ -213,12 +226,12 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(btn(rowByName('停用中岗'), '删除')).toBeUndefined()     // 审核中 → 隐藏
   })
 
-  it('④b 删除流程（Q5 降级为简单确认）：确认文案带技能关联数 → deletePosition → 重拉', async () => {
+  it('④b 删除流程（2026-09-04 PRD-20260903 对齐）：确认文案照新 md → deletePosition → 重拉', async () => {
     await mount()
     btn(rowByName('可发布草稿岗'), '删除').click()
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await nextTick()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '删除「可发布草稿岗」后会解除 2 条岗位技能关联。确认删除？',
+      '删除后「可发布草稿岗」将不可用，确认删除？',
       '删除岗位',
       expect.objectContaining({ confirmButtonText: '删除' })
     )
@@ -227,17 +240,34 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(listPositions).toHaveBeenCalledTimes(2) // 初次 + 删后重拉
   })
 
-  it('⑤ 撤回（审核中行）：确认「撤回审核申请」→ withdrawPosition + toast「审核申请已撤回」', async () => {
+  it('④c 删除领用护栏（2026-09-04 新 md）：被领用的未发布岗 → 提示先解除领用，不执行删除', async () => {
+    listPositions.mockResolvedValue({
+      list: [{ positionId: 'ps_claimed_draft', name: '被领用草稿岗', description: '', agentCount: 1, skillCount: 1, claimedUserCount: 3, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-20T09:00:00+08:00' }],
+      total: 1
+    })
+    await mount()
+    btn(rowByName('被领用草稿岗'), '删除').click()
+    await Promise.resolve(); await Promise.resolve(); await nextTick()
+    expect(ElMessageBox.alert).toHaveBeenCalledWith(
+      '该岗位已被 3 个用户领用，需先解除领用后再删除',
+      '删除岗位',
+      expect.objectContaining({ confirmButtonText: '知道了' })
+    )
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(deletePosition).not.toHaveBeenCalled()
+  })
+
+  it('⑤ 撤回（审核中行）：确认说明恢复提交审核前状态 → withdrawPosition + toast「已撤回」', async () => {
     await mount()
     btn(rowByName('停用中岗'), '撤回').click()
     await Promise.resolve(); await Promise.resolve(); await nextTick()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '「停用中岗」当前处于审核中。撤回后回到修改前状态。',
+      '「停用中岗」当前处于审核中。撤回后恢复提交审核前的状态。',
       '撤回审核申请',
       expect.objectContaining({ confirmButtonText: '撤回申请' })
     )
     expect(withdrawPosition).toHaveBeenCalledWith('ps_reviewing')
-    expect(ElMessage.success).toHaveBeenCalledWith('审核申请已撤回')
+    expect(ElMessage.success).toHaveBeenCalledWith('已撤回')
     expect(listPositions).toHaveBeenCalledTimes(2) // 撤回后重拉
   })
 

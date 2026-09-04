@@ -191,8 +191,9 @@ export function validateMcpForm(form) {
     if (!endpoint) errors.endpoint = 'Endpoint 必填'
     else if (!URL_RE.test(endpoint)) errors.endpoint = 'Endpoint 需以 http:// 或 https:// 开头'
   } else if (form.transport === 'stdio') {
+    // Command 必选下拉（2026-09-04 PRD-20260903 对齐：错误文案照新原型 connFields「请选择启动命令」）
     const command = (form.command || '').trim()
-    if (!command) errors.command = '启动命令（Command）必填'
+    if (!command) errors.command = '请选择启动命令'
     const args = Array.isArray(form.args) ? form.args : []
     if (args.some((a) => !(a || '').trim())) errors.args = '启动参数每项不能为空'
     const envErr = validateMcpEnv(form.env)

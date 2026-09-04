@@ -23,7 +23,8 @@ import CodeTextEditor from '@/components/position/CodeTextEditor.vue'
 import SkillFileTree from '@/components/position/SkillFileTree.vue'
 import ToolDock from '@/components/position/ToolDock.vue'
 import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
-import { generateExampleQuestion, PUBLISH_READY_TIP, publishDisabledTitle } from '@/api/unifiedSkill'
+import { PUBLISH_READY_TIP, publishDisabledTitle } from '@/api/unifiedSkill'
+import { useAiLiveGenerate, skillExampleQuestion } from '@/utils/aiLiveGenerate'
 import SaveStatusIndicator from '@/components/position/SaveStatusIndicator.vue'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import {
@@ -210,27 +211,23 @@ function onIconPick(payload) {
 }
 const iconIsUrlFlag = computed(() => iconIsUrl(skillIcon.value))
 
-// 【AI 生成】示例问题（疑点5）：mock 按名称和描述从固定例句生成填入、重复点击覆盖。
-const aiExampleBusy = ref(false)
-async function onAiExample() {
-  if (ro.value || aiExampleBusy.value) return
-  aiExampleBusy.value = true
-  try {
-    const res = await generateExampleQuestion({
-      id: props.skill?.skillId,
-      name: props.skill?.name || '',
-      description: props.skill?.description || ''
-    })
-    if (res?.question) {
-      emitPatch({ exampleQuestion: res.question })
-      ElMessage.success('已生成示例问题')
-    }
-  } catch (e) {
-    ElMessage.error(e?.message || '生成失败，请稍后重试')
-  } finally {
-    aiExampleBusy.value = false
-  }
-}
+// 【AI 生成】示例问题（2026-09-04 PRD-20260903 对齐：改统一 AI 实况生成机制，取代旧
+// mock 固定例句即填）：源=技能描述（空则按钮禁用 + title「请先填写技能描述」），点击进
+// 「生成中…」约 420ms，按描述本地模板生成『请帮我使用这个技能完成"…"』1 条，
+// 完成 toast「AI 内容已生成，请确认后保存」。机制见 utils/aiLiveGenerate.js。
+// 注意：skillDescription / ro 定义在下方（闭包惰性求值，仅点击时读取，无 TDZ 风险）。
+const {
+  disabled: aiExampleDisabled,
+  title: aiExampleTitle,
+  label: aiExampleLabel,
+  run: onAiExample
+} = useAiLiveGenerate({
+  getSourceText: () => props.skill?.description || '',
+  sourceLabel: '技能描述',
+  generate: skillExampleQuestion,
+  apply: (question) => emitPatch({ exampleQuestion: question }),
+  isReadonly: () => ro.value
+})
 
 // 【发布】按钮就绪门（与列表共用同一 readiness 谓词，由页面层传入）。
 const publishReady = computed(() => !props.publishReadiness || props.publishReadiness.ready === true)
@@ -972,12 +969,14 @@ onBeforeUnmount(() => {
             ? '输入 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'
             : '选填：填 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'"
         />
+        <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中按钮文案「生成中…」 -->
         <el-button
           v-if="adminContext && !ro"
           class="ib-eq-ai"
-          :loading="aiExampleBusy"
+          :disabled="aiExampleDisabled"
+          :title="aiExampleTitle || undefined"
           @click="onAiExample"
-        >AI 生成</el-button>
+        >{{ aiExampleLabel }}</el-button>
         <span v-if="ro" class="ib-ro-text">{{ exampleQuestion || '—' }}</span>
       </div>
     </div>
