@@ -10,6 +10,7 @@ AI-Assistant —— 面向企业专业岗位的「AI 同事」应用的**管理�
 - **Git 协作（2026-09-02 起恢复）**：工程托管于 GitHub `https://github.com/kira-chen/iWorker-Console.git`（多人共享）。原「不做 Git 管理」拍板（2026-09-01）自本日废止。常规 git 操作（add/commit/pull/push/分支）可正常执行；**不改 Git 历史（rebase/force push 需负责人同意）**。`node_modules/`、`frontend/dist/`、`版本包-*.zip` 不入库（见 .gitignore）；改动记录仍以 `docs/PRD-review/` 为准，git 提交说明与之并行不替代。
 - **不得重新引入后端**：不新增服务端代码 / 数据库 / 部署编排。页面数据一律走前端侧 mock 层（参考 `frontend/src/api/knowledgeBaseMock.js` 模式），保持 demo 纯前端可运行。
 - 历史文档（原对外契约 / 架构设计 / 旧 PRD / 前端设计稿 / 旧更新日志等）已统一打包为 `docs/历史文档归档-20260901.zip`（2026-09-01 归档）：**仅作参考、不再构成约束，不要解包回工作区**；原「接口契约变更铁律」随发布单元一并废止。docs/ 工作目录：`prd/`（PRD 版本文件夹，日期命名）、`PRD-review/`（改动记录 + 版本问题清单）、`调研讨论/`（团队调研与讨论记录，2026-09-03 增设，一主题一文件、命名 `YYYY-MM-DD-讨论核心.md`）。
+- **新版 PRD 导入走固定流程**：`docs/prd/` 出现新日期文件夹时，执行 `.claude/skills/prd-import/` 技能（增量核对→对比分析→负责人审核→问题记录→分组改造→回归验证）；新版确认前不动工，md↔原型矛盾不自行取舍。
 - **改动记录统一写 `docs/PRD-review/YYYY-MM-DD.md`**（2026-09-01 起，北京时间自然日）：三段式「需求/问题 → 方案 → 影响面」，PRD 对齐类工作附待拍板差异清单。`docs/update/` 与 `docs/API迭代需求/` 已停更，仅作历史存档，不再写入。
 
 ### PRD 对齐铁律（2026-09-01 负责人拍板）
