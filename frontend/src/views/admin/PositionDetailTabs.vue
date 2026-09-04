@@ -63,7 +63,6 @@ import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
 import PositionBizSystemsPane from '@/components/position/PositionBizSystemsPane.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
-import { iconIsUrl } from '@/utils/iconDisplay'
 // 效果测试台异步加载：仅在点「效果测试」打开时拉取，避免把对话链路提前并入白板首屏 + 保持现有测试 import 图不变。
 const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
 
@@ -185,7 +184,11 @@ function onExampleInput(idx, val) {
 }
 const eqShowErrors = ref(false)
 const eqPlaceholders = ['如：帮我分析本周经营数据', '请输入示例问题', '请输入示例问题']
-const personaLen = computed(() => (store.basic?.persona || '').length)
+
+// 认领说明卡片头「＋ 新增一条」直调编辑器暴露的 startAdd（按钮进卡片头，照原型排版）
+const claimEditorRef = ref(null)
+// 图标卡「从图标库选择 / 上传图标」两个显式入口直调 popover 暴露链路（照原型 position-icon-section）
+const iconPickerRef = ref(null)
 
 // 图标选择回吐（IconPickerPopover 单次给 {icon, iconSource}）
 function onPickIcon({ icon, iconSource }) {
@@ -805,56 +808,80 @@ function backToList() {
         <div v-else-if="store.loading" class="board-state"></div>
 
         <el-tabs v-else-if="store.basic" v-model="activeTab" class="pd-tabs">
-          <!-- ① 人格（2026-09-04 PRD-20260903 对齐，md 三.2 六区块纵向排列） -->
+          <!-- ① 人格（2026-09-04 PRD-20260903 对齐，md 三.2 六区块；2026-09-04 返工：
+               卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片（头：标题+必填星+弱色说明，
+               体：内容+底部 hint），区块顺序 图标→描述→认领说明→示例问题→SOP→人格） -->
           <el-tab-pane label="人格" name="persona">
             <div class="pd-pane">
-              <!-- 1. 岗位描述（必填，≤500 字；全链同口径：新建弹窗 / mock 校验） -->
-              <section class="pd-sec">
-                <div class="pd-sec-title">
-                  岗位描述<i class="pd-req">*</i><span class="pd-sec-sub">向用户说明该岗位的职责范围</span>
+              <!-- 1. 岗位图标（原型 position-icon-section：预览 + 从图标库选择 / 上传图标） -->
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">岗位图标<i class="pd-req">*</i></span>
+                  <span class="pd-card-sub">用于岗位列表与员工端展示</span>
                 </div>
-                <el-input
-                  :model-value="store.basic.description || ''"
-                  type="textarea"
-                  :rows="3"
-                  :maxlength="DESCRIPTION_MAX_LEN"
-                  show-word-limit
-                  placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作"
-                  class="pd-desc-input pd-half"
-                  :disabled="isReadonly"
-                  @update:model-value="patchBasic('description', $event)"
-                />
+                <div class="pd-card-body">
+                  <div class="pd-icon-row">
+                    <!-- popover 头像即预览（42px）；两个显式入口按钮直调组件暴露的图标库 / 上传链路 -->
+                    <IconPickerPopover
+                      ref="iconPickerRef"
+                      :icon="store.basic.icon"
+                      :position-name="store.basic.name"
+                      :readonly="isReadonly"
+                      @pick="onPickIcon"
+                    />
+                    <el-button :disabled="isReadonly" @click="iconPickerRef?.openLibrary()">从图标库选择</el-button>
+                    <el-button :disabled="isReadonly" @click="iconPickerRef?.triggerUpload()">上传图标</el-button>
+                  </div>
+                </div>
               </section>
 
-              <!-- 2. 岗位图标（必填；IconPickerPopover：图标库 / 上传 + 方形裁剪） -->
-              <section class="pd-sec">
-                <div class="pd-sec-title">
-                  岗位图标<i class="pd-req">*</i><span class="pd-sec-sub">用于岗位列表与员工端展示</span>
+              <!-- 2. 岗位描述（必填，≤500 字；全链同口径：新建弹窗 / mock 校验） -->
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">岗位描述<i class="pd-req">*</i></span>
+                  <span class="pd-card-sub">向用户说明该岗位的职责范围</span>
                 </div>
-                <div class="pd-icon-row">
-                  <span class="pd-icon-preview">
-                    <img v-if="iconIsUrl(store.basic.icon)" :src="store.basic.icon" alt="" class="pd-icon-img" />
-                    <span v-else>{{ store.basic.icon || '♟' }}</span>
-                  </span>
-                  <IconPickerPopover
-                    :icon="store.basic.icon"
-                    :position-name="store.basic.name"
-                    :readonly="isReadonly"
-                    @pick="onPickIcon"
+                <div class="pd-card-body">
+                  <el-input
+                    :model-value="store.basic.description || ''"
+                    type="textarea"
+                    :rows="3"
+                    :maxlength="DESCRIPTION_MAX_LEN"
+                    placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作"
+                    class="pd-desc-input"
+                    :disabled="isReadonly"
+                    @update:model-value="patchBasic('description', $event)"
                   />
+                  <div class="pd-card-hint">最多 {{ DESCRIPTION_MAX_LEN }} 个字符</div>
                 </div>
               </section>
 
-              <!-- 3. 岗位认领说明（动态列表：≥1 条为发布必填、≤6 条 × 100 字） -->
-              <section class="pd-sec pd-half">
-                <div class="pd-sec-title">岗位认领说明<span class="pd-sec-sub">一行一条，员工认领岗位时展示</span></div>
-                <ClaimNotesEditor v-model="claimNotesModel" :readonly="isReadonly" />
+              <!-- 3. 岗位认领说明（标题维持 Q7 现名；卡片头说明与排版结构照原型领用页文案卡） -->
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">岗位认领说明</span>
+                  <span class="pd-card-sub">员工领用时看到的卖点，可多条，最多 6 条</span>
+                  <span class="pd-card-spacer"></span>
+                  <el-button
+                    v-if="!isReadonly && !claimEditorRef?.editing && !claimEditorRef?.atLimit"
+                    link
+                    type="primary"
+                    @click="claimEditorRef?.startAdd()"
+                  >
+                    ＋ 新增一条
+                  </el-button>
+                </div>
+                <div class="pd-card-body">
+                  <ClaimNotesEditor ref="claimEditorRef" v-model="claimNotesModel" :readonly="isReadonly" />
+                </div>
               </section>
 
               <!-- 4. 示例问题（3 条必填 × 60 字 + 区级 AI 生成） -->
-              <section class="pd-sec pd-half">
-                <div class="pd-sec-title">
-                  示例问题<i class="pd-req">*</i><span class="pd-sec-sub">帮助用户快速了解如何使用该岗位</span>
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">示例问题<i class="pd-req">*</i></span>
+                  <span class="pd-card-sub">帮助用户快速了解如何使用该岗位</span>
+                  <span class="pd-card-spacer"></span>
                   <el-button
                     v-if="!isReadonly"
                     class="pd-ai-btn"
@@ -868,27 +895,30 @@ function backToList() {
                     {{ aiQuestionsBusy ? '生成中...' : 'AI 生成' }}
                   </el-button>
                 </div>
-                <div class="pd-eq-list">
-                  <div v-for="(q, idx) in exampleQuestions" :key="idx" class="pd-eq-row">
-                    <span class="pd-eq-no">{{ idx + 1 }}</span>
-                    <el-input
-                      :model-value="q"
-                      :maxlength="EXAMPLE_Q_MAX_LEN"
-                      show-word-limit
-                      :placeholder="eqPlaceholders[idx]"
-                      :disabled="isReadonly"
-                      :class="{ 'pd-eq-err': eqShowErrors && !String(q).trim() }"
-                      @update:model-value="onExampleInput(idx, $event)"
-                    />
+                <div class="pd-card-body">
+                  <div class="pd-eq-list">
+                    <div v-for="(q, idx) in exampleQuestions" :key="idx" class="pd-eq-row">
+                      <span class="pd-eq-no">{{ idx + 1 }}</span>
+                      <el-input
+                        :model-value="q"
+                        :maxlength="EXAMPLE_Q_MAX_LEN"
+                        :placeholder="eqPlaceholders[idx]"
+                        :disabled="isReadonly"
+                        :class="{ 'pd-eq-err': eqShowErrors && !String(q).trim() }"
+                        @update:model-value="onExampleInput(idx, $event)"
+                      />
+                    </div>
                   </div>
+                  <div class="pd-card-hint">3 条均为必填，每条不超过 {{ EXAMPLE_Q_MAX_LEN }} 个字符</div>
                 </div>
-                <div class="pd-eq-hint">3 条均为必填，每条不超过 {{ EXAMPLE_Q_MAX_LEN }} 个字符</div>
               </section>
 
               <!-- 5. 岗位 SOP（必填，≤4000 字 + AI 生成） -->
-              <section class="pd-sec">
-                <div class="pd-sec-title">
-                  岗位 SOP<i class="pd-req">*</i><span class="pd-sec-sub">对该岗位绑定的所有能力进行综述</span>
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">岗位 SOP<i class="pd-req">*</i></span>
+                  <span class="pd-card-sub">对该岗位绑定的所有能力进行综述</span>
+                  <span class="pd-card-spacer"></span>
                   <el-button
                     v-if="!isReadonly"
                     class="pd-ai-btn"
@@ -902,33 +932,37 @@ function backToList() {
                     {{ aiSopBusy ? '生成中...' : 'AI 生成' }}
                   </el-button>
                 </div>
-                <el-input
-                  :model-value="store.basic.positionSop || ''"
-                  type="textarea"
-                  :rows="6"
-                  :maxlength="SOP_MAX_LEN"
-                  show-word-limit
-                  placeholder="说明岗位如何组合使用 Agent、技能、知识与工具完成工作"
-                  class="pd-sop-input"
-                  :disabled="isReadonly"
-                  @update:model-value="patchBasic('positionSop', $event)"
-                />
+                <div class="pd-card-body">
+                  <el-input
+                    :model-value="store.basic.positionSop || ''"
+                    type="textarea"
+                    :rows="6"
+                    :maxlength="SOP_MAX_LEN"
+                    placeholder="说明岗位如何组合使用 Agent、技能、知识与工具完成工作"
+                    class="pd-sop-input"
+                    :disabled="isReadonly"
+                    @update:model-value="patchBasic('positionSop', $event)"
+                  />
+                  <div class="pd-card-hint">必填，最多 {{ SOP_MAX_LEN }} 个字符</div>
+                </div>
               </section>
 
               <!-- 6. 岗位人格（富文本编辑器沿用现有 Milkdown） -->
-              <section class="pd-sec">
-                <div class="pd-sec-title">
-                  岗位人格<span class="pd-sec-sub">定义岗位的语气、表达方式和行为边界 · markdown</span>
-                  <span class="pd-hint" :class="{ over: personaLen > LIMITS.PERSONA_SOFT }">{{ personaLen }} / {{ LIMITS.PERSONA_SOFT }}</span>
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">岗位人格</span>
+                  <span class="pd-card-sub">定义岗位的语气、表达方式和行为边界</span>
                 </div>
-                <div class="pd-mde">
-                  <SkillMilkdownEditor
-                    :model-value="store.basic.persona"
-                    height="320px"
-                    placeholder="你是一名严谨的经营分析助手。优先核对数据口径，先给结论，再展示关键依据和风险提示。"
-                    :readonly="isReadonly"
-                    @update:model-value="patchBasic('persona', $event)"
-                  />
+                <div class="pd-card-body">
+                  <div class="pd-mde">
+                    <SkillMilkdownEditor
+                      :model-value="store.basic.persona"
+                      height="320px"
+                      placeholder="你是一名严谨的经营分析助手。优先核对数据口径，先给结论，再展示关键依据和风险提示。"
+                      :readonly="isReadonly"
+                      @update:model-value="patchBasic('persona', $event)"
+                    />
+                  </div>
                 </div>
               </section>
             </div>
@@ -1441,32 +1475,34 @@ function backToList() {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 var(--space-6);
 }
 .pd-tabs :deep(.el-tabs__header) {
   margin: 0;
-  padding-top: var(--space-3);
+  padding: var(--space-3) var(--space-6) 0;
 }
+/* 内容区照原型 pd2-content：浅灰（sunken）底铺满，内容列在其上居中限宽 */
 .pd-tabs :deep(.el-tabs__content) {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  background: var(--bg-sunken);
+  padding: 0 var(--space-6);
 }
 .pd-tabs :deep(.el-tab-pane) {
   height: 100%;
 }
-/* 常规内容页：居中限宽、上下留白、内部滚动 */
+/* 常规内容页：照原型 pd2-pane 居中限宽（max-width 1180px），卡片纵向排布 */
 .pd-pane {
-  /* 宽度与 Tab 标签栏保持一致：不独立居中限宽，左右边界统一由 .pd-tabs 的 padding 控制（sheet 内 = sheet 列表同宽） */
   width: 100%;
-  padding: var(--space-5) 0 var(--space-8);
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--space-5) 0 var(--space-10);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
-/* 铺满型页（数据底座/样例任务/效果测试内联，自带三栏/两栏布局，不限宽） */
+/* 铺满型页（数据底座/样例任务/效果测试内联，自带三栏/两栏布局）：同进居中限宽容器，纵向不留白 */
 .pd-pane--flush {
-  max-width: none;
   height: 100%;
   padding: 0;
   gap: 0;
@@ -1497,32 +1533,56 @@ function backToList() {
 .pd-req {
   color: var(--c-danger);
   font-style: normal;
-  margin: 0 var(--space-2) 0 2px;
+  margin: 0 0 0 2px;
 }
-/* 人格 · 岗位图标行 */
+/* ---- 人格页签卡片（照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体） ---- */
+.pd-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.pd-card-head {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-sunken);
+}
+.pd-card-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  white-space: nowrap;
+}
+.pd-card-sub {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
+}
+.pd-card-spacer {
+  margin-left: auto;
+}
+.pd-card-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* 卡片底部弱提示（照原型 hint：「最多 500 个字符」等） */
+.pd-card-hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+/* 人格 · 岗位图标行（popover 头像即 42px 预览 + 两个显式入口按钮） */
 .pd-icon-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-.pd-icon-preview {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  flex: none;
-  font-size: 24px;
-  line-height: 1;
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border-soft);
-  overflow: hidden;
-}
-.pd-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 /* 人格 · 示例问题 3 格 */
 .pd-eq-list {
@@ -1533,7 +1593,7 @@ function backToList() {
 .pd-eq-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .pd-eq-no {
   width: 24px;
@@ -1546,21 +1606,8 @@ function backToList() {
   color: var(--c-text-muted);
   font-size: var(--fs-xs);
 }
-.pd-eq-hint {
-  margin-top: var(--space-1);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-}
 :deep(.pd-eq-err .el-input__wrapper) {
   box-shadow: 0 0 0 1px var(--c-danger) inset;
-}
-/* 区级 AI 生成按钮（示例问题 / 岗位 SOP 标题右侧） */
-.pd-ai-btn {
-  margin-left: auto;
-}
-/* 人格 · SOP 输入宽度与描述同口径 */
-.pd-sop-input {
-  max-width: 720px;
 }
 /* 知识页签：知识库名称 */
 .pd-kb-name {

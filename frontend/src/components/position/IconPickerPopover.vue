@@ -216,6 +216,11 @@ const iconIsUrl = computed(() => /^(https?:\/\/|\/|data:)/.test(props.icon || ''
 function isUrl(v) {
   return /^(https?:\/\/|\/|data:)/.test(v || '')
 }
+
+/* 2026-09-04 岗位详情卡片化返工：暴露图标库 / 上传两条链路，
+ * 供宿主（如岗位详情「岗位图标」卡）以显式按钮直调——照原型「从图标库选择」「上传图标」排版；
+ * popover 头像入口保留不变，两者共用同一 commit 回吐契约。 */
+defineExpose({ openLibrary, triggerUpload })
 </script>
 
 <template>
