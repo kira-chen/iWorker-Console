@@ -5,7 +5,7 @@
  * demo 不真调模型：按「源文本」本地模板化即时生成（模板句照原型 questionSet 逐字），
  * 交互四件套与原型一致——
  * 1. 源文本为空 → 按钮禁用 + title「请先填写<源字段名>」（各接入方传 sourceLabel）；
- * 2. 点击 → 按钮进「生成中…」态约 420ms（AI_LIVE_DELAY_MS，模拟生成耗时）；
+ * 2. 点击 → 按钮进「生成中…」态约 500ms（AI_LIVE_DELAY_MS，模拟生成耗时）；
  * 3. 到点后按点击那刻的源文本调 generate 产出内容，交 apply 回填表单；
  * 4. 完成 toast「AI 内容已生成，请确认后保存」（AI_LIVE_DONE_TOAST）。
  *
@@ -22,8 +22,8 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 
-/** 「生成中…」态时长（原型 setTimeout 420ms） */
-export const AI_LIVE_DELAY_MS = 420
+/** 「生成中…」态时长（2026-09-06 负责人拍板 Q10：全站统一 500ms，原型 420ms 口径废止） */
+export const AI_LIVE_DELAY_MS = 500
 /** 完成 toast（原型 toastMsg 逐字） */
 export const AI_LIVE_DONE_TOAST = 'AI 内容已生成，请确认后保存'
 /** 生成中按钮文案（原型 button.textContent） */

@@ -52,7 +52,6 @@ const upl = (id, name, over = {}) =>
     replaceWhitespace: false,
     extractContacts: true,
     plainTable: false,
-    imageUnderstand: false,
     embeddingModelId: 'md_emb_1',
     retrieval: 'HYBRID',
     topK: 5,
@@ -106,8 +105,9 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // 【持久化 2026-09-02】状态镜像到 localStorage；写点=下方各 persist() 调用处。
 // docsBySource / seedDocCount 为 const 对象 → restore 就地覆写（不换引用）。
 // version 2（2026-09-04）：PRD-20260903 对齐改了种子结构（预处理键 / MCP 同源 / 解析计时），旧快照直接弃用回种子。
+// version 3（2026-09-06）：Q19 拍板预处理删「启用图片理解」，种子 config 去掉 imageUnderstand 键。
 const persist = attachPersist('knowledgeBase', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (

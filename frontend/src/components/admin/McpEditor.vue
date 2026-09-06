@@ -508,7 +508,8 @@ async function fetchTools() {
 
 /** 示例问题 AI 生成（2026-09-04 PRD-20260903 对齐：接入统一 AI 实况生成机制 useAiLiveGenerate，
  * 生成器 connectorQuestionSet 一次 3 条）：源=服务描述（空则按钮禁用 + title「请先填写服务描述」），
- * 点击进「生成中…」约 420ms，本地模板生成后写入 3 行，完成 toast「AI 内容已生成，请确认后保存」。 */
+ * 点击进「生成中…」约 500ms（2026-09-06 Q10 拍板全站统一），本地模板生成后写入 3 行，
+ * 完成 toast「AI 内容已生成，请确认后保存」。 */
 const {
   disabled: aiDisabled,
   title: aiTitle,

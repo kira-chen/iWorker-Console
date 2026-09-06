@@ -7,14 +7,17 @@
  *   首行元信息（编辑/查看态：创建 / 最近更新 / 最近发布时间，弱色提示展示）
  *   → 基本信息（原型最终态：名称|图标 → 所属服务提供系统 → 描述[必填,通栏] → 状态[启用/停用]|操作性质；
  *     图标 2026-09-02 B-5 拍板加回——原型后置补丁层 addConnectorIconField 实为 API 抽屉注入图标，
- *     推翻 2026-09-01 N4-① 旧结论；示例问题仍不展示（字段随详情透传保留存量数据）；
- *     启用/停用状态单选按原型加回仅作示意；API id 行随后拍板不展示（code 字段保留于状态供内部用））
+ *     推翻 2026-09-01 N4-① 旧结论；启用/停用状态单选按原型加回仅作示意；
+ *     API id 行随后拍板不展示（code 字段保留于状态供内部用））
  *   → 请求配置（请求方式|API 地址 同行，方式下拉收窄；健康检查路径已删——连通性验证保留，
  *     探测语义为 API 地址可达性）
  *   → 鉴权配置（不鉴权 / API_KEY 多参数行[ParamRowsEditor] / Bearer Token；提示文案从简，
  *     密钥类值均按敏感信息处理：密码态输入、不回显明文）
  *   → 请求参数 / 响应字段（SchemaFieldEditor，对象/数组可套子字段，任意层级）
- *   → 被技能引用（只读）。
+ *   → 被技能引用（只读）
+ *   → 示例问题（2026-09-06 负责人拍板 Q1：需要填写——结束「透传不展示」冻结态；
+ *     固定 3 条必填 + AI 生成走统一 useAiLiveGenerate + connectorQuestionSet，源=API 描述；
+ *     真实生成 prompt 待产品经理浦月提供，demo 先用本地模板生成器）。
  *
  * 校验（PRD §三.7）在本组件收口：名称/图标/所属系统/描述/示例问题必填、URL 合法、
  * API_KEY 鉴权参数行走 validateApiAuthParams（去重/互斥/必值，编辑态已配置行留空=保留原值）、
@@ -38,6 +41,7 @@ import SchemaFieldEditor from './SchemaFieldEditor.vue'
 import ParamRowsEditor from './ParamRowsEditor.vue'
 import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -65,10 +69,29 @@ const form = reactive({
   enabled: true,
   // 读/写：write → 客户端实际执行前必须经用户确认；read 直接执行（PRD §三.2）
   readWrite: 'read',
-  // 图标：2026-09-02 B-5 拍板加回弹窗（原型后置补丁层实有此字段，推翻 N4-①）；
-  // 示例问题仍不在弹窗展示，随详情透传保留存量数据
+  // 图标：2026-09-02 B-5 拍板加回弹窗（原型后置补丁层实有此字段，推翻 N4-①）
   icon: '',
+  // 示例问题：2026-09-06 Q1 拍板需要填写（固定 3 条必填 + AI 生成），结束透传冻结态
   exampleQuestions: ['', '', '']
+})
+// 示例问题每条上限（与 MCP/业务系统连接器同口径 60 字；AI 生成器同上限截断）
+const QUESTION_MAX = 60
+/** 示例问题 AI 生成（统一 AI 实况生成机制）：源=API 描述（空则按钮禁用 + title 引导），
+ * 生成器 connectorQuestionSet 一次 3 条；真实 prompt 待浦月提供，demo 用本地模板。 */
+const {
+  disabled: aiDisabled,
+  title: aiTitle,
+  label: aiLabel,
+  run: generateQuestions
+} = useAiLiveGenerate({
+  getSourceText: () => form.description,
+  sourceLabel: 'API 描述',
+  generate: connectorQuestionSet,
+  apply: (questions) => {
+    form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))
+    delete fieldErrors.exampleQuestions
+  },
+  isReadonly: () => props.readonly
 })
 // 图标：URL/dataURL 按图片渲染，否则按 emoji/字符（全站统一判断）
 const iconIsUrlFlag = computed(() => iconIsUrl(form.icon))
@@ -272,6 +295,10 @@ function validate() {
   if (!form.icon) errors.icon = '请选择或上传图标'
   if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
   if (!form.description.trim()) errors.description = 'API 描述必填'
+  // 示例问题（2026-09-06 Q1 拍板：需要填写，固定 3 条均非空）
+  if (form.exampleQuestions.some((q) => !(q || '').trim())) {
+    errors.exampleQuestions = '示例问题必填，请填满 3 条（可点【AI 生成】）'
+  }
   if (!/^https?:\/\/.+/i.test(form.url.trim())) {
     errors.url = 'API 地址必须为合法的 HTTP 或 HTTPS URL'
   }
@@ -600,6 +627,40 @@ async function save() {
         </div>
         <div v-else class="ad-refs-empty">暂无技能引用</div>
       </section>
+
+      <!-- 示例问题（2026-09-06 Q1 拍板：需要填写；固定 3 条带序号 +【AI 生成】，与 MCP/业务系统同形态） -->
+      <section class="ad-sec" :class="{ 'ad-eq-error': !!fieldErrors.exampleQuestions }">
+        <div class="ad-sec-title ad-eq-title">
+          <span>
+            示例问题
+            <span class="ad-sec-sub">必填，固定 3 条</span>
+          </span>
+          <el-button
+            v-if="!readonly"
+            class="ad-eq-ai"
+            size="small"
+            :disabled="aiDisabled"
+            :title="aiTitle || undefined"
+            @click="generateQuestions"
+          >
+            {{ aiLabel }}
+          </el-button>
+        </div>
+        <div class="ad-eq-list">
+          <div v-for="i in 3" :key="i" class="ad-eq-row">
+            <span class="ad-eq-index">{{ i }}</span>
+            <el-input
+              v-model="form.exampleQuestions[i - 1]"
+              :maxlength="QUESTION_MAX"
+              show-word-limit
+              :disabled="readonly"
+              :placeholder="i === 1 ? '帮我查询报销单的当前审批状态' : '请输入示例问题'"
+              @input="delete fieldErrors.exampleQuestions"
+            />
+          </div>
+        </div>
+        <div v-if="fieldErrors.exampleQuestions" class="ad-eq-err-msg">{{ fieldErrors.exampleQuestions }}</div>
+      </section>
   </DrawerEditor>
 </template>
 
@@ -744,5 +805,36 @@ async function save() {
 .ad-refs-empty {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
+}
+/* 示例问题区（MCP/业务系统同形态：标题行右侧 AI 按钮 + 3 行序号输入） */
+.ad-eq-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ad-eq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ad-eq-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ad-eq-index {
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.ad-eq-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
+}
+.ad-eq-err-msg {
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-danger);
 }
 </style>

@@ -13,7 +13,7 @@ import { createApp, h, nextTick } from 'vue'
  * - 只读查看态（原型 openExpertViewer）：状态/分类/编号示例问题/技能引用 N 个技能/底部时间条/仅【关闭】。
  *
  * 2026-09-04 PRD-20260903 对齐（基准=新交互原型最终覆写态）按新口径更新：
- * - 【AI 生成】改统一 AI 实况生成机制（源=简介：空禁用+title、生成中… 420ms、本地模板 3 条、
+ * - 【AI 生成】改统一 AI 实况生成机制（源=简介：空禁用+title、生成中… 500ms、本地模板 3 条、
  *   toast「AI 内容已生成，请确认后保存」）；
  * - 基本信息新增「背景色」必填（7 色板单选，默认 #DCF5E4，字段顺序 图标→背景色→简介）；
  * - 示例问题校验收紧（专用 toast + 空框标红 + focus 首个空输入框 + 区标题红星）；
@@ -296,7 +296,7 @@ describe('ExpertEditor — 新建', () => {
   })
 
   // 2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制（取代旧「固定文案即填」断言）
-  it('【AI 生成】实况机制：简介空→禁用+title「请先填写专家简介」；填简介→点击「生成中…」420ms 后按简介模板填 3 条 + toast', async () => {
+  it('【AI 生成】实况机制：简介空→禁用+title「请先填写专家简介」；填简介→点击「生成中…」500ms 后按简介模板填 3 条 + toast', async () => {
     vi.useFakeTimers()
     try {
       await mount({ expertId: null })
@@ -314,7 +314,7 @@ describe('ExpertEditor — 新建', () => {
       expect(btn('生成中…')).toBeTruthy() // 生成中态按钮文案
       expect(ElMessage.success).not.toHaveBeenCalled()
 
-      vi.advanceTimersByTime(420)
+      vi.advanceTimersByTime(500)
       await flush(2)
       expect([inputs()[2], inputs()[3], inputs()[4]].map((i) => i.value)).toEqual([
         '请围绕"汇总经营数据"给出专业分析',

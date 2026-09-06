@@ -84,8 +84,8 @@ export const DOC_KIND_LABELS = DOC_KIND_OPTIONS.reduce((acc, o) => ((acc[o.value
 export const PREPROCESS_OPTIONS = [
   { key: 'replaceWhitespace', label: '替换连续空格、换行符和制表符', desc: '压缩空白字符，保留语义连续性', kinds: ['DOC', 'TABLE', 'FAQ'] },
   { key: 'extractContacts', label: '提取 URL 和邮箱地址', desc: '识别链接与联系方式，便于引用追溯（默认开启）', kinds: ['DOC', 'TABLE', 'FAQ'] },
-  { key: 'plainTable', label: '纯文本化表格内容', desc: '将行列结构转为可检索文本', kinds: ['DOC', 'TABLE'] },
-  { key: 'imageUnderstand', label: '启用图片理解', desc: '对文档中的插图、图表进行识别和理解，适用于复杂版式文档', kinds: ['DOC'] }
+  { key: 'plainTable', label: '纯文本化表格内容', desc: '将行列结构转为可检索文本', kinds: ['DOC', 'TABLE'] }
+  // 「启用图片理解」已删（2026-09-06 负责人拍板 Q19：预处理按原型 3 项，md 第 4 项不实现）
 ]
 export const RETRIEVAL_OPTIONS = [
   { value: 'HYBRID', label: '混合检索' },
@@ -98,7 +98,6 @@ export const UPLOAD_DEFAULTS = Object.freeze({
   replaceWhitespace: false,
   extractContacts: true,
   plainTable: false,
-  imageUnderstand: false,
   embeddingModelId: '',
   retrieval: 'HYBRID',
   topK: 5

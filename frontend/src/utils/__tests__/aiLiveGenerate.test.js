@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
  * aiLiveGenerate.js 单测（2026-09-04 PRD-20260903 对齐新增：统一 AI 实况生成机制，
  * 基准=新交互原型最终覆写态 unified-ai-live-generation-module）。
  * 覆盖：文本工具截断口径、三个本地模板生成器（模板句照原型逐字）、
- * useAiLiveGenerate 四件套（空源禁用+title / 生成中… 约 420ms / 点击时刻取源 / 完成 toast）。
+ * useAiLiveGenerate 四件套（空源禁用+title / 生成中… 约 500ms / 点击时刻取源 / 完成 toast）。
  */
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
@@ -100,7 +100,7 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     expect(ElMessage.success).not.toHaveBeenCalled()
   })
 
-  it('有源文本 → 可用无引导 title；点击进「生成中…」约 420ms 后回填 + toast「AI 内容已生成，请确认后保存」', () => {
+  it('有源文本 → 可用无引导 title；点击进「生成中…」约 500ms 后回填 + toast「AI 内容已生成，请确认后保存」', () => {
     const { api, apply, generate } = setup({ text: '汇总经营数据' })
     expect(api.disabled.value).toBe(false)
     expect(api.title.value).toBe('')
@@ -140,8 +140,8 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     expect(apply).not.toHaveBeenCalled()
   })
 
-  it('delayMs 可注入（接入方/测试可调；默认 420ms）', () => {
-    expect(AI_LIVE_DELAY_MS).toBe(420)
+  it('delayMs 可注入（接入方/测试可调；默认 500ms，2026-09-06 Q10 拍板全站统一）', () => {
+    expect(AI_LIVE_DELAY_MS).toBe(500)
     const apply = vi.fn()
     const api = useAiLiveGenerate({
       getSourceText: () => '描述',
