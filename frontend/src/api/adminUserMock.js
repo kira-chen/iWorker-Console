@@ -45,7 +45,7 @@ const PERMISSION_GROUPS = [
     scope: '管理端',
     groups: [
       { name: '01 总览', pages: ['驾驶舱'] },
-      { name: '02 岗位', pages: ['岗位', '岗位分配'] },
+      { name: '02 岗位', pages: ['岗位', '岗位管理'] },
       { name: '03 能力', pages: ['专家', '技能', '知识库', '连接器', '模型'] },
       { name: '04 运行', pages: ['实例与会话', '运行规格', '配额与限流'] },
       { name: '05 治理', pages: ['我的申请', '审核中心', '用户技能审核', '访问审计', '用户反馈', '字段字典'] },
@@ -61,7 +61,7 @@ function seedRoles() {
   return [
     { id: 301, code: '系统管理员', name: '系统管理员', modules: [...ALL_PAGES], userCount: 2, createdAt: '2026-06-18T09:30:00+08:00', updatedAt: '2026-08-24T15:02:00+08:00' },
     { id: 302, code: '系统配置员', name: '系统配置员', modules: ['驾驶舱', '专家', '技能', '知识库', '连接器', '用户技能审核', '字段字典'], userCount: 3, createdAt: '2026-06-18T09:32:00+08:00', updatedAt: '2026-08-23T18:20:00+08:00' },
-    { id: 303, code: 'FDE 工程师', name: 'FDE 工程师', modules: ['驾驶舱', '岗位', '岗位分配', '技能'], userCount: 4, createdAt: '2026-06-18T09:34:00+08:00', updatedAt: '2026-08-22T11:06:00+08:00' },
+    { id: 303, code: 'FDE 工程师', name: 'FDE 工程师', modules: ['驾驶舱', '岗位', '岗位管理', '技能'], userCount: 4, createdAt: '2026-06-18T09:34:00+08:00', updatedAt: '2026-08-22T11:06:00+08:00' },
     { id: 304, code: '普通用户', name: '普通用户', modules: ['对话', '定时任务', '个人空间', '设置'], userCount: 18, createdAt: '2026-06-18T09:35:00+08:00', updatedAt: '2026-08-21T16:40:00+08:00' },
     { id: 305, code: '审计观察员', name: '审计观察员', modules: ['驾驶舱', '审核中心', '访问审计', '用户反馈'], userCount: 0, createdAt: '2026-08-20T14:08:00+08:00', updatedAt: '2026-08-20T14:08:00+08:00' }
   ]
@@ -104,8 +104,9 @@ let users = seedUsers()
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=用户/角色 CRUD、设角色、改权限与 __resetOrgMock。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
+// version 2（2026-09-07）：PRD-20260904 对齐「岗位分配→岗位管理」，权限树页面名与角色 modules 种子改名，旧快照弃用回种子。
 const persist = attachPersist('adminUser', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ userSeq, roleSeq, roles, users }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.userSeq) || !Number.isFinite(d.roleSeq) || !Array.isArray(d.roles) || !Array.isArray(d.users)) {

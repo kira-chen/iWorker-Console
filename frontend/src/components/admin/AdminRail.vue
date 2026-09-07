@@ -29,7 +29,7 @@ const userName = computed(() => userStore.userInfo?.name || '管理员')
 // 飞书式窄轨导航（2026-08-21 改版）：六段分组，分组标题带序号（01 总览 / 02 岗位 / …），
 // 分组仅作类别归属（无真实页面），组内项才是真实页面。段间小标题 + 分隔。
 // - 01 总览：驾驶舱（规划中占位）。三后台角色均可见（总览定位）。
-// - 02 岗位：岗位 / 岗位分配 / 岗位技能（原「技能」FDE 入口），随 canFde 显隐。
+// - 02 岗位：岗位 / 岗位管理（2026-09-07 PRD-20260904 对齐：原「岗位分配」改名）/ 岗位技能（原「技能」FDE 入口），随 canFde 显隐。
 // - 03 能力：专家 / 平台技能 / 系统内置技能 / 知识库(规划中) / 连接器 / 模型，整段随 canSysConfig 显隐；「模型」仅 ADMIN 逐项收窄。
 // - 04 运行：实例与会话 / 运行规格 / 配额与限流（均规划中占位），仅 ADMIN。
 // - 05 治理：审核中心(原「发布审核」) / 用户技能审核 / 访问审计(原「登录明细」) / 用户反馈 / 字段字典(原「字段管理」)，均仅 ADMIN。
@@ -57,8 +57,8 @@ const allGroups = [
     visible: () => userStore.canFde,
     items: [
       { index: 'AdminPositions', label: '岗位', icon: 'Avatar', page: 'POSITION_LIST' },
-      // 岗位分配（提案 20260721-2）：以用户为核心设置用户绑定的岗位。图标用 Switch（换绑语义），与「岗位」Avatar 区分。
-      { index: 'AdminPositionAssignments', label: '岗位分配', icon: 'Switch', page: 'POSITION_ASSIGNMENT' }
+      // 岗位管理（2026-09-07 PRD-20260904 对齐：入口名「岗位分配」→「岗位管理」；内部 key 不变）。
+      { index: 'AdminPositionAssignments', label: '岗位管理', icon: 'Switch', page: 'POSITION_ASSIGNMENT' }
       // 注：原「岗位技能」项已随技能三页合一下线（2026-08-23），并入 03 能力段的「技能」页。
     ]
   },

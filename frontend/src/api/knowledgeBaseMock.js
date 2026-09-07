@@ -8,14 +8,30 @@
  * - 状态机（md §三.4 / §八.1）：DRAFT --提交发布--> 审核中(pendingAction=PUBLISH)；
  *   PUBLISHED --提交停用--> 审核中(pendingAction=DELIST)；撤回恢复提交前状态；
  *   提交发布须过完整校验 5 条（md §三.6）；已发布改数据源引用或可见范围 → 回 DRAFT 重审（md §三.5）。
- * - MCP「引用现有 MCP」与连接器模块同源（mcpConnectorMock），不复制凭证（md §七.1）。
  * - 敏感信息保存后遮罩展示（utils/secretMask 全站口径），明文绝不出 mock（md §四.3 / §八.2）。
+ *
+ * 2026-09-07 按 PRD-20260904 md §六 / §七 数据源新口径重排 API / MCP config：
+ * - API：authType NONE/API_KEY(authParams 多参数行)/BEARER(bearerMasked)，requestMap / responseMap
+ *   结构化预设行；旧 queryField / topKField / itemsPath / 透传字段组废弃。
+ * - MCP：删除「引用现有 MCP」（mode/mcpId/toolName 废弃），仅直接填写：transport(streamable-http/stdio)、
+ *   endpoint+鉴权 或 command/args/envVars、tools 多选数组、requestMap / responseMap 同 API 结构。
+ * - 测试连接（MCP）成功返回固定工具清单 MCP_TEST_TOOLS，供检索工具多选。
+ * - 保存校验按 md：地址 / 方法 / 鉴权条件必填 / 映射预设行必填项 / 工具 ≥1（validateSourceConfig）。
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
-import { listMcp, getMcp } from './mcpConnectorMock'
 import { maskSecret } from '@/utils/secretMask'
-import { MAX_SOURCES_PER_TYPE, SOURCE_LABELS, publishBlockReason } from '@/utils/knowledgeBaseMeta'
+import {
+  MAX_SOURCES_PER_TYPE,
+  SOURCE_LABELS,
+  publishBlockReason,
+  API_METHOD_OPTIONS,
+  mkRequestMapRows,
+  mkResponseMapRows,
+  validateRequestMap,
+  validateResponseMap
+} from '@/utils/knowledgeBaseMeta'
+import { MCP_TRANSPORTS, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let seq = 100
@@ -57,10 +73,50 @@ const upl = (id, name, over = {}) =>
     topK: 5,
     ...over
   })
+// MCP 测试连接成功后返回的固定工具清单（md §七.3：工具清单在连接测试成功后获得）
+export const MCP_TEST_TOOLS = ['search_documents', 'search_chunks', 'hybrid_search']
 const apiSrc = (id, name, over = {}) =>
-  mkSrc(id, 'API', name, { url: 'https://rag.example.com/api/v1/search', method: 'POST', authType: 'API_KEY', authName: 'X-Api-Key', authIn: 'HEADER', authValueMasked: maskSecret('sk-demo-2f81c09f2'), queryField: 'query', topKField: 'top_k', itemsPath: '$.data[*]', contentField: 'content', sourceField: 'source', scoreField: 'score', timeoutMs: 8000, ...over }, 'SUCCESS')
+  mkSrc(
+    id,
+    'API',
+    name,
+    {
+      url: 'https://rag.example.com/api/v1/search',
+      method: 'POST',
+      authType: 'API_KEY', // NONE | API_KEY | BEARER（md §六.1）
+      // API KEY 多参数表（md §六.1.1）：参数值保存后仅存首尾掩码
+      authParams: [{ key: 'X-Api-Key', description: '检索服务访问密钥', clientFill: false, in: 'HEADER', valueMasked: maskSecret('sk-demo-2f81c09f2') }],
+      bearerMasked: '',
+      requestMap: mkRequestMapRows(),
+      responseMap: mkResponseMapRows(),
+      timeoutMs: 8000,
+      ...over
+    },
+    'SUCCESS'
+  )
+// 原「引用现有 MCP」种子（2026-09-07 PRD-20260904 删除该模式）改为直接填写等价配置
 const mcpSrc = (id, name, over = {}) =>
-  mkSrc(id, 'MCP', name, { mode: 'EXISTING', mcpId: 'spark_bridge_mcp', toolName: 'spark_knowledge_qa', queryParam: 'question', topKParam: '', contentField: 'content', sourceField: 'source', scoreField: 'score', timeoutMs: 10000, ...over }, 'SUCCESS')
+  mkSrc(
+    id,
+    'MCP',
+    name,
+    {
+      transport: 'streamable-http', // streamable-http | stdio（md §七.2）
+      endpoint: 'https://knowledge.intra/mcp',
+      authType: 'bearer', // none | bearer | header（md §七.2.1）
+      authHeaderName: '',
+      credentialMasked: maskSecret('mcp-demo-9a3ef8d1c'),
+      command: 'npx',
+      args: [],
+      envVars: [],
+      tools: ['search_documents', 'hybrid_search'], // 检索工具多选（md §七.3：≥1）
+      requestMap: mkRequestMapRows(),
+      responseMap: mkResponseMapRows(),
+      timeoutMs: 10000,
+      ...over
+    },
+    'SUCCESS'
+  )
 
 let sources = [
   upl('ks_1a', '产品资料'),
@@ -106,8 +162,10 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // docsBySource / seedDocCount 为 const 对象 → restore 就地覆写（不换引用）。
 // version 2（2026-09-04）：PRD-20260903 对齐改了种子结构（预处理键 / MCP 同源 / 解析计时），旧快照直接弃用回种子。
 // version 3（2026-09-06）：Q19 拍板预处理删「启用图片理解」，种子 config 去掉 imageUnderstand 键。
+// version 4（2026-09-07）：PRD-20260904 数据源新口径——API config 改 authParams/requestMap/responseMap
+// 结构化行，MCP 删除引用现有模式改 transport/tools 数组；旧快照结构不兼容，直接弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -318,17 +376,140 @@ function validateSource(payload, selfId) {
   const dup = sources.find((s) => s.id !== selfId && s.sourceType === payload.sourceType && s.name.trim().toLowerCase() === payload.name.trim().toLowerCase())
   if (dup) throw new ApiError({ message: '同类型下已存在同名数据源', code: 409, field: 'name' })
 }
-// 敏感信息：明文只在提交瞬间存在，落库即 maskSecret 掩码（md §四.3：保存后遮罩展示，不回显明文）
+const HTTP_RE = /^https?:\/\//i
+const bad = (message, field) => {
+  throw new ApiError({ message, code: 400, field })
+}
+const prevParamRow = (prevRows, r, withIn) =>
+  (prevRows || []).find((p) => p.key === (r.key || '').trim() && (!withIn || (p.in || '') === (r.in || '')))
+/**
+ * 数据源保存校验（2026-09-07 PRD-20260904 md §六.1～§六.3 / §七.2～§七.6）。
+ * prev = 编辑目标（判定「已配置密钥留空=保留」）；UPLOAD 不在此校验。
+ */
+function validateSourceConfig(payload, prev) {
+  const type = payload.sourceType || prev?.sourceType
+  const cfg = payload.config || {}
+  if (type === 'API') {
+    const url = String(cfg.url || '').trim()
+    if (!url) bad('请填写请求地址', 'url')
+    if (url.length > 500) bad('请求地址最多 500 个字符', 'url')
+    if (!HTTP_RE.test(url)) bad('请求地址需为合法 HTTP/HTTPS 地址', 'url')
+    if (!API_METHOD_OPTIONS.includes(cfg.method)) bad('请选择请求方法', 'method')
+    const t = Number(cfg.timeoutMs)
+    if (!Number.isFinite(t) || t < 1000 || t > 60000) bad('超时时间需在 1000～60000ms 之间', 'timeoutMs')
+    if (cfg.authType === 'API_KEY') {
+      // 多参数表：至少一行有效参数；位置必选；未勾客户端填写必须有值（新填或已配置留空=保留）（md §六.1.1）
+      const rowsK = (cfg.authParams || []).filter((r) => (r?.key || '').trim())
+      if (!rowsK.length) bad('已选 API KEY 鉴权，至少保留一行有效参数', 'authParams')
+      for (const r of rowsK) {
+        if (!['QUERY', 'BODY', 'HEADER', 'PATH'].includes(r.in)) bad(`鉴权参数 ${r.key} 请选择位置`, 'authParams')
+        if (!r.clientFill && !(r.value || '').trim() && !r.valueMasked && !prevParamRow(prev?.config?.authParams, r, true)?.valueMasked) {
+          bad(`鉴权参数 ${r.key} 未勾选客户端填写时必须填写参数值`, 'authParams')
+        }
+      }
+    } else if (cfg.authType === 'BEARER') {
+      if (!(payload.authValue || '').trim() && !prev?.config?.bearerMasked) bad('Bearer Token 必填', 'authValue')
+    }
+  } else if (type === 'MCP') {
+    if (!MCP_TRANSPORTS.includes(cfg.transport)) bad('请选择传输方式', 'transport')
+    if (cfg.transport === 'streamable-http') {
+      const ep = String(cfg.endpoint || '').trim()
+      if (!ep) bad('请填写 MCP 服务地址', 'endpoint')
+      if (ep.length > 500) bad('MCP 服务地址最多 500 个字符', 'endpoint')
+      if (!HTTP_RE.test(ep)) bad('MCP 服务地址需以 http:// 或 https:// 开头', 'endpoint')
+      if (cfg.authType === 'header' && !/^[A-Za-z0-9-]{1,128}$/.test(String(cfg.authHeaderName || '').trim())) {
+        bad('Header 名仅允许字母、数字和连字符（不超过 128 字符）', 'authHeaderName')
+      }
+      if (cfg.authType && cfg.authType !== 'none' && !(payload.authValue || '').trim() && !prev?.config?.credentialMasked) {
+        bad('访问凭证必填', 'authValue')
+      }
+    } else {
+      if (!MCP_COMMAND_OPTIONS.includes(cfg.command)) bad('请选择 Command', 'command')
+      for (const r of (cfg.envVars || []).filter((x) => (x?.key || '').trim())) {
+        if (!r.clientFill && !(r.value || '').trim() && !r.valueMasked && !prevParamRow(prev?.config?.envVars, r, false)?.valueMasked) {
+          bad(`环境变量 ${r.key} 未勾选客户端填写时必须填写平台值`, 'envVars')
+        }
+      }
+    }
+    if (!Array.isArray(cfg.tools) || !cfg.tools.length) bad('至少选择一个检索工具', 'tools')
+    const t = Number(cfg.timeoutMs)
+    if (!Number.isFinite(t) || t < 1000 || t > 120000) bad('超时时间需在 1000～120000ms 之间', 'timeoutMs')
+  } else {
+    return
+  }
+  const reqErr = validateRequestMap(cfg.requestMap)
+  if (reqErr) bad(reqErr, 'requestMap')
+  const respErr = validateResponseMap(cfg.responseMap)
+  if (respErr) bad(respErr, 'responseMap')
+}
+// 敏感信息：明文只在提交瞬间存在，落库即 maskSecret 掩码（md §四.3：保存后遮罩展示，不回显明文；
+// 已配置行留空 = 保留原掩码，参考 apiConnectorMock 口径）
+function maskParamRows(rows, prevRows, withIn) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => (r?.key || '').trim() || (r?.description || '').trim() || (r?.value || '').trim() || r?.valueMasked)
+    .map((r) => {
+      const out = { key: (r.key || '').trim(), description: (r.description || '').trim(), clientFill: !!r.clientFill }
+      if (withIn) out.in = r.in || 'HEADER'
+      if (!out.clientFill) {
+        const plain = (r.value || '').trim()
+        out.valueMasked = plain ? maskSecret(plain) : r.valueMasked || prevParamRow(prevRows, r, withIn)?.valueMasked || ''
+      }
+      return out
+    })
+}
 function mergeConfig(prev, payload) {
+  const type = payload.sourceType || prev?.sourceType
   const cfg = { ...(payload.config || {}) }
   delete cfg.authValue
-  if (payload.authValue) cfg.authValueMasked = maskSecret(payload.authValue)
-  else if (prev?.config?.authValueMasked) cfg.authValueMasked = prev.config.authValueMasked
+  if (type === 'API') {
+    cfg.authParams = cfg.authType === 'API_KEY' ? maskParamRows(cfg.authParams, prev?.config?.authParams, true) : []
+    cfg.bearerMasked =
+      cfg.authType === 'BEARER' ? (payload.authValue ? maskSecret(payload.authValue) : prev?.config?.bearerMasked || '') : ''
+  } else if (type === 'MCP') {
+    cfg.envVars = cfg.transport === 'stdio' ? maskParamRows(cfg.envVars, prev?.config?.envVars, false) : []
+    const needsCred = cfg.transport === 'streamable-http' && cfg.authType && cfg.authType !== 'none'
+    cfg.credentialMasked = needsCred ? (payload.authValue ? maskSecret(payload.authValue) : prev?.config?.credentialMasked || '') : ''
+  }
   return cfg
 }
+/**
+ * 连接签名：请求地址 / 鉴权 / 映射（API，md §六.4）+ 服务地址 / 鉴权 / 工具 / 映射（MCP，md §七.7）。
+ * 保存时签名变化或提交了新密钥 → 验证状态重置为未验证；仅改名称 / 状态 / 超时不重置。
+ */
+function connSignature(type, cfg = {}) {
+  if (type === 'API') {
+    return JSON.stringify({
+      url: cfg.url,
+      authType: cfg.authType,
+      auth: (cfg.authParams || []).map((r) => [r.key, r.in, !!r.clientFill]),
+      req: cfg.requestMap,
+      resp: cfg.responseMap
+    })
+  }
+  if (type === 'MCP') {
+    return JSON.stringify({
+      transport: cfg.transport,
+      endpoint: cfg.endpoint,
+      authType: cfg.authType,
+      header: cfg.authHeaderName,
+      command: cfg.command,
+      args: cfg.args,
+      env: (cfg.envVars || []).map((r) => [r.key, !!r.clientFill]),
+      tools: cfg.tools,
+      req: cfg.requestMap,
+      resp: cfg.responseMap
+    })
+  }
+  return ''
+}
+const hasNewSecret = (payload) =>
+  !!(payload.authValue || '').trim() ||
+  (payload.config?.authParams || []).some((r) => (r?.value || '').trim()) ||
+  (payload.config?.envVars || []).some((r) => (r?.value || '').trim())
 export async function createSource(payload) {
   await delay()
   validateSource(payload)
+  validateSourceConfig(payload, null)
   const s = mkSrc(nid('ks'), payload.sourceType, payload.name.trim(), mergeConfig(null, payload), 'UNVERIFIED', payload.status || 'ENABLED')
   sources = [s, ...sources]
   persist()
@@ -338,10 +519,11 @@ export async function updateSource(id, payload) {
   await delay()
   const s = findSource(id)
   validateSource(payload, id)
+  validateSourceConfig(payload, s)
   const cfg = mergeConfig(s, payload)
-  const connChanged = JSON.stringify({ ...s.config, authValueMasked: 0 }) !== JSON.stringify({ ...cfg, authValueMasked: 0 }) || !!payload.authValue
+  const connChanged = connSignature(s.sourceType, s.config) !== connSignature(s.sourceType, cfg) || hasNewSecret(payload)
   Object.assign(s, { name: payload.name.trim(), status: payload.status || s.status, config: cfg })
-  // 修改连接配置后验证状态重置为未验证（md §六.3 / §七.4）
+  // 修改请求地址 / 鉴权 / 工具 / 映射后保存 → 验证状态重置为未验证（md §六.4 / §七.7）
   if (connChanged && s.sourceType !== 'UPLOAD') Object.assign(s, { verifyStatus: 'UNVERIFIED', verifiedAt: null, verifyError: null })
   persist()
   return sourceVO(s)
@@ -361,12 +543,24 @@ export async function removeSource(id) {
 export async function testSource(sourceType, payload) {
   await delay(900)
   const cfg = payload?.config || {}
-  const target = sourceType === 'API' ? cfg.url : cfg.mode === 'INLINE' ? cfg.endpoint : cfg.mcpId
-  if (!target) throw new ApiError({ message: sourceType === 'API' ? '请先填写请求地址' : '请先选择或填写 MCP 服务', code: 400 })
+  const target = sourceType === 'API' ? cfg.url : cfg.transport === 'stdio' ? cfg.command : cfg.endpoint
+  if (!target) {
+    throw new ApiError({
+      message: sourceType === 'API' ? '请先填写请求地址' : cfg.transport === 'stdio' ? '请先选择 Command' : '请先填写 MCP 服务地址',
+      code: 400
+    })
+  }
   const failed = /fail|timeout/i.test(String(target))
+  // MCP 测试成功返回固定工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）
   const result = failed
     ? { verifyStatus: 'FAILED', verifiedAt: new Date().toISOString(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
-    : { verifyStatus: 'SUCCESS', verifiedAt: new Date().toISOString(), verifyError: null, latencyMs: 168, toolCount: sourceType === 'MCP' ? 3 : undefined }
+    : {
+        verifyStatus: 'SUCCESS',
+        verifiedAt: new Date().toISOString(),
+        verifyError: null,
+        latencyMs: 168,
+        ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})
+      }
   if (payload?.sourceId) {
     const s = sources.find((x) => x.id === payload.sourceId)
     if (s) {
@@ -376,11 +570,8 @@ export async function testSource(sourceType, payload) {
   }
   return result
 }
-// MCP 工具清单：与连接器模块同源取（md §七.1 引用现有 MCP 复用连接器配置）
-export async function mcpTools(mcpId) {
-  const m = await getMcp(mcpId).catch(() => null)
-  return (m?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
-}
+// 「引用现有 MCP」模式已删除（2026-09-07 PRD-20260904 md §七.1 仅直接填写），
+// 原 mcpTools(mcpId) / mcps() 连接器同源取数一并移除；工具清单改由 testSource 成功返回。
 
 /* ---- 文档（上传类数据源持有，md §五.3） ---- */
 export async function listDocs(sourceId) {
@@ -431,11 +622,6 @@ export async function experts() {
 export async function positions() {
   await delay(100)
   return POSITIONS.map((p) => ({ ...p }))
-}
-// 引用现有 MCP：与连接器 mock 同源（不复制配置与凭证）
-export async function mcps() {
-  const { list: mcpList } = await listMcp({}).catch(() => ({ list: [] }))
-  return mcpList.filter((m) => m.status === 'active').map((m) => ({ id: m.id, name: m.name }))
 }
 export async function embeddingModels() {
   await delay(100)

@@ -5,6 +5,9 @@
  * - 发布完整校验 5 条（§三.6）收敛为 publishBlockReason；
  * - 上传预处理项 / 检索方式 / 解析状态等文案按 md §五 更新；
  * - 检索阈值不再在管理端设置（md §五.1），UPLOAD_DEFAULTS 移除 threshold。
+ * 2026-09-07 按 PRD-20260904 md §六 / §七 重排 API / MCP 数据源配置：
+ * - API 鉴权改 NONE/API_KEY(多参数表)/BEARER；请求/响应映射改结构化行（预设行不可删）；
+ * - MCP 删除「引用现有 MCP」模式，仅直接填写（transport=streamable-http/stdio），检索工具多选 config.tools。
  *
  * 状态三态：status ∈ DRAFT / PENDING_REVIEW / PUBLISHED；待发布与待停用由
  * pendingAction（PUBLISH / DELIST）标记，列表统一展示「审核中」（md §八.1），
@@ -103,33 +106,112 @@ export const UPLOAD_DEFAULTS = Object.freeze({
   topK: 5
   // 检索阈值不在管理端设置，由客户端每次发起检索时提供（md §五.1）
 })
+/* ---------------- API / MCP 数据源配置（2026-09-07 PRD-20260904 md §六 / §七 新口径） ----------------
+ * 旧字段 queryField / topKField / itemsPath / 透传字段组、MCP mode(EXISTING/INLINE) / mcpId / toolName
+ * 全部废弃：请求 / 响应映射改为结构化行（requestMap / responseMap），MCP 仅保留「直接填写」。 */
+
+/** 请求 / 响应映射的变量类型枚举（md §六.2 / §六.3）。 */
+export const VAR_TYPE_OPTIONS = ['string', 'number', 'integer', 'boolean', 'object', 'array']
+/** API 请求方法枚举，默认 POST（md §六.1）。 */
+export const API_METHOD_OPTIONS = ['POST', 'GET', 'PUT', 'DELETE', 'PATCH']
+/** 请求参数映射「映射客户端字段」下拉（原型 kmcpMappingMarkup：query（客户端）/ topK（客户端））。 */
+export const CLIENT_FIELD_OPTIONS = [
+  { value: 'query', label: 'query（客户端）' },
+  { value: 'topK', label: 'topK（客户端）' }
+]
+
+/**
+ * 请求参数映射预设两行（md §六.2：query 映射客户端检索词·必填，topK 映射客户端 Top K；固定行不可删）。
+ * 行结构：{ name, type, required, clientField, defaultValue, preset, children[] }；
+ * object/array 行经 children 挂子字段，子字段结构与一级字段一致、任意层级（md §六.2）。
+ */
+export function mkRequestMapRows() {
+  return [
+    { name: 'query', type: 'string', required: true, clientField: 'query', defaultValue: '', preset: true, children: [] },
+    { name: 'topK', type: 'integer', required: false, clientField: 'topK', defaultValue: '', preset: true, children: [] }
+  ]
+}
+/** 请求映射自定义空行。 */
+export function mkRequestMapRow() {
+  return { name: '', type: 'string', required: false, clientField: '', defaultValue: '', preset: false, children: [] }
+}
+/**
+ * 响应字段映射预设三行（md §六.3：content 内容·string / source 来源·string / score 相关度分数·number；
+ * 预设不可删、变量类型可改）。行结构：{ name, description, type, preset }。
+ */
+export function mkResponseMapRows() {
+  return [
+    { name: 'content', description: '内容', type: 'string', preset: true },
+    { name: 'source', description: '来源', type: 'string', preset: true },
+    { name: 'score', description: '相关度分数', type: 'number', preset: true }
+  ]
+}
+/** 响应映射自定义空行。 */
+export function mkResponseMapRow() {
+  return { name: '', description: '', type: 'string', preset: false }
+}
+
+/**
+ * 校验请求参数映射行（编辑器与 mock 共用）：预设 query/topK 两行必在且参数名非空；
+ * 自定义行填了内容就必须有参数名、类型合法；同层参数名不重复；children 递归同规则。
+ * 返回错误文案，无错 ''。
+ */
+export function validateRequestMap(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  if (list.filter((r) => r.preset).length < 2) return '请求参数映射缺少预设参数 query / topK'
+  function walk(rs, path) {
+    const seen = new Set()
+    for (const r of rs) {
+      const name = (r?.name || '').trim()
+      const blank = !r?.preset && !name && !(r?.defaultValue || '').trim() && !(r?.children || []).length
+      if (blank) continue // 完全空白的自定义行：保存时丢弃
+      if (!name) return `请求参数映射${path}：参数名必填`
+      if (!VAR_TYPE_OPTIONS.includes(r.type)) return `请求参数映射${path}：${name} 请选择类型`
+      if (seen.has(name)) return `请求参数映射${path}：参数名重复（${name}）`
+      seen.add(name)
+      if ((r.type === 'object' || r.type === 'array') && (r.children || []).length) {
+        const err = walk(r.children, `${path}·${name}`)
+        if (err) return err
+      }
+    }
+    return ''
+  }
+  return walk(list, '')
+}
+/**
+ * 校验响应字段映射行：至少一条输出参数（原型保存校验文案同口径）；
+ * 行填了内容就必须有参数名、变量类型合法；参数名不重复。返回错误文案，无错 ''。
+ */
+export function validateResponseMap(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  const seen = new Set()
+  let effective = 0
+  for (const r of list) {
+    const name = (r?.name || '').trim()
+    if (!r?.preset && !name && !(r?.description || '').trim()) continue
+    if (!name) return '响应字段映射：参数名必填'
+    if (!VAR_TYPE_OPTIONS.includes(r.type)) return `响应字段映射：${name} 请选择变量类型`
+    if (seen.has(name)) return `响应字段映射：参数名重复（${name}）`
+    seen.add(name)
+    effective++
+  }
+  if (!effective) return '响应字段映射至少存在一条输出参数'
+  return ''
+}
+
 export const API_DEFAULTS = Object.freeze({
-  url: '',
-  method: 'POST',
-  authType: 'NONE', // NONE | API_KEY（md §六.1：无鉴权、API Key）
-  authName: '',
-  authIn: 'HEADER', // HEADER | QUERY（md §六.1）
-  queryField: 'query',
-  topKField: 'top_k',
-  itemsPath: '$.data[*]',
-  contentField: 'content',
-  sourceField: 'source',
-  scoreField: 'score',
+  url: '', // 请求地址：≤500，合法 http/https（md §六.1）
+  method: 'POST', // POST | GET | PUT | DELETE | PATCH，默认 POST（md §六.1）
+  authType: 'NONE', // NONE | API_KEY | BEARER（md §六.1：无鉴权、API KEY、Bearer Token，默认无鉴权）
   timeoutMs: 8000 // 1000～60000ms，默认 8000ms（md §六.1）
 })
 export const MCP_DEFAULTS = Object.freeze({
-  mode: 'EXISTING', // EXISTING=引用连接器已登记 MCP；INLINE=内联配置（md §七.1）
-  mcpId: '',
-  endpoint: '',
-  authType: 'none', // none | bearer | header（md §七.2：无鉴权、Bearer Token、自定义 Header）
-  authHeaderName: '',
-  toolName: '',
-  queryParam: 'query',
-  topKParam: 'top_k',
-  contentField: 'content',
-  sourceField: 'source',
-  scoreField: 'score',
-  timeoutMs: 10000 // 系统默认值、允许直接修改，不采用「留空跟随全局」（md §七.2）
+  transport: 'streamable-http', // streamable-http | stdio（md §七.2）
+  endpoint: '', // streamable-http：≤500，http(s):// 开头（md §七.2.1）
+  authType: 'none', // none | bearer | header（md §七.2.1：无鉴权、Bearer Token、API Key，默认无鉴权）
+  authHeaderName: '', // API Key 模式 Header 名：≤128，仅字母数字连字符（md §七.2.1）
+  command: 'npx', // stdio：npx | uvx | node | python3 | docker（md §七.2.2）
+  timeoutMs: 10000 // 必填，默认 10000，范围 1000～120000（md §七.6，取值维持现实现）
 })
 /** 各文档类型可接受的文件格式（md §五.2） */
 export const ACCEPT_BY_DOC_KIND = Object.freeze({

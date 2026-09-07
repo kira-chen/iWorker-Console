@@ -12,7 +12,6 @@ import { REDUCE_STRATEGIES, MAX_RULES, SUMMARY_N_RANGE, emptyReduceRule } from '
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
-  keySuggestions: { type: Array, default: () => [] },
   rowErrors: { type: Object, default: () => ({}) },
   globalError: { type: String, default: '' }
 })
@@ -59,17 +58,13 @@ function patchParam(idx, key, value) {
 
     <div v-for="(row, idx) in rows" :key="idx" class="dfe-row">
       <div>
-        <el-select
+        <!-- 规则名：自由输入（2026-09-07 PRD-20260904 对齐：原受控下拉[限编目字段]改 input，PT-C7） -->
+        <el-input
           :model-value="row.key"
-          filterable
-          allow-create
-          default-first-option
           placeholder="如 预算 / 决策人"
           :class="{ 'is-err': errOf(idx, 'key') }"
           @update:model-value="patch(idx, 'key', $event)"
-        >
-          <el-option v-for="k in keySuggestions" :key="k" :value="k" :label="k" />
-        </el-select>
+        />
         <div v-if="errOf(idx, 'key')" class="cell-err">{{ errOf(idx, 'key') }}</div>
       </div>
       <div>

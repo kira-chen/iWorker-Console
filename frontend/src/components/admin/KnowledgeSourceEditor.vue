@@ -1,33 +1,33 @@
 <script setup>
 /**
  * 数据源配置抽屉（「数据源管理」子页的新建 / 编辑 / 查看），DrawerEditor 720px。
- * 2026-09-04 按 PRD-20260903《prd.知识库.md》§四～§七 + 交互原型 openSourceEditor/openSourceViewer 对齐重排。
+ * 2026-09-07 按 PRD-20260904《prd.知识库.md》§六（API）/ §七（MCP）/ §八（状态与异常）
+ * + 交互原型 sourceFields / kmcpMarkup 最终覆写生效态重排（字段口径以 md 为准，骨架照原型）。
  *
  * 【公共字段】（md §四.3）名称（≤50 必填）/ 类型（上传·API·MCP，创建后不可修改）/ 状态（启用·停用）。
- * 数据源保存后立即生效、不过知识库发布审核；API/MCP 修改连接配置后需要重新测试（编辑界面常驻该提示）。
+ * 【上传】（md §五）本轮冻结不动：文档类型 / 预处理 / 向量模型 / 检索方式 Top K。
+ * 【API】（md §六）请求配置（地址 ≤500 http(s)、方法五枚举默认 POST、超时 1000~60000 默认 8000）
+ *   → 鉴权配置（无鉴权 / API KEY 多参数表[ParamRowsEditor] / Bearer Token）
+ *   → 请求参数映射 + 响应字段映射（SourceMappingEditor，预设行不可删）→ 测试连接。
+ * 【MCP】（md §七）仅直接填写（「引用现有 MCP」模式已删除）：传输方式 streamable-http（Endpoint + 鉴权
+ *   无鉴权/Bearer/API Key）或 stdio（Command 下拉 + Arguments 多行 + 环境变量表[ParamRowsEditor]）；
+ *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）；映射与 API 完全同构共用组件；
+ *   超时必填默认 10000 范围 1000~120000 → 测试连接。
  *
- * 【上传】（md §五）文档类型三选一（决定可收文件格式）；预处理项按文档类型动态展示；向量模型
- *   （更换需确认「全量重建索引」）；检索方式 混合/向量/关键词；Top K 1~20 默认 5；
- *   检索阈值不在管理端设置，由客户端每次发起检索时提供。
- * 【API】（md §六）请求地址（≤500，http/https）/ GET·POST / 无鉴权·API Key（参数名+位置 Header·Query+凭证遮罩）/
- *   超时 1000~60000 默认 8000 / query·topK 请求映射 / 结果数组 JSONPath + content 必、source·score 可选 / 测试连接。
- * 【MCP】（md §七）引用现有 MCP（与连接器同源，不回显其凭证）或内联配置（Endpoint ≤500、
- *   无鉴权·Bearer Token·自定义 Header、凭证遮罩）；检索工具必选（Schema 默认折叠按需查看）；
- *   query 必、topK 可选映射；content 必、source·score 可选；超时用系统默认值可直接修改；测试连接。
- *
- * 敏感信息遮罩：明文只在提交瞬间存在，回显一律 maskSecret 掩码（md §四.3 / §八.2）。
+ * 敏感信息遮罩：明文只在提交瞬间存在，回显一律 maskSecret 掩码；编辑态留空=保留原值（md §八.2）。
+ * 修改请求地址 / 鉴权 / 工具 / 映射 → 验证状态重置为未验证（md §六.4 / §七.7，mock 保存时同口径）。
  */
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
+import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
+import SourceMappingEditor from '@/components/admin/SourceMappingEditor.vue'
 import {
   getKnowledgeSource,
   createKnowledgeSource,
   updateKnowledgeSource,
   testKnowledgeSource,
-  listMcpToolsForKb,
-  listMcpOptions,
   listEmbeddingModelOptions
 } from '@/api/knowledgeBase'
 import {
@@ -39,8 +39,21 @@ import {
   RETRIEVAL_OPTIONS,
   UPLOAD_DEFAULTS,
   API_DEFAULTS,
-  MCP_DEFAULTS
+  MCP_DEFAULTS,
+  API_METHOD_OPTIONS,
+  mkRequestMapRows,
+  mkResponseMapRows,
+  validateRequestMap,
+  validateResponseMap
 } from '@/utils/knowledgeBaseMeta'
+import {
+  API_AUTH_IN_OPTIONS,
+  validateApiAuthParams,
+  validateMcpEnv,
+  MCP_TRANSPORTS,
+  MCP_COMMAND_OPTIONS,
+  MCP_AUTH_TYPES
+} from '@/utils/defValidate'
 import { fmtRelative } from '@/utils/docMeta'
 
 const props = defineProps({
@@ -57,11 +70,10 @@ const TYPE_DESC = {
   API: '调用第三方 RAG 平台的检索接口，按需取回切片',
   MCP: '通过 MCP 协议从第三方 RAG 平台取回切片'
 }
-/** API 鉴权参数位置：Header 或 Query（md §六.1） */
-const API_AUTH_IN = [
-  { value: 'HEADER', label: 'Header' },
-  { value: 'QUERY', label: 'Query' }
-]
+const ARGS_PLACEHOLDER = '每行一个参数，如\n-y\n@modelcontextprotocol/server-foo'
+/** 传输方式展示顺序照 md §七.2：streamable-http 或 stdio。 */
+const TRANSPORT_OPTIONS = ['streamable-http', 'stdio']
+const HEADER_NAME_RE = /^[A-Za-z0-9-]{1,128}$/
 
 const formRef = ref(null)
 const loading = ref(false)
@@ -78,23 +90,39 @@ const form = reactive({
   sourceType: 'UPLOAD',
   name: '',
   status: 'ENABLED',
-  // 三类 config 字段平铺（按 sourceType 取用）
+  // 上传类 config 平铺（模板冻结区沿用旧绑定）
   ...UPLOAD_DEFAULTS,
-  ...API_DEFAULTS,
-  ...MCP_DEFAULTS,
-  authValue: '',
-  authValueMasked: ''
+  // API / MCP 标量各归各的命名空间（新口径下两类字段互不串写）
+  api: { ...API_DEFAULTS },
+  mcp: { ...MCP_DEFAULTS }
 })
+/* ---- API 行编辑状态 ---- */
+const apiAuthRows = ref([]) // API KEY 多参数表（ParamRowsEditor 行结构）
+const apiBearerToken = ref('') // Bearer 明文（仅提交瞬间；留空=保留）
+const apiBearerMasked = ref('')
+const loadedApiAuthType = ref('NONE')
+const apiRequestRows = ref(mkRequestMapRows())
+const apiResponseRows = ref(mkResponseMapRows())
+/* ---- MCP 行编辑状态 ---- */
+const mcpCredential = ref('') // bearer/header 访问凭证明文（仅提交瞬间；留空=保留）
+const mcpCredentialMasked = ref('')
+const loadedMcpAuthType = ref('none')
+const mcpArgsText = ref('')
+const mcpEnvRows = ref([])
+const mcpToolsSelected = ref([])
+const availableTools = ref([]) // 连接测试成功返回的工具清单（md §七.3）
+const mcpRequestRows = ref(mkRequestMapRows())
+const mcpResponseRows = ref(mkResponseMapRows())
+
+const fieldErrors = reactive({})
 const verify = ref(null)
 const testing = ref(false)
-const mcpTools = ref([])
-const mcps = ref([])
 const embeddingModels = ref([])
-const schemaOpen = ref([]) // 工具 Schema 默认折叠（md §七.3）
+let muteVerifyReset = false
 
 const rules = computed(() => ({
   name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
-  url:
+  'api.url':
     form.sourceType === 'API'
       ? [
           { required: true, message: '请填写请求地址', trigger: 'blur' },
@@ -103,61 +131,139 @@ const rules = computed(() => ({
             trigger: 'blur'
           }
         ]
+      : [],
+  'mcp.endpoint':
+    form.sourceType === 'MCP' && form.mcp.transport === 'streamable-http'
+      ? [
+          { required: true, message: '请填写 MCP 服务地址', trigger: 'blur' },
+          {
+            validator: (r, v, cb) => (v && !/^https?:\/\//i.test(v.trim()) ? cb(new Error('需以 http:// 或 https:// 开头')) : cb()),
+            trigger: 'blur'
+          }
+        ]
       : []
 }))
 
 /** 按文档类型动态展示预处理项（md §五.1：不展示对当前类型无效的配置）。 */
 const preprocessVisible = computed(() => PREPROCESS_OPTIONS.filter((o) => o.kinds.includes(form.docKind)))
-/** 当前所选检索工具（EXISTING 模式，供 Schema 折叠查看）。 */
-const activeTool = computed(() => mcpTools.value.find((t) => t.name === form.toolName) || null)
+/** Bearer / 凭证「留空=保留原值」仅在已配置且鉴权类型未切换时成立（ApiEditor 同款语义）。 */
+const keepApiBearer = computed(() => isEdit.value && !!apiBearerMasked.value && form.api.authType === 'BEARER' && loadedApiAuthType.value === 'BEARER')
+const keepMcpCredential = computed(
+  () => isEdit.value && !!mcpCredentialMasked.value && form.mcp.authType !== 'none' && form.mcp.authType === loadedMcpAuthType.value
+)
 
-async function loadOptions() {
-  const [m, em] = await Promise.all([listMcpOptions().catch(() => []), listEmbeddingModelOptions().catch(() => [])])
-  mcps.value = m
-  embeddingModels.value = em
+function clearErrors() {
+  Object.keys(fieldErrors).forEach((k) => delete fieldErrors[k])
 }
-async function loadMcpTools() {
-  mcpTools.value = []
-  if (form.mode !== 'EXISTING' || !form.mcpId) return
-  mcpTools.value = await listMcpToolsForKb(form.mcpId).catch(() => [])
-}
-function onMcpChange() {
-  form.toolName = ''
-  loadMcpTools()
-}
+const emptyAuthRow = () => ({ in: 'HEADER', key: '', description: '', clientFill: false, value: '', configured: false })
+// 切到 API KEY 且无行 → 预置一行（md §六.1.1：至少保留一行有效参数）
+watch(
+  () => form.api.authType,
+  (t) => {
+    if (t === 'API_KEY' && !apiAuthRows.value.length) apiAuthRows.value = [emptyAuthRow()]
+  }
+)
 
+/* ---------- 表单重置 / 回填 ---------- */
+const toParamRows = (list, withIn) =>
+  (list || []).map((p) => ({
+    ...(withIn ? { in: p.in || 'HEADER' } : {}),
+    key: p.key || '',
+    description: p.description || '',
+    clientFill: !!p.clientFill,
+    value: '',
+    configured: !!p.valueMasked,
+    valueMasked: p.valueMasked || ''
+  }))
+function normalizeRequestRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return mkRequestMapRows()
+  const walk = (rs) =>
+    rs.map((r) => ({
+      name: r.name || '',
+      type: r.type || 'string',
+      required: !!r.required,
+      clientField: r.clientField || '',
+      defaultValue: r.defaultValue || '',
+      preset: !!r.preset,
+      children: walk(Array.isArray(r.children) ? r.children : [])
+    }))
+  const out = walk(rows)
+  // 预设 query / topK 兜底补齐（固定行不可删，md §六.2）
+  return out.filter((r) => r.preset).length >= 2 ? out : [...mkRequestMapRows(), ...out.filter((r) => !r.preset)]
+}
+function normalizeResponseRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return mkResponseMapRows()
+  const out = rows.map((r) => ({ name: r.name || '', description: r.description || '', type: r.type || 'string', preset: !!r.preset }))
+  return out.filter((r) => r.preset).length >= 3 ? out : [...mkResponseMapRows(), ...out.filter((r) => !r.preset)]
+}
 function resetForm() {
-  Object.assign(form, {
-    sourceType: 'UPLOAD',
-    name: '',
-    status: 'ENABLED',
-    ...UPLOAD_DEFAULTS,
-    ...API_DEFAULTS,
-    ...MCP_DEFAULTS,
-    authValue: '',
-    authValueMasked: ''
-  })
+  Object.assign(form, { sourceType: 'UPLOAD', name: '', status: 'ENABLED', ...UPLOAD_DEFAULTS })
+  form.api = { ...API_DEFAULTS }
+  form.mcp = { ...MCP_DEFAULTS }
+  apiAuthRows.value = []
+  apiBearerToken.value = ''
+  apiBearerMasked.value = ''
+  loadedApiAuthType.value = 'NONE'
+  apiRequestRows.value = mkRequestMapRows()
+  apiResponseRows.value = mkResponseMapRows()
+  mcpCredential.value = ''
+  mcpCredentialMasked.value = ''
+  loadedMcpAuthType.value = 'none'
+  mcpArgsText.value = ''
+  mcpEnvRows.value = []
+  mcpToolsSelected.value = []
+  availableTools.value = []
+  mcpRequestRows.value = mkRequestMapRows()
+  mcpResponseRows.value = mkResponseMapRows()
   verify.value = null
-  mcpTools.value = []
-  schemaOpen.value = []
+  clearErrors()
 }
 function hydrate(d) {
   detail.value = d
-  Object.assign(form, { sourceType: d.sourceType, name: d.name || '', status: d.status || 'ENABLED' }, d.config || {}, {
-    authValue: '',
-    authValueMasked: d.config?.authValueMasked || ''
-  })
+  const cfg = d.config || {}
+  Object.assign(form, { sourceType: d.sourceType, name: d.name || '', status: d.status || 'ENABLED' })
+  if (d.sourceType === 'UPLOAD') {
+    Object.assign(form, { ...UPLOAD_DEFAULTS }, cfg)
+  } else if (d.sourceType === 'API') {
+    form.api = {
+      url: cfg.url || '',
+      method: API_METHOD_OPTIONS.includes(cfg.method) ? cfg.method : 'POST',
+      authType: ['NONE', 'API_KEY', 'BEARER'].includes(cfg.authType) ? cfg.authType : 'NONE',
+      timeoutMs: cfg.timeoutMs || 8000
+    }
+    loadedApiAuthType.value = form.api.authType
+    apiBearerMasked.value = cfg.bearerMasked || ''
+    apiAuthRows.value = toParamRows(cfg.authParams, true)
+    if (form.api.authType === 'API_KEY' && !apiAuthRows.value.length) apiAuthRows.value = [emptyAuthRow()]
+    apiRequestRows.value = normalizeRequestRows(cfg.requestMap)
+    apiResponseRows.value = normalizeResponseRows(cfg.responseMap)
+  } else {
+    form.mcp = {
+      transport: MCP_TRANSPORTS.includes(cfg.transport) ? cfg.transport : 'streamable-http',
+      endpoint: cfg.endpoint || '',
+      authType: ['none', 'bearer', 'header'].includes(cfg.authType) ? cfg.authType : 'none',
+      authHeaderName: cfg.authHeaderName || '',
+      command: cfg.command || 'npx',
+      timeoutMs: cfg.timeoutMs || 10000
+    }
+    loadedMcpAuthType.value = form.mcp.authType
+    mcpCredentialMasked.value = cfg.credentialMasked || ''
+    mcpArgsText.value = (cfg.args || []).join('\n')
+    mcpEnvRows.value = toParamRows(cfg.envVars, false)
+    mcpToolsSelected.value = [...(cfg.tools || [])]
+    // 已保存的选中工具先作为可选清单展示；重新测试后以测试返回清单为准（md §七.3）
+    availableTools.value = [...(cfg.tools || [])]
+    mcpRequestRows.value = normalizeRequestRows(cfg.requestMap)
+    mcpResponseRows.value = normalizeResponseRows(cfg.responseMap)
+  }
   verify.value = d.sourceType === 'UPLOAD' ? null : { verifyStatus: d.verifyStatus, verifiedAt: d.verifiedAt, verifyError: d.verifyError }
 }
 async function load() {
   loadError.value = ''
   loading.value = true
   try {
-    await loadOptions()
-    if (targetId.value) {
-      hydrate(await getKnowledgeSource(targetId.value))
-      await loadMcpTools()
-    }
+    embeddingModels.value = await listEmbeddingModelOptions().catch(() => [])
+    if (targetId.value) hydrate(await getKnowledgeSource(targetId.value))
   } catch (e) {
     loadError.value = e?.message || '加载失败'
   } finally {
@@ -175,26 +281,63 @@ watch(
     load()
   }
 )
-// 修改连接配置 → 验证状态回未验证（md §六.3 / §七.4：配置变更后重置为未验证，需重新测试）
-watch(
-  () => [form.url, form.method, form.authType, form.authName, form.authIn, form.mcpId, form.endpoint, form.authHeaderName, form.toolName, form.queryField, form.topKField, form.itemsPath, form.queryParam, form.topKParam, form.contentField, form.sourceField, form.scoreField, form.authValue],
-  () => {
-    if (loading.value || viewMode.value || form.sourceType === 'UPLOAD') return
-    if (verify.value && verify.value.verifyStatus !== 'UNVERIFIED') verify.value = { verifyStatus: 'UNVERIFIED' }
-  }
-)
 
-/* ---------- 测试连接（API / MCP，md §六.3 / §七.4） ---------- */
+// 修改请求地址 / 鉴权 / 工具 / 映射 → 验证状态回未验证（md §六.4 / §七.7；mock 保存时同口径重置）
+const connSig = computed(() => {
+  if (form.sourceType === 'API') {
+    return JSON.stringify([
+      form.api.url,
+      form.api.authType,
+      apiAuthRows.value.map((r) => [r.key, r.in, r.clientFill, r.value]),
+      apiBearerToken.value,
+      apiRequestRows.value,
+      apiResponseRows.value
+    ])
+  }
+  if (form.sourceType === 'MCP') {
+    return JSON.stringify([
+      form.mcp.transport,
+      form.mcp.endpoint,
+      form.mcp.authType,
+      form.mcp.authHeaderName,
+      mcpCredential.value,
+      form.mcp.command,
+      mcpArgsText.value,
+      mcpEnvRows.value.map((r) => [r.key, r.clientFill, r.value]),
+      mcpToolsSelected.value,
+      mcpRequestRows.value,
+      mcpResponseRows.value
+    ])
+  }
+  return ''
+})
+watch(connSig, () => {
+  if (loading.value || muteVerifyReset || viewMode.value || form.sourceType === 'UPLOAD') return
+  if (verify.value && verify.value.verifyStatus !== 'UNVERIFIED') verify.value = { verifyStatus: 'UNVERIFIED' }
+})
+
+/* ---------- 测试连接（API / MCP，md §六.4 / §七.7） ---------- */
 async function doTest() {
   testing.value = true
   try {
-    const r = await testKnowledgeSource(form.sourceType, { sourceId: targetId.value, config: buildConfig(), authValue: form.authValue || null })
+    const r = await testKnowledgeSource(form.sourceType, { sourceId: targetId.value, config: buildConfig(), authValue: authValueOut() })
+    muteVerifyReset = true
     verify.value = r
-    if (r.verifyStatus === 'SUCCESS') ElMessage.success('连接测试成功')
-    else ElMessage.error(r.verifyError || '连接失败')
+    if (r.verifyStatus === 'SUCCESS') {
+      if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
+        // 测试成功获得工具清单；已选工具保留清单内的（md §七.3）
+        availableTools.value = [...r.tools]
+        mcpToolsSelected.value = mcpToolsSelected.value.filter((t) => r.tools.includes(t))
+      }
+      ElMessage.success('连接测试成功')
+    } else {
+      ElMessage.error(r.verifyError || '连接失败')
+    }
+    await nextTick()
   } catch (e) {
     ElMessage.error(e?.message || '测试失败')
   } finally {
+    muteVerifyReset = false
     testing.value = false
   }
 }
@@ -208,33 +351,124 @@ const verifyLine = computed(() => {
   return `连接失败：${v.verifyError || '未知原因'}`
 })
 
-/* ---------- 保存 ---------- */
-const CONFIG_KEYS = {
-  UPLOAD: Object.keys(UPLOAD_DEFAULTS),
-  API: Object.keys(API_DEFAULTS),
-  MCP: Object.keys(MCP_DEFAULTS)
-}
-function buildConfig() {
-  const cfg = {}
-  for (const k of CONFIG_KEYS[form.sourceType]) cfg[k] = form[k]
-  return cfg
-}
-function validateTyped() {
-  if (form.sourceType === 'API' && !(form.url || '').trim()) return '请填写请求地址'
-  if (form.sourceType === 'MCP') {
-    if (form.mode === 'EXISTING' && !form.mcpId) return '请选择 MCP 服务'
-    if (form.mode === 'INLINE' && !(form.endpoint || '').trim()) return '请填写 MCP 服务地址'
-    if (form.mode === 'INLINE' && form.authType === 'header' && !(form.authHeaderName || '').trim()) return '请填写 Header 名称'
-    if (!(form.toolName || '').trim()) return '请选择用于知识检索的工具'
+/* ---------- 组装 config / 保存 ---------- */
+const outParamRows = (rows, withIn) =>
+  (rows || [])
+    .filter((r) => (r.key || '').trim() || (r.description || '').trim() || (r.value || '').trim())
+    .map((r) => {
+      const o = { key: (r.key || '').trim(), description: (r.description || '').trim(), clientFill: !!r.clientFill }
+      if (withIn) o.in = r.in || 'HEADER'
+      if (!o.clientFill) {
+        const v = (r.value || '').trim()
+        if (v) o.value = v // 明文只在提交瞬间存在，mock 落库即掩码
+        else if (r.valueMasked) o.valueMasked = r.valueMasked // 留空=保留原值
+      }
+      return o
+    })
+function cleanRequestRows(rows) {
+  const out = []
+  for (const r of rows || []) {
+    const name = (r.name || '').trim()
+    const nested = r.type === 'object' || r.type === 'array'
+    const children = nested ? cleanRequestRows(r.children) : []
+    if (!r.preset && !name && !(r.defaultValue || '').trim() && !children.length) continue // 空白自定义行丢弃
+    out.push({
+      name,
+      type: r.type,
+      required: !!r.required,
+      clientField: r.clientField || '',
+      defaultValue: (r.defaultValue || '').trim(),
+      ...(r.preset ? { preset: true } : {}),
+      children
+    })
   }
+  return out
+}
+const cleanResponseRows = (rows) =>
+  (rows || [])
+    .filter((r) => r.preset || (r.name || '').trim() || (r.description || '').trim())
+    .map((r) => ({ name: (r.name || '').trim(), description: (r.description || '').trim(), type: r.type, ...(r.preset ? { preset: true } : {}) }))
+function buildConfig() {
+  if (form.sourceType === 'UPLOAD') {
+    const cfg = {}
+    for (const k of Object.keys(UPLOAD_DEFAULTS)) cfg[k] = form[k]
+    return cfg
+  }
+  if (form.sourceType === 'API') {
+    return {
+      url: (form.api.url || '').trim(),
+      method: form.api.method,
+      authType: form.api.authType,
+      authParams: form.api.authType === 'API_KEY' ? outParamRows(apiAuthRows.value, true) : [],
+      requestMap: cleanRequestRows(apiRequestRows.value),
+      responseMap: cleanResponseRows(apiResponseRows.value),
+      timeoutMs: form.api.timeoutMs
+    }
+  }
+  return {
+    transport: form.mcp.transport,
+    endpoint: (form.mcp.endpoint || '').trim(),
+    authType: form.mcp.authType,
+    authHeaderName: (form.mcp.authHeaderName || '').trim(),
+    command: form.mcp.command,
+    args: mcpArgsText.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+    envVars: form.mcp.transport === 'stdio' ? outParamRows(mcpEnvRows.value, false) : [],
+    tools: [...mcpToolsSelected.value],
+    requestMap: cleanRequestRows(mcpRequestRows.value),
+    responseMap: cleanResponseRows(mcpResponseRows.value),
+    timeoutMs: form.mcp.timeoutMs
+  }
+}
+/** 保存 / 测试提交的明文密钥通道：API=Bearer Token；MCP=访问凭证（留空=保留原值）。 */
+function authValueOut() {
+  if (form.sourceType === 'API') return form.api.authType === 'BEARER' ? apiBearerToken.value.trim() || null : null
+  if (form.sourceType === 'MCP') return form.mcp.authType !== 'none' ? mcpCredential.value.trim() || null : null
   return null
+}
+/** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.6），一次性标红全部问题项。 */
+function validateTyped() {
+  clearErrors()
+  const errors = {}
+  if (form.sourceType === 'API') {
+    if (form.api.authType === 'API_KEY') {
+      const err = validateApiAuthParams(apiAuthRows.value)
+      if (err) errors.apiAuth = err
+    }
+    if (form.api.authType === 'BEARER' && !apiBearerToken.value.trim() && !keepApiBearer.value) {
+      errors.apiBearer = 'Bearer Token 必填'
+    }
+    const reqErr = validateRequestMap(cleanRequestRows(apiRequestRows.value))
+    if (reqErr) errors.apiRequestMap = reqErr
+    const respErr = validateResponseMap(cleanResponseRows(apiResponseRows.value))
+    if (respErr) errors.apiResponseMap = respErr
+  } else if (form.sourceType === 'MCP') {
+    if (form.mcp.transport === 'streamable-http') {
+      if (form.mcp.authType === 'header') {
+        const hn = (form.mcp.authHeaderName || '').trim()
+        if (!hn) errors.mcpHeaderName = 'Header 名必填'
+        else if (!HEADER_NAME_RE.test(hn)) errors.mcpHeaderName = '仅允许字母、数字和连字符（不超过 128 字符）'
+      }
+      if (form.mcp.authType !== 'none' && !mcpCredential.value.trim() && !keepMcpCredential.value) {
+        errors.mcpCredential = form.mcp.authType === 'bearer' ? 'Bearer Token 必填' : '访问凭证必填'
+      }
+    } else {
+      if (!MCP_COMMAND_OPTIONS.includes(form.mcp.command)) errors.mcpCommand = '请选择 Command'
+      const envErr = validateMcpEnv(mcpEnvRows.value)
+      if (envErr) errors.mcpEnv = envErr
+    }
+    if (!mcpToolsSelected.value.length) errors.mcpTools = '至少选择一个检索工具'
+    const reqErr = validateRequestMap(cleanRequestRows(mcpRequestRows.value))
+    if (reqErr) errors.mcpRequestMap = reqErr
+    const respErr = validateResponseMap(cleanResponseRows(mcpResponseRows.value))
+    if (respErr) errors.mcpResponseMap = respErr
+  }
+  Object.assign(fieldErrors, errors)
+  return Object.keys(errors).length === 0
 }
 async function save() {
   const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
-  const err = validateTyped()
-  if (err) {
-    ElMessage.error(err)
+  if (!validateTyped() || !valid) {
+    ElMessage.warning('请先修正标红项')
     return
   }
   // 更换向量模型影响现有索引：保存前确认（md §五.1）
@@ -260,7 +494,7 @@ async function save() {
       name: form.name.trim(),
       status: form.status,
       config: buildConfig(),
-      authValue: form.sourceType === 'UPLOAD' ? undefined : form.authValue || null
+      authValue: form.sourceType === 'UPLOAD' ? undefined : authValueOut()
     }
     let saved
     if (targetId.value) saved = await updateKnowledgeSource(targetId.value, payload)
@@ -274,7 +508,7 @@ async function save() {
     close()
   } catch (e) {
     // 保存失败：保留表单内容、不关抽屉（md §八.2）
-    if (e?.field) formRef.value?.validateField?.(e.field)
+    if (e?.field) fieldErrors[e.field] = e.message || '校验未通过'
     ElMessage.error(e?.message || '保存失败')
   } finally {
     saving.value = false
@@ -305,7 +539,8 @@ function close() {
       </StatusTag>
     </template>
 
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="118px" label-position="right" :disabled="viewMode">
+    <!-- rules 随类型 / 传输方式动态切换，关掉 validate-on-rule-change 防止切换瞬间对空表单标红 -->
+    <el-form ref="formRef" :model="form" :rules="rules" :validate-on-rule-change="false" label-width="118px" label-position="right" :disabled="viewMode">
       <!-- 公共字段（md §四.3） -->
       <section class="ksrc-sec">
         <div class="ksrc-sec-title">基本信息</div>
@@ -330,7 +565,7 @@ function close() {
         </el-form-item>
       </section>
 
-      <!-- 上传类：内置 RAG 配置（md §五.1） -->
+      <!-- 上传类：内置 RAG 配置（md §五.1，本轮冻结不动） -->
       <section v-if="form.sourceType === 'UPLOAD'" class="ksrc-sec">
         <div class="ksrc-sec-title">内置 RAG 配置</div>
         <el-form-item label="文档类型">
@@ -375,148 +610,221 @@ function close() {
         </el-form-item>
       </section>
 
-      <!-- API 类（md §六） -->
-      <section v-else-if="form.sourceType === 'API'" class="ksrc-sec">
-        <div class="ksrc-sec-title">连接配置</div>
-        <el-form-item label="请求地址" prop="url">
-          <el-input v-model="form.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
-        </el-form-item>
-        <el-form-item label="请求方法">
-          <el-select v-model="form.method" class="ksrc-half">
-            <el-option label="GET" value="GET" />
-            <el-option label="POST" value="POST" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="鉴权方式">
-          <div class="ksrc-row">
-            <el-select v-model="form.authType" class="ksrc-half">
-              <el-option label="无鉴权" value="NONE" />
-              <el-option label="API Key" value="API_KEY" />
+      <!-- API 类（md §六；骨架照原型 sourceFields('API')：请求配置 → 鉴权配置 → 两张映射卡片） -->
+      <template v-else-if="form.sourceType === 'API'">
+        <section class="ksrc-sec">
+          <div class="ksrc-sec-title">请求配置</div>
+          <el-form-item label="请求方法" required>
+            <el-select v-model="form.api.method" class="ksrc-half">
+              <el-option v-for="m in API_METHOD_OPTIONS" :key="m" :label="m" :value="m" />
             </el-select>
-            <template v-if="form.authType === 'API_KEY'">
-              <el-input v-model="form.authName" class="ksrc-quarter" placeholder="参数名称，如 X-Api-Key" />
-              <el-select v-model="form.authIn" class="ksrc-quarter">
-                <el-option v-for="o in API_AUTH_IN" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
-            </template>
+          </el-form-item>
+          <el-form-item label="请求地址" prop="api.url" required>
+            <el-input v-model="form.api.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
+          </el-form-item>
+          <el-form-item label="超时时间" required>
+            <div class="ksrc-inline">
+              <el-input-number v-model="form.api.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" />
+              <span class="ksrc-unit">单位毫秒，默认 8000，范围 1000～60000</span>
+            </div>
+          </el-form-item>
+        </section>
+        <section class="ksrc-sec">
+          <div class="ksrc-sec-title">
+            鉴权配置
+            <span class="ksrc-sec-sub">凭证会静态附加到每次请求</span>
           </div>
-        </el-form-item>
-        <el-form-item v-if="form.authType === 'API_KEY'" label="访问凭证">
-          <el-input v-model="form.authValue" type="password" show-password autocomplete="new-password" class="ksrc-half" :placeholder="form.authValueMasked ? `已配置 ${form.authValueMasked}，留空表示保留` : '请输入访问凭证'" />
-        </el-form-item>
-        <el-form-item label="超时时间">
-          <div class="ksrc-inline">
-            <el-input-number v-model="form.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" />
-            <span class="ksrc-unit">ms（1000～60000，默认 8000）</span>
-          </div>
-        </el-form-item>
-        <div class="ksrc-sub">请求映射</div>
-        <el-form-item label="参数名">
-          <div class="ksrc-row">
-            <el-input v-model="form.queryField" class="ksrc-half"><template #prepend>query</template></el-input>
-            <el-input v-model="form.topKField" class="ksrc-half" placeholder="可选"><template #prepend>topK</template></el-input>
-          </div>
-        </el-form-item>
-        <div class="ksrc-sub">响应映射</div>
-        <el-form-item label="结果数组">
-          <el-input v-model="form.itemsPath" placeholder="JSONPath，如 $.data[*]" class="ksrc-mono" />
-        </el-form-item>
-        <el-form-item label="结果字段">
-          <div class="ksrc-row">
-            <el-input v-model="form.contentField" class="ksrc-third"><template #prepend>content</template></el-input>
-            <el-input v-model="form.sourceField" class="ksrc-third" placeholder="可选"><template #prepend>source</template></el-input>
-            <el-input v-model="form.scoreField" class="ksrc-third" placeholder="可选"><template #prepend>score</template></el-input>
-          </div>
-        </el-form-item>
-        <el-form-item label=" ">
-          <div class="ksrc-row ksrc-inline">
-            <el-button size="small" :loading="testing" @click="doTest">测试连接</el-button>
-            <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
-            <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
-          </div>
-        </el-form-item>
-      </section>
+          <el-form-item label="鉴权方式" required>
+            <el-radio-group v-model="form.api.authType">
+              <el-radio value="NONE">无鉴权</el-radio>
+              <el-radio value="API_KEY">API KEY</el-radio>
+              <el-radio value="BEARER">Bearer Token</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <!-- API KEY 多参数表（md §六.1.1；ParamRowsEditor 与 API 连接器同款，全宽行区） -->
+          <template v-if="form.api.authType === 'API_KEY'">
+            <ParamRowsEditor
+              :rows="apiAuthRows"
+              :readonly="viewMode"
+              show-in
+              :in-options="API_AUTH_IN_OPTIONS"
+              key-header="参数名"
+              key-placeholder="如 X-Api-Key"
+              value-header="参数值"
+              desc-placeholder="选填：这个参数是做什么的"
+              add-label="+ 添加参数"
+              client-fill-hint="客户端填写参数由客户端收集，平台不存值"
+              @update:rows="apiAuthRows = $event"
+              @interact="delete fieldErrors.apiAuth"
+            />
+            <div v-if="fieldErrors.apiAuth" class="ksrc-err">{{ fieldErrors.apiAuth }}</div>
+          </template>
+          <el-form-item v-if="form.api.authType === 'BEARER'" label="Bearer Token" :error="fieldErrors.apiBearer" required>
+            <el-input
+              v-model="apiBearerToken"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              class="ksrc-bearer"
+              :placeholder="keepApiBearer ? '已配置（留空保持不变）' : '只填 Token 本体，不含 Bearer 前缀'"
+              @input="delete fieldErrors.apiBearer"
+            >
+              <template #prepend>Authorization: Bearer</template>
+            </el-input>
+            <div v-if="keepApiBearer" class="ksrc-masked">当前：<code>{{ apiBearerMasked }}</code>（留空保持不变，重填覆盖）</div>
+          </el-form-item>
+        </section>
+        <section class="ksrc-sec">
+          <SourceMappingEditor
+            protocol="API"
+            :request-rows="apiRequestRows"
+            :response-rows="apiResponseRows"
+            :readonly="viewMode"
+            :request-error="fieldErrors.apiRequestMap"
+            :response-error="fieldErrors.apiResponseMap"
+            @update:request-rows="apiRequestRows = $event"
+            @update:response-rows="apiResponseRows = $event"
+            @interact="delete fieldErrors.apiRequestMap; delete fieldErrors.apiResponseMap"
+          />
+        </section>
+      </template>
 
-      <!-- MCP 类（md §七） -->
-      <section v-else class="ksrc-sec">
-        <div class="ksrc-sec-title">MCP 检索</div>
-        <el-form-item label="接入方式">
-          <el-radio-group v-model="form.mode">
-            <el-radio value="EXISTING">引用现有 MCP</el-radio>
-            <el-radio value="INLINE">内联配置</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <template v-if="form.mode === 'EXISTING'">
-          <el-form-item label="MCP 服务">
-            <div class="ksrc-row">
-              <el-select v-model="form.mcpId" filterable placeholder="从连接器模块选择已登记的 MCP" class="ksrc-half" @change="onMcpChange">
-                <el-option v-for="m in mcps" :key="m.id" :label="m.name" :value="m.id" />
-              </el-select>
-              <span class="ksrc-hint">复用连接器配置，不复制或回显其凭证</span>
+      <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态：连接与鉴权卡 → 检索工具卡 → 两张映射卡片） -->
+      <template v-else>
+        <section class="ksrc-sec">
+          <div class="ksrc-sec-title">MCP 检索</div>
+          <div class="ksrc-card">
+            <div class="ksrc-card-title">
+              <strong>连接与鉴权</strong>
+              <span>直接配置 MCP 服务连接信息</span>
             </div>
-          </el-form-item>
-        </template>
-        <template v-else>
-          <el-form-item label="MCP 服务地址">
-            <el-input v-model="form.endpoint" maxlength="500" placeholder="Endpoint，如 https://rag.example.com/mcp" />
-          </el-form-item>
-          <el-form-item label="鉴权方式">
-            <div class="ksrc-row">
-              <el-select v-model="form.authType" class="ksrc-half">
-                <el-option label="无鉴权" value="none" />
-                <el-option label="Bearer Token" value="bearer" />
-                <el-option label="自定义 Header" value="header" />
-              </el-select>
-              <el-input v-if="form.authType === 'header'" v-model="form.authHeaderName" class="ksrc-half" placeholder="Header 名称，如 X-Api-Key" />
+            <el-form-item label="传输方式" required>
+              <el-radio-group v-model="form.mcp.transport">
+                <el-radio v-for="t in TRANSPORT_OPTIONS" :key="t" :value="t">{{ t }}</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <template v-if="form.mcp.transport === 'streamable-http'">
+              <el-form-item label="MCP 服务地址" prop="mcp.endpoint" required>
+                <el-input v-model="form.mcp.endpoint" maxlength="500" placeholder="Endpoint，如 https://example.com/mcp" />
+              </el-form-item>
+              <el-form-item label="鉴权方式" required>
+                <el-select v-model="form.mcp.authType" class="ksrc-half">
+                  <el-option v-for="o in MCP_AUTH_TYPES" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="form.mcp.authType === 'bearer'" label="Bearer Token" :error="fieldErrors.mcpCredential" required>
+                <el-input
+                  v-model="mcpCredential"
+                  type="password"
+                  show-password
+                  autocomplete="new-password"
+                  class="ksrc-bearer"
+                  :placeholder="keepMcpCredential ? '已配置（留空保持不变）' : '只填 Token 本体，不含 Bearer 前缀'"
+                  @input="delete fieldErrors.mcpCredential"
+                >
+                  <template #prepend>Authorization: Bearer</template>
+                </el-input>
+                <div v-if="keepMcpCredential" class="ksrc-masked">当前：<code>{{ mcpCredentialMasked }}</code>（留空保持不变，重填覆盖）</div>
+              </el-form-item>
+              <template v-if="form.mcp.authType === 'header'">
+                <el-form-item label="Header 名" :error="fieldErrors.mcpHeaderName" required>
+                  <el-input
+                    v-model="form.mcp.authHeaderName"
+                    maxlength="128"
+                    class="ksrc-half"
+                    placeholder="如 X-Api-Key"
+                    @input="delete fieldErrors.mcpHeaderName"
+                  />
+                  <span class="ksrc-hint">仅允许字母、数字和连字符</span>
+                </el-form-item>
+                <el-form-item label="访问凭证" :error="fieldErrors.mcpCredential" required>
+                  <el-input
+                    v-model="mcpCredential"
+                    type="password"
+                    show-password
+                    autocomplete="new-password"
+                    class="ksrc-half"
+                    :placeholder="keepMcpCredential ? '已配置（留空保持不变）' : '请输入访问凭证'"
+                    @input="delete fieldErrors.mcpCredential"
+                  />
+                  <div v-if="keepMcpCredential" class="ksrc-masked">当前：<code>{{ mcpCredentialMasked }}</code>（留空保持不变，重填覆盖）</div>
+                </el-form-item>
+              </template>
+            </template>
+            <template v-else>
+              <el-form-item label="Command" :error="fieldErrors.mcpCommand" required>
+                <el-select v-model="form.mcp.command" class="ksrc-half" @change="delete fieldErrors.mcpCommand">
+                  <el-option v-for="c in MCP_COMMAND_OPTIONS" :key="c" :label="c" :value="c" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Arguments">
+                <el-input v-model="mcpArgsText" type="textarea" :rows="3" :placeholder="ARGS_PLACEHOLDER" />
+                <span class="ksrc-hint-block">选填，每行一个参数</span>
+              </el-form-item>
+              <div class="ksrc-sub">
+                环境变量
+                <span class="ksrc-sub-hint">勾选「客户端填写」时，平台只声明变量名，不保存预设值</span>
+              </div>
+              <ParamRowsEditor
+                :rows="mcpEnvRows"
+                :readonly="viewMode"
+                key-header="变量名"
+                key-placeholder="API_KEY"
+                value-header="平台值"
+                desc-placeholder="选填：这个变量是做什么的"
+                add-label="+ 添加变量"
+                client-fill-hint="客户端填写变量由客户端收集，平台不存值"
+                @update:rows="mcpEnvRows = $event"
+                @interact="delete fieldErrors.mcpEnv"
+              />
+              <div v-if="fieldErrors.mcpEnv" class="ksrc-err">{{ fieldErrors.mcpEnv }}</div>
+            </template>
+            <el-form-item label="超时时间" required>
+              <div class="ksrc-inline">
+                <el-input-number v-model="form.mcp.timeoutMs" :min="1000" :max="120000" :step="1000" controls-position="right" />
+                <span class="ksrc-unit">单位毫秒，默认 10000，范围 1000～120000</span>
+              </div>
+            </el-form-item>
+          </div>
+
+          <!-- 检索工具：多选复选框 ≥1；清单来自连接测试成功返回（md §七.3） -->
+          <div class="ksrc-card">
+            <div class="ksrc-card-title">
+              <strong>检索工具</strong>
+              <span>从该 MCP 服务暴露的全部工具中，选择用于知识检索的工具（可多选）</span>
             </div>
-          </el-form-item>
-          <el-form-item v-if="form.authType !== 'none'" label="访问凭证">
-            <el-input v-model="form.authValue" type="password" show-password autocomplete="new-password" class="ksrc-half" :placeholder="form.authValueMasked ? `已配置 ${form.authValueMasked}，留空表示保留` : '请输入访问凭证'" />
-          </el-form-item>
-        </template>
-        <el-form-item label="工具">
-          <div class="ksrc-tool">
-            <div class="ksrc-row">
-              <el-select v-if="form.mode === 'EXISTING'" v-model="form.toolName" filterable placeholder="选择用于知识检索的工具" class="ksrc-half" :no-data-text="form.mcpId ? '该 MCP 没有工具，先到连接器「拉取工具」' : '先选择 MCP 服务'">
-                <el-option v-for="tool in mcpTools" :key="tool.name" :label="tool.name" :value="tool.name" />
-              </el-select>
-              <el-input v-else v-model="form.toolName" class="ksrc-half" placeholder="工具名，如 search" />
-              <span class="ksrc-hint">用于知识检索的 MCP 工具</span>
-            </div>
-            <!-- 工具 Schema 默认折叠，按需查看入参（md §七.3） -->
-            <el-collapse v-if="activeTool?.inputSchema" v-model="schemaOpen" class="ksrc-schema">
-              <el-collapse-item name="schema" title="查看工具入参 Schema">
-                <pre class="ksrc-schema-pre">{{ JSON.stringify(activeTool.inputSchema, null, 2) }}</pre>
-              </el-collapse-item>
-            </el-collapse>
+            <template v-if="availableTools.length">
+              <el-checkbox-group v-model="mcpToolsSelected" @change="delete fieldErrors.mcpTools">
+                <el-checkbox v-for="t in availableTools" :key="t" :value="t">{{ t }}</el-checkbox>
+              </el-checkbox-group>
+              <div class="ksrc-hint-block">至少选择一个检索工具</div>
+            </template>
+            <div v-else class="ksrc-note">请先完成连接测试以获取工具列表</div>
+            <div v-if="fieldErrors.mcpTools" class="ksrc-err">{{ fieldErrors.mcpTools }}</div>
           </div>
-        </el-form-item>
-        <el-form-item label="参数映射">
-          <div class="ksrc-row">
-            <el-input v-model="form.queryParam" class="ksrc-half"><template #prepend>query</template></el-input>
-            <el-input v-model="form.topKParam" class="ksrc-half" placeholder="可选"><template #prepend>topK</template></el-input>
-          </div>
-        </el-form-item>
-        <el-form-item label="结果字段">
-          <div class="ksrc-row">
-            <el-input v-model="form.contentField" class="ksrc-third"><template #prepend>content</template></el-input>
-            <el-input v-model="form.sourceField" class="ksrc-third" placeholder="可选"><template #prepend>source</template></el-input>
-            <el-input v-model="form.scoreField" class="ksrc-third" placeholder="可选"><template #prepend>score</template></el-input>
-          </div>
-        </el-form-item>
-        <el-form-item label="超时时间">
-          <div class="ksrc-inline">
-            <el-input-number v-model="form.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" />
-            <span class="ksrc-unit">ms（系统默认值，可直接修改）</span>
-          </div>
-        </el-form-item>
-        <el-form-item label=" ">
-          <div class="ksrc-row ksrc-inline">
-            <el-button size="small" :loading="testing" @click="doTest">测试连接</el-button>
-            <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
-            <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
-          </div>
-        </el-form-item>
+
+          <SourceMappingEditor
+            protocol="MCP"
+            :request-rows="mcpRequestRows"
+            :response-rows="mcpResponseRows"
+            :readonly="viewMode"
+            :request-error="fieldErrors.mcpRequestMap"
+            :response-error="fieldErrors.mcpResponseMap"
+            @update:request-rows="mcpRequestRows = $event"
+            @update:response-rows="mcpResponseRows = $event"
+            @interact="delete fieldErrors.mcpRequestMap; delete fieldErrors.mcpResponseMap"
+          />
+          <div class="ksrc-note ksrc-test-note">保存前可使用下方“测试连接”验证连接、工具调用及字段映射。</div>
+        </section>
+      </template>
+
+      <!-- 测试连接（API / MCP 共用，md §六.4 / §七.7） -->
+      <section v-if="form.sourceType !== 'UPLOAD'" class="ksrc-sec">
+        <div class="ksrc-row ksrc-inline">
+          <el-button size="small" :loading="testing" @click="doTest">测试连接</el-button>
+          <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
+          <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
+        </div>
       </section>
     </el-form>
   </DrawerEditor>
@@ -536,11 +844,45 @@ function close() {
   color: var(--c-text-strong);
   margin-bottom: var(--space-3);
 }
+.ksrc-sec-sub {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  margin-left: var(--space-2);
+}
 .ksrc-sec :deep(.el-form-item) {
   margin-bottom: var(--space-4);
 }
 .ksrc-sec :deep(.el-form-item:last-child) {
   margin-bottom: 0;
+}
+/* 卡片骨架照原型 kmcp-card：细边框圆角卡 + 「标题 + 弱色副注」行 */
+.ksrc-card {
+  border: 1px solid var(--c-border, #e0e6e3);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.ksrc-card + .ksrc-card {
+  margin-top: var(--space-3);
+}
+.ksrc-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.ksrc-card-title strong {
+  font-size: var(--fs-sm);
+  color: var(--c-text-strong);
+}
+.ksrc-card-title span {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.ksrc-card :deep(.el-checkbox-group) {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 .ksrc-row {
   display: flex;
@@ -551,12 +893,6 @@ function close() {
 }
 .ksrc-half {
   width: calc(50% - 5px);
-}
-.ksrc-third {
-  width: calc(33.333% - 7px);
-}
-.ksrc-quarter {
-  width: calc(25% - 8px);
 }
 .ksrc-inline {
   display: flex;
@@ -575,6 +911,12 @@ function close() {
 .ksrc-hint {
   margin-left: var(--space-2);
 }
+.ksrc-hint-block {
+  width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  margin-top: var(--space-1);
+}
 .ksrc-desc {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
@@ -588,14 +930,39 @@ function close() {
   color: var(--c-text-muted);
   line-height: 1.55;
 }
-.ksrc-mono :deep(input) {
-  font-family: var(--font-mono);
+.ksrc-test-note {
+  margin-top: var(--space-3);
 }
 .ksrc-sub {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
   font-weight: var(--fw-medium);
   margin: 0 0 var(--space-2);
+}
+.ksrc-sub-hint {
+  font-weight: var(--fw-regular);
+  color: var(--c-text-faint);
+  margin-left: var(--space-1);
+}
+/* Bearer 前置段（完整请求头格式展示）：等宽弱色（ApiEditor 同款） */
+.ksrc-bearer :deep(.el-input-group__prepend) {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.ksrc-masked {
+  width: 100%;
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.ksrc-masked code {
+  font-family: var(--font-mono);
+}
+.ksrc-err {
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-danger);
 }
 .ksrc-pre {
   width: 100%;
@@ -625,36 +992,6 @@ function close() {
 .ksrc-pre-desc {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
-}
-.ksrc-tool {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.ksrc-schema {
-  border: 0;
-}
-.ksrc-schema :deep(.el-collapse-item__header) {
-  height: 32px;
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  border: 0;
-}
-.ksrc-schema :deep(.el-collapse-item__wrap) {
-  border: 0;
-}
-.ksrc-schema-pre {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  background: var(--c-bg-subtle, rgba(0, 0, 0, 0.03));
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  line-height: 1.5;
-  color: var(--c-text);
-  max-height: 240px;
-  overflow: auto;
 }
 .ksrc-verify {
   font-size: var(--fs-xs);

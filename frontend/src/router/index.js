@@ -86,11 +86,11 @@ const adminChildren = [
     meta: { title: '岗位管理', roles: ['FDE', 'ADMIN'], module: 'FDE' }
   },
   {
-    // 岗位分配（提案 20260721-2）：以用户为核心管理「用户 ↔ 绑定岗位」，FDE 工作台。
+    // 岗位管理（2026-09-07 PRD-20260904 对齐改名，原「岗位分配」）：以用户为核心管理「用户 ↔ 绑定岗位」，FDE 工作台。
     path: 'position-assignments',
     name: 'AdminPositionAssignments',
     component: () => import('@/views/admin/AdminPositionAssignments.vue'),
-    meta: { title: '岗位分配', roles: ['FDE', 'ADMIN'], module: 'FDE' }
+    meta: { title: '岗位管理', roles: ['FDE', 'ADMIN'], module: 'FDE' }
   },
   {
     path: 'connector',

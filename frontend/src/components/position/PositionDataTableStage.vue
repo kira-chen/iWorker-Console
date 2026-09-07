@@ -143,7 +143,7 @@ const fieldGlobalError = ref('')
 const dossierErrors = ref({})
 
 const bizSlotRows = computed(() => fields.value.filter((r) => !r.isSystem))
-const keySuggestions = computed(() => bizSlotRows.value.map((r) => (r.label || '').trim()).filter(Boolean))
+// keySuggestions 已删（2026-09-07 PRD-20260904 对齐 PT-C7：规则名改自由输入，不再限编目字段联想）
 
 /* ---- 脏检查基线快照 ---- */
 const baselineSnapshot = ref('')
@@ -711,7 +711,7 @@ function cardSubLine(t) {
     <!-- 弹窗：业务规则整表编辑 -->
     <el-dialog v-model="rulesDialogOpen" title="编辑业务规则" width="960px" :close-on-click-modal="false" append-to-body>
       <div class="wd-dialog-body">
-        <DossierRuleListEditor v-model:rows="rulesDraft" :key-suggestions="keySuggestions" :row-errors="rulesRowErrors" :global-error="rulesGlobalError" />
+        <DossierRuleListEditor v-model:rows="rulesDraft" :row-errors="rulesRowErrors" :global-error="rulesGlobalError" />
       </div>
       <template #footer>
         <el-button @click="rulesDialogOpen = false">取消</el-button>

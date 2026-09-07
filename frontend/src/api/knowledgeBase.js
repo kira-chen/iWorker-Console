@@ -89,16 +89,13 @@ export function deleteKnowledgeSource(id) {
   if (USE_MOCK) return mock.removeSource(id)
   return request.delete(`${KS}/${id}`, W)
 }
-// 测试连接（API / MCP）：payload = { sourceId?, config, authValue? }，未保存的草稿也可测
+// 测试连接（API / MCP）：payload = { sourceId?, config, authValue? }，未保存的草稿也可测；
+// MCP 测试成功返回 tools 工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）
 export function testKnowledgeSource(sourceType, payload) {
   if (USE_MOCK) return mock.testSource(sourceType, payload)
   return request.post(`${KS}/test/${sourceType}`, payload, W)
 }
-// MCP 工具清单（选连接器里已有 MCP 时，列它的工具供选检索工具）
-export function listMcpToolsForKb(mcpId) {
-  if (USE_MOCK) return mock.mcpTools(mcpId)
-  return request.get(`/fde/connectors/mcp/${mcpId}`).then((d) => d?.tools || [])
-}
+// listMcpToolsForKb 已删除（2026-09-07 PRD-20260904 md §七.1：MCP 数据源仅直接填写，不再引用连接器 MCP）
 
 /* ---- 文档（上传类数据源持有） ---- */
 export function listKnowledgeDocs(sourceId) {
@@ -125,10 +122,7 @@ export function listPositionOptions() {
   if (USE_MOCK) return mock.positions()
   return request.get('/fde/positions', { params: { page: 1, size: 200 } }).then((d) => (Array.isArray(d) ? d : d?.list || []))
 }
-export function listMcpOptions() {
-  if (USE_MOCK) return mock.mcps()
-  return request.get('/fde/connectors/mcp', { params: { page: 1, size: 200 } }).then((d) => (Array.isArray(d) ? d : d?.list || []))
-}
+// listMcpOptions 已删除（同上：引用现有 MCP 模式废弃）
 export function listEmbeddingModelOptions() {
   if (USE_MOCK) return mock.embeddingModels()
   // 待拍板 Q2：建议模型页新增「向量嵌入」类别；此处按该口径取 category=EMBEDDING

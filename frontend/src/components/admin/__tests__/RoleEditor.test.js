@@ -63,7 +63,7 @@ const TREE = [
     scope: '管理端',
     groups: [
       { name: '01 总览', pages: ['驾驶舱'] },
-      { name: '02 岗位', pages: ['岗位', '岗位分配'] }
+      { name: '02 岗位', pages: ['岗位', '岗位管理'] }
     ]
   }
 ]
@@ -141,7 +141,7 @@ describe('RoleEditor · 权限区形态（2026-09-01 原型对齐）', () => {
     expect(scopes[1].querySelector('.re-scope-count').textContent.trim()).toBe('0/3')
     expect([...scopes[1].querySelectorAll('.re-group-title')].map((g) => g.textContent.trim()))
       .toEqual(['01 总览', '02 岗位'])
-    expect(pageBox(el, '岗位分配')).toBeTruthy()
+    expect(pageBox(el, '岗位管理')).toBeTruthy()
   })
 
   it('勾用户端整组 → 4 个页面入选；底部实时「已选择 N 个页面」', async () => {
@@ -227,11 +227,11 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
   it('编辑态只改权限 → 只调 setRolePermissions（全量替换），不改名', async () => {
     const el = mount({ role: { id: 7, name: '角色', modules: ['岗位'], userCount: 0 } })
     await open()
-    await toggle(pageBox(el, '岗位分配'))
+    await toggle(pageBox(el, '岗位管理'))
     submitBtn(el).click()
     await nextTick()
     await nextTick()
-    expect(setRolePermissions).toHaveBeenCalledWith(7, ['岗位', '岗位分配'])
+    expect(setRolePermissions).toHaveBeenCalledWith(7, ['岗位', '岗位管理'])
     expect(updateRole).not.toHaveBeenCalled()
   })
 
@@ -248,7 +248,7 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
 
   it('权限比对与顺序无关：集合相同仅存储顺序不同 → 不判为变更', async () => {
     // 回填时按树序归一：role.modules 顺序打乱也不构成变更
-    const el = mount({ role: { id: 7, name: '角色', modules: ['岗位分配', '岗位'], userCount: 0 } })
+    const el = mount({ role: { id: 7, name: '角色', modules: ['岗位管理', '岗位'], userCount: 0 } })
     await open()
     submitBtn(el).click()
     await nextTick()

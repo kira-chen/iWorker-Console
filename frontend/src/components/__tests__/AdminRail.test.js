@@ -11,7 +11,7 @@ import { useUserStore } from '@/stores/user'
  *
  * 菜单六段（分组标题带序号，仅作类别归属、无真实页面）：
  *   01 总览：驾驶舱（规划中占位）——三后台角色（isBackstage）均见。
- *   02 岗位：岗位 / 岗位分配——随 canFde 显隐。（原「岗位技能」已随三页合一并入 03 能力段的「技能」）
+ *   02 岗位：岗位 / 岗位管理——随 canFde 显隐。（原「岗位技能」已随三页合一并入 03 能力段的「技能」）
  *   03 能力：专家 / 技能 / 知识库(占位) / 连接器 / 模型——整段随 canSysConfig 显隐，「模型」仅 ADMIN 逐项收窄。
  *   「技能」（三页合一，2026-08-23）取代原「岗位技能 / 平台技能 / 系统内置技能」三项，显隐由页面权限 CAPABILITY_SKILL_CONSOLE 治理。
  *   04 运行：实例与会话 / 运行规格 / 配额与限流（均占位）——整段仅 ADMIN。
@@ -156,7 +156,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(groupNosOf(el)).toEqual(['01', '02', '03', '04', '05', '06'])
     expect(labelsOf(el)).toEqual([
       '驾驶舱',
-      '岗位', '岗位分配',
+      '岗位', '岗位管理',
       // 「技能」= 三页合一（2026-08-23），取代原 岗位技能/平台技能/系统内置技能 三项
       '专家', '技能', '知识库', '连接器', '模型',
       '实例与会话', '运行规格', '配额与限流',
@@ -181,7 +181,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
   it('仅 FDE：见 01 总览 + 02 岗位两段，不见能力/运行/治理/组织段', async () => {
     const el = await mount({ name: 'AdminPositions' }, ['FDE'])
     expect(groupNamesOf(el)).toEqual(['总览', '岗位'])
-    expect(labelsOf(el)).toEqual(['驾驶舱', '岗位', '岗位分配'])
+    expect(labelsOf(el)).toEqual(['驾驶舱', '岗位', '岗位管理'])
   })
 
   it('仅 SYS_CONFIG：见 01 总览 + 03 能力（无模型），无运行/治理/组织段', async () => {
@@ -201,7 +201,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(groupNamesOf(el)).toEqual(['总览', '岗位', '能力'])
     expect(labelsOf(el)).toEqual([
       '驾驶舱',
-      '岗位', '岗位分配',
+      '岗位', '岗位管理',
       '专家', '技能', '知识库', '连接器'
     ])
     expect(labelsOf(el)).not.toContain('模型')
@@ -315,6 +315,6 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
   it('无 pages 字段时退回角色判定（老会话不被锁在门外）', async () => {
     const el = await mount({ name: 'AdminPositions' }, ['FDE'])
     expect(groupNamesOf(el)).toEqual(['总览', '岗位'])
-    expect(labelsOf(el)).toEqual(['驾驶舱', '岗位', '岗位分配'])
+    expect(labelsOf(el)).toEqual(['驾驶舱', '岗位', '岗位管理'])
   })
 })
