@@ -14,9 +14,13 @@
  *   业务类型不含 OTHER，此分支仅作兜底）；
  *   详情底部按状态：PENDING=关闭|撤回申请；APPROVED=仅关闭；REJECTED/WITHDRAWN=
  *   关闭|前往修改|重新提交；编辑态=关闭|提交审核。
+ * 2026-09-08 原型复刻批次 2B（G-5 / M-1 / M-2）：申请时间列头改原型文字箭头「申请时间 ↓/↑」（列头插槽自管
+ *   排序态，点击切正倒序并回第 1 页）；列表【撤回】按原型 L1562 为普通 link（非 danger，详情底栏「撤回申请」
+ *   仍 danger plain）；详情【前往修改】照原型 goBusiness(row,true) 先关只读抽屉再以编辑态重开，
+ *   保证编辑器按编辑态初始化。
  * 数据默认走 mock（api/myApplicationsMock.js，种子=原型 10 条），见 api/myApplications.js。
  */
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import StatusTag from '@/components/StatusTag.vue'
@@ -76,11 +80,12 @@ onBeforeUnmount(() => {
   if (kwTimer) clearTimeout(kwTimer)
 })
 
-function onSortChange({ prop, order }) {
-  if (prop !== 'submittedAt') return
-  query.sortDir = order === 'ascending' ? 'asc' : 'desc'
+// 申请时间列头（原型 L1562 `<button class="sort">申请时间 ↓</button>`）：点击切正倒序并回第 1 页（原型 myapp-sort）
+function toggleSort() {
+  query.sortDir = query.sortDir === 'desc' ? 'asc' : 'desc'
   reload()
 }
+const sortArrow = computed(() => (query.sortDir === 'asc' ? '↑' : '↓'))
 
 /* ---------------- 详情（业务原生视图，view/edit 双态） ---------------- */
 const detailVisible = ref(false)
@@ -135,7 +140,7 @@ function openDetail(row, edit = false) {
   detailVisible.value = true
 }
 
-function onDetailAction(key) {
+async function onDetailAction(key) {
   const row = detailRow.value
   if (!row) return
   if (key === 'close') {
@@ -143,7 +148,11 @@ function onDetailAction(key) {
   } else if (key === 'withdraw') {
     withdraw(row)
   } else if (key === 'modify') {
-    detailMode.value = 'edit'
+    // 原型 goBusiness(current,true)：先 closeDrawerNative 关只读抽屉，再以编辑态重开（编辑器按 visible
+    // 变 true 时加载，不靠 readonly 反应式切换），底栏换为 关闭|提交审核
+    detailVisible.value = false
+    await nextTick()
+    openDetail(row, true)
   } else if (key === 'resubmit' || key === 'submit') {
     resubmit(row, key)
   }
@@ -223,13 +232,7 @@ async function resubmit(row, key = 'resubmit') {
         empty-text="暂无申请记录"
         @retry="fetchList"
       >
-        <el-table
-          v-loading="loading"
-          :data="rows"
-          row-key="id"
-          :default-sort="{ prop: 'submittedAt', order: 'descending' }"
-          @sort-change="onSortChange"
-        >
+        <el-table v-loading="loading" :data="rows" row-key="id">
           <el-table-column label="申请对象" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
               <span class="ma-name">{{ row.objectName }}</span>
@@ -253,7 +256,13 @@ async function resubmit(row, key = 'resubmit') {
           <el-table-column label="申请版本" :width="COL.TAG">
             <template #default="{ row }">{{ row.version || '—' }}</template>
           </el-table-column>
-          <el-table-column label="申请时间" prop="submittedAt" sortable="custom" :width="COL.TIME">
+          <el-table-column :width="COL.TIME">
+            <!-- 原型 L1562：列头为文字按钮「申请时间 ↓ / ↑」，点击切换正倒序 -->
+            <template #header>
+              <button type="button" class="ma-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
+                申请时间 <span class="ma-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">{{ row.submittedAt ? fmtTime(row.submittedAt) : '—' }}</template>
           </el-table-column>
           <el-table-column label="审核结果" :width="COL.TAG">
@@ -279,10 +288,11 @@ async function resubmit(row, key = 'resubmit') {
             <template #default="{ row }">
               <div class="ma-ops">
                 <el-button link type="primary" class="ma-op" @click="openDetail(row)">查看</el-button>
+                <!-- 原型 L1562：列表【撤回】为普通 link（与查看 / 重新提交同档），仅详情底栏「撤回申请」为 danger -->
                 <el-button
                   v-if="row.result === 'PENDING'"
                   link
-                  type="danger"
+                  type="primary"
                   class="ma-op"
                   :loading="busyRowId === row.id && busyKey === 'withdraw'"
                   :disabled="busyRowId === row.id"
@@ -360,5 +370,19 @@ async function resubmit(row, key = 'resubmit') {
 }
 .ma-ops :deep(.el-button.is-link.is-disabled) {
   color: var(--c-text-faint);
+}
+/* 排序列头文字按钮（原型 .sort{border:0;background:transparent;padding:0;color:inherit}） */
+.ma-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.ma-sort-arrow {
+  margin-left: 2px;
 }
 </style>

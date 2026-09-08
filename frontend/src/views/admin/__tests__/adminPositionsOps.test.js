@@ -278,3 +278,87 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(rowByName('停用中岗').querySelector('.status-tag').textContent).toBe('审核中')
   })
 })
+
+/**
+ * 2026-09-08 原型复刻批次 2A（B2 新建弹窗 / B4 提交后关侧栏 / B6 名称格图标 / B7 列宽）。
+ * el-dialog / el-form 在本文件按需 stub（上方 mount 未注册），此处单独挂。
+ */
+describe('AdminPositions · 原型复刻批次 2A', () => {
+  const elDialog = {
+    name: 'el-dialog',
+    props: ['modelValue', 'title', 'width', 'closeOnClickModal'],
+    template:
+      '<div class="el-dialog" :data-open="modelValue" :data-width="width" :data-ccm="String(closeOnClickModal)"><slot /><div class="dlg-footer"><slot name="footer" /></div></div>'
+  }
+  const elForm = {
+    name: 'el-form',
+    template: '<form><slot /></form>',
+    methods: { validate() { return Promise.resolve(true) }, clearValidate() {} }
+  }
+  const elFormItem = { name: 'el-form-item', props: ['label', 'prop'], template: '<div class="el-form-item" :data-prop="prop"><label>{{ label }}</label><slot /></div>' }
+
+  async function mount2A() {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    app = createApp(AdminPositions)
+    for (const t of ['el-input', 'el-select', 'el-option', 'el-icon']) app.component(t, passthrough(t))
+    app.component('el-table', tableStub)
+    app.component('el-table-column', tableColStub)
+    app.component('el-button', elButton)
+    app.component('el-dialog', elDialog)
+    app.component('el-form', elForm)
+    app.component('el-form-item', elFormItem)
+    app.directive('loading', {})
+    app.mount(container)
+    await nextTick(); await Promise.resolve(); await Promise.resolve(); await nextTick()
+    return container
+  }
+  const inst = () => app._instance
+
+  it('B2 新建弹窗：520px、可点遮罩关闭、字段仅 岗位名称 + 岗位描述（无「岗位定位」）、按钮「创建岗位」', async () => {
+    await mount2A()
+    const openBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建岗位'))
+    openBtn.click(); await nextTick()
+    const dlg = container.querySelector('.el-dialog')
+    expect(dlg.dataset.open).toBe('true')
+    expect(dlg.dataset.width).toBe('520px')
+    expect(dlg.dataset.ccm).toBe('true')
+    const labels = [...dlg.querySelectorAll('.el-form-item > label')].map((l) => l.textContent.trim())
+    expect(labels).toEqual(['岗位名称', '岗位描述'])
+    expect(dlg.textContent).not.toContain('岗位定位')
+    expect([...dlg.querySelectorAll('.dlg-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '创建岗位'])
+  })
+
+  it('B2 校验规则：岗位描述必填、上限 500；创建成功 toast 后进岗位详情页', async () => {
+    await mount2A()
+    const rules = inst().setupState.createRules
+    expect(rules.description[0]).toMatchObject({ required: true, message: '请填写岗位描述' })
+    expect(rules.description[1]).toMatchObject({ max: 500 })
+    createPosition.mockResolvedValue({ positionId: 'ps_new' })
+    inst().setupState.createForm.name = '经营分析岗'
+    inst().setupState.createForm.description = '负责经营分析'
+    inst().setupState.createVisible = true
+    await nextTick()
+    await inst().setupState.submitCreate()
+    expect(createPosition).toHaveBeenCalledWith({ name: '经营分析岗', description: '负责经营分析' })
+    expect(ElMessage.success).toHaveBeenCalledWith('岗位已创建，请完善岗位配置')
+    expect(push).toHaveBeenCalledWith({ name: 'PositionWorkbench', params: { id: 'ps_new' } })
+  })
+
+  it('B4 岗位版本适配器带 closeOnSubmit=true（提交发布后关侧栏，原型 submitPositionVersion）', async () => {
+    await mount2A()
+    btn(rowByName('销售'), '版本管理').click(); await nextTick()
+    expect(inst().setupState.versionAdapter.closeOnSubmit).toBe(true)
+  })
+
+  it('B6/B7 名称格：32px 图标框 .pos-icon + 名称 .pos-name + 状态 pill 同格；描述 / 时间带单行类', async () => {
+    await mount2A()
+    const row = rowByName('销售')
+    const primary = row.querySelector('.pos-primary')
+    expect(primary.querySelector('.pos-icon')).toBeTruthy()
+    expect(primary.querySelector('.pos-name-line .pos-name').textContent).toBe('销售')
+    expect(primary.querySelector('.pos-name-line .status-tag')).toBeTruthy()
+    expect(row.querySelector('.pos-desc').textContent).toBe('卖货')
+    expect(row.querySelector('.pos-time')).toBeTruthy()
+  })
+})

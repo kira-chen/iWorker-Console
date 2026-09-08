@@ -11,8 +11,8 @@
  * 写动作同原型：withdraw（撤回 → WITHDRAWN）/ resubmit（重新提交 → PENDING + 刷新申请时间
  * + 清空审核人/审核时间/驳回原因）。
  *
- * refId 为前端 demo 附加的「原生详情」接线字段（原型无此字段）：MCP/API 指向连接器
- * mock 里真实存在的实体；其余类型 demo 期无对应 mock，详情降级见 GovObjectDetail.vue。
+ * refId 为前端 demo 附加的「原生详情」接线字段（原型无此字段）：每行指向对应业务模块 mock
+ * 里真实存在的实体，分发见 GovObjectDetail.vue。
  */
 import { attachPersist } from './mockPersist'
 
@@ -41,11 +41,12 @@ function seedRows() {
   // demo 附加接线：原生详情的目标实体 id，指向各业务模块 mock 里真实存在的实体
   // （API/MCP → 连接器 mock；EXPERT → domainExpertMock（502 无同名专家，借 201 经营分析专家示意，
   //  510 → 203 法务审阅专家）；MODEL → adminModelMock md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock
-  //  biz_2102 人力资源系统；SKILL → unifiedSkillMock sk_309 行业研究助手 / sk_304 合同风险检查。
-  //  POSITION 走本地简易只读抽屉，refId 不消费）
+  //  biz_2102 人力资源系统；SKILL → unifiedSkillMock sk_309 行业研究助手 / sk_304 合同风险检查；
+  //  POSITION → positionMock 401 经营分析岗（2026-09-08 原型复刻批次 2B · G-4：岗位只读抽屉接真实实体））
   const REF = {
     501: 'api_1103',
     502: 201,
+    503: 401,
     504: 'sk_309',
     505: 'spark_bridge_mcp',
     506: 'biz_2102',
@@ -65,8 +66,9 @@ let applications = seedRows()
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=withdraw / resubmit / reset。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
 // version 2（2026-09-08 决议第 8 项）：种子 508 由 OTHER 改为 SKILL，旧快照丢弃回种子。
+// version 3（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 503 refId 改指岗位 mock 401。
 const persist = attachPersist('myApplications', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {

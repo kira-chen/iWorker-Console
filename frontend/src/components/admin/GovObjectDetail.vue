@@ -9,9 +9,11 @@
  *   API         → ApiEditor（readonly）
  *   BIZ_SYSTEM  → BizSystemEditor（readonly）
  *   MODEL       → ModelConfigEditDialog（readonly，入参 model 对象由行数据合成）
- *   POSITION    → 本组件内置简易只读抽屉（岗位抽屉尚未拍板——岗位模块 Q4，
- *                 暂展示 名称/描述/提交人/提交时间，待岗位抽屉拍板后接入）
- * SKILL（跳技能整页只读）与 OTHER（toast）不进本组件，由页面路由/提示自行处理。
+ *   POSITION    → PositionViewDrawer（2026-09-08 原型复刻批次 2B · G-4，负责人决议第 10 项「按 md 落地」：
+ *                 岗位基本信息 + 人格页要素 + 岗位技能 只读，按 refId 取岗位 mock 实体，缺失时用申请快照兜底；
+ *                 原「待岗位模块拍板」占位抽屉已退役。岗位模块没有编辑抽屉（整页 PositionDetailTabs），
+ *                 我的申请「前往修改 / 重新提交」的编辑态对岗位仍展示同一只读视图 + 关闭|提交审核 吸底条）
+ * SKILL（跳技能整页只读）与未知类型（toast）不进本组件，由页面路由/提示自行处理。
  *
  * 【吸底操作栏】审核中心要求详情底部为 关闭|驳回|通过、我的申请按状态出按钮，而各编辑器
  * 只读态的底部动作条固定只有「关闭」且不可注入（不修改编辑器的前提约束）。故本组件用
@@ -29,14 +31,15 @@ import McpEditor from '@/components/admin/McpEditor.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import ModelConfigEditDialog from '@/components/admin/ModelConfigEditDialog.vue'
+import PositionViewDrawer from '@/components/admin/PositionViewDrawer.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   /** 业务类型（归一化）：EXPERT | POSITION | MCP | API | BIZ_SYSTEM | MODEL。 */
   kind: { type: String, default: '' },
-  /** 业务实体 id（传给对应编辑器；mock 期仅 MCP/API 指向真实 mock 实体）。 */
+  /** 业务实体 id（传给对应编辑器；治理 mock 行 refId 均指向各业务 mock 真实实体）。 */
   refId: { type: [Number, String], default: null },
-  /** 原始行（审核行或申请行），用于 POSITION 简易抽屉与 MODEL 合成对象。 */
+  /** 原始行（审核行或申请行），用于 POSITION 快照兜底与 MODEL 合成对象。 */
   item: { type: Object, default: null },
   /** 只读打开（默认）；我的申请「前往修改」传 false 走编辑态。 */
   readonly: { type: Boolean, default: true },
@@ -55,9 +58,8 @@ const vis = computed({
   set: (v) => emit('update:visible', v)
 })
 
-// 行字段归一化：审核行 name/submitterName ↔ 申请行 objectName/submitter
+// 行字段归一化：审核行 name ↔ 申请行 objectName
 const displayName = computed(() => props.item?.name || props.item?.objectName || '')
-const submitter = computed(() => props.item?.submitterName || props.item?.submitter || '—')
 
 // MODEL：ModelConfigEditDialog 以 model 对象（列表行 VO）为入参，不自取数——
 // 打开时按 refId 拉模型行（adminModel mock），取到前先用行数据合成最小对象兜底。
@@ -84,7 +86,7 @@ const modelObj = computed(
 )
 
 // 吸底条宽度随抽屉宽：模型抽屉 820px（ModelConfigEditDialog size="820px"），
-// 其余（POSITION 自持抽屉 / 专家 / MCP / API / 业务系统 = DrawerEditor 默认）780px。
+// 其余（岗位 / 专家 / MCP / API / 业务系统 = DrawerEditor 默认）780px。
 // 抽屉本身是 min(宽, 视口)，吸底条同样封顶 100vw，窄窗口下不越出抽屉。
 const DRAWER_W = { MODEL: 820 }
 const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
@@ -126,33 +128,14 @@ const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
     :readonly="readonly"
     @update:visible="vis = $event"
   />
-  <!-- POSITION：岗位抽屉尚未拍板（岗位模块 Q4），暂用简易只读抽屉，待拍板后接入正式岗位抽屉 -->
-  <el-drawer
+  <!-- POSITION：岗位只读详情抽屉（G-4 按 md 落地；岗位无编辑抽屉，编辑态亦展示同一只读视图） -->
+  <PositionViewDrawer
     v-else-if="kind === 'POSITION'"
-    v-model="vis"
-    title="查看岗位"
-    size="780px"
-    append-to-body
-  >
-    <div v-if="item" class="god-pos">
-      <div class="god-pos-name">{{ displayName }}</div>
-      <dl class="god-pos-fields">
-        <div class="god-pos-field">
-          <dt>描述</dt>
-          <dd>{{ item.description || '—' }}</dd>
-        </div>
-        <div class="god-pos-field">
-          <dt>提交人</dt>
-          <dd>{{ submitter }}</dd>
-        </div>
-        <div class="god-pos-field">
-          <dt>提交时间</dt>
-          <dd>{{ item.submittedAt || '—' }}</dd>
-        </div>
-      </dl>
-      <div class="god-pos-hint">岗位详情抽屉待岗位模块拍板后接入完整配置视图。</div>
-    </div>
-  </el-drawer>
+    :visible="visible"
+    :position-id="refId"
+    :item="item"
+    @update:visible="vis = $event"
+  />
 
   <!-- 吸底操作栏：覆盖在抽屉底部动作区上（见头注释），按钮组由调用方定义 -->
   <Teleport to="body">
@@ -173,41 +156,6 @@ const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
 </template>
 
 <style scoped>
-/* ---- POSITION 简易只读抽屉 ---- */
-.god-pos-name {
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-4);
-}
-.god-pos-fields {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.god-pos-field {
-  display: flex;
-  gap: var(--space-3);
-}
-.god-pos-field dt {
-  flex-shrink: 0;
-  width: 72px;
-  color: var(--c-text-muted);
-  font-size: var(--fs-sm);
-}
-.god-pos-field dd {
-  margin: 0;
-  color: var(--c-text);
-  font-size: var(--fs-sm);
-  word-break: break-word;
-}
-.god-pos-hint {
-  margin-top: var(--space-5);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-}
-
 /* ---- 吸底操作栏（teleport 到 body；覆盖抽屉底部动作区） ---- */
 .god-bar {
   position: fixed;

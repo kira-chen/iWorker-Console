@@ -2,11 +2,17 @@
 /**
  * 设置用户角色弹窗（ADMIN 专属，P5）：多选角色（全量替换）→ PUT /fde/users/{id}/roles。
  *
+ * 2026-09-08 原型复刻批次 2A（G#8，原型 openRoleDialog L252）：居中窗 520px（admin-dialog 壳）；
+ * 首段「为 <strong>显示名</strong>（用户名）设置角色。保存后将全量替换当前角色。」（md §二.2.3 同口径，显示名空时用用户名）；
+ * 角色为两列 check-card 卡片复选（RoleCheckCards，与新建用户窗共用）；未选时**内联**「请至少选择一个角色」并保持窗口开启。
+ *
  * 护栏错误（如删最后一个 ADMIN）由后端返回并按 message 就地 toast（写接口 skipGlobalError）。
  */
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { setUserRoles } from '@/api/adminUser'
+import RoleCheckCards from '@/components/admin/RoleCheckCards.vue'
+import '@/assets/admin-dialog.css'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -24,13 +30,20 @@ const dialogVisible = computed({
 
 const saving = ref(false)
 const selected = ref([])
+const roleError = ref('')
 
 watch(
   () => props.visible,
   (v) => {
-    if (v) selected.value = (props.user?.roleCodes || []).slice()
+    if (v) {
+      selected.value = (props.user?.roleCodes || []).slice()
+      roleError.value = ''
+    }
   }
 )
+watch(selected, (v) => {
+  if (v.length) roleError.value = ''
+})
 
 const roleOptionList = computed(() =>
   (props.roleOptions || []).map((it) => ({
@@ -39,14 +52,14 @@ const roleOptionList = computed(() =>
   }))
 )
 
-const userLabel = computed(
-  () => props.user?.displayName || props.user?.username || ''
-)
+// 显示名为空时展示用户名（md §二.2.3）
+const userLabel = computed(() => props.user?.displayName || props.user?.username || '')
+const userName = computed(() => props.user?.username || '')
 
 async function onSubmit() {
   if (!props.user?.id) return
   if (!selected.value.length) {
-    ElMessage.warning('请至少选择一个角色')
+    roleError.value = '请至少选择一个角色'
     return
   }
   saving.value = true
@@ -65,19 +78,11 @@ async function onSubmit() {
 </script>
 
 <template>
-  <el-dialog v-model="dialogVisible" title="设置角色" width="440px" append-to-body>
-    <div class="urd-target">为「{{ userLabel }}」分配角色（全量替换当前角色）</div>
-    <el-checkbox-group v-model="selected" class="urd-roles">
-      <el-checkbox
-        v-for="r in roleOptionList"
-        :key="r.code"
-        :value="r.code"
-        :label="r.code"
-        class="urd-role-item"
-      >
-        {{ r.name }}
-      </el-checkbox>
-    </el-checkbox-group>
+  <el-dialog v-model="dialogVisible" title="设置角色" width="520px" class="admin-dialog" append-to-body>
+    <p class="urd-target">
+      为 <strong>{{ userLabel }}</strong><template v-if="userName">（{{ userName }}）</template>设置角色。保存后将全量替换当前角色。
+    </p>
+    <RoleCheckCards v-model="selected" :options="roleOptionList" :error="roleError" />
 
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
@@ -88,18 +93,13 @@ async function onSubmit() {
 
 <style scoped>
 .urd-target {
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-sm);
+  margin: 0 0 14px;
+  font-size: var(--fs-base);
+  line-height: 1.65;
   color: var(--c-text-muted);
 }
-.urd-roles {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-}
-.urd-role-item {
-  margin-right: 0;
-  height: auto;
+.urd-target strong {
+  color: var(--c-text-strong);
+  font-weight: var(--fw-semibold);
 }
 </style>

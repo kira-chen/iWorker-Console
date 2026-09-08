@@ -11,11 +11,17 @@
  * 动态计算（2026-09-08 原型复刻批次 1，原每页 10 条废止）；「更多」删除项文案「删除用户」；重置密码确认带独立一行「默认密码：wemate123」。
  * 其余交互（Y1-Y8）保持现状。数据走 adminUserMock（api 层分流，VITE_ORG_MOCK=0 关闭）。
  *
+ * 2026-09-08 原型复刻批次 2A（G#1/#3/#4，原型 renderUsers L238）：工具栏补【查询】（回第 1 页）、搜索占位
+ * 「搜索用户名、显示名或邮箱」（0908 md §一.1）、【＋ 新建用户】文案；两种空态（无筛选「还没有用户 · 点「＋ 新建用户」
+ * 创建第一个」= md 口径 / 有筛选「没有符合条件的用户」= 原型）；用户名加粗、角色灰标签、状态「圆点 + 文字」；
+ * 列头排序回第 1 页（原型 user-sort 置 userPage=1）。
+ *
  * 页面骨架照抄连接器范式（conn.css 共享类 + 单行 toolbar）；取数编排走 useAdminList，
  * 失败/空态走 ListStates、分页走 ListPagination（列表页规范，2026-08-22 统一）。
  */
-import { h, ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { h, ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { confirmDialog } from '@/composables/useConfirm'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
@@ -24,8 +30,8 @@ import UserRoleDialog from '@/components/admin/UserRoleDialog.vue'
 import { listUsers, deleteUser, resetUserPassword, listRoles } from '@/api/adminUser'
 import { fmtTime } from '@/utils/docMeta'
 import '@/assets/connector.css'
-// 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
-import { COL, opsWidth } from '@/utils/tableLayout'
+// 操作列宽走共享 opsWidth；数据列宽照原型 colgroup（见模板注释，2026-09-08 原型复刻批次 2A）
+import { opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -114,20 +120,21 @@ function onRoleSaved() {
   fetchList()
 }
 
+// 删除：文案照 md §二.2.6 / 原型 L261（显示名为空时用用户名）；统一 440px 无图标确认框，确认键保留 danger 红档（md 要求危险样式）
 async function remove(row) {
+  const ok = await confirmDialog(
+    `删除「${row.displayName || row.username}」后，其角色、登录会话、个人文档、任务、记忆及凭证将被永久删除，且无法恢复。`,
+    '删除用户',
+    { confirmText: '删除', danger: true }
+  )
+  if (!ok) return
+  delBusy.value = row.id
   try {
-    await ElMessageBox.confirm(
-      `将永久删除用户「${row.displayName || row.username}」，并同时清除其角色、会话、个人文档、定时任务、个人记忆、业务系统凭据等全部数据，且不可恢复。确认删除？`,
-      '删除用户',
-      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
-    )
-    delBusy.value = row.id
     await deleteUser(row.id)
-    ElMessage.success('已删除')
+    ElMessage.success('用户已删除')
     // 末页删最后一条时的页码回退由 useAdminList 内部处理（防空页），此处直接重拉
     fetchList()
   } catch (e) {
-    if (e === 'cancel' || e === 'close') return
     // 护栏错误（如删最后一个 ADMIN）按后端 message 提示
     ElMessage.error(e?.message || '删除失败')
   } finally {
@@ -136,22 +143,22 @@ async function remove(row) {
 }
 
 async function resetPassword(row) {
+  // 2026-09-01 对齐原型 user-reset modal：正文 + 独立一行「默认密码：wemate123」（.password-copy 灰底行），按钮【重置密码】。
+  // 用 VNode 构造两行内容（不用 dangerouslyUseHTMLString——显示名是用户数据，避免注入）。统一 440px 无图标确认框。
+  const ok = await confirmDialog(
+    h('div', null, [
+      h('p', { style: 'margin:0' }, `确认将「${row.displayName || row.username}」的密码重置为默认密码？`),
+      h('p', { class: 'users-reset-pwd' }, ['默认密码：', h('code', null, 'wemate123')])
+    ]),
+    '重置密码',
+    { confirmText: '重置密码' }
+  )
+  if (!ok) return
+  resetBusy.value = row.id
   try {
-    // 2026-09-01 对齐原型 user-reset modal：正文 + 独立一行「默认密码：wemate123」，按钮【重置密码】。
-    // 用 VNode 构造两行内容（不用 dangerouslyUseHTMLString——显示名是用户数据，避免注入）。
-    await ElMessageBox.confirm(
-      h('div', null, [
-        h('p', { style: 'margin:0' }, `确认将「${row.displayName || row.username}」的密码重置为默认密码？`),
-        h('p', { class: 'users-reset-pwd' }, ['默认密码：', h('b', null, 'wemate123')])
-      ]),
-      '重置密码',
-      { type: 'warning', confirmButtonText: '重置密码' }
-    )
-    resetBusy.value = row.id
     await resetUserPassword(row.id)
     ElMessage.success('密码已重置为 wemate123')
   } catch (e) {
-    if (e === 'cancel' || e === 'close') return
     ElMessage.error(e?.message || '重置失败')
   } finally {
     resetBusy.value = null
@@ -164,25 +171,34 @@ function onMoreCommand(cmd, row) {
   else if (cmd === 'delete') remove(row)
 }
 
-// 「最近登录时间」列排序（el-table sortable="custom" → mock 排序）；order=null 回落默认倒序
+// 「最近登录时间」列排序（el-table sortable="custom" → mock 排序）；order=null 回落默认倒序。
+// 切换排序回第 1 页（原型 L261 user-sort：state.userPage=1）
 function onSortChange({ prop, order }) {
   if (prop !== 'lastLogin') return
   query.sort = order === 'ascending' ? 'asc' : 'desc'
-  fetchList()
+  reload()
 }
+
+// 两种空态（原型只有「没有符合条件的用户」一种；md §一.3 / §二.4 只定义「还没有用户 · …」）：
+// 有任一搜索 / 筛选条件 → 原型文案（是条件问题，不是没数据）；无条件 → md 引导文案
+const hasFilter = computed(() => !!(query.keyword.trim() || query.roleCode || query.status))
+const emptyText = computed(() =>
+  hasFilter.value ? '没有符合条件的用户' : '还没有用户 · 点「＋ 新建用户」创建第一个'
+)
 </script>
 
 <template>
   <div class="list-page">
     <PageHeader title="用户" subtitle="管理平台账号、角色分配与密码重置" />
 
-    <!-- 单行 toolbar：左 搜索 + 角色/状态筛选，右 新建 -->
+    <!-- 单行 toolbar（原型 L238 .module-toolbar）：搜索 → 角色筛选 → 状态筛选 → 【查询】 → spacer → 【＋ 新建用户】 -->
     <ListToolbar>
       <el-input
         v-model="query.keyword"
-        placeholder="搜索用户名 / 显示名 / 邮箱"
+        placeholder="搜索用户名、显示名或邮箱"
         clearable
         class="lt-search"
+        @keyup.enter="reload"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
@@ -210,10 +226,10 @@ function onSortChange({ prop, order }) {
         <el-option label="启用" value="active" />
         <el-option label="停用" value="disabled" />
       </el-select>
+      <!-- 【查询】（原型 L720 user-query：回第 1 页刷新；与输入防抖 / 下拉即刷新并存） -->
+      <el-button @click="reload">查询</el-button>
       <template #right>
-        <el-button type="primary" class="lt-create" @click="openCreate">
-          <el-icon><Plus /></el-icon> 新建用户
-        </el-button>
+        <el-button type="primary" class="lt-create" @click="openCreate">＋ 新建用户</el-button>
       </template>
     </ListToolbar>
 
@@ -222,45 +238,50 @@ function onSortChange({ prop, order }) {
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        empty-text="还没有用户 · 点「新建用户」创建第一个"
+        :empty-text="emptyText"
         @retry="fetchList"
       >
+        <!-- 列宽照原型 L238 <colgroup> 140/120/220/230/90/165/210（用户名 / 显示名 / 邮箱 / 角色 取 min-width 伸缩） -->
         <el-table
           :data="rows"
           class="users-table"
           :default-sort="{ prop: 'lastLogin', order: 'descending' }"
           @sort-change="onSortChange"
         >
-          <el-table-column prop="username" label="用户名" min-width="120" show-overflow-tooltip />
-          <el-table-column prop="displayName" label="显示名" min-width="120" show-overflow-tooltip />
-          <el-table-column prop="email" label="邮箱" min-width="160" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.email || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="角色" min-width="160">
+          <!-- 用户名加粗（原型 td.user-name 600） -->
+          <el-table-column label="用户名" min-width="140" show-overflow-tooltip>
             <template #default="{ row }">
-              <span v-if="!rowRoleCodes(row).length" class="users-muted">—</span>
-              <StatusTag
-                v-for="code in rowRoleCodes(row)"
-                :key="code"
-                type="accent"
-                class="users-role-tag"
-              >
-                {{ roleLabel(code) }}
-              </StatusTag>
+              <span class="users-name">{{ row.username }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" :width="COL.STATUS">
+          <el-table-column prop="displayName" label="显示名" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="email" label="邮箱" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.email || '—' }}</template>
+          </el-table-column>
+          <!-- 角色：灰标签（原型 .tag.gray），多角色横排换行 -->
+          <el-table-column label="角色" min-width="230">
             <template #default="{ row }">
-              <StatusTag :type="row.status === 'active' ? 'success' : 'info'">
+              <span v-if="!rowRoleCodes(row).length" class="users-muted">—</span>
+              <div v-else class="users-role-tags">
+                <StatusTag v-for="code in rowRoleCodes(row)" :key="code" type="info">
+                  {{ roleLabel(code) }}
+                </StatusTag>
+              </div>
+            </template>
+          </el-table-column>
+          <!-- 状态：前置 7px 圆点 + 文字（原型 .status-switch，启用绿 / 停用灰），不是标签 -->
+          <el-table-column label="状态" :width="90">
+            <template #default="{ row }">
+              <span class="users-status" :class="{ 'is-disabled': row.status !== 'active' }">
                 {{ row.status === 'active' ? '启用' : '停用' }}
-              </StatusTag>
+              </span>
             </template>
           </el-table-column>
           <!-- 最近登录时间（2026-09-01 原「创建时间」）：可排序默认倒序；从未登录显「从未登录」且恒排最后 -->
-          <el-table-column label="最近登录时间" prop="lastLogin" sortable="custom" :width="COL.TIME">
+          <el-table-column label="最近登录时间" prop="lastLogin" sortable="custom" :width="165">
             <template #default="{ row }">
-              <span v-if="row.lastLogin" class="users-muted">{{ fmtTime(row.lastLogin) }}</span>
-              <span v-else class="users-muted">从未登录</span>
+              <span v-if="row.lastLogin" class="users-time">{{ fmtTime(row.lastLogin) }}</span>
+              <span v-else class="users-time">从未登录</span>
             </template>
           </el-table-column>
           <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
@@ -329,8 +350,35 @@ function onSortChange({ prop, order }) {
 .users-muted {
   color: var(--c-text-faint);
 }
-.users-role-tag {
-  margin-right: var(--space-1);
+/* 用户名加粗（原型 .user-name{font-weight:600;color:#26302b}） */
+.users-name {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+}
+/* 角色灰标签横排（原型 .role-tags{flex;gap 5;wrap}） */
+.users-role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+/* 状态圆点 + 文字（原型 .status-switch:before 7px 圆点，启用 #11a16d / 停用 #a7afab） */
+.users-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.users-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-success);
+}
+.users-status.is-disabled::before {
+  background: var(--c-text-faint);
+}
+.users-time {
+  white-space: nowrap;
 }
 /* 操作列三个元素（编辑/设置角色/更多下拉）垂直居中对齐——
    「更多」包在 el-dropdown（inline-block 基线对齐）里，默认会比并排的 el-button 偏高，
@@ -348,15 +396,17 @@ function onSortChange({ prop, order }) {
 <!-- el-dropdown 菜单 / MessageBox teleport 到 body，scoped 够不到，用全局类：
      删除项危险色（默认中性，hover 才红）+ 重置密码弹窗的「默认密码」独立行 -->
 <style>
+/* 原型 .password-copy：margin-top 10、padding 10 12、圆角 7、灰底；code 绿色加粗 */
 .users-reset-pwd {
-  margin: 8px 0 0;
-  padding: 6px 10px;
-  background: var(--bg-hover, #f5f6f5);
-  border-radius: var(--radius-sm, 4px);
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-sunken, #f4f6f5);
+  border-radius: 7px;
   color: var(--c-text-muted);
 }
-.users-reset-pwd b {
-  color: var(--c-text-strong);
+.users-reset-pwd code {
+  color: var(--c-accent);
+  font-weight: var(--fw-bold);
 }
 .el-dropdown-menu__item.users-more-del {
   color: var(--c-danger);

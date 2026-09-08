@@ -354,3 +354,54 @@ describe('VersionDrawer · 延迟骨架阀门（合并后三处一并获得）',
     expect(container.querySelector('.vhl-skeleton')).toBeNull()
   })
 })
+
+describe('VersionDrawer · 2026-09-08 原型复刻批次 2A（B4 提交后关侧栏 / B5 发布表单排版）', () => {
+  async function fillNotes(text) {
+    const ta = container.querySelector('.vd-notes-control .el-input')
+    ta.value = text
+    ta.dispatchEvent(new Event('input'))
+    await flush(2)
+  }
+
+  it('B4 岗位口径 closeOnSubmit：提交发布成功 → emit done 后侧栏关闭；缺省（技能/专家）留在侧栏', async () => {
+    const done = vi.fn()
+    const a = makeAdapter({ closeOnSubmit: true })
+    mount(a, { onDone: done }); await flush()
+    await fillNotes('修了一个 bug')
+    btn('提交发布').click(); await flush()
+    expect(a.publish).toHaveBeenCalledTimes(1)
+    expect(done).toHaveBeenCalledTimes(1)
+    expect(visibleRef.value).toBe(false)
+    app.unmount(); container.remove()
+
+    const b = makeAdapter()
+    mount(b); await flush()
+    await fillNotes('修了一个 bug')
+    btn('提交发布').click(); await flush()
+    expect(b.publish).toHaveBeenCalledTimes(1)
+    expect(visibleRef.value).toBe(true)
+  })
+
+  it('B5 升级说明：左标签 + 右控件 grid，控件下方一行 左错误 / 右「N / 2000」计数（计数在 textarea 外）', async () => {
+    mount(makeAdapter()); await flush()
+    const notes = container.querySelector('.vd-notes')
+    expect(notes.querySelector('.vd-notes-lbl').textContent).toContain('升级说明')
+    const meta = notes.querySelector('.vd-notes-control .vd-notes-meta')
+    expect(meta.querySelector('.vd-err').textContent).toBe('升级说明必填，简述本次更新项')
+    expect(meta.querySelector('.vd-count').textContent).toBe('0 / 2000')
+    await fillNotes('abc')
+    expect(meta.querySelector('.vd-err').textContent).toBe('')
+    expect(meta.querySelector('.vd-count').textContent).toBe('3 / 2000')
+  })
+
+  it('B5 审核中态：浅黄框 .vd-review 内提示文案 + 右下 plain「撤回提交」', async () => {
+    mount(makeAdapter({
+      deriveView: () => ({ state: 'REVIEWING', label: '审核中', tagType: 'warning', actions: ['withdraw'] })
+    })); await flush()
+    const box = container.querySelector('.vd-review')
+    expect(box).toBeTruthy()
+    expect(box.querySelector('.vd-review-text').textContent).toBe('审核中，已锁定不可修改。可撤回本次提交后继续编辑。')
+    expect(box.querySelector('.vd-act .el-button').textContent.trim()).toBe('撤回提交')
+    expect(container.querySelector('.vd-pub')).toBeNull()
+  })
+})

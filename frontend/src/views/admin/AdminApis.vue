@@ -28,7 +28,7 @@ import {
   deleteProviderSystem
 } from '@/api/apiConnector'
 import { resolveDisplayStatus } from '@/utils/mcpMeta'
-import { fmtRelative, fmtTime } from '@/utils/docMeta'
+import { fmtTime } from '@/utils/docMeta'
 import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
@@ -112,6 +112,13 @@ function natureMeta(row) {
   return writeClassMeta(k) || { label: '读', type: 'info' }
 }
 // 图标：URL/dataURL 按图片渲染，否则按 emoji 字符（全站统一判断，见 utils/iconDisplay）
+
+/** 最近验证时间短格式 MM-DD HH:mm（2026-09-08 原型复刻批次 2C · A1：原型 apiHealth L750 `<small>` 取 MM-DD HH:mm，
+ *  与 MCP / 模型页同款；取值仍用 lastCheckedAt 而非原型的 updated——原型取值属缺陷不搬）。完整时间收进悬浮。 */
+function fmtShortTime(t) {
+  const s = fmtTime(t)
+  return s ? s.slice(5) : ''
+}
 
 /**
  * 验证列悬浮文案（三态）：验证中 / 异常（带失败原因与错误码）/ 正常或未探测。
@@ -439,13 +446,13 @@ async function removeApi(row) {
           </div>
         </div>
 
-        <!-- 分组内 API 表格（列结构对齐 PRD §二.1） -->
+        <!-- 分组内 API 表格（列结构对齐 PRD §二.1）；表格套 .table-wrap（原型 L781），卡内去描边圆角（L727） -->
         <div v-if="!isCollapsed(g.ps.id)" class="aps-group-body">
           <div v-if="!g.apis.length" class="aps-group-empty">
             该系统下暂无 API · 点「在本系统下新建 API」添加
           </div>
+          <div v-else class="table-wrap aps-table-wrap">
           <el-table
-            v-else
             :data="g.apis"
             empty-text="该系统下暂无 API"
             row-key="id"
@@ -519,7 +526,7 @@ async function removeApi(row) {
                   <HealthTag :status="resolveDisplayStatus(row)" />
                   <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>
                   <span v-else-if="row.lastCheckedAt" class="mc-vc-time">
-                    {{ fmtRelative(row.lastCheckedAt) }}
+                    {{ fmtShortTime(row.lastCheckedAt) }}
                   </span>
                   <el-tooltip
                     :content="verifyTip(row)"
@@ -610,6 +617,7 @@ async function removeApi(row) {
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
     </div>
@@ -628,8 +636,8 @@ async function removeApi(row) {
       @saved="onPsSaved"
     />
 
-    <!-- 引用清单弹窗（PRD §二.1） -->
-    <el-dialog v-model="refsDialog.visible" :title="`「${refsDialog.apiName}」的技能引用`" width="420px">
+    <!-- 引用清单弹窗（PRD §二.1；标题照原型 L801 modal('被技能引用')，2026-09-08 批次 2C · A2，与业务系统 / MCP 页统一） -->
+    <el-dialog v-model="refsDialog.visible" title="被技能引用" width="440px">
       <div v-if="refsDialog.skills.length" class="refs-list">
         <div v-for="s in refsDialog.skills" :key="s.skillId" class="refs-item">
           <el-tag type="info" size="small">{{ s.skillName }}</el-tag>
@@ -644,25 +652,44 @@ async function removeApi(row) {
 </template>
 
 <style scoped>
-/* 两层结构：分组节 + 其下 API 表格。复用 connector.css 的 conn-* 令牌，仅补分组节 + 表格内小元素样式。 */
+/* 两层结构：分组节 + 其下 API 表格。
+   分组壳照原型 L727（2026-09-08 原型复刻批次 2C · S4）：
+   `.connector-group{margin-bottom:16px;border:1px solid #e1e6e3;border-radius:10px;background:#fff;overflow:hidden}`
+   `.connector-group-head{min-height:52px;gap:10px;padding:8px 14px;background:#f7f9f8;border-bottom:1px solid #e6ebe8}`
+   `.connector-group-body .table-wrap{border:0;border-radius:0}`。折叠时卡头去下边线。 */
 .aps-group {
-  margin-bottom: var(--space-4);
+  margin-bottom: 16px;
+  border: 1px solid var(--border-admin-table);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  overflow: hidden;
 }
 .aps-group-head {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-1);
-  border-bottom: 1px solid var(--border-base);
+  min-height: 52px;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-admin-card-head);
+  border-bottom: 1px solid var(--border-admin-table);
+}
+.aps-group-head:last-child {
+  border-bottom: 0;
 }
 .aps-collapse-btn {
   padding: 0;
+  width: 26px;
+  height: 26px;
   color: var(--c-text-muted);
 }
 .aps-group-name {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
+}
+.aps-group .aps-table-wrap {
+  border: 0;
+  border-radius: 0;
 }
 .aps-group-desc {
   font-size: var(--fs-xs);
@@ -689,12 +716,14 @@ async function removeApi(row) {
   display: inline-flex;
 }
 .aps-group-body {
-  padding-top: var(--space-2);
+  padding-top: 0;
 }
+/* 空分组（原型 L727 .connector-group-empty{padding:30px;text-align:center}） */
 .aps-group-empty {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  padding: var(--space-3) var(--space-2);
+  padding: 30px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
 }
 
 /* ===== API 主列：图标 + 名称/状态 + 描述两行 ===== */
@@ -704,16 +733,17 @@ async function removeApi(row) {
   gap: var(--space-2);
   min-width: 0;
 }
+/* 图标照原型 L1119/L1121 `.mcp-icon.connector-list-icon`：26px、圆角 5、浅灰底、无描边（批次 2C） */
 .api-cell-icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  border-radius: 5px;
   background: var(--bg-sunken);
   overflow: hidden;
 }

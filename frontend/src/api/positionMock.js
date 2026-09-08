@@ -543,6 +543,9 @@ function detailVO(p) {
     status: p.status,
     pendingAction: p.pendingAction,
     latestVersion: p.latestVersion || '',
+    // 2026-09-08 原型复刻批次 2B（G-4）：治理侧岗位只读抽屉 .page-time 行「最近更新时间」取用
+    createdAt: p.createdAt || '',
+    updatedAt: p.updatedAt || '',
     agents: wb.agents.slice().sort(bySort).map((a) => agentVO(a))
   }
 }

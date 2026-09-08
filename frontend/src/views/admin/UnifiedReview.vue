@@ -10,9 +10,11 @@
  * - 详情复用业务原生只读视图（GovObjectDetail 分发；SKILL 跳技能整页只读 + 吸底操作栏；
  *   原 ReviewDetailDrawer 已废弃删除），底部统一 关闭|驳回|通过；
  * - 通过/驳回弹窗文案逐字对齐原型（utils/govDialogs + ReviewRejectDialog）。
+ * 2026-09-08 原型复刻批次 2B（G-5）：提交时间列头改原型文字箭头「提交时间 ↓/↑」（列头插槽自管排序态，
+ *   点击切正倒序并回第 1 页，原型 review-sort）。R-1「抽屉点遮罩关闭」属 DrawerEditor 冻结行为，本批未动。
  * 数据默认走 mock（api/reviewsMock.js，种子=原型 8 条），见 api/reviews.js 头注释。
  */
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import StatusTag from '@/components/StatusTag.vue'
@@ -82,12 +84,12 @@ onBeforeUnmount(() => {
   if (kwTimer) clearTimeout(kwTimer)
 })
 
-// 提交时间列排序（sortable="custom" → mock/后端侧排序）
-function onSortChange({ prop, order }) {
-  if (prop !== 'submittedAt') return
-  query.sortDir = order === 'ascending' ? 'asc' : 'desc'
+// 提交时间列头（原型 L1565 `<button class="sort">提交时间 ↓</button>`）：点击切正倒序并回第 1 页（mock 侧排序）
+function toggleSort() {
+  query.sortDir = query.sortDir === 'desc' ? 'asc' : 'desc'
   reload()
 }
+const sortArrow = computed(() => (query.sortDir === 'asc' ? '↑' : '↓'))
 
 // 业务类型归一化：TOOL 按 subType 拆 MCP/API，其余直透
 function kindOf(row) {
@@ -199,13 +201,7 @@ async function submitReject(reason) {
         empty-text="暂无审核数据"
         @retry="fetchList"
       >
-        <el-table
-          v-loading="loading"
-          :data="rows"
-          row-key="id"
-          :default-sort="{ prop: 'submittedAt', order: 'descending' }"
-          @sort-change="onSortChange"
-        >
+        <el-table v-loading="loading" :data="rows" row-key="id">
           <el-table-column label="名称" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
               <span class="rev-name">{{ row.name }}</span>
@@ -232,7 +228,13 @@ async function submitReject(reason) {
               <span class="rev-submitter">{{ row.submitterName || '未知' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="提交时间" prop="submittedAt" sortable="custom" :width="COL.TIME">
+          <el-table-column :width="COL.TIME">
+            <!-- 原型 L1565：列头为文字按钮「提交时间 ↓ / ↑」，点击切换正倒序 -->
+            <template #header>
+              <button type="button" class="rev-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
+                提交时间 <span class="rev-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">{{ row.submittedAt ? fmtTime(row.submittedAt) : '—' }}</template>
           </el-table-column>
           <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
@@ -329,5 +331,19 @@ async function submitReject(reason) {
 /* 同行其它按钮在动作进行中置灰（防重复提交），但不保留主色以免看着仍可点 */
 .rev-ops :deep(.el-button.is-link.is-disabled) {
   color: var(--c-text-faint);
+}
+/* 排序列头文字按钮（原型 .sort{border:0;background:transparent;padding:0;color:inherit}） */
+.rev-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.rev-sort-arrow {
+  margin-left: 2px;
 }
 </style>

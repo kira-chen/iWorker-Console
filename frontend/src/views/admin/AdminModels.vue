@@ -43,6 +43,7 @@ import {
 import { fmtTime } from '@/utils/docMeta'
 // 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
 import { COL, opsWidth } from '@/utils/tableLayout'
+import { iconIsUrl } from '@/utils/iconDisplay'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -503,7 +504,12 @@ async function remove(row) {
           <el-table-column label="模型名称" :min-width="COL.NAME_MIN + 60">
             <template #default="{ row }">
               <div class="md-name-cell">
-                <span class="md-logo">{{ providerLogo(row) }}</span>
+                <!-- 有图标显图标（emoji / 图片），否则回落厂商首字（原型 decorateList L1345 同口径；
+                     2026-09-08 原型复刻批次 2C · D2，mock 行新增 icon 字段） -->
+                <span class="md-logo" :class="{ 'has-image': iconIsUrl(row.icon) }">
+                  <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="md-logo-img" />
+                  <template v-else>{{ row.icon || providerLogo(row) }}</template>
+                </span>
                 <span class="md-name">{{ row.name }}</span>
                 <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                 <el-tag v-if="row.isDefault" size="small" type="success" effect="plain" class="md-default-tag">
@@ -732,19 +738,29 @@ async function remove(row) {
   gap: var(--space-2);
   min-width: 0;
 }
+/* logo 块照原型 L110 `.model-logo{width:32px;height:32px;border-radius:8px;background:#eef4f1;color:#087d59;font-weight:700}`
+   （2026-09-08 批次 2C · D2）；图片图标时去底色铺满（原型 `.model-logo.has-image`） */
 .md-logo {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
+  font-weight: var(--fw-bold);
+  color: var(--c-accent);
+  border-radius: 8px;
+  background: var(--c-accent-fill);
+  overflow: hidden;
+}
+.md-logo.has-image {
   background: var(--bg-sunken);
+}
+.md-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .md-name {
   color: var(--c-text-strong);

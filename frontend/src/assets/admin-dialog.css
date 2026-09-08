@@ -1,0 +1,51 @@
+/* =============================================================================
+ * 管理后台居中弹窗外壳 · 原型复刻批次 2A（2026-09-08）
+ *
+ * 【来源】原型三套居中弹窗壳的公共形态：
+ *   - 用户新建/编辑/设置角色 `.modal.wide`（L110）：宽 min(520px)、标题栏 58px 带下分隔线、
+ *     内容 padding 20px 22px / max-height 66vh、动作条 padding 14px 22px 带上分隔线；
+ *   - 新建岗位 `.proto2-dialog`（L1840）：头 60px / body 20px 22px / 脚 62px、圆角 10；
+ *   - 岗位管理通过/驳回 `.fm5-dialog`（L1512）：头 58px / body 20px / 脚 60px、圆角 10。
+ * 三者只差 2px 档，统一收成一个 `.admin-dialog` 类：el-dialog 传 `class="admin-dialog"` 即得
+ * 「标题栏 + 分隔线 / 正文 / 动作条 + 分隔线」的原型骨架；宽度仍由各弹窗自己传 width。
+ *
+ * 【为什么单独一个文件】admin-shell.css 在本批冻结（共享壳层不动）；本文件由用到的弹窗组件
+ * 自行 import（与 connector.css 的用法一致），不经 main.css 全站注入。
+ * el-dialog teleport 到 body，只能写全局选择器；以 .admin-dialog 类限定不影响其他弹窗。
+ * ========================================================================== */
+.el-dialog.admin-dialog {
+  --el-dialog-padding-primary: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.el-dialog.admin-dialog .el-dialog__header {
+  display: flex;
+  align-items: center;
+  height: 58px;
+  margin: 0;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--border-admin-card, #e5e9e7);
+}
+.el-dialog.admin-dialog .el-dialog__title {
+  font-size: 17px;
+  font-weight: var(--fw-semibold, 600);
+  line-height: 1.4;
+  color: var(--c-text-strong);
+}
+.el-dialog.admin-dialog .el-dialog__headerbtn {
+  top: 0;
+  right: 6px;
+  width: 46px;
+  height: 58px;
+}
+.el-dialog.admin-dialog .el-dialog__body {
+  max-height: 66vh;
+  padding: 20px 22px;
+  overflow: auto;
+  color: var(--c-text-muted);
+  line-height: 1.65;
+}
+.el-dialog.admin-dialog .el-dialog__footer {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border-admin-card, #e5e9e7);
+}

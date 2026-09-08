@@ -9,9 +9,8 @@
  * - 业务类型七项筛选（CONNECTOR_MCP/CONNECTOR_API 由 TOOL+subType 拆分）；
  * - requestAction（申请类型）筛选；submittedAt 排序（默认 desc）。
  *
- * refId 为前端 demo 附加的「原生详情」接线字段（原型无此字段）：MCP/API 指向连接器
- * mock 里真实存在的实体（打开即有内容）；其余类型 demo 期无对应 mock，详情降级见
- * GovObjectDetail.vue 头注释。
+ * refId 为前端 demo 附加的「原生详情」接线字段（原型无此字段）：每行指向对应业务模块 mock
+ * 里真实存在的实体（打开即有内容），分发见 GovObjectDetail.vue 头注释。
  */
 import { reviewTypeMatch } from '@/utils/reviewMeta'
 import { attachPersist } from './mockPersist'
@@ -51,13 +50,15 @@ function seedRows() {
   })
   // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体
   // （API/MCP → 连接器 mock；EXPERT → domainExpertMock 203 法务审阅专家；MODEL → adminModelMock
-  //  md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock biz_2102；SKILL → unifiedSkillMock sk_302/sk_309。
-  //  POSITION 走本地简易只读抽屉，refId 不消费）
+  //  md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock biz_2102；SKILL → unifiedSkillMock sk_302/sk_309；
+  //  POSITION → positionMock 403 财务审核岗（2026-09-08 原型复刻批次 2B · G-4：岗位只读抽屉接真实实体；
+  //  种子「合同审阅专员」无同名岗位，借在审的 403 示意，同 502 借 201 专家的先例））
   const REF = {
     1: 'api_1103',
     2: 'sk_302',
     3: 'biz_2102',
     4: 'md_104',
+    5: 403,
     6: 203,
     7: 'sk_309',
     8: 'spark_bridge_mcp'
@@ -72,8 +73,9 @@ let reviews = seedRows()
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=approve / reject / reset。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
+// version 2（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 refId 改指岗位 mock 403，旧快照丢弃回种子。
 const persist = attachPersist('reviews', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {

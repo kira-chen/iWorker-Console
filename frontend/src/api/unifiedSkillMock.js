@@ -271,7 +271,7 @@ function toListItem(s) {
  */
 export async function listUnifiedSkills(params = {}) {
   await delay()
-  const { keyword = '', type = '', categoryId = '', status = '', referenced, page = 1, size = 20 } = params
+  const { keyword = '', type = '', categoryId = '', status = '', referenced, page = 1, size = 20, sort = 'desc' } = params
   const q = String(keyword).trim().toLowerCase()
   let list = skills.filter((s) => {
     if (q && ![s.name, s.description].some((v) => String(v || '').toLowerCase().includes(q))) return false
@@ -282,9 +282,11 @@ export async function listUnifiedSkills(params = {}) {
     if (referenced === false && s.refNames.length) return false
     return true
   })
+  // sort=asc|desc 按最近更新时间（2026-09-08 原型复刻批次 2C · E-A1：列头切换方向作用于全量再切页，原型 L664 同口径）
+  const dir = sort === 'asc' ? 1 : -1
   list = list
     .slice()
-    .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+    .sort((a, b) => dir * String(a.updatedAt || a.createdAt).localeCompare(String(b.updatedAt || b.createdAt)))
   const total = list.length
   const start = (Number(page) - 1) * Number(size)
   return { list: list.slice(start, start + Number(size)).map(toListItem), total }

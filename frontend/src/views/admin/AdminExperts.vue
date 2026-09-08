@@ -459,16 +459,18 @@ async function stopExpert(row) {
   object-fit: cover;
   border-radius: var(--radius-sm);
 }
+/* 头像块照原型 L275 `.expert-avatar{width:32px;height:32px;border-radius:8px;background:#eef5f1;font-size:18px}`
+   （2026-09-08 原型复刻批次 2C · E-G1 核对：原 26px 改 32px，与技能列表 .sk-icon 同尺寸）；底色由行内 style 按专家背景色覆盖 */
 .ex-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   flex: none;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   background: var(--bg-sunken);
   overflow: hidden;
 }

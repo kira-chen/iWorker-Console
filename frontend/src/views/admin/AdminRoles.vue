@@ -16,14 +16,15 @@
  * - 权限模型 2026-09-01 起为页面名绑定（见 adminUserMock.js 头注释），树形态=原型 permissionGroups。
  */
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmDialog, alertDialog } from '@/composables/useConfirm'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import RoleEditor from '@/components/admin/RoleEditor.vue'
 import { listRoles, getPermissionTree, deleteRole } from '@/api/adminUser'
-// 列宽单一真相源（11 个列表页统一）：不再本页自定数值
-import { COL, opsWidth } from '@/utils/tableLayout'
+// 操作列宽走共享 opsWidth；数据列宽照原型 colgroup（2026-09-08 原型复刻批次 2A · G#10）
+import { opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -128,24 +129,23 @@ const busy = ref({})
 
 async function remove(row) {
   const userCount = row.userCount ?? 0
+  // 文案照 md §3.3（2026-09-08 原型复刻批次 2A · G#12）；壳走统一 440px 无图标确认框（批次 1 · A8）
   if (userCount > 0) {
     // 有用户绑定：提示窗（单按钮【知道了】，不执行删除——J4 拍板按原型）
-    await ElMessageBox.alert(
+    await alertDialog(
       `角色「${row.name}」仍绑定 ${userCount} 个用户。请先在用户页完成角色改绑。`,
       '无法删除角色',
-      { confirmButtonText: '知道了' }
-    ).catch(() => {})
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      `删除后角色「${row.name}」及其页面权限将不可恢复。确认删除？`,
-      '删除角色',
-      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
+      { confirmText: '知道了' }
     )
-  } catch {
     return
   }
+  // 确认键保留 danger 红档（md §3.3「使用危险样式」；原型全绿属壳层简化不搬）
+  const ok = await confirmDialog(
+    `删除后角色「${row.name}」及其页面权限将不可恢复。确认删除？`,
+    '删除角色',
+    { confirmText: '删除', danger: true }
+  )
+  if (!ok) return
   busy.value = { ...busy.value, [row.id]: 'delete' }
   try {
     await deleteRole(row.id)
@@ -198,19 +198,20 @@ async function remove(row) {
           :default-sort="{ prop: 'updatedAt', order: 'descending' }"
           @sort-change="onSortChange"
         >
-        <!-- 角色名称：主列。code 不展示——它只是系统内标识，创建/编辑都不填 -->
-        <el-table-column label="角色名称" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+        <!-- 列宽照原型 L315 <colgroup> 185 / 110 / auto / 165 / 135（2026-09-08 原型复刻批次 2A · G#10） -->
+        <!-- 角色名称：主列（原型 <strong> 600）。code 不展示——它只是系统内标识，创建/编辑都不填 -->
+        <el-table-column label="角色名称" :width="185" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="rl-name">{{ row.name }}</span>
           </template>
         </el-table-column>
 
-        <!-- 用户数量（原型「N 个用户」口径；删除分流依据） -->
-        <el-table-column label="用户数量" :width="COL.COUNT + 20" align="center">
+        <!-- 用户数量（原型「N 个用户」口径、左对齐；删除分流依据） -->
+        <el-table-column label="用户数量" :width="110">
           <template #default="{ row }">{{ row.userCount ?? 0 }} 个用户</template>
         </el-table-column>
 
-        <!-- 页面权限：仅展示已开通项。用户端整支无明细；管理端明细=纯页面名「、」串接 -->
+        <!-- 页面权限：仅展示已开通项（auto 列吃余量）。用户端整支无明细；管理端明细=纯页面名「、」串接 -->
         <el-table-column label="页面权限" :min-width="360">
           <template #default="{ row }">
             <div v-if="scopeLines(row.modules).length" class="rl-perms">
@@ -225,7 +226,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：可排序，默认倒序（改名或改页面权限都刷新） -->
-        <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="COL.TIME">
+        <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="165">
           <template #default="{ row }">
             <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
             <span v-else class="cell-na">—</span>
@@ -267,7 +268,7 @@ async function remove(row) {
 
 <style scoped>
 .rl-name {
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
 }
 

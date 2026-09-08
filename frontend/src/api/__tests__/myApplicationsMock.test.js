@@ -45,6 +45,12 @@ describe('myApplicationsMock · 我的申请内存 mock', () => {
     expect(row.refId).toBe('sk_304')
   })
 
+  it('2026-09-08 原型复刻批次 2B（G-4）：POSITION 行 503 refId 接线岗位 mock 401 经营分析岗', async () => {
+    const row = await getMyApplication(503)
+    expect(row.businessType).toBe('POSITION')
+    expect(row.refId).toBe(401)
+  })
+
   it('撤回：result → WITHDRAWN，审核人置「—」', async () => {
     const row = await withdrawMyApplication(501)
     expect(row.result).toBe('WITHDRAWN')

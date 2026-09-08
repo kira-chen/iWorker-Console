@@ -272,3 +272,34 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
     expect(el.querySelector('.el-empty').textContent).toContain('权限树加载失败 · 关闭重开重试')
   })
 })
+
+describe('RoleEditor · 2026-09-08 原型复刻批次 2A（G#11 分区卡片 / G#12 校验 toast）', () => {
+  it('抽屉体为两张 section-card：「角色信息」（名称字段 + hint）与「页面权限」（section-sub + 权限树 + 汇总）；编辑态 danger-hint 在卡外', async () => {
+    const el = mount({ role: { id: 7, name: '系统配置员', modules: ['驾驶舱'], userCount: 3 } })
+    await open()
+    const cards = [...el.querySelectorAll('section.section-card')]
+    expect(cards).toHaveLength(2)
+    expect(cards[0].querySelector('.section-title').textContent.trim()).toBe('角色信息')
+    expect(cards[0].querySelector('input')).toBeTruthy()
+    expect(cards[0].querySelector('.re-hint')).toBeTruthy()
+    expect(cards[1].querySelector('.section-title').textContent).toContain('页面权限')
+    expect(cards[1].querySelector('.section-sub').textContent.trim()).toBe('勾中哪些页面，持该角色的用户就能进入哪些页面')
+    expect(cards[1].querySelector('.re-perm-area')).toBeTruthy()
+    expect(cards[1].querySelector('.re-perm-summary')).toBeTruthy()
+    const hint = el.querySelector('.re-danger-hint')
+    expect(hint).toBeTruthy()
+    expect(hint.closest('section.section-card')).toBeNull()
+  })
+
+  it('校验失败（权限为 0）→ 就地红字 + toast「请先补齐必填项」，权限卡加 is-invalid，不打接口', async () => {
+    const el = mount({ role: null })
+    await open()
+    inst().setupState.form.name = '自定义'
+    submitBtn(el).click()
+    await nextTick()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+    expect(el.querySelector('.re-perm-err').textContent).toBe('请至少开通 1 个页面')
+    expect([...el.querySelectorAll('section.section-card')][1].className).toContain('is-invalid')
+    expect(createRole).not.toHaveBeenCalled()
+  })
+})

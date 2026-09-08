@@ -241,6 +241,8 @@ async function remove(row) {
       </template>
     </ListToolbar>
 
+    <!-- 表格白卡 .table-wrap（原型 L37 / L817；2026-09-08 批次 2C · S4 核对补套） -->
+    <div class="table-wrap">
     <ListStates
       :loading="loading"
       :error="loadError"
@@ -366,6 +368,7 @@ async function remove(row) {
         </el-table-column>
       </el-table>
     </ListStates>
+    </div>
     <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
     <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
 
@@ -403,16 +406,17 @@ async function remove(row) {
   gap: var(--space-2);
   min-width: 0;
 }
+/* 图标照原型 L1119/L1121 `.mcp-icon.connector-list-icon`：26px、圆角 5、浅灰底、无描边（2026-09-08 批次 2C） */
 .biz-cell-icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  border-radius: 5px;
   background: var(--bg-sunken);
   overflow: hidden;
 }

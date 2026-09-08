@@ -54,7 +54,13 @@ const props = defineProps({
    *   guardLastActive?: boolean,               // 最后一个启用版本禁用置灰开关（透传 VersionHistoryList）
    *   lastActiveTip?: string,                  // 置灰按钮 title 提示文案
    *   exclusiveActive?: boolean                // 启用某版本自动禁用其他（互斥）→ 启用成功后整表重拉
+   *   closeOnSubmit?: boolean                  // 提交发布成功后关闭侧栏（岗位照原型 L1228；缺省=留在侧栏切审核中态）
    * }
+   *
+   * 【发布表单排版 · 2026-09-08 原型复刻批次 2A · B5】照原型 L397–440 版本侧栏 CSS（技能/专家/岗位三处同一套）：
+   *   `.version-form-row` 左标签 64px + 右控件；`.version-notes` 为 64px + 1fr 的 grid；
+   *   控件下一行 `.version-notes-meta` 左错误 / 右「N / 2000」计数（计数在 textarea 外，不用 show-word-limit）；
+   *   审核中态 `.version-review` 橙边浅黄框 + 右下 plain「撤回提交」。
    */
   adapter: { type: Object, default: null }
 })
@@ -151,6 +157,8 @@ async function submitPublish() {
     })
     ElMessage.success(`已提交发布 ${previewLabel.value}，进入审核`)
     emit('done')
+    // 岗位口径（原型 submitPositionVersion）：提交成功即关侧栏；技能/专家缺省留在侧栏切审核中态
+    if (a.value.closeOnSubmit) visible.value = false
   } catch (e) {
     ElMessage.error(e?.message || '提交发布失败')
   } finally {
@@ -372,27 +380,31 @@ watch(
             </div>
           </template>
 
+          <!-- 升级说明：左标签 64px + 右控件 grid（原型 .version-notes L421）；控件下方一行 左错误 / 右计数（.version-notes-meta） -->
           <div class="vd-notes">
-            <label class="vd-lbl">升级说明 <em>*</em></label>
-            <el-input
-              v-model="releaseNotes"
-              type="textarea"
-              :rows="3"
-              maxlength="2000"
-              show-word-limit
-              :disabled="busy"
-              placeholder="简述本次更新了什么，方便记录与追溯"
-            />
-            <div class="vd-tip">
-              <span v-if="notesErr" class="vd-err">{{ notesErr }}</span>
+            <label class="vd-lbl vd-notes-lbl">升级说明 <em>*</em></label>
+            <div class="vd-notes-control">
+              <el-input
+                v-model="releaseNotes"
+                type="textarea"
+                :rows="3"
+                maxlength="2000"
+                :disabled="busy"
+                placeholder="简述本次更新了什么，方便记录与追溯"
+              />
+              <div class="vd-notes-meta">
+                <span class="vd-err">{{ notesErr }}</span>
+                <span class="vd-count">{{ releaseNotes.length }} / 2000</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div v-else-if="canWithdraw" class="vd-pub">
-          <p class="vd-hint">审核中，已锁定不可修改。可撤回本次提交后继续编辑。</p>
+        <!-- 审核中态：橙边浅黄框（原型 .version-review L428）+ 右下 plain「撤回提交」 -->
+        <div v-else-if="canWithdraw" class="vd-review">
+          <p class="vd-review-text">审核中，已锁定不可修改。可撤回本次提交后继续编辑。</p>
           <div class="vd-act">
-            <el-button type="warning" plain :loading="busy" @click="withdraw">撤回提交</el-button>
+            <el-button plain :loading="busy" @click="withdraw">撤回提交</el-button>
           </div>
         </div>
       </section>
@@ -479,15 +491,17 @@ watch(
 .vd-pub.loading {
   opacity: 0.6;
 }
+/* 表单行照原型 .version-form-row：左标签 64px 定宽 + 右控件，min-height 38 */
 .vd-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-height: 38px;
 }
 .vd-lbl {
-  font-size: var(--fs-sm);
+  flex: 0 0 64px;
+  font-size: var(--fs-base);
   color: var(--c-text-muted);
-  min-width: 64px;
 }
 .vd-lbl em {
   color: var(--c-danger);
@@ -505,17 +519,50 @@ watch(
   line-height: 1.5;
   margin: 0;
 }
+/* 升级说明：64px + 1fr grid（原型 .version-notes）；标签顶部对齐控件首行 */
 .vd-notes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: var(--space-3);
 }
-.vd-tip {
-  min-height: 16px;
+.vd-notes-lbl {
+  flex: none;
+  padding-top: 9px;
+}
+.vd-notes-control {
+  min-width: 0;
+}
+/* 控件下一行：左错误 / 右计数（原型 .version-notes-meta：space-between、margin-top 5、min-height 18、12px） */
+.vd-notes-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 5px;
+  min-height: 18px;
+  font-size: var(--fs-xs);
 }
 .vd-err {
   color: var(--c-danger);
   font-size: var(--fs-xs);
+}
+.vd-count {
+  margin-left: auto;
+  color: var(--c-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+/* 审核中提示框（原型 .version-review：padding 12 14、橙边 #f0dec1、圆角 7、浅黄底 #fffaf1） */
+.vd-review {
+  margin-left: var(--space-4);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--c-warning) 35%, transparent);
+  border-radius: 7px;
+  background: var(--c-warning-soft);
+}
+.vd-review-text {
+  margin: 0 0 12px;
+  color: var(--c-text-muted);
+  line-height: 1.6;
+  font-size: var(--fs-base);
 }
 .vd-gate {
   font-size: var(--fs-sm);

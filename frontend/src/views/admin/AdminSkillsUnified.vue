@@ -52,7 +52,9 @@ const router = useRouter()
 const route = useRoute()
 
 // referenced 存 UI 口径的 '' | 'yes' | 'no'，下发前转成 mock/后端要的布尔（见 params）。
-const query = reactive({ type: '', keyword: '', status: '', categoryId: '', referenced: '' })
+// sort：「最近更新时间」列头方向（2026-09-08 原型复刻批次 2C · E-A1：原型 L664 对全量排序再切页，
+// 改 sortable="custom" 交 mock 全量排序，与专家页同做法；原 el-table 本地 sortable 只排当页）。
+const query = reactive({ type: '', keyword: '', status: '', categoryId: '', referenced: '', sort: 'desc' })
 
 const list = useAdminList(listUnifiedSkills, {
   params: () => {
@@ -72,6 +74,13 @@ const actionBusy = ref(null) // 行级互斥：停用/删除/撤回共用（一�
 
 const fetchList = list.reload
 const reload = list.search
+
+/** 「最近更新时间」列头排序：切方向后按当前条件重取（mock 全量排序）；order=null 回落默认降序。 */
+function onSortChange({ prop, order }) {
+  if (prop !== 'updatedAt') return
+  query.sort = order === 'ascending' ? 'asc' : 'desc'
+  fetchList()
+}
 
 // 引用状态筛选只对岗位私有有意义（只有它进岗位引用表）。
 const referencedFilterEnabled = computed(() => query.type === SKILL_TYPE.POSITION)
@@ -540,23 +549,21 @@ onBeforeUnmount(() => {
         <el-option label="审核中" value="REVIEWING" />
         <el-option label="已发布" value="PUBLISHED" />
       </el-select>
-      <!-- 引用状态：仅岗位私有可用（疑点7 保留）；其余类型禁用而非隐藏，避免布局抖动 -->
-      <el-tooltip :disabled="referencedFilterEnabled" content="引用状态仅岗位私有技能适用" placement="top">
-        <span>
-          <el-select
-            v-model="query.referenced"
-            placeholder="引用状态"
-            clearable
-            class="lt-filter"
-            :disabled="!referencedFilterEnabled"
-            @change="reload"
-          >
-            <el-option label="全部引用状态" value="" />
-            <el-option label="已被引用" value="yes" />
-            <el-option label="未被引用" value="no" />
-          </el-select>
-        </span>
-      </el-tooltip>
+      <!-- 引用状态：仅岗位私有可用（疑点7 保留 + ?referenced 深链）。
+           2026-09-08 原型复刻批次 2C · E-A3：原型最终层 L666 工具栏无此格，改为仅 type=岗位私有 时渲染
+           （代码超集保留，其余类型不再占一格禁用） -->
+      <el-select
+        v-if="referencedFilterEnabled"
+        v-model="query.referenced"
+        placeholder="引用状态"
+        clearable
+        class="lt-filter"
+        @change="reload"
+      >
+        <el-option label="全部引用状态" value="" />
+        <el-option label="已被引用" value="yes" />
+        <el-option label="未被引用" value="no" />
+      </el-select>
       <el-button @click="reload">查询</el-button>
       <template #right>
         <el-button type="primary" class="lt-create" @click="openCreate">
@@ -578,9 +585,10 @@ onBeforeUnmount(() => {
           :data="rows"
           row-key="id"
           :default-sort="{ prop: 'updatedAt', order: 'descending' }"
+          @sort-change="onSortChange"
         >
-          <!-- 技能名：图标 + 名称（超长换行完整展示）+ 三态状态标签 -->
-          <el-table-column label="技能名" :min-width="230">
+          <!-- 技能名：图标 + 名称（超长换行完整展示）+ 三态状态标签；首列宽照原型 L1275（290px，批次 2C · E-A2） -->
+          <el-table-column label="技能名" :min-width="290">
             <template #default="{ row }">
               <div class="sk-title">
                 <span v-if="row.icon" class="sk-icon">
@@ -635,8 +643,15 @@ onBeforeUnmount(() => {
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
-          <!-- 最近更新时间：排序列，默认由近到远（保存/提交审核后按新时间重排） -->
-          <el-table-column prop="updatedAt" label="最近更新时间" :width="COL.TIME" sortable>
+          <!-- 最近更新时间：排序列，默认由近到远（保存/提交审核后按新时间重排）；
+               sortable="custom" 交 mock 全量排序，不只排当页（批次 2C · E-A1） -->
+          <el-table-column
+            prop="updatedAt"
+            label="最近更新时间"
+            :width="COL.TIME"
+            sortable="custom"
+            :sort-orders="['descending', 'ascending']"
+          >
             <template #default="{ row }">
               <span v-if="row.updatedAt">{{ row.updatedAt }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
@@ -762,17 +777,21 @@ onBeforeUnmount(() => {
   object-fit: cover;
   border-radius: var(--radius-sm);
 }
+/* 图标块照原型 L275 `.expert-avatar` + L1263 `.skill-list-icon`：32px、圆角 8、浅绿灰底、18px
+   （2026-09-08 批次 2C · E-A2；专家列表 .ex-avatar 同尺寸） */
 .sk-icon {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
-  background: var(--bg-active);
-  color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--c-text-strong);
+  font-size: 18px;
+  line-height: 1;
+  overflow: hidden;
 }
 .sk-name {
   min-width: 0;

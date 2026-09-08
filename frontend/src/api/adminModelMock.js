@@ -40,6 +40,11 @@ const CAPS_UNPROBED = {
 const mkModel = (over) => ({
   id: over.id,
   name: '',
+  // 图标（2026-09-08 原型复刻批次 2C · D2 / md §三.2「图标：必填」）：emoji 字符或图片 URL；
+  // 为空时列表回落厂商首字 logo（原型 renderModels L213 + decorateList L1345 同口径）。
+  // 原型 modelRows L200 种子不带图标（列表显厂商首字），md 图标必填 → 种子按 md 补图标；
+  // 抽屉图标字段 + 新建默认「▦」（原型 L1415）归第 3 批。
+  icon: '',
   providerName: 'other',
   category: 'TEXT',
   baseUrl: '',
@@ -73,6 +78,7 @@ let models = [
   mkModel({
     id: 'md_101',
     name: 'DeepSeek R1',
+    icon: '◎',
     providerName: 'deepseek',
     category: 'TEXT',
     baseUrl: 'https://api.deepseek.com/v1',
@@ -98,6 +104,7 @@ let models = [
   mkModel({
     id: 'md_102',
     name: '通义千问 Max',
+    icon: '▦',
     providerName: 'qwen-oauth',
     category: 'TEXT',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -122,6 +129,7 @@ let models = [
   mkModel({
     id: 'md_103',
     name: '企业视觉理解模型',
+    icon: '◉',
     providerName: 'other',
     category: 'VISION',
     baseUrl: 'https://model-gateway.intra/v1',
@@ -148,6 +156,7 @@ let models = [
   mkModel({
     id: 'md_104',
     name: 'Kimi K2',
+    icon: '⌁',
     providerName: 'moonshot',
     category: 'TEXT',
     baseUrl: 'https://api.moonshot.cn/v1',
@@ -169,6 +178,7 @@ let models = [
   mkModel({
     id: 'md_105',
     name: '营销文生图',
+    icon: '▧',
     providerName: 'other',
     category: 'IMAGE_GEN',
     baseUrl: 'https://image-gateway.intra/v1',
@@ -188,7 +198,8 @@ let models = [
 // 发布/停用/撤回/审核通过/驳回、设默认。restore 做最小形状校验，快照不合法即抛错 → 兜底回种子。
 // 注：凭据为 demo 假密钥（sk-demo-*），随行落本地存储不触安全红线。
 const persist = attachPersist('adminModel', {
-  version: 1,
+  // v2（2026-09-08 原型复刻批次 2C）：行结构新增 icon 字段，旧快照丢弃重播种
+  version: 2,
   snapshot: () => ({ modelSeq, models }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.modelSeq) || !Array.isArray(d.models)) {
@@ -283,6 +294,7 @@ function connChanged(m, payload) {
 function applyModelPayload(m, payload) {
   m.providerName = payload.providerName || m.providerName || 'other'
   m.name = payload.name.trim()
+  if ('icon' in payload) m.icon = String(payload.icon || '').trim()
   m.category = payload.category || m.category
   m.baseUrl = payload.baseUrl.trim()
   m.model = String(payload.model).trim()

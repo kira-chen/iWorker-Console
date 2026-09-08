@@ -195,8 +195,8 @@ describe('DrawerEditor · 全站抽屉一致性', () => {
   const BARE_DRAWER_ALLOWLIST = {
     'DocDetailDrawer.vue': '只读文档详情，无表单',
     // 2026-09-01 PRD 对齐改造：ReviewDetailDrawer 已废弃删除（详情改复用业务原生只读视图）；
-    // GovObjectDetail 的 POSITION 简易只读抽屉（岗位抽屉待拍板的临时形态）为只读详情、无表单
-    'GovObjectDetail.vue': '只读业务详情分发器（POSITION 临时只读抽屉），无表单',
+    // 2026-09-08 原型复刻批次 2B（G-4）：GovObjectDetail 的 POSITION 临时裸抽屉退役，改走 PositionViewDrawer
+    // （DrawerEditor 壳），不再需要白名单
     'PositionSampleTaskStage.vue': '只读测试面板，无表单',
     'SkillFocusEditor.vue': '左侧文件栏（direction=ltr/260px），是导航不是编辑器',
     'ConnectorPublishDrawer.vue': '发布流程 + 自定义 header，非标准表单编辑器',

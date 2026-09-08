@@ -7,8 +7,11 @@
  * - 列 = 用户名 / 终端（仅 Windows、Mac 两类蓝标）/ 登录时间(排序) / 登出时间(排序) / 状态 / 来源 IP；
  * - 默认按登录时间倒序；登出时间为空显「—」；登录地点字段不展示（md §四）；
  * - 数据走 loginLog.js（demo 默认 loginLogMock，同一账号多终端多条记录）。
+ * 2026-09-08 原型复刻批次 2B（G-5 / A-1）：登录 / 登出时间列头改原型文字箭头（auditArrow L1813：当前排序列
+ *   ↓ 倒序 / ↑ 正序，另一列恒显 ↓；点击同列切向、换列转倒序，均回第 1 页）；搜索框输入 300ms 防抖即时过滤
+ *   （原型 auditSearch input 220ms 防抖，与同域三页统一 300ms），【查询】/ 回车仍显式触发。
  */
-import { reactive, onMounted } from 'vue'
+import { reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -30,18 +33,34 @@ const fetchList = list.reload
 // 【查询】/回车：按当前条件刷新并回第 1 页（md §二）
 const reload = list.search
 
-// 列头排序（loginAt / logoutAt 双列，切换后回第 1 页）
-function onSortChange({ prop, order }) {
-  if (!order) {
-    // 取消排序回默认：登录时间倒序
-    query.sortField = 'loginAt'
-    query.sortDir = 'desc'
+// 列头排序（loginAt / logoutAt 双列文字按钮，原型 audit-sort：同列切向、换列转倒序，切换后回第 1 页）
+function toggleSort(field) {
+  if (query.sortField === field) {
+    query.sortDir = query.sortDir === 'desc' ? 'asc' : 'desc'
   } else {
-    query.sortField = prop
-    query.sortDir = order === 'ascending' ? 'asc' : 'desc'
+    query.sortField = field
+    query.sortDir = 'desc'
   }
   reload()
 }
+// 原型 auditArrow：当前排序列按方向 ↓/↑，非当前列恒显「↓」
+function sortArrow(field) {
+  if (query.sortField !== field) return '↓'
+  return query.sortDir === 'asc' ? '↑' : '↓'
+}
+
+// 关键词 300ms 防抖即时过滤（A-1，与我的申请 / 审核中心 / 用户反馈同口径）
+let kwTimer = null
+watch(
+  () => query.keyword,
+  () => {
+    if (kwTimer) clearTimeout(kwTimer)
+    kwTimer = setTimeout(reload, 300)
+  }
+)
+onBeforeUnmount(() => {
+  if (kwTimer) clearTimeout(kwTimer)
+})
 
 onMounted(fetchList)
 
@@ -81,12 +100,7 @@ function isOnline(row) {
         empty-text="暂无登录记录"
         @retry="fetchList"
       >
-        <el-table
-          :data="rows"
-          class="ll-table"
-          :default-sort="{ prop: 'loginAt', order: 'descending' }"
-          @sort-change="onSortChange"
-        >
+        <el-table :data="rows" class="ll-table">
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
@@ -95,12 +109,23 @@ function isOnline(row) {
               <StatusTag type="accent">{{ row.terminal }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="登录时间" prop="loginAt" sortable="custom" :width="COL.TIME">
+          <!-- 原型 L1820：登录 / 登出时间列头均为文字按钮「登录时间 ↓」（auditArrow） -->
+          <el-table-column :width="COL.TIME">
+            <template #header>
+              <button type="button" class="ll-sort" @click="toggleSort('loginAt')">
+                登录时间 <span class="ll-sort-arrow">{{ sortArrow('loginAt') }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span class="ll-muted">{{ row.loginAt || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="登出时间" prop="logoutAt" sortable="custom" :width="COL.TIME">
+          <el-table-column :width="COL.TIME">
+            <template #header>
+              <button type="button" class="ll-sort" @click="toggleSort('logoutAt')">
+                登出时间 <span class="ll-sort-arrow">{{ sortArrow('logoutAt') }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span class="ll-muted">{{ row.logoutAt || '—' }}</span>
             </template>
@@ -136,5 +161,19 @@ function isOnline(row) {
 }
 .ll-muted {
   color: var(--c-text-faint);
+}
+/* 排序列头文字按钮（原型 .sort{border:0;background:transparent;padding:0;color:inherit}） */
+.ll-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.ll-sort-arrow {
+  margin-left: 2px;
 }
 </style>

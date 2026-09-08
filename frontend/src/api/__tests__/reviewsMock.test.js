@@ -47,6 +47,12 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(biz.list.map((r) => r.id)).toEqual([3])
   })
 
+  it('2026-09-08 原型复刻批次 2B（G-4）：POSITION 行 5 refId 接线岗位 mock 403（借财务审核岗示意）', async () => {
+    const row = await getReview(5)
+    expect(row.type).toBe('POSITION')
+    expect(row.refId).toBe(403)
+  })
+
   it('keyword 过滤域 = 名称/描述/提交人（搜提交人 zhangwei 命中技能行）', async () => {
     const { list } = await listReviews({ keyword: 'zhangwei' })
     expect(list.map((r) => r.id)).toEqual([7])

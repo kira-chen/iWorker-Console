@@ -17,7 +17,7 @@
  *   配色对齐模型页：常规=primary、正向状态操作（发布）=success、
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  */
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -42,9 +42,11 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 
 // 初值 true：首屏即 loading 态（v-loading 遮罩），避免挂载首帧 loading=false+空列表先闪空态。
 // fetchList 在 onMounted 调用，try/finally 任何路径（成功/失败）都会把 loading 置回 false，不会卡死。
-const query = reactive({ keyword: '', state: '' })
+// sort：「最近更新时间」列头排序方向（2026-09-08 原型复刻批次 2C：改 sortable="custom" 交 mock 全量排序，
+// 与专家 / 模型页同做法；原 el-table 本地 sortable 只排当页）。
+const query = reactive({ keyword: '', state: '', sort: 'desc' })
 
-// 服务端分页：后端 /api/fde/connectors/mcp?page=&size= 返回当前页 list + 过滤后全量 total。
+// 服务端分页：mock listMcp(page/size/keyword/state/sort) 返回当前页 list + 过滤后全量 total。
 
 const editorVisible = ref(false)
 const editingId = ref(null)
@@ -111,6 +113,14 @@ function refsTip(row) {
   return names.length ? names.join('、') : ''
 }
 
+// 引用清单弹窗（2026-09-08 原型复刻批次 2C · M2：原型 L171 `button.ref` 点击 → modal('被技能引用', …, '关闭')，
+// 悬停 title 仍列技能名；与 API / 业务系统页同款弹窗。md §二.1 只写悬停，点击弹窗为原型附加，Q157 已记。）
+const refsDialog = reactive({ visible: false, skills: [] })
+function openRefs(row) {
+  refsDialog.skills = row.referencedBySkills || []
+  refsDialog.visible = true
+}
+
 /** 该行服务级聚合态（缺失=未拉到，按未发布处理）。 */
 function aggOf(row) {
   return pubAgg.value[row.id] || 'NOT_PUBLISHED'
@@ -166,11 +176,8 @@ function isLocked(row) {
 // 注：原页头「N 个已发布服务连通异常」红点角标已移除（2026-08-22 负责人口径）——
 // 每行「验证」列本就显红色「异常」，顶部再报一遍属重复提示。三个页面（MCP / API / 模型）同步移除。
 
-// 按三态筛选后的行（服务端不认聚合态，故在前端过滤当前页）
-const visibleRows = computed(() => {
-  if (!query.state) return rows.value
-  return rows.value.filter((r) => stateKey(r) === query.state)
-})
+// 状态筛选（三态聚合键）随 query.state 下发 mock 侧过滤（2026-09-08 批次 2C：种子补到 11 条后
+// 分页与筛选都在 mock 里做，原「当页前端过滤」的 visibleRows 废止——否则筛选后 total 与页数对不上）。
 
 // 逐行拉取服务级聚合态（按本页 rows 并发；单行失败不阻断他行，缺失按未发布处理）。
 async function loadPubSummary() {
@@ -213,6 +220,12 @@ function reload() {
   return fetchList()
 }
 
+/** 「最近更新时间」列头排序：切方向后按当前条件重取（mock 全量排序）；order=null 回落默认降序。 */
+function onSortChange({ prop, order }) {
+  if (prop !== 'updatedAt') return
+  query.sort = order === 'ascending' ? 'asc' : 'desc'
+  fetchList()
+}
 
 onMounted(fetchList)
 
@@ -396,9 +409,13 @@ async function remove(row) {
       <el-input v-model="query.keyword" placeholder="搜索服务名称或描述" clearable class="lt-search">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter">
+      <!-- 状态筛选：切换即按当前条件刷新并回第 1 页（md §一.2） -->
+      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="reload">
         <el-option v-for="o in STATE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
+      <!-- 【查询】（2026-09-08 原型复刻批次 2C · M1：原型 L171 `button.plain[data-action=mcp-query]`，
+           与 API / 业务系统 / 模型页同形；搜索框 300ms 自动刷新仍保留） -->
+      <el-button @click="reload">查询</el-button>
       <template #right>
         <el-button type="primary" class="lt-create" @click="openCreate">
           <el-icon><Plus /></el-icon> 新建 MCP
@@ -406,22 +423,26 @@ async function remove(row) {
       </template>
     </ListToolbar>
 
+    <!-- 表格白卡 .table-wrap（原型 L37；2026-09-08 批次 2C · S4 核对补套） -->
+    <div class="table-wrap">
     <ListStates
       :loading="loading"
       :error="loadError"
       :empty="isEmpty"
-      empty-text="还没有 MCP 服务 · 点「新建 MCP」登记第一个"
+      :empty-text="query.keyword || query.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
     >
       <el-table
         v-loading="loading"
-        :data="visibleRows"
+        :data="rows"
         row-key="id"
         :default-sort="{ prop: 'updatedAt', order: 'descending' }"
+        @sort-change="onSortChange"
       >
         <!-- 服务：合并列（PRD §二.1/原型 service-summary）——图标+名称加粗+发布状态标签，
-             第二行描述缩略（hover 全文）；不设独立状态列与描述列。 -->
-        <el-table-column label="服务" :min-width="260">
+             第二行描述缩略（hover 全文）；不设独立状态列与描述列。
+             布局照原型 L1119 `.service-summary`：34px 图标列 + 内容列，描述与名称文字对齐（缩进过图标）。 -->
+        <el-table-column label="服务" :min-width="300">
           <template #default="{ row }">
             <div class="mc-service">
               <div class="mc-service-name">
@@ -432,7 +453,7 @@ async function remove(row) {
                 <span class="mc-name">{{ row.name }}</span>
                 <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
               </div>
-              <div class="mc-service-desc" :title="row.description || ''">
+              <div class="mc-service-desc" :class="{ 'is-indent': row.icon }" :title="row.description || ''">
                 {{ row.description || '—' }}
               </div>
             </div>
@@ -455,18 +476,31 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 引用情况（PRD §二.1）：暂无引用 / N 个技能引用，悬停查看引用技能名 -->
-        <el-table-column label="引用情况" :width="120">
+        <!-- 引用情况（PRD §二.1）：暂无引用 / N 个技能引用，悬停查看引用技能名；
+             点击弹「被技能引用」清单（原型 L171/L189，批次 2C · M2） -->
+        <el-table-column label="引用情况" :width="135">
           <template #default="{ row }">
             <span v-if="!row.referencedBySkillCount" class="cell-na">暂无引用</span>
-            <el-tooltip v-else :content="refsTip(row)" placement="top" effect="dark">
-              <span class="mc-refs">{{ row.referencedBySkillCount }} 个技能引用</span>
-            </el-tooltip>
+            <el-button
+              v-else
+              link
+              type="primary"
+              class="mc-refs"
+              :title="refsTip(row)"
+              @click="openRefs(row)"
+            >{{ row.referencedBySkillCount }} 个技能引用</el-button>
           </template>
         </el-table-column>
 
-        <!-- 最近更新时间（PRD §二.1）：配置/工具清单最近一次保存成功的时间，可排序（默认由近到远） -->
-        <el-table-column label="最近更新时间" prop="updatedAt" sortable :width="COL.TIME + 24">
+        <!-- 最近更新时间（PRD §二.1）：配置/工具清单最近一次保存成功的时间，可排序（默认由近到远；
+             sortable="custom" 交 mock 全量排序，不只排当页） -->
+        <el-table-column
+          label="最近更新时间"
+          prop="updatedAt"
+          sortable="custom"
+          :sort-orders="['descending', 'ascending']"
+          :width="COL.TIME + 24"
+        >
           <template #default="{ row }">
             <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
             <span v-else class="cell-na">—</span>
@@ -599,14 +633,16 @@ async function remove(row) {
           </template>
         </el-table-column>
       </el-table>
-
-      <ListPagination
-        v-model:page="page"
-        :page-size="pageSize"
-        :total="total"
-        @change="fetchList"
-      />
     </ListStates>
+    </div>
+
+    <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
+    <ListPagination
+      v-model:page="page"
+      :page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <McpEditor
       v-model:visible="editorVisible"
@@ -615,19 +651,37 @@ async function remove(row) {
       @saved="onSaved"
       @probed="onProbed"
     />
+
+    <!-- 引用清单弹窗（M2：标题「被技能引用」，正文技能名列表，按钮【关闭】；与 API / 业务系统页同款） -->
+    <el-dialog v-model="refsDialog.visible" title="被技能引用" width="440px">
+      <div v-if="refsDialog.skills.length" class="refs-list">
+        <div v-for="s in refsDialog.skills" :key="s.skillId" class="refs-item">
+          <el-tag type="info" size="small">{{ s.skillName }}</el-tag>
+        </div>
+      </div>
+      <div v-else class="cell-na">暂无引用</div>
+      <template #footer>
+        <el-button @click="refsDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 
-/* 服务合并列（PRD §二.1）：首行 图标+名称加粗+状态标签，次行描述缩略 */
+/* 服务合并列（PRD §二.1）：首行 图标+名称加粗+状态标签，次行描述缩略。
+   照原型 L1119 `.service-summary{display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:8px;row-gap:4px}`
+   `.mcp-name{grid-column:1/-1}` `.service-description{grid-column:2}`：描述缩进到图标右侧与名称文字对齐。 */
 .mc-service {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 4px;
+  align-items: center;
   min-width: 0;
 }
 .mc-service-name {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -641,14 +695,26 @@ async function remove(row) {
   text-overflow: ellipsis;
 }
 .mc-service-desc {
+  grid-column: 1 / -1;
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
+  line-height: 1.45;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 有图标时描述落第 2 列（原型 grid-column:2）；无图标（存量行）不留空缩进 */
+.mc-service-desc.is-indent {
+  grid-column: 2;
+}
 .mc-refs {
-  cursor: default;
+  padding: 0;
+}
+/* 引用清单弹窗 */
+.refs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 /* ===== 验证列（外观与模型页 .md-vc 同构，仅前缀不同） ===== */
 .mc-vc {
@@ -687,24 +753,20 @@ async function remove(row) {
     transform: rotate(360deg);
   }
 }
-.mc-pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: var(--space-4);
-}
-
-/* 图标（V97）：定宽定高，emoji 与图片共用同一视觉框，避免不同形态导致行高参差。 */
+/* 图标（V97）：定宽定高，emoji 与图片共用同一视觉框，避免不同形态导致行高参差。
+   尺寸照原型 L1119 `.mcp-icon{width:26px;height:26px;border-radius:5px;background:#f2f4f5}`（批次 2C）。 */
 .mc-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex: none;
   font-size: 15px;
   line-height: 1;
   vertical-align: middle;
-  border-radius: var(--radius-sm);
+  border-radius: 5px;
+  background: var(--bg-sunken);
   overflow: hidden;
 }
 .mc-icon-img {

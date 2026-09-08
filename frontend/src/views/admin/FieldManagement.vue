@@ -9,6 +9,10 @@
  * - 编辑弹窗改为「草稿编辑 +【完成】统一保存」：每行 序号+输入框+删除，删除仅移出草稿，
  *   完成时统一校验（选项值不能为空/不能重复，弹窗内联报错）并整字段覆盖保存；
  * - 数据走 fieldDict.js（demo 默认 fieldDictMock 内存 mock）。
+ * 2026-09-08 原型复刻批次 2B（D-1 / D-2 / D-3）：编辑弹窗选项行照原型 .fm5-option-row（描边 + 浅底 + 7px 圆角 +
+ *   9px 11px 内距，序号 / 34px 输入框 / × 图标钮），列表限高 310 滚动；「＋ 添加选项」改 plain 描边按钮、纳入
+ *   列表容器末尾、上加 1px 分隔线（.fm5-option-add）；删除确认保留 ElMessageBox（原型原生 window.confirm 不搬，
+ *   按钮文案待负责人定）；弹窗点遮罩可关（md §三「关闭弹窗，放弃本次未保存修改」）。
  */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -208,15 +212,15 @@ onMounted(fetchAll)
       </div>
     </div>
 
-    <!-- 编辑弹窗：草稿编辑 +【完成】统一保存（原型 600px） -->
+    <!-- 编辑弹窗：草稿编辑 +【完成】统一保存（原型 600px；点遮罩关闭 = 放弃未保存修改，md §三） -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogField ? `编辑${dialogField.name}` : '编辑字段'"
       width="600px"
-      :close-on-click-modal="false"
     >
       <p class="fm-dlg-hint">{{ dialogField?.desc }}</p>
 
+      <!-- 原型 renderFieldOptions L1626：行 + 「＋ 添加选项」+ 错误行同在 #fiveFieldOptions 容器内（限高 310 滚动） -->
       <div class="fm-opt-list">
         <div v-for="(row, i) in draft" :key="i" class="fm-opt-row">
           <span class="fm-opt-idx">{{ i + 1 }}</span>
@@ -227,13 +231,15 @@ onMounted(fetchAll)
             class="fm-opt-input"
             @input="dialogError = ''"
           />
-          <el-button link class="fm-opt-del" title="删除" @click="removeOption(i)">×</el-button>
+          <button type="button" class="fm-opt-del" title="删除" @click="removeOption(i)">×</button>
         </div>
+
+        <div class="fm-opt-add">
+          <el-button plain @click="addOption">＋ 添加选项</el-button>
+        </div>
+
+        <div class="fm-dlg-error">{{ dialogError }}</div>
       </div>
-
-      <el-button link type="primary" class="fm-opt-add" @click="addOption">＋ 添加选项</el-button>
-
-      <div v-if="dialogError" class="fm-dlg-error">{{ dialogError }}</div>
 
       <template #footer>
         <el-button @click="cancelEdit">取消</el-button>
@@ -319,43 +325,65 @@ onMounted(fetchAll)
   color: var(--c-text-muted);
   margin: 0 0 16px;
 }
+/* 选项列表（原型 .fm5-option-list{gap:8px;max-height:310px;overflow:auto}） */
 .fm-opt-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  max-height: 320px;
+  gap: 8px;
+  max-height: 310px;
   overflow-y: auto;
 }
+/* 选项行（原型 .fm5-option-row{gap:8px;padding:9px 11px;border:1px solid line;border-radius:7px;background:#fafbfa}） */
 .fm-opt-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-base);
+  border-radius: 7px;
+  background: var(--bg-admin-card-head);
 }
 .fm-opt-idx {
-  width: 20px;
+  min-width: 12px;
   text-align: center;
   flex-shrink: 0;
-  color: var(--c-text-faint);
+  color: var(--c-text);
   font-size: var(--fs-sm);
 }
+/* 行内输入框 34px（原型 .fm5-option-row .input{height:34px}），不跟随后台 38px 档 */
 .fm-opt-input {
   flex: 1;
+  --el-component-size: 34px;
 }
+/* × 图标钮（原型 .icon-btn） */
 .fm-opt-del {
   flex-shrink: 0;
-  font-size: 16px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--c-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
 }
 .fm-opt-del:hover {
+  background: var(--bg-hover);
   color: var(--el-color-danger);
 }
+/* 「＋ 添加选项」（原型 .fm5-option-add{margin-top:16px;padding-top:14px;border-top:1px solid line}） */
 .fm-opt-add {
-  margin-top: var(--space-2);
-  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-base);
 }
+/* 错误行（原型 .fm5-dialog-error{min-height:18px;margin-top:7px;12px danger}）：常驻占位，避免报错时跳动 */
 .fm-dlg-error {
-  margin-top: var(--space-2);
+  min-height: 18px;
+  margin-top: 7px;
   color: var(--el-color-danger);
   font-size: var(--fs-xs);
 }

@@ -47,6 +47,8 @@ import {
 import { listDataTables } from '@/api/dataTable'
 import { iconIsUrl } from '@/utils/iconDisplay'
 import { POSITION_BUMP_OPTIONS, DESCRIPTION_MAX_LEN } from '@/utils/positionModel'
+// 居中弹窗外壳（原型 .proto2-dialog 头/脚分隔线档，2026-09-08 原型复刻批次 2A）
+import '@/assets/admin-dialog.css'
 
 // 效果测试台异步加载：仅在点「测试」打开时拉取，避免把对话链路（ChatMarkdown / api 等）提前并入列表页首屏，
 // 同时保持现有测试 import 图不变（与 AdminSkills / PositionWorkbench 同款做法）。
@@ -125,23 +127,29 @@ const COUNT_TIPS = {
   claim: '当前已领用该岗位的用户总数。'
 }
 
-/* ---------- 新建：先弹窗填【岗位名称】+【岗位定位】，创建成功后再进工作台（Q4：流程不动） ---------- */
+/* ---------- 新建：居中弹窗填【岗位名称】+【岗位描述】，创建成功后进岗位详情页（原型 npOpen / md §一.1） ----------
+ * 2026-09-08 原型复刻批次 2A · B2：字段构成照原型 L2319（岗位名称* + 岗位描述*，「岗位定位」字段原型无 → 删）；
+ * 岗位描述必填（原型 npCreate 校验 + 字段一览表 ✅），上限按负责人决议统一 500（不照原型 2000）；
+ * 校验提示走表单内联红框（代码约定；原型是红框 + toast）。 */
 const createVisible = ref(false)
 const creating = ref(false)
 const createFormRef = ref(null)
-const createForm = reactive({ name: '', intro: '', description: '' })
+const createForm = reactive({ name: '', description: '' })
 // 服务端字段级错误（如重名 1005）→ 通过 :error 红框内联回显到名称项（沿用 McpEditor/ApiEditor 范式）
 const nameError = ref('')
 const createRules = {
   name: [
     { required: true, message: '请填写岗位名称', trigger: 'blur' },
     { max: 64, message: '岗位名称不超过 64 字', trigger: 'blur' }
+  ],
+  description: [
+    { required: true, message: '请填写岗位描述', trigger: 'blur' },
+    { max: DESCRIPTION_MAX_LEN, message: `岗位描述不超过 ${DESCRIPTION_MAX_LEN} 字`, trigger: 'blur' }
   ]
 }
 
 function openCreateDialog() {
   createForm.name = ''
-  createForm.intro = ''
   createForm.description = ''
   nameError.value = ''
   createVisible.value = true
@@ -159,9 +167,8 @@ async function submitCreate() {
   try {
     const data = await createPosition({
       name: createForm.name.trim(),
-      intro: createForm.intro.trim() || undefined,
-      // 岗位描述（2026-08-26 开放编辑入口）：可空；空则不上送（后端部分更新语义）
-      description: createForm.description.trim() || undefined
+      // 岗位描述：新建弹窗必填（原型 npCreate / 字段一览表），与人格页签同一字段
+      description: createForm.description.trim()
     })
     createVisible.value = false
     // 2026-09-08 PRD-20260908 对齐：新建 toast 逐字照 md §1.1 / 原型 npCreate L2321
@@ -296,7 +303,10 @@ const versionAdapter = computed(() => {
     lastActiveTip: '当前版本是该岗位最后一个启用版本。如需停止对外提供，请先整体下架岗位。',
     exclusiveActive: true,
     // 侧栏内「撤回提交」确认文案（原型 withdrawPositionVersion；toast「已撤回提交」由抽屉统一给）
-    withdrawText: () => '撤回本次提交后将回到修改前状态。确认撤回？'
+    withdrawText: () => '撤回本次提交后将回到修改前状态。确认撤回？',
+    // 提交发布成功后关闭侧栏（原型 submitPositionVersion L1228 closePositionManager；2026-09-08 原型复刻批次 2A · B4）。
+    // 技能 / 专家未传该项 → 保持原有「留在侧栏切审核中态」行为
+    closeOnSubmit: true
   }
 })
 
@@ -389,6 +399,10 @@ async function remove(row) {
 
 // 操作列按钮数上限（2026-09-04 PRD-20260903 对齐补【查看】）：未发布行 查看/编辑/[测试]/发布/删除
 const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
+
+// 列宽照原型 L1200 <colgroup>（2026-09-08 原型复刻批次 2A · B7）：250/300/70/80/80/100/165；
+// 名称 / 描述为 min-width 随余量按比例伸缩，其余定宽。共享 COL 常量仍用于操作列（opsWidth）。
+const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100, TIME: 165 }
 </script>
 
 <template>
@@ -439,60 +453,64 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
           :default-sort="{ prop: 'updatedAt', order: 'descending' }"
           @sort-change="onSortChange"
         >
-          <!-- 岗位名称：图标 + 名称 + 状态标签同格（原型 position-primary，独立状态列已并入） -->
-          <el-table-column label="岗位名称" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+          <!-- 列宽策略照原型 L1200 <colgroup> 250/300/70/80/80/100/165/300（2026-09-08 原型复刻批次 2A · B7）：
+               名称 / 描述两列取 min-width 按比例伸缩，计数 / 版本 / 时间定宽；操作列 fixed="right"（代码超集）保留 -->
+          <!-- 岗位名称：图标 32px 圆角 8（原型 .expert-avatar L275，B6）+ 名称 600 + 状态 pill 同格（原型 position-primary） -->
+          <el-table-column label="岗位名称" :min-width="POS_COL.NAME">
             <template #default="{ row }">
               <span class="pos-primary">
                 <span class="pos-icon">
                   <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="pos-icon-img" />
                   <span v-else>{{ row.icon || '🧑‍💼' }}</span>
                 </span>
-                <span class="pos-name">{{ row.name }}</span>
-                <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
+                <span class="pos-name-line">
+                  <span class="pos-name" :title="row.name">{{ row.name }}</span>
+                  <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
+                </span>
               </span>
             </template>
           </el-table-column>
 
-          <!-- 岗位描述（取 description；Q7：intro 字段保留现状，仅列展示改口径） -->
-          <el-table-column label="岗位描述" :min-width="COL.DESC_MIN" show-overflow-tooltip>
+          <!-- 岗位描述：单行省略 + 悬停查看完整内容（原型 .position-description title；md §二.1 同口径） -->
+          <el-table-column label="岗位描述" :min-width="POS_COL.DESC" show-overflow-tooltip>
             <template #default="{ row }">
-              <span v-if="row.description">{{ row.description }}</span>
+              <span v-if="row.description" class="pos-desc">{{ row.description }}</span>
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
 
           <!-- 三个计数列：表头与单元格 title 悬停口径提示（照原型）；领用数 0 直接显 0 -->
-          <el-table-column :width="COL.COUNT" align="center">
-            <template #header><span :title="COUNT_TIPS.skill">技能数</span></template>
+          <el-table-column :width="POS_COL.SKILL_COUNT">
+            <template #header><span class="pos-count-help" :title="COUNT_TIPS.skill">技能数</span></template>
             <template #default="{ row }">
-              <span :title="COUNT_TIPS.skill">{{ row.skillCount ?? 0 }}</span>
+              <span class="pos-count-help" :title="COUNT_TIPS.skill">{{ row.skillCount ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.COUNT" align="center">
-            <template #header><span :title="COUNT_TIPS.agent">Agent 数</span></template>
+          <el-table-column :width="POS_COL.COUNT">
+            <template #header><span class="pos-count-help" :title="COUNT_TIPS.agent">Agent 数</span></template>
             <template #default="{ row }">
-              <span :title="COUNT_TIPS.agent">{{ row.agentCount ?? 0 }}</span>
+              <span class="pos-count-help" :title="COUNT_TIPS.agent">{{ row.agentCount ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.COUNT" align="center">
-            <template #header><span :title="COUNT_TIPS.claim">领用数</span></template>
+          <el-table-column :width="POS_COL.COUNT">
+            <template #header><span class="pos-count-help" :title="COUNT_TIPS.claim">领用数</span></template>
             <template #default="{ row }">
-              <span :title="COUNT_TIPS.claim">{{ row.claimedUserCount ?? 0 }}</span>
+              <span class="pos-count-help" :title="COUNT_TIPS.claim">{{ row.claimedUserCount ?? 0 }}</span>
             </template>
           </el-table-column>
 
           <!-- 最新版本：普通文本（不再用 tag）；无版本 → 「—」 -->
-          <el-table-column label="最新版本" :width="104" align="center">
+          <el-table-column label="最新版本" :width="POS_COL.VERSION">
             <template #default="{ row }">
               <span v-if="row.latestVersion">{{ row.latestVersion }}</span>
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
 
-          <!-- 最近更新时间（精确到分钟）：可排序，默认降序（服务端/mock 排序） -->
-          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="COL.TIME">
+          <!-- 最近更新时间（精确到分钟）：可排序，默认降序（服务端/mock 排序）；单行不换行（原型 .updated-cell） -->
+          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="POS_COL.TIME">
             <template #default="{ row }">
-              <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
+              <span v-if="row.updatedAt" class="pos-time">{{ fmtTime(row.updatedAt) }}</span>
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
@@ -590,12 +608,15 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
       />
     </div>
 
-    <!-- 新建岗位弹窗：先填名称+定位，创建成功再进工作台（Q4/Q7：现有流程与字段不动） -->
+    <!-- 新建岗位弹窗（2026-09-08 原型复刻批次 2A · B2，照原型 npOpen L2319 + .proto2-dialog L1840）：
+         居中 520px、头 58px 分隔线 / 脚分隔线（admin-dialog 壳）、单列表单 岗位名称* + 岗位描述*、
+         脚【取消】【创建岗位】、点遮罩可关（原型 L2323 npMask 点击关窗）；创建成功进岗位详情页。 -->
     <el-dialog
       v-model="createVisible"
       title="新建岗位"
-      width="460px"
-      :close-on-click-modal="false"
+      width="520px"
+      class="admin-dialog pos-create-dialog"
+      :close-on-click-modal="true"
       append-to-body
     >
       <el-form
@@ -603,45 +624,35 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
         :model="createForm"
         :rules="createRules"
         label-position="top"
+        class="pos-create-form"
         @submit.prevent
       >
         <el-form-item label="岗位名称" prop="name" :error="nameError">
           <el-input
             v-model="createForm.name"
-            placeholder="如：销售助理 / HR 小赫"
+            placeholder="如 经营分析岗"
             maxlength="64"
-            show-word-limit
             clearable
             @input="nameError = ''"
             @keyup.enter="submitCreate"
           />
         </el-form-item>
-        <el-form-item label="岗位定位">
-          <el-input
-            v-model="createForm.intro"
-            type="textarea"
-            :rows="2"
-            maxlength="100"
-            show-word-limit
-            placeholder="一句话说明这个岗位是做什么的（可稍后在详情页修改）"
-          />
-        </el-form-item>
-        <!-- 岗位描述（2026-09-08 决议第 5 项：统一 500 字上限，原型新建弹窗 L2319 maxlength=2000 为原型缺陷不取；
-             与人格页签 DESCRIPTION_MAX_LEN / mock 校验全链同口径；发布必填在详情页发布校验时兜底，新建时可留空稍后补） -->
-        <el-form-item label="岗位描述">
+        <!-- 岗位描述必填（原型 npCreate「请填写岗位描述」）；上限 500 = 2026-09-08 决议第 5 项（原型 maxlength=2000 不取），
+             与人格页签 DESCRIPTION_MAX_LEN / mock 校验全链同口径 -->
+        <el-form-item label="岗位描述" prop="description">
           <el-input
             v-model="createForm.description"
             type="textarea"
-            :rows="3"
+            :rows="4"
             :maxlength="DESCRIPTION_MAX_LEN"
             show-word-limit
-            placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作（可稍后在详情页修改）"
+            placeholder="一句话说明这个岗位负责什么"
           />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="submitCreate">创建并配置</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">创建岗位</el-button>
       </template>
     </el-dialog>
 
@@ -668,27 +679,31 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
   background: var(--mask);
 }
 /* ---------- 表格单元 ---------- */
-/* 岗位名称列：图标 + 名称 + 状态标签同格（原型 position-primary） */
+/* 岗位名称列：图标 + 名称 + 状态标签同格（原型 .position-primary gap 10 / .position-name-line gap 7） */
 .pos-primary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
   min-width: 0;
 }
-/* 图标：定宽定高，emoji 与上传图片共用同一视觉框，避免不同形态导致行高参差
-   （与 MCP 页 .mc-icon 同构，仅前缀不同）。岗位用圆形——沿用工牌证件照的圆头像语义。 */
-.pos-icon {
-  display: inline-flex;
+.pos-name-line {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  font-size: 15px;
+  gap: 7px;
+  min-width: 0;
+}
+/* 图标框照原型 .expert-avatar（L275）：32px 方框圆角 8、浅绿底 #eef5f1、字号 18；emoji 与上传图片共用同一视觉框
+   （2026-09-08 原型复刻批次 2A · B6，与专家列表同款；原 22px 圆形废止） */
+.pos-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  font-size: 18px;
   line-height: 1;
-  vertical-align: middle;
-  border-radius: var(--radius-pill);
-  background: var(--bg-sunken);
+  border-radius: 8px;
+  background: var(--c-accent-fill);
   overflow: hidden;
 }
 .pos-icon-img {
@@ -696,10 +711,30 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
   height: 100%;
   object-fit: cover;
 }
+/* 名称 600 单行省略（原型 .position-name-text） */
 .pos-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--c-text-strong);
-  vertical-align: middle;
+  font-weight: var(--fw-semibold);
 }
+/* 描述弱色单行省略（原型 .position-description，省略与悬停由 show-overflow-tooltip 承担） */
+.pos-desc {
+  color: var(--c-text-muted);
+}
+/* 计数列 help 光标（原型 .position-count-help / .position-count-cell） */
+.pos-count-help {
+  cursor: help;
+}
+/* 时间单行不换行（原型 .updated-cell） */
+.pos-time {
+  white-space: nowrap;
+}
+
+/* 新建岗位弹窗表单（原型 .pd2-popup-form 单列 grid gap 9；label 上间距 7）：
+   el-dialog teleport 到 body，scoped 命不中，故写在下方非 scoped 块 */
 
 /* 底部分页 */
 .pos-foot {
@@ -707,5 +742,15 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
   align-items: center;
   justify-content: flex-end;
   margin-top: var(--space-4);
+}
+</style>
+
+<style>
+/* 新建岗位弹窗（teleport 到 body）：表单项间距照原型 .pd2-popup-form（gap 9 + label margin-top 7） */
+.pos-create-dialog .pos-create-form .el-form-item {
+  margin-bottom: 16px;
+}
+.pos-create-dialog .pos-create-form .el-form-item:last-child {
+  margin-bottom: 0;
 }
 </style>

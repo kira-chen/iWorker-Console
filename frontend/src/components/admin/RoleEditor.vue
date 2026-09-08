@@ -18,6 +18,12 @@
  *
  * 【权限树形态】props.permissionTree = [{ scope, groups:[{ name, pages:[页面名] }] }]
  * （原型 permissionGroups 形态，来自 adminUserMock.getPermissionTree）；权限项=页面名。
+ *
+ * 【分区卡片 · 2026-09-08 原型复刻批次 2A（G#11/#12，原型 openRoleEditor L324 / saveRole L326）】
+ *  - 抽屉体（DrawerEditor 780 灰底）内两张 `.section-card`（admin-shell.css 壳类）：①「角色信息」卡放角色名称字段
+ *    （含 error-text + hint）；②「页面权限」卡头带 section-sub「勾中哪些页面…」，卡内 permission-tree → error-text → summary；
+ *    编辑态 danger-hint 在卡外。
+ *  - 校验失败（名称空 / 权限 0）除就地红字外追加 toast「请先补齐必填项」（原型 saveRole）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -120,10 +126,10 @@ const rules = {
 async function onSubmit() {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    // 页面权限必填：勾选为 0 → 就地提示，不提交（原型 saveRole 校验口径）
-    if (!selected.value.length) {
-      permError.value = '请至少开通 1 个页面'
+    // 页面权限必填：勾选为 0 → 就地提示（与名称校验并行亮起）；任一未过 → toast「请先补齐必填项」不提交（原型 saveRole）
+    if (!selected.value.length) permError.value = '请至少开通 1 个页面'
+    if (!valid || permError.value) {
+      ElMessage.warning('请先补齐必填项')
       return
     }
     saving.value = true
@@ -162,17 +168,22 @@ async function onSubmit() {
     :saving="saving"
     append-to-body
   >
-    <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-      <el-form-item label="角色名称" prop="name">
-        <el-input v-model="form.name" placeholder="如 内容运营" maxlength="64" />
-        <div class="re-hint">角色名称用于用户分配，系统标识自动生成</div>
-      </el-form-item>
+    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="re-form">
+      <!-- ① 角色信息卡（原型 section-card「角色信息」：名称字段 + error-text + hint） -->
+      <section class="section-card re-card">
+        <h3 class="section-title">角色信息</h3>
+        <el-form-item label="角色名称" prop="name" class="re-name-item">
+          <el-input v-model="form.name" placeholder="如 内容运营" maxlength="64" />
+          <div class="re-hint">角色名称用于用户分配，系统标识自动生成</div>
+        </el-form-item>
+      </section>
 
-      <el-form-item>
-        <template #label>
+      <!-- ② 页面权限卡（原型 section-card「页面权限」+ section-sub；卡内 permission-tree → error-text → summary） -->
+      <section class="section-card re-card" :class="{ 'is-invalid': permError }">
+        <h3 class="section-title">
           页面权限
-          <span class="re-label-sub">勾中哪些页面，持该角色的用户就能进入哪些页面</span>
-        </template>
+          <span class="section-sub">勾中哪些页面，持该角色的用户就能进入哪些页面</span>
+        </h3>
 
         <div class="re-perm-area" :class="{ 'is-invalid': permError }">
           <!-- 范围卡片（原型 perm-scope）：用户端整组勾选不展开；管理端分组卡片式复选 -->
@@ -222,10 +233,10 @@ async function onSubmit() {
         <div v-if="permError" class="re-perm-err">{{ permError }}</div>
         <!-- 权限区底部实时汇总（原型 permission-summary） -->
         <div class="re-perm-summary">已选择 {{ selectedCount }} 个页面</div>
-      </el-form-item>
+      </section>
     </el-form>
 
-    <!-- 编辑态底部提示（原型 danger-hint）：权限调整的影响面 -->
+    <!-- 编辑态底部提示（原型 danger-hint，卡外）：权限调整的影响面 -->
     <div v-if="isEdit" class="re-danger-hint">
       该角色当前绑定 {{ props.role?.userCount ?? 0 }} 个用户。权限调整保存后将对这些用户生效。
     </div>
@@ -243,18 +254,23 @@ async function onSubmit() {
 </template>
 
 <style scoped>
+/* 分区卡内表单项：名称项不留 el-form-item 默认下边距（卡 padding 已给） */
+.re-name-item {
+  margin-bottom: 0;
+}
+.re-name-item :deep(.el-form-item__label) {
+  color: var(--c-text);
+}
+/* 权限卡整体校验态（原型 [data-role-field="permissions"].invalid） */
+.re-card.is-invalid {
+  border-color: var(--c-danger);
+}
 .re-hint {
   width: 100%;
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   line-height: 1.5;
   margin-top: var(--space-1);
-}
-.re-label-sub {
-  margin-left: var(--space-2);
-  font-weight: var(--fw-normal);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
 }
 
 /* 权限区：范围卡片纵排（原型 permission-tree） */

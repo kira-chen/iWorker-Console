@@ -4,14 +4,19 @@
  *
  * 只读列表（分页）：用户名 / 终端(Mac 蓝·Windows 紫) / 反馈时间(排序，默认 desc) /
  * 反馈内容(截断 + 点击看全文) / 附图。工具栏 搜索用户名/反馈内容 + 全部终端 + 「查询」按钮。
- * 详情弹窗：label/value 明细行（用户/反馈时间/终端）+ 完整内容块 + 底部【关闭】。
+ * 详情弹窗（F-2，原型 feedback-detail L1671 + P.openDialog L1553）：520px；明细项 label 在上 / 值在下
+ * （用户 / 反馈时间 / 终端）+ 完整内容 pre-wrap 纯文本（无底色框）+ 底部仅【关闭】。
  *
- * 附图形态（2026-09-01 疑点1 处置）：保留真实图片缩略图 + ElImageViewer（原型「▧ N」编号
- * 按钮为占位示意不照搬）；附图加载失败时弹窗内展示加载失败提示。
+ * 附图形态（2026-09-08 原型复刻批次 2B · F-1，负责人 09-08 复刻口径覆盖 09-01「保留 ElImageViewer」裁决）：
+ * - 附图列照原型 L1566 / md §三：48px 方块编号按钮「▧ N」（不再预拉缩略图）；
+ * - 点击 → 「查看附图」弹窗（原型 feedback-image L1672 / md §五）：680px、360px 大图预览区（放真实原图，
+ *   原型占位文案不搬）+ 附件序号「反馈截图 N」+ 底部仅【关闭】；原图加载失败在弹窗预览区内展示失败提示
+ *   （md §七）；ElImageViewer 全屏浮层退役。
+ * 2026-09-08 批次 2B（G-5）：反馈时间列头改原型文字箭头「反馈时间 ↓/↑」（列头插槽自管排序态）。
  * 数据默认走 mock（api/feedbackMock.js，种子=原型 4 条，附图为内置 SVG 占位图 blob），
  * 见 api/feedback.js 头注释；真实后端链路（鉴权 fetch 取 blob）保留同形。
  */
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
@@ -27,15 +32,11 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 // 排序：仅反馈时间列，默认 createdAt desc（原型 time-sort 补丁口径）
 const query = reactive({ terminal: '', keyword: '', sortDir: 'desc' })
 
-// 缩略图 objectURL：key = `${feedbackId}:${seq}`，value = objectURL；失败置 '' 显占位。
-const thumbUrls = reactive({})
-let revokable = []   // 本页已创建的 objectURL（含大图），换页/卸载统一 revoke
+let revokable = []   // 本页已创建的原图 objectURL，换页/卸载统一 revoke
 
-// 大图查看器状态：urls 为当前反馈全部原图的 objectURL（按 seq 序）。
-const viewer = reactive({ visible: false, urls: [], index: 0, loading: false })
-const originalCache = new Map()   // feedbackId -> [objectURL]（本页内复用，随 revoke 一并清）
-// 附图加载失败提示弹窗（改动清单 8：失败在弹窗内展示提示）
-const viewerErrorVisible = ref(false)
+// 「查看附图」弹窗状态：seq = 附件序号（1 起）；url = 原图 objectURL；error = 加载失败（弹窗内提示）
+const viewer = reactive({ visible: false, seq: 0, url: '', loading: false, error: false })
+const originalCache = new Map()   // `${feedbackId}:${seq}` -> objectURL（本页内复用，随 revoke 一并清）
 
 // 全文弹窗
 const detailRow = ref(null)
@@ -59,66 +60,40 @@ watch(
   }
 )
 
-function onSortChange({ prop, order }) {
-  if (prop !== 'createdAt') return
-  query.sortDir = order === 'ascending' ? 'asc' : 'desc'
+// 反馈时间列头（原型 L1566 `<button class="sort">反馈时间 ↓</button>`）：点击切正倒序并回第 1 页（feedback-sort）
+function toggleSort() {
+  query.sortDir = query.sortDir === 'desc' ? 'asc' : 'desc'
   reload()
 }
+const sortArrow = computed(() => (query.sortDir === 'asc' ? '↑' : '↓'))
 
-// 拉本页全部缩略图；单张失败只降级该占位，不阻断列表。
-// 评审修复（E3）：并发收敛到 6 路——此前每图一个 fetch，一页 20 行×5 图 ≈100 请求突发打爆图片端点。
-const THUMB_CONCURRENCY = 6
-async function loadThumbs() {
-  const tasks = []
-  for (const row of rows.value) {
-    for (const img of row.images || []) {
-      tasks.push({ key: `${row.id}:${img.seq}`, url: img.thumb_url })
-    }
-  }
-  let next = 0
-  const worker = async () => {
-    while (next < tasks.length) {
-      const t = tasks[next++]
-      try {
-        const blob = await fetchFeedbackImageBlob(t.url)
-        const url = URL.createObjectURL(blob)
-        revokable.push(url)
-        thumbUrls[t.key] = url
-      } catch (e) {
-        thumbUrls[t.key] = ''
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(THUMB_CONCURRENCY, tasks.length) }, worker))
-}
-
-// 行数据变化（首载/翻页/筛选/排序）后重拉缩略图
+// 行数据变化（首载/翻页/筛选/排序）后释放上一页的原图 objectURL
 watch(rows, () => {
   releaseObjectUrls()
-  loadThumbs()
 })
 
-// 点缩略图 → 拉该反馈全部原图 → ElImageViewer 看大图（支持多图切换）。
-async function openViewer(row, index) {
-  if (viewer.loading) return
+// 点编号按钮「▧ N」→ 打开「查看附图」弹窗 → 拉该张原图放进预览区；失败在预览区内提示（md §七）。
+async function openViewer(row, img) {
+  viewer.seq = img.seq
+  viewer.url = ''
+  viewer.error = false
+  viewer.visible = true
+  const key = `${row.id}:${img.seq}`
+  const cached = originalCache.get(key)
+  if (cached) {
+    viewer.url = cached
+    return
+  }
   viewer.loading = true
   try {
-    let urls = originalCache.get(row.id)
-    if (!urls) {
-      const blobs = await Promise.all((row.images || []).map((img) => fetchFeedbackImageBlob(img.url)))
-      urls = blobs.map((b) => {
-        const url = URL.createObjectURL(b)
-        revokable.push(url)
-        return url
-      })
-      originalCache.set(row.id, urls)
-    }
-    viewer.urls = urls
-    viewer.index = index
-    viewer.visible = true
+    const blob = await fetchFeedbackImageBlob(img.url)
+    const url = URL.createObjectURL(blob)
+    revokable.push(url)
+    originalCache.set(key, url)
+    // 弹窗仍开着且仍是这张时才落地（快速切换时防串图）
+    if (viewer.visible && viewer.seq === img.seq) viewer.url = url
   } catch (e) {
-    // 原图加载失败：弹窗内展示加载失败提示（改动清单 8）
-    viewerErrorVisible.value = true
+    if (viewer.visible && viewer.seq === img.seq) viewer.error = true
   } finally {
     viewer.loading = false
   }
@@ -143,13 +118,12 @@ function terminalTagType(t) {
 }
 
 function releaseObjectUrls() {
-  // 评审修复（A4）：先关大图查看器再吊销——翻页/筛选时若查看器仍开着，其正展示的 objectURL 被 revoke 会裂图。
+  // 评审修复（A4）：先关附图弹窗再吊销——翻页/筛选时若弹窗仍开着，其正展示的 objectURL 被 revoke 会裂图。
   viewer.visible = false
-  viewer.urls = []
+  viewer.url = ''
   for (const url of revokable) URL.revokeObjectURL(url)
   revokable = []
   originalCache.clear()
-  for (const key of Object.keys(thumbUrls)) delete thumbUrls[key]
 }
 
 onMounted(fetchList)
@@ -196,12 +170,7 @@ onBeforeUnmount(() => {
         @retry="fetchList"
       >
         <!-- 列序照原型：用户名 / 终端 / 反馈时间 / 反馈内容 / 附图 -->
-        <el-table
-          :data="rows"
-          class="fb-table"
-          :default-sort="{ prop: 'createdAt', order: 'descending' }"
-          @sort-change="onSortChange"
-        >
+        <el-table :data="rows" class="fb-table">
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
@@ -212,7 +181,13 @@ onBeforeUnmount(() => {
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="反馈时间" prop="createdAt" sortable="custom" :width="COL.TIME">
+          <el-table-column :width="COL.TIME">
+            <!-- 原型 L1566：列头为文字按钮「反馈时间 ↓ / ↑」，点击切换正倒序 -->
+            <template #header>
+              <button type="button" class="fb-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
+                反馈时间 <span class="fb-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span class="fb-muted">{{ row.createdAt ? fmtTime(row.createdAt) : '—' }}</span>
             </template>
@@ -227,17 +202,17 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column label="附图" min-width="300">
             <template #default="{ row }">
+              <!-- 原型 L1566 .fm5-thumb / md §三：48px 方块编号按钮「▧ N」，无附件「—」 -->
               <div v-if="row.images && row.images.length" class="fb-thumbs">
                 <button
-                  v-for="(img, i) in row.images"
+                  v-for="img in row.images"
                   :key="img.seq"
                   type="button"
                   class="fb-thumb"
                   :title="`查看第 ${img.seq} 张`"
-                  @click="openViewer(row, i)"
+                  @click="openViewer(row, img)"
                 >
-                  <img v-if="thumbUrls[`${row.id}:${img.seq}`]" :src="thumbUrls[`${row.id}:${img.seq}`]" alt="" />
-                  <el-icon v-else class="fb-thumb-ph"><Picture /></el-icon>
+                  ▧ {{ img.seq }}
                 </button>
               </div>
               <span v-else class="fb-muted">—</span>
@@ -254,46 +229,48 @@ onBeforeUnmount(() => {
       </ListStates>
     </div>
 
-    <!-- 全文弹窗（原型 feedback-detail：明细行 + 完整内容块 + 底部【关闭】） -->
-    <el-dialog v-model="detailVisible" title="反馈详情" width="560px">
+    <!-- 全文弹窗（原型 feedback-detail L1671：520px；明细项 label 上 / 值下 + 完整内容纯文本 + 底部【关闭】） -->
+    <el-dialog v-model="detailVisible" title="反馈详情" width="520px" class="fb-detail-dialog">
       <template v-if="detailRow">
         <dl class="fb-detail-list">
-          <div class="fb-detail-line">
+          <div class="fb-detail-item">
             <dt>用户</dt>
             <dd>{{ detailRow.username || '—' }}</dd>
           </div>
-          <div class="fb-detail-line">
+          <div class="fb-detail-item">
             <dt>反馈时间</dt>
             <dd>{{ detailRow.createdAt ? fmtTime(detailRow.createdAt) : '—' }}</dd>
           </div>
-          <div class="fb-detail-line">
+          <div class="fb-detail-item">
             <dt>终端</dt>
             <dd>{{ terminalLabel(detailRow.terminal) }}</dd>
           </div>
         </dl>
-        <div class="fb-detail-content">{{ detailRow.content || '—' }}</div>
+        <div class="fb-content-full">{{ detailRow.content || '—' }}</div>
       </template>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
     </el-dialog>
 
-    <!-- 附图加载失败提示弹窗（改动清单 8） -->
-    <el-dialog v-model="viewerErrorVisible" title="查看附图" width="420px">
-      <div class="fb-viewer-error">附图加载失败，请稍后重试。</div>
+    <!-- 查看附图弹窗（原型 feedback-image L1672 / md §五：680px、大图预览区 + 附件序号、底部仅【关闭】；
+         预览区放真实原图；加载失败在预览区内提示（md §七）） -->
+    <el-dialog v-model="viewer.visible" title="查看附图" width="680px" class="fb-image-dialog" @closed="viewer.url = ''">
+      <div v-loading="viewer.loading" class="fb-image-large">
+        <img v-if="viewer.url" :src="viewer.url" :alt="`反馈截图 ${viewer.seq}`" class="fb-image-large-img" />
+        <div v-else-if="viewer.error" class="fb-image-state">
+          <div class="fb-image-seq">反馈截图 {{ viewer.seq }}</div>
+          <p class="fb-viewer-error">附图加载失败，请稍后重试。</p>
+        </div>
+        <div v-else class="fb-image-state">
+          <div class="fb-image-seq">反馈截图 {{ viewer.seq }}</div>
+        </div>
+      </div>
+      <div class="fb-image-caption">附件 {{ viewer.seq }}</div>
       <template #footer>
-        <el-button @click="viewerErrorVisible = false">关闭</el-button>
+        <el-button @click="closeViewer">关闭</el-button>
       </template>
     </el-dialog>
-
-    <!-- 大图查看器（多图切换/缩放；teleported 全屏浮层） -->
-    <el-image-viewer
-      v-if="viewer.visible"
-      :url-list="viewer.urls"
-      :initial-index="viewer.index"
-      teleported
-      @close="closeViewer"
-    />
   </div>
 </template>
 
@@ -316,71 +293,109 @@ onBeforeUnmount(() => {
 .fb-content:hover {
   color: var(--c-text-strong);
 }
+/* 排序列头文字按钮（原型 .sort{border:0;background:transparent;padding:0;color:inherit}） */
+.fb-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.fb-sort-arrow {
+  margin-left: 2px;
+}
+/* 附图编号按钮（原型 .fm5-thumbs{gap:7px} .fm5-thumb{48px 方块、1px 描边、圆角 6、灰底、12px；hover 绿边绿字}） */
 .fb-thumbs {
   display: flex;
-  gap: var(--space-2);
+  gap: 7px;
   flex-wrap: wrap;
 }
 .fb-thumb {
   width: 48px;
   height: 48px;
+  display: grid;
+  place-items: center;
   padding: 0;
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   background: var(--bg-sunken);
-  overflow: hidden;
-  cursor: zoom-in;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  color: var(--c-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 .fb-thumb:hover {
-  border-color: var(--border-strong);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
 }
-.fb-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.fb-thumb-ph {
-  color: var(--c-text-faint);
-}
-/* 明细行（原型 fm5-detail-list：label/value 两列） */
+/* 明细项（原型 .fm5-detail-list{gap:16px} .fm5-detail-item label{display:block;margin-bottom:4px;12px 弱色}：
+   label 在上、值在下。原型 DOM 用 span 未命中 label 选择器致渲染成同行——属原型缺陷，按 CSS 意图落地） */
 .fb-detail-list {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 16px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 16px;
 }
-.fb-detail-line {
-  display: flex;
-  gap: var(--space-3);
-}
-.fb-detail-line dt {
-  flex-shrink: 0;
-  width: 64px;
+.fb-detail-item dt {
+  display: block;
+  margin-bottom: 4px;
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: 12px;
 }
-.fb-detail-line dd {
+.fb-detail-item dd {
   margin: 0;
   color: var(--c-text);
-  font-size: var(--fs-sm);
+  line-height: 1.65;
+  word-break: break-word;
 }
-.fb-detail-content {
+/* 完整内容（原型 .fm5-content-full：pre-wrap 纯文本，无底色框）；限高滚动为代码超集保留 */
+.fb-content-full {
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.65;
   color: var(--c-text);
   max-height: 50vh;
   overflow-y: auto;
-  padding: var(--space-3);
-  background: var(--bg-sunken);
-  border-radius: var(--radius-sm);
 }
-.fb-viewer-error {
+/* 大图预览区（原型 .fm5-image-large：360px 高、1px 描边、圆角 8、浅绿渐变底、居中） */
+.fb-image-large {
+  height: 360px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  background: linear-gradient(145deg, #eef4f1, #dce8e2);
+  color: #617169;
+  overflow: hidden;
+}
+:root[data-theme='dark'] .fb-image-large {
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+}
+.fb-image-large-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.fb-image-state {
+  text-align: center;
+}
+.fb-image-seq {
+  font-size: 22px;
+}
+.fb-image-caption {
+  margin-top: 10px;
+  font-size: var(--fs-xs);
   color: var(--c-text-muted);
   text-align: center;
-  padding: var(--space-4) 0;
+}
+.fb-viewer-error {
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
 }
 </style>
