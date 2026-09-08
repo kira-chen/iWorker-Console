@@ -13,7 +13,15 @@
  *                 岗位基本信息 + 人格页要素 + 岗位技能 只读，按 refId 取岗位 mock 实体，缺失时用申请快照兜底；
  *                 原「待岗位模块拍板」占位抽屉已退役。岗位模块没有编辑抽屉（整页 PositionDetailTabs），
  *                 我的申请「前往修改 / 重新提交」的编辑态对岗位仍展示同一只读视图 + 关闭|提交审核 吸底条）
+ *   KNOWLEDGE_BASE → KnowledgeBaseEditor（mode="view"；2026-09-09 PRD 复核 A6 新增分支）
  * SKILL（跳技能整页只读）与未知类型（toast）不进本组件，由页面路由/提示自行处理。
+ *
+ * 【审核快照】（2026-09-09 PRD 复核 A5，md `prd.审核中心.md` §四 L48 / §七 L102）
+ * 快照由各提交模块自己存（技能 / 专家 / 岗位在提交审核时把当时配置存一份，见各 mock 的
+ * submitSnapshots），本组件与治理两页**只读取展示、不做存储**。分发前先判：
+ *   - 需快照的三类（POSITION / EXPERT / SKILL）快照缺失 → snapshotMissing=true，不打开业务详情，
+ *     改出「阻止审核」提示卡（md §七「业务快照缺失（岗位 / 专家 / 技能）→ 阻止审核并提示联系提交人重新提交」）；
+ *   - 其余五类（知识库 / MCP / API / 业务系统 / 模型）不生成快照，照旧按 refId 读业务模块当前配置。
  *
  * 【吸底操作栏】审核中心要求详情底部为 关闭|驳回|通过、我的申请按状态出按钮，而各编辑器
  * 只读态的底部动作条固定只有「关闭」且不可注入（不修改编辑器的前提约束）。故本组件用
@@ -32,6 +40,9 @@ import ApiEditor from '@/components/admin/ApiEditor.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import ModelConfigEditDialog from '@/components/admin/ModelConfigEditDialog.vue'
 import PositionViewDrawer from '@/components/admin/PositionViewDrawer.vue'
+import KnowledgeBaseEditor from '@/components/admin/KnowledgeBaseEditor.vue'
+import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import { needsSnapshot, loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -90,14 +101,59 @@ const modelObj = computed(
 // 抽屉本身是 min(宽, 视口)，吸底条同样封顶 100vw，窄窗口下不越出抽屉。
 const DRAWER_W = { MODEL: 820 }
 const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
+
+/* ---------------- 审核版本快照（A5，见头注释「审核快照」） ---------------- */
+// 只读取、不存储：快照由技能/专家/岗位三个提交模块在提交审核时自行落库（utils/reviewSnapshot 头注释）。
+const snapshot = ref(null)
+const snapshotLoading = ref(false)
+watch(
+  () => [props.visible, props.kind, props.refId],
+  async ([visible, kind, refId]) => {
+    if (!visible) return
+    snapshot.value = null
+    if (!needsSnapshot(kind)) return // 知识库/MCP/API/业务系统/模型：读当前配置（md §四 L48）
+    snapshotLoading.value = true
+    try {
+      snapshot.value = await loadReviewSnapshot(kind, refId)
+    } finally {
+      snapshotLoading.value = false
+    }
+  },
+  { immediate: true }
+)
+/** 需快照的三类且快照缺失 → 阻止审核（md §七 L102），不打开业务详情、吸底条只留「关闭」。 */
+const snapshotMissing = computed(() => needsSnapshot(props.kind) && !snapshotLoading.value && !snapshot.value)
+/** 快照缺失态下只保留「关闭」，驳回/通过等按钮一律撤下（md §七「阻止审核」）。 */
+const effectiveButtons = computed(() =>
+  snapshotMissing.value ? props.buttons.filter((b) => b.key === 'close') : props.buttons
+)
+defineExpose({ snapshot, snapshotMissing })
 </script>
 
 <template>
+  <!-- 快照缺失（岗位 / 专家 / 技能）：md §七 L102「阻止审核并提示联系提交人重新提交」——
+       不打开业务详情，改出提示抽屉；吸底条同时只保留「关闭」（effectiveButtons） -->
+  <DrawerEditor
+    v-if="snapshotMissing"
+    v-model:visible="vis"
+    title="无法查看"
+    readonly
+    data-testid="god-snapshot-missing"
+  >
+    <section class="section-card">
+      <h3 class="section-title">版本快照缺失</h3>
+      <el-alert type="warning" :closable="false" show-icon :title="SNAPSHOT_MISSING_HINT" />
+      <p class="god-missing-sub">申请对象：{{ displayName || '—' }}</p>
+    </section>
+  </DrawerEditor>
+
+  <!-- EXPERT：只读查看走审核版本快照（A5，md §四 L48）；编辑态（我的申请「前往修改」）仍取当前配置 -->
   <ExpertEditor
-    v-if="kind === 'EXPERT'"
+    v-else-if="kind === 'EXPERT'"
     :visible="visible"
     :expert-id="refId"
     :readonly="readonly"
+    :snapshot-detail="readonly ? snapshot?.detail || null : null"
     @update:visible="vis = $event"
   />
   <McpEditor
@@ -134,14 +190,25 @@ const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
     :visible="visible"
     :position-id="refId"
     :item="item"
+    :snapshot="snapshot"
+    @update:visible="vis = $event"
+  />
+  <!-- KNOWLEDGE_BASE：知识库详情抽屉（2026-09-09 A6；md §四「知识库……不生成快照，读当前配置」）。
+       KnowledgeBaseEditor 用 mode（'view' | 'edit'）而非 readonly 表达只读；抽屉宽同 DrawerEditor 默认 780px。
+       注：审核中的知识库编辑器自身还有 pendingLocked 锁（api 层同样 409 拦），编辑态也进不去写操作。 -->
+  <KnowledgeBaseEditor
+    v-else-if="kind === 'KNOWLEDGE_BASE'"
+    :visible="visible"
+    :kb-id="refId"
+    :mode="readonly ? 'view' : 'edit'"
     @update:visible="vis = $event"
   />
 
   <!-- 吸底操作栏：覆盖在抽屉底部动作区上（见头注释），按钮组由调用方定义 -->
   <Teleport to="body">
-    <div v-if="visible && kind && buttons.length" class="god-bar" :style="{ width: barWidth }">
+    <div v-if="visible && kind && effectiveButtons.length" class="god-bar" :style="{ width: barWidth }">
       <el-button
-        v-for="b in buttons"
+        v-for="b in effectiveButtons"
         :key="b.key"
         :type="b.type || ''"
         :plain="b.type === 'danger'"
@@ -175,5 +242,11 @@ const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
 }
 .god-bar .el-button + .el-button {
   margin-left: 0;
+}
+/* ---- 快照缺失提示（A5，md §七 L102） ---- */
+.god-missing-sub {
+  margin: 14px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
 }
 </style>

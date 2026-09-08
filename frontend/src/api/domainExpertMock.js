@@ -163,12 +163,17 @@ function seedPublications() {
 
 let experts = seedExperts()
 let publications = seedPublications()
+// A5 审核版本快照表（expertId → 快照）；实现说明见下方「审核版本快照」区块。
+// 声明必须在 attachPersist 之前：restore 回调在 attachPersist 内同步执行，晚声明会撞 TDZ。
+let reviewSnapshots = {}
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=下方所有 persist() 调用处。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子（发包安全铁律）。
+// version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持）；
+// 旧快照无该键 → 兜底 {} 并对种子在审专家补播，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('domainExpert', {
-  version: 1,
-  snapshot: () => ({ expertSeq, experts, publications }),
+  version: 2,
+  snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
       throw new Error('domainExpert 快照形状不合法')
@@ -176,6 +181,8 @@ const persist = attachPersist('domainExpert', {
     expertSeq = d.expertSeq
     experts = d.experts
     publications = d.publications
+    reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    seedReviewSnapshots()
   }
 })
 
@@ -401,6 +408,43 @@ export async function getExpertNextVersionLabel(id) {
   return `v${latest[0]}.${latest[1]}.${latest[2] + 1}`
 }
 
+/* ==================== 审核版本快照（2026-09-09 PRD 复核 A5） ====================
+ * 负责人批注：「要不要快照是由提交模块决定的，而不在审核中心/我的申请做存储处理。
+ * 例如：技能/专家/岗位单独存储了审核版本的快照」。md `prd.审核中心.md` §四 L48
+ * 「岗位、专家、技能三类业务对象由所属业务模块在提交审核时生成版本快照，审核详情读取该快照」。
+ *
+ * 存储位置：本模块的 reviewSnapshots（expertId → 快照），随 domainExpert 的 localStorage 持久化。
+ * 写入时机：提交发布（publishExpert）/ 提交停用（unpublishExpert）；清除时机：撤回（withdrawExpert）。
+ * 快照内容：toDetail(e) 的完整只读配置 + 提交元信息（submittedAt / requestAction / version）。
+ * 缺失时：治理侧按 md §七 阻止审核并提示联系提交人重新提交。
+ * （表本体 reviewSnapshots 声明在文件上方 attachPersist 之前，见该处注释。）
+ */
+function writeReviewSnapshot(e, requestAction) {
+  reviewSnapshots[String(e.id)] = {
+    kind: 'EXPERT',
+    refId: e.id,
+    requestAction,
+    version: e.pendingVersion || '',
+    submittedAt: nowIso(),
+    detail: JSON.parse(JSON.stringify(toDetail(e)))
+  }
+}
+
+/** 读取专家提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
+export function getExpertReviewSnapshot(id) {
+  const s = reviewSnapshots[String(id)]
+  return s ? JSON.parse(JSON.stringify(s)) : null
+}
+
+/** 种子在审专家若无快照则补播一份（demo 打开即有内容）。 */
+function seedReviewSnapshots() {
+  for (const e of experts) {
+    if (!e.pendingAction || reviewSnapshots[String(e.id)]) continue
+    writeReviewSnapshot(e, e.pendingAction === 'DELIST' ? 'DELIST' : (publications[e.id] || []).length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  }
+}
+seedReviewSnapshots()
+
 // 提交发布 → 进入审核（pendingAction=PUBLISH）。payload: { bump, releaseNotes }。
 export async function publishExpert(id, payload = {}) {
   await delay()
@@ -421,6 +465,8 @@ export async function publishExpert(id, payload = {}) {
   e.pendingVersion = label
   e.pendingReleaseNotes = String(payload.releaseNotes || '').trim()
   e.updatedAt = nowIso()
+  // A5：提交审核即存版本快照（md §四 L48）
+  writeReviewSnapshot(e, rows.length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
   persist()
   return {}
 }
@@ -435,6 +481,7 @@ export async function withdrawExpert(id) {
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
+  delete reviewSnapshots[String(e.id)] // A5：撤回即销毁本次提交的版本快照
   persist()
   return {}
 }
@@ -447,7 +494,10 @@ export async function unpublishExpert(id) {
   if (e.status !== 'published') throw err('仅已发布专家可停用')
   if (e.pendingAction) throw err('该专家已有在途审核，请先撤回')
   e.pendingAction = 'DELIST'
-  e.updatedAt = nowIso()
+  // 2026-09-09 PRD-20260908 复核批次 0 · A20/Q199：**停用不刷新最近更新时间**。
+  // md `prd.专家.md` §二.2 只列「保存配置、提交审核或撤回提交后」三种刷新场景，停用不在其内；
+  // 与 `prd-模型.md` §二.2「停用时不改变最近更新时间」口径一致。原 e.updatedAt = nowIso() 已删。
+  writeReviewSnapshot(e, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   persist()
   return {}
 }

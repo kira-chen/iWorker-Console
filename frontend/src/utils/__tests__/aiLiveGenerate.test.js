@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { reactive } from 'vue'
 
 /**
  * aiLiveGenerate.js 单测（2026-09-04 PRD-20260903 对齐新增：统一 AI 实况生成机制，
@@ -44,7 +45,7 @@ describe('文本工具（原型 shortText / limit 同口径）', () => {
 })
 
 describe('本地模板生成器（模板句照原型 questionSet 逐字）', () => {
-  it('expertQuestionSet：3 条『请围绕"…"给出专业分析』式，主语=源文本 18 字收束，每条 ≤60', () => {
+  it('expertQuestionSet：3 条『请围绕"…"给出专业分析』式，主语 18 字收束，每条 ≤60', () => {
     const src = '汇总经营数据，识别异常并形成管理建议，输出可追溯的分析结论'
     const subject = shortText(src, 18)
     expect(subject.endsWith('…')).toBe(true) // 超 18 字被收束
@@ -72,6 +73,65 @@ describe('本地模板生成器（模板句照原型 questionSet 逐字）', () 
     const long = skillExampleQuestion('一'.repeat(80))
     expect(long.startsWith('请帮我使用这个技能完成"')).toBe(true)
     expect(Array.from(long).length).toBeLessThanOrEqual(60)
+  })
+})
+
+/**
+ * 2026-09-09 PRD 复核批次 0（Q363–Q366）：三个生成器改吃上下文对象，补传「对象名称」。
+ * md 依据=《AI生成按钮Prompt规范.md》§1/§4/§5/§6/§7 的「变量来源」表（均含 name）。
+ * demo 本地模板只有一个主语位 → 口径为「名称优先做主语，名称为空回落描述」，
+ * 不做多字段拼串（拼串后会被 18 字截断截没，正是清单 A17 警告的隐患）。
+ */
+describe('生成器补传对象名称（Q363–Q366）', () => {
+  it('expertQuestionSet：吃 {name,intro,roleDesc,category}，名称做主语', () => {
+    const qs = expertQuestionSet({
+      name: '财务分析专家',
+      intro: '负责经营数据的汇总与异常识别，输出可追溯的分析结论与管理建议',
+      roleDesc: '按月度节奏产出经营分析报告',
+      category: '财务'
+    })
+    expect(qs[0]).toBe('请围绕"财务分析专家"给出专业分析')
+    expect(qs[1]).toBe('请基于"财务分析专家"识别关键问题并提出建议')
+    expect(qs[2]).toBe('请针对"财务分析专家"整理一份可执行方案')
+  })
+
+  it('expertQuestionSet：名称为空 → 依次回落 简介 → 职责描述 → 分类（不拼串、不被截没）', () => {
+    expect(expertQuestionSet({ name: '', intro: '经营分析' })[0]).toBe('请围绕"经营分析"给出专业分析')
+    expect(expertQuestionSet({ name: '  ', intro: '', roleDesc: '月度复盘' })[0]).toBe(
+      '请围绕"月度复盘"给出专业分析'
+    )
+    expect(expertQuestionSet({ category: '财务' })[0]).toBe('请围绕"财务"给出专业分析')
+  })
+
+  it('connectorQuestionSet / skillExampleQuestion：名称优先，缺名回落描述', () => {
+    expect(connectorQuestionSet({ name: '报销系统', description: '报销单查询与提交' })[0]).toBe(
+      '请查询与"报销系统"相关的信息'
+    )
+    expect(connectorQuestionSet({ description: '报销单查询与提交' })[0]).toBe(
+      '请查询与"报销单查询与提交"相关的信息'
+    )
+    expect(skillExampleQuestion({ name: '周报助手', description: '把工作记录整理成周报' })).toBe(
+      '请帮我使用这个技能完成"周报助手"'
+    )
+    expect(skillExampleQuestion({ description: '把工作记录整理成周报' })).toBe(
+      '请帮我使用这个技能完成"把工作记录整理成周报"'
+    )
+  })
+
+  it('三个生成器首参仍兼容旧的字符串写法（老调用方零改动）', () => {
+    expect(expertQuestionSet('经营分析')).toEqual(expertQuestionSet({ intro: '经营分析' }))
+    expect(connectorQuestionSet('客户管理')).toEqual(connectorQuestionSet({ description: '客户管理' }))
+    expect(skillExampleQuestion('整理销售周报')).toBe(skillExampleQuestion({ description: '整理销售周报' }))
+    // 空入参不炸（主语为空串）
+    expect(expertQuestionSet(null)[0]).toBe('请围绕""给出专业分析')
+    expect(connectorQuestionSet(undefined)[0]).toBe('请查询与""相关的信息')
+  })
+
+  it('长名称仍按 18 / 24 字收束，模板整体 ≤60', () => {
+    const qs = expertQuestionSet({ name: '一'.repeat(40), intro: '简介' })
+    expect(qs.every((q) => Array.from(q).length <= 60)).toBe(true)
+    expect(qs[0]).toContain('…')
+    expect(Array.from(skillExampleQuestion({ name: '一'.repeat(80) })).length).toBeLessThanOrEqual(60)
   })
 })
 
@@ -138,6 +198,63 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     api.run()
     vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
     expect(apply).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 2026-09-09 PRD 复核批次 0 · A17：新增可选 getSourceContext（生成器入参）。
+   * **契约不变**——sourceEmpty / disabled 仍只看 getSourceText，名称补传不参与禁用判定，
+   * 避免出现「只填了名称没填描述却放行」的口径漂移（清单 A17 点名的 sourceEmpty 口径问题）。
+   */
+  it('getSourceContext：只喂 generate，不参与禁用判定（描述为空仍禁用，哪怕名称已填）', () => {
+    const apply = vi.fn()
+    const generate = vi.fn((ctx) => ctx)
+    // 用 reactive 承载表单：computed(sourceEmpty) 才会随字段变化重算（组件里的 form 同样是 reactive）
+    const form = reactive({ name: '财务分析专家', intro: '' })
+    const api = useAiLiveGenerate({
+      getSourceText: () => form.intro,
+      sourceLabel: '专家简介',
+      getSourceContext: () => ({ name: form.name, intro: form.intro }),
+      generate,
+      apply
+    })
+    // 名称已填但简介空 → 仍禁用、仍给「请先填写专家简介」引导
+    expect(api.sourceEmpty.value).toBe(true)
+    expect(api.disabled.value).toBe(true)
+    expect(api.title.value).toBe('请先填写专家简介')
+    api.run()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(generate).not.toHaveBeenCalled()
+
+    // 补上简介后放行，生成器收到的是完整上下文对象（而非单一字符串）
+    form.intro = '经营数据分析'
+    expect(api.disabled.value).toBe(false)
+    api.run()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(generate).toHaveBeenCalledWith({ name: '财务分析专家', intro: '经营数据分析' })
+    expect(apply).toHaveBeenCalledWith({ name: '财务分析专家', intro: '经营数据分析' })
+  })
+
+  it('getSourceContext 同样取点击那刻的值（与 getSourceText 一致）', () => {
+    const generate = vi.fn((ctx) => ctx)
+    const form = { name: '旧名称', description: '旧描述' }
+    const api = useAiLiveGenerate({
+      getSourceText: () => form.description,
+      sourceLabel: 'API 描述',
+      getSourceContext: () => ({ name: form.name, description: form.description }),
+      generate,
+      apply: vi.fn()
+    })
+    api.run()
+    form.name = '新名称'
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(generate).toHaveBeenCalledWith({ name: '旧名称', description: '旧描述' })
+  })
+
+  it('未传 getSourceContext → 退化为旧行为（生成器吃 trim 后的源文本串）', () => {
+    const { api, generate } = setup({ text: '  汇总经营数据  ' })
+    api.run()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(generate).toHaveBeenCalledWith('汇总经营数据')
   })
 
   it('delayMs 可注入（接入方/测试可调；默认 500ms，2026-09-06 Q10 拍板全站统一）', () => {

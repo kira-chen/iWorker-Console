@@ -24,8 +24,11 @@
  *   不再是头像触发式 popover；链路仍是 IconPickerPopover（IconField 内部 headless 复用）。
  * 【按 md 不改并记录】C2 只读态不展示「默认安装 / 技能分类修改」（md §三.3 明确不展示，原型展示为禁用）；
  *   C3 提交发布后留在编辑页锁定并提示（md §三.1/§四.1，原型直接回列表）。两条均属 md↔原型冲突。
- * 【复用方】本组件被 AdminSkillEditPage（岗位私有/市场/通用三类）、PositionDetailTabs（岗位工作台）、
- *   ReviewSkillDetailPage（用户技能审核，reviewMode）共用——C1 栏宽/顶行改动对三处同时生效。
+ * 【复用方】本组件被 AdminSkillEditPage（岗位私有/市场/通用三类）与 PositionDetailTabs（岗位工作台）
+ *   共用——C1 栏宽/顶行改动对两处同时生效。
+ *   （2026-09-09 PRD-20260908 复核批次 0 · G7：第三个复用方 ReviewSkillDetailPage 已删除，
+ *   用户技能审核的「查看技能」按 md §五 改列表页右侧抽屉 UserSkillAuditDrawer，本组件的
+ *   reviewMode / riskItems / 'review' emit 及审核右栏一并退役。）
  */
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -141,12 +144,11 @@ const props = defineProps({
    * 发布就绪门（与列表页共用 skillPublishReadiness 谓词，由页面层计算传入）：
    * { ready, missing[] }。仅 adminContext 下消费——缺失/未就绪时【发布】置灰并 title 列缺项。
    */
-  publishReadiness: { type: Object, default: null },
-  // V94 用户技能审核只读预览态：右栏改为「客户端安全检测结果 + 工具引用」手风琴（安全检测结果默认展开），
-  // 顶栏「保存配置」换成「审核」。仅审核详情页传 true，正常技能编辑不受影响。
-  reviewMode: { type: Boolean, default: false },
-  // 客户端上报的风险项 [{ typeName, levelName, description }]，全量（含通过项），仅展示。
-  riskItems: { type: Array, default: () => [] }
+  publishReadiness: { type: Object, default: null }
+  // 2026-09-09 PRD-20260908 复核批次 0（G7 清理）：原 V94 审核预览专用的 reviewMode / riskItems
+  // 两个 prop 随唯一消费方 ReviewSkillDetailPage.vue 一并删除——md `prd.用户技能审核.md` §五
+  // 「查看技能」已改列表页右侧抽屉（components/admin/UserSkillAuditDrawer.vue 自带风险项渲染），
+  // 该整页早已退役为路由重定向，本组件不再需要审核形态分支。
 })
 const emit = defineEmits([
   'update:skill',
@@ -168,7 +170,7 @@ const emit = defineEmits([
   'save-config', // 配置区手动保存：顶栏「保存配置」按钮 → 父级 saveConfig 提交配置字段+展示分类
   'trial-run', // 组④：🧪 试跑此技能 → 父级先 flush 再开效果测试台
   'tree-retry',
-  'review', // V94：审核详情页顶栏「审核」按钮 → 父级开审核弹窗
+  // 'review' 已随 ReviewSkillDetailPage 退役删除（2026-09-09 G7 清理）
   'open-version' // 2026-08-14：顶栏「版本发布」按钮 → 父级壳打开版本发布弹窗
 ])
 
@@ -190,17 +192,9 @@ watch(dockCollapsed, (v) => {
     /* localStorage 不可用时静默降级，不影响功能 */
   }
 })
-// V94 审核详情右栏手风琴：'risk'=展开安全检测结果（默认）/ 'tools'=展开工具引用。同一时刻只展开一个。
-const reviewRightPanel = ref('risk')
-function toggleReviewPanel(which) {
-  reviewRightPanel.value = reviewRightPanel.value === which ? (which === 'risk' ? 'tools' : 'risk') : which
-}
-// 风险等级 → StatusTag 语义色（仅 reviewMode 右栏用；2026-09-08 PRD-20260908 按五档精确匹配：
-// 严重风险 / 高风险=danger、中风险=warning、低风险=info、检测通过=success，其余未知值 info）。仅展示。
-const RISK_LEVEL_TAG = { 严重风险: 'danger', 高风险: 'danger', 中风险: 'warning', 低风险: 'info', 检测通过: 'success' }
-function riskLevelType(levelName) {
-  return RISK_LEVEL_TAG[levelName] || 'info'
-}
+// 2026-09-09 G7 清理：审核右栏手风琴状态（reviewRightPanel / toggleReviewPanel）与风险等级
+// 配色表（RISK_LEVEL_TAG / riskLevelType）随 reviewMode 一并删除——风险项展示已由
+// components/admin/UserSkillAuditDrawer.vue 独立承担（含同款五档配色）。
 
 // ToolDock 内插入 → 直接插到编辑器光标处 + 轻提示（原由父级 onDockInsert 承担）。
 // 2026-09-01：技能编辑器语境 toast 改「已插入工具引用」（对齐原型 skill-tool-insert）；工作台保持旧文案。
@@ -234,6 +228,9 @@ const {
 } = useAiLiveGenerate({
   getSourceText: () => props.skill?.description || '',
   sourceLabel: '技能描述',
+  // 2026-09-09 PRD-20260908 复核批次 0 · Q364：补传技能名称（《AI生成按钮Prompt规范.md》§1
+  // 变量来源表 name=skillRows[i].name）。禁用判定仍只看技能描述，口径不变。
+  getSourceContext: () => ({ name: props.skill?.name || '', description: props.skill?.description || '' }),
   generate: skillExampleQuestion,
   apply: (question) => emitPatch({ exampleQuestion: question }),
   isReadonly: () => ro.value
@@ -839,20 +836,12 @@ onBeforeUnmount(() => {
         </span>
       </el-tooltip>
 
-      <!-- V94 审核详情：顶栏「审核」按钮（替代「保存」）。点开审核弹窗，由父级承接。 -->
-      <button
-        v-if="reviewMode"
-        type="button"
-        class="topline-savecfg"
-        @click="emit('review')"
-      >审核</button>
-
       <!-- 【发布】（2026-09-01 技能编辑器语境）：三类技能统一入口，完整发布门——任一必填缺失或
            SKILL.md 空 → 置灰 + title 列缺项；就绪 → title「发布将提交审核…」。点击打开统一版本管理抽屉。
            旧语境（isPlatformSkill 且非 adminContext）保持原「版本发布」按钮不变。 -->
       <!-- 审核中锁定态（locked）仍保留本按钮：打开版本管理抽屉可「撤回提交」；仅只读查看（readonly）隐藏。 -->
       <button
-        v-if="adminContext ? !readonly && !reviewMode : isPlatformSkill && !reviewMode"
+        v-if="adminContext ? !readonly : isPlatformSkill"
         type="button"
         class="topline-verpub"
         :class="{ 'is-disabled': adminContext && !locked && !publishReady }"
@@ -865,7 +854,7 @@ onBeforeUnmount(() => {
            2026-08-17：按钮常驻绿色主按钮、任何时刻可点（无脏改动点了也保存成功，幂等）；
            仅提交中禁用防连点。有未保存配置在文本旁加 ●（● 保存）作脏提示。只读态（平台只读 Tab）不渲染。 -->
       <el-tooltip
-        v-if="!ro && !reviewMode"
+        v-if="!ro"
         content="保存技能配置（名称/描述/示例问题/技能分类等）与 SKILL.md 未保存正文。"
         placement="bottom"
         effect="dark"
@@ -1157,52 +1146,13 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <!-- V94 审核详情：右栏改「客户端安全检测结果 + 工具引用」手风琴（安全检测结果默认展开，点工具引用则互换）。
-           工具引用入口保留（不丢功能），只是默认收起。-->
-      <div v-if="reviewMode" class="ed-review-right">
-        <!-- 安全检测结果面板 -->
-        <div class="rr-panel" :class="{ 'is-open': reviewRightPanel === 'risk' }">
-          <button type="button" class="rr-head" @click="toggleReviewPanel('risk')">
-            <span class="rr-title">🛡 客户端安全检测结果</span>
-            <span class="rr-caret">{{ reviewRightPanel === 'risk' ? '▾' : '▸' }}</span>
-          </button>
-          <div v-show="reviewRightPanel === 'risk'" class="rr-body">
-            <div v-if="!riskItems.length" class="rr-empty">客户端未上报风险项</div>
-            <div v-for="(item, i) in riskItems" :key="i" class="rr-card">
-              <div class="rr-card-head">
-                <span class="rr-type">{{ item.typeName || '未知类型' }}</span>
-                <StatusTag :type="riskLevelType(item.levelName)" class="rr-level">{{ item.levelName || '—' }}</StatusTag>
-              </div>
-              <div class="rr-desc">{{ item.description || '—' }}</div>
-            </div>
-          </div>
-        </div>
-        <!-- 工具引用（默认收起，点开则安全检测结果收起） -->
-        <div class="rr-panel" :class="{ 'is-open': reviewRightPanel === 'tools' }">
-          <button type="button" class="rr-head" @click="toggleReviewPanel('tools')">
-            <span class="rr-title">🔧 工具引用</span>
-            <span class="rr-caret">{{ reviewRightPanel === 'tools' ? '▾' : '▸' }}</span>
-          </button>
-          <div v-show="reviewRightPanel === 'tools'" class="rr-body rr-body-dock">
-            <ToolDock
-              :collapsed="false"
-              class="ed-dock rr-dock"
-              :position-id="positionId"
-              :skill-source="skillSource"
-              :referenced-view="referencedView"
-              :readonly="true"
-              @locate="locateRef"
-            />
-          </div>
-        </div>
-      </div>
-
       <!-- 工具引用抽屉（右栏，内嵌常驻，规格 §3）：§12 顶部并入「本技能已引用」分区。
            已引用 referencedView 由父级合并好传入；定位/移除 emit 上抛、由父级操作 Milkdown/skillMd。 -->
       <!-- 2026-09-01：技能编辑器语境页签收敛为 MCP / API / 业务系统 + 空态「去连接器接入」链接
            （props 驱动；岗位工作台语境不传，保持现状） -->
+      <!-- 2026-09-09 G7 清理：原 v-if="reviewMode" 的审核右栏手风琴（安全检测结果 + 工具引用）
+           已随 ReviewSkillDetailPage 退役删除，此处恢复为工具引用坞常驻（去掉 v-else）。 -->
       <ToolDock
-        v-else
         v-model:collapsed="dockCollapsed"
         class="ed-dock"
         :position-id="positionId"
@@ -1706,92 +1656,7 @@ onBeforeUnmount(() => {
 .ed-dock {
   min-width: 0;
 }
-/* V94 审核详情右栏手风琴（安全检测结果 + 工具引用）：复用编辑器令牌，与右坞同宽同边框语言。 */
-.ed-review-right {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--border-soft);
-  background: var(--bg-app);
-  overflow: hidden;
-}
-.rr-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-bottom: 1px solid var(--border-soft);
-}
-.rr-panel.is-open {
-  flex: 1;
-  min-height: 0;
-}
-.rr-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-app);
-  border: none;
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  text-align: left;
-}
-.rr-head:hover {
-  background: var(--bg-hover);
-}
-.rr-caret {
-  color: var(--c-text-muted);
-  font-size: var(--fs-xs);
-}
-.rr-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-3) var(--space-4) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.rr-body-dock {
-  padding: 0;
-}
-.rr-dock {
-  height: 100%;
-}
-.rr-empty {
-  color: var(--c-text-faint);
-  font-size: var(--fs-sm);
-  padding: var(--space-4) 0;
-  text-align: center;
-}
-.rr-card {
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3);
-  background: var(--bg-surface);
-}
-.rr-card-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-}
-.rr-type {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-}
-.rr-level {
-  margin-left: auto;
-}
-.rr-desc {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  line-height: var(--lh-base);
-}
+/* 2026-09-09 G7 清理：审核右栏手风琴样式（.ed-review-right / .rr-*）随 reviewMode 一并删除。 */
 .ed-md {
   display: flex;
   flex-direction: column;

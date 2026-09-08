@@ -58,6 +58,24 @@ function seedRows() {
   rows.forEach((r) => {
     r.refId = REF[r.id] ?? r.id
   })
+  // 2026-09-09 PRD 复核 A6（Q265③）：知识库纳入发布审核 → 补一条知识库申请样例，
+  // refId 指向 knowledgeBaseMock kb_3「法规与标准库」（该库种子即 pendingAction:'PUBLISH'，与审核中心 id 9 同一笔）
+  rows.push({
+    id: 511,
+    objectName: '法规与标准库',
+    description: '行业法规、国标与行标条文检索，供合规与方案设计参考。',
+    businessType: 'KNOWLEDGE_BASE',
+    applicationType: 'FIRST_PUBLISH',
+    version: '—',
+    submittedAt: '2026-08-28 11:02',
+    result: 'PENDING',
+    reviewedAt: '',
+    submitter: 'config.admin',
+    reviewer: '',
+    versionNotes: '首次发布法规与标准知识库',
+    rejectReason: '',
+    refId: 'kb_3'
+  })
   return rows
 }
 
@@ -67,8 +85,10 @@ let applications = seedRows()
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
 // version 2（2026-09-08 决议第 8 项）：种子 508 由 OTHER 改为 SKILL，旧快照丢弃回种子。
 // version 3（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 503 refId 改指岗位 mock 401。
+// version 4（2026-09-09 PRD 复核 G3G6 · A6/A5）：种子补知识库申请行 511（→ kb_3），
+// 行结构增 snapshot 字段（岗位/专家/技能提交时由业务模块写入），旧快照丢弃回种子。
 const persist = attachPersist('myApplications', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {
@@ -81,6 +101,53 @@ const persist = attachPersist('myApplications', {
 /** 测试专用：重置内存态。 */
 export function resetMyApplicationsMock() {
   applications = seedRows()
+  persist()
+}
+
+/* ---------------- 提交端接线（2026-09-09 PRD 复核 A6） ----------------
+ * 业务模块 mock 在「提交发布 / 提交停用」时调用 submitApplicationRow 记一条申请，
+ * 「撤回」时调用 withdrawApplicationRow 把该行置为已撤回（md §3.1 审核结果四态含「已撤回」，
+ * 行不删除——「列表行保留该条申请记录」）。本页只读展示，不写业务数据。
+ */
+function nextApplicationId() {
+  return applications.reduce((max, r) => Math.max(max, Number(r.id) || 0), 0) + 1
+}
+
+/**
+ * 提交端写入（同一 businessType+refId 仍待审时覆盖，不重复建行）。
+ * @param {Object} row { businessType, refId, objectName, description?, applicationType, version?, versionNotes? }
+ */
+export function submitApplicationRow(row = {}) {
+  const same = (r) =>
+    r.businessType === row.businessType && String(r.refId) === String(row.refId) && r.result === 'PENDING'
+  const exist = applications.find(same)
+  const next = {
+    id: exist?.id ?? nextApplicationId(),
+    version: '—',
+    versionNotes: '',
+    submitter: 'config.admin',
+    ...row,
+    submittedAt: row.submittedAt || now(),
+    result: 'PENDING',
+    reviewedAt: '',
+    reviewer: '',
+    rejectReason: ''
+  }
+  if (exist) Object.assign(exist, next)
+  else applications = [next, ...applications]
+  persist()
+  return clone(next)
+}
+
+/** 撤回：把该对象仍待审的申请行置为已撤回（行保留，md §3.1）。 */
+export function withdrawApplicationRow(businessType, refId) {
+  const row = applications.find(
+    (r) => r.businessType === businessType && String(r.refId) === String(refId) && r.result === 'PENDING'
+  )
+  if (!row) return
+  row.result = 'WITHDRAWN'
+  row.reviewedAt = now()
+  row.reviewer = '—'
   persist()
 }
 

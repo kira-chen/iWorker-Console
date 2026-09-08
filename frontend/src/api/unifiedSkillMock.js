@@ -461,6 +461,64 @@ export async function nextVersionLabel(id) {
   return bumpVersion(s.version, 'NONE')
 }
 
+/* ==================== 审核版本快照（2026-09-09 PRD 复核 A5） ====================
+ * 负责人批注：「要不要快照是由提交模块决定的，而不在审核中心/我的申请做存储处理。
+ * 例如：技能/专家/岗位单独存储了审核版本的快照」。md `prd.审核中心.md` §四 L48
+ * 「岗位、专家、技能三类业务对象由所属业务模块在提交审核时生成版本快照，审核详情读取该快照」。
+ *
+ * 存储位置：本模块的 reviewSnapshots（skillId → 快照），随 unifiedSkill 的 localStorage 持久化。
+ * 写入时机：提交发布（publishSkill）/ 提交停用（delistSkill）；清除时机：撤回（withdrawPublish）。
+ * 快照内容：提交当时的技能配置（名称/图标/描述/触发词/示例问题/SKILL.md/引用工具）+ 提交元信息。
+ * 缺失时：治理侧按 md §七 阻止审核并提示联系提交人重新提交。
+ * （表本体 reviewSnapshots 声明在 attachPersist 之前，见文件下方持久化区块。）
+ */
+function skillSnapshotDetail(s) {
+  const files = ensureFiles(s)
+  return {
+    skillId: s.id,
+    id: s.id,
+    type: s.type,
+    name: s.name,
+    icon: s.icon || '',
+    description: s.description || '',
+    triggers: [...(s.triggers || [])],
+    exampleQuestion: s.exampleQuestion || '',
+    defaultInstall: !!s.defaultInstall,
+    skillMd: files['SKILL.md'] || '',
+    referencedTools: referencedToolsOf(s),
+    displayCategoryId: s.category || null,
+    displayCategoryName: s.category || '',
+    versionLabel: s.version || '',
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt || s.createdAt
+  }
+}
+
+function writeReviewSnapshot(s, requestAction) {
+  reviewSnapshots[String(s.id)] = {
+    kind: 'SKILL',
+    refId: s.id,
+    requestAction,
+    version: s.pendingVersion || s.version || '',
+    submittedAt: nowText(),
+    detail: JSON.parse(JSON.stringify(skillSnapshotDetail(s)))
+  }
+}
+
+/** 读取技能提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
+export function getSkillReviewSnapshot(id) {
+  const snap = reviewSnapshots[String(id)]
+  return snap ? JSON.parse(JSON.stringify(snap)) : null
+}
+
+/** 种子在审技能若无快照则补播一份（demo 打开即有内容）。 */
+function seedReviewSnapshots() {
+  for (const s of skills) {
+    if (!s.pendingAction || reviewSnapshots[String(s.id)]) continue
+    writeReviewSnapshot(s, s.pendingAction === 'stop' ? 'DELIST' : s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  }
+}
+
 /** 提交发布（进入审核中；demo 停在审核中，不落审核结论）。 */
 export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}) {
   await delay()
@@ -472,6 +530,8 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   s.pendingReleaseNotes = String(releaseNotes).trim()
   s.delisted = false
   s.updatedAt = nowText()
+  // A5：提交审核即存版本快照（md §四 L48）
+  writeReviewSnapshot(s, s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
   persist()
   return { skillId: s.id, pendingVersion: s.pendingVersion, publications: publicationsOf(s) }
 }
@@ -490,6 +550,7 @@ export async function withdrawPublish(id) {
     s.status = 'draft'
   }
   s.updatedAt = nowText()
+  delete reviewSnapshots[String(s.id)] // A5：撤回即销毁本次提交的版本快照
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -504,6 +565,7 @@ export async function delistSkill(id) {
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
   s.pendingAction = 'stop'
   s.updatedAt = nowText()
+  writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -725,9 +787,15 @@ export function _reset(id, patch = {}) {
 // _getRaw/_reset 按 id 查本表，行对象可整体替换，但数组本体必须保持同一引用）；
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
 // 依赖序：本模块 import fieldDictMock（分类字典已先完成恢复），positionMock 在本模块之后恢复。
+// A5 审核版本快照表（skillId → 快照）；实现说明见上方 publishSkill 前的「审核版本快照」区块。
+// 声明必须在 attachPersist 之前：restore 回调在 attachPersist 内同步执行，晚声明会撞 TDZ。
+let reviewSnapshots = {}
+
+// version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots；旧快照无该键 → 兜底 {} 并对
+// 种子在审技能补播，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('unifiedSkill', {
-  version: 1,
-  snapshot: () => ({ idSeq, skills, exampleCursor }),
+  version: 2,
+  snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (
       !d || !Number.isFinite(d.idSeq) || !Array.isArray(d.skills) ||
@@ -740,5 +808,8 @@ const persist = attachPersist('unifiedSkill', {
     skills.push(...d.skills)
     Object.keys(exampleCursor).forEach((k) => delete exampleCursor[k])
     if (d.exampleCursor && typeof d.exampleCursor === 'object') Object.assign(exampleCursor, d.exampleCursor)
+    reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    seedReviewSnapshots()
   }
 })
+seedReviewSnapshots() // 无存量快照（首次加载 / 版本不符回种子）时同样补播

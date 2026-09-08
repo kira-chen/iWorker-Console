@@ -11,7 +11,7 @@ import {
 } from '@/utils/dataTableTypes'
 
 describe('唯一 ID（主键）', () => {
-  it('至多一个、类型限短文本 / 整数、提交时强制必填', () => {
+  it('至多一个、类型限短文本 / 整数', () => {
     const rows = [
       { label: 'a', fieldType: 'TEXT', isPrimary: true },
       { label: 'b', fieldType: 'INTEGER', isPrimary: true },
@@ -20,8 +20,16 @@ describe('唯一 ID（主键）', () => {
     const r = validateFields(rows)
     expect(r.errors.rows[1].isPrimary).toContain('只能指定一个')
     expect(r.errors.rows[2].isPrimary).toBeTruthy()
-    expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT', isPrimary: true, required: false }).required).toBe(true)
     expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT' }).isPrimary).toBe(false)
+  })
+
+  // 2026-09-09 PRD 复核·G1（A3 / Q25②）：md §4.2.2「该标记仅用于向用户端传值，
+  // 不联动改变该字段的必填属性」→ 提交口不再把 isPrimary 折算成 required（旧行为已推翻）。
+  it('不联动必填：勾唯一 ID 不改 required，required 只认配置者自己勾的值', () => {
+    expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT', isPrimary: true, required: false }).required).toBe(false)
+    expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT', isPrimary: true }).required).toBe(false)
+    expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT', isPrimary: true, required: true }).required).toBe(true)
+    expect(normalizeFieldForSubmit({ label: 'a', fieldType: 'TEXT', isPrimary: false, required: true }).required).toBe(true)
   })
 })
 

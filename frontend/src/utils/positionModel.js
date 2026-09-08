@@ -207,15 +207,20 @@ export function genExampleQuestions(name, description) {
 }
 
 /**
- * 基于岗位名称 + 岗位描述本地生成编号步骤式岗位 SOP（原型 sop 模板）。截断到 4000 字。
+ * 基于岗位名称 + 岗位描述本地生成编号步骤式岗位 SOP。截断到 4000 字。
+ *
+ * 2026-09-09 PRD 复核（A18 / Q370，二轮决策选 A）：按《AI生成按钮Prompt规范.md》§3 第 2 条
+ * 「覆盖：理解意图 → 选择能力 → 执行任务 → 核对结果 → 输出结论」输出 5 步，
+ * 取代旧 4 步模板（旧第 1 步合并了理解意图+确认范围，旧第 4 步合并了核对+输出）。
  */
 export function genPositionSop(name, description) {
   const subject = shortText(description || name, 48)
   const sop =
-    `1. 理解用户目标，并结合岗位描述"${subject}"确认任务范围。\n` +
-    '2. 收集完成任务所需的信息，必要时向用户补充提问。\n' +
-    '3. 选择合适的 Agent、技能、知识库与工具执行任务。\n' +
-    '4. 核对关键结果与数据口径，输出结论、依据和后续建议。'
+    `1. 理解用户意图，并结合岗位描述"${subject}"确认任务目标与范围。\n` +
+    '2. 选择完成任务所需的 Agent、技能、知识库与工具，必要时向用户补充提问。\n' +
+    '3. 按选定能力执行任务，逐步推进并记录关键中间结果。\n' +
+    '4. 核对关键结果与数据口径，确认结论可靠、无遗漏。\n' +
+    '5. 输出结论、依据和后续建议，交付用户可直接使用的结果。'
   return limitLen(sop, SOP_MAX_LEN)
 }
 
@@ -495,20 +500,63 @@ export const POSITION_BUMP_OPTIONS = [
   { value: 'MAJOR', label: '重大更新', hint: '岗位职责或流程发生不兼容变更' }
 ]
 
+/* ============================ 完整性校验（md §9.1，2026-09-09 Q11 新决策） ============================ */
+/**
+ * md §9.1 第 5 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
+ * 口径取「存在某个 Agent 其技能数 ≥ 1」（不要求每个 Agent 都有技能——md 用的是「该 Agent」单数指代）。
+ */
+export function agentsWithSkillOk(agents) {
+  const list = Array.isArray(agents) ? agents : []
+  return list.some((a) => Array.isArray(a?.skills) && a.skills.length > 0)
+}
+
+/**
+ * md §9.1 完整性校验 6 项：返回未完成项的文案数组（按 md 列举顺序）。
+ * 【保存】与【发布岗位】共用同一份口径：
+ * - 【发布岗位】：数组非空即阻断（toast「请先填写：…」+ 定位到第一个缺失项所在页签）；
+ * - 【保存】：数组非空不阻断，仅在页面顶部提示条列出（md §9.1 末段）。
+ *
+ * 入参同 computePublishCheck 的 detail（store.checkInput）。
+ * 每项附 tab 字段，供调用方按 md「自动定位到第一个缺失项所在页签」跳转。
+ */
+export const COMPLETENESS_ITEMS = [
+  { key: 'name', label: '岗位名称', tab: 'persona' },
+  { key: 'description', label: '岗位描述', tab: 'persona' },
+  { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
+  { key: 'positionSop', label: '岗位 SOP', tab: 'persona' },
+  { key: 'agents', label: 'Agent 与技能', tab: 'agents' },
+  { key: 'sampleTasks', label: '自动化任务', tab: 'sampleTasks' }
+]
+
+export function computeCompletenessMissing(detail) {
+  const d = detail || {}
+  const okMap = {
+    name: !!String(d.name || '').trim(),
+    description: !!String(d.description || '').trim(),
+    exampleQuestions: exampleQuestionsComplete(d.exampleQuestions),
+    positionSop: !!String(d.positionSop || '').trim(),
+    agents: agentsWithSkillOk(d.agents),
+    sampleTasks: Number(d.sampleTaskCount || 0) > 0
+  }
+  return COMPLETENESS_ITEMS.filter((i) => !okMap[i.key])
+}
+
 /* ============================ 发布前检查（md §9.2 · 原型 openPub L2132） ============================ */
 /**
- * 计算发布前检查清单 + 完成度。输入岗位详情（name/description/exampleQuestions/positionSop + agents[]）。
+ * 计算发布前检查清单 + 完成度。输入岗位详情
+ * （name/description/exampleQuestions/positionSop + agents[] + sampleTaskCount）。
  * 返回 { items:[{ key,label,ok,blocking,warning,detail }], blockingPassed, doneRatio, warnings }
  *
- * 2026-09-08 PRD-20260908 对齐（md §9.1 阻断 4 项 = 名称 / 描述 / 示例问题 / SOP；§9.2 清单；
- * 原型 `openPub` L2132 四行文案逐字），取代旧 §6.2 五项口径：
+ * 2026-09-09 PRD 复核（A1 / Q11 负责人新决策，推翻 2026-09-08 的「阻断四项」口径）：
+ * md §9.1 阻断 6 项 = 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP /
+ * Agent 与技能（至少 1 个 Agent 且该 Agent 至少引用 1 个技能）/ 自动化任务（至少 1 条）。
+ * 清单条目对应 md §9.2：
  * - 岗位名称与描述（硬）——「必填内容已填写」；
  * - 示例问题（硬）——「3 条示例问题已填写」；
  * - 岗位 SOP（硬）——「岗位能力综述已填写」；
- * - Agent 与技能（! 警告，不阻断）——md §6.5「Agent 与技能没有填写时同样可以发布」；
- *   有 UNHEALTHY 工具时按 md §9.2 写「存在 X 个工具未验证，不阻断发布」，否则照原型
- *   「存在未验证能力时不阻断发布」。旧「≥1 Agent 且每 Agent ≥1 技能」硬阻断、
- *   「采集字段定义完整」硬阻断（md §3.4 采集字段不参与发布阻断）均删除。
+ * - Agent 与技能（硬，md §6.5）——至少 1 个 Agent 且该 Agent 至少引用 1 个技能；
+ *   未验证工具降级为该条目上的附注（不影响 ok），仍计入 warnings 供弹窗提示行使用；
+ * - 自动化任务（硬，md §7.6）——至少 1 条。
  * warnings 仅在确有告警（未验证工具）时非空，供弹窗提示行「存在告警项（不阻断）…」判定。
  */
 export function computePublishCheck(detail) {
@@ -518,6 +566,9 @@ export function computePublishCheck(detail) {
   const nameOk = !!String(d.name || '').trim()
   const descOk = !!String(d.description || '').trim()
   const sopOk = !!String(d.positionSop || '').trim()
+  const agentsOk = agentsWithSkillOk(d.agents)
+  const taskCount = Number(d.sampleTaskCount || 0)
+  const tasksOk = taskCount > 0
 
   const items = []
 
@@ -548,19 +599,30 @@ export function computePublishCheck(detail) {
     detail: sopOk ? '岗位能力综述已填写' : '请先填写岗位 SOP'
   })
 
-  // 4. Agent 与技能（警告样式，不阻断）
+  // 4. Agent 与技能（硬，md §6.5 / §9.1 第 5 条）
   const hasUnhealthy = unhealthyTools.length > 0
   items.push({
     key: 'agents',
     label: 'Agent 与技能',
-    ok: false,
-    blocking: false,
-    warning: true,
+    ok: agentsOk,
+    blocking: true,
+    warning: hasUnhealthy,
     // 仅确有未验证工具时计入 warnings（弹窗据此出「存在告警项」提示行）
     actionable: hasUnhealthy,
-    detail: hasUnhealthy
-      ? `存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
-      : '存在未验证能力时不阻断发布'
+    detail: agentsOk
+      ? hasUnhealthy
+        ? `已配置 Agent 与技能；存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
+        : '已配置 Agent 与技能'
+      : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
+  })
+
+  // 5. 自动化任务（硬，md §7.6 / §9.1 第 6 条）
+  items.push({
+    key: 'sampleTasks',
+    label: '自动化任务',
+    ok: tasksOk,
+    blocking: true,
+    detail: tasksOk ? `已配置 ${taskCount} 条自动化任务` : '至少配置 1 条自动化任务'
   })
 
   const blockingItems = items.filter((i) => i.blocking)

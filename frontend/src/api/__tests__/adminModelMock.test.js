@@ -109,14 +109,39 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
     expect(upd.apiKeyMasked).toBeTruthy() // 留空保留了原密钥
   })
 
-  it('重新验证 / 发布 / 撤回不改 updatedAt（排序依据是配置更新）', async () => {
+  /**
+   * 2026-09-09 PRD 复核批次 0 · A20：口径改按 md `prd-模型.md` §二.2——
+   * 「提交审核与撤回提交后，按新的最近更新时间重新排列；重新验证、停用或设置默认模型时，不改变最近更新时间」。
+   * 原用例把「发布 / 撤回不改 updatedAt」也一并锁住，与本版 md 相反，已按 md 拆为两条。
+   */
+  it('重新验证不改 updatedAt（md §二.2「重新验证…不改变」）', async () => {
     const row = await mk(`时间口径模型-${Date.now()}`)
     const stamp = row.updatedAt
     await verifyModel(row.id)
-    await publishModel(row.id)
-    await withdrawModel(row.id)
     const after = await getModel(row.id)
     expect(after.updatedAt).toBe(stamp)
+  })
+
+  it('提交审核 / 撤回提交后刷新 updatedAt（md §二.2；停用与设为默认仍不刷新）', async () => {
+    const row = await mk(`时间刷新模型-${Date.now()}`)
+    await verifyModel(row.id)
+    const beforePublish = (await getModel(row.id)).updatedAt
+
+    await publishModel(row.id)
+    const afterPublish = (await getModel(row.id)).updatedAt
+    expect(afterPublish > beforePublish).toBe(true) // 提交审核 → 刷新
+
+    await withdrawModel(row.id)
+    const afterWithdraw = (await getModel(row.id)).updatedAt
+    expect(afterWithdraw > afterPublish).toBe(true) // 撤回提交 → 刷新
+
+    // 停用（提交停用审核）与设为默认：md 明确「不改变」
+    await publishModel(row.id)
+    await approveModel(row.id)
+    const beforeQuiet = (await getModel(row.id)).updatedAt
+    await setDefaultModel(row.id)
+    await delistModel(row.id)
+    expect((await getModel(row.id)).updatedAt).toBe(beforeQuiet)
   })
 
   it('设为默认：仅已发布可设，同类别原默认自动取消', async () => {

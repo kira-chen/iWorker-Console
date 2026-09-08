@@ -14,10 +14,20 @@
  * connectorQuestionSet + sourceLabel「服务描述」即可）；ApiEditor 冻结不接。
  *
  * 【导出签名（MCP 批次对接口径）】
- * useAiLiveGenerate({ getSourceText, sourceLabel, generate, apply, isReadonly?, delayMs?, idleLabel? })
+ * useAiLiveGenerate({ getSourceText, sourceLabel, getSourceContext?, generate, apply,
+ *                     isReadonly?, delayMs?, idleLabel? })
  *   → { busy, sourceEmpty, disabled, title, label, run }
  * 生成器（条数内嵌在生成器里）：expertQuestionSet(3 条) / connectorQuestionSet(3 条) /
  * skillExampleQuestion(1 条)；文本工具 shortText / limitLen。
+ *
+ * 【2026-09-09 PRD-20260908 复核批次 0 · Q363–Q366】三个生成器改吃「上下文对象」，
+ * 补传对象名称（《AI生成按钮Prompt规范.md》各入口变量来源表要求 name 入参）：
+ *   expertQuestionSet({ name, intro, roleDesc, category })   —— 规范 §4
+ *   connectorQuestionSet({ name, description })              —— 规范 §5/§6/§7
+ *   skillExampleQuestion({ name, description })              —— 规范 §1
+ * 三者首参仍兼容旧的字符串写法。demo 本地模板只有一个主语位，故口径为
+ * **名称优先做主语、名称为空回落描述**（不做多字段拼串——拼串后会被 18 字截断截没）；
+ * 禁用判定仍只看 getSourceText，接入方契约不变。
  */
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -41,9 +51,34 @@ export function limitLen(text, max) {
   return chars.length > max ? chars.slice(0, max).join('') : chars.join('')
 }
 
-/** 专家「专家帮你做」3 条（源=专家简介；模板照原型 questionSet('expert') 逐字，60 字截断）。 */
-export function expertQuestionSet(sourceText) {
-  const subject = shortText(sourceText, 18)
+/**
+ * 主语挑选（2026-09-09 PRD-20260908 复核批次 0 · Q363–Q366 新增）：
+ * 《AI生成按钮Prompt规范.md》要求每个入口把「对象名称」一并送进上下文，但 demo 走本地模板、
+ * 模板句只有一个主语位。口径：**名称优先做主语，名称为空时回落到描述**——这样既让名称真正参与
+ * 生成（规范 §1/§4/§5/§6/§7 的 `name` 变量），又不会因为把 4 个字段拼成长串后被 18 字截断
+ * 而把内容截没（原 expertQuestionSet 的隐患）。次要字段做名称缺失时的兜底源，不参与拼串。
+ *
+ * @param {Array<string>} candidates 按优先级排列的候选文本（先名称、后描述类字段）
+ * @param {number} max 主语收束字数
+ */
+function pickSubject(candidates, max) {
+  for (const c of candidates) {
+    const clean = shortText(c, max)
+    if (clean) return clean
+  }
+  return ''
+}
+
+/**
+ * 专家「专家帮你做」3 条（模板照原型 questionSet('expert') 逐字，60 字截断）。
+ *
+ * 2026-09-09 Q363：上下文由「仅简介」扩为规范 §4 的四变量（名称 / 简介 / 职责描述 / 分类）。
+ * 签名向下兼容——首参仍可传字符串（老调用方等价于「只有简介」）。
+ * @param {string|{name?:string,intro?:string,roleDesc?:string,category?:string}} ctx
+ */
+export function expertQuestionSet(ctx) {
+  const c = typeof ctx === 'string' ? { intro: ctx } : ctx || {}
+  const subject = pickSubject([c.name, c.intro, c.roleDesc, c.category], 18)
   return [
     limitLen(`请围绕"${subject}"给出专业分析`, 60),
     limitLen(`请基于"${subject}"识别关键问题并提出建议`, 60),
@@ -51,9 +86,15 @@ export function expertQuestionSet(sourceText) {
   ]
 }
 
-/** 连接器（业务系统 / MCP / API）示例问题 3 条（模板照原型 questionSet('connector') 逐字）。 */
-export function connectorQuestionSet(sourceText) {
-  const subject = shortText(sourceText, 18)
+/**
+ * 连接器（业务系统 / MCP / API）示例问题 3 条（模板照原型 questionSet('connector') 逐字）。
+ *
+ * 2026-09-09 Q366：补传连接器名称（规范 §5/§6/§7 的 `name` 变量）。首参兼容旧字符串写法。
+ * @param {string|{name?:string,description?:string}} ctx
+ */
+export function connectorQuestionSet(ctx) {
+  const c = typeof ctx === 'string' ? { description: ctx } : ctx || {}
+  const subject = pickSubject([c.name, c.description], 18)
   return [
     limitLen(`请查询与"${subject}"相关的信息`, 60),
     limitLen(`请处理一项关于"${subject}"的业务请求`, 60),
@@ -61,18 +102,33 @@ export function connectorQuestionSet(sourceText) {
   ]
 }
 
-/** 技能示例问题 1 条（源=技能描述；模板照原型 skill-example-ai apply 逐字）。 */
-export function skillExampleQuestion(sourceText) {
-  return limitLen(`请帮我使用这个技能完成"${shortText(sourceText, 24)}"`, 60)
+/**
+ * 技能示例问题 1 条（模板照原型 skill-example-ai apply 逐字）。
+ *
+ * 2026-09-09 Q364：补传技能名称（规范 §1 的 `name` 变量）。首参兼容旧字符串写法。
+ * @param {string|{name?:string,description?:string}} ctx
+ */
+export function skillExampleQuestion(ctx) {
+  const c = typeof ctx === 'string' ? { description: ctx } : ctx || {}
+  const subject = pickSubject([c.name, c.description], 24)
+  return limitLen(`请帮我使用这个技能完成"${subject}"`, 60)
 }
 
 /**
  * AI 实况生成 composable（Vue 组件内调用；驱动一个「AI 生成」按钮）。
  *
+ * 【2026-09-09 PRD-20260908 复核批次 0 · Q363–Q366】新增可选 `getSourceContext`：
+ * 生成器的入参由它决定（用于把「对象名称」等附加变量一并送进上下文，见
+ * 《AI生成按钮Prompt规范.md》各入口的变量来源表）。**契约未变**——
+ * `getSourceText` 仍是唯一的「空则禁用」判定源（哪个字段为空要拦，由接入方自己指定，
+ * 通常就是 sourceLabel 指向的那个描述类字段），名称补传不参与禁用判定，
+ * 因此不会出现「填了名称没填描述却放行」的口径漂移。未传时退化为旧行为（生成器吃源文本串）。
+ *
  * @param {Object} options
- * @param {() => string} options.getSourceText 取源文本（每次求值，实况跟随输入框）
+ * @param {() => string} options.getSourceText 取源文本（每次求值，实况跟随输入框）；**唯一的禁用判定源**
  * @param {string} options.sourceLabel 源字段名（禁用 title「请先填写<sourceLabel>」）
- * @param {(sourceText: string) => any} options.generate 本地模板生成器（条数内嵌其中）
+ * @param {() => any} [options.getSourceContext] 取生成上下文（默认 = 源文本串）；只喂 generate，不参与禁用判定
+ * @param {(ctx: any) => any} options.generate 本地模板生成器（条数内嵌其中）
  * @param {(result: any) => void} options.apply 生成结果回填（组件侧写表单/清红框）
  * @param {() => boolean} [options.isReadonly] 只读/锁定态（真 → 按钮禁用、不给「请先填写」title）
  * @param {number} [options.delayMs] 「生成中…」时长，默认 AI_LIVE_DELAY_MS（测试可传 0）
@@ -82,6 +138,7 @@ export function skillExampleQuestion(sourceText) {
 export function useAiLiveGenerate({
   getSourceText,
   sourceLabel,
+  getSourceContext = null,
   generate,
   apply,
   isReadonly = () => false,
@@ -97,12 +154,12 @@ export function useAiLiveGenerate({
 
   function run() {
     if (disabled.value) return
-    // 源文本取点击那刻的值（原型 liveValue(config.source)）
-    const sourceText = String(getSourceText() || '').trim()
+    // 源文本/上下文均取点击那刻的值（原型 liveValue(config.source)）
+    const ctx = getSourceContext ? getSourceContext() : String(getSourceText() || '').trim()
     busy.value = true
     setTimeout(() => {
       busy.value = false
-      apply(generate(sourceText))
+      apply(generate(ctx))
       ElMessage.success(AI_LIVE_DONE_TOAST)
     }, delayMs)
   }

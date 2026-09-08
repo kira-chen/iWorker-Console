@@ -13,6 +13,7 @@ export const REVIEW_TYPE_MODEL = 'MODEL'             // V98：模型发布/停�
 export const REVIEW_TYPE_BIZ_SYSTEM = 'BIZ_SYSTEM'   // V93：业务系统连接器发布
 export const REVIEW_TYPE_POSITION = 'POSITION'       // V103：岗位纳入审核
 export const REVIEW_TYPE_EXPERT = 'EXPERT'           // V104：专家纳入审核
+export const REVIEW_TYPE_KNOWLEDGE_BASE = 'KNOWLEDGE_BASE' // 2026-09-09 A6：知识库纳入审核（md §二.2/§3.1）
 
 // 类型筛选下拉（含「全部」由前端置空 value 表达）
 export const REVIEW_TYPE_OPTIONS = [
@@ -68,11 +69,13 @@ export const REVIEW_STATUS_OPTIONS = [
 
 /* ---------------- 审核中心（review-center） ---------------- */
 
-// 业务类型筛选七项（原型 typeOptions 逐字照抄；MCP/API 由 TOOL+subType 拆分）
+// 业务类型筛选八项（md `prd.审核中心.md` §二.2 / §3.1：岗位、专家、技能、知识库、MCP、API、业务系统、模型；
+// MCP/API 由 TOOL+subType 拆分。2026-09-09 PRD 复核 A6（Q265③「知识库也需要发布审核」）：补「知识库」）
 export const REVIEW_BIZ_TYPE_OPTIONS = [
   { value: 'POSITION', label: '岗位' },
   { value: 'EXPERT', label: '专家' },
   { value: 'SKILL', label: '技能' },
+  { value: 'KNOWLEDGE_BASE', label: '知识库' },
   { value: 'CONNECTOR_MCP', label: 'MCP' },
   { value: 'CONNECTOR_API', label: 'API' },
   { value: 'CONNECTOR_BIZ', label: '业务系统' },
@@ -88,15 +91,16 @@ export function reviewTypeMatch(row, v) {
   return row.type === v
 }
 
-// 业务类型标签文案（原型 typeLabel：SKILL 带来源后缀，TOOL 直显 MCP/API 不带「连接器·」前缀
-// ——2026-09-01 疑点1 处置：显示用原型词）
+// 业务类型标签文案（md `prd.审核中心.md` §3.1「业务类型：岗位、专家、技能、知识库、MCP、API、业务系统、模型」；
+// TOOL 直显 MCP/API 不带「连接器·」前缀）。
+// 2026-09-09 PRD 复核 A7（Q262「不加，当前没有这个业务逻辑」）：技能不再按来源细分，
+// 原「技能·平台创建 / 技能·用户上传」后缀去除，统一显示「技能」。
 export function reviewBizTypeLabel(row) {
-  if (row.type === 'SKILL') {
-    return '技能·' + (row.platformSource === 'USER_UPLOADED' ? '用户上传' : '平台创建')
-  }
+  if (row.type === 'SKILL') return '技能'
   if (row.type === 'TOOL') return row.subType === 'MCP' ? 'MCP' : 'API'
   if (row.type === 'BIZ_SYSTEM') return '业务系统'
   if (row.type === 'MODEL') return '模型'
+  if (row.type === 'KNOWLEDGE_BASE') return '知识库'
   return { POSITION: '岗位', EXPERT: '专家' }[row.type] || row.type
 }
 
@@ -108,6 +112,8 @@ export function reviewBizTypeTagType(type) {
   if (type === 'MODEL') return 'warning'
   if (type === 'POSITION') return 'purple'
   if (type === 'EXPERT') return 'info'
+  // 知识库（2026-09-09 A6 新增）：StatusTag 只有六色且已被七类占满，按「同属内容资产」与技能共用绿系
+  if (type === 'KNOWLEDGE_BASE') return 'success'
   return 'info'
 }
 
@@ -126,24 +132,28 @@ export function requestActionTagType(action) {
 
 /* ---------------- 我的申请（my-applications） ---------------- */
 
-// 业务类型筛选（原型 types 数组顺序：专家/岗位/技能/MCP/API/业务系统/模型）
+// 业务类型筛选（md `prd.我的申请.md` §二.2 / §3.1：专家、岗位、技能、知识库、MCP、API、业务系统、模型。
+// 2026-09-09 PRD 复核 A6：补「知识库」）
 export const MYAPP_BIZ_TYPE_OPTIONS = [
   { value: 'EXPERT', label: '专家' },
   { value: 'POSITION', label: '岗位' },
   { value: 'SKILL', label: '技能' },
+  { value: 'KNOWLEDGE_BASE', label: '知识库' },
   { value: 'MCP', label: 'MCP' },
   { value: 'API', label: 'API' },
   { value: 'BIZ_SYSTEM', label: '业务系统' },
   { value: 'MODEL', label: '模型' }
 ]
 
-// 业务类型标签文案（原型 myBusinessLabel；2026-09-08 决议第 8 项：业务类型不含「其他」，OTHER 映射删除）
+// 业务类型标签文案（2026-09-08 决议第 8 项：业务类型不含「其他」，OTHER 映射删除；
+// 2026-09-09 A6：补 KNOWLEDGE_BASE）
 export function myAppBizTypeLabel(t) {
   return (
     {
       EXPERT: '专家',
       POSITION: '岗位',
       SKILL: '技能',
+      KNOWLEDGE_BASE: '知识库',
       MCP: 'MCP',
       API: 'API',
       BIZ_SYSTEM: '业务系统',
@@ -152,10 +162,10 @@ export function myAppBizTypeLabel(t) {
   )
 }
 
-// 业务类型 → StatusTag 色（原型 myBusinessKind，色系与审核中心同口径）
+// 业务类型 → StatusTag 色（色系与审核中心同口径：知识库与技能共用绿系，见 reviewBizTypeTagType）
 export function myAppBizTypeTagType(t) {
   if (['MCP', 'API', 'BIZ_SYSTEM'].includes(t)) return 'accent'
-  if (t === 'SKILL') return 'success'
+  if (t === 'SKILL' || t === 'KNOWLEDGE_BASE') return 'success'
   if (t === 'MODEL') return 'warning'
   if (t === 'POSITION') return 'purple'
   return 'info'

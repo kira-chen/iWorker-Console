@@ -9,16 +9,17 @@ import {
 
 /**
  * 我的申请 mock 层（2026-09-01 PRD 对齐新增模块）回归保护：
- * 种子 = 交互原型 v2 的 10 条申请（7 类业务 × 4 种结果；2026-09-08 决议第 8 项：不含 OTHER）；
+ * 种子 = 10 条原型申请（7 类业务 × 4 种结果；2026-09-08 决议第 8 项：不含 OTHER）
+ *        + 1 条知识库申请（2026-09-09 PRD 复核·G3G6 · A6）；
  * 撤回 → WITHDRAWN；重新提交 → PENDING + 刷新申请时间 + 清空审核人/审核时间/驳回原因。
  */
 describe('myApplicationsMock · 我的申请内存 mock', () => {
   beforeEach(() => resetMyApplicationsMock())
 
-  it('默认列表：10 条，按 submittedAt desc', async () => {
+  it('默认列表：11 条（含知识库 A6 新增行），按 submittedAt desc', async () => {
     const { list, total } = await listMyApplications()
-    expect(total).toBe(10)
-    expect(list[0].id).toBe(501) // 2026-08-28 10:30 最新
+    expect(total).toBe(11)
+    expect(list[0].id).toBe(511) // 2026-08-28 11:02 最新（A6 知识库行）
     const times = list.map((r) => r.submittedAt)
     expect(times).toEqual([...times].sort().reverse())
   })
@@ -43,6 +44,14 @@ describe('myApplicationsMock · 我的申请内存 mock', () => {
     const row = await getMyApplication(508)
     expect(row.businessType).toBe('SKILL')
     expect(row.refId).toBe('sk_304')
+  })
+
+  // 2026-09-09 PRD 复核·G3G6 · A6（Q265③；md `prd.我的申请.md` §二.2/§3.1 业务类型含知识库）
+  it('A6 知识库：种子含 KNOWLEDGE_BASE 申请行 511，可按业务类型筛出，refId 指向 kb_3', async () => {
+    const { list } = await listMyApplications({ businessType: 'KNOWLEDGE_BASE' })
+    expect(list.map((r) => r.id)).toEqual([511])
+    expect(list[0].refId).toBe('kb_3')
+    expect(list[0].result).toBe('PENDING')
   })
 
   it('2026-09-08 原型复刻批次 2B（G-4）：POSITION 行 503 refId 接线岗位 mock 401 经营分析岗', async () => {

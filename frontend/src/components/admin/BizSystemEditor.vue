@@ -327,6 +327,9 @@ const {
 } = useAiLiveGenerate({
   getSourceText: () => form.description,
   sourceLabel: '系统描述',
+  // 2026-09-09 PRD-20260908 复核批次 0 · Q366：补传系统名称（《AI生成按钮Prompt规范.md》§7
+  // 变量来源表 name=bizRows[i].name）。禁用判定仍只看系统描述，口径不变。
+  getSourceContext: () => ({ name: form.name, description: form.description }),
   generate: connectorQuestionSet,
   apply: (questions) => {
     form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))

@@ -22,9 +22,16 @@
  * 2026-09-08 决议第 9 项（md §八.1 L417）：数据源列表「概要」按验证状态由 mock 派生（sourceVO.summary）——
  *   新建保存未测试「未验证」→ 测试通过「已连通」（MCP 附所选检索工具名，如「已连通 · search_documents」）/
  *   测试失败「连接失败」→ 修改连接配置后保存重置「未验证」；对「刚测试过的这份配置」保存时不重置（lastTest 签名比对）。
+ * 2026-09-09 PRD 复核 G3+G6 · A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」）：
+ *   transition() 的 publish / delist 同时向 reviewsMock + myApplicationsMock 写审核行与申请行，
+ *   withdraw 摘审核行、申请行置「已撤回」；知识库按 md `prd.审核中心.md` §四**不生成快照**，
+ *   审核详情读当前配置（GovObjectDetail → KnowledgeBaseEditor mode="view"）。
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 A6：知识库提交发布/停用 → 挂进审核中心与我的申请（治理 mock 反向不引本模块，无环）
+import { submitReviewRow, cancelReviewRow } from './reviewsMock'
+import { submitApplicationRow, withdrawApplicationRow } from './myApplicationsMock'
 import { maskSecret } from '@/utils/secretMask'
 import {
   MAX_SOURCES_PER_TYPE,
@@ -321,6 +328,14 @@ export async function remove(id) {
   persist()
   return null
 }
+/**
+ * 状态流转（md §三.4）。
+ *
+ * 2026-09-09 PRD 复核 A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」）：
+ * 提交发布 / 提交停用同时把本库挂进审核中心与我的申请；撤回时摘掉审核行、申请行置「已撤回」。
+ * 知识库按 md `prd.审核中心.md` §四「知识库……不生成快照，审核详情读取业务模块的当前配置」——
+ * 本函数**不**写快照，审核详情按 refId 实时取当前配置。
+ */
 export async function transition(id, action) {
   await delay()
   const r = find(id)
@@ -330,15 +345,42 @@ export async function transition(id, action) {
     const reason = publishBlockReason(vo(r))
     if (reason) throw new ApiError({ message: reason, code: 400 })
     r.pendingAction = 'PUBLISH'
+    enrollReview(r, 'PUBLISH')
   } else if (action === 'delist') {
     if (r.status !== 'PUBLISHED' || r.pendingAction) conflict('提交停用仅允许在已发布状态下执行')
     r.pendingAction = 'DELIST'
+    enrollReview(r, 'DELIST')
   } else if (action === 'withdraw') {
     if (!r.pendingAction) conflict('当前没有待审核操作')
     r.pendingAction = null // 撤回恢复提交前状态（status 未曾变，天然回退）
+    cancelReviewRow('KNOWLEDGE_BASE', r.id)
+    withdrawApplicationRow('KNOWLEDGE_BASE', r.id)
   }
   persist()
   return vo(r)
+}
+
+/** 提交端接线：一次提交同时落审核中心行与我的申请行（申请类型按 md 三项口径推导）。 */
+function enrollReview(r, pendingAction) {
+  // 首次发布 vs 新版本发布：知识库无版本号概念（md 无版本字段），已发布过（曾进入 PUBLISHED）即算新版本发布
+  const requestAction = pendingAction === 'DELIST' ? 'DELIST' : r.status === 'PUBLISHED' ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH'
+  submitReviewRow({
+    type: 'KNOWLEDGE_BASE',
+    refId: r.id,
+    name: r.name,
+    description: r.description || '',
+    requestAction,
+    version: '—'
+  })
+  submitApplicationRow({
+    businessType: 'KNOWLEDGE_BASE',
+    refId: r.id,
+    objectName: r.name,
+    description: r.description || '',
+    applicationType: requestAction,
+    version: '—',
+    versionNotes: pendingAction === 'DELIST' ? '申请停止该知识库对外提供' : '申请发布该知识库'
+  })
 }
 
 /* ---- 检索测试（不落库，md §三.7）：按启用数据源逐个拟真召回 ---- */

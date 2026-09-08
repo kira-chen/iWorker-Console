@@ -135,11 +135,15 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(row.pendingVersion).toBe('v2.4.0')
   })
 
-  it('停用：仅已发布可提交，进入停用审核（pendingAction=DELIST）', async () => {
+  it('停用：仅已发布可提交，进入停用审核（pendingAction=DELIST）；且不刷新最近更新时间', async () => {
     await expect(unpublishExpert(203)).rejects.toMatchObject({ message: '仅已发布专家可停用' })
+    // 2026-09-09 PRD 复核批次 0 · A20/Q199：md `prd.专家.md` §二.2 只列
+    // 「保存配置、提交审核或撤回提交后」三种刷新场景，**停用不在其内**（口径同 prd-模型.md §二.2）。
+    const before = (await listExperts()).list.find((e) => e.id === 202).updatedAt
     await unpublishExpert(202)
     const row = (await listExperts({ status: 'review' })).list.find((e) => e.id === 202)
     expect(row.pendingAction).toBe('DELIST')
+    expect(row.updatedAt).toBe(before)
   })
 
   it('版本历史：按 publicationId 禁用/启用；启用互斥；最后一个启用版本不可禁用', async () => {

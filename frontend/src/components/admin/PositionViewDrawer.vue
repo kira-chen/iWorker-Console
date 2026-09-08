@@ -10,8 +10,11 @@
  *     1. 基本信息：岗位名称 / 图标（IconField 只读）/ 岗位描述
  *     2. 人格：领用页文案（列表）/ 示例问题（3 条）/ 岗位 SOP / 岗位人格
  *     3. 岗位技能（原型同名卡；由 Agent 引用的技能并集推导，空「暂无关联技能」）
- * 数据按 positionId 拉 getPosition（岗位 mock 实体）；实体不存在（已删除）时按 md §七「使用申请快照
- * 展示只读详情」——用申请行 item 的名称 / 描述兜底，人格要素显「—」。
+ * 【数据来源（2026-09-09 PRD 复核 A5 改口径）】md `prd.审核中心.md` §四 L48：
+ * 「岗位、专家、技能三类业务对象由所属业务模块在提交审核时生成版本快照，审核详情读取该快照」。
+ * 故本抽屉**优先读快照**（GovObjectDetail 经 utils/reviewSnapshot 从 positionMock 取回，传入 snapshot prop）——
+ * 展示的是「提交审核当时的配置」，岗位实体此后被改/被删都不影响。快照本身缺失时 GovObjectDetail
+ * 已按 md §七 拦在前面（不会打开本抽屉）；仅无 snapshot prop 的旁路调用才回落到按 positionId 实时取数。
  * 底部动作由 GovObjectDetail 吸底条覆盖（关闭 | 驳回 | 通过 / 按申请状态），本组件只出默认「关闭」。
  */
 import { ref, computed, watch } from 'vue'
@@ -23,8 +26,13 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   /** 岗位实体 id（治理行 refId） */
   positionId: { type: [Number, String], default: null },
-  /** 申请 / 审核行（实体缺失时作快照兜底） */
-  item: { type: Object, default: null }
+  /** 申请 / 审核行（快照与实体都取不到时作最后兜底） */
+  item: { type: Object, default: null },
+  /**
+   * 审核版本快照（A5）：{ kind, refId, requestAction, version, submittedAt, detail }。
+   * 由岗位模块在提交审核时生成、GovObjectDetail 只读取传入；有值时优先于实时取数。
+   */
+  snapshot: { type: Object, default: null }
 })
 const emit = defineEmits(['update:visible'])
 
@@ -33,34 +41,47 @@ const vis = computed({
   set: (v) => emit('update:visible', v)
 })
 
-const detail = ref(null)
+const liveDetail = ref(null)
 const loading = ref(false)
 const loadError = ref(false)
-/** 实体不存在 → 以申请快照（行数据）兜底展示 */
+/** 实体不存在 → 只剩申请行数据可用（既无快照也无实体） */
 const snapshotOnly = ref(false)
 
 async function load() {
   if (!props.visible) return
+  // A5：有快照就用快照，不再打业务模块的实时取数（快照即「提交审核当时」的权威副本）
+  if (props.snapshot?.detail) {
+    liveDetail.value = null
+    snapshotOnly.value = false
+    loading.value = false
+    loadError.value = false
+    return
+  }
   loading.value = true
   loadError.value = false
   snapshotOnly.value = false
-  detail.value = null
+  liveDetail.value = null
   try {
     // 动态引：避免把 api/request → @/router 链条带进引用本组件页面的单测模块图（同 GovObjectDetail MODEL 分支）
     const { getPosition } = await import('@/api/position')
-    detail.value = props.positionId != null ? await getPosition(props.positionId) : null
-    if (!detail.value) snapshotOnly.value = true
+    liveDetail.value = props.positionId != null ? await getPosition(props.positionId) : null
+    if (!liveDetail.value) snapshotOnly.value = true
   } catch (e) {
-    // 岗位已删除 / 无对应实体：md §七「对象已被删除 → 使用申请快照展示只读详情」
+    // 岗位已删除 / 无对应实体：退到申请行数据兜底
     snapshotOnly.value = true
   } finally {
     loading.value = false
   }
 }
 
-watch(() => [props.visible, props.positionId], ([v]) => { if (v) load() }, { immediate: true })
+watch(() => [props.visible, props.positionId, props.snapshot], ([v]) => { if (v) load() }, { immediate: true })
 
-// 展示模型：实体优先，快照兜底
+/** 渲染源：审核版本快照优先（md §四 L48），无快照才用实体当前配置。 */
+const detail = computed(() => props.snapshot?.detail || liveDetail.value)
+/** 展示的是快照（提交审核当时的配置）而非实体当前配置。 */
+const fromSnapshot = computed(() => !!props.snapshot?.detail)
+
+// 展示模型：快照 / 实体优先，申请行兜底
 const name = computed(() => detail.value?.name || props.item?.name || props.item?.objectName || '')
 const description = computed(() => detail.value?.description || props.item?.description || '')
 const icon = computed(() => detail.value?.icon || '')
@@ -94,8 +115,10 @@ const statusLabel = computed(() => {
   if (d.pendingAction) return '审核中'
   return d.status === 'published' ? '已发布' : '未发布'
 })
-const latestVersion = computed(() => detail.value?.latestVersion || '-')
+const latestVersion = computed(() => props.snapshot?.version || detail.value?.latestVersion || '-')
 const updatedAt = computed(() => (detail.value?.updatedAt ? fmtTime(detail.value.updatedAt) : '-'))
+/** 快照提交时间（读快照时展示，标明这份配置的时点）。 */
+const snapshotAt = computed(() => (props.snapshot?.submittedAt ? fmtTime(props.snapshot.submittedAt) : ''))
 
 defineExpose({ reload: load })
 </script>
@@ -127,7 +150,11 @@ defineExpose({ reload: load })
           <div class="pvd-readonly pvd-readonly--multi">{{ description || '-' }}</div>
         </div>
       </div>
-      <p v-if="snapshotOnly" class="pvd-snapshot-hint">对应岗位不存在或已删除，以下为申请提交时保存的快照。</p>
+      <!-- A5：读快照时标明时点；无快照且实体也取不到时才是「只剩申请行数据」的降级态 -->
+      <p v-if="fromSnapshot" class="pvd-snapshot-hint">
+        以下为提交审核时保存的版本快照{{ snapshotAt ? `（${snapshotAt}）` : '' }}，不随岗位后续修改变化。
+      </p>
+      <p v-else-if="snapshotOnly" class="pvd-snapshot-hint">对应岗位不存在或已删除，仅能展示申请记录中保留的信息。</p>
     </section>
 
     <!-- 2. 人格（岗位 md §三.2 人格页签要素只读） -->

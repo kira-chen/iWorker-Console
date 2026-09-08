@@ -363,6 +363,36 @@ export async function getNextVersionLabel(id) {
   return `v${latest[0]}.${latest[1]}.${latest[2] + 1}`
 }
 
+/* ==================== 审核版本快照（2026-09-09 PRD 复核 A5） ====================
+ * 负责人批注：「要不要快照是由提交模块决定的，而不在审核中心/我的申请做存储处理。
+ * 例如：技能/专家/岗位单独存储了审核版本的快照」。md `prd.审核中心.md` §四 L48
+ * 「岗位、专家、技能三类业务对象由所属业务模块在提交审核时生成版本快照，审核详情读取该快照」。
+ *
+ * 存储位置：本模块的 reviewSnapshots（positionId → 快照对象），随 position 的 localStorage 持久化。
+ * 写入时机：提交发布（publishPosition）/ 提交停用（unpublishPosition）——即「提交审核」两个入口。
+ * 清除时机：撤回（withdrawPosition）。审核通过/驳回由 demo 治理侧独立管理，不动本表。
+ * 快照内容：detailVO(p) 的完整只读配置 + 提交元信息（submittedAt / requestAction / version）。
+ * 缺失时：审核详情按 md §七「业务快照缺失（岗位/专家/技能）→ 阻止审核并提示联系提交人重新提交」。
+ */
+let reviewSnapshots = {}
+
+function writeReviewSnapshot(p, requestAction) {
+  reviewSnapshots[String(p.positionId)] = {
+    kind: 'POSITION',
+    refId: p.positionId,
+    requestAction,
+    version: p.pendingVersion || p.latestVersion || '',
+    submittedAt: nowIso(),
+    // 提交当时的完整岗位配置（人格要素 / Agent→技能 / 采集 schema 等）
+    detail: JSON.parse(JSON.stringify(detailVO(p)))
+  }
+}
+
+/** 读取岗位提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
+export function getPositionReviewSnapshot(id) {
+  return reviewSnapshots[String(id)] ? JSON.parse(JSON.stringify(reviewSnapshots[String(id)])) : null
+}
+
 // 提交发布 → 进入审核（pendingAction=PUBLISH）。bump 由抽屉算好展示号后仍上送类型，
 // mock 按同一 bump 规则落 pendingVersion（与抽屉 previewLabel 一致）。
 export async function publishPosition(id, payload = {}) {
@@ -389,6 +419,8 @@ export async function publishPosition(id, payload = {}) {
   p.pendingReleaseNotes = String(payload.releaseNotes || '').trim()
   p.latestVersion = label
   p.updatedAt = nowIso()
+  // A5：提交审核即存版本快照（md §四 L48）
+  writeReviewSnapshot(p, rows.length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
   persist()
   return {}
 }
@@ -407,6 +439,8 @@ export async function withdrawPosition(id) {
   delete p.pendingVersion
   delete p.pendingReleaseNotes
   p.updatedAt = nowIso()
+  // A5：撤回即销毁本次提交的版本快照（下次提交重新生成）
+  delete reviewSnapshots[String(p.positionId)]
   persist()
   return {}
 }
@@ -420,6 +454,7 @@ export async function unpublishPosition(id) {
   if (p.pendingAction) throw err('该岗位已有在途审核，请先撤回')
   p.pendingAction = 'DELIST'
   p.updatedAt = nowIso()
+  writeReviewSnapshot(p, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   persist()
   return {}
 }
@@ -789,6 +824,8 @@ export function __resetPositionMock() {
     403: [],
     404: []
   }
+  reviewSnapshots = {} // A5：审核版本快照随种子复位，再按在审岗位补播
+  seedReviewSnapshots()
   persist() // 持久化 2026-09-02：复位后同样落盘，避免存量快照盖回旧态
 }
 
@@ -800,9 +837,11 @@ export function __resetPositionMock() {
 // 依赖序：本模块 import unifiedSkillMock（技能表已先完成恢复）；本模块只存 skillId 引用、
 // 不复制技能本体，交叉的 refNames 回写经 skillMock._reset 落对方模块并由对方自行持久化。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
+// version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持），
+// 旧快照无该键 → restore 兜底为 {}，并对种子在审岗位补播一份，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('position', {
-  version: 1,
-  snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench }),
+  version: 2,
+  snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (
       !d || !Number.isFinite(d.posSeq) || !Number.isFinite(d.agentSeq) ||
@@ -817,5 +856,17 @@ const persist = attachPersist('position', {
     positions = d.positions
     publications = d.publications
     workbench = d.workbench
+    reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    seedReviewSnapshots()
   }
 })
+
+/** 种子在审岗位（pendingAction 非空）若无快照则补播一份，保证 demo 打开即有内容（A5）。 */
+function seedReviewSnapshots() {
+  for (const p of positions) {
+    if (!p.pendingAction) continue
+    if (reviewSnapshots[String(p.positionId)]) continue
+    writeReviewSnapshot(p, p.pendingAction === 'DELIST' ? 'DELIST' : p.latestVersion ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  }
+}
+seedReviewSnapshots()

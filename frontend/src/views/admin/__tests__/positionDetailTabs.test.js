@@ -45,6 +45,8 @@ vi.mock('@/api/position', () => ({
   createPosition: vi.fn(), publishPosition: vi.fn(() => Promise.resolve({})), getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')), listPositionPublications: vi.fn(() => Promise.resolve([]))
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn(() => Promise.resolve([])) }))
+// 2026-09-09 PRD 复核·G1（A1）：完整性校验第 6 项要自动化任务条数，详情页挂载即独立预取
+vi.mock('@/api/sampleTask', () => ({ listSampleTasks: vi.fn(() => Promise.resolve({ list: [] })) }))
 // 知识页签只读列表（2026-09-04 新增）：懒加载，Tab 骨架测试给空列表即可
 vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [], total: 0 })) }))
 vi.mock('@/composables/useVersionPublish', () => ({
@@ -59,7 +61,9 @@ for (const p of [
   '@/components/position/PositionVersionHistoryDialog.vue', '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
   '@/components/position/IconPickerPopover.vue', '@/components/position/PositionBizSystemsPane.vue',
-  '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue'
+  '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
+  // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
+  '@/components/admin/KnowledgeSearchDialog.vue'
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))
 }

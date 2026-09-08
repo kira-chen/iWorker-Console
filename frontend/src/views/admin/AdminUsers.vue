@@ -202,9 +202,11 @@ const emptyText = computed(() =>
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <!-- 角色筛选占位文案：md §一.1「默认展示"全部用户分类"」（2026-09-09 PRD-20260908
+           复核批次 0 · G7 改正，原写「全部角色」） -->
       <el-select
         v-model="query.roleCode"
-        placeholder="全部角色"
+        placeholder="全部用户分类"
         clearable
         class="lt-filter"
         @change="reload"

@@ -6,7 +6,7 @@
  *   左 200px 档案列表面板（每档案一张卡：名称 + 「N 个字段」，底部虚线「＋ 新增」）
  *   右侧纵排三张卡：
  *     ① 基本信息（卡头 = 标题 + 右侧【取消】【保存】；卡体 = 档案名称 / 档案说明 两列就地编辑，
- *        下接分隔线后的三列：抽取方式「指定触发」+ 复选框「自动抽取」/ 置信度阈值 / 用户确认）
+ *        下接分隔线后的三列：抽取方式（md §4.2.1 单一复选框「自动抽取」）/ 置信度阈值 / 用户确认）
  *     ② 编目信息（行内网格 DossierCatalogGrid，N / 8）
  *     ③ 档案详情（行内网格 DossierRuleListEditor，N / 8）
  * 字段定义与校验按 md §4.2.1–4.2.3；原型有而 md 无的（字段类型「标签（枚举）」、唯一 ID 联动必填）不做。
@@ -552,8 +552,10 @@ function cardFieldCount(t) {
               <div class="wd-policy">
                 <div class="wd-field">
                   <label>抽取方式</label>
+                  <!-- md §4.2.1：单一复选框「自动抽取」——勾选后由系统在会话中自动识别并抽取；
+                       不勾选则仅在用户指定时触发（Q25③「指定触发是抽取方式必选的一项…当前显得展示多余」
+                       → 2026-09-09 PRD 复核 A3 删掉常显的「指定触发」只读行，改由未勾选态的 hint 表达）。 -->
                   <div class="wd-extract">
-                    <div class="wd-readonly-value">指定触发</div>
                     <el-checkbox
                       :model-value="!!dossier.policy.autoExtract"
                       :disabled="readonly"
@@ -561,6 +563,9 @@ function cardFieldCount(t) {
                     >
                       自动抽取
                     </el-checkbox>
+                    <span class="wd-extract-hint">
+                      {{ dossier.policy.autoExtract ? '会话中自动识别并抽取' : '仅在用户指定时触发' }}
+                    </span>
                   </div>
                 </div>
                 <div class="wd-field">
@@ -799,8 +804,13 @@ function cardFieldCount(t) {
 }
 .wd-extract {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+.wd-extract-hint {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
 }
 .wd-readonly-value {
   font-size: var(--fs-sm);

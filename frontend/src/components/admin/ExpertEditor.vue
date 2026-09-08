@@ -79,7 +79,13 @@ const props = defineProps({
   /** 专家 id；null = 新建。 */
   expertId: { type: [Number, String], default: null },
   /** 只读查看（列表【查看】入口）：原型 openExpertViewer 展示形态，底部只留「关闭」。 */
-  readonly: { type: Boolean, default: false }
+  readonly: { type: Boolean, default: false },
+  /**
+   * 审核版本快照的 detail（2026-09-09 PRD 复核 A5，md `prd.审核中心.md` §四 L48）。
+   * 治理侧只读查看时由 GovObjectDetail 传入：**有值即以它渲染，不再向 getExpert 实时取数**，
+   * 展示的是提交审核当时的配置。业务模块自身的三个入口不传此 prop，行为完全不变。
+   */
+  snapshotDetail: { type: Object, default: null }
 })
 const emit = defineEmits(['update:visible', 'saved', 'publish'])
 
@@ -151,7 +157,11 @@ const soulLen = computed(() => (form.roleDesc || '').length)
 /* ==================== 「专家帮你做」AI 生成（2026-09-04：统一 AI 实况生成机制） ====================
  * 取代旧「固定文案即填」实现：源=专家简介（空则禁用 + title「请先填写专家简介」），
  * 点击进「生成中…」约 420ms，按简介本地模板生成 3 条『请围绕"…"给出专业分析』式问题（60 字截断），
- * 完成 toast「AI 内容已生成，请确认后保存」。机制细节见 utils/aiLiveGenerate.js。 */
+ * 完成 toast「AI 内容已生成，请确认后保存」。机制细节见 utils/aiLiveGenerate.js。
+ *
+ * 2026-09-09 PRD-20260908 复核批次 0 · Q363：上下文补齐《AI生成按钮Prompt规范.md》§4 的四变量
+ * （专家名称 / 专家简介 / 职责描述 / 专家分类）。**禁用判定仍只看专家简介**（口径不变），
+ * 名称等只参与生成；模板主语按「名称优先、缺则回落简介」取（见 aiLiveGenerate.pickSubject）。 */
 const {
   disabled: aiQuestionsDisabled,
   title: aiQuestionsTitle,
@@ -160,6 +170,12 @@ const {
 } = useAiLiveGenerate({
   getSourceText: () => form.intro,
   sourceLabel: '专家简介',
+  getSourceContext: () => ({
+    name: form.name,
+    intro: form.intro,
+    roleDesc: form.roleDesc,
+    category: form.category
+  }),
   generate: expertQuestionSet,
   apply: (questions) => {
     form.exampleQuestions = [...questions]
@@ -307,6 +323,14 @@ async function load() {
   if (!isEdit.value) {
     detail.value = null
     resetForm(null)
+    return
+  }
+  // A5：治理侧传入审核版本快照时直接以快照渲染（提交审核当时的配置），不打实时取数
+  if (props.snapshotDetail) {
+    loading.value = false
+    loadError.value = ''
+    detail.value = props.snapshotDetail
+    resetForm(props.snapshotDetail)
     return
   }
   loading.value = true

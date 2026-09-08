@@ -36,9 +36,15 @@ export async function listLoginLogs(params = {}) {
       (!kw || r.username.toLowerCase().includes(kw)) &&
       (!params.status || r.status === params.status)
   )
+  // 2026-09-09 PRD-20260908 复核批次 0（G7）：md §四「按登出时间排序时，在线记录（无登出时间）
+  // 统一排在列表末尾」——不分升降序。旧写法把空串一并丢进 localeCompare，desc 下碰巧排最后，
+  // 但 asc 下会排到最前，违背 md。改为显式前置判断（口径同 adminUserMock 的「从未登录恒排最后」）。
   list = [...list].sort((a, b) => {
     const av = a[field] || ''
     const bv = b[field] || ''
+    if (!av && !bv) return 0
+    if (!av) return 1 // 空值（在线记录无登出时间）恒排末尾
+    if (!bv) return -1
     return dir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv)
   })
   const page = Math.max(1, Number(params.page) || 1)

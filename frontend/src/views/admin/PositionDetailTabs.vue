@@ -20,13 +20,21 @@
  *   只读态（列表【查看】进入 query.view=1）与审核中隐藏保存与发布、全页签只读。
  *
  * 2026-09-08 PRD-20260908 对齐（批次 A）：
- * - 发布阻断收敛为 md §9.1 四项（名称 / 描述 / 示例问题 / SOP）：图标、领用页文案、采集字段不再阻断；
- *   发布前检查弹窗清单改 md §9.2 / 原型 L2132 四行，版本号改「更新类型三选一 + 自动算号只读」（md §3.7）。
+ * - 发布前检查弹窗清单改 md §9.2，版本号改「更新类型三选一 + 自动算号只读」（md §3.7）；
+ *   图标、领用页文案、采集字段不参与发布阻断。
  * - 「岗位认领说明」→「领用页文案」（md §2.3：可选、≤6 条 × 100 字，底层字段仍 claimDescriptions）。
  * - 岗位描述上限统一 500（2026-09-08 决议第 5 项）；采集字段达 10 置灰新增、单/多选选项全空阻断保存；
- *   每泳道技能达 20【＋技能】置灰；Agent 名称 64 / 职责 2000（md §6.2）。
+ *   每个 Agent 技能达 100【勾选】置灰；Agent 名称 64 / 职责必填 ≤500（md §6.2）。
  * - 知识页签：列 知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作，行内仅【查看】【检索测试】，
- *   无新建 / 编辑入口（md §5.1–§5.3），工具栏与空态照原型 knowledgePane L1871。
+ *   无新建 / 编辑入口（md §5.1–§5.3）。
+ *
+ * 2026-09-09 PRD 复核（G1 · Q11/Q455）：
+ * - 完整性校验统一为 md §9.1 六项（名称 / 描述 / 示例问题 3 条 / SOP / Agent 与技能 / 自动化任务）：
+ *   【发布岗位】任一缺失即阻断并定位到缺失项所在页签；【保存】执行同一套校验但**不阻断**，
+ *   改以顶部提示条（.pd-complete-banner）列出未完成项。口径实现在 utils/positionModel.js
+ *   的 computeCompletenessMissing / computePublishCheck，两处共用同一份。
+ * - 知识页签【检索测试】改为原地打开 KnowledgeSearchDialog（md §5.3 / Q455），不再跳知识库模块；
+ *   【查看】仍按 md 跳转。
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
@@ -36,8 +44,10 @@ import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { createPosition, publishPosition, getNextVersionLabel, listPositionPublications, listSkills } from '@/api/position'
 import { useVersionPublish } from '@/composables/useVersionPublish'
 import { listDataTables } from '@/api/dataTable'
+import { listSampleTasks } from '@/api/sampleTask'
 import {
   computePublishCheck,
+  computeCompletenessMissing,
   normalizeIntakeForSubmit,
   validateIntakeRows,
   normalizePublishWarnings,
@@ -64,6 +74,7 @@ import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
 import PositionDataTableStage from '@/components/position/PositionDataTableStage.vue'
 import PositionSampleTaskStage from '@/components/position/PositionSampleTaskStage.vue'
 import PositionVersionHistoryDialog from '@/components/position/PositionVersionHistoryDialog.vue'
+import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 import AdminRail from '@/components/admin/AdminRail.vue'
 // Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：领用页文案列表 / 图标 popover / 业务系统页签）
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
@@ -120,6 +131,8 @@ onMounted(async () => {
       await store.load(route.params.id)
       // 岗位详情就绪后轻量预取数据表数量，供身份卡「数据底座」入口徽标显示
       prefetchDtCount()
+      // 完整性校验（md §9.1 第 6 条）依赖自动化任务条数，未访问该页签时也需要，故此处独立预取
+      refreshSampleTaskCount()
       loadCurrentVersion()
     } catch {
       /* error 态由 store.error 呈现 */
@@ -633,6 +646,22 @@ async function onOpenDataTable() {
 const sampleStageOpen = ref(false)
 const sampleTaskCount = ref(0)
 
+// 2026-09-09 PRD 复核（A1 / md §9.1 第 6 条）：自动化任务条数进入完整性校验，
+// 但 PositionSampleTaskStage 只在切到该页签时才挂载并 emit 计数 —— 未访问过页签时计数恒 0，
+// 会把「已配置任务」的岗位误判为缺失。故在详情页层独立拉一次条数（与页签 emit 同源，后者仍会覆盖为最新值）。
+async function refreshSampleTaskCount() {
+  if (store.positionId == null) {
+    sampleTaskCount.value = 0
+    return
+  }
+  try {
+    const data = await listSampleTasks(store.positionId)
+    sampleTaskCount.value = (data?.list || []).length
+  } catch {
+    /* 取数失败不打断页面；计数保持原值（校验按已知值走） */
+  }
+}
+
 // 与 onOpenDataTable 同款：岗位未落库先 ensurePersisted（样例是岗位级资产，须先有 positionId 才能挂载）。
 async function onOpenSampleTasks() {
   if (!(await ensurePersisted())) return
@@ -677,10 +706,11 @@ async function loadPositionKbs() {
     kbLoading.value = false
   }
 }
-// 首次切到「知识」页签时懒加载
+// 首次切到「知识」页签时懒加载。immediate：深链直接落在知识页签（?tab=knowledge，如列表页跳转带页签）时，
+// activeTab 初值就已是 knowledge、不会再触发变更回调，此前会渲染成空列表（2026-09-09 PRD 复核·G1 顺手修）。
 watch(activeTab, (tab) => {
   if (tab === 'knowledge' && !kbLoaded.value && !kbLoading.value) loadPositionKbs()
-})
+}, { immediate: true })
 const kbStatusView = (row) => {
   if (row.pendingAction) return { label: '审核中', type: 'warning' }
   if (row.status === 'PUBLISHED') return { label: '已发布', type: 'success' }
@@ -692,6 +722,16 @@ const kbDocText = (row) => (hasUploadSource(row) ? Number(row.docCount || 0).toL
 // 跳知识库模块：query 携带岗位上下文（positionId/positionName）+ 深链动作（action/kbId），
 // 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
 // 此前发 kbAction/fromPositionId 与消费端 action/positionId 不对齐，跳过去抽屉不开、岗位上下文不生效，已修）。
+/* 【检索测试】（md §5.3 / Q455，2026-09-09 PRD 复核 A19）：在当前页面直接打开检索测试弹窗、不跳模块。
+ * 全平台各入口（知识库列表行内、专家抽屉知识库卡、此处）共用同一个 KnowledgeSearchDialog 组件。
+ * 注意仅【检索测试】改原地弹窗，【查看】按 md §5.3 仍跳知识库模块（gotoKbModule('view')）。 */
+const kbSearchVisible = ref(false)
+const kbSearchRow = ref(null)
+function openKbSearch(row) {
+  kbSearchRow.value = row
+  kbSearchVisible.value = true
+}
+
 function gotoKbModule(action, row) {
   router.push(
     kbRouteLocation({
@@ -758,7 +798,16 @@ async function onDeleteSkill({ agentId, skillId }) {
 /* ============================ 顶部条：保存 / 发布 / 下架 ============================ */
 const publishDialogVisible = ref(false)
 const publishing = ref(false)
-const publishCheck = computed(() => computePublishCheck(store.checkInput))
+// 2026-09-09 PRD 复核（A1 / Q11）：完整性校验入参 = store.checkInput（名称/描述/示例问题/SOP/agents）
+// + 详情页侧的自动化任务条数（store 不持有样例任务，见 refreshSampleTaskCount）。
+const completenessInput = computed(() => ({ ...store.checkInput, sampleTaskCount: sampleTaskCount.value }))
+const publishCheck = computed(() => computePublishCheck(completenessInput.value))
+
+/* ---------- md §9.1 完整性校验 6 项（保存提示 / 发布阻断共用同一口径） ---------- */
+const completenessMissing = computed(() => computeCompletenessMissing(completenessInput.value))
+// 保存后才展示提示条：避免新建岗位一进页面就满屏红字（md §9.1 末段的语义是「保存时列出未完成项」）。
+const showCompletenessBanner = ref(false)
+const completenessBannerText = computed(() => completenessMissing.value.map((i) => i.label).join('、'))
 
 /* ---------- N5 发布版本号 + 升级说明（编排收敛到 useVersionPublish；行为不变） ---------- */
 // atMax/nextLoading 别名回本组件既有模板变量名（versionAtMax/nextLabelLoading），保持模板与测试引用不变。
@@ -783,27 +832,29 @@ async function explicitSave() {
   // 技能整页化后白板无聚焦态，技能保存在整页编辑器自管；此处只存身份卡基本信息。
   if (!(await ensurePersisted())) return
   await doSaveBasic(false)
+  // md §9.1 末段（2026-09-09 Q11 决策）：保存时同样执行 6 项完整性校验，但**不阻断保存**——
+  // 保存已正常完成，这里只把未完成项以顶部提示条列出，便于配置者分次补齐。
+  await refreshSampleTaskCount()
+  showCompletenessBanner.value = completenessMissing.value.length > 0
 }
 
 async function openPublish() {
   if (!(await ensurePersisted())) return
   // 先存一遍身份卡当前内容
   await doSaveBasic(true)
-  // 阻断校验四项（md §9.1 / 原型 validate() L2129：岗位名称 / 岗位描述 / 示例问题 / 岗位 SOP；
-  // 2026-09-08 PRD-20260908 对齐——图标、领用页文案、采集字段均不阻断）：
-  // 任一缺失 → toast「请先填写：X、Y」+ 自动切人格页签并标红缺失项。
-  const b = store.basic
-  const missing = []
-  if (!String(b.name || '').trim()) missing.push('岗位名称')
-  if (!String(b.description || '').trim()) missing.push('岗位描述')
-  if (!exampleQuestionsComplete(b.exampleQuestions)) missing.push('3 条示例问题')
-  if (!String(b.positionSop || '').trim()) missing.push('岗位 SOP')
-  if (missing.length) {
-    activeTab.value = 'persona'
-    eqShowErrors.value = missing.includes('3 条示例问题')
-    ElMessage.warning(`请先填写：${missing.join('、')}`)
+  await refreshSampleTaskCount()
+  // 阻断校验六项（md §9.1，2026-09-09 Q11 负责人决策，推翻此前「阻断四项」口径）：
+  // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / Agent 与技能（≥1 个 Agent 且该 Agent ≥1 个技能）/
+  // 自动化任务（≥1 条）。任一缺失 → toast「请先填写：X、Y」+ 自动定位到第一个缺失项所在页签。
+  const missingItems = completenessMissing.value
+  if (missingItems.length) {
+    activeTab.value = missingItems[0].tab
+    eqShowErrors.value = missingItems.some((i) => i.key === 'exampleQuestions')
+    showCompletenessBanner.value = true
+    ElMessage.warning(`请先填写：${missingItems.map((i) => i.label).join('、')}`)
     return
   }
+  showCompletenessBanner.value = false
   // 通过阻断校验 → 发布前检查弹窗（md §9.2）：打开即拉建议版本号并按更新类型自动算号（md §3.7，不可手输）；
   // load 内部会清空升级说明（每次发布重填，必填）。
   publishDialogVisible.value = true
@@ -887,6 +938,20 @@ function backToList() {
           </template>
         </div>
       </header>
+
+      <!-- md §9.1 末段（2026-09-09 Q11 决策）：【保存】时执行同一套 6 项完整性校验，但不阻断保存，
+           改以顶部提示条列出尚未完成的项，便于配置者分次补齐；只读态不展示。
+           点条目文字可直接跳到该项所在页签。 -->
+      <div v-if="showCompletenessBanner && !isReadonly && completenessMissing.length" class="pd-complete-banner">
+        <span class="pd-cb-icon">!</span>
+        <span class="pd-cb-text">
+          已保存，但以下内容尚未完成，发布前需补齐：
+          <template v-for="(item, i) in completenessMissing" :key="item.key">
+            <span class="pd-cb-item" @click="activeTab = item.tab">{{ item.label }}</span><span v-if="i < completenessMissing.length - 1">、</span>
+          </template>
+        </span>
+        <span class="pd-cb-close" title="关闭提示" @click="showCompletenessBanner = false">×</span>
+      </div>
 
       <!-- Tab 主体（9 个 sheet 页；已有功能内联填充，未实现的占位「开发中」） -->
       <div class="wb-body tabs-body">
@@ -1208,7 +1273,7 @@ function backToList() {
                       v-if="row.status === 'PUBLISHED'"
                       link
                       type="primary"
-                      @click="gotoKbModule('search', row)"
+                      @click="openKbSearch(row)"
                     >
                       检索测试
                     </el-button>
@@ -1413,6 +1478,9 @@ function backToList() {
       :position-name="store.basic?.name || '岗位'"
     />
 
+    <!-- 检索测试弹窗（md §5.3 / Q455）：知识页签行内【检索测试】原地打开，全平台同一个独立弹窗 -->
+    <KnowledgeSearchDialog v-model:visible="kbSearchVisible" :kb="kbSearchRow" />
+
   </div>
 </template>
 
@@ -1606,6 +1674,57 @@ function backToList() {
   flex-direction: column;
   z-index: 40;
   padding: var(--space-4) var(--space-6) var(--space-6);
+}
+
+/* ============ 保存时的完整性提示条（md §9.1 末段，2026-09-09 Q11） ============ */
+.pd-complete-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+  border-bottom: 1px solid var(--c-border);
+}
+.pd-cb-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: var(--c-bg);
+  background: var(--c-warning);
+}
+.pd-cb-text {
+  flex: 1;
+  min-width: 0;
+}
+.pd-cb-item {
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.pd-cb-item:hover {
+  opacity: 0.75;
+}
+.pd-cb-close {
+  flex: 0 0 auto;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 20px;
+  opacity: 0.6;
+}
+.pd-cb-close:hover {
+  opacity: 1;
 }
 
 /* ============ 9-Tab 详情页（2026-08-22 白板→Tab 改造） ============ */

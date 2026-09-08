@@ -66,16 +66,78 @@ function seedRows() {
   rows.forEach((r) => {
     r.refId = REF[r.id] ?? r.id
   })
+  // 2026-09-09 PRD 复核 A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」；md §二.2/§3.1 业务类型含知识库）：
+  // 补一条知识库在审种子，refId 指向 knowledgeBaseMock 的 kb_3「法规与标准库」（种子本就是 pendingAction:'PUBLISH'）。
+  rows.push({
+    id: 9,
+    name: '法规与标准库',
+    description: '行业法规、国标与行标条文检索，供合规与方案设计参考。',
+    type: 'KNOWLEDGE_BASE',
+    target: 'USER_END',
+    submitterName: 'config.admin',
+    submitterId: 12,
+    submittedAt: '2026-08-28 11:02',
+    status: 'PENDING_REVIEW',
+    requestAction: 'FIRST_PUBLISH',
+    version: '—',
+    refId: 'kb_3'
+  })
   return rows
 }
 
 let reviews = seedRows()
 
+/* ---------------- 提交端接线（2026-09-09 A6） ----------------
+ * 各业务模块 mock 在「提交发布 / 提交停用」时调用 submitReviewRow 把自己挂进审核中心，
+ * 「撤回」时调用 cancelReviewRow 摘掉。审核中心/我的申请只读不写业务数据，语义与 md
+ * 「审核中心审核系统配置员提交的……知识库……发布、停用申请」一致。
+ */
+
+/** 生成新审核行 id（避开种子 1..9 与已有行）。 */
+function nextReviewId() {
+  return reviews.reduce((max, r) => Math.max(max, Number(r.id) || 0), 0) + 1
+}
+
+/**
+ * 提交端写入（同一 type+refId 已在审时覆盖，不重复建行）。
+ * @param {Object} row { type, refId, name, description?, requestAction, version?, submitterName?, subType?, snapshot? }
+ * @returns {Object} 写入后的审核行
+ */
+export function submitReviewRow(row = {}) {
+  const key = (r) => `${r.type}:${r.refId}`
+  const exist = reviews.find((r) => key(r) === key(row) && r.status === 'PENDING_REVIEW')
+  const next = {
+    id: exist?.id ?? nextReviewId(),
+    target: 'USER_END',
+    submitterName: 'config.admin',
+    submitterId: 12,
+    version: '—',
+    ...row,
+    status: 'PENDING_REVIEW',
+    submittedAt: row.submittedAt || now()
+  }
+  if (exist) Object.assign(exist, next)
+  else reviews = [next, ...reviews]
+  persist()
+  return clone(next)
+}
+
+/** 撤回：摘掉该对象仍在待审的行（无则静默）。 */
+export function cancelReviewRow(type, refId) {
+  const before = reviews.length
+  reviews = reviews.filter(
+    (r) => !(r.type === type && String(r.refId) === String(refId) && r.status === 'PENDING_REVIEW')
+  )
+  if (reviews.length !== before) persist()
+}
+
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=approve / reject / reset。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
 // version 2（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 refId 改指岗位 mock 403，旧快照丢弃回种子。
+// version 3（2026-09-09 PRD 复核 G3G6 · A6/A5）：种子补知识库在审行（id 9 → kb_3），
+// 行结构增 snapshot 字段（岗位/专家/技能提交时由各业务模块写入），旧快照丢弃回种子。
 const persist = attachPersist('reviews', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {

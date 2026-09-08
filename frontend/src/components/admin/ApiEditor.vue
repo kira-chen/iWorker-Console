@@ -98,6 +98,9 @@ const {
 } = useAiLiveGenerate({
   getSourceText: () => form.description,
   sourceLabel: 'API 描述',
+  // 2026-09-09 PRD-20260908 复核批次 0 · Q366：补传 API 名称（《AI生成按钮Prompt规范.md》§6
+  // 变量来源表 name=apiRows[i].name）。禁用判定仍只看 API 描述，口径不变。
+  getSourceContext: () => ({ name: form.name, description: form.description }),
   generate: connectorQuestionSet,
   apply: (questions) => {
     form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))

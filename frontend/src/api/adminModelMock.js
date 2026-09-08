@@ -396,6 +396,9 @@ export async function publishModel(id) {
   if (m.verifyStatus !== 'SUCCESS') throw err('连通性验证通过后才可提交发布')
   m.status = 'PENDING_REVIEW'
   m.pendingAction = 'PUBLISH'
+  // 2026-09-09 PRD-20260908 复核批次 0 · A20：md `prd-模型.md` §二.2「提交审核与撤回提交后，
+  // 按新的最近更新时间重新排列」——原实现漏刷新，列表排序不会前移。
+  m.updatedAt = nowIso()
   persist()
   return toRow(m)
 }
@@ -419,6 +422,9 @@ export async function withdrawModel(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   m.status = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'DRAFT'
   m.pendingAction = null
+  // 2026-09-09 PRD-20260908 复核批次 0 · A20：md `prd-模型.md` §二.2「提交审核与撤回提交后，
+  // 按新的最近更新时间重新排列」——原实现漏刷新。
+  m.updatedAt = nowIso()
   persist()
   return toRow(m)
 }

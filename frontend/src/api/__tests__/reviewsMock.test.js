@@ -9,20 +9,20 @@ import {
 
 /**
  * 审核中心 mock 层（2026-09-01 PRD 对齐改造）回归保护：
- * 种子 = 交互原型 v2 的 8 条待审记录；列表只出待审核；
- * 业务类型七项筛选（MCP/API 由 TOOL+subType 拆分）；申请类型筛选；
+ * 种子 = 8 条原型待审记录 + 1 条知识库待审记录（2026-09-09 PRD 复核·G3G6 · A6）；列表只出待审核；
+ * 业务类型八项筛选（含知识库；MCP/API 由 TOOL+subType 拆分）；申请类型筛选；
  * submittedAt 排序默认 desc；通过（含停用申请）/驳回后移出待审列表。
  */
 describe('reviewsMock · 审核中心内存 mock', () => {
   beforeEach(() => resetReviewsMock())
 
-  it('默认列表：8 条全待审，按 submittedAt desc', async () => {
+  it('默认列表：9 条全待审（含知识库 A6 新增行），按 submittedAt desc', async () => {
     const { list, total } = await listReviews()
-    expect(total).toBe(8)
+    expect(total).toBe(9)
     expect(list.every((r) => r.status === 'PENDING_REVIEW')).toBe(true)
     const times = list.map((r) => r.submittedAt)
     expect(times).toEqual([...times].sort().reverse())
-    expect(list[0].name).toBe('法务审阅专家') // 2026-08-28 10:18 最新
+    expect(list[0].name).toBe('法规与标准库') // 2026-08-28 11:02 最新（A6 知识库行）
   })
 
   it('申请类型补丁：id 3/6=停用 v2.0.0，id 1/4/8=首次发布 —，其余=新版本发布 v1.2.0', async () => {
@@ -67,7 +67,7 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     const row = await approveReview(1)
     expect(row.status).toBe('PUBLISHED')
     const { total } = await listReviews()
-    expect(total).toBe(7)
+    expect(total).toBe(8)
   })
 
   it('通过停用申请 → DELISTED（原型：DELIST 通过即停用）', async () => {
@@ -81,7 +81,18 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(row.status).toBe('REJECTED')
     expect(row.rejectReason).toBe('描述不完整')
     const { total } = await listReviews()
-    expect(total).toBe(7)
+    expect(total).toBe(8)
+  })
+
+  // 2026-09-09 PRD 复核·G3G6 · A6（Q265③「知识库也需要发布审核」；md `prd.审核中心.md` §二.2/§3.1）
+  it('A6 知识库：种子含 KNOWLEDGE_BASE 待审行，可按业务类型筛出，refId 指向 kb_3', async () => {
+    const { list } = await listReviews({ type: 'KNOWLEDGE_BASE' })
+    expect(list.map((r) => r.id)).toEqual([9])
+    expect(list[0].refId).toBe('kb_3')
+    expect(list[0].requestAction).toBe('FIRST_PUBLISH')
+    // 其它类型筛选不被知识库行污染
+    const skill = await listReviews({ type: 'SKILL' })
+    expect(skill.list.every((r) => r.type === 'SKILL')).toBe(true)
   })
 
   it('getReview：按 id 取单条；不存在抛 404', async () => {

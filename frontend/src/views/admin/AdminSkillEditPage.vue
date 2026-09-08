@@ -65,6 +65,7 @@ import {
 // @/router 的链条拖进本页测试（它们部分 mock 了 vue-router，无 createRouter 导出即炸）；
 // 治理借用态仅按需触发，动态引在功能上等价且不扩大既有测试的模块图。
 import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
+import { loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
 import {
   confirmApproveReview,
   confirmWithdrawMyApp,
@@ -115,7 +116,29 @@ const editRouteName = computed(() => {
 const backLabel = computed(() => '← 返回')
 // 详情 / 保存：平台技能走平台端点；业务系统技能走 biz-systems/{bizId}/skills 端点；FDE 沿用 position store。
 // 注：整页编辑器无删除入口（见 SkillFocusEditor 删除 ⋯ 仅 showClose=true 工作台渲染），故此处不含删除分支。
+/**
+ * 详情取数。
+ *
+ * 2026-09-09 PRD 复核 A5（md `prd.审核中心.md` §四 L48「岗位、专家、技能三类业务对象由所属业务模块
+ * 在提交审核时生成版本快照，审核详情读取该快照」）：治理只读借用态（?govReview / ?myApp 且 readonly）
+ * 优先读技能模块自存的版本快照——展示提交审核当时的配置，技能此后被改不影响审核详情。
+ * 快照由 unifiedSkillMock 在提交发布/停用时写入，本页**只读取不存储**；缺失时按 md §七 阻止审核
+ * （govSnapshotMissing → 吸底条撤下驳回/通过，出提示条）。
+ */
 function loadDetail(skillId) {
+  // 治理只读借用态：先读快照，命中即以快照渲染；缺失则回落到当前配置（吸底条另行阻止审核）。
+  // 注意保持**非治理路径同步返回 Promise**（不给函数加 async）——本页 loadSkill 的并发编排
+  // 与单测按微任务计时，多包一层 async 会平移时序（2026-09-09 实测踩坑）。
+  if (isGovReadonly.value) {
+    return loadReviewSnapshot('SKILL', skillId).then((snap) => {
+      govSnapshot.value = snap
+      if (snap?.detail) return snap.detail
+      return loadCurrentDetail(skillId)
+    })
+  }
+  return loadCurrentDetail(skillId)
+}
+function loadCurrentDetail(skillId) {
   if (isBizSystem.value) return getBizSystemOwnedSkillDetail(bizId.value, skillId)
   return isPlatform.value ? channelApi.value.get(skillId) : store.fetchSkillDetail(skillId)
 }
@@ -923,6 +946,13 @@ const govBusyKey = ref('')
 const govRejectVisible = ref(false)
 const govRejecting = ref(false)
 
+/* ---- 审核版本快照（2026-09-09 PRD 复核 A5，md §四 L48 / §七 L102） ----
+ * 治理**只读**借用态才读快照（我的申请「前往修改」的编辑态要改的是当前配置，不能挂快照）。
+ * 快照由 unifiedSkillMock 在提交发布/停用时自存，本页只读取；缺失 → 阻止审核（吸底条撤驳回/通过）。 */
+const isGovReadonly = computed(() => readonly.value && !!(route.query?.govReview || route.query?.myApp))
+const govSnapshot = ref(null)
+const govSnapshotMissing = computed(() => isGovReadonly.value && !loading.value && !govSnapshot.value)
+
 async function loadGovContext() {
   govReviewRow.value = null
   myAppRow.value = null
@@ -940,6 +970,10 @@ async function loadGovContext() {
 }
 
 const govBarButtons = computed(() => {
+  // A5：快照缺失 → md §七「阻止审核」，只留「关闭」（驳回/通过/撤回/重新提交一律撤下）
+  if (govSnapshotMissing.value) {
+    return govReviewRow.value || myAppRow.value ? [{ key: 'close', label: '关闭' }] : []
+  }
   if (govReviewRow.value) {
     return [
       { key: 'close', label: '关闭' },
@@ -1214,6 +1248,18 @@ function onTestMaskClick(e) {
         <span>最新版本：{{ skill.versionLabel || '—' }}</span>
       </div>
 
+      <!-- A5 快照缺失提示（md `prd.审核中心.md` §七 L102「阻止审核并提示联系提交人重新提交」）：
+           页面主体仍显示当前配置供参考，但驳回/通过按钮已由 govBarButtons 撤下 -->
+      <el-alert
+        v-if="govSnapshotMissing"
+        class="se-snapshot-missing"
+        type="warning"
+        show-icon
+        :closable="false"
+        :title="SNAPSHOT_MISSING_HINT"
+        data-testid="se-snapshot-missing"
+      />
+
       <!-- 治理吸底操作栏（2026-09-01 PRD 对齐改造）：审核中心/我的申请借用本页作 SKILL 详情时渲染 -->
       <div v-if="govBarButtons.length" class="se-gov-bar">
         <el-button
@@ -1307,6 +1353,11 @@ function onTestMaskClick(e) {
   white-space: nowrap;
 }
 /* 治理吸底操作栏（2026-09-01）：容器纵向 flex 末位常驻，不遮编辑区内容 */
+/* A5 快照缺失提示条（md §七 L102）：贴在吸底操作栏之上 */
+.se-snapshot-missing {
+  flex-shrink: 0;
+  margin: 0 var(--space-5) var(--space-2);
+}
 .se-gov-bar {
   flex-shrink: 0;
   display: flex;

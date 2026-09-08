@@ -111,6 +111,31 @@ describe('knowledgeBaseMock —— 知识库状态机（PRD-20260903 §三）', 
     expect(r.pendingAction).toBe(null)
   })
 
+  // 2026-09-09 PRD 复核·G3G6 · A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」；
+  // md `prd.审核中心.md` §二.2/§3.1、`prd.我的申请.md` §二.2/§3.1 业务类型含知识库）
+  it('A6 提交端接线：提交发布 → 审核中心与我的申请各出一条知识库行；撤回 → 审核行摘掉、申请行置已撤回', async () => {
+    const { listReviews } = await import('../reviewsMock')
+    const { listMyApplications } = await import('../myApplicationsMock')
+    const src = await createSource({ sourceType: 'API', name: uniq('接线接口'), config: apiConfig() })
+    await testSource('API', { sourceId: src.id, config: apiConfig() })
+    const kb = await create({ name: uniq('接线库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [src.id] })
+
+    await transition(kb.id, 'publish')
+    const inReview = (await listReviews({ type: 'KNOWLEDGE_BASE', size: 200 })).list.find((r) => r.refId === kb.id)
+    expect(inReview).toBeTruthy()
+    expect(inReview.requestAction).toBe('FIRST_PUBLISH')
+    expect(inReview.status).toBe('PENDING_REVIEW')
+    const inApps = (await listMyApplications({ businessType: 'KNOWLEDGE_BASE', size: 200 })).list.find((r) => r.refId === kb.id)
+    expect(inApps).toBeTruthy()
+    expect(inApps.result).toBe('PENDING')
+
+    await transition(kb.id, 'withdraw')
+    const gone = (await listReviews({ type: 'KNOWLEDGE_BASE', size: 200 })).list.find((r) => r.refId === kb.id)
+    expect(gone).toBeUndefined() // 撤回 → 摘掉待审行
+    const withdrawn = (await listMyApplications({ businessType: 'KNOWLEDGE_BASE', size: 200 })).list.find((r) => r.refId === kb.id)
+    expect(withdrawn.result).toBe('WITHDRAWN') // 申请行保留，置已撤回（md §3.1 四态）
+  })
+
   it('已发布改可见范围 → 回未发布重审（md §三.5）；名称描述照常保存不回退', async () => {
     // 种子 kb_4：岗位知识库（ps_1）已发布
     let r = await update('kb_4', { name: '销售话术与异议处理', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_1' })
