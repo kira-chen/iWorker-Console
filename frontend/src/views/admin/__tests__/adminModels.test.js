@@ -10,6 +10,8 @@ import { createApp, h, nextTick } from 'vue'
  * 审核期编辑锁定且只留「撤回提交」。
  *
  * 切断 api/adminModel 与 element-plus；EP 组件用轻量存根（el-table 存根按行渲染 default 插槽）。
+ * 2026-09-08 原型复刻批次 1 对齐：模型页改为 paged:'client' 本地切片分页、每页条数按窗口高度动态
+ * （jsdom 默认 768 高 → 7 条 < 10 行种子），故把 innerHeight 拉高让全部种子行落在第 1 页。
  */
 
 const api = {
@@ -72,6 +74,8 @@ const AdminModels = (await import('@/views/admin/AdminModels.vue')).default
 
 let app, container
 async function mount() {
+  // 动态每页条数：拉高视口让 10 行种子全在第 1 页（(2000-330)/62=26 条）
+  Object.defineProperty(window, 'innerHeight', { value: 2000, configurable: true, writable: true })
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp({ render: () => h(AdminModels) })

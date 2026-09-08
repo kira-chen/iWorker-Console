@@ -131,6 +131,19 @@
   /* v-loading 遮罩：贴近页面底色（≈ --bg-app），仅靠 spinner 指示加载，不再压一层深色 →
      避免页面挂载时 loading 遮罩在暗色下呈现为「黑闪」。 */
   --loading-mask: rgba(255, 255, 255, 0.7);
+
+  /* ---------- 管理后台壳层专用（2026-09-08 原型复刻批次 1）----------
+   * 原型 Taste 层（L18–71）的浅灰绿底 + 白卡体系；员工端不用这组，故独立于 --bg-app。
+   * 浅色照原型取值，暗色在下方主题块内映射到既有暗色令牌。 */
+  --bg-admin-main: #f6f8f7; /* 后台主区底（原型 .main） */
+  --bg-admin-drawer: #f5f7f6; /* 抽屉正文灰底（原型 .drawer） */
+  --bg-admin-card-head: #f8faf9; /* 抽屉分区卡头灰条（原型 .section-card>.section-title） */
+  --border-admin-card: #dde4e0; /* 抽屉分区卡描边 */
+  --border-admin-table: #e1e6e3; /* 表格白卡描边（原型 .table-wrap） */
+  --bg-admin-table-head: #f2f5f3; /* 表头底（原型 .table th） */
+  --c-admin-table-head: #59645e; /* 表头字色 */
+  --bg-admin-row-hover: #f7faf8; /* 行 hover（原型 tr:hover td） */
+  --shadow-admin-card: 0 1px 3px rgba(34, 55, 46, 0.045);
 }
 
 /* ===========================================================================
@@ -181,6 +194,17 @@
   --mask: rgba(0, 0, 0, 0.6);
   /* 暗色 v-loading 遮罩：≈ --bg-app(#191919)，近乎不可见，消除挂载时的「黑闪」（仅留 spinner 指示）。 */
   --loading-mask: rgba(25, 25, 25, 0.7);
+
+  /* 管理后台壳层（暗色映射）：原型无暗色，沿用既有暗色令牌——主区/抽屉用页面底，卡/表用表面色抬一级 */
+  --bg-admin-main: var(--bg-app);
+  --bg-admin-drawer: var(--bg-app);
+  --bg-admin-card-head: var(--bg-sunken);
+  --border-admin-card: var(--border-base);
+  --border-admin-table: var(--border-base);
+  --bg-admin-table-head: var(--bg-sunken);
+  --c-admin-table-head: var(--c-text-muted);
+  --bg-admin-row-hover: var(--bg-hover);
+  --shadow-admin-card: var(--shadow-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {

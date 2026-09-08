@@ -54,6 +54,7 @@ import { stateMeta as kbStateMeta, sourcesText as kbSourcesText, hasUploadSource
 import { useAiLiveGenerate, expertQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { fmtTime } from '@/utils/docMeta'
+import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -257,13 +258,13 @@ function kbDocText(row) {
 }
 
 /**
- * 「查看」/「检索测试」→ 收抽屉、跳知识库模块路由（带 kbId/kbAction 参数）。
- * 【注明】知识库批次并行改造中：AdminKnowledgeBase 当前只消费 ?tab，kbId/kbAction 为
- * 预留 deep-link 参数（按参直开配置抽屉/检索测试弹窗的深联动由知识库批次接住）。
+ * 「查看」/「检索测试」→ 收抽屉、跳知识库模块路由（带 action/kbId 深链参数）。
+ * 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
+ * 此前发 kbAction 与消费端 action 不对齐，跳过去查看抽屉 / 检索测试弹窗不会打开，已修）。
  */
 function jumpKnowledge(row, action) {
   close()
-  router.push({ name: 'AdminKnowledgeBase', query: { tab: 'kb', kbId: String(row.id), kbAction: action } })
+  router.push(kbRouteLocation({ action, kbId: row.id }))
 }
 
 /* ==================== 加载 ==================== */

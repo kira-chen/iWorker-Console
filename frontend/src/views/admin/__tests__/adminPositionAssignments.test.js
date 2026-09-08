@@ -236,7 +236,8 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
 
     listPositionAssignments.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
-    expect(paneAssign().querySelector('.el-empty')?.textContent).toContain('没有匹配的用户')
+    // 2026-09-08 原型复刻批次 1 对齐：空态改纯文字（ListStates .ls-empty），失败态仍是 el-empty
+    expect(paneAssign().querySelector('.ls-empty')?.textContent).toContain('没有匹配的用户')
   })
 
   it('点「修改绑定」→ 弹窗可见、传入该行副本、非 forceSave', async () => {
@@ -269,7 +270,7 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
   it('审批页签空态：「暂无待审核的岗位申请」+ 副文案', async () => {
     listPositionApplications.mockResolvedValue({ list: [], total: 0 })
     await mount()
-    const empty = paneApps().querySelector('.el-empty')
+    const empty = paneApps().querySelector('.ls-empty') // 2026-09-08 原型复刻批次 1 对齐：纯文字空态
     expect(empty.textContent).toContain('暂无待审核的岗位申请')
     expect(empty.textContent).toContain('新的用户岗位申请会显示在这里')
   })

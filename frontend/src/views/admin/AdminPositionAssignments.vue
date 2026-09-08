@@ -16,7 +16,8 @@
  * 分页 ListPagination；数据走 positionAssignmentMock / positionApplicationsMock（api 层分流）。
  */
 import { h, ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmDialog } from '@/composables/useConfirm'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
@@ -143,18 +144,16 @@ function refreshAfterAction(binding = false) {
 
 // 【通过】：确认弹窗（文案照 md §4.3.1 逐字）→ 现有岗位绑定接口 → 申请置 APPROVED 离开列表
 async function onApprove(row) {
-  try {
-    await ElMessageBox.confirm(
-      h('div', null, [
-        h('p', { class: 'pa-approve-text' }, ['确认通过 ', h('b', null, row.displayName || row.username), ' 的岗位申请？']),
-        h('p', { class: 'pa-approve-hint' }, `确认后将使用现有岗位绑定接口，把该用户设置为「${row.requestedPositionName || ''}」。`)
-      ]),
-      '确认通过岗位申请',
-      { confirmButtonText: '确认通过' }
-    )
-  } catch {
-    return // 取消 / 关闭 / 遮罩：放弃本次操作
-  }
+  // 统一 440px 无图标确认框（2026-09-08 原型复刻批次 1 · A8）
+  const ok = await confirmDialog(
+    h('div', null, [
+      h('p', { class: 'pa-approve-text' }, ['确认通过 ', h('b', null, row.displayName || row.username), ' 的岗位申请？']),
+      h('p', { class: 'pa-approve-hint' }, `确认后将使用现有岗位绑定接口，把该用户设置为「${row.requestedPositionName || ''}」。`)
+    ]),
+    '确认通过岗位申请',
+    { confirmText: '确认通过' }
+  )
+  if (!ok) return // 取消 / 关闭 / 遮罩：放弃本次操作
   try {
     await approvePositionApplication(row.id)
     ElMessage.success('岗位申请已通过，绑定已更新')
@@ -316,16 +315,14 @@ onMounted(() => {
             </el-table-column>
           </el-table>
 
-          <!-- 分页底部信息（原型 fm5-pager「共 N 条 · 每页 X 条」）：固定每页条数，单页时也显示总条数 -->
-          <div v-if="total" class="pa-foot">
-            <span class="pa-foot-info">共 {{ total }} 条 · 每页 {{ pageSize }} 条</span>
-            <ListPagination
-              v-model:page="page"
-              :page-size="pageSize"
-              :total="total"
-              @change="onPageChange"
-            />
-          </div>
+          <!-- 统一分页条（原型 fm5-pager「共 N 条 · 每页 X 条 ‹ 页码 ›」恒显；2026-09-08 原型复刻批次 1 · C2：
+               本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
+          <ListPagination
+            v-model:page="page"
+            :page-size="pageSize"
+            :total="total"
+            @change="onPageChange"
+          />
         </ListStates>
       </div>
     </div>
@@ -395,15 +392,12 @@ onMounted(() => {
             </el-table-column>
           </el-table>
 
-          <div v-if="appList.total.value" class="pa-foot">
-            <span class="pa-foot-info">共 {{ appList.total.value }} 条 · 每页 {{ appList.pageSize.value }} 条</span>
-            <ListPagination
-              v-model:page="appList.page.value"
-              :page-size="appList.pageSize.value"
-              :total="appList.total.value"
-              @change="appList.reload"
-            />
-          </div>
+          <ListPagination
+            v-model:page="appList.page.value"
+            :page-size="appList.pageSize.value"
+            :total="appList.total.value"
+            @change="appList.reload"
+          />
         </ListStates>
       </div>
     </div>
@@ -461,18 +455,5 @@ onMounted(() => {
 /* 「重新绑定」回跳置顶高亮（原型 paFocusUserId 行） */
 .pa-table :deep(.pa-row-focus) td {
   background: var(--c-accent-fill);
-}
-/* 分页底部：左信息 + 右分页条（单页时 ListPagination 不渲染，仅剩总条数信息） */
-.pa-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-.pa-foot-info {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
 }
 </style>

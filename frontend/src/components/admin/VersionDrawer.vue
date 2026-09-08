@@ -324,9 +324,12 @@ watch(
 </script>
 
 <template>
+  <!-- 版本侧栏保持 720px 白底（原型 L399 .skill-version-drawer；2026-09-08 原型复刻批次 1：DrawerEditor 默认改 780 灰底后此处显式保持） -->
   <DrawerEditor
     :visible="visible"
     :title="a.title || '版本发布'"
+    size="720px"
+    plain-body
     @update:visible="visible = $event"
   >
     <template #title-extra>

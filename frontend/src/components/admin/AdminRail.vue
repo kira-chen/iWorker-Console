@@ -1,6 +1,6 @@
 <script setup>
 /**
- * 后台共享侧边导航栏（自适应宽度竖栏：clamp 150–180px，随窗口缩放，≈160px）。
+ * 后台共享侧边导航栏（204px 固定宽，2026-09-08 原型复刻批次 1 · A1/A2 按原型 L651 最终覆写层对齐）。
  *
  * 顶部管理后台名称（iWorker · 管理端）+ 导航项（图标在左、文案在右，左对齐、完整展示）
  * + 底部用户区（头像+名称，点击向上弹出 el-dropdown 二级菜单：用户名 / 外观 / 修改密码 / 退出登录）。
@@ -253,46 +253,54 @@ async function onUserCommand(command) {
 </template>
 
 <style scoped>
-/* ---- 窄轨（后台专属深色，恒定，不随浅/暗主题切换；与浅色员工端形成强场景区分）---- */
+/* ---- 窄轨（后台专属深色，恒定，不随浅/暗主题切换；与浅色员工端形成强场景区分）----
+ * 尺寸档与配色照原型 L651 最终覆写层（2026-09-08 原型复刻批次 1 · A1/A2）：
+ *   .rail{width:204px;background:#292928;border-right:#363634}
+ *   .brand{height:54px;padding:0 12px;gap:8px;border-bottom:#424240;font-size:16px}
+ *   .nav{padding:0 5px 8px} .nav-group{padding:7px 0 8px;border-bottom:#41413f}
+ *   .nav-title{padding:3px 13px 5px;color:#777775;font-size:12px;font-weight:600}
+ *   .nav-item{height:36px;padding:0 13px;border-radius:8px;color:#bebebc;font-size:14px}
+ *   .nav-item:hover{background:#393938;color:#fff} .nav-item.active{background:#5d5d5b;color:#fff;font-weight:600}
+ *   .nav-item.active:before{top:5px;bottom:5px;width:3px}（贯穿式白色竖条）
+ *   .nav-ic{width:18px;color:#c7c7c5;font-size:16px} .rail-foot{height:64px;border-top:#41413f}
+ * 图标继续用 EP 图标集（原型 unicode 字形只是占位，不搬）；底部用户区保留下拉菜单（代码超集）。 */
 .rail {
-  /* 后台专属深色（原型 #2b2a28 系），不引 tokens：刻意与员工端区分 */
-  --admin-side-bg: #2b2a28;
-  --admin-side-text: rgba(255, 255, 255, 0.7);
+  /* 后台专属深色（原型 L651 #292928 系），不引 tokens：刻意与员工端区分 */
+  --admin-side-bg: #292928;
+  --admin-side-text: #bebebc;
   --admin-side-text-strong: #ffffff;
-  --admin-side-hover: rgba(255, 255, 255, 0.1);
-  --admin-side-active: rgba(255, 255, 255, 0.2);
+  --admin-side-hover: #393938;
+  --admin-side-active: #5d5d5b;
   --admin-side-accent: #ffffff;
-  /* 恒定深色背景上的「即将上线」固定亮橙：不随浅/暗主题变化，保证始终醒目 */
-  --admin-side-warning: #f0a93b;
+  --admin-side-icon: #c7c7c5;
+  --admin-side-title: #777775;
   /* 头像恒定底色：沿用浅色主题 accent 原值，不随浅/暗主题变化，避免恒深轨上出现唯一变色元素 */
   --admin-side-avatar: #059669;
-  --admin-side-line: rgba(255, 255, 255, 0.1);
-  /* 分组小标题字号：弱视觉小字（略小于 --fs-xs），提为局部常量与其它 --admin-side-* 自洽 */
-  --admin-side-fs-group: 10px;
+  --admin-side-line: #41413f;
+  --admin-side-edge: #363634;
 
-  /* 自适应宽度：随窗口宽连续缩放，下限 150px（保菜单文案完整）、上限 180px（不过宽）；
-     约 1333px 窗口时 ≈160px。纯 CSS clamp，无需 JS 监听 resize。 */
-  width: clamp(150px, 12vw, 180px);
-  flex-shrink: 0;
+  width: 204px;
+  flex: 0 0 204px;
   background: var(--admin-side-bg);
-  border-right: 1px solid var(--admin-side-line);
+  border-right: 1px solid var(--admin-side-edge);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: var(--space-2) 0;
-  gap: var(--space-2);
+  padding: 0;
 }
 
-/* 顶部管理后台名称（左对齐，与导航项文字列对齐；高度对齐原头像位，避免整轨节奏变化） */
+/* 顶部管理后台名称（原型 .brand：54px 高、左 12px、gap 8、16px 字、下分隔线） */
 .rail-brand {
-  padding: 0 var(--space-3);
+  height: 54px;
+  flex: 0 0 54px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
-  line-height: 30px;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: var(--fw-bold);
   color: var(--admin-side-text-strong);
+  border-bottom: 1px solid #424240;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -308,9 +316,13 @@ async function onUserCommand(command) {
   text-overflow: ellipsis;
 }
 
-/* 底部用户区：分隔线区隔导航与用户行 */
+/* 底部用户区（原型 .rail-foot：64px 高、上分隔线 #41413f、左 15px）；下拉菜单为代码超集，保留 */
 .rail-foot {
-  padding: var(--space-2) var(--space-2) 0;
+  height: 64px;
+  flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
   border-top: 1px solid var(--admin-side-line);
 }
 .rail-foot .el-dropdown {
@@ -323,9 +335,9 @@ async function onUserCommand(command) {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-2);
-  border-radius: var(--radius-md);
+  gap: 10px;
+  padding: 6px 5px;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--admin-side-text);
   outline: none;
@@ -344,23 +356,20 @@ async function onUserCommand(command) {
   cursor: pointer;
 }
 .rail-user-label {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 名称下分隔线，弱化区隔品牌与导航 */
+/* 导航区（原型 .nav{flex:1;overflow:auto;padding:0 5px 8px}） */
 .rail-nav {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2) var(--space-2) 0;
-  margin-top: var(--space-1);
-  border-top: 1px solid var(--admin-side-line);
+  padding: 0 5px 8px;
   /* 导航组随功能增多已超短窗口高度：轨内自滚动，禁止整轨被 100vh 布局裁掉底部项。
      滚动条隐藏（窄轨美学，飞书同款口径），滚轮/触板照常可滚。 */
   flex: 1;
@@ -373,37 +382,34 @@ async function onUserCommand(command) {
   display: none;
 }
 
-/* 模块分组：段内菜单纵向排列；非首段顶部加分隔线区隔两模块 */
+/* 模块分组（原型 .nav-group{padding:7px 0 8px;border-bottom:1px solid #41413f}，末组无线） */
 .rail-group {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  padding: 7px 0 8px;
+  border-bottom: 1px solid var(--admin-side-line);
 }
-.rail-group + .rail-group {
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--admin-side-line);
+.rail-group:last-child {
+  border-bottom: 0;
 }
-/* 分组小标题：弱视觉呈现（小字、弱色、左对齐），仅作类别归属提示，不与菜单项争视觉重量。
-   带序号（01/02…）：序号在左、类别名在右，序号用等宽数字 + 略强对比以呼应截图分段编号语义。 */
+/* 分组小标题（原型 .nav-title{padding:3px 13px 5px;color:#777775;font-size:12px;font-weight:600}）
+   带序号（01/02…）：序号在左、类别名在右，序号等宽数字。 */
 .rail-group-title {
   display: flex;
   align-items: baseline;
   gap: var(--space-1);
-  font-size: var(--admin-side-fs-group);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
   line-height: 1.2;
   text-align: left;
-  color: var(--admin-side-text);
-  opacity: 0.5;
-  letter-spacing: 0.04em;
-  padding: 0 var(--space-3);
-  margin-bottom: 1px;
+  color: var(--admin-side-title);
+  padding: 3px 13px 5px;
   white-space: nowrap;
   overflow: hidden;
 }
 .rail-group-no {
   font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-semibold);
   flex-shrink: 0;
 }
 .rail-group-name {
@@ -411,19 +417,22 @@ async function onUserCommand(command) {
   text-overflow: ellipsis;
 }
 
-/* 导航项：图标在左、文案在右、左对齐，宽栏下文案完整展示 */
+/* 导航项（原型 .nav-item：36px 高、左右 13px、圆角 8、14px 字、gap 11；图标在左、文案在右） */
 .rail-item {
   position: relative;
+  width: 100%;
+  height: 36px;
   border: none;
   background: transparent;
   cursor: pointer;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: var(--space-2);
-  padding: 5px var(--space-3);
-  border-radius: var(--radius-md);
+  gap: 11px;
+  padding: 0 13px;
+  border-radius: 8px;
   color: var(--admin-side-text);
+  text-align: left;
   transition: background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
 }
@@ -434,28 +443,35 @@ async function onUserCommand(command) {
 .rail-item.is-active {
   color: var(--admin-side-text-strong);
   background: var(--admin-side-active);
+  font-weight: var(--fw-semibold);
 }
-/* 选中项左侧 accent 竖条：让「我在这一项」一眼可辨 */
+/* 当前项左侧白色竖条：贯穿整项（top/bottom 5px），让「我在这一项」一眼可辨 */
 .rail-item.is-active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 5px;
+  bottom: 5px;
   width: 3px;
-  height: 18px;
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  border-radius: 3px;
   background: var(--admin-side-accent);
 }
 .rail-ic {
   position: relative;
   display: inline-flex;
+  justify-content: center;
   flex-shrink: 0;
+  width: 18px;
   font-size: 16px;
   line-height: 1;
+  color: var(--admin-side-icon);
+}
+.rail-item:hover .rail-ic,
+.rail-item.is-active .rail-ic {
+  color: var(--admin-side-text-strong);
 }
 .rail-label {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;

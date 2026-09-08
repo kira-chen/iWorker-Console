@@ -26,24 +26,36 @@ import { listRoles, getPermissionTree, deleteRole } from '@/api/adminUser'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
+import ListPagination from '@/components/admin/ListPagination.vue'
 import { fmtTime } from '@/utils/docMeta'
-
-// 取数编排统一走 useAdminList（列表页规范）。角色量级恒定极小（个位数）且 mock 已按
-// 更新时间倒序返回全量，故 paged:false —— 不分页也不下发 page/size（Y/J 拍板：角色页保持不分页）。
-const list = useAdminList(listRoles, {
-  paged: false,
-  mapRow: (rows) => rows.map((r) => ({ ...r, modules: (r.modules || []).filter(Boolean) }))
-})
-const { rows, loading, loadError, isEmpty } = list
-const fetchList = list.reload
 
 /* ---------- 本地搜索（点【查询】/回车才生效）+ 最近更新时间排序（默认倒序） ---------- */
 const keyword = ref('')
 const appliedKeyword = ref('')
 const sortDir = ref('desc')
 
+// 取数编排统一走 useAdminList（列表页规范）。mock 返全量（mock 层不动），本页本地筛选 + 排序后
+// 由 useAdminList 的 paged:'client' 切片分页（2026-09-08 原型复刻批次 1 · G#9：负责人拍板
+// 全站所有列表页都分页，角色 md「不分页」与之冲突、差异记 02-审查结果；原 paged:false 废止）。
+const list = useAdminList(listRoles, {
+  paged: 'client',
+  mapRow: (rows) => rows.map((r) => ({ ...r, modules: (r.modules || []).filter(Boolean) })),
+  clientPipeline: (all) => {
+    const kw = appliedKeyword.value
+    const filtered = kw ? all.filter((r) => String(r.name || '').toLowerCase().includes(kw)) : all
+    return [...filtered].sort((a, b) =>
+      sortDir.value === 'desc'
+        ? String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+        : String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''))
+    )
+  }
+})
+const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const fetchList = list.reload
+
 function applySearch() {
   appliedKeyword.value = keyword.value.trim().toLowerCase()
+  list.search()
 }
 function onClearSearch() {
   keyword.value = ''
@@ -52,19 +64,11 @@ function onClearSearch() {
 function onSortChange({ prop, order }) {
   if (prop !== 'updatedAt') return
   sortDir.value = order === 'ascending' ? 'asc' : 'desc'
+  list.search()
 }
 
-const displayRows = computed(() => {
-  const kw = appliedKeyword.value
-  const filtered = kw ? rows.value.filter((r) => String(r.name || '').toLowerCase().includes(kw)) : rows.value
-  return [...filtered].sort((a, b) =>
-    sortDir.value === 'desc'
-      ? String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
-      : String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''))
-  )
-})
 // 「真的没数据」与「筛选无结果」共用同一引导空态（本页统一文案）
-const showEmpty = computed(() => isEmpty.value || (!loading.value && !loadError.value && !displayRows.value.length))
+const showEmpty = computed(() => isEmpty.value)
 
 /* ---------- 权限树（原型 permissionGroups 形态：[{ scope, groups:[{ name, pages[] }] }]） ---------- */
 const permissionTree = ref([])
@@ -189,7 +193,7 @@ async function remove(row) {
       >
         <el-table
           v-loading="loading"
-          :data="displayRows"
+          :data="rows"
           row-key="id"
           :default-sort="{ prop: 'updatedAt', order: 'descending' }"
           @sort-change="onSortChange"
@@ -249,6 +253,8 @@ async function remove(row) {
         </el-table>
       </ListStates>
     </div>
+    <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
+    <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
 
     <RoleEditor
       v-model:visible="editorVisible"

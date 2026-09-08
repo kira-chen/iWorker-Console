@@ -204,7 +204,8 @@ describe('KnowledgeBaseList 列表契约（2026-09-04 PRD-20260903 对齐）', (
 
   it('首屏取数下发分页参数；搜索与筛选走后端 query 且回第 1 页', async () => {
     await mount()
-    expect(api.listKnowledgeBases).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }))
+    // 2026-09-08 原型复刻批次 1 对齐：每页条数按窗口高度动态计算（jsdom 768 高 → 7），不再固定 20
+    expect(api.listKnowledgeBases).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: expect.any(Number) }))
     const input = container.querySelector('input')
     input.value = '产品'
     input.dispatchEvent(new Event('input'))
@@ -232,5 +233,35 @@ describe('KnowledgeBaseList 列表契约（2026-09-04 PRD-20260903 对齐）', (
     await mount()
     expect(container.querySelector('.stub-editor').dataset.visible).toBe('true')
     expect(routerMock.replace).toHaveBeenCalledWith({ query: { tab: 'kb' } })
+  })
+
+  // 2026-09-08 原型复刻批次 1 · C-H2：岗位详情 / 专家抽屉发出的深链（kbRouteLocation）与本页消费端同一套键，
+  // 跳过来查看抽屉直接打开、岗位上下文生效（此前发送端 kbAction/fromPositionId 与消费端不对齐，深链失效）
+  it('发送端 kbRouteLocation({action:"view",kbId,positionId}) → 本页直开查看抽屉且岗位上下文生效', async () => {
+    const { kbRouteLocation } = await import('@/utils/knowledgeDeepLink')
+    const loc = kbRouteLocation({ action: 'view', kbId: 'kb_2', positionId: 'ps_1', positionName: '销售顾问' })
+    expect(loc.name).toBe('AdminKnowledgeBase')
+    routeMock.query = loc.query
+    await mount()
+    const editor = container.querySelector('.stub-editor')
+    expect(editor.dataset.visible).toBe('true')
+    expect(editor.dataset.id).toBe('kb_2')
+    expect(editor.dataset.mode).toBe('view')
+    expect(editor.dataset.lock).toBe('ps_1')
+    const last = api.listKnowledgeBases.mock.calls.at(-1)[0]
+    expect(last).toEqual(expect.objectContaining({ kbType: 'POSITION' }))
+    // 一次性参数清掉，岗位上下文保留
+    expect(routerMock.replace).toHaveBeenCalledWith({ query: { tab: 'kb', positionId: 'ps_1', positionName: '销售顾问' } })
+  })
+
+  it('发送端 action=search → 本页直开检索测试弹窗', async () => {
+    const { kbRouteLocation } = await import('@/utils/knowledgeDeepLink')
+    api.getKnowledgeBase.mockResolvedValue(LIST[0])
+    routeMock.query = kbRouteLocation({ action: 'search', kbId: 'kb_1' }).query
+    await mount()
+    await flush()
+    const dlg = container.querySelector('.stub-search')
+    expect(dlg.dataset.visible).toBe('true')
+    expect(dlg.dataset.id).toBe('kb_1')
   })
 })

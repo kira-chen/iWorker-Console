@@ -1,4 +1,5 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useDynPageSize } from './useDynPageSize'
 
 /**
  * 管理后台列表页「取数编排」单一真相源（2026-08-22 统一）。
@@ -20,8 +21,16 @@ import { ref, computed } from 'vue'
  *   2. **竞态防护**：快速切筛选时，先发的慢响应会覆盖后发的快响应，列表显示与筛选条件对不上。
  *      改造前**一个页面都没做**。此处用请求序号（reqSeq）丢弃过期响应。
  *
- * 【默认每页 20】负责人 2026-08-22 定。1440×900 下一屏约容 15–18 行，20 条微滚即看完；
- * 后台多为"扫一遍找某行"，条数多一点优于频繁翻页。个别页面可传 pageSize 覆盖。
+ * 【每页条数：按窗口高度动态计算】2026-09-08 原型复刻批次 1（负责人拍板：全站所有列表页都分页、
+ * 同一控件、同一算法）。默认走 useDynPageSize()：`min(30, max(5, floor((innerHeight-330)/62)))`，
+ * mounted 读一次 + resize 防抖重算；条数变了即回第 1 页重拉。页面不再各传固定 pageSize
+ * （原 20 / 12 / 10 三种覆盖已全部移除）；options.pageSize 仅保留给单测钉住数值用。
+ *
+ * 【三种分页模式 paged】
+ *   true      ——（默认）服务端 / mock 分页：下发 page/size，mock 返回当页 + total
+ *   'client'  —— mock 只返全量（角色 / 模型 / 业务系统，mock 层不动）：不下发 page/size，
+ *                取回后在本地按 page/pageSize 切片，total 取全量长度；分页条与其它页完全一致
+ *   false     —— 不分页（保留能力，当前无页面使用）
  *
  * 用法（分页页面）：
  *   const query = reactive({ keyword: '', status: '' })
@@ -30,25 +39,30 @@ import { ref, computed } from 'vue'
  *   // 模板：list.rows / list.loading / list.loadError / list.page / list.total
  *   // 改筛选：list.search()（自动回第 1 页）；翻页：list.page = n 后 list.reload()
  *
- * 用法（不分页页面，如角色/模型）：
- *   const list = useAdminList(listRoles, { paged: false })
+ * 用法（mock 不分页的页面，如角色/模型）：
+ *   const list = useAdminList(listRoles, { paged: 'client' })
  *
  * @param {(params:Object)=>Promise<any>} fetcher 取数函数（api 层方法，返回 {list,total} 或裸数组）
  * @param {Object} [options]
  * @param {()=>Object} [options.params] 额外查询参数（筛选项），每次取数时求值
- * @param {number} [options.pageSize=20] 每页条数
- * @param {boolean} [options.paged=true] 是否分页；false 时不下发 page/size，也不做空页回退
+ * @param {number} [options.pageSize] 固定每页条数（仅单测用；不传即按窗口高度动态计算）
+ * @param {boolean|'client'} [options.paged=true] 分页模式，见上
  * @param {(rows:Array)=>Array} [options.mapRow] 行数据后处理（如字段归一化）
+ * @param {(rows:Array)=>Array} [options.clientPipeline] 仅 paged:'client'：对全量（已 mapRow）做本地筛选/排序，
+ *        在切片之前执行（页面本地搜索 / 表头排序不能只作用于当页）；筛选条件变了调 search() 即可
  */
 export function useAdminList(fetcher, options = {}) {
-  const { params, pageSize: initialPageSize = 20, paged = true, mapRow } = options
+  const { params, pageSize: fixedPageSize, paged = true, mapRow, clientPipeline } = options
+  const serverPaged = paged === true
+  const clientPaged = paged === 'client'
 
   const rows = ref([])
   const total = ref(0)
   const loading = ref(true)
   const loadError = ref(false)
   const page = ref(1)
-  const pageSize = ref(initialPageSize)
+  // 固定值（单测）或动态值（全站默认）；两者都是 ref，模板读法不变
+  const pageSize = fixedPageSize ? ref(fixedPageSize) : useDynPageSize()
 
   // 请求序号：只认最后一次发起的请求，丢弃过期响应（防快速切筛选时旧响应覆盖新响应）。
   let reqSeq = 0
@@ -75,7 +89,7 @@ export function useAdminList(fetcher, options = {}) {
       for (const [k, v] of Object.entries(extra || {})) {
         if (v !== '' && v !== undefined && v !== null) query[k] = v
       }
-      if (paged) {
+      if (serverPaged) {
         query.page = page.value
         query.size = pageSize.value
       }
@@ -84,11 +98,24 @@ export function useAdminList(fetcher, options = {}) {
       if (seq !== reqSeq) return // 过期响应：已有更新的请求在飞，丢弃
 
       const { list, count } = unwrap(data)
-      rows.value = mapRow ? mapRow(list) : list
-      total.value = count
+      if (clientPaged) {
+        // 本地分页：全量 → mapRow → 本地筛选/排序 → 切片；total 取筛选后长度，
+        // 页码越界回落到末页（原型 pageSlice L1548 同口径）
+        let all = mapRow ? mapRow(list) : list
+        if (clientPipeline) all = clientPipeline(all)
+        const size = pageSize.value
+        const pages = Math.max(1, Math.ceil(all.length / size))
+        if (page.value > pages) page.value = pages
+        if (page.value < 1) page.value = 1
+        rows.value = all.slice((page.value - 1) * size, page.value * size)
+        total.value = all.length
+      } else {
+        rows.value = mapRow ? mapRow(list) : list
+        total.value = count
+      }
 
       // 防空页：删到当前页无数据时回退一页重拉（末页删最后一条的常见场景）。
-      if (paged && !rows.value.length && total.value > 0 && page.value > 1) {
+      if (serverPaged && !rows.value.length && total.value > 0 && page.value > 1) {
         page.value -= 1
         await reload()
       }
@@ -115,6 +142,13 @@ export function useAdminList(fetcher, options = {}) {
 
   /** 列表为空且非加载中、非错误——用于区分「真的没数据」与「还没取到/取失败」。 */
   const isEmpty = computed(() => !loading.value && !loadError.value && !rows.value.length)
+
+  // 窗口高度变化 → 每页条数变化 → 回第 1 页重拉（只在已发起过取数后生效：首拉前的 mounted 重算不重复拉）。
+  if (!fixedPageSize && paged) {
+    watch(pageSize, () => {
+      if (reqSeq > 0) search()
+    })
+  }
 
   return {
     rows,

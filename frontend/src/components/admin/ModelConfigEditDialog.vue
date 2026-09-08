@@ -342,12 +342,14 @@ async function verifyOnly() {
 
 <template>
   <!--
-    形态：右侧抽屉 720px，与三个连接器编辑器（McpEditor / ApiEditor / BizSystemEditor）一致。
+    形态：右侧抽屉 820px（原型 L110 `.model-drawer .drawer{width:min(820px,90vw)}`，2026-09-08 原型复刻批次 1 · S2/G-2；
+    三个连接器编辑器为 DrawerEditor 默认 780px）。
     2026-09-01 PRD 对齐：正文重排为分区卡片（厂商预设 / 基本信息 / 连接与鉴权 / 能力信息 /
     底部时间行），与原型 openModelDrawer 的 section 结构同构。
   -->
   <DrawerEditor
     :visible="visible"
+    size="820px"
     :title="props.readonly ? '查看模型' : isEdit ? '编辑模型' : '接入模型'"
     :readonly="props.readonly"
     :saving="saving"

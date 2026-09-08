@@ -60,7 +60,8 @@ import PositionVersionHistoryDialog from '@/components/position/PositionVersionH
 import AdminRail from '@/components/admin/AdminRail.vue'
 // Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：认领说明列表 / 图标 popover / 业务系统页签）
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import IconField from '@/components/common/IconField.vue'
+import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 import PositionBizSystemsPane from '@/components/position/PositionBizSystemsPane.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 // 效果测试台异步加载：仅在点「效果测试」打开时拉取，避免把对话链路提前并入白板首屏 + 保持现有测试 import 图不变。
@@ -187,10 +188,10 @@ const eqPlaceholders = ['如：帮我分析本周经营数据', '请输入示例
 
 // 认领说明卡片头「＋ 新增一条」直调编辑器暴露的 startAdd（按钮进卡片头，照原型排版）
 const claimEditorRef = ref(null)
-// 图标卡「从图标库选择 / 上传图标」两个显式入口直调 popover 暴露链路（照原型 position-icon-section）
-const iconPickerRef = ref(null)
+// 图标卡：共享图标行组件 IconField（预览块 + 并排【从图标库选择】【上传图标】，照原型 position-icon-section；
+// 2026-09-08 原型复刻批次 1 · S4 样板接入，其余抽屉后续批次换用）
 
-// 图标选择回吐（IconPickerPopover 单次给 {icon, iconSource}）
+// 图标选择回吐（IconField → IconPickerPopover 单次给 {icon, iconSource}）
 function onPickIcon({ icon, iconSource }) {
   store.basic = { ...store.basic, icon, iconSource }
 }
@@ -598,18 +599,18 @@ const kbSourcesText = (row) => {
   const names = (row.sources || []).map((s) => s?.name).filter(Boolean)
   return names.length ? names.join('、') : '—'
 }
-// 跳知识库模块：query 携带岗位上下文（fromPositionId/fromPositionName）；
-// kbId/kbAction 供知识库批次承接「打开查看/编辑抽屉、检索测试弹窗」的深链。
+// 跳知识库模块：query 携带岗位上下文（positionId/positionName）+ 深链动作（action/kbId），
+// 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
+// 此前发 kbAction/fromPositionId 与消费端 action/positionId 不对齐，跳过去抽屉不开、岗位上下文不生效，已修）。
 function gotoKbModule(action, row) {
-  router.push({
-    name: 'AdminKnowledgeBase',
-    query: {
-      tab: 'kb',
-      fromPositionId: store.positionId,
-      fromPositionName: store.basic?.name || '',
-      ...(row ? { kbId: row.id, kbAction: action } : { kbAction: action })
-    }
-  })
+  router.push(
+    kbRouteLocation({
+      action,
+      kbId: row?.id,
+      positionId: store.positionId,
+      positionName: store.basic?.name || ''
+    })
+  )
 }
 
 // 白板画布滚动容器（数据底座弹窗 .focus-mode 复用其退背后视觉；非聚焦态用）
@@ -820,18 +821,14 @@ function backToList() {
                   <span class="pd-card-sub">用于岗位列表与员工端展示</span>
                 </div>
                 <div class="pd-card-body">
-                  <div class="pd-icon-row">
-                    <!-- popover 头像即预览（42px）；两个显式入口按钮直调组件暴露的图标库 / 上传链路 -->
-                    <IconPickerPopover
-                      ref="iconPickerRef"
-                      :icon="store.basic.icon"
-                      :position-name="store.basic.name"
-                      :readonly="isReadonly"
-                      @pick="onPickIcon"
-                    />
-                    <el-button :disabled="isReadonly" @click="iconPickerRef?.openLibrary()">从图标库选择</el-button>
-                    <el-button :disabled="isReadonly" @click="iconPickerRef?.triggerUpload()">上传图标</el-button>
-                  </div>
+                  <!-- 共享图标行：预览 + 从图标库选择 / 上传图标（IconField，内部走 IconPickerPopover 无头链路） -->
+                  <IconField
+                    :icon="store.basic.icon"
+                    :name="store.basic.name"
+                    :readonly="isReadonly"
+                    :size="42"
+                    @pick="onPickIcon"
+                  />
                 </div>
               </section>
 
@@ -1577,12 +1574,6 @@ function backToList() {
 .pd-card-hint {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
-}
-/* 人格 · 岗位图标行（popover 头像即 42px 预览 + 两个显式入口按钮） */
-.pd-icon-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
 }
 /* 人格 · 示例问题 3 格 */
 .pd-eq-list {

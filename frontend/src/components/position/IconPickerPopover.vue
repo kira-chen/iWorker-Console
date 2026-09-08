@@ -11,6 +11,11 @@
  * - 上传与图标库互斥替换：后选者整体覆盖前者（单值 commit 天然满足）；
  * - 只读态（readonly prop，新增、默认 false）：入口置灰不可点。
  *
+ * 2026-09-08 原型复刻批次 1（S3/S4）：新增 headless 模式——不渲染头像触发块与 popover，只保留
+ * 文件选择 input + 图标库弹窗 + 裁剪弹窗，由宿主（components/common/IconField.vue：预览块 +
+ * 并排【从图标库选择】【上传图标】两按钮）通过 expose 的 openLibrary / triggerUpload 直调。
+ * popover 头像形态保留给仍在用的场景（专家 / 技能 / 连接器编辑器，后续批次逐个换成 IconField）。
+ *
  * 数据流（契约不变）：选中/裁剪/生成后**一次性**回吐 `{ icon, iconSource }`（emit('pick')），
  * 由父级单次落值，避免连续两次基于旧 props 展开导致 icon 被 iconSource 覆盖丢失的 bug。
  * 图标库走现有 getIconLibrary（条目 {id, url:emoji, name}，选中存 icon=url）。
@@ -36,7 +41,9 @@ const props = defineProps({
   // 岗位/对象名（AI 生成图标的提示词）
   positionName: { type: String, default: '' },
   // 只读态：入口置灰不可点（PRD 图标统一规则·只读状态）
-  readonly: { type: Boolean, default: false }
+  readonly: { type: Boolean, default: false },
+  // 无头模式：不渲染头像触发块与 popover，只提供图标库 / 上传裁剪两条链路（供 IconField 显式按钮直调）
+  headless: { type: Boolean, default: false }
 })
 const emit = defineEmits(['pick'])
 
@@ -224,7 +231,7 @@ defineExpose({ openLibrary, triggerUpload })
 </script>
 
 <template>
-  <el-popover v-model:visible="open" :width="320" trigger="click" placement="bottom-start" :disabled="readonly">
+  <el-popover v-if="!headless" v-model:visible="open" :width="320" trigger="click" placement="bottom-start" :disabled="readonly">
     <template #reference>
       <div class="ip-avatar" :class="{ 'is-readonly': readonly }" :title="readonly ? '' : '换图标'">
         <img v-if="iconIsUrl" :src="icon" alt="icon" class="ip-avatar-img" />

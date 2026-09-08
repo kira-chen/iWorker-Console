@@ -439,7 +439,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbSec().textContent).toContain('未找到匹配的知识库')
   })
 
-  it('「查看」/「检索测试」→ 收抽屉并跳知识库路由带参（kbId/kbAction 为知识库批次预留 deep-link）', async () => {
+  it('「查看」/「检索测试」→ 收抽屉并跳知识库路由带参（action/kbId 与消费端 KnowledgeBaseList 同键；2026-09-08 原型复刻批次 1 · C-H2 对齐）', async () => {
     await mount({ expertId: 201 })
     const firstRow = kbRows()[0]
     const [view, test] = [...firstRow.querySelectorAll('.el-button')]
@@ -450,7 +450,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(routerPush).toHaveBeenCalledWith({
       name: 'AdminKnowledgeBase',
-      query: { tab: 'kb', kbId: 'kb_1', kbAction: 'view' }
+      query: { tab: 'kb', action: 'view', kbId: 'kb_1' }
     })
   })
 

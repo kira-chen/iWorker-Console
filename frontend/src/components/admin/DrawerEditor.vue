@@ -19,6 +19,13 @@
  *   - 专家在审核期锁定时隐藏保存、且取消按钮禁用 → submit-hidden / cancel-disabled
  *   - 骨架行数 8 与 4 → skeletonRows
  *   - 专家标题行带发布态标签 → #title-extra 插槽
+ *
+ * 【外壳尺寸 · 2026-09-08 原型复刻批次 1（A9 / S1 / G-2）】照原型 Taste 层 L42–48：
+ *   `.drawer{width:min(780px,88vw);background:#f5f7f6}`（模型抽屉 L110 820px，由 ModelConfigEditDialog 传 size）
+ *   `.drawer-head{height:66px;padding:0 28px}` `.drawer-body{padding:22px 28px 34px}` `.drawer-foot{height:66px;padding:0 28px}`
+ * 正文灰底 + 各分区白卡：卡由各编辑器给 <section class="section-card"> 承担（样式在 assets/admin-shell.css），
+ * 本组件只给壳。样式写在下方非 scoped 块（el-drawer teleport 到 body，scoped 命不中）；
+ * 以 .de-drawer 类限定，VersionDrawer（720 白底）等不走本组件的抽屉不受影响。
  */
 import { computed } from 'vue'
 
@@ -52,7 +59,10 @@ const props = defineProps({
   /** 取消按钮禁用（保存在途时防误关丢草稿）。 */
   cancelDisabled: { type: Boolean, default: false },
 
-  size: { type: String, default: '720px' },
+  /** 抽屉宽（默认 780px = 原型基座；模型抽屉传 820px；版本侧栏传 720px） */
+  size: { type: String, default: '780px' },
+  /** 白底平铺正文（不用灰底 + 白卡壳）：版本侧栏照原型 .skill-version-drawer 白底，传 true */
+  plainBody: { type: Boolean, default: false },
   /** 挂到 body 下（抽屉嵌在 tab-pane / 局部容器里时必须开，否则被祖先的 overflow 裁切）。 */
   appendToBody: { type: Boolean, default: false }
 })
@@ -79,6 +89,7 @@ function close() {
     :model-value="visible"
     :size="size"
     direction="rtl"
+    :class="['de-drawer', { 'de-drawer--plain': plainBody }]"
     :append-to-body="appendToBody"
     :close-on-click-modal="false"
     @update:model-value="emit('update:visible', $event)"
@@ -138,10 +149,62 @@ function close() {
 .de-state {
   padding: var(--space-5);
 }
-/* 段与段的统一间距（三级间距节奏的最外层，见 §抽屉规范） */
+/* 段与段的统一间距（三级间距节奏的最外层，见 §抽屉规范）。
+ * 分区改用 .section-card 后卡自带 margin-bottom 20，与 gap 叠加会变 40，非 scoped 块里把卡的 margin 清零。 */
 .de-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+</style>
+
+<!-- 抽屉外壳（非 scoped：el-drawer 面板 teleport 到 body）。原型 L42–48 数值，颜色走 --*-admin-* 令牌。 -->
+<style>
+.el-drawer.de-drawer {
+  --el-drawer-padding-primary: 0;
+  background: var(--bg-admin-drawer);
+}
+.el-drawer.de-drawer .el-drawer__header {
+  height: 66px;
+  flex: 0 0 66px;
+  margin: 0;
+  padding: 0 28px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-base);
+}
+.el-drawer.de-drawer .el-drawer__title {
+  line-height: 1.3;
+}
+.el-drawer.de-drawer .el-drawer__body {
+  padding: 22px 28px 34px;
+  background: var(--bg-admin-drawer);
+}
+.el-drawer.de-drawer .el-drawer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  height: 66px;
+  flex: 0 0 66px;
+  padding: 0 28px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-base);
+}
+.el-drawer.de-drawer .el-drawer__footer .el-button + .el-button {
+  margin-left: 0;
+}
+.el-drawer.de-drawer .de-head-title {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+/* 插槽内的分区卡（各编辑器的 <section class="section-card">）：间距由 .de-body 的 gap 给，卡自带 margin 清零 */
+.el-drawer.de-drawer .de-body > .section-card {
+  margin-bottom: 0;
+}
+/* 白底平铺变体（版本侧栏：原型 L399 `.skill-version-drawer{width:min(720px,82vw)}` 白底） */
+.el-drawer.de-drawer.de-drawer--plain,
+.el-drawer.de-drawer.de-drawer--plain .el-drawer__body {
+  background: var(--bg-surface);
 }
 </style>

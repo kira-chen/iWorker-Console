@@ -45,6 +45,7 @@ import { fmtTime } from '@/utils/docMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
+import ListPagination from '@/components/admin/ListPagination.vue'
 
 // 状态展示口径（V96）：上架成功=已发布，下架成功=未发布。
 // PENDING_REVIEW/REJECTED 为 V95 审核制遗留态，V96 迁移已归一为 DRAFT；此处保留兜底映射，
@@ -191,9 +192,10 @@ function canDelete(row) {
 }
 
 // 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）。
-// 模型量级恒定极小且后端返全量，故 paged:false —— 不分页、不下发 page/size。
+// mock 返全量（mock 层不动）→ paged:'client' 本地切片分页（2026-09-08 原型复刻批次 1 · D1：
+// 负责人拍板全站所有列表页都分页，模型 md「不分页」与之冲突、差异记 02-审查结果；原 paged:false 废止）。
 const list = useAdminList(listModels, {
-  paged: false,
+  paged: 'client',
   params: () => ({
     keyword: keyword.value.trim(),
     status: statusFilter.value,
@@ -201,8 +203,10 @@ const list = useAdminList(listModels, {
     sort: sortOrder.value
   })
 })
-const { rows, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 const fetchList = list.reload
+// 筛选 / 查询 / 排序变化：回第 1 页重取（分页后不能停在越界页）
+const searchList = list.search
 
 onMounted(fetchList)
 
@@ -210,7 +214,7 @@ onMounted(fetchList)
 function onSortChange({ prop, order }) {
   if (prop !== 'updatedAt') return
   sortOrder.value = order === 'ascending' ? 'asc' : 'desc'
-  fetchList()
+  searchList()
 }
 
 // 空态文案（2026-09-01 PRD 对齐）：有筛选条件时提示是条件问题，不是没数据。
@@ -442,8 +446,8 @@ async function remove(row) {
         placeholder="搜索模型名称或模型标识"
         clearable
         class="lt-search"
-        @keyup.enter="fetchList"
-        @clear="fetchList"
+        @keyup.enter="searchList"
+        @clear="searchList"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
@@ -452,7 +456,7 @@ async function remove(row) {
         placeholder="全部类别"
         clearable
         class="lt-filter"
-        @change="fetchList"
+        @change="searchList"
       >
         <el-option
           v-for="o in MODEL_CATEGORY_OPTIONS"
@@ -466,11 +470,11 @@ async function remove(row) {
         placeholder="全部状态"
         clearable
         class="lt-filter"
-        @change="fetchList"
+        @change="searchList"
       >
         <el-option v-for="o in STATUS_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
-      <el-button @click="fetchList">查询</el-button>
+      <el-button @click="searchList">查询</el-button>
       <template #right>
         <el-button type="primary" class="lt-create" @click="openCreate">
           <el-icon><Plus /></el-icon> 接入模型
@@ -704,6 +708,8 @@ async function remove(row) {
         </el-table>
       </ListStates>
     </div>
+    <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
+    <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
 
     <ModelConfigEditDialog
       v-model:visible="editorVisible"

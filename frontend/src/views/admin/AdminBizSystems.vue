@@ -29,6 +29,7 @@ import { fmtTime } from '@/utils/docMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
+import ListPagination from '@/components/admin/ListPagination.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -83,16 +84,17 @@ function isLocked(row) {
 }
 // 图标：URL/dataURL 按图片渲染，否则按 emoji/字符（全站统一判断，见 utils/iconDisplay）
 
-// 取数编排统一走 useAdminList；一次展示全量（B5 移除分页），故 paged:false。
-const list = useAdminList(listBizSystems, { paged: false, params: () => ({ ...applied }) })
-const { rows, loading, loadError, isEmpty } = list
+// 取数编排统一走 useAdminList；mock 返全量（mock 层不动）→ paged:'client' 本地切片分页
+// （2026-09-08 原型复刻批次 1：负责人拍板全站所有列表页都分页、同一控件；原 B5「移除分页」paged:false 废止）。
+const list = useAdminList(listBizSystems, { paged: 'client', params: () => ({ ...applied }) })
+const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 const fetchList = list.reload
 
-// 点【查询】/ 回车：把输入区条件应用后刷新
+// 点【查询】/ 回车：把输入区条件应用后刷新（回第 1 页）
 function search() {
   applied.keyword = query.keyword.trim()
   applied.state = query.state
-  fetchList()
+  list.search()
 }
 
 // 深链打开查看抽屉（2026-09-04 PRD-20260903 对齐：岗位详情页「业务系统」页签点名称跳转
@@ -364,6 +366,8 @@ async function remove(row) {
         </el-table-column>
       </el-table>
     </ListStates>
+    <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
+    <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
 
     <BizSystemEditor
       v-model:visible="editorVisible"

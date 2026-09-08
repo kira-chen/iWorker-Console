@@ -430,4 +430,13 @@ router.beforeEach((to) => {
   return true
 })
 
+// 管理后台作用域标记（2026-09-08 原型复刻批次 1）：/admin 前缀路由期间给 <body> 挂 admin-scope，
+// assets/admin-shell.css 里的后台专属规则（控件 38px 密度、表格白卡、440px 确认框、抽屉壳）
+// 全部以 body.admin-scope 限定——挂在 body 上是为了覆盖 teleport 到 body 的弹窗/抽屉/消息框，
+// 员工端路由不带该类，不受影响。沉浸式整页（岗位详情 / 技能编辑）同在 /admin 下，一并生效。
+router.afterEach((to) => {
+  if (typeof document === 'undefined') return
+  document.body.classList.toggle('admin-scope', to.path.startsWith('/admin'))
+})
+
 export default router

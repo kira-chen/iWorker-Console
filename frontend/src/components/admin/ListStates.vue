@@ -11,6 +11,11 @@
  *  - 空态文案两种句式：有创建入口用「还没有X · 点「Y」创建第一个」（给下一步动作），
  *    筛选结果为空用「暂无符合条件的X」（提示是筛选条件的问题，不是没数据）。
  *
+ * 【空态形态 · 2026-09-08 原型复刻批次 1（A10 / G#3）】照原型 L13
+ * `.empty{height:340px;display:grid;place-items:center;color:#999;text-align:center}` +
+ * L1515 `.empty span{display:block;margin-top:7px;color:var(--faint);font-size:12px}`：
+ * 纯文字 340px 居中（主文案 + 可选副文案），去掉 el-empty 插图。失败态仍用 el-empty（原型无失败态，代码超集）。
+ *
  * 用法：包在 el-table 外层，失败/空态由本组件出，有数据时渲染默认插槽（表格）。
  *   <ListStates :loading="l.loading" :error="l.loadError" :empty="l.isEmpty"
  *               empty-text="还没有角色 · 点「新建角色」创建第一个" @retry="l.reload">
@@ -38,15 +43,33 @@ defineEmits(['retry'])
     <el-button @click="$emit('retry')">重试</el-button>
   </el-empty>
 
-  <el-empty v-else-if="empty" :image-size="96" :description="emptyText">
-    <span v-if="emptySubText" class="ls-subtext">{{ emptySubText }}</span>
-  </el-empty>
+  <div v-else-if="empty" class="empty ls-empty" data-testid="list-empty">
+    <div>
+      <strong class="ls-empty-text">{{ emptyText }}</strong>
+      <span v-if="emptySubText" class="ls-subtext">{{ emptySubText }}</span>
+    </div>
+  </div>
 
   <slot v-else />
 </template>
 
 <style scoped>
+/* 纯文字空态（原型 .empty：340px 高、居中、弱色） */
+.ls-empty {
+  height: 340px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--c-text-faint);
+}
+.ls-empty-text {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-base);
+  color: var(--c-text-muted);
+}
 .ls-subtext {
+  display: block;
+  margin-top: 7px;
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
 }

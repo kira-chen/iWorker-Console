@@ -80,6 +80,18 @@ defineProps({
   line-height: var(--lh-base);
   color: var(--c-text-muted);
 }
+/* 管理后台档位（2026-09-08 原型复刻批次 1 · A4）：原型 L23–24
+ * `h1{font-size:25px;font-weight:650;letter-spacing:-.02em}` / `p{margin:5px 0 0;font-size:15px;color:#68736d}`。
+ * 以 body.admin-scope 限定（router 按 /admin 前缀挂），员工端页头仍是 22px/600 + 13px 档。 */
+:global(body.admin-scope) .page-header-title {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+:global(body.admin-scope) .page-header-sub {
+  margin-top: 5px;
+  font-size: 15px;
+}
 .page-header-scope {
   flex-shrink: 0;
   width: 180px;

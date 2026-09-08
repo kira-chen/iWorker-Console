@@ -1,0 +1,246 @@
+/* =============================================================================
+ * 管理后台壳层 · 原型复刻批次 1（2026-09-08）
+ *
+ * 【来源】docs/prd/PRD-20260907/数字员工管理端交互原型.html 的壳层 CSS（基础层 L9–16 →
+ * Taste 层 L18–71 → 模块层 L110 → 侧栏最终覆写 L651）。负责人拍板（工作清单第七节）：
+ * 静态布局 / 控件尺寸一律照原型复刻，技术栈仍是 Element Plus——所以这里做的是
+ * 「把 EP 组件的尺寸档与外壳调到原型值」，不替换组件。
+ *
+ * 【作用域】全部规则以 body.admin-scope 限定（router afterEach 按 /admin 前缀挂到 body，
+ * 见 router/index.js）。挂 body 而非布局根，是为了覆盖 teleport 到 body 的弹窗 / 抽屉 /
+ * 消息框；员工端路由不带该类，控件仍是 EP 默认 32px 档。
+ *
+ * 【分区】
+ *   1. 控件密度（A5）：输入 / 下拉 / 按钮 38px；表头 48px、行 60px、cell padding 0 16px
+ *   2. 分页器（A7）：「共 N 条 · 每页 X 条 ‹ 页码 ›」一行右对齐，page-btn 28px
+ *   3. 确认弹窗（A8）：440px 居中、无图标、h3 标题 + 正文、右对齐 取消(plain)/确认
+ *   4. 抽屉分区卡 .section-card（S1）：白卡 + 灰底卡头标题条（壳与样式类，编辑器内部改造归后续批次）
+ * 页面壳（.page 限宽 / 灰底）在 layouts/AdminLayout.vue；表格白卡 .table-wrap 在 theme.css；
+ * 抽屉外壳（780 / 灰底 / 头脚 66px）在 components/admin/DrawerEditor.vue 非 scoped 块。
+ * 颜色一律走 tokens.css 的 --*-admin-* 令牌（浅色照原型值，暗色映射既有暗色令牌）。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 1. 控件密度（原型 L27–33：.input,.select{height:38px} .primary,.plain{height:38px}）
+ * EP 的 el-input 高度走 --el-component-size；el-button 走 --el-button-size；
+ * el-select 的 wrapper 是写死的 min-height:32px，需单独覆盖。
+ * 显式传了 size（small / large）的控件保持自己的档位（表格行内、弹窗脚部小按钮等）；
+ * link / text 按钮无高度语义，排除。
+ * ------------------------------------------------------------------------ */
+body.admin-scope {
+  --el-component-size: 38px;
+}
+body.admin-scope .el-button:not(.el-button--small):not(.el-button--large):not(.is-link):not(.is-text):not(.is-circle) {
+  --el-button-size: 38px;
+}
+/* 主按钮左右 18px（原型 .primary{padding:0 18px}）；plain 保持 EP 默认 15px（原型 .plain{padding:0 15px}） */
+body.admin-scope .el-button--primary:not(.is-plain):not(.el-button--small):not(.is-link):not(.is-text):not(.is-circle) {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+body.admin-scope .el-select:not(.el-select--small):not(.el-select--large) .el-select__wrapper {
+  min-height: 38px;
+}
+/* 表格行内的按钮 / 输入不跟随 38px 档（行高 60px 内放 38px 控件会顶满，仍按 EP 默认） */
+body.admin-scope .el-table .el-button:not(.el-button--large):not(.is-link):not(.is-text) {
+  --el-button-size: 32px;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+body.admin-scope .el-table {
+  --el-component-size: 32px;
+}
+
+/* 表格（原型 L38–40 + L1740）：th 48px / 13px / 底 #f2f5f3；td 60px；cell padding 0 16px；行 hover #f7faf8 */
+body.admin-scope .el-table {
+  --el-table-header-bg-color: var(--bg-admin-table-head);
+  --el-table-header-text-color: var(--c-admin-table-head);
+  --el-table-row-hover-bg-color: var(--bg-admin-row-hover);
+  --el-table-border-color: var(--border-soft);
+}
+body.admin-scope .el-table th.el-table__cell {
+  height: 48px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+}
+body.admin-scope .el-table td.el-table__cell {
+  height: 60px;
+  padding: 0;
+}
+body.admin-scope .el-table .el-table__cell .cell {
+  padding: 0 16px;
+  line-height: 1.5;
+}
+/* 固定列 hover 叠色随行 hover 令牌走（theme.css 里用 --bg-hover，这里跟表格 hover 对齐） */
+body.admin-scope .el-table__body tr.hover-row > td.el-table-fixed-column--left,
+body.admin-scope .el-table__body tr.hover-row > td.el-table-fixed-column--right,
+body.admin-scope .el-table__body tr > td.hover-cell.el-table-fixed-column--left,
+body.admin-scope .el-table__body tr > td.hover-cell.el-table-fixed-column--right {
+  box-shadow: inset 0 0 0 9999px var(--bg-admin-row-hover);
+}
+
+/* 搜索框（原型 L110 .module-toolbar .search{width:300px}）：list-page.css 的 .lt-search 在后台提到 300px */
+body.admin-scope .lt-search {
+  width: 300px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 分页器（原型 L13 .pager / L1512 .fm5-pager / L1549 pagerHtml）
+ * 结构由 components/admin/ListPagination.vue 渲染：
+ *   <div class="list-pager"><span class="list-pager-info">共 N 条 · 每页 X 条</span>
+ *     <button class="page-btn">‹</button> <button class="page-btn active">1</button> … <button class="page-btn">›</button>
+ * 右对齐、gap 5、margin-top 16；page-btn 28px 圆角 4，hover / 当前页绿软底绿字。
+ * 写成全局是因为分页条不止列表页用（岗位管理两页签、抽屉内表格），且与原型 DOM 同名便于比对。
+ * ------------------------------------------------------------------------ */
+.list-pager {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  margin-top: 16px;
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+.list-pager-info {
+  margin-right: 10px;
+}
+.list-pager .page-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.list-pager .page-btn:hover,
+.list-pager .page-btn.active {
+  background: var(--c-accent-fill);
+  color: var(--c-accent);
+}
+.list-pager .page-btn.active {
+  font-weight: var(--fw-semibold);
+}
+.list-pager .page-btn:disabled {
+  color: var(--c-text-faint);
+  background: var(--bg-surface);
+  cursor: not-allowed;
+}
+.list-pager .page-ellipsis {
+  min-width: 20px;
+  text-align: center;
+  color: var(--c-text-faint);
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 确认弹窗（原型 L15 .modal：width min(440px) / padding 22 / 圆角 8 / h3 标题 + p 正文 /
+ *    .modal-actions 右对齐 gap 9 margin-top 20；无 warning 图标、无右上 ×）
+ * 由 composables/useConfirm.js 统一注入 customClass="admin-confirm"，页面不各写选项。
+ * 危险操作确认键保留 danger 红档（代码既有约定，原型全绿属简化，不搬）。
+ * ------------------------------------------------------------------------ */
+.el-message-box.admin-confirm {
+  --el-messagebox-width: 440px;
+  --el-messagebox-border-radius: 8px;
+  --el-messagebox-padding-primary: 22px;
+  border: 0;
+  box-shadow: var(--shadow-lg);
+}
+.el-message-box.admin-confirm .el-message-box__header {
+  padding: 0 0 10px;
+}
+.el-message-box.admin-confirm .el-message-box__title {
+  font-size: 17px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+  color: var(--c-text-strong);
+}
+.el-message-box.admin-confirm .el-message-box__content {
+  padding: 0;
+  color: var(--c-text-muted);
+  line-height: 1.7;
+  font-size: var(--fs-base);
+}
+.el-message-box.admin-confirm .el-message-box__message p {
+  margin: 0;
+}
+.el-message-box.admin-confirm .el-message-box__btns {
+  padding: 20px 0 0;
+  gap: 9px;
+}
+.el-message-box.admin-confirm .el-message-box__btns .el-button + .el-button {
+  margin-left: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. 抽屉分区卡 .section-card（原型 L16 → L47 Taste 层最终值）
+ *   卡：白底、1px 描边 #dde4e0、圆角 10、padding 0 20px 20px、浅阴影、卡间距 20
+ *   卡头 .section-title：min-height 52、负外边距贴边、灰底 #f8faf9、下分隔线、15px/650
+ *   副注 .section-sub：左距 8、12px、弱色
+ *   卡头右侧动作位：.section-head（= 原型 .tools-head）两端对齐，内含 .section-title + 按钮
+ * 本批只提供壳与样式类；各编辑器把自己的 <section> 换成这组类归后续批次。
+ * 「被技能引用」保持非卡片（.reference-section），时间行 .page-time 弱色带上边线。
+ * ------------------------------------------------------------------------ */
+body.admin-scope .section-card {
+  margin-bottom: 20px;
+  padding: 0 20px 20px;
+  border: 1px solid var(--border-admin-card);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-admin-card);
+  overflow: hidden;
+}
+body.admin-scope .section-card:last-child {
+  margin-bottom: 0;
+}
+body.admin-scope .section-card > .section-title,
+body.admin-scope .section-card > .section-head {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  margin: 0 -20px 20px;
+  padding: 0 20px;
+  background: var(--bg-admin-card-head);
+  border-bottom: 1px solid var(--border-admin-card);
+}
+body.admin-scope .section-card > .section-head {
+  justify-content: space-between;
+  gap: 16px;
+}
+body.admin-scope .section-card > .section-head > .section-title {
+  margin: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+body.admin-scope .section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--c-text-strong);
+}
+body.admin-scope .section-sub {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: var(--fw-regular);
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+body.admin-scope .reference-section {
+  margin: 24px 3px 18px;
+}
+body.admin-scope .page-time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 4px;
+  padding: 14px 2px 2px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--c-text-muted);
+}

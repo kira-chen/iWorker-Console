@@ -18,9 +18,10 @@
  * teleport 到 body 的固定吸底条覆盖在抽屉底部动作区上（宽度随抽屉宽），按钮由调用方
  * 通过 buttons 传入、点击经 action 事件上抛。z-index 取 3000（高于 EP 弹层默认递增区间）。
  *
- * 【抽屉宽度】PRD §4.1 要求专家/岗位/MCP/API/业务系统 780px、模型 820px；既有编辑器
- * 统一走 DrawerEditor 默认 720px 且不外露宽度入参（不改编辑器），故仅本组件自持的
- * POSITION 抽屉按 780px 落地，其余维持编辑器现宽（差异已在 PRD-review 记录待拍板）。
+ * 【抽屉宽度】PRD §4.1 要求专家/岗位/MCP/API/业务系统 780px、模型 820px。
+ * 2026-09-08 原型复刻批次 1（G-2 / G-3）：DrawerEditor 默认已改 780px、模型抽屉传 820px，
+ * 与 PRD 一致；吸底条宽度随之 780 / 820（此前 MODEL 分支误按「居中弹窗」返回 100%，
+ * 吸底条横跨整个视口——ModelConfigEditDialog 自 2026-08-20 起已是抽屉，属过期注释导致的 bug，已修）。
  */
 import { ref, computed, watch } from 'vue'
 import ExpertEditor from '@/components/admin/ExpertEditor.vue'
@@ -82,12 +83,11 @@ const modelObj = computed(
     (props.item ? { id: props.refId, name: displayName.value, description: props.item.description || '' } : null)
 )
 
-// 吸底条宽度随抽屉宽：POSITION 自持抽屉 780px；MODEL 为居中弹窗 → 通栏；其余编辑器 720px
-const barWidth = computed(() => {
-  if (props.kind === 'POSITION') return '780px'
-  if (props.kind === 'MODEL') return '100%'
-  return '720px'
-})
+// 吸底条宽度随抽屉宽：模型抽屉 820px（ModelConfigEditDialog size="820px"），
+// 其余（POSITION 自持抽屉 / 专家 / MCP / API / 业务系统 = DrawerEditor 默认）780px。
+// 抽屉本身是 min(宽, 视口)，吸底条同样封顶 100vw，窄窗口下不越出抽屉。
+const DRAWER_W = { MODEL: 820 }
+const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
 </script>
 
 <template>
@@ -217,10 +217,15 @@ const barWidth = computed(() => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
+  /* 与 DrawerEditor 脚部同尺寸（66px / 0 28px / gap 10），正好盖住抽屉自带的「关闭」条 */
+  gap: 10px;
+  height: 66px;
+  padding: 0 28px;
   background: var(--bg-elevated);
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--border-base);
   box-sizing: border-box;
+}
+.god-bar .el-button + .el-button {
+  margin-left: 0;
 }
 </style>

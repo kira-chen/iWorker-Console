@@ -17,7 +17,8 @@
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmDialog, alertDialog } from '@/composables/useConfirm'
 import { Search } from '@element-plus/icons-vue'
 import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -57,9 +58,8 @@ const query = reactive({ keyword: '', status: 'all', sort: 'desc' })
 const busyId = ref(null)
 
 /* ---------- 服务端分页：取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md） ---------- */
-// 分页保持现有 ListPagination 固定分页（动态分页 Q1 待拍板）。每页 12 沿用本页原值。
+// 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7/B1，负责人拍板全站统一；原固定 12 已移除）。
 const list = useAdminList(listPositions, {
-  pageSize: 12,
   params: () => ({ keyword: query.keyword.trim(), status: query.status || 'all', sort: query.sort })
 })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
@@ -305,16 +305,13 @@ const versionAdapter = computed(() => {
 /* ---------- 列表【撤回】（审核中行，原型 position-withdraw modal） ---------- */
 async function withdrawFromList(row) {
   if (busyId.value != null) return
-  try {
-    // md 三.二.3.4：确认窗口说明撤回后恢复提交审核前的状态
-    await ElMessageBox.confirm(
-      `「${row.name}」当前处于审核中。撤回后恢复提交审核前的状态。`,
-      '撤回审核申请',
-      { type: 'warning', confirmButtonText: '撤回申请' }
-    )
-  } catch {
-    return
-  }
+  // md 三.二.3.4：确认窗口说明撤回后恢复提交审核前的状态（统一 440px 无图标确认框，2026-09-08 原型复刻批次 1）
+  const ok = await confirmDialog(
+    `「${row.name}」当前处于审核中。撤回后恢复提交审核前的状态。`,
+    '撤回审核申请',
+    { confirmText: '撤回申请' }
+  )
+  if (!ok) return
   busyId.value = row.positionId
   try {
     // mock 侧同步清 pendingVersion / pendingReleaseNotes
@@ -335,23 +332,16 @@ async function stopPosition(row) {
   const claimCount = row.claimedUserCount ?? 0
   if (claimCount > 0) {
     // 有领用：提示窗（单按钮「知道了」，不执行停用；文案照新 md 三.二.3.5，2026-09-04 对齐）
-    await ElMessageBox.alert(
-      `该岗位已被 ${claimCount} 个用户领用，需先解除领用后再停用`,
-      '停用岗位',
-      { confirmButtonText: '知道了' }
-    ).catch(() => {})
+    await alertDialog(`该岗位已被 ${claimCount} 个用户领用，需先解除领用后再停用`, '停用岗位', { confirmText: '知道了' })
     return
   }
-  try {
-    // md 三.二.3.5：确认文案与按钮逐字
-    await ElMessageBox.confirm(
-      `停用「${row.name}」需提交停用审核。审核通过前客户端仍可正常使用。`,
-      '停用岗位',
-      { type: 'warning', confirmButtonText: '提交停用审核', confirmButtonClass: 'el-button--warning' }
-    )
-  } catch {
-    return
-  }
+  // md 三.二.3.5：确认文案与按钮逐字；确认键保留 warning 橙档（代码约定，原型全绿属简化）
+  const ok = await confirmDialog(
+    `停用「${row.name}」需提交停用审核。审核通过前客户端仍可正常使用。`,
+    '停用岗位',
+    { confirmText: '提交停用审核', warning: true }
+  )
+  if (!ok) return
   busyId.value = row.positionId
   try {
     await unpublishPosition(row.positionId)
@@ -378,22 +368,15 @@ async function remove(row) {
   const claimCount = row.claimedUserCount ?? 0
   if (claimCount > 0) {
     // 有领用：不可删除，提示先解除领用（文案照新 md）
-    await ElMessageBox.alert(
-      `该岗位已被 ${claimCount} 个用户领用，需先解除领用后再删除`,
-      '删除岗位',
-      { confirmButtonText: '知道了' }
-    ).catch(() => {})
+    await alertDialog(`该岗位已被 ${claimCount} 个用户领用，需先解除领用后再删除`, '删除岗位', { confirmText: '知道了' })
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `删除后「${row.name}」将不可用，确认删除？`,
-      '删除岗位',
-      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
-    )
-  } catch {
-    return
-  }
+  // 确认键保留 danger 红档（代码约定，原型全绿属简化）
+  const ok = await confirmDialog(`删除后「${row.name}」将不可用，确认删除？`, '删除岗位', {
+    confirmText: '删除',
+    danger: true
+  })
+  if (!ok) return
   busyId.value = row.positionId
   try {
     await deletePosition(row.positionId, row.name)
@@ -587,7 +570,7 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
         </el-table>
       </ListStates>
 
-      <!-- 底部分页（自造说明行已删，2026-09-01 PRD 对齐；ListPagination 单页时自动不渲染） -->
+      <!-- 底部分页（统一控件，恒显「共 N 条 · 每页 X 条 ‹ 页码 ›」，2026-09-08 原型复刻批次 1） -->
       <div v-if="rows.length" class="pos-foot">
         <ListPagination
           v-model:page="page"

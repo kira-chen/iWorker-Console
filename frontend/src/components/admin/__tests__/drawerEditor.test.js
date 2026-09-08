@@ -172,9 +172,9 @@ describe('DrawerEditor · 底部动作条', () => {
 })
 
 describe('DrawerEditor · 外壳参数', () => {
-  it('默认 720px，可覆盖', () => {
+  it('默认 780px（2026-09-08 原型复刻批次 1 对齐：原型基座 .drawer 780px），可覆盖', () => {
     mount()
-    expect(container.querySelector('.el-drawer').dataset.size).toBe('720px')
+    expect(container.querySelector('.el-drawer').dataset.size).toBe('780px')
     app.unmount(); container.remove()
     mount({ size: '480px' })
     expect(container.querySelector('.el-drawer').dataset.size).toBe('480px')

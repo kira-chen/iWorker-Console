@@ -215,7 +215,8 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
 
     listExperts.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
-    expect(container.querySelector('.el-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
+    // 2026-09-08 原型复刻批次 1 对齐：空态改纯文字（ListStates .ls-empty），不再走 el-empty 插图
+    expect(container.querySelector('.ls-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
   })
 
   it('操作列按状态：已发布=查看/编辑/停用/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {

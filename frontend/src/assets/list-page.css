@@ -24,12 +24,14 @@
   flex-direction: column;
   gap: var(--space-5);
 }
-/* 页头→工具栏间距只由 gap 给一次：PageHeader 自带的 margin-bottom(20px) 在 flex-gap 容器里会叠成 40px，
- * 这里清零（用 header 标签提升特异性以压过组件 scoped 规则）。非列表页不受影响，那里页头边距仍是唯一来源。
- * 连接器页根容器 .connector-page 同为 gap 容器，同样处理，保证「页头→首个内容块」全后台同为 20px。 */
+/* 页头→工具栏间距：PageHeader 自带的 margin-bottom(20px) 在 flex-gap 容器里会叠成 40px，
+ * 这里压成 8px（用 header 标签提升特异性以压过组件 scoped 规则）：gap 20 + 8 = 28，
+ * 即原型 L110 `.page-head+.module-hidden+#view{margin-top:28px}` 的「页头 → 首个内容块 28px」
+ * （2026-09-08 原型复刻批次 1 · A4；此前为 0 = 20px）。工具栏 → 表格 → 分页之间仍是 20。
+ * 非列表页不受影响，那里页头边距仍是唯一来源。连接器页根容器 .connector-page 同为 gap 容器，同样处理。 */
 .list-page > header.page-header,
 .connector-page > header.page-header {
-  margin-bottom: 0;
+  margin-bottom: 8px;
 }
 
 .list-toolbar {

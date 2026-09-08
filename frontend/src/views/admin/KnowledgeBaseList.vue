@@ -47,6 +47,7 @@ import {
   sourcesText,
   hasUploadSource
 } from '@/utils/knowledgeBaseMeta'
+import { parseKbQuery, KB_QUERY } from '@/utils/knowledgeDeepLink'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,16 +125,15 @@ const doDelete = (row) => confirmThen('remove', deleteKnowledgeBase, row)
 /* ---------- 跨模块 query 消费（md §三.8） ---------- */
 let queryConsumed = false
 async function consumeRouteQuery() {
-  const q = route.query || {}
-  if (q.positionId) {
-    positionCtx.value = { id: String(q.positionId), name: q.positionName ? String(q.positionName) : '' }
+  // 键名单一来源 utils/knowledgeDeepLink（发送端 PositionDetailTabs / ExpertEditor 同源；2026-09-08 C-H2 修对齐）
+  const { action, kbId, positionId, positionName } = parseKbQuery(route.query)
+  if (positionId) {
+    positionCtx.value = { id: positionId, name: positionName }
     // 从岗位详情跳入：列表筛选自动切为岗位类型（md §三.8 注）
     typeFilter.value = 'POSITION'
   }
   if (queryConsumed) return
   queryConsumed = true
-  const action = q.action
-  const kbId = q.kbId ? String(q.kbId) : null
   if (!action) return
   if (action === 'create') {
     openCreate()
@@ -150,7 +150,7 @@ async function consumeRouteQuery() {
     }
   }
   // action / kbId 一次性消费后清掉，避免刷新重复触发（tab / positionId 保留）
-  const { action: _a, kbId: _k, ...rest } = route.query
+  const { [KB_QUERY.ACTION]: _a, [KB_QUERY.KB_ID]: _k, ...rest } = route.query
   router.replace({ query: rest })
 }
 

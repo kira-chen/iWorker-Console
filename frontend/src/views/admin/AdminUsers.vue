@@ -7,8 +7,8 @@
  * 护栏错误（如删最后一个 ADMIN）走 message 提示（写接口 skipGlobalError）。
  *
  * 2026-09-01 PRD 对齐（原型 renderUsers L228）：第六列「创建时间」→「最近登录时间」（从未登录显
- * 「从未登录」、列头可排序默认倒序、从未登录恒排最后——mock 侧比较器口径）；每页 10 条（原型
- * 用户页密度）；「更多」删除项文案「删除用户」；重置密码确认带独立一行「默认密码：wemate123」。
+ * 「从未登录」、列头可排序默认倒序、从未登录恒排最后——mock 侧比较器口径）；每页条数按窗口高度
+ * 动态计算（2026-09-08 原型复刻批次 1，原每页 10 条废止）；「更多」删除项文案「删除用户」；重置密码确认带独立一行「默认密码：wemate123」。
  * 其余交互（Y1-Y8）保持现状。数据走 adminUserMock（api 层分流，VITE_ORG_MOCK=0 关闭）。
  *
  * 页面骨架照抄连接器范式（conn.css 共享类 + 单行 toolbar）；取数编排走 useAdminList，
@@ -35,8 +35,8 @@ const query = reactive({ keyword: '', roleCode: '', status: '', sort: 'desc' })
 
 // 取数编排统一走 useAdminList（列表页规范，见 docs/frontend/规范-管理后台列表页.md）：
 // 四态 / 分页 / 空筛选项过滤 / 防空页回退 / 竞态防护均由其承担，本页只描述「取什么」。
-// 每页 10 条（2026-09-01 对齐原型用户页密度，不沿用全站默认 20）。
-const list = useAdminList(listUsers, { pageSize: 10, params: () => ({ ...query }) })
+// 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · G#2，原「每页 10 条」覆盖已移除，全站统一）
+const list = useAdminList(listUsers, { params: () => ({ ...query }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 
 // 角色选项（供过滤下拉 + 编辑/设置角色弹窗复用）

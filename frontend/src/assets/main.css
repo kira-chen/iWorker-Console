@@ -3,6 +3,7 @@
 @import './theme.css';
 @import './connector.css';
 @import './list-page.css';
+@import './admin-shell.css';
 @import './position-detail.css';
 
 * {
