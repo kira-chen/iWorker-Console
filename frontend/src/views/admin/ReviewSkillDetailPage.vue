@@ -1,5 +1,9 @@
 <script setup>
 /**
+ * 【已退役 · 2026-09-08 PRD-20260908 对齐】md §五「查看技能」为列表页右侧抽屉（components/admin/UserSkillAuditDrawer.vue），
+ * 路由 /admin/user-skill-reviews/:id/view 已改为深链重定向到列表页 ?view=<id>，本整页不再被路由引用，
+ * 保留仅作历史参考（删除需负责人确认）。下方逻辑按旧数据口径写成，仅做了 risks → riskItems 的最小适配以免直接挂载时报错。
+ *
  * 用户技能审核 · 技能详情页（V94，只读预览 + 审核）。
  *
  * 复用 SkillFocusEditor（与平台技能详情页同一组件、同视觉），传 :readonly + :review-mode：
@@ -51,13 +55,18 @@ async function load() {
   treeLoading.value = true
   try {
     const d = await getReviewApplication(reviewId.value)
-    riskItems.value = d?.riskItems || []
-    reviewStatus.value = d?.reviewStatus || ''
+    // 2026-09-08 新结构 risks[{item,level,detail}] → 旧右栏形状 {typeName,levelName,description}
+    riskItems.value = (d?.risks || []).map((r) => ({
+      typeName: r.item === '敏感信息明文凭证' ? '敏感信息' : r.item,
+      levelName: r.level,
+      description: r.detail
+    }))
+    reviewStatus.value = d?.status || ''
     // 合成一个只读 skill 对象喂给编辑器（正文由 SKILL.md 文件内容回填）。
     skill.value = {
       skillId: reviewId.value,
       name: d?.skillName || '',
-      description: d?.skillDescription || '',
+      description: d?.description || '',
       triggers: [],
       exampleQuestion: '',
       defaultInstall: false,

@@ -76,6 +76,8 @@ export function getKnowledgeSource(id) {
   return request.get(`${KS}/${id}`)
 }
 // body: { sourceType(建后不可改), name, status(ENABLED|DISABLED), config, authValue? }
+// config 按类型：UPLOAD=内置 RAG 配置；API=url/method/authType/authParams/requestMap/responseMap/timeoutMs（md §六）；
+// MCP=transport/endpoint/authType/authHeaderName/command/args/envVars/tools/timeoutMs（md §七；2026-09-08 起无 requestMap/responseMap）
 export function createKnowledgeSource(payload) {
   if (USE_MOCK) return mock.createSource(payload)
   return request.post(KS, payload, W)

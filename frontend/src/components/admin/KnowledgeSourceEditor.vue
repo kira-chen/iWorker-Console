@@ -2,20 +2,23 @@
 /**
  * 数据源配置抽屉（「数据源管理」子页的新建 / 编辑 / 查看），DrawerEditor 默认 780px（2026-09-08 原型复刻批次 1）。
  * 2026-09-07 按 PRD-20260904《prd.知识库.md》§六（API）/ §七（MCP）/ §八（状态与异常）
- * + 交互原型 sourceFields / kmcpMarkup 最终覆写生效态重排（字段口径以 md 为准，骨架照原型）。
+ * + 交互原型 sourceFields / kmcpMarkup 最终覆写生效态重排（字段口径以 md 为准，骨架照原型）；
+ * 2026-09-08 按 PRD-20260908 回齐：MCP 数据源删除请求 / 响应映射（md §七 两节删除，回退 2026-09-07 半边实现）；
+ * API 请求参数映射递归嵌套细化（md §六.2 七条：新建默认三级示例组、子层 4 列、层级提示、强调色、子字段校验）。
  *
  * 【公共字段】（md §四.3）名称（≤50 必填）/ 类型（上传·API·MCP，创建后不可修改）/ 状态（启用·停用）。
  * 【上传】（md §五）本轮冻结不动：文档类型 / 预处理 / 向量模型 / 检索方式 Top K。
  * 【API】（md §六）请求配置（地址 ≤500 http(s)、方法五枚举默认 POST、超时 1000~60000 默认 8000）
  *   → 鉴权配置（无鉴权 / API KEY 多参数表[ParamRowsEditor] / Bearer Token）
- *   → 请求参数映射 + 响应字段映射（SourceMappingEditor，预设行不可删）→ 测试连接。
+ *   → 请求参数映射 + 响应字段映射（SourceMappingEditor，预设行不可删；新建时注入 filters→rules→field/value 示例组）
+ *   → 测试连接。
  * 【MCP】（md §七）仅直接填写（「引用现有 MCP」模式已删除）：传输方式 streamable-http（Endpoint + 鉴权
  *   无鉴权/Bearer/API Key）或 stdio（Command 下拉 + Arguments 多行 + 环境变量表[ParamRowsEditor]）；
- *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）；映射与 API 完全同构共用组件；
- *   超时必填默认 10000 范围 1000~120000 → 测试连接。
+ *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）；
+ *   超时必填默认 10000 范围 1000~120000（md §七.4）→ 测试连接（md §七.5）。MCP 无映射配置。
  *
  * 敏感信息遮罩：明文只在提交瞬间存在，回显一律 maskSecret 掩码；编辑态留空=保留原值（md §八.2）。
- * 修改请求地址 / 鉴权 / 工具 / 映射 → 验证状态重置为未验证（md §六.4 / §七.7，mock 保存时同口径）。
+ * 修改请求地址 / 鉴权 / 映射（API）或服务地址 / 鉴权 / 工具（MCP）→ 验证状态重置为未验证（md §六.4 / §七.5，mock 保存时同口径）。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -42,6 +45,7 @@ import {
   MCP_DEFAULTS,
   API_METHOD_OPTIONS,
   mkRequestMapRows,
+  mkRequestMapExampleRows,
   mkResponseMapRows,
   validateRequestMap,
   validateResponseMap
@@ -111,8 +115,6 @@ const mcpArgsText = ref('')
 const mcpEnvRows = ref([])
 const mcpToolsSelected = ref([])
 const availableTools = ref([]) // 连接测试成功返回的工具清单（md §七.3）
-const mcpRequestRows = ref(mkRequestMapRows())
-const mcpResponseRows = ref(mkResponseMapRows())
 
 const fieldErrors = reactive({})
 const verify = ref(null)
@@ -204,7 +206,9 @@ function resetForm() {
   apiBearerToken.value = ''
   apiBearerMasked.value = ''
   loadedApiAuthType.value = 'NONE'
-  apiRequestRows.value = mkRequestMapRows()
+  // 新建：预设 query/topK + 三级递归示例组 filters→rules→field/value（md §六.2「新建 API 数据源默认展示」）；
+  // 编辑 / 查看已有源不注入（hydrate 以已存 requestMap 覆盖）
+  apiRequestRows.value = props.sourceId ? mkRequestMapRows() : [...mkRequestMapRows(), ...mkRequestMapExampleRows()]
   apiResponseRows.value = mkResponseMapRows()
   mcpCredential.value = ''
   mcpCredentialMasked.value = ''
@@ -213,8 +217,6 @@ function resetForm() {
   mcpEnvRows.value = []
   mcpToolsSelected.value = []
   availableTools.value = []
-  mcpRequestRows.value = mkRequestMapRows()
-  mcpResponseRows.value = mkResponseMapRows()
   verify.value = null
   clearErrors()
 }
@@ -253,8 +255,6 @@ function hydrate(d) {
     mcpToolsSelected.value = [...(cfg.tools || [])]
     // 已保存的选中工具先作为可选清单展示；重新测试后以测试返回清单为准（md §七.3）
     availableTools.value = [...(cfg.tools || [])]
-    mcpRequestRows.value = normalizeRequestRows(cfg.requestMap)
-    mcpResponseRows.value = normalizeResponseRows(cfg.responseMap)
   }
   verify.value = d.sourceType === 'UPLOAD' ? null : { verifyStatus: d.verifyStatus, verifiedAt: d.verifiedAt, verifyError: d.verifyError }
 }
@@ -282,7 +282,7 @@ watch(
   }
 )
 
-// 修改请求地址 / 鉴权 / 工具 / 映射 → 验证状态回未验证（md §六.4 / §七.7；mock 保存时同口径重置）
+// 修改请求地址 / 鉴权 / 映射（API）或服务地址 / 鉴权 / 工具（MCP）→ 验证状态回未验证（md §六.4 / §七.5；mock 保存时同口径重置）
 const connSig = computed(() => {
   if (form.sourceType === 'API') {
     return JSON.stringify([
@@ -304,9 +304,7 @@ const connSig = computed(() => {
       form.mcp.command,
       mcpArgsText.value,
       mcpEnvRows.value.map((r) => [r.key, r.clientFill, r.value]),
-      mcpToolsSelected.value,
-      mcpRequestRows.value,
-      mcpResponseRows.value
+      mcpToolsSelected.value
     ])
   }
   return ''
@@ -316,7 +314,7 @@ watch(connSig, () => {
   if (verify.value && verify.value.verifyStatus !== 'UNVERIFIED') verify.value = { verifyStatus: 'UNVERIFIED' }
 })
 
-/* ---------- 测试连接（API / MCP，md §六.4 / §七.7） ---------- */
+/* ---------- 测试连接（API / MCP，md §六.4 / §七.5） ---------- */
 async function doTest() {
   testing.value = true
   try {
@@ -365,6 +363,10 @@ const outParamRows = (rows, withIn) =>
       }
       return o
     })
+/**
+ * 请求映射行清洗（md §六.2）：空白自定义行丢弃；基础类型行不提交子字段（切基础类型时的 children 只是编辑期草稿）；
+ * object / array 递归清洗子字段（清洗后 children 为空由 validateRequestMap 报「至少需要一个有效子字段」）。
+ */
 function cleanRequestRows(rows) {
   const out = []
   for (const r of rows || []) {
@@ -414,8 +416,6 @@ function buildConfig() {
     args: mcpArgsText.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     envVars: form.mcp.transport === 'stdio' ? outParamRows(mcpEnvRows.value, false) : [],
     tools: [...mcpToolsSelected.value],
-    requestMap: cleanRequestRows(mcpRequestRows.value),
-    responseMap: cleanResponseRows(mcpResponseRows.value),
     timeoutMs: form.mcp.timeoutMs
   }
 }
@@ -425,7 +425,7 @@ function authValueOut() {
   if (form.sourceType === 'MCP') return form.mcp.authType !== 'none' ? mcpCredential.value.trim() || null : null
   return null
 }
-/** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.6），一次性标红全部问题项。 */
+/** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.4），一次性标红全部问题项。 */
 function validateTyped() {
   clearErrors()
   const errors = {}
@@ -457,10 +457,6 @@ function validateTyped() {
       if (envErr) errors.mcpEnv = envErr
     }
     if (!mcpToolsSelected.value.length) errors.mcpTools = '至少选择一个检索工具'
-    const reqErr = validateRequestMap(cleanRequestRows(mcpRequestRows.value))
-    if (reqErr) errors.mcpRequestMap = reqErr
-    const respErr = validateResponseMap(cleanResponseRows(mcpResponseRows.value))
-    if (respErr) errors.mcpResponseMap = respErr
   }
   Object.assign(fieldErrors, errors)
   return Object.keys(errors).length === 0
@@ -676,7 +672,6 @@ function close() {
         </section>
         <section class="ksrc-sec">
           <SourceMappingEditor
-            protocol="API"
             :request-rows="apiRequestRows"
             :response-rows="apiResponseRows"
             :readonly="viewMode"
@@ -689,7 +684,7 @@ function close() {
         </section>
       </template>
 
-      <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态：连接与鉴权卡 → 检索工具卡 → 两张映射卡片） -->
+      <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态 L1985：连接与鉴权卡 → 检索工具卡 → 测试提示；无映射卡） -->
       <template v-else>
         <section class="ksrc-sec">
           <div class="ksrc-sec-title">MCP 检索</div>
@@ -803,22 +798,12 @@ function close() {
             <div v-if="fieldErrors.mcpTools" class="ksrc-err">{{ fieldErrors.mcpTools }}</div>
           </div>
 
-          <SourceMappingEditor
-            protocol="MCP"
-            :request-rows="mcpRequestRows"
-            :response-rows="mcpResponseRows"
-            :readonly="viewMode"
-            :request-error="fieldErrors.mcpRequestMap"
-            :response-error="fieldErrors.mcpResponseMap"
-            @update:request-rows="mcpRequestRows = $event"
-            @update:response-rows="mcpResponseRows = $event"
-            @interact="delete fieldErrors.mcpRequestMap; delete fieldErrors.mcpResponseMap"
-          />
-          <div class="ksrc-note ksrc-test-note">保存前可使用下方“测试连接”验证连接、工具调用及字段映射。</div>
+          <!-- 文案照原型 L1985 kmcp-test-note（该行 class 弯引号为原型缺陷，不搬） -->
+          <div class="ksrc-note ksrc-test-note">保存前可使用下方“测试连接”验证连接与工具调用。</div>
         </section>
       </template>
 
-      <!-- 测试连接（API / MCP 共用，md §六.4 / §七.7） -->
+      <!-- 测试连接（API / MCP 共用，md §六.4 / §七.5） -->
       <section v-if="form.sourceType !== 'UPLOAD'" class="ksrc-sec">
         <div class="ksrc-row ksrc-inline">
           <el-button size="small" :loading="testing" @click="doTest">测试连接</el-button>

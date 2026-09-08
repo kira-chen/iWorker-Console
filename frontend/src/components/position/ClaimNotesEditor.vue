@@ -1,14 +1,15 @@
 <script setup>
 /**
- * 岗位认领说明编辑器（2026-09-04 PRD-20260903 对齐，md 三.2.3；
- * 2026-09-04 返工：排版结构照交互原型「领用页文案」卡最终覆写态，区块标题维持 Q7 现名）。
+ * 领用页文案编辑器（原「岗位认领说明」；2026-09-08 PRD-20260908 对齐 md §2.3 改名，
+ * 文案逐字照 md / 原型领用页文案卡 L4240–4290；可选，不参与发布阻断）。
  *
- * 动态列表，一行一条说明（纯文本，≤6 条 × 100 字）：
- * - 编辑态：每条 = 序号圆点 + 行内无边框输入框（就地改，实时回吐）+ 右侧【删除】；
+ * 动态文本列表，一行一条（纯文本，≤6 条 × 100 字）：
+ * - 编辑态：每条 = 序号圆点 + 行内无边框输入框（就地改，实时回吐）+ 右侧【删除】（toast「领用页文案已删除」）；
  * - 只读态：序号圆点 + 文本，无操作入口；
- * - 空态：「还没有岗位认领说明，点击"新增一条"添加」；
- * - 新增：入口按钮在宿主卡片头（照原型「＋ 新增一条」在卡头右侧），经 defineExpose 的
- *   startAdd 触发；展开草稿行（输入框 +【保存】【取消】），非空校验后入列并 toast；
+ * - 空态：「暂无领用页文案，点击"新增一条"添加」；
+ * - 新增：入口按钮在宿主卡片头（照原型「＋ 新增一条」在卡头右侧，满 6 条隐藏），经 defineExpose 的
+ *   startAdd 触发；展开草稿行（输入框 +【取消】【保存】），空条目 toast「请输入领用页文案」、
+ *   达上限 toast「领用页文案最多 6 条」、入列 toast「领用页文案已保存」；
  * - 底部 hint「每条最多 100 个字符」照原型置于卡片体底部（本组件内）。
  *
  * 数据流：v-model 纯字符串数组；新增/删除时整组回吐，行内改动实时回吐（父级手动保存范式，
@@ -19,7 +20,7 @@ import { ElMessage } from 'element-plus'
 import { CLAIM_NOTE_MAX, CLAIM_NOTE_LEN } from '@/utils/positionModel'
 
 const props = defineProps({
-  // 纯文本认领说明数组
+  // 纯文本领用页文案数组（底层字段 claimDescriptions）
   modelValue: { type: Array, default: () => [] },
   // 只读态：行内输入变文本，隐藏新增 / 删除入口
   readonly: { type: Boolean, default: false }
@@ -50,17 +51,17 @@ function saveAdd() {
   const v = String(draft.value || '').trim()
   if (!v) {
     draftInvalid.value = true
-    ElMessage.warning('请输入岗位认领说明')
+    ElMessage.warning('请输入领用页文案')
     return
   }
   if (atLimit.value) {
-    ElMessage.warning(`岗位认领说明最多 ${CLAIM_NOTE_MAX} 条`)
+    ElMessage.warning(`领用页文案最多 ${CLAIM_NOTE_MAX} 条`)
     return
   }
   emit('update:modelValue', [...items.value, v])
   editing.value = false
   draft.value = ''
-  ElMessage.success('岗位认领说明已保存')
+  ElMessage.success('领用页文案已保存')
 }
 // 行内就地编辑：实时回吐该条新值（保存仍由页面顶部【保存】统一提交）
 function onItemInput(idx, val) {
@@ -72,9 +73,10 @@ function removeAt(idx) {
   const next = items.value.slice()
   next.splice(idx, 1)
   emit('update:modelValue', next)
+  ElMessage.success('领用页文案已删除')
 }
 
-// 宿主（岗位详情「岗位认领说明」卡）用：卡片头「＋ 新增一条」直调 + 按钮显隐
+// 宿主（岗位详情「领用页文案」卡）用：卡片头「＋ 新增一条」直调 + 按钮显隐
 defineExpose({ startAdd, editing, atLimit })
 </script>
 
@@ -89,19 +91,19 @@ defineExpose({ startAdd, editing, atLimit })
             class="cn-inline"
             :model-value="text"
             :maxlength="CLAIM_NOTE_LEN"
-            :aria-label="`岗位认领说明 ${idx + 1}`"
+            :aria-label="`领用页文案 ${idx + 1}`"
             @update:model-value="onItemInput(idx, $event)"
           />
           <el-button link type="danger" class="cn-del" @click="removeAt(idx)">删除</el-button>
         </template>
       </div>
-      <div v-if="!items.length && !editing" class="cn-empty">还没有岗位认领说明，点击"新增一条"添加</div>
+      <div v-if="!items.length && !editing" class="cn-empty">暂无领用页文案，点击"新增一条"添加</div>
       <div v-if="editing && !readonly" class="cn-form">
         <el-input
           ref="inputRef"
           v-model="draft"
           :maxlength="CLAIM_NOTE_LEN"
-          placeholder="请输入一条岗位认领说明"
+          placeholder="请输入员工领用时看到的一条卖点"
           :class="{ 'cn-invalid': draftInvalid }"
           @input="draftInvalid = false"
           @keyup.enter="saveAdd"

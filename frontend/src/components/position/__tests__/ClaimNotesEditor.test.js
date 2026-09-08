@@ -4,7 +4,8 @@ import { createApp, h, ref, nextTick } from 'vue'
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 
 /**
- * 岗位认领说明编辑器单测（2026-09-04 PRD-20260903 对齐，md 三.2.3；
+ * 领用页文案编辑器单测（原「岗位认领说明」；2026-09-08 PRD-20260908 对齐 md §2.3 改名，文案逐字照 md / 原型 L4240；
+ * 2026-09-04 PRD-20260903 对齐首建，md 三.2.3；
  * 2026-09-04 卡片化返工同步更新：新增入口移宿主卡片头（defineExpose startAdd / editing / atLimit），
  * 列表行改行内输入框就地编辑并实时回吐，空态/hint 文案照原型排版）。
  * 覆盖：空态文案 / 行内编辑回吐 / 新增-保存-取消流转 / 保存 toast / 删除回吐 /
@@ -55,10 +56,10 @@ afterEach(() => {
 
 const btnByText = (root, text) => [...root.querySelectorAll('.stub-btn')].find((b) => b.textContent.trim() === text)
 
-describe('ClaimNotesEditor · 岗位认领说明（md 三.2.3 · 卡片化返工态）', () => {
+describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260908 对齐）', () => {
   it('空态文案照原型排版；列表态渲染序号圆点 + 行内输入框 + 删除 + 底部 hint', () => {
     const empty = mount([])
-    expect(empty.container.textContent).toContain('还没有岗位认领说明，点击"新增一条"添加')
+    expect(empty.container.textContent).toContain('暂无领用页文案，点击"新增一条"添加')
     app.unmount(); container.remove()
     const { container: c } = mount(['第一条', '第二条'])
     expect(c.querySelectorAll('.cn-item').length).toBe(2)
@@ -87,13 +88,14 @@ describe('ClaimNotesEditor · 岗位认领说明（md 三.2.3 · 卡片化返工
     const input = c.querySelector('.cn-form .stub-input')
     expect(input).toBeTruthy()
     expect(input.getAttribute('maxlength')).toBe('100')
+    expect(input.getAttribute('placeholder')).toBe('请输入员工领用时看到的一条卖点')
     input.value = '新说明'
     input.dispatchEvent(new Event('input'))
     await nextTick()
     btnByText(c, '保存').click()
     await nextTick()
     expect(emitted.at(-1)).toEqual(['已有', '新说明'])
-    expect(ElMessage.success).toHaveBeenCalledWith('岗位认领说明已保存')
+    expect(ElMessage.success).toHaveBeenCalledWith('领用页文案已保存')
   })
 
   it('保存空内容被拦（toast 提示，不回吐）；取消收起草稿行', async () => {
@@ -103,18 +105,19 @@ describe('ClaimNotesEditor · 岗位认领说明（md 三.2.3 · 卡片化返工
     btnByText(c, '保存').click()
     await nextTick()
     expect(emitted.length).toBe(0)
-    expect(ElMessage.warning).toHaveBeenCalledWith('请输入岗位认领说明')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请输入领用页文案')
     btnByText(c, '取消').click()
     await nextTick()
     expect(c.querySelector('.cn-form')).toBeNull()
   })
 
-  it('删除某条 → 回吐移除后的数组', async () => {
+  it('删除某条 → 回吐移除后的数组 + toast「领用页文案已删除」', async () => {
     const { container: c, emitted } = mount(['a', 'b', 'c'])
     const dels = [...c.querySelectorAll('.stub-btn')].filter((b) => b.textContent.trim() === '删除')
     dels[1].click()
     await nextTick()
     expect(emitted[0]).toEqual(['a', 'c'])
+    expect(ElMessage.success).toHaveBeenCalledWith('领用页文案已删除')
   })
 
   it('满 6 条 atLimit=true 且 startAdd 不展开；只读态无输入框/删除入口且 startAdd 不生效', async () => {

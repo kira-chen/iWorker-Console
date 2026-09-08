@@ -160,7 +160,7 @@ describe('N4 推荐问题（固定 4 格）', () => {
 })
 
 describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', () => {
-  it('上限常量与新 md 口径一致：描述 500 / 认领说明 6×100 / 示例问题 3×60 / SOP 4000', () => {
+  it('上限常量与新 md 口径一致：描述 500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 6×100 / 示例问题 3×60 / SOP 4000', () => {
     expect(DESCRIPTION_MAX_LEN).toBe(500)
     expect(CLAIM_NOTE_MAX).toBe(6)
     expect(CLAIM_NOTE_LEN).toBe(100)
@@ -331,82 +331,73 @@ describe('normalizePublishWarnings（发布告警归一，契约 §1.6.1）', ()
 })
 
 describe('computePublishCheck（发布前检查）', () => {
-  // 2026-09-04 PRD-20260903 对齐：原 N4「推荐问题 4 条」项改为「示例问题 3 条」（key=exampleQuestions），
-  // 本组断言按新口径重写。
-  it('全满足 → blockingPassed=true', () => {
-    const c = computePublishCheck({
-      name: '销售',
-      agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      intakeSchema: [{ type: 'single_select', options: ['a'] }],
-      exampleQuestions: ['q1', 'q2', 'q3']
-    })
+  // 2026-09-08 PRD-20260908 对齐：清单改 md §9.2 / 原型 L2132 四行——岗位名称与描述 / 示例问题 / 岗位 SOP 硬阻断，
+  // Agent 与技能 ! 警告不阻断；旧「≥1 Agent 且每 Agent ≥1 技能」「采集字段定义完整」硬阻断已删（md §3.4 / §6.5）。
+  const FULL = { name: '销售', description: '负责销售', positionSop: '1. 先看数据', exampleQuestions: ['q1', 'q2', 'q3'] }
+  it('名称/描述/示例问题/SOP 全满足 → blockingPassed=true；清单四行文案照原型', () => {
+    const c = computePublishCheck({ ...FULL, agents: [] })
     expect(c.blockingPassed).toBe(true)
     expect(c.doneRatio).toBe(1)
+    expect(c.items.map((i) => i.label)).toEqual(['岗位名称与描述', '示例问题', '岗位 SOP', 'Agent 与技能'])
+    expect(c.items.map((i) => i.detail)).toEqual(['必填内容已填写', '3 条示例问题已填写', '岗位能力综述已填写', '存在未验证能力时不阻断发布'])
+    expect(c.warnings).toEqual([]) // 无未验证工具 → 不出「存在告警项」提示行
   })
   it('示例问题半填（少 1 条）→ 硬阻断', () => {
-    const c = computePublishCheck({
-      name: '销售',
-      agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      intakeSchema: [{ type: 'single_select', options: ['a'] }],
-      exampleQuestions: ['q1', 'q2', '']
-    })
+    const c = computePublishCheck({ ...FULL, exampleQuestions: ['q1', 'q2', ''] })
     const item = c.items.find((i) => i.key === 'exampleQuestions')
     expect(item.blocking).toBe(true)
     expect(item.ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
   it('示例问题缺字段（未传）→ 硬阻断', () => {
-    const c = computePublishCheck({
-      name: '销售',
-      agents: [{ name: 'A', skills: [{ skillId: 1 }] }]
-    })
+    const c = computePublishCheck({ ...FULL, exampleQuestions: undefined })
     expect(c.items.find((i) => i.key === 'exampleQuestions').ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
   it('示例问题 3 条全填 → 该项通过', () => {
-    const c = computePublishCheck({
-      name: '销售',
-      agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      exampleQuestions: ['帮我查', '帮我生成', '最近']
-    })
+    const c = computePublishCheck({ ...FULL, exampleQuestions: ['帮我查', '帮我生成', '最近'] })
     expect(c.items.find((i) => i.key === 'exampleQuestions').ok).toBe(true)
   })
-  it('缺岗位名 → 阻断', () => {
-    const c = computePublishCheck({ name: '', agents: [{ name: 'A', skills: [{ skillId: 1 }] }] })
+  it('缺岗位名 / 缺描述 → 「岗位名称与描述」阻断并点名缺项', () => {
+    let c = computePublishCheck({ ...FULL, name: '' })
     expect(c.blockingPassed).toBe(false)
     expect(c.items.find((i) => i.key === 'name').ok).toBe(false)
+    expect(c.items.find((i) => i.key === 'name').detail).toBe('请先填写：岗位名称')
+    c = computePublishCheck({ ...FULL, description: '' })
+    expect(c.items.find((i) => i.key === 'name').detail).toBe('请先填写：岗位描述')
   })
-  it('空 Agent → 阻断且列出空 Agent 名', () => {
-    const c = computePublishCheck({ name: 'x', agents: [{ name: '空组', skills: [] }] })
-    const item = c.items.find((i) => i.key === 'agents')
-    expect(item.ok).toBe(false)
-    expect(item.detail).toContain('空组')
+  it('缺岗位 SOP → 阻断', () => {
+    const c = computePublishCheck({ ...FULL, positionSop: '  ' })
+    expect(c.items.find((i) => i.key === 'sop').ok).toBe(false)
+    expect(c.blockingPassed).toBe(false)
   })
-  it('单/多选无选项 → 阻断', () => {
+  it('空 Agent / 无 Agent → 不阻断（md §6.5：Agent 与技能不参与发布阻断）', () => {
+    for (const agents of [[], [{ name: '空组', skills: [] }]]) {
+      const c = computePublishCheck({ ...FULL, agents })
+      expect(c.blockingPassed).toBe(true)
+      const item = c.items.find((i) => i.key === 'agents')
+      expect(item.blocking).toBe(false)
+      expect(item.warning).toBe(true)
+    }
+  })
+  it('单/多选无选项 → 不再是发布清单项（md §3.4 采集字段不参与发布阻断；抽屉保存时另拦）', () => {
+    const c = computePublishCheck({ ...FULL, intakeSchema: [{ type: 'single_select', label: '区域', options: [] }] })
+    expect(c.items.find((i) => i.key === 'intake')).toBeUndefined()
+    expect(c.blockingPassed).toBe(true)
+  })
+  it('异常工具 → Agent 与技能行写「存在 X 个工具未验证，不阻断发布」并计入 warnings（不阻断）', () => {
     const c = computePublishCheck({
-      name: 'x',
+      ...FULL,
       agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      intakeSchema: [{ type: 'single_select', label: '区域', options: [] }]
-    })
-    expect(c.items.find((i) => i.key === 'intake').ok).toBe(false)
-  })
-  it('异常工具 → warning 不阻断（收纳区退役：不再有「未绑定技能」warning）', () => {
-    const c = computePublishCheck({
-      name: 'x',
-      agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
-      exampleQuestions: ['q1', 'q2', 'q3'],
       // orphanSkills 已退役：即便传入也不应产生 warning（删 Agent 后技能脱离岗位、不属本岗位）。
       orphanSkills: [{ skillId: 9 }],
       unhealthyTools: ['crm']
     })
     expect(c.blockingPassed).toBe(true)
-    // 仅异常工具 1 条 warning（未绑定技能 warning 已删除）。
     expect(c.warnings.length).toBe(1)
+    expect(c.warnings[0].key).toBe('agents')
+    expect(c.warnings[0].detail).toBe('存在 1 个工具未验证，不阻断发布')
     expect(c.warnings.find((w) => w.key === 'orphan')).toBeUndefined()
-  })
-  it('无 Agent → 阻断', () => {
-    const c = computePublishCheck({ name: 'x', agents: [] })
-    expect(c.items.find((i) => i.key === 'agents').ok).toBe(false)
   })
 })
 

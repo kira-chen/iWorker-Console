@@ -75,7 +75,10 @@ const opLabels = (rowEl) => opBtns(rowEl).map((b) => b.textContent.trim())
 const LIST = [
   { id: 'ks_1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 1284, referencedBy: [{ id: 'kb_1', name: '产品库' }, { id: 'kb_2', name: '售前库' }] },
   { id: 'ks_2', name: '国标接口', sourceType: 'API', status: 'ENABLED', verifyStatus: 'SUCCESS', referencedBy: [] },
-  { id: 'ks_3', name: '法规 MCP', sourceType: 'MCP', status: 'DISABLED', verifyStatus: 'FAILED', referencedBy: [] }
+  { id: 'ks_3', name: '法规 MCP', sourceType: 'MCP', status: 'DISABLED', verifyStatus: 'FAILED', referencedBy: [] },
+  // 2026-09-08 决议第 9 项：mock 派生 summary 优先；MCP 已连通附所选工具名；新建未测试=未验证
+  { id: 'ks_4', name: '知识 MCP', sourceType: 'MCP', status: 'ENABLED', verifyStatus: 'SUCCESS', summary: '已连通 · search_documents、hybrid_search', config: { tools: ['search_documents', 'hybrid_search'] }, referencedBy: [] },
+  { id: 'ks_5', name: '新建接口', sourceType: 'API', status: 'ENABLED', verifyStatus: 'UNVERIFIED', referencedBy: [] }
 ]
 
 beforeEach(() => {
@@ -95,6 +98,15 @@ describe('KnowledgeSourceList 列表契约（2026-09-04 PRD-20260903 对齐）',
     expect(cell(rowByName('产品资料'), '概要')).toBe('1,284 篇文档')
     expect(cell(rowByName('国标接口'), '概要')).toBe('已连通')
     expect(cell(rowByName('法规 MCP'), '概要')).toBe('连接失败')
+  })
+
+  it('概要列（2026-09-08 决议第 9 项 md §八.1）：MCP 已连通附工具名；新建未测试=未验证；失败行警示样式', async () => {
+    await mount()
+    expect(cell(rowByName('知识 MCP'), '概要')).toBe('已连通 · search_documents、hybrid_search')
+    expect(cell(rowByName('新建接口'), '概要')).toBe('未验证')
+    expect(rowByName('知识 MCP').querySelector('.t-cell[data-label="概要"] span').className).toContain('src-ok')
+    expect(rowByName('法规 MCP').querySelector('.t-cell[data-label="概要"] span').className).toContain('src-bad')
+    expect(rowByName('新建接口').querySelector('.t-cell[data-label="概要"] span').className).toContain('cell-na')
   })
 
   it('状态标签：ENABLED=启用(success)，DISABLED=停用(info)', async () => {

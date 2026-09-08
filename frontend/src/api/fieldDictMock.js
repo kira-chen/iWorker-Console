@@ -1,10 +1,10 @@
 /**
  * 字段字典开发期内存 mock（仅 DEV 生效，见 fieldDict.js 头注释）。
  *
- * 数据与结构对齐交互原型 v2 的 fields 数据（4 个字段的权威默认选项）+ prd.字段字典.md §2.2：
+ * 数据与结构对齐交互原型 v2 的 fields 数据 + prd.字段字典.md §2.2（2026-09-08 决议第 6 项：
+ * 风险类型 / 风险等级两组从字段字典删除，以用户技能审核模块自身常量 `utils/userSkillAuditMeta.js` 为准）：
  * - 平台技能 › 技能分类（skillCategory）
  * - 专家 › 专家分类（expertCategory）
- * - 用户技能审核 › 风险类型（riskType）/ 风险等级（riskLevel）
  *
  * 保存模型按 PRD §三：弹窗内为草稿编辑，【完成】时整字段一次性覆盖保存（不再单条 CRUD）。
  * 其他模块的 mock 需要字典选项时（如专家分类下拉），从本文件 getFieldOptionNames 取，保持同源。
@@ -20,17 +20,17 @@ const mk = (names) => names.map((n) => ({ id: seq++, name: n }))
 // 各字段选项（内部真值；对外只给拷贝）
 const store = {
   skillCategory: mk(['办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他']),
-  expertCategory: mk(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权']),
-  riskType: mk(['对外动作', '危险操作', '权限范围', '敏感信息']),
-  riskLevel: mk(['高风险', '中风险', '建议修改', '检测通过'])
+  expertCategory: mk(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
 }
 
 const copyList = (list) => list.map((o) => ({ id: o.id, name: o.name }))
 
 // 【持久化】（2026-09-02）写点仅 saveFieldOptions。store 为 const（其他模块经 getFieldOptionNames
 // 同源取值），restore 按 key 就地覆写、不换对象；快照缺任一字段键即视为不合法 → 回种子。
+// version 2（2026-09-08）：风险类型顺序 / 风险等级改 5 档，旧快照丢弃回种子。
+// version 3（2026-09-08 决议第 6 项）：删 riskType / riskLevel 两键，旧快照（多出两键）丢弃回种子。
 const persist = attachPersist('fieldDict', {
-  version: 1,
+  version: 3,
   snapshot: () => ({ seq, store }),
   restore: (d) => {
     const keys = Object.keys(store)

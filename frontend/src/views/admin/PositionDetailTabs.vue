@@ -14,12 +14,19 @@
  * 2026-09-04 PRD-20260903 对齐改造：
  * - 页签调整为新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统（新增）；
  *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本页签为 Q2 冻结项，走现有版本侧栏链路）。
- * - 人格页签重排为 md 三.2 六区块：岗位描述(500 必填) / 岗位图标 / 岗位认领说明 / 示例问题(3 条+AI 生成) /
- *   岗位 SOP(4000+AI 生成) / 岗位人格；原「领用页文案 / 推荐问题 4 条」editor 退役（文件保留）。
- * - 顶部栏对齐 md 三.1：名称 64 字 / 三态状态标签 / 版本号 / 未保存提示 / 保存 / 发布岗位；
+ * - 人格页签重排为 md §2 六区块：岗位图标 / 岗位描述 / 领用页文案 / 示例问题(3 条+AI 生成) /
+ *   岗位 SOP(4000+AI 生成) / 岗位人格；原「推荐问题 4 条」editor 退役（文件保留）。
+ * - 顶部栏对齐 md §1.2：名称 64 字 / 三态状态标签 / 版本号 / 未保存提示 / 保存 / 发布岗位；
  *   只读态（列表【查看】进入 query.view=1）与审核中隐藏保存与发布、全页签只读。
- * - 【发布岗位】仍走现有版本侧栏流程（冻结区）；新 PRD「发布前检查弹窗 + 7 项阻断校验」本轮不实现，
- *   仅保留轻量人格必填前置门（toast「请先填写：…」+ 自动切人格页签）。
+ *
+ * 2026-09-08 PRD-20260908 对齐（批次 A）：
+ * - 发布阻断收敛为 md §9.1 四项（名称 / 描述 / 示例问题 / SOP）：图标、领用页文案、采集字段不再阻断；
+ *   发布前检查弹窗清单改 md §9.2 / 原型 L2132 四行，版本号改「更新类型三选一 + 自动算号只读」（md §3.7）。
+ * - 「岗位认领说明」→「领用页文案」（md §2.3：可选、≤6 条 × 100 字，底层字段仍 claimDescriptions）。
+ * - 岗位描述上限统一 500（2026-09-08 决议第 5 项）；采集字段达 10 置灰新增、单/多选选项全空阻断保存；
+ *   每泳道技能达 20【＋技能】置灰；Agent 名称 64 / 职责 2000（md §6.2）。
+ * - 知识页签：列 知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作，行内仅【查看】【检索测试】，
+ *   无新建 / 编辑入口（md §5.1–§5.3），工具栏与空态照原型 knowledgePane L1871。
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
@@ -50,6 +57,7 @@ import {
 } from '@/utils/positionModel'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
+import { sourcesText, hasUploadSource } from '@/utils/knowledgeBaseMeta'
 import SkillPickerDialog from '@/components/position/SkillPickerDialog.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -58,7 +66,7 @@ import PositionDataTableStage from '@/components/position/PositionDataTableStage
 import PositionSampleTaskStage from '@/components/position/PositionSampleTaskStage.vue'
 import PositionVersionHistoryDialog from '@/components/position/PositionVersionHistoryDialog.vue'
 import AdminRail from '@/components/admin/AdminRail.vue'
-// Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：认领说明列表 / 图标 popover / 业务系统页签）
+// Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：领用页文案列表 / 图标 popover / 业务系统页签）
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
@@ -171,7 +179,7 @@ const statusView = computed(() => {
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-// 岗位认领说明（纯文本动态列表，≤6 条 × 100 字）
+// 领用页文案（原「岗位认领说明」；纯文本动态列表，可选，≤6 条 × 100 字，md §2.3）
 const claimNotesModel = computed({
   get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
   set: (v) => patchBasic('claimDescriptions', v)
@@ -186,7 +194,7 @@ function onExampleInput(idx, val) {
 const eqShowErrors = ref(false)
 const eqPlaceholders = ['如：帮我分析本周经营数据', '请输入示例问题', '请输入示例问题']
 
-// 认领说明卡片头「＋ 新增一条」直调编辑器暴露的 startAdd（按钮进卡片头，照原型排版）
+// 领用页文案卡片头「＋ 新增一条」直调编辑器暴露的 startAdd（按钮进卡片头，照原型排版）
 const claimEditorRef = ref(null)
 // 图标卡：共享图标行组件 IconField（预览块 + 并排【从图标库选择】【上传图标】，照原型 position-icon-section；
 // 2026-09-08 原型复刻批次 1 · S4 样板接入，其余抽屉后续批次换用）
@@ -241,10 +249,15 @@ function openIntakeEdit(row, index) {
   intakeDraft.value = { label: row.label || '', key: row.key || '', type: row.type || 'text', required: !!row.required, options: [...(row.options || [])] }
   intakeDrawerOpen.value = true
 }
+// 采集字段上限（md §3.1：最多 10 个，达上限【新增采集字段】置灰）
+const intakeAtLimit = computed(() => intakeRows.value.length >= LIMITS.INTAKE_MAX)
 function saveIntakeDraft() {
   const d = intakeDraft.value
   if (!String(d.label || '').trim()) { ElMessage.warning('请填写字段名'); return }
-  const row = { ...d, key: (d.key || '').trim() || genKeyFromLabel(d.label), options: isSelectType(d.type) ? (d.options || []).filter((o) => String(o).trim()) : [] }
+  const options = isSelectType(d.type) ? (d.options || []).filter((o) => String(o).trim()) : []
+  // md §3.2：单选 / 多选保存时校验选项列表，全空则阻断保存并 toast（2026-09-08 PRD-20260908 对齐）
+  if (isSelectType(d.type) && !options.length) { ElMessage.warning('请至少填写一个选项'); return }
+  const row = { ...d, key: (d.key || '').trim() || genKeyFromLabel(d.label), options }
   const next = [...intakeRows.value]
   if (intakeEditIndex.value >= 0) next[intakeEditIndex.value] = row
   else {
@@ -316,7 +329,7 @@ function buildBasicPayload() {
     iconSource: b.iconSource,
     // claimDesc 多条数组 [{emoji,content}]（content 富文本由后端 Jsoup 净化）；welcome/sopDoc 已退役不上送（设计 §2）
     claimDesc: b.claimDesc,
-    // 2026-09-04 PRD-20260903 对齐新增：认领说明 / 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+    // 2026-09-04 PRD-20260903 对齐新增：领用页文案（claimDescriptions）/ 示例问题（3 条）/ 岗位 SOP / 引用业务系统
     claimDescriptions: Array.isArray(b.claimDescriptions) ? b.claimDescriptions : [],
     exampleQuestions: normalizeExampleQuestions(b.exampleQuestions),
     positionSop: b.positionSop || '',
@@ -563,11 +576,26 @@ async function onOpenSampleTasks() {
   sampleStageOpen.value = true
 }
 
-/* ---------- 知识页签（2026-09-04 PRD-20260903 对齐，md 三.5 轻量口径） ----------
+/* ---------- 知识页签（md §5，2026-09-08 PRD-20260908 对齐） ----------
  * 页签内只做只读列表（走现有 api/knowledgeBase.js，不改函数签名）：
  * 取岗位知识库（kbType=POSITION）并按可见范围 = 当前岗位名过滤；
- * 新建 / 查看 / 编辑 / 检索测试均跳知识库模块（query 携带岗位上下文，深度锁定由知识库批次承接）。 */
+ * 工具栏（搜索名称 / 状态 / 查询）照原型 knowledgePane L1871 本地过滤；
+ * 行内仅【查看】【检索测试】（md §5.3），无新建 / 编辑入口（md §5.2 已删、原型 L4021 移除按钮），
+ * 两动作跳知识库模块（query 携带岗位上下文，md §11）。 */
 const kbRows = ref([])
+// 工具栏筛选（原型 posKbSearch / posKbStatus / query-pos-kb）：输入即存草稿，点【查询】生效
+const kbKeyword = ref('')
+const kbStatus = ref('')
+const kbApplied = ref({ keyword: '', status: '' })
+function applyKbQuery() {
+  kbApplied.value = { keyword: kbKeyword.value.trim().toLowerCase(), status: kbStatus.value }
+}
+const kbVisibleRows = computed(() => {
+  const { keyword, status } = kbApplied.value
+  return kbRows.value.filter(
+    (r) => (!keyword || String(r.name || '').toLowerCase().includes(keyword)) && (!status || kbStatusView(r).label === status)
+  )
+})
 const kbLoading = ref(false)
 const kbError = ref(false)
 const kbLoaded = ref(false)
@@ -595,10 +623,9 @@ const kbStatusView = (row) => {
   if (row.status === 'PUBLISHED') return { label: '已发布', type: 'success' }
   return { label: '未发布', type: 'info' }
 }
-const kbSourcesText = (row) => {
-  const names = (row.sources || []).map((s) => s?.name).filter(Boolean)
-  return names.length ? names.join('、') : '—'
-}
+// 「数据源」列汇总（上传 ×N / API ×N / MCP ×N）与「文档数量」口径同知识库列表页 / 专家抽屉
+const kbSourcesText = (row) => sourcesText(row) || '-'
+const kbDocText = (row) => (hasUploadSource(row) ? Number(row.docCount || 0).toLocaleString('en-US') : '-')
 // 跳知识库模块：query 携带岗位上下文（positionId/positionName）+ 深链动作（action/kbId），
 // 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
 // 此前发 kbAction/fromPositionId 与消费端 action/positionId 不对齐，跳过去抽屉不开、岗位上下文不生效，已修）。
@@ -673,11 +700,13 @@ const publishCheck = computed(() => computePublishCheck(store.checkInput))
 /* ---------- N5 发布版本号 + 升级说明（编排收敛到 useVersionPublish；行为不变） ---------- */
 // atMax/nextLoading 别名回本组件既有模板变量名（versionAtMax/nextLabelLoading），保持模板与测试引用不变。
 const {
-  versionLabel, // 展示版本号（语义化 vX.Y.Z，打开发布页自动带出建议号）
+  versionLabel, // 展示版本号（语义化 vX.Y.Z，打开发布页自动带出建议号，按更新类型自动算号、只读）
   releaseNotes, // 升级说明（必填）
-  prevMaxLabel, // 历史最大版本号（供"建议递增"软提示）
-  atMax: versionAtMax, // 无法自动建议版本号（禁用版本框 + 人话提示）
+  atMax: versionAtMax, // 无法自动建议版本号（人话提示 + 禁发）
   nextLoading: nextLabelLoading,
+  bump: versionBump, // 更新类型（NONE 修订版本 / MINOR 功能更新 / MAJOR 重大更新，md §3.7）
+  firstPublish: versionFirstPublish, // 首个版本：无更新类型可选，固定 v1.0.0
+  setBump: setVersionBump,
   load: loadNextVersionLabel
 } = useVersionPublish({ fetchNextLabel: () => getNextVersionLabel(store.positionId) })
 
@@ -697,15 +726,13 @@ async function openPublish() {
   if (!(await ensurePersisted())) return
   // 先存一遍身份卡当前内容
   await doSaveBasic(true)
-  // 轻量人格必填前置门（2026-09-04 PRD-20260903 对齐 md 三.9.1 口径的 toast「请先填写：…」+
-  // 自动切人格页签；完整「发布前检查弹窗 + 7 项阻断校验」按冻结区 Q1-Q4 挂账本轮不实现，
-  // 通过前置门后仍走现有版本侧栏发布流程）。
+  // 阻断校验四项（md §9.1 / 原型 validate() L2129：岗位名称 / 岗位描述 / 示例问题 / 岗位 SOP；
+  // 2026-09-08 PRD-20260908 对齐——图标、领用页文案、采集字段均不阻断）：
+  // 任一缺失 → toast「请先填写：X、Y」+ 自动切人格页签并标红缺失项。
   const b = store.basic
   const missing = []
   if (!String(b.name || '').trim()) missing.push('岗位名称')
-  if (!b.icon) missing.push('岗位图标')
   if (!String(b.description || '').trim()) missing.push('岗位描述')
-  if (!(Array.isArray(b.claimDescriptions) && b.claimDescriptions.some((s) => String(s).trim()))) missing.push('岗位认领说明')
   if (!exampleQuestionsComplete(b.exampleQuestions)) missing.push('3 条示例问题')
   if (!String(b.positionSop || '').trim()) missing.push('岗位 SOP')
   if (missing.length) {
@@ -714,7 +741,8 @@ async function openPublish() {
     ElMessage.warning(`请先填写：${missing.join('、')}`)
     return
   }
-  // N5：打开即带出建议的下一个版本号；load 内部会清空升级说明（每次发布重填，必填）。
+  // 通过阻断校验 → 发布前检查弹窗（md §9.2）：打开即拉建议版本号并按更新类型自动算号（md §3.7，不可手输）；
+  // load 内部会清空升级说明（每次发布重填，必填）。
   publishDialogVisible.value = true
   loadNextVersionLabel()
 }
@@ -724,6 +752,7 @@ async function doPublish() {
   try {
     const res = await publishPosition(store.positionId, {
       versionLabel: versionLabel.value.trim(),
+      bump: versionBump.value,
       releaseNotes: releaseNotes.value.trim()
     })
     const w = normalizePublishWarnings(res?.warnings)
@@ -809,9 +838,8 @@ function backToList() {
         <div v-else-if="store.loading" class="board-state"></div>
 
         <el-tabs v-else-if="store.basic" v-model="activeTab" class="pd-tabs">
-          <!-- ① 人格（2026-09-04 PRD-20260903 对齐，md 三.2 六区块；2026-09-04 返工：
-               卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片（头：标题+必填星+弱色说明，
-               体：内容+底部 hint），区块顺序 图标→描述→认领说明→示例问题→SOP→人格） -->
+          <!-- ① 人格（md §2 六区块；卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片
+               （头：标题+必填星+弱色说明，体：内容+底部 hint），区块顺序 图标→描述→领用页文案→示例问题→SOP→人格） -->
           <el-tab-pane label="人格" name="persona">
             <div class="pd-pane">
               <!-- 1. 岗位图标（原型 position-icon-section：预览 + 从图标库选择 / 上传图标） -->
@@ -832,7 +860,7 @@ function backToList() {
                 </div>
               </section>
 
-              <!-- 2. 岗位描述（必填，≤500 字；全链同口径：新建弹窗 / mock 校验） -->
+              <!-- 2. 岗位描述（必填，≤500 字，2026-09-08 决议第 5 项；全链同口径：新建弹窗 / mock 校验） -->
               <section class="pd-card">
                 <div class="pd-card-head">
                   <span class="pd-card-title">岗位描述<i class="pd-req">*</i></span>
@@ -853,10 +881,10 @@ function backToList() {
                 </div>
               </section>
 
-              <!-- 3. 岗位认领说明（标题维持 Q7 现名；卡片头说明与排版结构照原型领用页文案卡） -->
+              <!-- 3. 领用页文案（md §2.3：可选、不参与阻断；卡片头/副标题/按钮照原型领用页文案卡 L4240） -->
               <section class="pd-card">
                 <div class="pd-card-head">
-                  <span class="pd-card-title">岗位认领说明</span>
+                  <span class="pd-card-title">领用页文案</span>
                   <span class="pd-card-sub">员工领用时看到的卖点，可多条，最多 6 条</span>
                   <span class="pd-card-spacer"></span>
                   <el-button
@@ -969,8 +997,9 @@ function backToList() {
           <el-tab-pane label="采集字段" name="intake">
             <div class="pd-pane">
               <div class="pd-list-head">
-                <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时填写 · ≤{{ LIMITS.INTAKE_MAX }} 个</span></div>
-                <el-button v-if="!isReadonly" type="primary" size="small" @click="openIntakeCreate">＋ 新增采集字段</el-button>
+                <!-- 表头副题照原型 intakePane L1854；达 10 个【新增采集字段】置灰（md §3.1） -->
+                <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时填写，最多 {{ LIMITS.INTAKE_MAX }} 个</span></div>
+                <el-button v-if="!isReadonly" type="primary" size="small" :disabled="intakeAtLimit" @click="openIntakeCreate">＋ 新增采集字段</el-button>
               </div>
               <el-table :data="intakeRows" class="pd-table" empty-text="暂无采集字段，点「新增字段」添加">
                 <el-table-column type="index" label="#" width="52" />
@@ -1063,41 +1092,54 @@ function backToList() {
           <!-- ④ 知识（2026-09-04 PRD-20260903 对齐，md 三.5 轻量口径：只读列表 + 跳知识库模块） -->
           <el-tab-pane label="知识" name="knowledge">
             <div class="pd-pane">
+              <!-- 区块头照原型 pdHead('知识库','该岗位可见范围内的知识库')；新建按钮已删（md §5.2 / 原型 L4021） -->
               <div class="pd-list-head">
-                <div class="pd-list-title">知识库<span class="pd-list-sub">该岗位可见范围内的知识库 · 新建与编辑在知识库模块完成</span></div>
-                <el-button v-if="!isReadonly" type="primary" size="small" @click="gotoKbModule('create')">＋ 新建知识库</el-button>
+                <div class="pd-list-title">知识库<span class="pd-list-sub">该岗位可见范围内的知识库</span></div>
+              </div>
+              <!-- 工具栏照原型 pd2-kb-toolbar：搜索知识库名称 / 全部状态 / 查询 -->
+              <div class="pd-kb-toolbar">
+                <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable class="pd-kb-search" @keyup.enter="applyKbQuery" />
+                <el-select v-model="kbStatus" placeholder="全部状态" clearable class="pd-kb-status">
+                  <el-option label="未发布" value="未发布" />
+                  <el-option label="审核中" value="审核中" />
+                  <el-option label="已发布" value="已发布" />
+                </el-select>
+                <el-button @click="applyKbQuery">查询</el-button>
               </div>
               <div v-if="kbError" class="pd-empty">
                 知识库加载失败
                 <el-button link type="primary" @click="loadPositionKbs">重试</el-button>
               </div>
+              <!-- 列照 md §5.1 / 原型 L1871：知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作；空态照原型 -->
               <el-table
                 v-else
                 v-loading="kbLoading"
-                :data="kbRows"
+                :data="kbVisibleRows"
                 class="pd-table"
-                :empty-text="'暂无知识库，点击&quot;新建知识库&quot;添加'"
+                empty-text="暂无该岗位可见的知识库"
               >
                 <el-table-column label="知识库名称" min-width="200">
                   <template #default="{ row }">
                     <span class="pd-kb-name" :title="row.description || ''">{{ row.name }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="类型" width="120">
-                  <template #default>岗位知识库</template>
+                <el-table-column label="知识库描述" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">{{ row.description || '-' }}</template>
                 </el-table-column>
-                <el-table-column label="数据源" min-width="200" show-overflow-tooltip>
+                <el-table-column label="数据源" min-width="160" show-overflow-tooltip>
                   <template #default="{ row }">{{ kbSourcesText(row) }}</template>
+                </el-table-column>
+                <el-table-column label="文档数量" width="90" align="right">
+                  <template #default="{ row }">{{ kbDocText(row) }}</template>
                 </el-table-column>
                 <el-table-column label="状态" width="100" align="center">
                   <template #default="{ row }">
                     <el-tag size="small" :type="kbStatusView(row).type" effect="plain">{{ kbStatusView(row).label }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="200" fixed="right">
+                <el-table-column label="操作" width="170" fixed="right">
                   <template #default="{ row }">
                     <el-button link type="primary" @click="gotoKbModule('view', row)">查看</el-button>
-                    <el-button v-if="!isReadonly" link type="primary" @click="gotoKbModule('edit', row)">编辑</el-button>
                     <el-button
                       v-if="row.status === 'PUBLISHED'"
                       link
@@ -1147,7 +1189,8 @@ function backToList() {
                     <span v-if="isReadonly" class="pd-faint">只读</span>
                     <template v-else-if="row.kind === 'agent'">
                       <el-button link type="primary" @click="openAgentEdit(row)">编辑</el-button>
-                      <el-button link type="primary" @click="onPickSkill(row.agentId)">＋技能</el-button>
+                      <!-- 每条泳道最多引用 20 个技能，达上限置灰（md §6.4） -->
+                      <el-button link type="primary" :disabled="row.skillCount >= LIMITS.SKILL_MAX" @click="onPickSkill(row.agentId)">＋技能</el-button>
                       <el-button link type="danger" @click="onAgentDelete(row.agentId)">删除</el-button>
                     </template>
                     <template v-else>
@@ -1162,11 +1205,12 @@ function backToList() {
             <!-- Agent 编辑抽屉（名称 + 职责描述） -->
             <DrawerEditor v-model:visible="agentDrawerOpen" title="编辑 Agent" size="480px" append-to-body>
               <el-form label-position="top" class="pd-drawer-form">
+                <!-- 字段上限按 md §6.2（名称 64 / 职责 2000，职责选填；负责人 2026-09-08 裁决「按 md 落地」，原型 L4050 为 60/300 必填，差异挂账） -->
                 <el-form-item label="Agent 名称" required>
-                  <el-input v-model="agentDraft.name" maxlength="40" placeholder="如：客户洞察" />
+                  <el-input v-model="agentDraft.name" maxlength="64" placeholder="如：客户洞察" />
                 </el-form-item>
                 <el-form-item label="职责描述">
-                  <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="500" show-word-limit
+                  <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="2000" show-word-limit
                             placeholder="决定主实例把子任务委派给这个 Agent 时的执行口径" />
                 </el-form-item>
               </el-form>
@@ -1245,16 +1289,18 @@ function backToList() {
     <!-- 人格 / 采集编辑弹窗已随 2026-09-04 PRD-20260903 对齐退役（内容全部内联进人格 / 采集字段页签），
          PersonaEditDialog / IntakeEditDialog 组件文件保留备查。 -->
 
-    <!-- 发布前检查 + N5 版本号/升级说明 -->
+    <!-- 发布前检查（md §9.2）：清单四行 + 更新类型三选一 → 自动算号只读版本号 + 升级说明 -->
     <PublishCheckDialog
       v-model:visible="publishDialogVisible"
-      v-model:version-label="versionLabel"
       v-model:release-notes="releaseNotes"
+      :version-label="versionLabel"
+      :bump="versionBump"
+      :first-publish="versionFirstPublish"
       :check="publishCheck"
       :publishing="publishing"
-      :prev-max-label="prevMaxLabel"
       :at-max="versionAtMax"
       :next-loading="nextLabelLoading"
+      @update:bump="setVersionBump"
       @publish="doPublish"
     />
 
@@ -1604,6 +1650,19 @@ function backToList() {
 .pd-kb-name {
   color: var(--c-text-strong);
   font-weight: var(--fw-medium);
+}
+/* 知识页签工具栏（原型 pd2-kb-toolbar：搜索 220 / 状态 130 / 查询，gap 12） */
+.pd-kb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.pd-kb-search {
+  width: 220px;
+}
+.pd-kb-status {
+  width: 130px;
 }
 /* 只读冻结兜底：工作档案 / 自动化任务两个内嵌 Stage 暂无 readonly prop，
    查看态 / 审核中用 pointer-events 冻结（demo 口径，正式实现由后续批次下沉 readonly）。 */

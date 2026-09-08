@@ -79,8 +79,11 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     await unpublishPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('DELIST')
-    // 无岗位私有技能不可发布（Q3 前置校验的 mock 兜底）
-    await expect(publishPosition(404, { releaseNotes: 'x' })).rejects.toThrow('至少关联 1 个岗位私有技能')
+    // 2026-09-08 PRD-20260908 对齐：md §6.5 Agent 与技能不参与发布阻断 → 无技能岗位也可提交发布（原 Q3 mock 兜底已删）
+    await publishPosition(404, { releaseNotes: 'x' })
+    row = (await listPositions({ keyword: '市场研究岗' })).list[0]
+    expect(row.pendingAction).toBe('PUBLISH')
+    expect(row.latestVersion).toBe('v1.0.0') // 首发固定 v1.0.0
   })
 
   it('删除与联动取名（Q10：岗位名单一真相源）', async () => {

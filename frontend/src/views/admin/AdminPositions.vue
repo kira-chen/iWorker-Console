@@ -46,6 +46,7 @@ import {
 } from '@/api/position'
 import { listDataTables } from '@/api/dataTable'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { POSITION_BUMP_OPTIONS, DESCRIPTION_MAX_LEN } from '@/utils/positionModel'
 
 // 效果测试台异步加载：仅在点「测试」打开时拉取，避免把对话链路（ChatMarkdown / api 等）提前并入列表页首屏，
 // 同时保持现有测试 import 图不变（与 AdminSkills / PositionWorkbench 同款做法）。
@@ -163,8 +164,8 @@ async function submitCreate() {
       description: createForm.description.trim() || undefined
     })
     createVisible.value = false
-    // 2026-09-04 PRD-20260903 对齐：新建保存后跳详情页 toast 照新原型
-    ElMessage.success('岗位已创建，请完善必填项后发布')
+    // 2026-09-08 PRD-20260908 对齐：新建 toast 逐字照 md §1.1 / 原型 npCreate L2321
+    ElMessage.success('岗位已创建，请完善岗位配置')
     router.push({ name: 'PositionWorkbench', params: { id: data.positionId } })
   } catch (e) {
     // 名称重复(1005 唯一冲突)等字段级错误：在名称输入框内联红框回显，不弹全局 toast、不跳转
@@ -282,12 +283,9 @@ const versionAdapter = computed(() => {
     }),
     delist: (r) => delistPositionPublication(pid, r.version),
     relist: (r) => relistPositionPublication(pid, r.version),
-    // 更新类型词与 hint（原型 positionPublishHtml / positionBumpHint）
-    bumpOptions: [
-      { value: 'NONE', label: '修订版本', hint: '修复问题或小幅配置调整' },
-      { value: 'MINOR', label: '功能更新', hint: '新增岗位能力或岗位技能' },
-      { value: 'MAJOR', label: '重大更新', hint: '岗位职责或流程发生不兼容变更' }
-    ],
+    // 更新类型词与 hint（原型 positionPublishHtml / positionBumpHint）：与详情页发布前检查弹窗共用同一份常量
+    // （2026-09-08 PRD-20260908 对齐，md §3.7 三种升级类型自动算号）
+    bumpOptions: POSITION_BUMP_OPTIONS,
     historySubtitle: '每次审核通过生成一版岗位配置快照；同一时间只能启用一个版本',
     delistTerm: '禁用',
     relistTerm: '启用',
@@ -530,12 +528,13 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
                   撤回
                 </el-button>
 
-                <!-- 未发布：发布（先校验技能数，Q3 不弹确认窗）+ 删除；悬停提示照 md 三.二.3.1 -->
+                <!-- 未发布：发布（先校验技能数，Q3 不弹确认窗）+ 删除。
+                     2026-09-08 PRD-20260908 对齐：md §3.1 已删发布悬停提示，原型 L1194 发布键亦无 title → 删；
+                     删除键 title「删除前需二次确认」原型 L1194 有 → 保留（Q375 挂账） -->
                 <template v-else-if="row.status === 'draft'">
                   <el-button
                     link
                     type="primary"
-                    title="发布将提交审核，审核通过后生成版本快照并上线"
                     @click="onPublish(row)"
                   >
                     发布
@@ -627,14 +626,14 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
             placeholder="一句话说明这个岗位是做什么的（可稍后在详情页修改）"
           />
         </el-form-item>
-        <!-- 岗位描述（2026-09-04 PRD-20260903 对齐：500 字上限+计数与人格页签/mock 全链同口径；
-             发布必填在详情页发布校验时兜底，新建时可留空稍后补） -->
+        <!-- 岗位描述（2026-09-08 决议第 5 项：统一 500 字上限，原型新建弹窗 L2319 maxlength=2000 为原型缺陷不取；
+             与人格页签 DESCRIPTION_MAX_LEN / mock 校验全链同口径；发布必填在详情页发布校验时兜底，新建时可留空稍后补） -->
         <el-form-item label="岗位描述">
           <el-input
             v-model="createForm.description"
             type="textarea"
             :rows="3"
-            maxlength="500"
+            :maxlength="DESCRIPTION_MAX_LEN"
             show-word-limit
             placeholder="说明该岗位负责什么、可以帮助用户完成哪些工作（可稍后在详情页修改）"
           />

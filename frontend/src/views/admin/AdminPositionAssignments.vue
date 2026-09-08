@@ -3,11 +3,16 @@
  * 岗位管理页（原「岗位分配」，2026-09-04 按 PRD-20260903 升级为双页签）。
  *
  * 侧边栏入口名「岗位管理」（2026-09-07 PRD-20260904 对齐：0903"入口不变"口径被新版反转，AdminRail 已随动改名）；
- * 页内标题「岗位管理」，双页签 = 用户岗位分配 / 岗位申请审批（带待审核数量徽标，0 不展示）。
- * 切换页签保留各自筛选与分页（两套 useAdminList 实例 + v-show 保 DOM/状态）；默认进分配页签。
+ * 页内标题「岗位管理」，双页签 = 用户岗位管理 / 岗位申请审批（带待审核数量徽标，0 不展示）
+ * （2026-09-08 PRD-20260908 对齐：页签「用户岗位分配」→「用户岗位管理」，md §二 / 原型 assignmentTabs）。
+ * 切换页签保留各自筛选与分页（两套 useAdminList 实例 + v-show 保 DOM/状态）；默认进「用户岗位管理」。
  *
- * 分配页签：以用户为核心，表格列 = 用户名 / 显示名 / 状态 / 绑定岗位 / 操作，
+ * 用户岗位管理页签：以用户为核心，表格列 = 用户名 / 显示名 / 状态 / 绑定岗位 / 操作，
  * 修改绑定弹窗（UserPositionEditDialog）保存即时生效。
+ * 查询区（md §3.1，2026-09-08 对齐）：搜索输入停顿 220ms 后自动刷新、状态切换即刷新——两者**不重置分页**
+ * （useAdminList.reload 保留页码，越界钳到末页）；仅【查询】按钮回第 1 页。
+ * 绑定岗位下拉 = 已发布及审核中岗位（md §五：审核中指已发布岗位在审新版 / 停用审核，底层 status=published
+ * 不看 pendingAction；未发布且首发审核中的不进下拉）。
  * 审批页签（PRD-20260903 §四新增）：仅展示待审核申请、提交时间可排序（默认新→旧），
  * 操作 =【通过】（确认弹窗 → 现有绑定接口）/【驳回】（原因必填弹窗）/【重新绑定】
  * （复用修改绑定弹窗，完成后回分配页签清筛选置顶高亮该用户）。
@@ -40,7 +45,7 @@ import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 
 /* ---------- 页签（原型 assignmentTabs：pm-tabs + pm-count 徽标） ---------- */
-const activeTab = ref('assignments') // 默认进「用户岗位分配」（md §二）
+const activeTab = ref('assignments') // 默认进「用户岗位管理」（md §二）
 const pendingCount = ref(0)
 
 async function refreshPendingCount() {
@@ -55,7 +60,7 @@ async function refreshPendingCount() {
 /* ---------- 分配页签（既有功能原样） ---------- */
 const query = reactive({ keyword: '', status: '' })
 
-// 已发布岗位选项（供修改绑定弹窗的岗位下拉复用；md §五：仅已发布岗位可绑定）
+// 可绑定岗位选项（供修改绑定弹窗的岗位下拉复用；md §五：已发布及审核中岗位）
 const positionOptions = ref([])
 
 const editVisible = ref(false)
@@ -75,10 +80,15 @@ const list = useAdminList(listPositionAssignments, {
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 
-// 用户主动查询（【查询】按钮 / 状态筛选）：清除置顶聚焦，回第 1 页重查
+// 【查询】按钮（原型 pa-query）：清除置顶聚焦，回第 1 页重查
 function reload() {
   focusUserId.value = null
   return list.search()
+}
+// 搜索停顿 / 状态切换的自动刷新（md §3.1「不重置分页，保留当前页码」）：清除置顶聚焦，按当前页码重取
+function refreshKeepPage() {
+  focusUserId.value = null
+  return list.reload()
 }
 
 // 翻页：清除置顶聚焦（一次性态，避免置顶排序影响后续翻页行序）后按所点页码取数
@@ -93,15 +103,19 @@ function assignmentRowClass({ row }) {
 
 async function loadPositions() {
   try {
-    // 只取已发布岗位（可绑定目标）；size 放大一次拉全，避免分页缺项。
-    const data = await listPositions({ status: 'published', size: 200 })
-    positionOptions.value = (data?.list || []).map((p) => ({ positionId: p.positionId, name: p.name }))
+    // 取已发布及审核中岗位（可绑定目标）：mock 的 status=published 筛选按展示态会把「已发布且在审」归到 reviewing
+    // 而排除，故拉全量后按底层 status === 'published' 过滤（原型 L1599 同口径：不看 pendingAction）；
+    // 未发布且首发审核中（status=draft + pendingAction）不进下拉。size 放大一次拉全，避免分页缺项。
+    const data = await listPositions({ size: 200 })
+    positionOptions.value = (data?.list || [])
+      .filter((p) => p.status === 'published')
+      .map((p) => ({ positionId: p.positionId, name: p.name }))
   } catch (e) {
     /* 岗位选项读失败：编辑下拉降级为空，不阻断列表 */
   }
 }
 
-// 关键词实时搜索：300ms 防抖 → reload；程序化清空（重新绑定回跳）不触发聚焦清除
+// 关键词实时搜索：输入停顿 220ms（原型 L1645）后自动刷新且不重置分页；程序化清空（重新绑定回跳）不触发
 let kwTimer = null
 let skipKwWatch = false
 watch(
@@ -112,7 +126,7 @@ watch(
       return
     }
     if (kwTimer) clearTimeout(kwTimer)
-    kwTimer = setTimeout(reload, 300)
+    kwTimer = setTimeout(refreshKeepPage, 220)
   }
 )
 onBeforeUnmount(() => {
@@ -188,7 +202,7 @@ async function onRejectConfirm(reason) {
   }
 }
 
-// 【重新绑定】：复用修改绑定弹窗（可选任意已发布岗位，不限于申请岗位，md §4.3.3）
+// 【重新绑定】：复用修改绑定弹窗（可选已发布及审核中岗位，不限于申请岗位，md §4.3.3）
 function onRebind(row) {
   editingApplication.value = row
   editingRow.value = {
@@ -242,9 +256,9 @@ onMounted(() => {
   <div class="list-page">
     <PageHeader title="岗位管理" subtitle="管理用户岗位绑定，支持直接分配与处理用户岗位申请。" />
 
-    <!-- 双页签（原型 assignmentTabs）：切换保留各页签筛选与分页（v-show 保状态） -->
+    <!-- 双页签（原型 assignmentTabs：pm-tabs 下划线式 + pm-count 橙软底徽标）：切换保留各页签筛选与分页（v-show 保状态） -->
     <el-tabs v-model="activeTab" class="pm-tabs">
-      <el-tab-pane name="assignments" label="用户岗位分配" />
+      <el-tab-pane name="assignments" label="用户岗位管理" />
       <el-tab-pane name="applications">
         <template #label>
           岗位申请审批<span v-if="pendingCount" class="pm-count">{{ pendingCount }}</span>
@@ -252,7 +266,7 @@ onMounted(() => {
       </el-tab-pane>
     </el-tabs>
 
-    <!-- ============ 页签一：用户岗位分配 ============ -->
+    <!-- ============ 页签一：用户岗位管理 ============ -->
     <div v-show="activeTab === 'assignments'" class="pm-pane-assignments">
       <ListToolbar>
         <el-input
@@ -263,12 +277,13 @@ onMounted(() => {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
+        <!-- 状态切换即刷新、不重置分页（md §3.1） -->
         <el-select
           v-model="query.status"
           placeholder="全部状态"
           clearable
           class="lt-filter"
-          @change="reload"
+          @change="refreshKeepPage"
         >
           <el-option label="启用" value="active" />
           <el-option label="停用" value="disabled" />
@@ -436,21 +451,50 @@ onMounted(() => {
 .pa-time {
   color: var(--c-text-muted);
 }
-/* 页签徽标（原型 pm-count）：待审核数量，0 时模板不渲染 */
+/* 页签徽标（原型 .pm-count L1512：橙软底 #fff1de / 字色 #a85f06，19px 圆角胶囊；0 时模板不渲染） */
 .pm-count {
-  display: inline-block;
-  margin-left: 6px;
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--c-accent);
-  color: var(--c-text-on-accent);
-  font-size: var(--fs-xs);
-  line-height: 18px;
-  text-align: center;
+  display: inline-grid;
+  place-items: center;
+  margin-left: 7px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--c-warning-soft, #fff1de);
+  color: var(--c-warning, #a85f06);
+  font-size: 11px;
+  line-height: 19px;
 }
+/* 页签条形态照原型 .pm-tabs / .pm-tab：底线分隔、项间距 28、高 52、14px 半粗、激活绿色 2px 下划线 */
 .pm-tabs :deep(.el-tabs__header) {
   margin-bottom: var(--space-4);
+}
+.pm-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+  background-color: var(--border-base);
+}
+.pm-tabs :deep(.el-tabs__item) {
+  display: inline-flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}
+.pm-tabs :deep(.el-tabs__item + .el-tabs__item) {
+  margin-left: 28px;
+}
+.pm-tabs :deep(.el-tabs__item:hover) {
+  color: var(--c-text-strong);
+}
+.pm-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--c-accent);
+}
+.pm-tabs :deep(.el-tabs__active-bar) {
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background-color: var(--c-accent);
 }
 /* 「重新绑定」回跳置顶高亮（原型 paFocusUserId 行） */
 .pa-table :deep(.pa-row-focus) td {

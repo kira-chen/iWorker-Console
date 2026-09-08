@@ -14,9 +14,14 @@
  * - API：authType NONE/API_KEY(authParams 多参数行)/BEARER(bearerMasked)，requestMap / responseMap
  *   结构化预设行；旧 queryField / topKField / itemsPath / 透传字段组废弃。
  * - MCP：删除「引用现有 MCP」（mode/mcpId/toolName 废弃），仅直接填写：transport(streamable-http/stdio)、
- *   endpoint+鉴权 或 command/args/envVars、tools 多选数组、requestMap / responseMap 同 API 结构。
+ *   endpoint+鉴权 或 command/args/envVars、tools 多选数组。
  * - 测试连接（MCP）成功返回固定工具清单 MCP_TEST_TOOLS，供检索工具多选。
- * - 保存校验按 md：地址 / 方法 / 鉴权条件必填 / 映射预设行必填项 / 工具 ≥1（validateSourceConfig）。
+ * - 保存校验按 md：地址 / 方法 / 鉴权条件必填 / 映射预设行必填项（API）/ 工具 ≥1（MCP）（validateSourceConfig）。
+ * 2026-09-08 按 PRD-20260908 md §七 回齐：MCP config 不再有 requestMap / responseMap（md 删除两节，回退 09-07 半边实现）；
+ *   映射校验与连接签名的映射项仅 API 持有；API 请求映射补 object/array 子字段校验（knowledgeBaseMeta.validateRequestMap）。
+ * 2026-09-08 决议第 9 项（md §八.1 L417）：数据源列表「概要」按验证状态由 mock 派生（sourceVO.summary）——
+ *   新建保存未测试「未验证」→ 测试通过「已连通」（MCP 附所选检索工具名，如「已连通 · search_documents」）/
+ *   测试失败「连接失败」→ 修改连接配置后保存重置「未验证」；对「刚测试过的这份配置」保存时不重置（lastTest 签名比对）。
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
@@ -110,9 +115,7 @@ const mcpSrc = (id, name, over = {}) =>
       args: [],
       envVars: [],
       tools: ['search_documents', 'hybrid_search'], // 检索工具多选（md §七.3：≥1）
-      requestMap: mkRequestMapRows(),
-      responseMap: mkResponseMapRows(),
-      timeoutMs: 10000,
+      timeoutMs: 10000, // md §七.4：必填，系统默认值可直接修改
       ...over
     },
     'SUCCESS'
@@ -164,8 +167,10 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // version 3（2026-09-06）：Q19 拍板预处理删「启用图片理解」，种子 config 去掉 imageUnderstand 键。
 // version 4（2026-09-07）：PRD-20260904 数据源新口径——API config 改 authParams/requestMap/responseMap
 // 结构化行，MCP 删除引用现有模式改 transport/tools 数组；旧快照结构不兼容，直接弃用回种子。
+// version 5（2026-09-08）：PRD-20260908 md §七 删除 MCP 请求/响应映射——MCP 种子 config 去掉 requestMap/responseMap；
+// 旧快照含该两键，弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -202,13 +207,28 @@ function findSource(id) {
 function referencedBy(sourceId) {
   return rows.filter((r) => r.sourceIds.includes(sourceId)).map((r) => ({ id: r.id, name: r.name }))
 }
+/**
+ * 数据源列表「概要」（md §四.2 L202 / §八.1 L417，2026-09-08 决议第 9 项）：
+ * 上传 = 文档总数；API/MCP 按验证状态：SUCCESS →「已连通」（MCP 附所选检索工具名）/ FAILED →「连接失败」/ 其余「未验证」。
+ * 派生值不落库，验证状态一变概要即变（连接测试回写 / 修改配置重置均自动体现）。
+ */
+export function sourceSummary(s) {
+  if (s.sourceType === 'UPLOAD') return `${Number(docCountOf(s.id) || 0).toLocaleString('en-US')} 篇文档`
+  if (s.verifyStatus === 'SUCCESS') {
+    const tools = s.sourceType === 'MCP' && Array.isArray(s.config?.tools) ? s.config.tools.filter(Boolean) : []
+    return tools.length ? `已连通 · ${tools.join('、')}` : '已连通'
+  }
+  if (s.verifyStatus === 'FAILED') return '连接失败'
+  return '未验证'
+}
 function sourceVO(s) {
   return {
     ...s,
     config: { ...s.config },
     docCount: s.sourceType === 'UPLOAD' ? docCountOf(s.id) : undefined,
     parsedDocCount: s.sourceType === 'UPLOAD' ? parsedDocCountOf(s.id) : undefined,
-    referencedBy: referencedBy(s.id)
+    referencedBy: referencedBy(s.id),
+    summary: sourceSummary(s)
   }
 }
 function scopeName(r) {
@@ -383,7 +403,7 @@ const bad = (message, field) => {
 const prevParamRow = (prevRows, r, withIn) =>
   (prevRows || []).find((p) => p.key === (r.key || '').trim() && (!withIn || (p.in || '') === (r.in || '')))
 /**
- * 数据源保存校验（2026-09-07 PRD-20260904 md §六.1～§六.3 / §七.2～§七.6）。
+ * 数据源保存校验（md §六.1～§六.3 API / §七.2～§七.4 MCP；映射校验仅 API）。
  * prev = 编辑目标（判定「已配置密钥留空=保留」）；UPLOAD 不在此校验。
  */
 function validateSourceConfig(payload, prev) {
@@ -410,6 +430,11 @@ function validateSourceConfig(payload, prev) {
     } else if (cfg.authType === 'BEARER') {
       if (!(payload.authValue || '').trim() && !prev?.config?.bearerMasked) bad('Bearer Token 必填', 'authValue')
     }
+    // 请求 / 响应映射仅 API 数据源持有（md §六.2 / §六.3；含 object/array 子字段递归校验）
+    const reqErr = validateRequestMap(cfg.requestMap)
+    if (reqErr) bad(reqErr, 'requestMap')
+    const respErr = validateResponseMap(cfg.responseMap)
+    if (respErr) bad(respErr, 'responseMap')
   } else if (type === 'MCP') {
     if (!MCP_TRANSPORTS.includes(cfg.transport)) bad('请选择传输方式', 'transport')
     if (cfg.transport === 'streamable-http') {
@@ -434,13 +459,7 @@ function validateSourceConfig(payload, prev) {
     if (!Array.isArray(cfg.tools) || !cfg.tools.length) bad('至少选择一个检索工具', 'tools')
     const t = Number(cfg.timeoutMs)
     if (!Number.isFinite(t) || t < 1000 || t > 120000) bad('超时时间需在 1000～120000ms 之间', 'timeoutMs')
-  } else {
-    return
   }
-  const reqErr = validateRequestMap(cfg.requestMap)
-  if (reqErr) bad(reqErr, 'requestMap')
-  const respErr = validateResponseMap(cfg.responseMap)
-  if (respErr) bad(respErr, 'responseMap')
 }
 // 敏感信息：明文只在提交瞬间存在，落库即 maskSecret 掩码（md §四.3：保存后遮罩展示，不回显明文；
 // 已配置行留空 = 保留原掩码，参考 apiConnectorMock 口径）
@@ -473,7 +492,7 @@ function mergeConfig(prev, payload) {
   return cfg
 }
 /**
- * 连接签名：请求地址 / 鉴权 / 映射（API，md §六.4）+ 服务地址 / 鉴权 / 工具 / 映射（MCP，md §七.7）。
+ * 连接签名：请求地址 / 鉴权 / 映射（API，md §六.4）+ 服务地址 / 鉴权 / 工具（MCP，md §七.5；MCP 无映射）。
  * 保存时签名变化或提交了新密钥 → 验证状态重置为未验证；仅改名称 / 状态 / 超时不重置。
  */
 function connSignature(type, cfg = {}) {
@@ -495,9 +514,7 @@ function connSignature(type, cfg = {}) {
       command: cfg.command,
       args: cfg.args,
       env: (cfg.envVars || []).map((r) => [r.key, !!r.clientFill]),
-      tools: cfg.tools,
-      req: cfg.requestMap,
-      resp: cfg.responseMap
+      tools: cfg.tools
     })
   }
   return ''
@@ -506,11 +523,33 @@ const hasNewSecret = (payload) =>
   !!(payload.authValue || '').trim() ||
   (payload.config?.authParams || []).some((r) => (r?.value || '').trim()) ||
   (payload.config?.envVars || []).some((r) => (r?.value || '').trim())
+/**
+ * 「被测试的配置」签名 = 连接签名 + 密钥掩码（明文不进签名）。testSource 记录最近一次测试的签名与结果，
+ * createSource / updateSource 保存时若配置与最近一次测试完全一致，则沿用该测试结果而不重置为未验证
+ * （2026-09-08 决议第 9 项：测试通过 → 保存 → 列表概要「已连通」）。仅内存，不持久化。
+ */
+function testedSig(type, prev, payload) {
+  const cfg = mergeConfig(prev, payload)
+  return JSON.stringify([
+    connSignature(type, cfg),
+    cfg.bearerMasked || '',
+    cfg.credentialMasked || '',
+    (cfg.authParams || []).map((r) => r.valueMasked || ''),
+    (cfg.envVars || []).map((r) => r.valueMasked || '')
+  ])
+}
+let lastTest = null // { sourceId: string|null, sig, result: { verifyStatus, verifiedAt, verifyError } }
+const pickVerify = (r) => ({ verifyStatus: r.verifyStatus, verifiedAt: r.verifiedAt, verifyError: r.verifyError })
 export async function createSource(payload) {
   await delay()
   validateSource(payload)
   validateSourceConfig(payload, null)
   const s = mkSrc(nid('ks'), payload.sourceType, payload.name.trim(), mergeConfig(null, payload), 'UNVERIFIED', payload.status || 'ENABLED')
+  // 新建保存未测试前「未验证」；新建态里已对这份配置测试过 → 沿用测试结果（md §八.1）
+  if (s.sourceType !== 'UPLOAD' && lastTest && lastTest.sourceId === null && lastTest.sig === testedSig(s.sourceType, null, payload)) {
+    Object.assign(s, pickVerify(lastTest.result))
+    lastTest = null
+  }
   sources = [s, ...sources]
   persist()
   return sourceVO(s)
@@ -522,9 +561,14 @@ export async function updateSource(id, payload) {
   validateSourceConfig(payload, s)
   const cfg = mergeConfig(s, payload)
   const connChanged = connSignature(s.sourceType, s.config) !== connSignature(s.sourceType, cfg) || hasNewSecret(payload)
+  // 改动后的配置恰是最近一次连接测试的那份 → 不重置，沿用测试结果（2026-09-08 决议第 9 项）
+  const justTested = lastTest && lastTest.sourceId === id && lastTest.sig === testedSig(s.sourceType, s, payload)
   Object.assign(s, { name: payload.name.trim(), status: payload.status || s.status, config: cfg })
-  // 修改请求地址 / 鉴权 / 工具 / 映射后保存 → 验证状态重置为未验证（md §六.4 / §七.7）
-  if (connChanged && s.sourceType !== 'UPLOAD') Object.assign(s, { verifyStatus: 'UNVERIFIED', verifiedAt: null, verifyError: null })
+  // 修改请求地址 / 鉴权 / 映射（API）或服务地址 / 鉴权 / 工具（MCP）后保存 → 验证状态重置为未验证（md §六.4 / §七.5）
+  if (connChanged && s.sourceType !== 'UPLOAD') {
+    Object.assign(s, justTested ? pickVerify(lastTest.result) : { verifyStatus: 'UNVERIFIED', verifiedAt: null, verifyError: null })
+  }
+  if (justTested) lastTest = null
   persist()
   return sourceVO(s)
 }
@@ -561,13 +605,14 @@ export async function testSource(sourceType, payload) {
         latencyMs: 168,
         ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})
       }
-  if (payload?.sourceId) {
-    const s = sources.find((x) => x.id === payload.sourceId)
-    if (s) {
-      Object.assign(s, { verifyStatus: result.verifyStatus, verifiedAt: result.verifiedAt, verifyError: result.verifyError })
-      persist()
-    }
+  // 回写：已存在的数据源立即更新验证状态（列表概要随之变为「已连通」/「连接失败」）；
+  // 同时记录本次测试的配置签名，供保存时判定「刚测试过的这份配置」不重置为未验证。
+  const prev = payload?.sourceId ? sources.find((x) => x.id === payload.sourceId) : null
+  if (payload?.sourceId && prev) {
+    Object.assign(prev, pickVerify(result))
+    persist()
   }
+  lastTest = { sourceId: prev ? prev.id : null, sig: testedSig(sourceType, prev, payload || {}), result: pickVerify(result) }
   return result
 }
 // 「引用现有 MCP」模式已删除（2026-09-07 PRD-20260904 md §七.1 仅直接填写），

@@ -137,7 +137,7 @@ export const MYAPP_BIZ_TYPE_OPTIONS = [
   { value: 'MODEL', label: '模型' }
 ]
 
-// 业务类型标签文案（原型 myBusinessLabel）
+// 业务类型标签文案（原型 myBusinessLabel；2026-09-08 决议第 8 项：业务类型不含「其他」，OTHER 映射删除）
 export function myAppBizTypeLabel(t) {
   return (
     {
@@ -147,8 +147,7 @@ export function myAppBizTypeLabel(t) {
       MCP: 'MCP',
       API: 'API',
       BIZ_SYSTEM: '业务系统',
-      MODEL: '模型',
-      OTHER: '其他'
+      MODEL: '模型'
     }[t] || t
   )
 }

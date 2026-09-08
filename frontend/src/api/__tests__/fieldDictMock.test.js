@@ -6,9 +6,11 @@ import { describe, it, expect } from 'vitest'
 import { listFieldDict, saveFieldOptions, getFieldOptionNames } from '../fieldDictMock'
 
 describe('fieldDictMock —— 字段字典（2026-09-01 PRD 对齐轮：草稿整存模型）', () => {
-  it('内置 4 字段权威默认选项（原型 fields 数据；只断言本文件不改写的字段）', async () => {
+  it('内置 2 字段权威默认选项（2026-09-08 决议第 6 项：风险类型/风险等级两组已删，不再出现在字典中）', async () => {
     const dict = await listFieldDict()
-    expect(Object.keys(dict).sort()).toEqual(['expertCategory', 'riskLevel', 'riskType', 'skillCategory'])
+    expect(Object.keys(dict).sort()).toEqual(['expertCategory', 'skillCategory'])
+    expect(dict.riskType).toBeUndefined()
+    expect(dict.riskLevel).toBeUndefined()
     expect(dict.skillCategory.map((o) => o.name)).toEqual([
       '办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他'
     ])
@@ -17,21 +19,30 @@ describe('fieldDictMock —— 字段字典（2026-09-01 PRD 对齐轮：草稿�
     ])
   })
 
+  // 下两例只改写 expertCategory 的「追加」部分且不动种子顺序前缀，与种子断言互不干扰。
   it('整字段覆盖保存：同名保留原 id、新名分配新 id、删除的行不保留', async () => {
-    const before = (await listFieldDict()).riskType
+    const before = (await listFieldDict()).expertCategory
     const kept = before[0]
-    const saved = await saveFieldOptions('riskType', [kept.name, `新风险-${Date.now()}`])
+    const saved = await saveFieldOptions('expertCategory', [kept.name, `新分类-${Date.now()}`])
     expect(saved).toHaveLength(2)
     expect(saved[0]).toEqual({ id: kept.id, name: kept.name })
     expect(saved[1].id).not.toBe(kept.id)
-    expect(getFieldOptionNames('riskType')).toEqual(saved.map((o) => o.name))
+    expect(getFieldOptionNames('expertCategory')).toEqual(saved.map((o) => o.name))
+    // 恢复种子，避免影响随机顺序下的其他用例
+    await saveFieldOptions('expertCategory', before.map((o) => o.name))
   })
 
   it('保存兜底校验：空值/重名/未知字段拒绝（不改动存量数据）', async () => {
-    const before = getFieldOptionNames('riskLevel')
-    await expect(saveFieldOptions('riskLevel', [...before, ' '])).rejects.toThrow('选项值不能为空')
-    await expect(saveFieldOptions('riskLevel', [...before, before[0]])).rejects.toThrow('选项值不能重复')
+    const before = getFieldOptionNames('expertCategory')
+    await expect(saveFieldOptions('expertCategory', [...before, ' '])).rejects.toThrow('选项值不能为空')
+    await expect(saveFieldOptions('expertCategory', [...before, before[0]])).rejects.toThrow('选项值不能重复')
     await expect(saveFieldOptions('nope', ['x'])).rejects.toThrow('字段不存在')
-    expect(getFieldOptionNames('riskLevel')).toEqual(before)
+    expect(getFieldOptionNames('expertCategory')).toEqual(before)
+  })
+
+  it('风险类型 / 风险等级已不属于字典：保存被拒绝为「字段不存在」', async () => {
+    await expect(saveFieldOptions('riskType', ['x'])).rejects.toThrow('字段不存在')
+    await expect(saveFieldOptions('riskLevel', ['x'])).rejects.toThrow('字段不存在')
+    expect(getFieldOptionNames('riskType')).toEqual([])
   })
 })

@@ -1,22 +1,25 @@
 <script setup>
 /**
- * 岗位详情页「业务系统」页签（2026-09-04 PRD-20260903 对齐新增，md 三.8）。
+ * 岗位详情页「业务系统」页签（md §8；2026-09-08 PRD-20260908 对齐，布局 / 控件名 / 文案照原型
+ * 业务系统页签层 L4330–4372）。
  *
  * - 引用列表：仅展示状态为「已发布」的业务系统（与连接器 bizSystemMock 同源取行；
  *   未发布 / 已停用 / 已被删除的业务系统不出现在列表中）。
- * - 搜索：按系统名称关键词过滤（含描述，照原型 data-position-biz-search 口径）。
- * - 【添加业务系统】：Picker 弹窗，展示所有已发布且未被当前岗位引用的业务系统，
- *   支持按名称搜索，确认后把 ID 写入 businessSystemIds（emit 由父级 patch 到 store，随【保存】落 mock）。
- * - 移除引用：二次确认，仅解除引用不删业务系统本身。
- * - 点系统名称：跳转连接器 › 业务系统详情（AdminConnector?tab=bizsystem&view=<id>，列表页消费 view 打开查看抽屉）。
- * - 只读态：隐藏【添加业务系统】与移除操作。
+ *   列 = 业务系统（图标 + 名称 + 描述）/ 登录地址 / 业务页（数量）/ 最近更新时间 / 操作（仅【查看】）。
+ * - 搜索：按名称 / 描述关键词过滤（原型 data-position-biz-search 口径），无匹配「没有匹配的业务系统」。
+ * - 【＋ 新业务系统】：「引用业务系统」弹窗，展示所有已发布且未被当前岗位引用的业务系统，
+ *   支持按名称 / 描述搜索，【确认引用】后把 ID 写入 businessSystemIds（emit 由父级 patch 到 store，随【保存】落 mock）。
+ * - 【查看】：以只读打开业务系统抽屉（BizSystemEditor readonly，原型 openBizEditor('edit',item,true)）。
+ * - 不支持移除引用、名称不跳转（md §8.2「行内操作仅展示【查看】，不支持移除引用」）。
+ * - 只读态：隐藏【＋ 新业务系统】。
  */
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { listBizSystems } from '@/api/admin'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { fmtTime } from '@/utils/docMeta'
+import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 
 const props = defineProps({
   // 当前岗位引用的业务系统 id 列表（store.basic.businessSystemIds）
@@ -25,8 +28,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:businessSystemIds'])
-
-const router = useRouter()
 
 const loading = ref(false)
 const loadError = ref(false)
@@ -103,83 +104,78 @@ function confirmPick() {
   ElMessage.success('业务系统已引用')
 }
 
-/* ---------- 移除引用（确认后仅解除引用） ---------- */
-async function removeRef(row) {
-  try {
-    await ElMessageBox.confirm(
-      `移除后本岗位不再引用「${row.name}」，业务系统本身不会被删除。确认移除？`,
-      '移除业务系统引用',
-      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' }
-    )
-  } catch {
-    return
-  }
-  emit(
-    'update:businessSystemIds',
-    (props.businessSystemIds || []).filter((id) => String(id) !== String(row.id))
-  )
-  ElMessage.success('已移除引用')
-}
-
-/* ---------- 查看详情：跳连接器 › 业务系统（query.view 由列表页消费打开查看抽屉） ---------- */
-function gotoDetail(row) {
-  router.push({ name: 'AdminConnector', query: { tab: 'bizsystem', view: row.id } })
+/* ---------- 【查看】：只读打开业务系统抽屉（原型 openBizEditor('edit', item, true)） ---------- */
+const viewerOpen = ref(false)
+const viewerId = ref(null)
+function viewRow(row) {
+  viewerId.value = row.id
+  viewerOpen.value = true
 }
 </script>
 
 <template>
   <div class="pbs">
+    <!-- 区块头照原型 pd2-section-head：标题 + 弱色说明 -->
     <div class="pd-list-head">
-      <div class="pd-list-title">业务系统<span class="pd-list-sub">该岗位引用的已发布业务系统 · 未发布或已停用的不展示</span></div>
-      <el-button v-if="!readonly" type="primary" size="small" @click="openPicker">添加业务系统</el-button>
+      <div class="pd-list-title">业务系统<span class="pd-list-sub">该岗位已引用的业务系统</span></div>
     </div>
 
+    <!-- 工具栏照原型 position-biz-toolbar：搜索左、【＋ 新业务系统】右 -->
     <div class="pbs-toolbar">
-      <el-input v-model="keyword" placeholder="搜索业务系统名称" clearable class="pbs-search">
+      <el-input v-model="keyword" placeholder="搜索业务系统名称或描述" clearable class="pbs-search">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <span class="pbs-spacer"></span>
+      <el-button v-if="!readonly" type="primary" @click="openPicker">＋ 新业务系统</el-button>
     </div>
 
     <div v-if="loadError" class="pd-empty">
       业务系统加载失败
       <el-button link type="primary" @click="load">重试</el-button>
     </div>
+    <!-- 列照 md §8.1 / 原型 L4343：业务系统 / 登录地址 / 业务页 / 最近更新时间 / 操作 -->
     <el-table
       v-else
       v-loading="loading"
       :data="filteredRows"
       class="pd-table"
-      :empty-text="referencedRows.length ? '没有匹配的业务系统' : '尚未引用业务系统，点击「添加业务系统」添加已发布业务系统'"
+      :empty-text="referencedRows.length ? '没有匹配的业务系统' : '尚未引用业务系统，点击&quot;＋ 新业务系统&quot;添加已发布业务系统'"
     >
-      <el-table-column label="系统名称" min-width="220">
+      <el-table-column label="业务系统" min-width="260">
         <template #default="{ row }">
           <span class="pbs-primary">
             <span class="pbs-icon">
               <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="pbs-icon-img" />
               <span v-else>{{ row.icon || '♟' }}</span>
             </span>
-            <el-button link type="primary" class="pbs-name" @click="gotoDetail(row)">{{ row.name }}</el-button>
+            <span class="pbs-copy">
+              <strong class="pbs-name">{{ row.name }}</strong>
+              <small class="pbs-desc">{{ row.description || '暂无描述' }}</small>
+            </span>
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="系统描述" min-width="280" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span v-if="row.description">{{ row.description }}</span>
-          <span v-else class="pd-faint">—</span>
-        </template>
+      <el-table-column label="登录地址" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.loginUrl || '-' }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="100" align="center">
-        <template #default><el-tag size="small" type="success" effect="plain">已发布</el-tag></template>
+      <el-table-column label="业务页" width="90" align="right">
+        <template #default="{ row }">{{ (row.bizPages && row.bizPages.length) || 0 }}</template>
       </el-table-column>
-      <el-table-column v-if="!readonly" label="操作" width="90" fixed="right">
+      <el-table-column label="最近更新时间" width="170">
+        <template #default="{ row }">{{ row.updatedAt ? fmtTime(row.updatedAt) : '-' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
-          <el-button link type="danger" @click="removeRef(row)">移除</el-button>
+          <el-button link type="primary" @click="viewRow(row)">查看</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 添加业务系统 Picker：已发布且未被当前岗位引用 -->
-    <el-dialog v-model="pickerOpen" title="添加业务系统" width="620px" append-to-body>
+    <!-- 只读查看抽屉（BizSystemEditor readonly，与连接器 / 治理详情同一只读口径） -->
+    <BizSystemEditor v-model:visible="viewerOpen" :biz-id="viewerId" readonly />
+
+    <!-- 「引用业务系统」弹窗（原型 openPicker L4362）：已发布且未被当前岗位引用 -->
+    <el-dialog v-model="pickerOpen" title="引用业务系统" width="620px" append-to-body>
       <p class="pbs-picker-hint">仅展示连接器中已发布、且当前岗位尚未引用的业务系统。</p>
       <el-input v-model="pickerKeyword" placeholder="搜索业务系统名称或描述" clearable class="pbs-picker-search">
         <template #prefix><el-icon><Search /></el-icon></template>
@@ -217,9 +213,25 @@ function gotoDetail(row) {
 .pbs-toolbar {
   display: flex;
   align-items: center;
+  gap: var(--space-3);
+}
+.pbs-spacer {
+  flex: 1;
 }
 .pbs-search {
   width: 280px;
+}
+.pbs-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pbs-desc {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pbs-primary {
   display: inline-flex;
@@ -247,6 +259,7 @@ function gotoDetail(row) {
 }
 .pbs-name {
   font-weight: var(--fw-medium);
+  color: var(--c-text-strong);
 }
 .pbs-picker-hint {
   margin: 0 0 var(--space-3);

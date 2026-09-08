@@ -363,12 +363,11 @@ const routes = [
     meta: { requiresAuth: true, roles: ['SYS_CONFIG', 'ADMIN'], module: 'SYSCONFIG', title: '查看平台技能', activeMenu: 'AdminSkillsUnified', skillSource: 'platform', readonly: true }
   },
   {
-    // 用户技能审核 · 技能详情页（V94，只读预览 + 审核）：独立数据源（审核申请，非 skill 行），
-    // 复用 SkillFocusEditor（readonly + reviewMode：右栏安全检测结果手风琴 + 顶栏「审核」）。新标签打开。
+    // 用户技能审核 · 查看技能深链（2026-09-08 PRD-20260908 对齐）：md §五「查看技能」为列表页右侧抽屉，
+    // 原整页 ReviewSkillDetailPage（V94 新标签整页）退役；旧地址保留为重定向 → 列表页 ?view=<id> 自动打开抽屉。
     path: '/admin/user-skill-reviews/:id/view',
     name: 'SysConfigReviewSkillView',
-    component: () => import('@/views/admin/ReviewSkillDetailPage.vue'),
-    meta: { requiresAuth: true, roles: ['SYS_CONFIG', 'ADMIN'], module: 'SYSCONFIG', title: '技能审核详情', activeMenu: 'SysConfigUserSkillReviews' }
+    redirect: (to) => ({ name: 'SysConfigUserSkillReviews', query: { view: String(to.params.id) } })
   },
   {
     // 系统默认技能整页编辑器（V89）：复用 AdminSkillEditPage + platform 数据源（同端点，通道建时已落定）；

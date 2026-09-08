@@ -2,7 +2,7 @@
 /**
  * 修改用户绑定岗位弹窗（岗位分配页，提案 20260721-2）。
  *
- * 单岗独占：选一个已发布岗位 → 首绑/换绑；选「未绑定（清除）」→ 解绑。保存即时生效（PUT /fde/position-assignments/{userId}）。
+ * 单岗独占：选一个已发布及审核中岗位（md §五，选项由宿主按底层 status=published 过滤）→ 首绑/换绑；选「未绑定（清除）」→ 解绑。保存即时生效（PUT /fde/position-assignments/{userId}）。
  * 写接口 skipGlobalError → 失败按 message 就地 toast。弹窗 Esc 已全局禁用（disableDialogEsc）。
  */
 import { ref, computed, watch } from 'vue'
@@ -13,7 +13,7 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   // 目标行：{ userId, username, displayName, positionId, positionName }
   row: { type: Object, default: null },
-  // 已发布岗位选项：[{ positionId, name }]
+  // 可绑定岗位选项（已发布及审核中）：[{ positionId, name }]
   positionOptions: { type: Array, default: () => [] },
   /**
    * 选项未变化时也照常保存并上抛 saved（默认 false=未变化直接关窗不打扰）。
@@ -72,6 +72,8 @@ async function onSubmit() {
   <el-dialog v-model="dialogVisible" title="修改绑定岗位" width="440px" append-to-body>
     <!-- 顶部提示与下拉首项文案照原型 openAssignment（2026-09-01 PRD 对齐） -->
     <div class="upe-target">为 <b>{{ userLabel }}</b> 选择绑定岗位，保存后即时生效。</div>
+    <!-- 字段标签「绑定岗位」照原型 L1604 form-label（2026-09-08 PRD-20260908 对齐） -->
+    <label class="upe-label">绑定岗位</label>
     <el-select v-model="selected" placeholder="选择岗位" class="upe-select">
       <el-option :value="''" label="未绑定" />
       <el-option
@@ -100,6 +102,12 @@ async function onSubmit() {
 }
 .upe-target b {
   color: var(--c-text-strong);
+}
+.upe-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--c-text);
 }
 .upe-select {
   width: 100%;

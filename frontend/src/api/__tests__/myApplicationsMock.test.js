@@ -9,7 +9,7 @@ import {
 
 /**
  * 我的申请 mock 层（2026-09-01 PRD 对齐新增模块）回归保护：
- * 种子 = 交互原型 v2 的 10 条申请（7 类业务 × 4 种结果，含一条 OTHER）；
+ * 种子 = 交互原型 v2 的 10 条申请（7 类业务 × 4 种结果；2026-09-08 决议第 8 项：不含 OTHER）；
  * 撤回 → WITHDRAWN；重新提交 → PENDING + 刷新申请时间 + 清空审核人/审核时间/驳回原因。
  */
 describe('myApplicationsMock · 我的申请内存 mock', () => {
@@ -37,9 +37,12 @@ describe('myApplicationsMock · 我的申请内存 mock', () => {
     expect(list.map((r) => r.id)).toEqual([509])
   })
 
-  it('含 OTHER 类型行（用户技能审核规则）供「无业务页可跳」toast 分支演示', async () => {
+  it('业务类型不含「其他」（2026-09-08 决议第 8 项）：种子 508 改为 SKILL 样例并接线 sk_304', async () => {
+    const { list } = await listMyApplications({})
+    expect(list.some((r) => r.businessType === 'OTHER')).toBe(false)
     const row = await getMyApplication(508)
-    expect(row.businessType).toBe('OTHER')
+    expect(row.businessType).toBe('SKILL')
+    expect(row.refId).toBe('sk_304')
   })
 
   it('撤回：result → WITHDRAWN，审核人置「—」', async () => {

@@ -60,11 +60,12 @@ describe('reviewMeta · 审核中心新口径', () => {
 })
 
 describe('reviewMeta · 我的申请口径', () => {
-  it('业务类型下拉顺序（原型 types 数组）与 OTHER 标签', () => {
+  it('业务类型下拉顺序（原型 types 数组）；不含「其他」（2026-09-08 决议第 8 项）', () => {
     expect(MYAPP_BIZ_TYPE_OPTIONS.map((o) => o.label)).toEqual([
       '专家', '岗位', '技能', 'MCP', 'API', '业务系统', '模型'
     ])
-    expect(myAppBizTypeLabel('OTHER')).toBe('其他')
+    expect(MYAPP_BIZ_TYPE_OPTIONS.map((o) => o.value)).not.toContain('OTHER')
+    expect(myAppBizTypeLabel('OTHER')).toBe('OTHER')
     expect(myAppBizTypeTagType('POSITION')).toBe('purple')
     expect(myAppBizTypeTagType('MCP')).toBe('accent')
   })

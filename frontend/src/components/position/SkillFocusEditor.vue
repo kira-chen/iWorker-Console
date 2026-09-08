@@ -184,12 +184,11 @@ const reviewRightPanel = ref('risk')
 function toggleReviewPanel(which) {
   reviewRightPanel.value = reviewRightPanel.value === which ? (which === 'risk' ? 'tools' : 'risk') : which
 }
-// 风险等级 → StatusTag 语义色（高风险=danger / 通过=success / 其余=warning）。仅展示。
+// 风险等级 → StatusTag 语义色（仅 reviewMode 右栏用；2026-09-08 PRD-20260908 按五档精确匹配：
+// 严重风险 / 高风险=danger、中风险=warning、低风险=info、检测通过=success，其余未知值 info）。仅展示。
+const RISK_LEVEL_TAG = { 严重风险: 'danger', 高风险: 'danger', 中风险: 'warning', 低风险: 'info', 检测通过: 'success' }
 function riskLevelType(levelName) {
-  if (!levelName) return 'info'
-  if (levelName.includes('高')) return 'danger'
-  if (levelName.includes('通过')) return 'success'
-  return 'warning'
+  return RISK_LEVEL_TAG[levelName] || 'info'
 }
 
 // ToolDock 内插入 → 直接插到编辑器光标处 + 轻提示（原由父级 onDockInsert 承担）。

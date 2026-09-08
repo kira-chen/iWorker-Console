@@ -48,7 +48,7 @@ vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
     props: ['visible', 'row', 'positionOptions', 'forceSave'],
     emits: ['update:visible', 'saved'],
     template:
-      '<div class="edit-dialog" :data-visible="String(visible)" :data-user="row && row.username" :data-force="String(!!forceSave)">' +
+      '<div class="edit-dialog" :data-visible="String(visible)" :data-user="row && row.username" :data-force="String(!!forceSave)" :data-options="(positionOptions || []).map((p) => p.name).join(\',\')">' +
       '<button class="edit-save" @click="$emit(\'saved\')" /></div>'
   }
 }))
@@ -117,6 +117,18 @@ const tabPaneStub = {
 const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elButton = { emits: ['click'], template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>' }
+// el-input / el-select 带 v-model 的存根：查询区防抖 / 不重置分页用例需要真实回写
+const elInput = {
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: '<input class="el-input" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+}
+const elSelect = {
+  props: ['modelValue'],
+  emits: ['update:modelValue', 'change'],
+  template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
+}
+const elOption = { props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
 const pager = { name: 'el-pagination', template: '<div class="el-pagination" />' }
 
 let app, container
@@ -130,7 +142,10 @@ async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminPositionAssignments)
-  for (const t of ['el-input', 'el-select', 'el-option', 'el-icon']) app.component(t, passthrough(t))
+  for (const t of ['el-icon']) app.component(t, passthrough(t))
+  app.component('el-input', elInput)
+  app.component('el-select', elSelect)
+  app.component('el-option', elOption)
   app.component('el-table', tableStub)
   app.component('el-table-column', tableColStub)
   app.component('el-tabs', tabsStub)
@@ -178,7 +193,16 @@ beforeEach(() => {
   approveApi.mockResolvedValue({})
   rejectApi.mockResolvedValue({})
   reboundApi.mockResolvedValue({})
-  listPositions.mockResolvedValue({ list: [{ positionId: 'ps_1', name: '销售' }], total: 1 })
+  // 2026-09-08 PRD-20260908 对齐：绑定下拉 = 已发布及审核中（底层 status=published，含在审新版），
+  // 未发布首发审核中不入选 → 种子三种形态各一条
+  listPositions.mockResolvedValue({
+    list: [
+      { positionId: 'ps_1', name: '销售', status: 'published', pendingAction: null },
+      { positionId: 'ps_2', name: '客服', status: 'published', pendingAction: 'PUBLISH' },
+      { positionId: 'ps_3', name: '草稿岗', status: 'draft', pendingAction: 'PUBLISH' }
+    ],
+    total: 3
+  })
   ElMessageBox.confirm.mockResolvedValue()
 })
 afterEach(() => {
@@ -187,20 +211,23 @@ afterEach(() => {
 })
 
 describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD-20260903 对齐）', () => {
-  it('页头标题「岗位管理」+ 副标题照 md；默认进「用户岗位分配」页签', async () => {
+  it('页头标题「岗位管理」+ 副标题照 md；默认进「用户岗位管理」页签（2026-09-08 PRD-20260908 对齐改名）', async () => {
     await mount()
     expect(container.querySelector('.page-header').textContent).toBe(
       '岗位管理|管理用户岗位绑定，支持直接分配与处理用户岗位申请。'
     )
     expect(container.querySelector('.el-tabs').getAttribute('data-active')).toBe('assignments')
+    expect(container.querySelector('.el-tab-btn[data-name="assignments"]').textContent).toBe('用户岗位管理')
     expect(paneAssign().style.display).not.toBe('none')
     expect(paneApps().style.display).toBe('none')
   })
 
-  it('挂载即拉分配列表、已发布岗位选项、申请列表与徽标计数', async () => {
+  it('挂载即拉分配列表、可绑定岗位选项（已发布及审核中，2026-09-08 PRD-20260908 md §五）、申请列表与徽标计数', async () => {
     await mount()
     expect(listPositionAssignments).toHaveBeenCalledTimes(1)
-    expect(listPositions).toHaveBeenCalledWith(expect.objectContaining({ status: 'published' }))
+    // 不再按展示态 status=published 下发（会漏掉「已发布且在审」岗位），改拉全量后按底层 status 过滤
+    expect(listPositions).toHaveBeenCalledTimes(1)
+    expect(listPositions.mock.calls[0][0]).not.toHaveProperty('status')
     expect(listPositionApplications).toHaveBeenCalledTimes(1)
     expect(countPendingApplications).toHaveBeenCalledTimes(1)
   })
@@ -250,6 +277,50 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(dlg.getAttribute('data-visible')).toBe('true')
     expect(dlg.getAttribute('data-user')).toBe('alice')
     expect(dlg.getAttribute('data-force')).toBe('false')
+    // 2026-09-08 PRD-20260908 md §五：下拉含已发布（含在审新版）、不含未发布首发审核中
+    expect(dlg.getAttribute('data-options')).toBe('销售,客服')
+  })
+
+  it('搜索停顿 220ms / 状态切换 → 自动刷新且不重置页码；仅【查询】回第 1 页（2026-09-08 PRD-20260908 md §3.1）', async () => {
+    // 总数 60 → 多页；先翻到第 2 页再操作查询区
+    listPositionAssignments.mockResolvedValue({ list: ROWS, total: 60 })
+    vi.useFakeTimers()
+    try {
+      await mount()
+      const calls = () => listPositionAssignments.mock.calls.map((c) => c[0])
+      // ListPagination（真组件）：点「下一页」把 page 置 2 并重拉
+      paneAssign().querySelector('.list-pager button[aria-label="下一页"]').click()
+      await flush()
+      expect(calls().at(-1).page).toBe(2)
+
+      // ① 搜索：输入后 219ms 不触发，220ms 触发且 page 仍为 2
+      const input = paneAssign().querySelector('input.el-input')
+      input.value = 'al'
+      input.dispatchEvent(new Event('input'))
+      await flush()
+      const before = calls().length
+      vi.advanceTimersByTime(219)
+      await flush()
+      expect(calls().length).toBe(before)
+      vi.advanceTimersByTime(1)
+      await flush()
+      expect(calls().length).toBe(before + 1)
+      expect(calls().at(-1)).toEqual(expect.objectContaining({ keyword: 'al', page: 2 }))
+
+      // ② 状态切换：立即刷新且 page 仍为 2
+      const select = paneAssign().querySelector('select.el-select')
+      select.value = 'disabled'
+      select.dispatchEvent(new Event('change'))
+      await flush()
+      expect(calls().at(-1)).toEqual(expect.objectContaining({ status: 'disabled', page: 2 }))
+
+      // ③ 【查询】：回第 1 页
+      ;[...paneAssign().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
+      await flush()
+      expect(calls().at(-1)).toEqual(expect.objectContaining({ page: 1 }))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('切到审批页签：行渲染（用户名/现有绑定「未绑定」/申请岗位/提交时间/三枚操作）', async () => {

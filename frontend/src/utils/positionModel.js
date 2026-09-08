@@ -151,9 +151,11 @@ export function validateRecommendedQuestions(list) {
 }
 
 /* ============================ 人格页签必填要素（2026-09-04 PRD-20260903 对齐） ============================ */
-// 岗位描述：必填，最多 500 字（新建弹窗 / 人格页签 / mock 校验三处同口径）。
+// 岗位描述：必填，最多 500 字（2026-09-08 决议第 5 项：统一 500——人格页签 / 新建弹窗 / mock 校验三处同口径；
+// 早先「统一 2000」的中间决议已被最终决议推翻，勿再改回）。
 export const DESCRIPTION_MAX_LEN = 500
-// 岗位认领说明：动态列表，至少 1 条为发布必填项、最多 6 条、每条 100 字。
+// 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.3 改名）：动态文本列表，
+// 可选、不参与发布阻断；最多 6 条、每条 100 字。底层字段仍为 claimDescriptions。
 export const CLAIM_NOTE_MAX = 6
 export const CLAIM_NOTE_LEN = 100
 // 示例问题：固定 3 条，每条不超过 60 字（原 N4「推荐问题 4 条」口径由本组替代）。
@@ -173,7 +175,7 @@ export function exampleQuestionsComplete(list) {
   return normalizeExampleQuestions(list).every((q) => String(q || '').trim().length > 0)
 }
 
-// 归一岗位认领说明为字符串数组（去 null、截 6 条上限交由交互层控制，这里只清洗类型）。
+// 归一领用页文案（claimDescriptions）为字符串数组（去 null、截 6 条上限交由交互层控制，这里只清洗类型）。
 export function normalizeClaimNotes(list) {
   return Array.isArray(list) ? list.map((s) => (s == null ? '' : String(s))) : []
 }
@@ -482,89 +484,88 @@ export function normalizePublishWarnings(warnings) {
   }
 }
 
-/* ============================ 发布前检查（§6.2） ============================ */
+/* ============================ 升级类型（md §3.7 · 原型 positionPublishHtml L1224） ============================ */
+// 更新类型词 + hint（原型 positionBumpHint），顺序照原型：修订版本 / 功能更新 / 重大更新。
+// 列表页版本管理侧栏（AdminPositions bumpOptions）与详情页发布前检查弹窗共用同一份。
+export const POSITION_BUMP_OPTIONS = [
+  { value: 'NONE', label: '修订版本', hint: '修复问题或小幅配置调整' },
+  { value: 'MINOR', label: '功能更新', hint: '新增岗位能力或岗位技能' },
+  { value: 'MAJOR', label: '重大更新', hint: '岗位职责或流程发生不兼容变更' }
+]
+
+/* ============================ 发布前检查（md §9.2 · 原型 openPub L2132） ============================ */
 /**
- * 计算发布前检查清单 + 完成度。输入岗位详情（name/intro + agents[]）。
+ * 计算发布前检查清单 + 完成度。输入岗位详情（name/description/exampleQuestions/positionSop + agents[]）。
  * 返回 { items:[{ key,label,ok,blocking,warning,detail }], blockingPassed, doneRatio, warnings }
  *
- * 规则：
- * - 岗位名必填（硬阻断）；
- * - ≥1 Agent 且每个 Agent ≥1 技能（硬阻断，§6.2 / 契约 1003）；
- * - 采集字段定义完整：单/多选须有选项（硬阻断，避免领用页空选项）；
- * - 引用 UNHEALTHY 工具 → warning（不阻断，调用方按 referencedTools 传入 unhealthyTools 列表）。
- *   （收纳区退役：原「未绑定 Agent 技能 warning」已删除——游离技能不再属任何岗位。）
+ * 2026-09-08 PRD-20260908 对齐（md §9.1 阻断 4 项 = 名称 / 描述 / 示例问题 / SOP；§9.2 清单；
+ * 原型 `openPub` L2132 四行文案逐字），取代旧 §6.2 五项口径：
+ * - 岗位名称与描述（硬）——「必填内容已填写」；
+ * - 示例问题（硬）——「3 条示例问题已填写」；
+ * - 岗位 SOP（硬）——「岗位能力综述已填写」；
+ * - Agent 与技能（! 警告，不阻断）——md §6.5「Agent 与技能没有填写时同样可以发布」；
+ *   有 UNHEALTHY 工具时按 md §9.2 写「存在 X 个工具未验证，不阻断发布」，否则照原型
+ *   「存在未验证能力时不阻断发布」。旧「≥1 Agent 且每 Agent ≥1 技能」硬阻断、
+ *   「采集字段定义完整」硬阻断（md §3.4 采集字段不参与发布阻断）均删除。
+ * warnings 仅在确有告警（未验证工具）时非空，供弹窗提示行「存在告警项（不阻断）…」判定。
  */
 export function computePublishCheck(detail) {
   const d = detail || {}
-  const agents = Array.isArray(d.agents) ? d.agents : []
-  const intake = Array.isArray(d.intakeSchema) ? d.intakeSchema : []
   const unhealthyTools = Array.isArray(d.unhealthyTools) ? d.unhealthyTools : []
-  // 2026-09-04 PRD-20260903 对齐：原 N4「推荐问题 4 条」改为「示例问题 3 条」。
   const eqComplete = exampleQuestionsComplete(d.exampleQuestions)
+  const nameOk = !!String(d.name || '').trim()
+  const descOk = !!String(d.description || '').trim()
+  const sopOk = !!String(d.positionSop || '').trim()
 
   const items = []
 
-  // 1. 岗位名（硬）
+  // 1. 岗位名称与描述（硬）
   items.push({
     key: 'name',
-    label: '岗位名称已填写',
-    ok: !!String(d.name || '').trim(),
-    blocking: true
-  })
-
-  // 2. ≥1 Agent 且每 Agent ≥1 技能（硬）
-  const skillCountOf = (a) => (Array.isArray(a.skills) ? a.skills.length : a.skillCount || 0)
-  const hasAgent = agents.length > 0
-  const everyAgentHasSkill = hasAgent && agents.every((a) => skillCountOf(a) > 0)
-  const emptyAgents = agents.filter((a) => skillCountOf(a) === 0).map((a) => a.name)
-  items.push({
-    key: 'agents',
-    label: '至少 1 个 Agent，且每个 Agent 含 ≥1 技能',
-    ok: everyAgentHasSkill,
+    label: '岗位名称与描述',
+    ok: nameOk && descOk,
     blocking: true,
-    detail: emptyAgents.length ? `空 Agent：${emptyAgents.join('、')}` : ''
+    detail: nameOk && descOk ? '必填内容已填写' : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
   })
 
-  // 3. 采集字段完整（单/多选有选项）（硬）
-  const badIntake = intake.filter(
-    (f) => isSelectType(f.type) && !(Array.isArray(f.options) && f.options.length)
-  )
-  items.push({
-    key: 'intake',
-    label: '采集字段定义完整（单/多选有选项）',
-    ok: badIntake.length === 0,
-    blocking: true,
-    detail: badIntake.length ? `缺选项：${badIntake.map((f) => f.label || f.key).join('、')}` : ''
-  })
-
-  // 4. 示例问题 3 条必填（硬，2026-09-04 PRD-20260903 对齐：替代原 N4 推荐问题 4 条口径）。
+  // 2. 示例问题 3 条（硬）
   items.push({
     key: 'exampleQuestions',
-    label: '3 条示例问题已填写',
+    label: '示例问题',
     ok: eqComplete,
     blocking: true,
-    detail: eqComplete ? '' : '示例问题固定 3 条，需全部填写才能发布'
+    detail: eqComplete ? '3 条示例问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
-  // 5. 引用 UNHEALTHY 工具 → warning
-  //（收纳区退役：原「未绑定 Agent 技能 → warning」已删除——删 Agent 后技能彻底脱离岗位，不再是本岗位资产，
-  // 岗位发布检查不应再提它们。）
-  if (unhealthyTools.length) {
-    items.push({
-      key: 'unhealthy',
-      label: `${unhealthyTools.length} 个被引用工具当前异常`,
-      ok: false,
-      blocking: false,
-      warning: true,
-      detail: `异常工具：${unhealthyTools.join('、')}（运行时可能降级）`
-    })
-  }
+  // 3. 岗位 SOP（硬）
+  items.push({
+    key: 'sop',
+    label: '岗位 SOP',
+    ok: sopOk,
+    blocking: true,
+    detail: sopOk ? '岗位能力综述已填写' : '请先填写岗位 SOP'
+  })
+
+  // 4. Agent 与技能（警告样式，不阻断）
+  const hasUnhealthy = unhealthyTools.length > 0
+  items.push({
+    key: 'agents',
+    label: 'Agent 与技能',
+    ok: false,
+    blocking: false,
+    warning: true,
+    // 仅确有未验证工具时计入 warnings（弹窗据此出「存在告警项」提示行）
+    actionable: hasUnhealthy,
+    detail: hasUnhealthy
+      ? `存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
+      : '存在未验证能力时不阻断发布'
+  })
 
   const blockingItems = items.filter((i) => i.blocking)
   const blockingPassed = blockingItems.every((i) => i.ok)
   const passedCount = blockingItems.filter((i) => i.ok).length
   const doneRatio = blockingItems.length ? passedCount / blockingItems.length : 1
-  const warnings = items.filter((i) => i.warning)
+  const warnings = items.filter((i) => i.warning && i.actionable)
 
   return { items, blockingPassed, doneRatio, warnings }
 }

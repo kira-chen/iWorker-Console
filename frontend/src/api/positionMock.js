@@ -133,7 +133,7 @@ function buildWorkbenchSeed() {
         { emoji: '📊', content: '每天自动汇总经营数据，异常主动提醒' },
         { emoji: '📝', content: '一句话生成经营分析周报' }
       ],
-      // 岗位认领说明（2026-09-04 PRD-20260903 对齐：新原型 ensure() 种子口径，纯文本一行一条）
+      // 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.3 改名；新原型 ensure() 种子口径，纯文本一行一条）
       claimDescriptions: ['自动汇总各业务线经营数据', '识别异常波动并分析原因', '生成周度经营分析报告'],
       // 示例问题（3 条）+ 岗位 SOP（编号步骤式）
       exampleQuestions: ['汇总昨天的经营数据', '本月营收有什么异常', '生成上周的经营周报'],
@@ -208,7 +208,7 @@ function emptyWorkbench(payload = {}) {
     intro: String(payload.intro || '').trim(),
     iconSource: payload.iconSource || 'library',
     claimDesc: Array.isArray(payload.claimDesc) ? payload.claimDesc.map((c) => ({ ...c })) : [],
-    // 2026-09-04 PRD-20260903 对齐新增：岗位认领说明 / 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+    // 2026-09-04 PRD-20260903 对齐新增：领用页文案（claimDescriptions）/ 示例问题（3 条）/ 岗位 SOP / 引用业务系统
     claimDescriptions: Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map(String) : [],
     exampleQuestions: normEq(payload.exampleQuestions),
     positionSop: String(payload.positionSop || ''),
@@ -296,7 +296,7 @@ export async function createPosition(payload = {}) {
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写岗位名称', 'name')
   if (positions.some((p) => p.name === name)) throw err('已存在同名岗位', 'name', 1005)
-  // 岗位描述 500 字上限（2026-09-04 PRD-20260903 对齐，全链同口径：新建弹窗 / 人格页签 / mock 兜底）
+  // 岗位描述 500 字上限（2026-09-08 决议第 5 项：统一 500，全链同口径：新建弹窗 / 人格页签 / mock 兜底）
   if (String(payload.description || '').trim().length > 500) throw err('岗位描述不超过 500 字', 'description')
   const now = nowIso()
   const p = {
@@ -370,10 +370,9 @@ export async function publishPosition(id, payload = {}) {
   const p = findPos(id)
   if (!p) throw err('岗位不存在', null, 404)
   if (p.pendingAction) throw err('该岗位已有在途审核，请先撤回')
-  if (!p.skillIds.length && !publications[p.positionId]?.length) {
-    // 前端已有前置校验（Q3），此处兜底同口径
-    if (!p.skillIds.length) throw err('至少关联 1 个岗位私有技能才能发布')
-  }
+  // 2026-09-08 PRD-20260908 对齐：md §6.5「Agent 与技能没有填写时同样可以发布（不参与发布阻断校验）」、
+  // 原型详情页 openPub L2132 无技能数校验 → 删除原「至少关联 1 个岗位私有技能」mock 兜底；
+  // 列表页【发布】的技能数前置校验（原型 L1194 链路，底账 Q11 未决）仍由 AdminPositions.onPublish 自持。
   const rows = publications[p.positionId] || []
   const latest = parseVersion(rows[0]?.versionLabel)
   let label = 'v1.0.0'
@@ -608,7 +607,7 @@ export async function updatePosition(id, payload = {}) {
   }
   if ('description' in payload) {
     const description = String(payload.description || '').trim()
-    // 岗位描述 500 字上限（2026-09-04 PRD-20260903 对齐）
+    // 岗位描述 500 字上限（2026-09-08 决议第 5 项：统一 500）
     if (description.length > 500) throw err('岗位描述不超过 500 字', 'description')
     p.description = description
   }
@@ -619,8 +618,9 @@ export async function updatePosition(id, payload = {}) {
   // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）
   if ('claimDescriptions' in payload) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
-    if (notes.length > 6) throw err('岗位认领说明最多 6 条', 'claimDescriptions')
-    if (notes.some((s) => s.length > 100)) throw err('岗位认领说明每条不超过 100 字', 'claimDescriptions')
+    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3），可选、≤6 条 × 100 字
+    if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')
+    if (notes.some((s) => s.length > 100)) throw err('领用页文案每条不超过 100 字', 'claimDescriptions')
     wb.claimDescriptions = notes
   }
   if ('exampleQuestions' in payload) {

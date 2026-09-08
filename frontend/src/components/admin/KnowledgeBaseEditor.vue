@@ -7,9 +7,10 @@
  * 段 ② 数据源引用：上传 / API / MCP 三组多选（每类最多 5 个），只引用、不在此创建或编辑数据源；
  *   已停用 / 无解析成功文档 / 未验证或验证失败的引用就地风险提示（md §三.3.2）。
  *
- * 【底部按钮】（md §三.4.1 / §三.4.2）
- *   编辑：新建=取消·保存；未发布=删除···取消·保存·提交发布；审核中=关闭·撤回（配置只读）；已发布=取消·保存·提交停用
- *   查看：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭·提交停用
+ * 【底部按钮】（md §三.4.1 / §三.4.2；2026-09-08 PRD-20260908 对齐：编辑 / 查看抽屉已发布态均删【提交停用】，
+ *   停用入口收敛为列表行内【停用】= 原型 removeKnowledgeStopButtons L3226）
+ *   编辑：新建=取消·保存；未发布=删除···取消·保存·提交发布；审核中=关闭·撤回（配置只读）；已发布=取消·保存
+ *   查看：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭
  *
  * 【关键变更回未发布】（md §三.5）已发布库改数据源引用或可见范围 → 保存前二次确认，确认后回未发布重审。
  * 【岗位上下文】（md §三.8）positionLock 传入时类型锁「岗位知识库」、可见范围锁当前岗位，均不可更改。
@@ -24,7 +25,6 @@ import {
   updateKnowledgeBase,
   deleteKnowledgeBase,
   publishKnowledgeBase,
-  delistKnowledgeBase,
   withdrawKnowledgeBase,
   listKnowledgeSources,
   listExpertOptions,
@@ -39,7 +39,6 @@ import {
   stateMeta,
   isPending,
   isOffline,
-  isOnline,
   publishBlockReason,
   sourceRefsChanged
 } from '@/utils/knowledgeBaseMeta'
@@ -70,7 +69,7 @@ const formRef = ref(null)
 const loading = ref(false)
 const loadError = ref('')
 const saving = ref(false)
-const busy = ref('') // 'delete' | 'publish' | 'delist' | 'withdraw'
+const busy = ref('') // 'delete' | 'publish' | 'withdraw'
 const createdId = ref(null)
 const detail = ref(null) // 服务端最新行（状态判定与关键变更比对的基线）
 
@@ -314,20 +313,6 @@ async function doPublish() {
     busy.value = ''
   }
 }
-async function doDelist() {
-  if (!(await confirmAction('delist'))) return
-  busy.value = 'delist'
-  try {
-    hydrate(await delistKnowledgeBase(targetId.value))
-    ElMessage.success(KB_ACTION_CONFIRMS.delist.toast)
-    emit('changed')
-    close()
-  } catch (e) {
-    ElMessage.error(e?.message || '提交失败')
-  } finally {
-    busy.value = ''
-  }
-}
 async function doWithdraw() {
   if (!(await confirmAction('withdraw'))) return
   busy.value = 'withdraw'
@@ -441,13 +426,12 @@ function close() {
     <!-- 底部按状态出按钮（md §三.4.1 编辑 / §三.4.2 查看） -->
     <template #footer>
       <div class="kb-foot">
-        <!-- 查看抽屉：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭·提交停用 -->
+        <!-- 查看抽屉：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭（提交停用已删，md §三.4.2） -->
         <template v-if="viewMode">
           <span class="kb-foot-sp" />
           <el-button @click="close">关闭</el-button>
           <el-button v-if="pendingLocked" type="warning" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
           <el-button v-else-if="isOffline(detail)" type="primary" :loading="busy === 'publish'" @click="doPublish">提交发布</el-button>
-          <el-button v-else-if="isOnline(detail)" type="warning" plain :loading="busy === 'delist'" @click="doDelist">提交停用</el-button>
         </template>
         <!-- 编辑抽屉·审核中：关闭·撤回（配置只读） -->
         <template v-else-if="pendingLocked">
@@ -455,7 +439,7 @@ function close() {
           <el-button @click="close">关闭</el-button>
           <el-button type="warning" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
         </template>
-        <!-- 编辑抽屉：新建=取消·保存；未发布=删除···取消·保存·提交发布；已发布=取消·保存·提交停用 -->
+        <!-- 编辑抽屉：新建=取消·保存；未发布=删除···取消·保存·提交发布；已发布=取消·保存（提交停用已删，md §三.4.1） -->
         <template v-else>
           <el-button v-if="isEdit && isOffline(detail)" type="danger" plain :loading="busy === 'delete'" :disabled="saving" @click="doDelete">删除</el-button>
           <span class="kb-foot-sp" />
@@ -466,7 +450,6 @@ function close() {
               <el-button type="success" :disabled="saving" :loading="busy === 'publish'" @click="doPublish">提交发布</el-button>
             </span>
           </el-tooltip>
-          <el-button v-if="isEdit && isOnline(detail)" type="warning" plain :loading="busy === 'delist'" :disabled="saving" @click="doDelist">提交停用</el-button>
         </template>
       </div>
     </template>

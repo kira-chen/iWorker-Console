@@ -2,7 +2,9 @@
  * 我的申请内存 mock（2026-09-01 PRD 对齐新增模块，仅 DEV 生效，见 myApplications.js 头注释）。
  *
  * 种子数据照交互原型 v2 五模块脚本的 `var myApplications=[…]` 10 条逐字抄录
- * （覆盖 7 类业务 × 4 种审核结果，含一条 OTHER）。列表口径同原型 renderMyApplications：
+ * （覆盖 7 类业务 × 4 种审核结果；原型样例第 8 条为 OTHER「用户技能审核规则」，2026-09-08 决议第 8 项
+ * 「业务类型不含其他」——改为 SKILL「合同风险检查」新版本发布样例，refId 指向 unifiedSkillMock sk_304）。
+ * 列表口径同原型 renderMyApplications：
  * - keyword 过滤域 [objectName, description]；
  * - businessType / applicationType / result 三个下拉筛选；
  * - submittedAt 排序（默认 desc）。
@@ -32,15 +34,15 @@ function seedRows() {
     { id: 505, objectName: '企业知识库 MCP', description: '连接企业知识库并提供文档检索与内容读取能力', businessType: 'MCP', applicationType: 'DELIST', version: 'v3.4.0', submittedAt: '2026-08-28 09:55', result: 'PENDING', reviewedAt: '', submitter: 'config.admin', reviewer: '', versionNotes: '原服务即将迁移，申请停止旧 MCP 对外提供', rejectReason: '' },
     { id: 506, objectName: '人力资源系统', description: '员工、组织、请假和入转调离管理业务系统', businessType: 'BIZ_SYSTEM', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-26 18:20', result: 'APPROVED', reviewedAt: '2026-08-27 09:12', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '首次接入用户端业务系统', rejectReason: '' },
     { id: 507, objectName: 'Kimi K2', description: '支持长上下文分析和文本生成的通用模型', businessType: 'MODEL', applicationType: 'VERSION_PUBLISH', version: 'v2.0.0', submittedAt: '2026-08-26 15:08', result: 'REJECTED', reviewedAt: '2026-08-26 16:30', submitter: 'config.admin', reviewer: 'model.audit', versionNotes: '更新模型标识和上下文窗口配置', rejectReason: '连通性验证未通过，请检查鉴权配置。' },
-    { id: 508, objectName: '用户技能审核规则', description: '用户上传技能的安全检测与风险分级规则', businessType: 'OTHER', applicationType: 'VERSION_PUBLISH', version: 'v1.1.0', submittedAt: '2026-08-25 14:36', result: 'APPROVED', reviewedAt: '2026-08-25 16:08', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '更新风险类型和风险等级字典', rejectReason: '' },
+    { id: 508, objectName: '合同风险检查', description: '识别合同条款中的风险点并给出说明', businessType: 'SKILL', applicationType: 'VERSION_PUBLISH', version: 'v1.1.0', submittedAt: '2026-08-25 14:36', result: 'APPROVED', reviewedAt: '2026-08-25 16:08', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '补充违约条款识别规则', rejectReason: '' },
     { id: 509, objectName: '报销单查询', description: '按报销单号查询审批状态、金额与当前处理节点', businessType: 'API', applicationType: 'VERSION_PUBLISH', version: 'v1.3.0', submittedAt: '2026-08-28 08:50', result: 'PENDING', reviewedAt: '', submitter: 'config.admin', reviewer: '', versionNotes: '增加审批节点和付款状态返回字段', rejectReason: '' },
     { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewedAt: '2026-08-24 10:46', submitter: 'config.admin', reviewer: '—', versionNotes: '业务调整，申请停止专家对外提供', rejectReason: '' }
   ]
   // demo 附加接线：原生详情的目标实体 id，指向各业务模块 mock 里真实存在的实体
   // （API/MCP → 连接器 mock；EXPERT → domainExpertMock（502 无同名专家，借 201 经营分析专家示意，
   //  510 → 203 法务审阅专家）；MODEL → adminModelMock md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock
-  //  biz_2102 人力资源系统；SKILL → unifiedSkillMock sk_309 行业研究助手。
-  //  POSITION 走本地简易只读抽屉、OTHER 走 toast，refId 不消费）
+  //  biz_2102 人力资源系统；SKILL → unifiedSkillMock sk_309 行业研究助手 / sk_304 合同风险检查。
+  //  POSITION 走本地简易只读抽屉，refId 不消费）
   const REF = {
     501: 'api_1103',
     502: 201,
@@ -48,6 +50,7 @@ function seedRows() {
     505: 'spark_bridge_mcp',
     506: 'biz_2102',
     507: 'md_104',
+    508: 'sk_304',
     509: 'api_1101',
     510: 203
   }
@@ -61,8 +64,9 @@ let applications = seedRows()
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=withdraw / resubmit / reset。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
+// version 2（2026-09-08 决议第 8 项）：种子 508 由 OTHER 改为 SKILL，旧快照丢弃回种子。
 const persist = attachPersist('myApplications', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {

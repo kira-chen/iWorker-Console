@@ -61,7 +61,7 @@ describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
 })
 
 describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-20260903 对齐）', () => {
-  it('详情树带新字段种子：认领说明 / 示例问题 3 条 / 岗位 SOP / businessSystemIds', async () => {
+  it('详情树带新字段种子：领用页文案（claimDescriptions）/ 示例问题 3 条 / 岗位 SOP / businessSystemIds', async () => {
     const d = await getPosition(401)
     expect(d.claimDescriptions).toEqual(['自动汇总各业务线经营数据', '识别异常波动并分析原因', '生成周度经营分析报告'])
     expect(d.exampleQuestions).toHaveLength(3)
@@ -92,14 +92,16 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(after.claimDescriptions).toEqual(['第一条说明'])
   })
 
-  it('mock 校验：描述 >500 / 认领说明 >6 条或单条 >100 / 示例问题单条 >60 / SOP >4000 均被拦', async () => {
+  it('mock 校验：描述 >500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 >6 条或单条 >100 / 示例问题单条 >60 / SOP >4000 均被拦', async () => {
+    // 描述 500 以内放行、501 拦（人格页 / 新建弹窗同口径）
+    await expect(updatePosition(404, { description: 'x'.repeat(500) })).resolves.toBeTruthy()
     await expect(updatePosition(404, { description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
     await expect(updatePosition(404, { claimDescriptions: Array.from({ length: 7 }, (_, i) => `条${i}`) })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(61), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
-    // createPosition 同口径校验描述 500
-    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
+    // createPosition 同口径校验描述 2000
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
   })
 })
 

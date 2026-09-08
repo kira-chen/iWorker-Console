@@ -10,7 +10,8 @@
  *   （2026-09-01 疑点1 处置：列表【重新提交】=打开编辑态（底部 关闭|提交审核），
  *    详情底部【重新提交】=直接提交）；
  * - 详情复用业务原生视图（GovObjectDetail 分发；SKILL 跳技能整页 + 吸底操作栏；
- *   OTHER 类型 toast「该申请对象暂无可跳转的业务页面」——疑点2 处置）；
+ *   无业务页可跳的类型 toast「该申请对象暂无可跳转的业务页面」——疑点2 处置；2026-09-08 决议第 8 项后
+ *   业务类型不含 OTHER，此分支仅作兜底）；
  *   详情底部按状态：PENDING=关闭|撤回申请；APPROVED=仅关闭；REJECTED/WITHDRAWN=
  *   关闭|前往修改|重新提交；编辑态=关闭|提交审核。
  * 数据默认走 mock（api/myApplicationsMock.js，种子=原型 10 条），见 api/myApplications.js。
@@ -114,8 +115,8 @@ const detailButtons = computed(() => {
  */
 function openDetail(row, edit = false) {
   const t = row.businessType
-  if (t === 'OTHER') {
-    // 疑点2 处置：OTHER 类型无业务页可跳（原型 toast 文案逐字）
+  if (!['SKILL', 'EXPERT', 'POSITION', 'MCP', 'API', 'BIZ_SYSTEM', 'MODEL'].includes(t)) {
+    // 疑点2 处置：未知类型无业务页可跳（原型 toast 文案逐字；2026-09-08 决议第 8 项后 OTHER 已不存在，仅兜底）
     ElMessage.info('该申请对象暂无可跳转的业务页面')
     return
   }
@@ -313,7 +314,7 @@ async function resubmit(row, key = 'resubmit') {
       </ListStates>
     </div>
 
-    <!-- 业务原生详情（SKILL 走整页路由、OTHER 走 toast，均不进此组件） -->
+    <!-- 业务原生详情（SKILL 走整页路由、未知类型走 toast，均不进此组件） -->
     <GovObjectDetail
       v-model:visible="detailVisible"
       :kind="detailKind"

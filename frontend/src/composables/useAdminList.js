@@ -38,6 +38,7 @@ import { useDynPageSize } from './useDynPageSize'
  *   onMounted(list.reload)
  *   // 模板：list.rows / list.loading / list.loadError / list.page / list.total
  *   // 改筛选：list.search()（自动回第 1 页）；翻页：list.page = n 后 list.reload()
+ *   // 改筛选但保留页码（岗位管理 md §3.1）：list.reload()——页码越界时自动钳到末页
  *
  * 用法（mock 不分页的页面，如角色/模型）：
  *   const list = useAdminList(listRoles, { paged: 'client' })
@@ -114,9 +115,11 @@ export function useAdminList(fetcher, options = {}) {
         total.value = count
       }
 
-      // 防空页：删到当前页无数据时回退一页重拉（末页删最后一条的常见场景）。
+      // 防空页 / 越界钳制：当前页无数据但总数 > 0（末页删最后一条、或筛选变化后保留页码越界——
+      // 2026-09-08 PRD-20260908 岗位管理 md §3.1「不重置分页」场景）→ 一步钳到末页重拉，不逐页回退。
       if (serverPaged && !rows.value.length && total.value > 0 && page.value > 1) {
-        page.value -= 1
+        const last = Math.max(1, Math.ceil(total.value / Math.max(1, pageSize.value)))
+        page.value = Math.min(page.value - 1, last)
         await reload()
       }
     } catch (e) {

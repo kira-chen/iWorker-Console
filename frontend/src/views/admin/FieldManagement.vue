@@ -3,7 +3,8 @@
  * 字段字典（治理，SYS_CONFIG/ADMIN）—— 统一字段字典管理中心。
  *
  * 2026-09-01 按 PRD（prd.字段字典.md）+ 交互原型 v2 对齐重构：
- * - 收纳 4 个字段：平台技能›技能分类、专家›专家分类、用户技能审核›风险类型/风险等级；
+ * - 收纳 2 个字段：平台技能›技能分类、专家›专家分类（2026-09-08 决议第 6 项：原「用户技能审核›风险类型/风险等级」
+ *   两组从字段字典删除，改由用户技能审核模块自身常量 `utils/userSkillAuditMeta.js` 定义）；
  * - 字段本身固定（不可增删字段，类别/字段名归属不可改）；
  * - 编辑弹窗改为「草稿编辑 +【完成】统一保存」：每行 序号+输入框+删除，删除仅移出草稿，
  *   完成时统一校验（选项值不能为空/不能重复，弹窗内联报错）并整字段覆盖保存；
@@ -16,7 +17,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import '@/assets/connector.css'
 import { listFieldDict, saveFieldOptions } from '@/api/fieldDict'
 
-// 字段注册表（固定，展示顺序 = 原型分组顺序：平台技能 → 专家 → 用户技能审核）
+// 字段注册表（固定，展示顺序 = 原型分组顺序：平台技能 → 专家）
 const FIELDS = [
   {
     key: 'skillCategory',
@@ -31,20 +32,6 @@ const FIELDS = [
     categoryDesc: '专家相关的可配置字段',
     name: '专家分类',
     desc: '专家列表与编辑页使用的业务分类'
-  },
-  {
-    key: 'riskType',
-    category: '用户技能审核',
-    categoryDesc: '用户技能审核相关的可配置字段',
-    name: '风险类型',
-    desc: '客户端安全检测上报的问题类型'
-  },
-  {
-    key: 'riskLevel',
-    category: '用户技能审核',
-    categoryDesc: '用户技能审核相关的可配置字段',
-    name: '风险等级',
-    desc: '客户端安全检测上报的风险等级'
   }
 ]
 

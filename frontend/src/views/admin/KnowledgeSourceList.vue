@@ -60,10 +60,17 @@ function openDocs(row) {
   docsTarget.value = row
   docsVisible.value = true
 }
-/** 概要列（md §四.2）：上传=文档总数；API/MCP=已连通 / 连接失败（警示样式）/ 未验证。 */
+/**
+ * 概要列（md §四.2 / §八.1，2026-09-08 决议第 9 项）：优先取 mock 派生的 row.summary
+ * （上传=文档总数；API/MCP=已连通[MCP 附所选工具名] / 连接失败（警示样式）/ 未验证）；无 summary 时本地兜底同口径。
+ */
 function summaryOf(row) {
+  if (row.summary) return row.summary
   if (row.sourceType === 'UPLOAD') return `${Number(row.docCount || 0).toLocaleString('en-US')} 篇文档`
-  if (row.verifyStatus === 'SUCCESS') return '已连通'
+  if (row.verifyStatus === 'SUCCESS') {
+    const tools = row.sourceType === 'MCP' && Array.isArray(row.config?.tools) ? row.config.tools : []
+    return tools.length ? `已连通 · ${tools.join('、')}` : '已连通'
+  }
   if (row.verifyStatus === 'FAILED') return '连接失败'
   return '未验证'
 }

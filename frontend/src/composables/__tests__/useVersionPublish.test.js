@@ -69,4 +69,39 @@ describe('useVersionPublish', () => {
     vp.versionLabel.value = 'v020' // 递增
     expect(vp.incrementHint.value).toBe('')
   })
+
+  // 2026-09-08 PRD-20260908 对齐：md §3.7 三种升级类型自动算号（与 VersionDrawer.labelForBump 同口径）
+  it('setBump：建议号 v1.2.1 → NONE=v1.2.1 / MINOR=v1.3.0 / MAJOR=v2.0.0，版本号自动重算；非首发', async () => {
+    const vp = useVersionPublish({ fetchNextLabel: vi.fn().mockResolvedValue('v1.2.1') })
+    await vp.load('x')
+    expect(vp.firstPublish.value).toBe(false)
+    expect(vp.bump.value).toBe('NONE')
+    vp.setBump('MINOR')
+    expect(vp.versionLabel.value).toBe('v1.3.0')
+    vp.setBump('MAJOR')
+    expect(vp.versionLabel.value).toBe('v2.0.0')
+    vp.setBump('NONE')
+    expect(vp.versionLabel.value).toBe('v1.2.1')
+    vp.setBump('bogus') // 未知类型回落修订版本
+    expect(vp.bump.value).toBe('NONE')
+  })
+
+  it('setBump：首个版本（建议 v1.0.0）→ firstPublish=true，切类型不改版本号；load 重置 bump', async () => {
+    const vp = useVersionPublish({ fetchNextLabel: vi.fn().mockResolvedValue('v1.0.0') })
+    await vp.load('x')
+    expect(vp.firstPublish.value).toBe(true)
+    vp.setBump('MAJOR')
+    expect(vp.versionLabel.value).toBe('v1.0.0')
+    await vp.load('x')
+    expect(vp.bump.value).toBe('NONE')
+  })
+
+  it('setBump：建议号拉取失败（留空手填）→ 切类型不覆盖手填值', async () => {
+    const vp = useVersionPublish({ fetchNextLabel: vi.fn().mockRejectedValue(new Error('down')) })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await vp.load('x')
+    vp.versionLabel.value = 'v3.0.0'
+    vp.setBump('MINOR')
+    expect(vp.versionLabel.value).toBe('v3.0.0')
+  })
 })

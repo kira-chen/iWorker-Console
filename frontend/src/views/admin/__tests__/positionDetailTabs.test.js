@@ -97,12 +97,14 @@ describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）
     expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试', '版本'])
   })
 
-  it('「人格」Tab 含 md 三.2 六区块：岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格', async () => {
+  it('「人格」Tab 含 md §2 六区块：岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名）', async () => {
     await mount()
     const persona = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'persona')
-    for (const sec of ['岗位描述', '岗位图标', '岗位认领说明', '示例问题', '岗位 SOP', '岗位人格']) {
+    for (const sec of ['岗位图标', '岗位描述', '领用页文案', '示例问题', '岗位 SOP', '岗位人格']) {
       expect(persona?.textContent).toContain(sec)
     }
+    expect(persona?.textContent).not.toContain('岗位认领说明')
+    expect(persona?.textContent).toContain('员工领用时看到的卖点，可多条，最多 6 条')
     expect(persona?.querySelector('.pd-desc-input')).toBeTruthy()
     // 示例问题为 3 格 + 区级【AI 生成】
     expect(persona?.querySelectorAll('.pd-eq-row').length).toBe(3)
@@ -137,11 +139,13 @@ describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）
     expect(top.textContent).not.toContain('发布岗位')
   })
 
-  it('「知识」不再是开发中占位（轻量列表 + 新建知识库入口）；「运行」仍为占位', async () => {
+  it('「知识」为只读列表（区块头 + 工具栏【查询】，无新建 / 编辑入口，md §5.2 已删）；「运行」仍为占位', async () => {
     await mount()
     const paneText = (name) => [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === name)?.textContent || ''
     expect(paneText('knowledge')).not.toContain('开发中')
-    expect(paneText('knowledge')).toContain('新建知识库')
+    expect(paneText('knowledge')).toContain('该岗位可见范围内的知识库')
+    expect(paneText('knowledge')).toContain('查询')
+    expect(paneText('knowledge')).not.toContain('新建知识库')
     expect(paneText('runtime')).toContain('开发中')
   })
 

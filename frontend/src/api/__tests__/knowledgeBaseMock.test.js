@@ -18,7 +18,7 @@ import {
   MCP_TEST_TOOLS
 } from '../knowledgeBaseMock'
 import { maskSecret } from '@/utils/secretMask'
-import { mkRequestMapRows, mkResponseMapRows } from '@/utils/knowledgeBaseMeta'
+import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows } from '@/utils/knowledgeBaseMeta'
 
 /**
  * knowledgeBaseMock 状态机与口径单测。
@@ -27,6 +27,8 @@ import { mkRequestMapRows, mkResponseMapRows } from '@/utils/knowledgeBaseMeta'
  * API authType 三枚举 + authParams 多参数表 + requestMap/responseMap 结构化预设行；
  * MCP 仅直接填写（transport/tools 数组，「引用现有 MCP」废弃）；测试成功返回固定工具清单；
  * 敏感信息保存即掩码；修改请求地址 / 鉴权 / 工具 / 映射后保存 → 验证状态重置未验证。
+ * 2026-09-08 PRD-20260908 对齐：MCP config 不再有 requestMap/responseMap（md §七 删两节）；
+ * API 请求映射补 object/array 子字段递归校验 + 新建示例组可保存（md §六.2）。
  */
 
 const uniq = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`
@@ -50,8 +52,6 @@ const mcpConfig = (over = {}) => ({
   args: [],
   envVars: [],
   tools: ['search_documents'],
-  requestMap: mkRequestMapRows(),
-  responseMap: mkResponseMapRows(),
   timeoutMs: 10000,
   ...over
 })
@@ -199,6 +199,44 @@ describe('knowledgeBaseMock —— 数据源（2026-09-07 PRD-20260904 数据源
     ).rejects.toMatchObject({ field: 'responseMap' })
   })
 
+  it('请求映射递归子字段校验（2026-09-08 PRD-20260908 md §六.2）：object/array 至少一个有效子字段、同父下不重名、子字段名必填', async () => {
+    const withReq = (custom) => apiConfig({ requestMap: [...mkRequestMapRows(), ...custom] })
+    const row = (over) => ({ name: '', type: 'string', required: false, clientField: '', defaultValue: '', preset: false, children: [], ...over })
+    // 空 object → 拦
+    await expect(
+      createSource({ sourceType: 'API', name: uniq('空object'), config: withReq([row({ name: 'filters', type: 'object' })]) })
+    ).rejects.toMatchObject({ field: 'requestMap', message: expect.stringContaining('至少需要一个有效子字段') })
+    // 子层重名 → 拦
+    await expect(
+      createSource({
+        sourceType: 'API',
+        name: uniq('子重名'),
+        config: withReq([row({ name: 'filters', type: 'object', children: [row({ name: 'a' }), row({ name: 'a' })] })])
+      })
+    ).rejects.toMatchObject({ field: 'requestMap', message: expect.stringContaining('重复') })
+    // 子字段填了默认值没填名 → 拦
+    await expect(
+      createSource({
+        sourceType: 'API',
+        name: uniq('子缺名'),
+        config: withReq([row({ name: 'filters', type: 'object', children: [row({ defaultValue: 'x' })] })])
+      })
+    ).rejects.toMatchObject({ field: 'requestMap', message: expect.stringContaining('子字段名必填') })
+    // 基础类型行不看 children（切基础类型时的草稿不提交）
+    const basic = await createSource({
+      sourceType: 'API',
+      name: uniq('基础类型'),
+      config: withReq([row({ name: 'flag', type: 'boolean', children: [row({ name: 'a' }), row({ name: 'a' })] })])
+    })
+    expect(basic.config.requestMap.length).toBe(3)
+    // 新建默认示例组 filters→rules→field/value 三级可直接保存
+    const ok = await createSource({ sourceType: 'API', name: uniq('示例组'), config: withReq(mkRequestMapExampleRows()) })
+    const filters = ok.config.requestMap.find((r) => r.name === 'filters')
+    expect(filters.type).toBe('object')
+    expect(filters.children[0].name).toBe('rules')
+    expect(filters.children[0].children.map((c) => c.name)).toEqual(['field', 'value'])
+  })
+
   it('修改请求地址 / 映射后保存 → 验证状态重置未验证；仅改名称不重置（md §六.4）', async () => {
     const s = await createSource({ sourceType: 'API', name: uniq('重测接口'), config: apiConfig() })
     await testSource('API', { sourceId: s.id, config: apiConfig() })
@@ -222,6 +260,19 @@ describe('knowledgeBaseMock —— 数据源（2026-09-07 PRD-20260904 数据源
     })
     cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('UNVERIFIED')
+  })
+
+  it('MCP config 无请求 / 响应映射（2026-09-08 PRD-20260908 md §七 删两节）：不校验、种子不带、保存原样落库', async () => {
+    const seeded = (await listSources({ sourceType: 'MCP' })).list
+    expect(seeded.length).toBeGreaterThan(0)
+    for (const s of seeded) {
+      expect(s.config).not.toHaveProperty('requestMap')
+      expect(s.config).not.toHaveProperty('responseMap')
+    }
+    // MCP 不再要求映射预设行：无 requestMap/responseMap 可直接保存
+    const s = await createSource({ sourceType: 'MCP', name: uniq('无映射MCP'), config: mcpConfig() })
+    expect(s.config).not.toHaveProperty('requestMap')
+    expect(s.config.tools).toEqual(['search_documents'])
   })
 
   it('MCP 保存校验（md §七.2 / §七.3）：Endpoint 必填；检索工具 ≥1；stdio Command 枚举', async () => {
@@ -279,7 +330,7 @@ describe('knowledgeBaseMock —— 数据源（2026-09-07 PRD-20260904 数据源
     expect(MCP_TEST_TOOLS).toEqual(['search_documents', 'search_chunks', 'hybrid_search'])
   })
 
-  it('MCP 改工具选择后保存 → 验证状态重置未验证（md §七.7）', async () => {
+  it('MCP 改工具选择后保存 → 验证状态重置未验证（md §七.5）', async () => {
     const s = await createSource({ sourceType: 'MCP', name: uniq('改工具MCP'), config: mcpConfig() })
     await testSource('MCP', { sourceId: s.id, config: mcpConfig() })
     let cur = (await listSources({ keyword: s.name })).list[0]
@@ -287,6 +338,50 @@ describe('knowledgeBaseMock —— 数据源（2026-09-07 PRD-20260904 数据源
     await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
     cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('UNVERIFIED')
+  })
+
+  it('列表概要（2026-09-08 决议第 9 项 md §八.1 L417）：新建未测试「未验证」→ 测试通过「已连通」(MCP 附工具名) → 失败「连接失败」→ 改配置重置「未验证」', async () => {
+    // 新建保存未测试前 → 未验证
+    const s = await createSource({ sourceType: 'MCP', name: uniq('概要MCP'), config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
+    expect(s.verifyStatus).toBe('UNVERIFIED')
+    expect(s.summary).toBe('未验证')
+    // 连接测试通过 → 回写列表概要「已连通 · 所选工具名」
+    await testSource('MCP', { sourceId: s.id, config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
+    let cur = (await listSources({ sourceType: 'MCP' })).list.find((x) => x.id === s.id)
+    expect(cur.verifyStatus).toBe('SUCCESS')
+    expect(cur.summary).toBe('已连通 · search_documents、hybrid_search')
+    // 测试失败 → 连接失败
+    await testSource('MCP', { sourceId: s.id, config: mcpConfig({ endpoint: 'https://mcp.fail.example.com/mcp', tools: ['search_documents'] }) })
+    cur = (await listSources({ sourceType: 'MCP' })).list.find((x) => x.id === s.id)
+    expect(cur.summary).toBe('连接失败')
+    // 修改连接配置（换服务地址）后保存 → 重置未验证
+    const s2 = await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ endpoint: 'https://mcp2.example.com/mcp', tools: ['search_documents'] }) })
+    expect(s2.verifyStatus).toBe('UNVERIFIED')
+    expect(s2.summary).toBe('未验证')
+    // API 已连通不附工具名；种子失败行「连接失败」
+    const api = (await listSources({ sourceType: 'API' })).list
+    expect(api.find((x) => x.id === 'ks_3a').summary).toBe('已连通')
+    expect(api.find((x) => x.id === 'ks_old').summary).toBe('连接失败')
+    // 上传源概要 = 文档数
+    expect((await listSources({ sourceType: 'UPLOAD' })).list.find((x) => x.id === 'ks_1a').summary).toMatch(/^[\d,]+ 篇文档$/)
+  })
+
+  it('刚测试过的那份配置再保存不重置（2026-09-08 决议第 9 项）：新建态先测后存=已连通；编辑态测新地址后保存=已连通；改成别的配置才回未验证', async () => {
+    // 新建态：先测（无 sourceId）再保存同一份配置 → 沿用测试结果
+    const cfg = apiConfig({ url: 'https://tested.example.com/search' })
+    await testSource('API', { config: cfg })
+    const created = await createSource({ sourceType: 'API', name: uniq('先测后存'), config: cfg })
+    expect(created.verifyStatus).toBe('SUCCESS')
+    expect(created.summary).toBe('已连通')
+    // 编辑态：对新地址测试通过后保存同一份 → 不重置
+    const cfg2 = apiConfig({ url: 'https://tested2.example.com/search' })
+    await testSource('API', { sourceId: created.id, config: cfg2 })
+    const saved = await updateSource(created.id, { sourceType: 'API', name: created.name, config: cfg2 })
+    expect(saved.verifyStatus).toBe('SUCCESS')
+    // 保存的是另一份配置 → 重置未验证
+    const saved2 = await updateSource(created.id, { sourceType: 'API', name: created.name, config: apiConfig({ url: 'https://untested.example.com/search' }) })
+    expect(saved2.verifyStatus).toBe('UNVERIFIED')
+    expect(saved2.summary).toBe('未验证')
   })
 
   it('文档解析流转（md §五.3）：上传后进入等待/解析中，未到时限不会立即解析成功', async () => {

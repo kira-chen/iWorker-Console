@@ -101,11 +101,10 @@ function close() {
     class="kb-search-dialog"
     @update:model-value="close"
   >
-    <!-- 标题「检索测试」，旁以标签展示当前知识库名称（md §三.7） -->
+    <!-- 标题「检索测试 · [知识库名]」单文本（md §三.7，2026-09-08 PRD-20260908 对齐；原型 decorate() L2058 合并标题） -->
     <template #header>
       <div class="ks-head">
-        <span class="ks-title">检索测试</span>
-        <el-tag size="small" type="info" effect="plain">{{ kb?.name || '' }}</el-tag>
+        <span class="ks-title">检索测试 · {{ kb?.name || '' }}</span>
       </div>
     </template>
 

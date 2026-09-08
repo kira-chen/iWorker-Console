@@ -57,9 +57,12 @@ export const usePositionStore = defineStore('position', () => {
 
   // 发布前检查所需的聚合数据（供 computePublishCheck）
   // 2026-09-04 PRD-20260903 对齐：推荐问题 4 条 → 示例问题 3 条。
+  // 2026-09-08 PRD-20260908 对齐：清单改 md §9.2 四项（名称与描述 / 示例问题 / SOP / Agent 与技能警告），补 description、positionSop。
   const checkInput = computed(() => ({
     name: basic.value?.name,
     intro: basic.value?.intro,
+    description: basic.value?.description,
+    positionSop: basic.value?.positionSop,
     intakeSchema: basic.value?.intakeSchema || [],
     exampleQuestions: basic.value?.exampleQuestions || [],
     agents: agents.value
@@ -99,7 +102,7 @@ export const usePositionStore = defineStore('position', () => {
       iconSource: data.iconSource || 'library',
       // claimDesc 由 String → 数组 [{emoji,content}]（后端兜底恒为数组）；防御非数组回退空数组
       claimDesc: Array.isArray(data.claimDesc) ? data.claimDesc : [],
-      // 2026-09-04 PRD-20260903 对齐：岗位认领说明（纯文本列表）/ 示例问题（3 条）/ 岗位 SOP / 引用业务系统
+      // 2026-09-04 PRD-20260903 对齐：领用页文案 claimDescriptions（纯文本列表，2026-09-08 改名）/ 示例问题（3 条）/ 岗位 SOP / 引用业务系统
       claimDescriptions: Array.isArray(data.claimDescriptions) ? data.claimDescriptions : [],
       exampleQuestions: normalizeExample(data.exampleQuestions),
       positionSop: data.positionSop || '',
@@ -133,7 +136,7 @@ export const usePositionStore = defineStore('position', () => {
       icon: '',
       iconSource: 'library',
       claimDesc: [], // 领用页文案多条数组（设计 §3）
-      claimDescriptions: [], // 岗位认领说明（2026-09-04 PRD-20260903 对齐）
+      claimDescriptions: [], // 领用页文案（原岗位认领说明，2026-09-08 PRD-20260908 改名）
       exampleQuestions: ['', '', ''], // 示例问题固定 3 条
       positionSop: '',
       businessSystemIds: [],

@@ -9,8 +9,12 @@ import { createApp, h } from 'vue'
  * 计算结果如何转成「发布按钮能不能点」。这是发布门真正的最后一道闸：判定写错则脏岗位可被发出去
  * （硬阻断项形同虚设），或干净岗位发不出去（误伤）。
  *
- * 提交门 = 硬检查通过 && 未到 v999 上限 && 版本号合法 && 升级说明非空，四条缺一不可，逐条穷举。
- * 另钉：有硬阻断时版本号/升级说明区不渲染（避免阻断项未修就先填版本，规格 N5）。
+ * 提交门 = 硬检查通过 && 非到顶(atMax) && 版本号已算出且合法 && 升级说明非空，四条缺一不可，逐条穷举。
+ * 另钉：有硬阻断时发布表单区不渲染（避免阻断项未修就先填版本，规格 N5）。
+ *
+ * 2026-09-08 PRD-20260908 对齐（md §3.7 / §9.2、原型 L1224）：版本号不再手填——「更新类型」三选一
+ * （修订版本 / 功能更新 / 重大更新，v-model:bump 回吐由父级 useVersionPublish 算号）+ 只读版本号 + 类型 hint；
+ * 首个版本无类型可选、hint「首个版本」。原「版本号未递增软提示」用例随手填路径废止。
  */
 
 vi.mock('@element-plus/icons-vue', () => ({
@@ -27,6 +31,15 @@ const stubs = {
   'el-input': {
     props: ['modelValue'],
     template: '<div class="el-input-stub"><input :value="modelValue" /></div>'
+  },
+  'el-radio-group': {
+    props: ['modelValue', 'disabled'],
+    emits: ['update:modelValue'],
+    template: '<div class="el-radio-group" :data-value="modelValue"><slot /></div>'
+  },
+  'el-radio-button': {
+    props: ['value'],
+    template: '<button class="el-radio-btn" :data-v="value" @click="$parent.$emit(\'update:modelValue\', value)"><slot /></button>'
   },
   // 声明 emits:['click']，否则 Vue 会把 click 同时当原生监听器透传 → 一次点击触发两次 emit（假失败）
   'el-button': {
@@ -95,13 +108,12 @@ describe('PublishCheckDialog · 发布提交门穷举（四条缺一不可）', 
     expect(el.textContent).toContain('存在硬阻断项')
   })
 
-  it('版本号非法（格式错）→ 禁用', () => {
-    const el = mount({ versionLabel: '13' })
+  it('版本号未算出（上游降级留空）/ 非法 → 禁用并提示，不发空号', () => {
+    let el = mount({ versionLabel: '' })
     expect(publishBtn(el).disabled).toBe(true)
-  })
-
-  it('版本号为旧三位数字格式（v013，2026-09-02 起废止）→ 禁用', () => {
-    const el = mount({ versionLabel: 'v013' })
+    expect(el.textContent).toContain('版本号必填')
+    app.unmount(); container.remove()
+    el = mount({ versionLabel: 'v013' }) // 旧三位数字格式（2026-09-02 起废止）
     expect(publishBtn(el).disabled).toBe(true)
   })
 
@@ -126,9 +138,22 @@ describe('PublishCheckDialog · 发布提交门穷举（四条缺一不可）', 
     expect(el.textContent).toContain('存在告警项')
   })
 
-  it('版本号未递增 → 软提示但不阻断（可发布）', () => {
-    const el = mount({ versionLabel: 'v1.1.0', prevMaxLabel: 'v1.2.0' })
-    expect(el.textContent).toContain('建议版本号递增')
+  it('版本号只读展示（无输入框）+ 更新类型三选一文案与顺序照原型 L1224；点类型 emit update:bump', () => {
+    const bumpSpy = vi.fn()
+    const el = mount({ versionLabel: 'v1.2.1', bump: 'NONE', 'onUpdate:bump': bumpSpy })
+    expect(el.querySelector('.pub-ver-num').textContent).toBe('v1.2.1')
+    expect(el.querySelectorAll('.pub-ver .el-input-stub').length).toBe(1) // 仅升级说明一个输入框，版本号不可手输
+    expect([...el.querySelectorAll('.el-radio-btn')].map((b) => b.textContent.trim())).toEqual(['修订版本', '功能更新', '重大更新'])
+    expect(el.textContent).toContain('修复问题或小幅配置调整') // 选中类型 hint
+    el.querySelector('.el-radio-btn[data-v="MAJOR"]').click()
+    expect(bumpSpy).toHaveBeenCalledWith('MAJOR')
+  })
+
+  it('首个版本（firstPublish）→ 无更新类型可选，版本号 v1.0.0 + hint「首个版本」', () => {
+    const el = mount({ versionLabel: 'v1.0.0', firstPublish: true })
+    expect(el.querySelector('.el-radio-group')).toBeNull()
+    expect(el.querySelector('.pub-ver-num').textContent).toBe('v1.0.0')
+    expect(el.textContent).toContain('首个版本')
     expect(publishBtn(el).disabled).toBe(false)
   })
 
