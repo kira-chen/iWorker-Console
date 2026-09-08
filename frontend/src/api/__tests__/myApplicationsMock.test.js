@@ -33,6 +33,24 @@ describe('myApplicationsMock · 我的申请内存 mock', () => {
     expect(rejected.list.map((r) => r.id)).toEqual([503, 507])
   })
 
+  // 2026-09-09 PRD 复核·G2：md `prd.我的申请.md` §四 L47「对应业务对象已被删除时…【查看】按钮置灰，
+  // 列表行保留该条申请记录及其对象名称、业务类型、申请类型、申请版本、申请时间与审核结果」
+  it('objectDeleted：默认 false；样例行 510 为 true，且行本身与六个信息字段照常保留', async () => {
+    const { list, total } = await listMyApplications()
+    expect(total).toBe(11) // 行未被剔除
+    const deleted = list.find((r) => r.id === 510)
+    expect(deleted.objectDeleted).toBe(true)
+    // 六个信息字段仍在（md L47 明列）
+    expect(deleted.objectName).toBe('法务审阅专家')
+    expect(deleted.businessType).toBe('EXPERT')
+    expect(deleted.applicationType).toBe('DELIST')
+    expect(deleted.version).toBe('v1.3.0')
+    expect(deleted.submittedAt).toBe('2026-08-24 10:18')
+    expect(deleted.result).toBe('WITHDRAWN')
+    // 其余行默认对象仍在
+    expect(list.filter((r) => r.id !== 510).every((r) => r.objectDeleted === false)).toBe(true)
+  })
+
   it('keyword 过滤域 = 申请对象名称/描述', async () => {
     const { list } = await listMyApplications({ keyword: '报销单' })
     expect(list.map((r) => r.id)).toEqual([509])

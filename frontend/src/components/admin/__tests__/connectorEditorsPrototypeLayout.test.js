@@ -334,11 +334,20 @@ describe('ApiEditor · 原型骨架（S1 / S3 / A3 / A4）', () => {
     expect(labels).toEqual(['名称', '所属服务提供系统'])
   })
 
-  it('A3 删「状态」启用/停用 radio（md §三.2 无此项，原型最终态亦删）', async () => {
+  // 2026-09-09 PRD 复核轮 · G4/A16 · Q338：本版 md（prd-API.md §三.4 L152）明确列出
+  // 「启用 / 停用状态：必填，默认启用；停用后技能不再可引用该 API」，《各模块必填选填字段一览表》
+  // 亦已补录 → 原 A3「删状态 radio」用例反转为「状态 radio 在基本信息卡内、默认启用」。
+  it('A16 恢复「状态」启用/停用 radio（md §三.4 L152 必填、默认启用）', async () => {
     const el = await mountEditor(API)
     const basic = cardOfTitle(el, '基本信息')
-    expect([...basic.querySelectorAll('.el-form-item')].some((f) => f.dataset.label === '状态')).toBe(false)
-    expect(basic.textContent).not.toContain('停用')
+    const item = [...basic.querySelectorAll('.el-form-item')].find((f) => f.dataset.label === '状态')
+    expect(item).toBeTruthy()
+    // 两项：启用 / 停用（stub 的 el-radio 把 value 落到 data-value）
+    const radios = [...item.querySelectorAll('.el-radio')]
+    expect(radios.map((r) => r.textContent.trim())).toEqual(['启用', '停用'])
+    expect(radios.map((r) => r.dataset.value)).toEqual(['true', 'false'])
+    // md L152 的「停用后技能不再可引用该 API」提示随控件一起给出
+    expect(item.textContent).toContain('停用后技能不再可引用该 API')
   })
 
   it('A3 图标与示例问题按 md 保留（Q101/Q102 以 md 为准），示例问题在基本信息卡内', async () => {

@@ -3,12 +3,12 @@
  * 模型接入 / 编辑 / 查看 —— 右侧抽屉（ADMIN 专属，V76/V77；2026-08-20 由弹窗改抽屉）。
  *
  * 2026-09-01 PRD 对齐改造（交互原型 v2 openModelDrawer L235）：抽屉重排为分区卡片，
- * 与 McpEditor / ApiEditor 同构 —— 厂商预设（仅新建，卡片网格单选）/ 基本信息 /
+ * 与 McpEditor / ApiEditor 同构 —— 基本信息 /
  * 连接与鉴权（含「服务地址（Base URL）」，MQ4 指示按原型放本区）/ 能力信息
  * （已识别能力之后放「额外参数」）/ 底部弱化时间行（仅编辑/查看态）。
  *
- * - 厂商预设卡片（M9）：DeepSeek/Qwen/Kimi/GLM/讯飞/自定义 六张，副文案
- *   「OpenAI 兼容协议」/「手动配置」，选中高亮；预填行为保持现状（modelPresets.js 不动）。
+ * - 厂商预设卡片（原 M9 六张卡）已于 2026-09-09 PRD 复核轮 · A9 删除：Q224 二轮决策
+ *   「去掉预设卡片」，prd-模型.md 已删整节。新建态直接从「基本信息」起。
  * - 每个参数带 ? 悬浮说明（FieldHelpLabel，小白版文案见 modelPresets.FIELD_TIPS）。
  * - authType 切换字段组：API_KEY（api_key）| APP_ID_SECRET（app_id + api_key + app_secret 三元组）。
  * - 凭据字段 password 型；编辑态占位「留空不修改」，留空提交即保留既有密钥。
@@ -37,7 +37,6 @@ import IconField from '@/components/common/IconField.vue'
 import { createModel, updateModel, verifyModel } from '@/api/adminModel'
 import { fmtTime } from '@/utils/docMeta'
 import {
-  MODEL_PRESETS,
   MODEL_PROVIDER_OPTIONS,
   CONTEXT_WINDOW_OPTIONS,
   MODEL_CATEGORY_OPTIONS,
@@ -59,8 +58,6 @@ const saving = ref(false)
 const verifying = ref(false)
 // 保存后就地回显的验证结果（null=尚未验证）
 const verifyResult = ref(null)
-// 当前选中的厂商预设 key（仅新建态使用）
-const presetKey = ref('')
 // 新建态首次保存成功后的行 id（CR-正确性项）：验证失败弹窗不关，用户改完再点保存必须走 update
 // 而非二次 create（否则同名 409 / 改名产生重复行）
 const createdId = ref(null)
@@ -70,18 +67,10 @@ const isEdit = computed(() => !!(props.model?.id || createdId.value))
 const targetId = computed(() => props.model?.id || createdId.value)
 const TIPS = FIELD_TIPS
 
-/**
- * 厂商预设卡片（2026-09-01 PRD 对齐，M9/原型 preset-grid）：六张卡按原型命名，
- * 映射到既有 MODEL_PRESETS 预填数据（modelPresets.js 不动，仅换选择交互形态）。
- */
-const PRESET_CARDS = [
-  { key: 'deepseek', label: 'DeepSeek' },
-  { key: 'dashscope', label: 'Qwen' },
-  { key: 'moonshot', label: 'Kimi' },
-  { key: 'zhipu', label: 'GLM' },
-  { key: 'iflytek', label: '讯飞' },
-  { key: 'custom', label: '自定义' }
-]
+/* 厂商预设卡片区已删除（2026-09-09 PRD 复核轮 · G4/A9，Q224 负责人二轮决策「去掉预设卡片」，
+   prd-模型.md 已删整节）。原 PRD_CARDS / presetKey / selectPreset 及 .mc-preset-* 样式一并移除；
+   utils/modelPresets.js 的 MODEL_PRESETS 常量本体保留（同文件另有 MODEL_PROVIDER_OPTIONS /
+   CONTEXT_WINDOW_OPTIONS 在用，且其单测独立覆盖），仅本编辑器不再消费。 */
 
 /** 无图标时的默认字形（原型 L1415 `d.icon||'▦'`）。 */
 const DEFAULT_MODEL_ICON = '▦'
@@ -171,7 +160,6 @@ watch(
   (v) => {
     if (!v) return
     verifyResult.value = null
-    presetKey.value = ''
     createdId.value = null
     const m = props.model
     form.providerName = m?.providerName || ''
@@ -214,21 +202,6 @@ const timeRow = computed(() => ({
   updated: props.model?.updatedAt ? fmtTime(props.model.updatedAt) : '—',
   published: props.model?.publishedAt ? fmtTime(props.model.publishedAt) : '—'
 }))
-
-// 选厂商预设卡片 → 预填（可改不锁死）；不覆盖已填的名称/描述/凭据
-function selectPreset(key) {
-  if (props.readonly) return
-  presetKey.value = key
-  const p = MODEL_PRESETS.find((x) => x.key === key)
-  if (!p) return
-  form.baseUrl = p.baseUrl
-  form.authType = p.authType
-  form.model = ''
-  form.contextWindow = p.contextWindow
-  // 最大输出已隐藏、无默认：不再随预设写入（避免重新引入 4096 默认）
-  form.defaultTemperature = p.defaultTemperature
-  formRef.value?.clearValidate()
-}
 
 function close() {
   emit('update:visible', false)
@@ -380,8 +353,8 @@ async function verifyOnly() {
   <!--
     形态：右侧抽屉 820px（原型 L110 `.model-drawer .drawer{width:min(820px,90vw)}`，2026-09-08 原型复刻批次 1 · S2/G-2；
     三个连接器编辑器为 DrawerEditor 默认 780px）。
-    2026-09-01 PRD 对齐：正文重排为分区卡片（厂商预设 / 基本信息 / 连接与鉴权 / 能力信息 /
-    底部时间行），与原型 openModelDrawer 的 section 结构同构。
+    2026-09-01 PRD 对齐：正文重排为分区卡片（基本信息 / 连接与鉴权 / 能力信息 /
+    底部时间行）。原首张「厂商预设」卡片区已于 2026-09-09 · A9 删除。
   -->
   <DrawerEditor
     :visible="visible"
@@ -399,27 +372,7 @@ async function verifyOnly() {
       :disabled="props.readonly"
       class="mc-form"
     >
-      <!-- 厂商预设（仅新建态，M9 卡片网格单选）：预填可改不锁死 -->
-      <section v-if="!isEdit" class="section-card">
-        <div class="section-title">
-          厂商预设
-          <span class="section-sub">自动填充推荐地址，模型标识仍需填写</span>
-        </div>
-        <div class="mc-preset-grid">
-          <button
-            v-for="p in PRESET_CARDS"
-            :key="p.key"
-            type="button"
-            class="mc-preset-card"
-            :class="{ active: presetKey === p.key }"
-            :disabled="props.readonly"
-            @click="selectPreset(p.key)"
-          >
-            <span class="mc-preset-name">{{ p.label }}</span>
-            <span class="mc-preset-sub">{{ p.key === 'custom' ? '手动配置' : 'OpenAI 兼容协议' }}</span>
-          </button>
-        </div>
-      </section>
+      <!-- 厂商预设卡片区已删除（2026-09-09 PRD 复核轮 · A9，Q224「去掉预设卡片」，md 已删整节） -->
 
       <!-- 基本信息 -->
       <section class="section-card">
@@ -706,42 +659,7 @@ async function verifyOnly() {
   grid-column: 1 / -1;
 }
 
-/* ===== 厂商预设卡片网格（M9，原型 preset-grid 形态） ===== */
-.mc-preset-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
-}
-.mc-preset-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
-  background: var(--bg-sunken);
-  cursor: pointer;
-  text-align: left;
-  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
-}
-.mc-preset-card:hover {
-  border-color: var(--c-accent);
-}
-.mc-preset-card.active {
-  border-color: var(--c-accent);
-  background: var(--c-accent-soft, var(--bg-sunken));
-  box-shadow: 0 0 0 1px var(--c-accent) inset;
-}
-.mc-preset-name {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  color: var(--c-text-strong);
-}
-.mc-preset-sub {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-}
+/* 厂商预设卡片网格样式已随卡片区一并删除（2026-09-09 · A9） */
 
 /* 新建态能力信息引导（M8） */
 .mc-cap-notice {

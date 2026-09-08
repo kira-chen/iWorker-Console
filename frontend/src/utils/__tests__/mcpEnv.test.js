@@ -4,8 +4,18 @@ import { envRowsFromDetail, buildEnvSubmit, buildProbeEnv, emptyEnvRow } from '@
 describe('envRowsFromDetail — detail 脱敏数组 → 编辑器行（V110 声明式）', () => {
   it('平台值项：configured=true、value 恒空（不回显明文/密文）', () => {
     const r = envRowsFromDetail([{ key: 'API_KEY', valueMasked: true }])
+    // editingValue / pendingDelete：2026-09-09 · A11 三步式界面态，回填即「未修改」
     expect(r).toEqual([
-      { key: 'API_KEY', description: '', clientFill: false, value: '', configured: true, valueMasked: '' }
+      {
+        key: 'API_KEY',
+        description: '',
+        clientFill: false,
+        value: '',
+        configured: true,
+        valueMasked: '',
+        editingValue: false,
+        pendingDelete: false
+      }
     ])
   })
 
@@ -26,7 +36,9 @@ describe('envRowsFromDetail — detail 脱敏数组 → 编辑器行（V110 声�
         clientFill: true,
         value: '',
         configured: false,
-        valueMasked: ''
+        valueMasked: '',
+        editingValue: false,
+        pendingDelete: false
       }
     ])
   })
@@ -81,6 +93,35 @@ describe('buildEnvSubmit — 编辑器行 → 保存入参（完整期望集）'
     expect(buildEnvSubmit([])).toEqual([])
     expect(buildEnvSubmit(null)).toEqual([])
   })
+
+  // 2026-09-09 PRD 复核·G4 · A11（md prd-连接器-MCP.md §三.4.2 L285-286）
+  it('待删除行（pendingDelete）被丢弃 → 完整期望集里没有该 KEY = 后端删除', () => {
+    const rows = [
+      { key: 'KEEP', description: '', clientFill: false, value: '', configured: true, pendingDelete: false },
+      { key: 'GONE', description: '', clientFill: false, value: '', configured: true, pendingDelete: true }
+    ]
+    expect(buildEnvSubmit(rows)).toEqual([
+      { key: 'KEEP', value: '', description: null, clientFill: false }
+    ])
+  })
+
+  it('撤销后（pendingDelete 回 false）该行重新入提交集，且仍走「留空=保留原值」', () => {
+    const row = { key: 'GONE', description: '', clientFill: false, value: '', configured: true, pendingDelete: true }
+    expect(buildEnvSubmit([row])).toEqual([])
+    row.pendingDelete = false
+    expect(buildEnvSubmit([row])).toEqual([
+      { key: 'GONE', value: '', description: null, clientFill: false }
+    ])
+  })
+
+  it('改值中的行（editingValue=true）照常提交新值——editingValue 纯界面态，不影响 payload', () => {
+    const rows = [
+      { key: 'TOKEN', description: '', clientFill: false, value: 'newtok', configured: true, editingValue: true }
+    ]
+    expect(buildEnvSubmit(rows)).toEqual([
+      { key: 'TOKEN', value: 'newtok', description: null, clientFill: false }
+    ])
+  })
 })
 
 describe('buildProbeEnv — 编辑器行 → 探测入参（仅 {key,value}）', () => {
@@ -99,5 +140,14 @@ describe('buildProbeEnv — 编辑器行 → 探测入参（仅 {key,value}）',
   it('空白行/空输入：安全兜底', () => {
     expect(buildProbeEnv([emptyEnvRow()])).toEqual([])
     expect(buildProbeEnv(null)).toEqual([])
+  })
+
+  // A11：待删除行不下发探测——保存后它就不存在了，拿它试连是在测一个即将消失的配置
+  it('待删除行不进探测入参', () => {
+    const rows = [
+      { key: 'A', description: '', clientFill: false, value: '1', configured: false },
+      { key: 'B', description: '', clientFill: false, value: '2', configured: true, pendingDelete: true }
+    ]
+    expect(buildProbeEnv(rows)).toEqual([{ key: 'A', value: '1' }])
   })
 })

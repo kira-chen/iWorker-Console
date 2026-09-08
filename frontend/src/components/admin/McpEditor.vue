@@ -41,7 +41,7 @@ import {
 import { validateMcpForm, MCP_TRANSPORTS, MCP_AUTH_TYPES, MCP_COMMAND_OPTIONS, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 import { parseMcpConfig } from '@/utils/mcpImport'
-import { envRowsFromDetail, buildEnvSubmit, buildProbeEnv } from '@/utils/mcpEnv'
+import { envRowsFromDetail, buildEnvSubmit, buildProbeEnv, emptyEnvRow } from '@/utils/mcpEnv'
 import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
 import { MCP_AUTH_CONFIG_ENABLED } from '@/utils/featureFlags'
 import { schemaToRows } from '@/utils/schema'
@@ -226,14 +226,9 @@ async function doImport() {
   if (r.transport === 'stdio') {
     form.command = r.command
     form.argsText = r.args.join('\n')
-    // 导入的 env 全部按「平台值」落行（导入配置里带的是明文值）；客户端填写勾选由 FDE 之后按需调整
-    envRows.value = r.env.map((e) => ({
-      key: e.key,
-      description: '',
-      clientFill: false,
-      value: e.value,
-      configured: false
-    }))
+    // 导入的 env 全部按「平台值」落行（导入配置里带的是明文值）；客户端填写勾选由 FDE 之后按需调整。
+    // configured:false → 不走 A11 三步式（导入的值本就在眼前，没有「原值」需要保护）。
+    envRows.value = r.env.map((e) => ({ ...emptyEnvRow(), key: e.key, value: e.value }))
     delete fieldErrors.command
     delete fieldErrors.args
     delete fieldErrors.env
@@ -721,7 +716,10 @@ async function save() {
 
         <!-- 示例问题（M4：原型 L1137-1147 把示例问题段移进基本信息卡末尾作 `.connector-basic-subsection`，
              上边线分隔 + 17px 标题；文案与【AI 生成】按钮位置照原型逐字） -->
-        <div class="connector-basic-subsection">
+        <!-- 2026-09-09 PRD 复核轮 · G4（清单第五节第 3 项）：md §三.3 L242 与本区文案都写「必填」，
+             此前保存端却无该分支 → 已在 defValidate.validateMcpForm 补齐；此处补出红框与错误行，
+             形态与 ApiEditor 的 `.ad-eq-error` / `.ad-eq-err-msg` 一致。 -->
+        <div class="connector-basic-subsection" :class="{ 'md-eq-error': !!fieldErrors.exampleQuestions }">
           <div class="section-title md-eq-title">
             <span>
               示例问题
@@ -747,8 +745,12 @@ async function save() {
                 show-word-limit
                 :disabled="props.readonly"
                 :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
+                @input="delete fieldErrors.exampleQuestions"
               />
             </div>
+          </div>
+          <div v-if="fieldErrors.exampleQuestions" class="md-eq-err-msg">
+            {{ fieldErrors.exampleQuestions }}
           </div>
         </div>
       </section>
@@ -801,13 +803,15 @@ async function save() {
               />
             </el-form-item>
             <!-- Env（M5，原型 connFields L180 `.mcp-env-field`）：
-                 标题行 = 左「Env」label + hint／右【＋ 添加变量】；表头四列；行卡片；空态「暂无环境变量」 -->
+                 标题行 = 左「Env」label + hint／右【＋ 添加变量】；表头四列；行卡片；空态「暂无环境变量」。
+                 2026-09-09 · A11：已配置变量走三步式（改值 / 删除→待删除 / 撤销），见 ParamRowsEditor 的 threeStep。 -->
             <el-form-item :error="fieldErrors.env" class="md-env-item">
               <div class="md-env-title">
                 <div class="md-env-title-text">
                   <span class="md-env-label">Env</span>
                   <span class="lbl-hint">
-                    （环境变量声明；平台值加密存储、不回显，编辑留空=保留原值；勾选客户端填写则值由客户端收集）
+                    （环境变量声明；平台值加密存储、不回显。已配置的变量点【改值】才填新值，
+                    点【删除】先标「待删除」、保存前可【撤销】，未动过的保存后保留原值；勾选客户端填写则值由客户端收集）
                   </span>
                 </div>
                 <el-button
@@ -831,6 +835,7 @@ async function save() {
                 client-fill-header="填写方式"
                 always-head
                 card-rows
+                three-step
                 add-position="header"
                 empty-text="暂无环境变量"
                 client-fill-hint="含客户端填写变量：值由客户端收集后才可启用该服务，管理端「测试连接」可能因缺变量失败（属预期）"
@@ -1360,6 +1365,15 @@ async function save() {
   border: 1px solid var(--border-base);
   border-radius: 50%;
   background: var(--bg-sunken);
+}
+/* 示例问题错误态（2026-09-09 · 必填口径拉齐）：与 ApiEditor 的 .ad-eq-error / .ad-eq-err-msg 同款 */
+.md-eq-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
+}
+.md-eq-err-msg {
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-danger);
 }
 
 /* 图标行样式随 IconField 组件走（S3），本文件不再自绘预览格与按钮 */

@@ -97,7 +97,10 @@ describe('reviewsMock · 审核中心内存 mock', () => {
 
   it('getReview：按 id 取单条；不存在抛 404', async () => {
     const row = await getReview(5)
-    expect(row.name).toBe('合同审阅专员')
+    // 2026-09-09 PRD 复核·G2 顺修：种子名对齐 refId 所指实体（403 财务审核岗），
+    // 原「合同审阅专员」只出自已退役原型 html、与所指岗位不同名（refId 借名缺陷）
+    expect(row.name).toBe('财务审核岗')
+    expect(row.refId).toBe(403)
     await expect(getReview(999)).rejects.toMatchObject({ code: 404 })
   })
 })

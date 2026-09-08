@@ -26,14 +26,14 @@ const now = () => {
 /* ---------------- 种子（原型 var reviews 逐字抄录） ---------------- */
 function seedRows() {
   const rows = [
-    { id: 1, name: '客户数据查询 API', description: '查询客户基础资料与商机信息', type: 'TOOL', subType: 'API', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', code: 'customer.query', writeClass: 'READ', requiresConfirmation: false },
+    { id: 1, name: '客户资料查询', description: '按客户编号读取客户基础信息', type: 'TOOL', subType: 'API', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', code: 'customer.query', writeClass: 'READ', requiresConfirmation: false },
     { id: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', submitterName: 'li.na', submitterId: 2, submittedAt: '2026-08-28 09:18', status: 'PENDING_REVIEW' },
-    { id: 3, name: '企业人事系统', description: '提供组织、员工和审批业务页', type: 'BIZ_SYSTEM', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW' },
+    { id: 3, name: '人力资源系统', description: '员工、组织、请假和入转调离管理', type: 'BIZ_SYSTEM', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW' },
     { id: 4, name: 'Kimi K2', description: '长上下文文本生成模型', type: 'MODEL', subType: 'PUBLISH', target: 'USER_END', submitterName: 'platform.admin', submitterId: 1, submittedAt: '2026-08-27 16:20', status: 'PENDING_REVIEW' },
-    { id: 5, name: '合同审阅专员', description: '识别合同风险并生成修改建议', type: 'POSITION', target: 'FDE_WORKBENCH', submitterName: 'wangfang', submitterId: 4, submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW' },
+    { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', target: 'FDE_WORKBENCH', submitterName: 'wangfang', submitterId: 4, submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW' },
     { id: 6, name: '法务审阅专家', description: '辅助审阅合同条款并提示风险', type: 'EXPERT', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:18', status: 'PENDING_REVIEW' },
     { id: 7, name: '行业研究助手', description: '由客户端用户上传的研究技能', type: 'SKILL', platformSource: 'USER_UPLOADED', target: 'USER_END', submitterName: 'zhangwei', submitterId: 1, submittedAt: '2026-08-28 08:55', status: 'PENDING_REVIEW' },
-    { id: 8, name: '知识库检索 MCP', description: '连接企业知识库并提供语义检索工具', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:05', status: 'PENDING_REVIEW', code: 'knowledge.search', writeClass: 'READ', requiresConfirmation: false }
+    { id: 8, name: '企业知识库 MCP', description: '连接企业知识库，提供文档检索与内容读取能力', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:05', status: 'PENDING_REVIEW', code: 'knowledge.search', writeClass: 'READ', requiresConfirmation: false }
   ]
   // 原型补丁逻辑逐字对应：申请类型与申请版本
   rows.forEach((r) => {
@@ -48,11 +48,18 @@ function seedRows() {
       r.version = 'v1.2.0'
     }
   })
-  // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体
-  // （API/MCP → 连接器 mock；EXPERT → domainExpertMock 203 法务审阅专家；MODEL → adminModelMock
-  //  md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock biz_2102；SKILL → unifiedSkillMock sk_302/sk_309；
-  //  POSITION → positionMock 403 财务审核岗（2026-09-08 原型复刻批次 2B · G-4：岗位只读抽屉接真实实体；
-  //  种子「合同审阅专员」无同名岗位，借在审的 403 示意，同 502 借 201 专家的先例））
+  // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体：
+  //   1 → apiConnectorMock api_1103 客户资料查询    2 → unifiedSkillMock sk_302 经营数据分析
+  //   3 → bizSystemMock  biz_2102  人力资源系统     4 → adminModelMock   md_104 Kimi K2
+  //   5 → positionMock   403       财务审核岗       6 → domainExpertMock 203    法务审阅专家
+  //   7 → unifiedSkillMock sk_309  行业研究助手     8 → mcpConnectorMock knowledge_hub 企业知识库 MCP
+  //
+  // 【2026-09-09 PRD 复核·G2 顺修：refId 借名缺陷已修正】原种子 4 行的 name 与其 refId 所指实体不同名
+  // （5「合同审阅专员」借 403 财务审核岗、1「客户数据查询 API」借 api_1103、3「企业人事系统」借 biz_2102、
+  // 8「知识库检索 MCP」借 spark_bridge_mcp），点【查看】打开的只读抽屉与列表行名对不上。这些名只出自
+  // 已退役的交互原型 html（L1539），md 无依据 —— 按 Q10 既定拍板（原型名与业务模块种子冲突时以业务模块
+  // 为准，见 positionAssignmentMock / positionApplicationsMock 头注释）：name/description 对齐实体本体，
+  // 8 另把 refId 改指同名的 knowledge_hub。三方（审核中心 ↔ 各业务模块 ↔ 我的申请）现已同名。
   const REF = {
     1: 'api_1103',
     2: 'sk_302',
@@ -61,7 +68,7 @@ function seedRows() {
     5: 403,
     6: 203,
     7: 'sk_309',
-    8: 'spark_bridge_mcp'
+    8: 'knowledge_hub'
   }
   rows.forEach((r) => {
     r.refId = REF[r.id] ?? r.id
@@ -136,8 +143,10 @@ export function cancelReviewRow(type, refId) {
 // version 2（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 refId 改指岗位 mock 403，旧快照丢弃回种子。
 // version 3（2026-09-09 PRD 复核 G3G6 · A6/A5）：种子补知识库在审行（id 9 → kb_3），
 // 行结构增 snapshot 字段（岗位/专家/技能提交时由各业务模块写入），旧快照丢弃回种子。
+// version 4（2026-09-09 PRD 复核 G2）：refId 借名缺陷修正 —— 种子 1/3/5 的 name/description 对齐
+// 其 refId 所指实体本体，8 的 refId 由 spark_bridge_mcp 改指同名 knowledge_hub；旧快照丢弃回种子。
 const persist = attachPersist('reviews', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {

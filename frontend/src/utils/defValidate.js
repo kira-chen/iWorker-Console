@@ -34,6 +34,9 @@ function validateParamRows(rows, opts) {
     const desc = (it?.description || '').trim()
     const val = it?.value || ''
     if (!k && !desc && !val.trim()) continue // 完全空白行：提交时丢弃，不报错
+    // 待删除行（2026-09-09 · A11 MCP stdio Env 三步式）：保存时同样丢弃，故不参与
+    // 必填/去重校验——否则「删掉重名的旧变量、另加一个同名新变量」会被自己拦住。
+    if (it?.pendingDelete) continue
     if (!k) return `${noun}名称必填`
     if (k.length > 128) return `${noun}名不超过 128 字`
     if (keyRe && !keyRe.test(k)) return `${noun}名不合法：${k}${keyReText}`
@@ -109,6 +112,21 @@ export const BIZ_PAGE_DESC_MAX = 100 // 业务页描述 ≤100（行级描述沿
 export const BIZ_PAGES_MAX = 20 // 业务页条目数 ≤20（选项类上限）
 export const BIZ_QUESTION_MAX = 60 // 示例问题每条 ≤60（BQ4 指示）
 
+/**
+ * 业务页行是否「完全空白」（2026-09-09 PRD 复核轮 · G4/A15，Q176/Q342 二轮决策「自动丢弃空行」）。
+ *
+ * 与 MCP Env 的 isBlankRow 同口径：URL / 名称 / 描述三个用户可填字段都为空即视为空行。
+ * 行上的 _uid 是编辑器内部的 v-for key，不算内容。
+ * 校验（validateBizSystemForm）与组装（BizSystemEditor.buildPayload）共用此判定，
+ * 保证「不报错」和「不提交」是同一条线——否则会出现「校验放行、payload 里却多一条空业务页」。
+ *
+ * @param {Object} p 业务页行 { url, name, description }
+ * @returns {boolean}
+ */
+export function isBlankBizPage(p) {
+  return !(p?.url || '').trim() && !(p?.name || '').trim() && !(p?.description || '').trim()
+}
+
 // 校验业务系统连接定义表单（2026-09-01 PRD 对齐改造取代旧口径，原型 renderBizEditor 终态）。
 // 变化：名称 ≤64；图标必填；描述必填 ≤2000；登录地址必填 + http(s)；
 // 示例问题固定 3 条均必填（每条 ≤60）；连接方式只读展示、不再校验启用/停用状态。
@@ -137,11 +155,16 @@ export function validateBizSystemForm(form) {
   }
 
   // 业务页列表（整体选填，可 0 条）：逐项校验 url 必填且 http(s)://、name 必填≤20、description≤100；条目数 ≤20。
+  // 2026-09-09 PRD 复核轮 · G4/A15（Q176/Q342 二轮「采纳A（自动丢弃空行）」）：
+  // 完全空白行（点了【＋ 添加业务页】却一个字没填）直接跳过、不报错——保存时由 BizSystemEditor
+  // 的 buildPayload 同口径丢弃。参考实现是 MCP Env 的 isBlankRow（utils/mcpEnv.js）。
+  // 注意错误键仍用「过滤前」的原始下标 i，否则红框会标到隔壁行上。
   const pages = Array.isArray(form.bizPages) ? form.bizPages : []
   if (pages.length > BIZ_PAGES_MAX) {
     errors.bizPages = `业务页最多 ${BIZ_PAGES_MAX} 条`
   }
   pages.forEach((p, i) => {
+    if (isBlankBizPage(p)) return // 空白行自动丢弃，不校验
     const url = (p?.url || '').trim()
     if (!url) errors[`bizPages.${i}.url`] = '业务页 URL 必填'
     else if (url.length > BIZ_URL_MAX) errors[`bizPages.${i}.url`] = `业务页 URL 不超过 ${BIZ_URL_MAX} 字`
@@ -176,6 +199,15 @@ export function validateMcpForm(form) {
   if (!(form.description || '').trim()) errors.description = '服务描述必填'
   else if (form.description.trim().length > 2000) errors.description = '服务描述不超过 2000 字'
   if (!form.icon) errors.icon = '请选择或上传图标'
+  // 示例问题（2026-09-09 PRD 复核轮 · G4，清单第五节第 3 项「拉齐为强制必填」）：
+  // md prd-连接器-MCP.md §三.3 L242「示例问题：必填，固定 3 条输入行……单条示例问题最多 60 字符」，
+  // MCP 编辑器 UI 也一直写着「必填，固定 3 条」，但保存端此前无该分支——UI 说必填、保存却放行，
+  // 三件套里只有 MCP 是这样（API 走 ApiEditor.validate、业务系统走 validateBizSystemForm）。
+  // 此处补齐，文案与业务系统侧逐字一致。
+  const mcpQs = [0, 1, 2].map((i) => (form.exampleQuestions?.[i] || '').trim())
+  if (mcpQs.some((q) => !q)) errors.exampleQuestions = '示例问题固定 3 条，须全部填写'
+  else if (mcpQs.some((q) => q.length > BIZ_QUESTION_MAX))
+    errors.exampleQuestions = `示例问题每条不超过 ${BIZ_QUESTION_MAX} 字`
   // 超时：必填，1000～120000 ms（PRD §三.4，默认 10000）
   const t = Number(form.timeoutMs)
   if (!Number.isFinite(t) || t < 1000 || t > 120000) {

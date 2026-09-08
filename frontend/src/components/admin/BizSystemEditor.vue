@@ -46,6 +46,7 @@ import {
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 import {
   validateBizSystemForm,
+  isBlankBizPage,
   BIZ_NAME_MAX,
   BIZ_DESC_MAX,
   BIZ_PAGES_MAX,
@@ -340,11 +341,15 @@ const {
 
 function buildPayload() {
   // 空业务页列表提交为 []；每项做 trim 归一。
-  const pages = form.bizPages.map((p) => ({
-    url: (p.url || '').trim(),
-    name: (p.name || '').trim(),
-    description: (p.description || '').trim()
-  }))
+  // 2026-09-09 PRD 复核轮 · G4/A15（Q176/Q342「自动丢弃空行」）：完全空白行不进 payload——
+  // 与 validateBizSystemForm 里的 isBlankBizPage 跳过判定共用同一函数，避免「校验放行、却提交一条空行」。
+  const pages = form.bizPages
+    .filter((p) => !isBlankBizPage(p))
+    .map((p) => ({
+      url: (p.url || '').trim(),
+      name: (p.name || '').trim(),
+      description: (p.description || '').trim()
+    }))
   return {
     name: form.name.trim(),
     icon: form.icon || '',

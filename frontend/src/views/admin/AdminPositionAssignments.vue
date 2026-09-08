@@ -13,9 +13,15 @@
  * （useAdminList.reload 保留页码，越界钳到末页）；仅【查询】按钮回第 1 页。
  * 绑定岗位下拉 = 已发布及审核中岗位（md §五：审核中指已发布岗位在审新版 / 停用审核，底层 status=published
  * 不看 pendingAction；未发布且首发审核中的不进下拉）。
- * 审批页签（PRD-20260903 §四新增）：仅展示待审核申请、提交时间可排序（默认新→旧），
- * 操作 =【通过】（确认弹窗 → 现有绑定接口）/【驳回】（原因必填弹窗）/【重新绑定】
- * （复用修改绑定弹窗，完成后回分配页签清筛选置顶高亮该用户）。
+ * 审批页签（PRD-20260903 §四新增；2026-09-09 PRD 复核·G2 / A8 按 md §4.1-§4.3.4 重做）：
+ * **展示全部四态**申请（待审核 / 已通过 / 已驳回 / 已重新绑定），处理后仍留在列表；
+ * 排序 = 待审核组恒置顶，组内按提交时间由近到远，点列头只反转组内顺序；
+ * 查询区新增「审核状态筛选」（默认全部状态，切换回第 1 页）；
+ * 列 = 用户名 / 显示名 / 状态 / 现有绑定岗位 / 申请岗位 / 提交时间 / 审核结果 / 处理时间 / 处理人 / 操作
+ * （后三列为本轮新增）；
+ * 「已驳回」在审核结果标签上悬停展示驳回原因；操作按钮仅待审核行展示
+ * （【通过】确认弹窗 → 现有绑定接口 /【驳回】原因必填弹窗 /【重新绑定】复用修改绑定弹窗，
+ * 完成后回分配页签清筛选置顶高亮该用户）。
  *
  * 骨架沿用列表页规范（2026-08-22 统一）：取数编排 useAdminList、失败/空态 ListStates、
  * 分页 ListPagination；数据走 positionAssignmentMock / positionApplicationsMock（api 层分流）。
@@ -139,14 +145,40 @@ function openEdit(row) {
   editVisible.value = true
 }
 
-/* ---------- 审批页签（PRD-20260903 §四，原型 renderPositionApplications） ---------- */
-// 仅展示待审核；默认按提交时间由近到远，点列头切换升降序（md §4.1）
+/* ---------- 审批页签（md §四；2026-09-09 PRD 复核·G2 / A8 全量展示改造） ---------- */
+// 展示全部四态；默认按提交时间由近到远，点列头切换升降序（分组「待审核置顶」由 mock 保持不变，
+// 仅组内顺序反转，见 positionApplicationsMock.listPositionApplications）。
 const appSortDir = ref('desc')
-const appList = useAdminList(listPositionApplications, { params: () => ({ sortDir: appSortDir.value }) })
+// 审核状态筛选（md §4.1）：'' = 全部状态；切换后回第 1 页
+const appQuery = reactive({ reviewStatus: '' })
+const appList = useAdminList(listPositionApplications, {
+  params: () => ({ sortDir: appSortDir.value, reviewStatus: appQuery.reviewStatus })
+})
 
 function onAppSortChange({ order }) {
   appSortDir.value = order === 'ascending' ? 'asc' : 'desc'
   appList.search()
+}
+
+// 审核结果标签四色（md §4.2）：待审核黄 / 已通过绿 / 已驳回红 / 已重新绑定蓝
+const REVIEW_STATUS_OPTIONS = [
+  { value: 'PENDING', label: '待审核' },
+  { value: 'APPROVED', label: '已通过' },
+  { value: 'REJECTED', label: '已驳回' },
+  { value: 'REBOUND', label: '已重新绑定' }
+]
+const REVIEW_STATUS_META = {
+  PENDING: { label: '待审核', type: 'warning' },
+  APPROVED: { label: '已通过', type: 'success' },
+  REJECTED: { label: '已驳回', type: 'danger' },
+  REBOUND: { label: '已重新绑定', type: 'accent' } // accent = 全站蓝档（StatusTag 无 primary）
+}
+function reviewStatusMeta(v) {
+  return REVIEW_STATUS_META[v] || { label: '—', type: 'info' }
+}
+// 已处理记录不提供二次操作入口（md §4.3.4）
+function isPendingApp(row) {
+  return row.reviewStatus === 'PENDING'
 }
 
 /** 审批动作后的联动刷新：申请列表 + 徽标计数；binding=true 时分配列表也变了一并刷 */
@@ -344,13 +376,32 @@ onMounted(() => {
 
     <!-- ============ 页签二：岗位申请审批（PRD-20260903 §四） ============ -->
     <div v-show="activeTab === 'applications'" class="pm-pane-applications">
+      <!-- 审核状态筛选（md §4.1）：默认全部状态，切换后自动刷新并回第 1 页 -->
+      <ListToolbar>
+        <el-select
+          v-model="appQuery.reviewStatus"
+          placeholder="全部状态"
+          clearable
+          class="lt-filter"
+          @change="appList.search"
+        >
+          <el-option
+            v-for="opt in REVIEW_STATUS_OPTIONS"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
+      </ListToolbar>
+
       <div v-loading="appList.loading.value" class="table-wrap">
+        <!-- 空态双分支（md §4.1 / §六）：无任何申请 vs 筛选无结果 -->
         <ListStates
           :loading="appList.loading.value"
           :error="appList.loadError.value"
           :empty="appList.isEmpty.value"
-          empty-text="暂无待审核的岗位申请"
-          empty-sub-text="新的用户岗位申请会显示在这里"
+          :empty-text="appQuery.reviewStatus ? '没有匹配的岗位申请' : '暂无岗位申请'"
+          :empty-sub-text="appQuery.reviewStatus ? '' : '新的用户岗位申请会显示在这里'"
           @retry="appList.reload"
         >
           <el-table
@@ -397,12 +448,44 @@ onMounted(() => {
                 <span class="pa-time">{{ row.submittedAt }}</span>
               </template>
             </el-table-column>
-            <!-- 操作：通过=链接 / 驳回=危险链接 / 重新绑定=链接（md §4.2） -->
+            <!-- 审核结果四色标签（md §4.2）；「已驳回」在标签上悬停展示完整驳回原因（md §4.3.4） -->
+            <el-table-column label="审核结果" :width="120">
+              <template #default="{ row }">
+                <el-tooltip
+                  v-if="row.reviewStatus === 'REJECTED' && row.rejectReason"
+                  :content="row.rejectReason"
+                  placement="top"
+                >
+                  <span>
+                    <StatusTag :type="reviewStatusMeta(row.reviewStatus).type">
+                      {{ reviewStatusMeta(row.reviewStatus).label }}
+                    </StatusTag>
+                  </span>
+                </el-tooltip>
+                <StatusTag v-else :type="reviewStatusMeta(row.reviewStatus).type">
+                  {{ reviewStatusMeta(row.reviewStatus).label }}
+                </StatusTag>
+              </template>
+            </el-table-column>
+            <!-- 处理时间 / 处理人：待审核记录显示「—」（md §4.2） -->
+            <el-table-column label="处理时间" :width="COL.TIME">
+              <template #default="{ row }">
+                <span class="pa-time">{{ row.processedAt || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="处理人" min-width="110" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.processedBy || '—' }}</template>
+            </el-table-column>
+            <!-- 操作：仅待审核行给三按钮（通过=链接 / 驳回=危险链接 / 重新绑定=链接）；
+                 已处理记录不展示操作按钮（md §4.2 / §4.3.4 不可二次处理） -->
             <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="onApprove(row)">通过</el-button>
-                <el-button link type="danger" @click="onReject(row)">驳回</el-button>
-                <el-button link type="primary" @click="onRebind(row)">重新绑定</el-button>
+                <template v-if="isPendingApp(row)">
+                  <el-button link type="primary" @click="onApprove(row)">通过</el-button>
+                  <el-button link type="danger" @click="onReject(row)">驳回</el-button>
+                  <el-button link type="primary" @click="onRebind(row)">重新绑定</el-button>
+                </template>
+                <span v-else class="pa-unbound">—</span>
               </template>
             </el-table-column>
           </el-table>

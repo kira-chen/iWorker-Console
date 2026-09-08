@@ -42,11 +42,13 @@ const elOption = {
 }
 const elCheckbox = {
   name: 'el-checkbox',
-  props: { modelValue: Boolean },
+  // disabled：2026-09-09 · A11 待删除行把勾选框一并禁用，由此透出供断言
+  props: { modelValue: Boolean, disabled: Boolean },
   emits: ['update:modelValue', 'change'],
   // 带默认插槽：clientFillLabel（原型 label.mcp-env-client 的「客户端填写」四字）走这里
   template:
     '<label class="el-checkbox-wrap"><input class="el-checkbox" type="checkbox" :checked="modelValue"' +
+    ' :disabled="disabled"' +
     ' @change="$emit(\'update:modelValue\', $event.target.checked); $emit(\'change\', $event.target.checked)" />' +
     '<slot /></label>'
 }
@@ -231,5 +233,98 @@ describe('ParamRowsEditor', () => {
     const valueInput = el.querySelectorAll('.pr-row:not(.pr-row-head) input.el-input')[2]
     expect(valueInput.getAttribute('type')).toBe('text')
     expect(valueInput.disabled).toBe(true)
+  })
+
+  /**
+   * 2026-09-09 PRD 复核轮 · G4/A11（Q137「先采纳A（保留 改值+待删除+撤销）」）。
+   * md prd-连接器-MCP.md §三.4.2 L283-286：已配置名称提供【改值】【删除】，删后显示「待删除」
+   * 并提供【撤销】，未修改的内容保存后继续保留原值。
+   * 隔离要求（清单第三节 G4 冲突①）：threeStep 不传时 API KEY 鉴权侧行为必须逐字不变。
+   */
+  describe('A11 三步式改值 / 删除（threeStep）', () => {
+    const managed = (over = {}) => row({ key: 'API_KEY', configured: true, ...over })
+
+    it('已配置行：平台值列不给输入框，只显示「已配置（不回显）」+【改值】', () => {
+      const el = mountEditor({ rows: [managed()], threeStep: true })
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      // 名称/描述两个输入框仍在，但没有第三个（平台值）输入框
+      expect(dataRow.querySelectorAll('input.el-input').length).toBe(2)
+      expect(dataRow.querySelector('.pr-configured').textContent).toContain('已配置（不回显）')
+      expect(dataRow.textContent).toContain('改值')
+    })
+
+    it('点【改值】：就地展开输入框填新值，并给出【取消改值】', async () => {
+      const r = reactive(managed())
+      const el = mountEditor({ rows: [r], threeStep: true })
+      const editBtn = [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '改值')
+      editBtn.click()
+      await nextTick()
+      expect(r.editingValue).toBe(true)
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      expect(dataRow.querySelectorAll('input.el-input').length).toBe(3)
+      expect(dataRow.textContent).toContain('取消改值')
+    })
+
+    it('【取消改值】：收起输入框并丢弃本次填的新值（回到「未修改」）', async () => {
+      const r = reactive(managed({ editingValue: true, value: '半路填的' }))
+      const el = mountEditor({ rows: [r], threeStep: true })
+      const cancel = [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '取消改值')
+      cancel.click()
+      await nextTick()
+      expect(r.editingValue).toBe(false)
+      expect(r.value).toBe('')
+    })
+
+    it('点【删除】：不出数组，置 pendingDelete、行标「待删除」并给【撤销】', async () => {
+      const r = reactive(managed())
+      const el = mountEditor({ rows: [r], threeStep: true })
+      const del = [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '删除')
+      del.click()
+      await nextTick()
+      expect(r.pendingDelete).toBe(true)
+      expect(emitted['update:rows']).toHaveLength(0) // 行仍在数组里
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      expect(dataRow.classList.contains('is-pending-delete')).toBe(true)
+      expect(dataRow.querySelector('.pr-pending-tag').textContent).toContain('待删除')
+      expect(dataRow.textContent).toContain('撤销')
+      expect(dataRow.textContent).not.toContain('改值')
+    })
+
+    it('点【撤销】：清 pendingDelete，行恢复原样', async () => {
+      const r = reactive(managed({ pendingDelete: true }))
+      const el = mountEditor({ rows: [r], threeStep: true })
+      const undo = [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '撤销')
+      undo.click()
+      await nextTick()
+      expect(r.pendingDelete).toBe(false)
+      expect(el.querySelector('.pr-pending-tag')).toBeNull()
+    })
+
+    it('新增行（configured=false）不走三步式：直接填值、直接移出数组', () => {
+      const el = mountEditor({ rows: [row({ key: 'NEW' })], threeStep: true })
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      expect(dataRow.querySelectorAll('input.el-input').length).toBe(3) // 平台值输入框直接在
+      expect(dataRow.textContent).not.toContain('改值')
+      ;[...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '删除').click()
+      expect(emitted['update:rows'][0]).toEqual([]) // 直接从数组移除
+    })
+
+    it('隔离：不传 threeStep（API KEY 鉴权侧）时已配置行行为不变——平台值仍可直接编辑、删除即移除', () => {
+      const el = mountEditor({ rows: [managed()] })
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      expect(dataRow.querySelectorAll('input.el-input').length).toBe(3)
+      expect(dataRow.textContent).not.toContain('改值')
+      expect(dataRow.querySelector('.pr-configured')).toBeNull()
+      ;[...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '删除').click()
+      expect(emitted['update:rows'][0]).toEqual([])
+    })
+
+    it('待删除行：描述与「客户端填写」一并禁用（这行已经准备消失了）', () => {
+      const el = mountEditor({ rows: [managed({ pendingDelete: true })], threeStep: true })
+      const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+      const descInput = dataRow.querySelectorAll('input.el-input')[1]
+      expect(descInput.disabled).toBe(true)
+      expect(dataRow.querySelector('.pr-cf input[type="checkbox"]').disabled).toBe(true)
+    })
   })
 })

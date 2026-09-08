@@ -28,7 +28,7 @@ const now = () => {
 function seedRows() {
   const rows = [
     { id: 501, objectName: '客户资料查询', description: '按客户编号读取客户基础信息和当前商机状态', businessType: 'API', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 10:30', result: 'PENDING', reviewedAt: '', submitter: 'config.admin', reviewer: '', versionNotes: '首次开放客户资料查询能力', rejectReason: '' },
-    { id: 502, objectName: '财税顾问专家', description: '为企业财税问题提供政策解读、风险判断和材料建议', businessType: 'EXPERT', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-27 16:20', result: 'APPROVED', reviewedAt: '2026-08-27 17:05', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '补充增值税风险识别和申报材料建议', rejectReason: '' },
+    { id: 502, objectName: '经营分析专家', description: '汇总经营数据，识别异常并形成管理建议', businessType: 'EXPERT', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-27 16:20', result: 'APPROVED', reviewedAt: '2026-08-27 17:05', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '补充经营异常识别与管理建议规则', rejectReason: '' },
     { id: 503, objectName: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', businessType: 'POSITION', applicationType: 'VERSION_PUBLISH', version: 'v2.2.0', submittedAt: '2026-08-27 15:10', result: 'REJECTED', reviewedAt: '2026-08-27 16:02', submitter: 'config.admin', reviewer: 'audit.admin', versionNotes: '新增月度经营复盘和异常指标解释能力', rejectReason: '岗位说明未明确数据使用范围，请补充后重新提交。' },
     { id: 504, objectName: '行业研究助手', description: '汇总行业资料、竞品动态并生成结构化研究结论', businessType: 'SKILL', applicationType: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-27 11:42', result: 'WITHDRAWN', reviewedAt: '2026-08-27 12:10', submitter: 'config.admin', reviewer: '—', versionNotes: '首次发布行业研究技能', rejectReason: '' },
     { id: 505, objectName: '企业知识库 MCP', description: '连接企业知识库并提供文档检索与内容读取能力', businessType: 'MCP', applicationType: 'DELIST', version: 'v3.4.0', submittedAt: '2026-08-28 09:55', result: 'PENDING', reviewedAt: '', submitter: 'config.admin', reviewer: '', versionNotes: '原服务即将迁移，申请停止旧 MCP 对外提供', rejectReason: '' },
@@ -38,17 +38,24 @@ function seedRows() {
     { id: 509, objectName: '报销单查询', description: '按报销单号查询审批状态、金额与当前处理节点', businessType: 'API', applicationType: 'VERSION_PUBLISH', version: 'v1.3.0', submittedAt: '2026-08-28 08:50', result: 'PENDING', reviewedAt: '', submitter: 'config.admin', reviewer: '', versionNotes: '增加审批节点和付款状态返回字段', rejectReason: '' },
     { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewedAt: '2026-08-24 10:46', submitter: 'config.admin', reviewer: '—', versionNotes: '业务调整，申请停止专家对外提供', rejectReason: '' }
   ]
-  // demo 附加接线：原生详情的目标实体 id，指向各业务模块 mock 里真实存在的实体
-  // （API/MCP → 连接器 mock；EXPERT → domainExpertMock（502 无同名专家，借 201 经营分析专家示意，
-  //  510 → 203 法务审阅专家）；MODEL → adminModelMock md_104 Kimi K2；BIZ_SYSTEM → bizSystemMock
-  //  biz_2102 人力资源系统；SKILL → unifiedSkillMock sk_309 行业研究助手 / sk_304 合同风险检查；
-  //  POSITION → positionMock 401 经营分析岗（2026-09-08 原型复刻批次 2B · G-4：岗位只读抽屉接真实实体））
+  // demo 附加接线：原生详情的目标实体 id，指向各业务模块 mock 里真实存在的实体：
+  //   501 → apiConnectorMock  api_1103      客户资料查询   502 → domainExpertMock 201 经营分析专家
+  //   503 → positionMock      401           经营分析岗     504 → unifiedSkillMock sk_309 行业研究助手
+  //   505 → mcpConnectorMock  knowledge_hub 企业知识库 MCP 506 → bizSystemMock   biz_2102 人力资源系统
+  //   507 → adminModelMock    md_104        Kimi K2        508 → unifiedSkillMock sk_304 合同风险检查
+  //   509 → apiConnectorMock  api_1101      报销单查询     510 → domainExpertMock 203 法务审阅专家
+  //
+  // 【2026-09-09 PRD 复核·G2 顺修：refId 借名缺陷已修正】原 502 名为「财税顾问专家」而 refId 指
+  // 201「经营分析专家」、505「企业知识库 MCP」refId 却指 spark_bridge_mcp「星火智能体桥接 MCP」，
+  // 点【查看】打开的详情与列表行名对不上。两名只出自已退役的交互原型 html（L1530），md 无依据 ——
+  // 按 Q10 既定拍板以业务模块种子为准：502 改名/描述对齐 201 本体，505 改 refId 指向同名的 knowledge_hub。
+  // 与 reviewsMock 同批修正，三方（我的申请 ↔ 各业务模块 ↔ 审核中心）现已同名。
   const REF = {
     501: 'api_1103',
     502: 201,
     503: 401,
     504: 'sk_309',
-    505: 'spark_bridge_mcp',
+    505: 'knowledge_hub',
     506: 'biz_2102',
     507: 'md_104',
     508: 'sk_304',
@@ -57,7 +64,16 @@ function seedRows() {
   }
   rows.forEach((r) => {
     r.refId = REF[r.id] ?? r.id
+    // md §四 L47「对应业务对象已被删除时，不提供详情查看：【查看】按钮置灰，列表行保留该条申请记录
+    // 及其对象名称、业务类型、申请类型、申请版本、申请时间与审核结果」。
+    // demo 无真实删除链路，用显式标记表达该态（默认 false = 对象仍在）。
+    r.objectDeleted = false
   })
+  // 「对象已删除」样例（md §四 L47）：510 法务审阅专家的停用申请已处理完（WITHDRAWN），
+  // 设为对象已删除 —— 行保留在列表、六个信息字段照常展示，仅【查看】置灰。
+  // 选已终态行而非 PENDING 行：待审对象被删属异常数据，不作为常态样例。
+  const deletedRow = rows.find((r) => r.id === 510)
+  if (deletedRow) deletedRow.objectDeleted = true
   // 2026-09-09 PRD 复核 A6（Q265③）：知识库纳入发布审核 → 补一条知识库申请样例，
   // refId 指向 knowledgeBaseMock kb_3「法规与标准库」（该库种子即 pendingAction:'PUBLISH'，与审核中心 id 9 同一笔）
   rows.push({
@@ -74,7 +90,8 @@ function seedRows() {
     reviewer: '',
     versionNotes: '首次发布法规与标准知识库',
     rejectReason: '',
-    refId: 'kb_3'
+    refId: 'kb_3',
+    objectDeleted: false
   })
   return rows
 }
@@ -87,8 +104,10 @@ let applications = seedRows()
 // version 3（2026-09-08 原型复刻批次 2B · G-4）：POSITION 行 503 refId 改指岗位 mock 401。
 // version 4（2026-09-09 PRD 复核 G3G6 · A6/A5）：种子补知识库申请行 511（→ kb_3），
 // 行结构增 snapshot 字段（岗位/专家/技能提交时由业务模块写入），旧快照丢弃回种子。
+// version 5（2026-09-09 PRD 复核 G2）：行结构增 objectDeleted（md §四 L47【查看】置灰）；
+// 502 改名「经营分析专家」、505 refId 改指 knowledge_hub（refId 借名缺陷修正），旧快照丢弃回种子。
 const persist = attachPersist('myApplications', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {
@@ -126,6 +145,7 @@ export function submitApplicationRow(row = {}) {
     version: '—',
     versionNotes: '',
     submitter: 'config.admin',
+    objectDeleted: false, // 新提交的申请其对象必然存在（md §四 L47 的置灰态只对已删对象）
     ...row,
     submittedAt: row.submittedAt || now(),
     result: 'PENDING',

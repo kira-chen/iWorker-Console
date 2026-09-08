@@ -76,8 +76,8 @@ const form = reactive({
   providerSystemId: null,
   url: '',
   method: 'GET',
-  // 启用/停用：2026-09-09 批次 3A · A3 起不再有录入控件——md §三.2 无此项，原型最终态亦被
-  // L788-790 删除。字段本身保留：mock 详情/列表仍带 enabled，payload 漏传会把存量抹掉。
+  // 启用/停用：md §三.4 L152「必填，默认启用；停用后技能不再可引用该 API」。
+  // 2026-09-09 PRD 复核轮 · A16/Q338 恢复录入控件（曾于批次 3A · A3 按「md 亦无」删除，本版 md 已列出）。
   enabled: true,
   // 读/写：write → 客户端实际执行前必须经用户确认；read 直接执行（PRD §三.2）
   readWrite: 'read',
@@ -470,8 +470,7 @@ async function save() {
                 @pick="onIconPick"
               />
             </el-form-item>
-            <!-- 操作性质（PRD §三.2）：写操作在客户端实际执行前必须经用户确认，读操作直接执行。
-                 原型最终态此项独占一格（「状态」启用/停用 radio 被 L788-790 删除，md 亦无，一并删） -->
+            <!-- 操作性质（PRD §三.2）：写操作在客户端实际执行前必须经用户确认，读操作直接执行。 -->
             <el-form-item :error="fieldErrors.readWrite">
               <template #label>
                 <span>这个操作会改动数据吗？</span>
@@ -487,6 +486,18 @@ async function save() {
               <div class="ad-rw-hint">写操作在客户端执行前会先弹确认；读操作直接执行。</div>
             </el-form-item>
           </div>
+          <!-- 启用 / 停用状态（2026-09-09 PRD 复核轮 · G4/A16 · Q338）：
+               md prd-API.md §三.4 L152「启用 / 停用状态：必填，默认启用；停用后技能不再可引用该 API」，
+               《各模块必填选填字段一览表》亦已补录该字段。此控件曾按「原型最终态删了、md 亦无」一并删除，
+               本版 md 已明确列出 → 恢复录入。字段与 payload 链路一直完整（form.enabled / buildPayload），
+               本次只是把 UI 补回来。 -->
+          <el-form-item label="状态" :error="fieldErrors.enabled" required>
+            <el-radio-group v-model="form.enabled" class="ad-enabled-group">
+              <el-radio :value="true">启用</el-radio>
+              <el-radio :value="false">停用</el-radio>
+            </el-radio-group>
+            <div class="ad-rw-hint">停用后技能不再可引用该 API；已引用的技能运行效果可能受限。</div>
+          </el-form-item>
           <el-form-item label="API 描述" :error="fieldErrors.description" required>
             <el-input
               v-model="form.description"
@@ -741,6 +752,11 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
   line-height: 1.5;
+}
+/* 启用/停用 radio 组（A16/Q338 恢复）：与读/写组同排版，独占整行 */
+.ad-enabled-group {
+  display: flex;
+  align-items: center;
 }
 /* Bearer 前置段（完整请求头格式展示）：等宽字体弱色 */
 .ad-bearer-input :deep(.el-input-group__prepend) {

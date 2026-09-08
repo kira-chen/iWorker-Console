@@ -2,8 +2,8 @@
 /**
  * 入参/出参「字段行编辑器」（契约 §0.6 / 设计 §3.5，N10 起支持多级嵌套）。
  * 单一职责：以字段行维护一组字段，双向绑定字段行数组（v-model:rows）。
- * 列形态由 variant 分流（2026-09-01 拍板）：request=参数名|描述|类型|请求方法(仅顶层,默认Query)|必填|默认值；
- * response=参数名|描述|变量类型。
+ * 列形态由 variant 分流（2026-09-01 拍板；2026-09-09 A16/Q117 起「必填」列两形态共有）：
+ * request=参数名|描述|类型|请求方法(默认Query)|必填|默认值；response=参数名|描述|变量类型|必填。
  * 类型选「对象 object」或「数组 array」时（PRD-20260828 §5），行下方展开一块缩进的子字段区，
  * 递归复用本组件配置子字段——配几层就是几层；切换为非对象/数组类型时清空已有子字段。
  * 组装/反解析 JSON Schema 由父级用 utils/schema 完成。错误（如 field 级红框）由父级通过 error 传入。
@@ -44,7 +44,7 @@ const props = defineProps({
   /**
    * 列形态（2026-09-01 拍板）：
    * - request：参数名 | 描述 | 类型 | 请求方法（默认 Query）| 必填 | 默认值
-   * - response（默认）：参数名 | 描述 | 变量类型
+   * - response（默认）：参数名 | 描述 | 变量类型 | 必填（必填列 2026-09-09 · A16/Q117 补出）
    */
   variant: { type: String, default: 'response' }
 })
@@ -192,7 +192,11 @@ function removeConfirmText(row) {
       <span>描述</span>
       <span>{{ isRequest ? '类型' : '变量类型' }}</span>
       <span v-if="showIn">请求方法</span>
-      <span v-if="isRequest" class="col-req">必填</span>
+      <!-- 必填列（2026-09-09 PRD 复核轮 · G4/A16 · Q117）：md prd-API.md §五 L160/L165
+           把「是否必填」列在请求参数与响应字段的共同字段行规则里（「勾选后表示运行时必须提供
+           **或返回** 该字段」）→ 响应侧也要暴露。数据层本就恒带 required（schema newRow），
+           此前只是 UI 藏起来了。 -->
+      <span class="col-req">必填</span>
       <span v-if="isRequest">默认值</span>
       <span class="col-op"></span>
     </div>
@@ -237,8 +241,8 @@ function removeConfirmText(row) {
           :label="o.label"
         />
       </el-select>
+      <!-- 必填复选框：A16/Q117 起请求与响应两种形态都渲染（原 v-if="isRequest" 已去） -->
       <el-checkbox
-        v-if="isRequest"
         class="col-req"
         :model-value="item.row.required"
         @update:model-value="patch(item.path, 'required', $event)"
@@ -303,14 +307,15 @@ function removeConfirmText(row) {
   align-items: center;
 }
 /* 列宽按形态分流（2026-09-01 拍板列序）：
-   response：参数名|描述|变量类型；request：参数名|描述|类型|请求方法|必填|默认值
-   （A5：请求方法列各层都在，子层不再另设一套列宽） */
+   response：参数名|描述|变量类型|必填；request：参数名|描述|类型|请求方法|必填|默认值
+   （A5：请求方法列各层都在，子层不再另设一套列宽；
+     2026-09-09 · A16/Q117：response 补出「必填」列 44px，与 request 侧同宽） */
 .sfe-grid-req {
   /* 末列放【＋子字段】+ 删除两枚按钮，比原来的 36px 单删除列宽 */
   grid-template-columns: 1.2fr 1.5fr 1fr 0.9fr 44px 1fr 96px;
 }
 .sfe-grid-resp {
-  grid-template-columns: 1.4fr 1.8fr 1.1fr 96px;
+  grid-template-columns: 1.4fr 1.8fr 1.1fr 44px 96px;
 }
 .sfe-head {
   font-size: var(--fs-xs);

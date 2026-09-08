@@ -10,10 +10,11 @@
  *
  * 骨架照抄连接器/用户管理范式（conn.css 共享类 + PageHeader + 单行 toolbar）。
  */
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Rank, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ListStates from '@/components/admin/ListStates.vue'
 import {
   listSkillCategories,
   createSkillCategory,
@@ -26,6 +27,10 @@ import '@/assets/connector.css'
 const loading = ref(true)
 const loadError = ref(false)
 const rows = ref([])
+// 三态口径与全站列表页统一（2026-09-09 PRD 复核·G5）：空态交 ListStates 出「340px 纯文字居中」，
+// 不再各页自写 el-empty 插图态。本页是拖拽排序卡片列表（非表格、无分页），故仍保留本地 fetchList，
+// 只把「失败 / 空」两态的呈现收编到 ListStates。
+const isEmpty = computed(() => !loading.value && !loadError.value && !rows.value.length)
 
 async function fetchList() {
   loading.value = true
@@ -251,65 +256,65 @@ async function persistSort(ordered, prevOrder) {
     </div>
 
     <div v-loading="loading || savingSort" class="conn-list">
-      <el-empty v-if="!loading && loadError" :image-size="96" description="加载失败">
-        <el-button @click="fetchList">重试</el-button>
-      </el-empty>
-      <el-empty
-        v-else-if="!loading && !rows.length"
-        :image-size="96"
-        description="还没有分类 · 点「新增分类」创建第一个"
-      />
-      <div v-else class="sc-list">
-        <!-- 拖拽只落在把手上（draggable 收到 .sc-drag）：整行不再可拖，选中行内文字不会误触拖拽。
-             行仍是拖放目标（dragover/drop/dragleave 留在行上），拖起来源由把手发起。 -->
-        <div
-          v-for="(row, idx) in rows"
-          :key="row.id"
-          class="sc-row"
-          :class="{ 'is-over': dragOverIndex === idx, 'is-dragging': dragIndex === idx }"
-          @dragover="onDragOver(idx, $event)"
-          @dragleave="onDragLeave(idx)"
-          @drop="onDrop(idx)"
-          @dragend="onDragEnd"
-        >
-          <span
-            class="sc-drag"
-            title="拖拽调整顺序"
-            draggable="true"
-            @dragstart="onDragStart(idx)"
+      <ListStates
+        :loading="loading"
+        :error="loadError"
+        :empty="isEmpty"
+        empty-text="还没有分类 · 点「新增分类」创建第一个"
+        @retry="fetchList"
+      >
+        <div class="sc-list">
+          <!-- 拖拽只落在把手上（draggable 收到 .sc-drag）：整行不再可拖，选中行内文字不会误触拖拽。
+               行仍是拖放目标（dragover/drop/dragleave 留在行上），拖起来源由把手发起。 -->
+          <div
+            v-for="(row, idx) in rows"
+            :key="row.id"
+            class="sc-row"
+            :class="{ 'is-over': dragOverIndex === idx, 'is-dragging': dragIndex === idx }"
+            @dragover="onDragOver(idx, $event)"
+            @dragleave="onDragLeave(idx)"
+            @drop="onDrop(idx)"
             @dragend="onDragEnd"
-          ><el-icon><Rank /></el-icon></span>
-          <span v-if="row.icon" class="sc-icon">{{ row.icon }}</span>
-          <span class="sc-name">{{ row.name }}</span>
-          <span class="sc-count" :title="`该分类下已发布到用户端的技能数`">{{ row.count ?? 0 }} 技能</span>
-          <span class="sc-sp"></span>
-          <!-- 无障碍/触摸排序替代：上移/下移一格（键盘/无鼠标可用）；达顶/达底禁用。拖拽仍保留。 -->
-          <el-button
-            link
-            class="sc-move"
-            title="上移一格"
-            aria-label="上移一格"
-            :disabled="idx === 0 || savingSort"
-            @click="moveUp(idx)"
           >
-            <el-icon><ArrowUp /></el-icon>
-          </el-button>
-          <el-button
-            link
-            class="sc-move"
-            title="下移一格"
-            aria-label="下移一格"
-            :disabled="idx === rows.length - 1 || savingSort"
-            @click="moveDown(idx)"
-          >
-            <el-icon><ArrowDown /></el-icon>
-          </el-button>
-          <el-button link type="primary" @click="rename(row)">重命名</el-button>
-          <el-button link type="danger" :loading="busyId === row.id" @click="remove(row)">
-            删除
-          </el-button>
+            <span
+              class="sc-drag"
+              title="拖拽调整顺序"
+              draggable="true"
+              @dragstart="onDragStart(idx)"
+              @dragend="onDragEnd"
+            ><el-icon><Rank /></el-icon></span>
+            <span v-if="row.icon" class="sc-icon">{{ row.icon }}</span>
+            <span class="sc-name">{{ row.name }}</span>
+            <span class="sc-count" :title="`该分类下已发布到用户端的技能数`">{{ row.count ?? 0 }} 技能</span>
+            <span class="sc-sp"></span>
+            <!-- 无障碍/触摸排序替代：上移/下移一格（键盘/无鼠标可用）；达顶/达底禁用。拖拽仍保留。 -->
+            <el-button
+              link
+              class="sc-move"
+              title="上移一格"
+              aria-label="上移一格"
+              :disabled="idx === 0 || savingSort"
+              @click="moveUp(idx)"
+            >
+              <el-icon><ArrowUp /></el-icon>
+            </el-button>
+            <el-button
+              link
+              class="sc-move"
+              title="下移一格"
+              aria-label="下移一格"
+              :disabled="idx === rows.length - 1 || savingSort"
+              @click="moveDown(idx)"
+            >
+              <el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <el-button link type="primary" @click="rename(row)">重命名</el-button>
+            <el-button link type="danger" :loading="busyId === row.id" @click="remove(row)">
+              删除
+            </el-button>
+          </div>
         </div>
-      </div>
+      </ListStates>
     </div>
   </div>
 </template>

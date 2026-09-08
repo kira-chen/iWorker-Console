@@ -7,7 +7,7 @@ import {
   isHosted,
   CRED_STATE
 } from '@/utils/bizSystemMeta'
-import { validateBizSystemForm, BIZ_CONN_TYPES } from '@/utils/defValidate'
+import { validateBizSystemForm, isBlankBizPage, BIZ_CONN_TYPES } from '@/utils/defValidate'
 
 describe('connTypeLabel', () => {
   it('已知映射', () => {
@@ -113,6 +113,42 @@ describe('validateBizSystemForm（2026-09-01 PRD 对齐口径）', () => {
   it('业务页整体选填：0 条通过', () => {
     expect(validateBizSystemForm({ ...valid, bizPages: [] }).ok).toBe(true)
     expect(validateBizSystemForm({ ...valid, bizPages: undefined }).ok).toBe(true)
+  })
+
+  // 2026-09-09 PRD 复核轮 · G4/A15（Q176/Q342 二轮「采纳A（自动丢弃空行）」）
+  it('完全空白的业务页行自动丢弃：不报 url/name 必填', () => {
+    const r = validateBizSystemForm({
+      ...valid,
+      bizPages: [{ url: '', name: '', description: '' }]
+    })
+    expect(r.ok).toBe(true)
+    expect(r.errors['bizPages.0.url']).toBeUndefined()
+    expect(r.errors['bizPages.0.name']).toBeUndefined()
+  })
+
+  it('空白行不改变其余行的错误下标（错误键仍按原始位置）', () => {
+    const r = validateBizSystemForm({
+      ...valid,
+      bizPages: [
+        { url: '', name: '', description: '' }, // 空行：跳过
+        { url: 'not-a-url', name: '工作台' } // 第 2 行有错 → 键仍是 bizPages.1.url
+      ]
+    })
+    expect(r.errors['bizPages.1.url']).toBeTruthy()
+    expect(r.errors['bizPages.0.url']).toBeUndefined()
+  })
+
+  it('半填行仍照常校验（只填了名称没填 URL 属漏填，不是空行）', () => {
+    const r = validateBizSystemForm({ ...valid, bizPages: [{ url: '', name: '工作台' }] })
+    expect(r.errors['bizPages.0.url']).toBeTruthy()
+  })
+
+  it('isBlankBizPage：三字段皆空（含纯空格）为空行，任一有内容即非空行', () => {
+    expect(isBlankBizPage({ url: '', name: '', description: '' })).toBe(true)
+    expect(isBlankBizPage({ url: '  ', name: ' ', description: '' })).toBe(true)
+    expect(isBlankBizPage({})).toBe(true)
+    expect(isBlankBizPage({ url: 'https://a.com' })).toBe(false)
+    expect(isBlankBizPage({ description: '只写了描述' })).toBe(false)
   })
 
   it('业务页逐项：url 必填且 http(s)://', () => {

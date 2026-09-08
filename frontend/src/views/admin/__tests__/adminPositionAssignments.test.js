@@ -8,7 +8,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
  *
  * 覆盖：页头标题/副标题；双页签 + 待审核徽标（0 不展示）、默认进分配页签；
  * 分配页签既有行为（行渲染/失败态/空态/修改绑定弹窗）；
- * 审批页签行渲染、空态（标题+副文案）、【通过】确认→绑定接口+联动刷新、取消不动、
+ * 审批页签行渲染、空态双分支、【通过】确认→绑定接口+联动刷新、取消不动、
+ * 2026-09-09 PRD 复核·G2（A8）补：审核结果/处理时间/处理人三列、已处理行操作列门控、
+ * 审核状态筛选下发、空态「暂无岗位申请」↔「没有匹配的岗位申请」双分支；
  * 【驳回】弹窗（标题「驳回岗位申请」）确认上抛、【重新绑定】复用修改绑定弹窗（forceSave）
  * →保存后标记已重新绑定+回分配页签清筛选置顶（focusUserId 下发）。
  * el-table 用逐行注入 row 的存根（复用 adminSkillsUnreferenced 范式）；弹窗/api 存根化。
@@ -165,16 +167,28 @@ const ROWS = [
   { userId: 11, username: 'alice', displayName: '爱丽丝', status: 'active', positionName: '销售', positionId: 'ps_1' },
   { userId: 12, username: 'bob', displayName: '', status: 'disabled', positionName: '', positionId: null }
 ]
+// 2026-09-09 PRD 复核·G2（A8）：申请行改为四态全展示，行结构新增
+// reviewStatus / processedAt / processedBy / rejectReason（md §4.2）。
+// 两条待审核 + 一条已驳回（已处理），供三列渲染、操作列门控与驳回原因悬停用例共用。
 const APP_ROWS = [
   {
     id: 701, userId: 3, username: 'chenyu', displayName: '陈宇', status: 'active',
     currentPositionId: null, currentPositionName: null,
-    requestedPositionId: 404, requestedPositionName: '市场研究岗', submittedAt: '2026-08-28 10:32'
+    requestedPositionId: 404, requestedPositionName: '市场研究岗', submittedAt: '2026-08-28 10:32',
+    reviewStatus: 'PENDING', processedAt: '', processedBy: '', rejectReason: ''
   },
   {
     id: 702, userId: 2, username: 'li.na', displayName: '李娜', status: 'active',
     currentPositionId: 402, currentPositionName: '客户成功岗',
-    requestedPositionId: 401, requestedPositionName: '经营分析岗', submittedAt: '2026-08-28 09:46'
+    requestedPositionId: 401, requestedPositionName: '经营分析岗', submittedAt: '2026-08-28 09:46',
+    reviewStatus: 'PENDING', processedAt: '', processedBy: '', rejectReason: ''
+  },
+  {
+    id: 705, userId: 5, username: 'zhouming', displayName: '周明', status: 'disabled',
+    currentPositionId: 401, currentPositionName: '经营分析岗',
+    requestedPositionId: 403, requestedPositionName: '财务审核岗', submittedAt: '2026-08-19 11:40',
+    reviewStatus: 'REJECTED', processedAt: '2026-08-19 16:28', processedBy: 'admin',
+    rejectReason: '该岗位需先完成财务合规培训'
   }
 ]
 
@@ -188,7 +202,7 @@ function appRowButton(rowIndex, text) {
 beforeEach(() => {
   vi.clearAllMocks()
   listPositionAssignments.mockResolvedValue({ list: ROWS, total: 2 })
-  listPositionApplications.mockResolvedValue({ list: APP_ROWS, total: 2 })
+  listPositionApplications.mockResolvedValue({ list: APP_ROWS, total: APP_ROWS.length })
   countPendingApplications.mockResolvedValue({ count: 2 })
   approveApi.mockResolvedValue({})
   rejectApi.mockResolvedValue({})
@@ -329,7 +343,7 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     await flush()
     expect(container.querySelector('.el-tabs').getAttribute('data-active')).toBe('applications')
     const rows = [...paneApps().querySelectorAll('.el-row')]
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     expect(rows[0].textContent).toContain('chenyu')
     expect(rows[0].textContent).toContain('未绑定') // 现有绑定为空
     expect(rows[0].textContent).toContain('市场研究岗')
@@ -338,12 +352,63 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(rows[1].textContent).toContain('客户成功岗') // 李娜现有绑定
   })
 
-  it('审批页签空态：「暂无待审核的岗位申请」+ 副文案', async () => {
+  // ===== 2026-09-09 PRD 复核·G2 / A8（md §4.1 / §4.2 / §4.3.4）=====
+  it('A8 审核结果 / 处理时间 / 处理人三列：待审核行三者为「—」，已处理行展示实值', async () => {
+    await mount()
+    container.querySelector('.el-tab-btn[data-name="applications"]').click()
+    await flush()
+    const rows = [...paneApps().querySelectorAll('.el-row')]
+    // 待审核行：黄色标签「待审核」，处理时间/处理人「—」
+    const pendingTags = [...rows[0].querySelectorAll('.status-tag')]
+    expect(pendingTags.some((t) => t.textContent.trim() === '待审核' && t.getAttribute('data-type') === 'warning')).toBe(true)
+    expect(rows[0].textContent).toContain('—')
+    // 已处理（已驳回）行：红色标签 + 处理时间 + 处理人
+    const rejTags = [...rows[2].querySelectorAll('.status-tag')]
+    expect(rejTags.some((t) => t.textContent.trim() === '已驳回' && t.getAttribute('data-type') === 'danger')).toBe(true)
+    expect(rows[2].textContent).toContain('2026-08-19 16:28')
+    expect(rows[2].textContent).toContain('admin')
+  })
+
+  it('A8 操作列门控（md §4.3.4）：已处理行不展示【通过】【驳回】【重新绑定】', async () => {
+    await mount()
+    container.querySelector('.el-tab-btn[data-name="applications"]').click()
+    await flush()
+    for (const t of ['通过', '驳回', '重新绑定']) {
+      expect(appRowButton(0, t)).toBeTruthy()   // 待审核行有
+      expect(appRowButton(2, t)).toBeUndefined() // 已处理行无
+    }
+  })
+
+  it('A8 审核状态筛选（md §4.1）：切换即下发 reviewStatus 并回第 1 页', async () => {
+    await mount()
+    container.querySelector('.el-tab-btn[data-name="applications"]').click()
+    await flush()
+    const select = paneApps().querySelector('select.el-select')
+    select.value = 'REJECTED'
+    select.dispatchEvent(new Event('change'))
+    await flush()
+    expect(listPositionApplications.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({ reviewStatus: 'REJECTED', page: 1 })
+    )
+  })
+
+  it('A8 空态双分支（md §4.1 / §六）：无任何申请 vs 筛选无结果', async () => {
     listPositionApplications.mockResolvedValue({ list: [], total: 0 })
     await mount()
-    const empty = paneApps().querySelector('.ls-empty') // 2026-09-08 原型复刻批次 1 对齐：纯文字空态
-    expect(empty.textContent).toContain('暂无待审核的岗位申请')
+    // ① 未筛选：暂无岗位申请 + 副文案
+    let empty = paneApps().querySelector('.ls-empty') // 2026-09-08 原型复刻批次 1 对齐：纯文字空态
+    expect(empty.textContent).toContain('暂无岗位申请')
     expect(empty.textContent).toContain('新的用户岗位申请会显示在这里')
+    // ② 有筛选：没有匹配的岗位申请（无副文案）
+    container.querySelector('.el-tab-btn[data-name="applications"]').click()
+    await flush()
+    const select = paneApps().querySelector('select.el-select')
+    select.value = 'APPROVED'
+    select.dispatchEvent(new Event('change'))
+    await flush()
+    empty = paneApps().querySelector('.ls-empty')
+    expect(empty.textContent).toContain('没有匹配的岗位申请')
+    expect(empty.textContent).not.toContain('新的用户岗位申请会显示在这里')
   })
 
   it('【通过】确认弹窗（标题/按钮文案照 md §4.3.1）→ 调用通过接口 + 成功 toast + 三处联动刷新', async () => {

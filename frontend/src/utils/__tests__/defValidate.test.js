@@ -29,6 +29,8 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     timeoutMs: 10000,
     transport: 'streamable-http',
     endpoint: 'https://intranet.example/mcp',
+    // 示例问题：2026-09-09 PRD 复核轮·G4 起 MCP 也强制必填（md §三.3 L242，与 API / 业务系统拉齐）
+    exampleQuestions: ['帮我查这个月的报销单', '帮我提交一张报销单', '帮我查报销审批到哪一步了'],
     tools: [{ name: 'query', bizName: '报销查询', description: '查询单据' }]
   }
   const validStdio = {
@@ -40,6 +42,7 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-foo'],
     env: [{ key: 'API_KEY', value: 'secret' }],
+    exampleQuestions: ['帮我读取工作区里的文件', '帮我列出目录内容', '帮我写一份文件到工作区'],
     tools: [{ name: 'read', bizName: '读取', description: '读文件' }]
   }
   it('合法表单通过', () => {
@@ -70,6 +73,24 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
   it('transport 非法报错', () => {
     expect(validateMcpForm({ ...valid, transport: 'ws' }).errors.transport).toBeTruthy()
   })
+  // 2026-09-09 PRD 复核轮 · G4（清单第五节第 3 项）：md §三.3 L242 与 UI 都写「必填，固定 3 条」，
+  // 此前保存端无该分支 → 三件套里只有 MCP 放行。补齐后文案与业务系统侧一致。
+  it('示例问题：固定 3 条须全部填写（与 API / 业务系统同口径）', () => {
+    expect(validateMcpForm({ ...valid, exampleQuestions: ['', '', ''] }).errors.exampleQuestions).toBe(
+      '示例问题固定 3 条，须全部填写'
+    )
+    expect(validateMcpForm({ ...valid, exampleQuestions: ['a', 'b'] }).errors.exampleQuestions).toBeTruthy()
+    expect(validateMcpForm({ ...valid, exampleQuestions: undefined }).errors.exampleQuestions).toBeTruthy()
+    // 空白串按未填算（trim 后为空）
+    expect(validateMcpForm({ ...valid, exampleQuestions: ['a', '  ', 'c'] }).errors.exampleQuestions).toBeTruthy()
+  })
+  it('示例问题：单条上限 60 字', () => {
+    const long = ['x'.repeat(61), 'b', 'c']
+    expect(validateMcpForm({ ...valid, exampleQuestions: long }).errors.exampleQuestions).toContain('60')
+    const ok60 = ['x'.repeat(60), 'b', 'c']
+    expect(validateMcpForm({ ...valid, exampleQuestions: ok60 }).errors.exampleQuestions).toBeUndefined()
+  })
+
   it('工具清单只读化：无工具可保存（不再校验 tools）', () => {
     const r = validateMcpForm({ ...valid, tools: [] })
     expect(r.ok).toBe(true)
@@ -139,6 +160,18 @@ describe('validateMcpEnv（V110 声明式行）', () => {
   })
   it('完全空白行跳过（「添加变量」未填不拦保存）', () => {
     expect(validateMcpEnv([{ key: '', value: '', description: '' }])).toBe('')
+  })
+  // 2026-09-09 PRD 复核·G4 · A11（三步式改值/删除，md §三.4.2 L285）
+  it('待删除行（pendingDelete）跳过校验：保存时本就丢弃，不该被自己的规则拦住', () => {
+    // 若不跳过，这行「未勾客户端填写又没值」会报「必须填写平台值」
+    expect(validateMcpEnv([{ key: 'A', value: '', pendingDelete: true }])).toBe('')
+    // 删掉旧的同名变量、另加一个同名新变量：不算重复
+    expect(
+      validateMcpEnv([
+        { key: 'A', value: '', configured: true, pendingDelete: true },
+        { key: 'A', value: 'newv' }
+      ])
+    ).toBe('')
   })
 })
 

@@ -6,7 +6,8 @@
  * - 七列：申请对象(名称+描述) / 业务类型 / 申请类型 / 申请版本 / 申请时间(排序，默认 desc)
  *   / 审核结果(已驳回且有原因时悬停气泡展示原因) / 操作；
  * - 筛选：keyword（域 objectName/description）+ 业务类型 + 申请类型 + 审核结果 + 「查询」按钮；
- * - 操作列：固定【查看】；PENDING 加【撤回】；REJECTED/WITHDRAWN 加【重新提交】
+ * - 操作列：固定【查看】（2026-09-09 PRD 复核·G2：md §四 L47——对应业务对象已删除时置灰并悬停说明，
+ *   行本身保留）；PENDING 加【撤回】；REJECTED/WITHDRAWN 加【重新提交】
  *   （2026-09-01 疑点1 处置：列表【重新提交】=打开编辑态（底部 关闭|提交审核），
  *    详情底部【重新提交】=直接提交）；
  * - 详情复用业务原生视图（GovObjectDetail 分发；SKILL 跳技能整页 + 吸底操作栏；
@@ -288,7 +289,14 @@ async function resubmit(row, key = 'resubmit') {
           <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
             <template #default="{ row }">
               <div class="ma-ops">
-                <el-button link type="primary" class="ma-op" @click="openDetail(row)">查看</el-button>
+                <!-- md §四 L47：对应业务对象已被删除时不提供详情查看 —— 【查看】置灰，
+                     列表行本身照常保留（对象名称/业务类型/申请类型/申请版本/申请时间/审核结果均在） -->
+                <el-tooltip v-if="row.objectDeleted" content="该申请对象已被删除，无法查看详情" placement="top">
+                  <span class="ma-op-wrap">
+                    <el-button link type="primary" class="ma-op" disabled>查看</el-button>
+                  </span>
+                </el-tooltip>
+                <el-button v-else link type="primary" class="ma-op" @click="openDetail(row)">查看</el-button>
                 <!-- 原型 L1562：列表【撤回】为普通 link（与查看 / 重新提交同档），仅详情底栏「撤回申请」为 danger -->
                 <el-button
                   v-if="row.result === 'PENDING'"
@@ -371,6 +379,11 @@ async function resubmit(row, key = 'resubmit') {
 }
 .ma-ops :deep(.el-button.is-link.is-disabled) {
   color: var(--c-text-faint);
+}
+/* 置灰【查看】的 tooltip 载体：禁用按钮不触发鼠标事件，须由外层 span 承载悬停（md §四 L47） */
+.ma-op-wrap {
+  display: inline-flex;
+  align-items: center;
 }
 /* 排序列头文字按钮（原型 .sort{border:0;background:transparent;padding:0;color:inherit}） */
 .ma-sort {

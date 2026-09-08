@@ -105,6 +105,15 @@ const mkMcp = (over) => ({
   serverName: '',
   lastCheckedAt: null,
   lastCheckError: null,
+  /**
+   * mock 专用：该行的连接探测（测试连接 / 拉取工具 / 检活）恒返回失败。
+   * 2026-09-09 PRD 复核轮 · G4（B 组·MCP 测试失败分支）——md `prd-连接器-MCP.md` §三.5 L299-300
+   * 定义了「测试失败展示红色结果卡，标题显示具体失败原因或『连接失败』」，§二.2 L61/L68 也定义了
+   * 检活失败的悬浮与提示，但 mock 此前写死 `{ ok:true }`、检活恒 HEALTHY，失败态 UI 永不触发、无法验收。
+   * 口径照 API 连接器的 `_mockUnhealthy`（api/apiConnectorMock.js）：种子里 health='bad' 的行置 true，
+   * 改过连接配置（endpoint/command/args/transport）后清除 → 模拟「地址填错→改对→恢复正常」。
+   */
+  _mockUnhealthy: false,
   callCount: 0,
   successCount: 0,
   avgExecMs: null,
@@ -175,6 +184,9 @@ function seedToMcp(s) {
     // 原型「未探测」行 check 为空 → 从未验证；其余最近验证时间 = 最近更新时间
     lastCheckedAt: s.health === 'unknown' ? null : updatedAt,
     lastCheckError: s.health === 'bad' ? s.error : null,
+    // 失败分支 mock 标记（B 组）：health='bad' 的两行（报销系统 / 资产管理）探测恒失败，
+    // 改过连接配置后恢复正常——让红色失败结果卡与「检活完成 · 连接异常」在 demo 里真的能走到。
+    _mockUnhealthy: s.health === 'bad',
     createdAt: updatedAt,
     updatedAt,
     publishedAt: s.agg === 'PUBLISHED' ? updatedAt : null
@@ -234,7 +246,9 @@ const pubAgg = {
 const persist = attachPersist('mcpConnector', {
   // v2（2026-09-04 PRD-20260903 对齐）：种子结构新增工具 title 与 exampleQuestions，旧快照丢弃重播种
   // v3（2026-09-08 原型复刻批次 2C）：种子由 1 条补齐到 11 条（原型 rows），旧快照丢弃重播种
-  version: 3,
+  // v4（2026-09-09 PRD 复核轮 · G4 · B 组）：种子新增 `_mockUnhealthy`（探测失败分支标记），
+  //    旧快照里的行没有该字段会让「报销系统 / 资产管理」两行永远探测成功 → 丢弃重播种
+  version: 4,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -394,10 +408,26 @@ export async function createMcp(payload) {
   return toRow(m)
 }
 
+/**
+ * 保存是否改动了「连接怎么连」的字段（2026-09-09 · B 组，仅 demo 失败标记用）。
+ * 传输方式 / endpoint / command / args 任一变化即算改过连接配置。
+ * @returns {boolean}
+ */
+function mcpConnChanged(m, payload) {
+  if (payload.transport && payload.transport !== m.transport) return true
+  if (payload.endpoint != null && String(payload.endpoint).trim() !== m.endpoint) return true
+  if (payload.command != null && String(payload.command).trim() !== m.command) return true
+  if (Array.isArray(payload.args) && payload.args.join('\n') !== (m.args || []).join('\n')) return true
+  return false
+}
+
 export async function updateMcp(id, payload) {
   await delay(250)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
+  // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
+  // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
+  if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
   applyMcpPayload(m, payload)
   m.updatedAt = nowIso()
   persist()
@@ -413,14 +443,46 @@ export async function deleteMcp(id) {
 }
 
 /* ================= 真实运行时（demo 模拟） ================= */
-export async function testMcpConn() {
+
+/**
+ * demo 失败判定（2026-09-09 · B 组 MCP 测试失败分支）：只看行上的 `_mockUnhealthy` 标记。
+ * 草稿探测（新建态、无 id）恒按成功走——新建的连接配置没有历史标记可依据。
+ * @param {Object|null} m MCP 行；null=草稿
+ */
+function mockProbeFails(m) {
+  return !!(m && m._mockUnhealthy)
+}
+/** demo 失败原因（md §三.5 L300 的红色结果卡标题「具体失败原因」）。 */
+const MOCK_FAIL_REASON = 'CONN_REFUSED: 连接被拒绝（目标服务未响应）'
+
+/**
+ * 测试连接（md §三.5）：仅握手。
+ * 成功 → { ok:true, 协议版本/Server 版本/延迟 }；失败 → { ok:false, failReason }
+ * （编辑器 testResultText 据 ok 分流成绿卡 / 红卡，失败文案接在「连接失败 · …」之后）。
+ * 结果不改列表验证状态（md L302「测试连接结果仅在当前抽屉内展示」）→ 此处不写库、不 persist。
+ */
+export async function testMcpConn(payload) {
   await delay(700) // 模拟握手耗时
+  const m = payload?.id ? findMcp(payload.id) : null
+  if (mockProbeFails(m)) return { ok: false, failReason: MOCK_FAIL_REASON }
   return { ok: true, protocolVersion: '2025-06-18', serverVersion: '1.4.2', latencyMs: 86 }
 }
 
-// 拉取工具：server 返回即全集（demo 固定星火桥接工具集），并就地刷新连接元信息
+// 拉取工具：server 返回即全集（demo 固定星火桥接工具集），并就地刷新连接元信息。
+// 连不上时抛错（编辑器 handleProbeError 转 toast），并把该行落成「连接异常」——
+// 拉工具本身就是一次真实外呼，连不上不该假装拉到了空清单。
 async function fetchToolsResult(m) {
   await delay(900)
+  if (mockProbeFails(m)) {
+    Object.assign(m, {
+      connStatus: 'failed',
+      displayStatus: 'UNHEALTHY',
+      lastCheckedAt: nowIso(),
+      lastCheckError: MOCK_FAIL_REASON
+    })
+    persist()
+    throw err(`拉取工具失败：${MOCK_FAIL_REASON}`)
+  }
   const meta = {
     connStatus: 'ok',
     protocolVersion: '2025-06-18',
@@ -429,7 +491,7 @@ async function fetchToolsResult(m) {
   }
   if (m) {
     m.tools = SPARK_TOOLS.map((t) => ({ ...t }))
-    Object.assign(m, meta, { lastCheckedAt: nowIso(), displayStatus: 'HEALTHY' })
+    Object.assign(m, meta, { lastCheckedAt: nowIso(), displayStatus: 'HEALTHY', lastCheckError: null })
     persist()
   }
   return { tools: SPARK_TOOLS.map((t) => ({ ...t })), ...meta }
@@ -441,18 +503,27 @@ export function fetchMcpToolsDraft() {
   return fetchToolsResult(null)
 }
 
-// 工具检活（healthCheckTool type=MCP）：demo 恒健康
+/**
+ * 工具检活（healthCheckTool type=MCP，md §二.2 L62-68）：
+ * 正常 → HEALTHY + 清错误（列表提示「检活完成 · 连接正常」）；
+ * 异常 → UNHEALTHY + 写 lastCheckError（列表提示「检活完成 · 连接异常」，
+ *        错误原因与错误码由 AdminMcp.verifyTip 经 explainMcpError 解出，收进悬浮）。
+ */
 export async function healthCheckMcpTool(id) {
   const m = findMcp(id)
   await delay(900)
+  const bad = mockProbeFails(m)
+  const displayStatus = bad ? 'UNHEALTHY' : 'HEALTHY'
+  const errorBrief = bad ? MOCK_FAIL_REASON : null
+  const checkedAt = nowIso()
   if (m) {
-    m.displayStatus = 'HEALTHY'
-    m.connStatus = 'ok'
-    m.lastCheckedAt = nowIso()
-    m.lastCheckError = null
+    m.displayStatus = displayStatus
+    m.connStatus = bad ? 'failed' : 'ok'
+    m.lastCheckedAt = checkedAt
+    m.lastCheckError = errorBrief
     persist()
   }
-  return { displayStatus: 'HEALTHY', checkedAt: nowIso(), errorBrief: null }
+  return { displayStatus, checkedAt, errorBrief }
 }
 
 /* ================= 服务级发布（market.js 接线） ================= */

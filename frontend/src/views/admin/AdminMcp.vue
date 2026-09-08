@@ -17,7 +17,7 @@
  *   配色对齐模型页：常规=primary、正向状态操作（发布）=success、
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  */
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -44,7 +44,14 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 // fetchList 在 onMounted 调用，try/finally 任何路径（成功/失败）都会把 loading 置回 false，不会卡死。
 // sort：「最近更新时间」列头排序方向（2026-09-08 原型复刻批次 2C：改 sortable="custom" 交 mock 全量排序，
 // 与专家 / 模型页同做法；原 el-table 本地 sortable 只排当页）。
-const query = reactive({ keyword: '', state: '', sort: 'desc' })
+// 2026-09-09 PRD 复核轮 · G4/A12（Q154「要统一，并且设计成选项B的手动触发」）：
+// 输入区（query）与已应用条件（applied）分离，与 API / 业务系统页同口径。
+// - keyword：md §一.3 L25「输入或清除搜索内容后，点击【查询】按钮刷新结果，并回到第 1 页」
+//   → 只在点【查询】/ 回车时才进 applied；原 300ms 防抖自动刷新已删除。
+// - state：md §一.3 L26「切换或清空状态筛选后，页面按照当前条件刷新，同时回到第 1 页」
+//   → 切换即刷新，但用的是 applied.keyword（未点查询的输入不生效），两条口径互不打架。
+const query = reactive({ keyword: '', state: '' })
+const applied = reactive({ keyword: '', state: '', sort: 'desc' })
 
 // 服务端分页：mock listMcp(page/size/keyword/state/sort) 返回当前页 list + 过滤后全量 total。
 
@@ -68,6 +75,23 @@ const STATE_OPTIONS = [
 ]
 
 /**
+ * MCP 连接状态三态归一（2026-09-09 PRD 复核轮 · G4/A13，Q147 负责人「采纳选项B」）。
+ *
+ * md `prd-连接器-MCP.md` §二.2 L57 只列「连接正常、连接异常、未探测」三态，无「已停用」。
+ * 公共件 `HealthTag` / `mcpMeta.resolveDisplayStatus` 的四态（含 DISABLED）被 API 页与岗位页
+ * 一并消费，**不动公共件**（清单第三节 G4 冲突⑦）；只在 MCP 列表这一消费侧把
+ * DISABLED 折回 UNKNOWN——「已停用」表达的是发布态而非连通性，MCP 的发布态另有 StatusTag 列承载，
+ * 在验证列再说一遍反而让人以为是「探测不出来」。
+ *
+ * @param {Object} row MCP 列表行
+ * @returns {'HEALTHY'|'UNHEALTHY'|'UNKNOWN'} 三态之一，永不返回 DISABLED
+ */
+function mcpConnStatus(row) {
+  const ds = resolveDisplayStatus(row)
+  return ds === 'DISABLED' ? 'UNKNOWN' : ds
+}
+
+/**
  * 验证列悬浮文案（三态，对齐模型页 verifyTip 的职责）：
  * 验证中 / 异常（带失败原因与时间）/ 正常或未检测（带最近检测时间）。
  *
@@ -83,7 +107,7 @@ function verifyTip(row) {
     return '尚未验证过，点击发起验证'
   }
   const when = `最近验证：${fmtTime(at)}`
-  if (resolveDisplayStatus(row) === 'UNHEALTHY') {
+  if (mcpConnStatus(row) === 'UNHEALTHY') {
     // 三段式（与模型页失败态同格式）：最近验证 + 错误原因（人话）+ 错误码（供排障时报给同事）。
     // 列表标签只留「异常」二字，原因与错误码都收进悬浮——列表不是排障的地方。
     const e = explainMcpError(row.lastCheckError)
@@ -156,7 +180,7 @@ function canPublish(row) {
  * <p>MCP 复用检活四态：HEALTHY 即视为验证通过；UNKNOWN（未检测）/ UNHEALTHY 均不放行。</p>
  */
 function verifyPassed(row) {
-  return resolveDisplayStatus(row) === 'HEALTHY'
+  return mcpConnStatus(row) === 'HEALTHY'
 }
 function canWithdraw(row) {
   return aggOf(row) === 'PENDING_REVIEW'
@@ -176,7 +200,7 @@ function isLocked(row) {
 // 注：原页头「N 个已发布服务连通异常」红点角标已移除（2026-08-22 负责人口径）——
 // 每行「验证」列本就显红色「异常」，顶部再报一遍属重复提示。三个页面（MCP / API / 模型）同步移除。
 
-// 状态筛选（三态聚合键）随 query.state 下发 mock 侧过滤（2026-09-08 批次 2C：种子补到 11 条后
+// 状态筛选（三态聚合键）随 applied.state 下发 mock 侧过滤（2026-09-08 批次 2C：种子补到 11 条后
 // 分页与筛选都在 mock 里做，原「当页前端过滤」的 visibleRows 废止——否则筛选后 total 与页数对不上）。
 
 // 逐行拉取服务级聚合态（按本页 rows 并发；单行失败不阻断他行，缺失按未发布处理）。
@@ -206,7 +230,7 @@ async function loadPubSummary() {
 // 发布态摘要（loadPubSummary）依赖列表结果，故作为 mapRow 之后的副作用单独触发。
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7，负责人拍板全站统一；
 // md §二.5「固定 10 条」与之冲突，差异记 02-审查结果，原 pageSize:10 覆盖已移除）
-const list = useAdminList(listMcp, { params: () => ({ ...query }) })
+const list = useAdminList(listMcp, { params: () => ({ ...applied }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 
 async function fetchList() {
@@ -220,27 +244,30 @@ function reload() {
   return fetchList()
 }
 
+/**
+ * 点【查询】/ 搜索框回车（A12）：把输入区关键词与状态一并应用后刷新并回第 1 页。
+ * 状态本就即时刷新，这里一并同步只是为了「点查询＝按屏幕上看到的条件查」不产生歧义。
+ */
+function search() {
+  applied.keyword = query.keyword.trim()
+  applied.state = query.state
+  return reload()
+}
+
+/** 状态筛选切换（md §一.3 L26：切换或清空即按当前条件刷新并回第 1 页）。 */
+function onStateChange() {
+  applied.state = query.state
+  return reload()
+}
+
 /** 「最近更新时间」列头排序：切方向后按当前条件重取（mock 全量排序）；order=null 回落默认降序。 */
 function onSortChange({ prop, order }) {
   if (prop !== 'updatedAt') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
+  applied.sort = order === 'ascending' ? 'asc' : 'desc'
   fetchList()
 }
 
 onMounted(fetchList)
-
-// 关键词实时搜索：300ms 防抖（手写，不引入新依赖）→ 调 reload（回第 1 页）。
-let kwTimer = null
-watch(
-  () => query.keyword,
-  () => {
-    if (kwTimer) clearTimeout(kwTimer)
-    kwTimer = setTimeout(reload, 300)
-  }
-)
-onBeforeUnmount(() => {
-  if (kwTimer) clearTimeout(kwTimer)
-})
 
 function openCreate() {
   editingId.value = null
@@ -284,7 +311,7 @@ async function checkNow(row) {
     const res = await healthCheckTool('MCP', row.id)
     if (res?.displayStatus) row.displayStatus = res.displayStatus
     if (res?.checkedAt) row.lastCheckedAt = res.checkedAt
-    const ds = resolveDisplayStatus(row)
+    const ds = mcpConnStatus(row)
     if (ds === 'HEALTHY') ElMessage.success('检活完成 · 连接正常')
     else if (ds === 'UNHEALTHY') ElMessage.warning('检活完成 · 连接异常')
     else ElMessage.info('检活完成')
@@ -406,16 +433,23 @@ async function remove(row) {
   <div class="list-page">
     <!-- 页头标题已收口至 AdminConnector 容器；此处仅保留工具行 -->
     <ListToolbar>
-      <el-input v-model="query.keyword" placeholder="搜索服务名称或描述" clearable class="lt-search">
+      <!-- 搜索框：手动触发（A12）——输入不自动刷新，回车等同点【查询】 -->
+      <el-input
+        v-model="query.keyword"
+        placeholder="搜索服务名称或描述"
+        clearable
+        class="lt-search"
+        @keyup.enter="search"
+      >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <!-- 状态筛选：切换即按当前条件刷新并回第 1 页（md §一.2） -->
-      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="reload">
+      <!-- 状态筛选：切换即按当前条件刷新并回第 1 页（md §一.3 L26） -->
+      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="onStateChange">
         <el-option v-for="o in STATE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
-      <!-- 【查询】（2026-09-08 原型复刻批次 2C · M1：原型 L171 `button.plain[data-action=mcp-query]`，
-           与 API / 业务系统 / 模型页同形；搜索框 300ms 自动刷新仍保留） -->
-      <el-button @click="reload">查询</el-button>
+      <!-- 【查询】（md §一.2 L15「按照当前搜索内容和状态刷新列表」）：2026-09-09 · A12 起是搜索的
+           唯一触发方式（原 300ms 防抖自动刷新已删，两套并存的口径冲突消解） -->
+      <el-button @click="search">查询</el-button>
       <template #right>
         <el-button type="primary" class="lt-create" @click="openCreate">
           <el-icon><Plus /></el-icon> 新建 MCP
@@ -429,7 +463,7 @@ async function remove(row) {
       :loading="loading"
       :error="loadError"
       :empty="isEmpty"
-      :empty-text="query.keyword || query.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
+      :empty-text="applied.keyword || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
     >
       <el-table
@@ -523,7 +557,8 @@ async function remove(row) {
           <template #default="{ row }">
             <div class="mc-vc">
               <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标旋转表达「正在重测」 -->
-              <HealthTag :status="resolveDisplayStatus(row)" />
+              <!-- 三态（A13）：DISABLED 已在 mcpConnStatus 折回 UNKNOWN，md §二.2 L57 无「已停用」态 -->
+              <HealthTag :status="mcpConnStatus(row)" />
 
               <!-- 最近验证时间（PRD §二.2：MM-DD HH:mm；从未验证不展示，完整时间收进悬浮） -->
               <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>

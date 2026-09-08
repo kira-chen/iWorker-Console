@@ -191,30 +191,23 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     expect(container.querySelector('.fi[data-prop="description"]')).toBeFalsy()
   })
 
-  // 2026-09-01 PRD 对齐改造取代旧口径：厂商预设由下拉改为卡片网格单选（M9，原型 preset-grid）
-  it('厂商预设（新建态）：六张卡片（DeepSeek/Qwen/Kimi/GLM/讯飞/自定义），点选即预填并高亮', async () => {
+  // 2026-09-09 PRD 复核轮 · G4/A9（Q224「去掉预设卡片」，prd-模型.md 已删整节）：
+  // 原「六张卡片点选即预填」用例反转为「卡片区整体不存在」——新建态直接从「基本信息」起。
+  it('厂商预设卡片区已删除（A9）：新建态无 .mc-preset-* 任何痕迹', async () => {
     await mount(null)
-    const cards = [...container.querySelectorAll('.mc-preset-card')]
-    expect(cards.map((c) => c.querySelector('.mc-preset-name').textContent.trim())).toEqual([
-      'DeepSeek', 'Qwen', 'Kimi', 'GLM', '讯飞', '自定义'
-    ])
-    // 副文案：自定义=手动配置，其余=OpenAI 兼容协议
-    const subs = cards.map((c) => c.querySelector('.mc-preset-sub').textContent.trim())
-    expect(subs.slice(0, 5).every((s) => s === 'OpenAI 兼容协议')).toBe(true)
-    expect(subs[5]).toBe('手动配置')
-    // 点 DeepSeek 卡：预填 baseUrl 且卡片选中高亮
-    cards[0].click()
-    await nextTick()
-    expect(inputByProp('baseUrl').value).toBe('https://api.deepseek.com/v1')
-    expect(container.querySelector('.mc-preset-card.active .mc-preset-name').textContent.trim()).toBe('DeepSeek')
+    expect(container.querySelector('.mc-preset-grid')).toBeFalsy()
+    expect(container.querySelectorAll('.mc-preset-card').length).toBe(0)
+    expect(container.textContent).not.toContain('厂商预设')
+    expect(container.textContent).not.toContain('OpenAI 兼容协议')
   })
 
   // 2026-09-09 原型复刻批次 3A · S1：分区标题类名由 .mc-sec-title 改为公共 .section-title
   // （样式统一收到 assets/admin-shell.css 的 .section-card 一组）。
-  it('分区结构（M7）：厂商预设/基本信息/连接与鉴权/能力信息 分区卡齐全，服务地址在连接与鉴权区', async () => {
+  // 2026-09-09 · A9：分区卡从四张收为三张（「厂商预设」已删）。
+  it('分区结构（M7）：基本信息/连接与鉴权/能力信息 分区卡齐全，服务地址在连接与鉴权区', async () => {
     await mount(null)
     const titles = [...container.querySelectorAll('.section-title')].map((t) => t.textContent)
-    expect(titles.some((t) => t.includes('厂商预设'))).toBe(true)
+    expect(titles.some((t) => t.includes('厂商预设'))).toBe(false)
     expect(titles.some((t) => t.includes('基本信息'))).toBe(true)
     expect(titles.some((t) => t.includes('连接与鉴权'))).toBe(true)
     expect(titles.some((t) => t.includes('能力信息'))).toBe(true)

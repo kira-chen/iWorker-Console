@@ -16,7 +16,9 @@
  * - 强确认降级：删除/停用改普通二次确认（文案照原型 modal）；删除引用数 N 直接取行 skillCount
  *   （Z7 拍板：不再前置调 delete-impact，接口函数保留）。
  * - 版本管理侧栏：统一 VersionDrawer，专家词表（启用/禁用、专家名称、historySubtitle 等）经 adapter 传入。
- * - 数据走 domainExpertMock（api 层分流，VITE_EXPERT_MOCK=0 关闭）。分页保持固定 ListPagination（Z1 不实施动态分页）。
+ * - 数据走 domainExpertMock（api 层分流，VITE_EXPERT_MOCK=0 关闭）。分页走统一 ListPagination，
+ *   每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 起全站统一，由 useAdminList 注入
+ *   useDynPageSize；原「Z1 不实施动态分页」注释已过期，2026-09-09 PRD 复核·G5 清理）。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'

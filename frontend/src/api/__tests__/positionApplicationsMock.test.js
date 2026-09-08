@@ -24,17 +24,48 @@ async function assignmentOf(userId) {
   return list.find((r) => r.userId === userId)
 }
 
-describe('positionApplicationsMock —— 岗位申请审批 mock（2026-09-04 PRD-20260903 对齐）', () => {
-  it('种子 3 条待审核照原型（chenyu/li.na/sun.xin），默认提交时间由近到远', async () => {
+describe('positionApplicationsMock —— 岗位申请审批 mock（2026-09-09 PRD 复核·G2 / A8 全量展示口径）', () => {
+  // md §4.1：展示全部四态；待审核组恒置顶，组内按提交时间由近到远
+  it('A8 种子 6 条（3 待审核 + 3 已处理）：待审核置顶，组内 desc', async () => {
     const { list, total } = await listPositionApplications()
-    expect(total).toBe(3)
-    expect(list.map((r) => r.id)).toEqual([701, 702, 703]) // desc：08-28 10:32 → 08-28 09:46 → 08-27 17:18
-    expect(list.map((r) => r.username)).toEqual(['chenyu', 'li.na', 'sun.xin'])
+    expect(total).toBe(6)
+    // 待审核组 701(08-28 10:32) / 702(08-28 09:46) / 703(08-27 17:18)，
+    // 已处理组 704(08-20 14:05) / 705(08-19 11:40) / 706(08-18 09:03)
+    expect(list.map((r) => r.id)).toEqual([701, 702, 703, 704, 705, 706])
+    expect(list.map((r) => r.reviewStatus)).toEqual([
+      'PENDING', 'PENDING', 'PENDING', 'APPROVED', 'REJECTED', 'REBOUND'
+    ])
   })
 
-  it('sortDir=asc 切换为由远到近', async () => {
+  it('A8 sortDir=asc：只反转组内顺序，「待审核置顶」的分组规则不变（md §4.1）', async () => {
     const { list } = await listPositionApplications({ sortDir: 'asc' })
-    expect(list.map((r) => r.id)).toEqual([703, 702, 701])
+    expect(list.map((r) => r.id)).toEqual([703, 702, 701, 706, 705, 704])
+    // 前三条仍全是待审核 —— 分组未被排序打散
+    expect(list.slice(0, 3).every((r) => r.reviewStatus === 'PENDING')).toBe(true)
+  })
+
+  it('A8 审核状态筛选（md §4.1）：按 reviewStatus 过滤；非法值回落「全部」', async () => {
+    expect((await listPositionApplications({ reviewStatus: 'PENDING' })).total).toBe(3)
+    const rejected = await listPositionApplications({ reviewStatus: 'REJECTED' })
+    expect(rejected.list.map((r) => r.id)).toEqual([705])
+    expect((await listPositionApplications({ reviewStatus: 'REBOUND' })).total).toBe(1)
+    expect((await listPositionApplications({ reviewStatus: 'NOPE' })).total).toBe(6) // 回落全部
+  })
+
+  it('A8 已处理行出参：审核结果 / 处理时间 / 处理人 / 驳回原因齐备；待审核行三者为空（md §4.2）', async () => {
+    const { list } = await listPositionApplications()
+    const byId = (id) => list.find((r) => r.id === id)
+    const rejected = byId(705)
+    expect(rejected.reviewStatus).toBe('REJECTED')
+    expect(rejected.processedAt).toBe('2026-08-19 16:28')
+    expect(rejected.processedBy).toBe('admin')
+    expect(rejected.rejectReason).toContain('财务合规培训')
+    const pending = byId(701)
+    expect(pending.processedAt).toBe('')
+    expect(pending.processedBy).toBe('')
+    // status 仍是「用户启用/停用态」（命名口径未变，避免与分配页签同名列冲突）
+    expect(pending.status).toBe('active')
+    expect(byId(705).status).toBe('disabled') // 周明（userId 5）在分配表为停用
   })
 
   it('行内联查：状态/现有绑定取分配实时值，申请岗位名从 positionMock 实时解析（Q10 同款）', async () => {
@@ -56,15 +87,20 @@ describe('positionApplicationsMock —— 岗位申请审批 mock（2026-09-04 P
     expect((await countPendingApplications()).count).toBe(2)
   })
 
-  it('通过：走现有绑定接口把用户绑到申请岗位（业务规则：等效管理员手动改绑，覆盖式单岗），申请离开列表', async () => {
+  it('通过：走现有绑定接口把用户绑到申请岗位（覆盖式单岗）；A8 后申请留在列表并落处理留痕', async () => {
     await approvePositionApplication(702) // li.na：402 → 申请 401
     const lina = await assignmentOf(2)
     expect(lina.positionId).toBe(401)
     expect(lina.positionName).toBe('经营分析岗') // 换绑为覆盖关系，原 402 不保留
     const { list, total } = await listPositionApplications()
-    expect(total).toBe(2)
-    expect(list.some((r) => r.id === 702)).toBe(false)
-    // 已处理的申请不可重复操作
+    expect(total).toBe(6) // md §4.3.4：已处理记录保留在列表
+    const row = list.find((r) => r.id === 702)
+    expect(row.reviewStatus).toBe('APPROVED')
+    expect(row.processedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/) // 精确到分钟
+    expect(row.processedBy).toBe('admin')
+    // 处理后离开待审核组 → 排到已处理组
+    expect(list.findIndex((r) => r.id === 702)).toBeGreaterThan(1)
+    // 已处理的申请不可重复操作（md §4.3.4）
     await expect(approvePositionApplication(702)).rejects.toThrow('该申请已处理')
   })
 
@@ -77,16 +113,19 @@ describe('positionApplicationsMock —— 岗位申请审批 mock（2026-09-04 P
 
     await rejectPositionApplication(701, '岗位编制已满，暂不开放')
     const { list } = await listPositionApplications()
-    expect(list.some((r) => r.id === 701)).toBe(false) // 已驳回不展示
+    const row = list.find((r) => r.id === 701)
+    expect(row.reviewStatus).toBe('REJECTED') // A8：已驳回仍在列表
+    expect(row.rejectReason).toBe('岗位编制已满，暂不开放')
+    expect(row.processedBy).toBe('admin')
     const chenyu = await assignmentOf(3)
     expect(chenyu.positionId).toBeNull() // 驳回不动绑定
   })
 
-  it('重新绑定回执：仅标记 REBOUND 离开列表，绑定由修改绑定弹窗链路另行落库', async () => {
+  it('重新绑定回执：仅标记 REBOUND（行保留），绑定由修改绑定弹窗链路另行落库', async () => {
     await markApplicationRebound(703)
     const { list, total } = await listPositionApplications()
-    expect(total).toBe(2)
-    expect(list.some((r) => r.id === 703)).toBe(false)
+    expect(total).toBe(6)
+    expect(list.find((r) => r.id === 703).reviewStatus).toBe('REBOUND')
     const sunxin = await assignmentOf(6)
     expect(sunxin.positionId).toBeNull() // 本接口自身不触碰绑定
     await expect(markApplicationRebound(703)).rejects.toThrow('该申请已处理')

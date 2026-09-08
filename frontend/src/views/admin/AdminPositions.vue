@@ -11,7 +11,9 @@
  * - 操作列（照原型 positionActions）：编辑（审核中 disabled）+ 按状态给 发布/删除、撤回、停用/版本管理；
  *   【查看】暂不实现（Q4 待拍板）；测试按钮维持 EFFECT_TEST_ENABLED flag 现状。
  * - 强确认降级（Q5）：停用/删除改普通二次确认（文案照原型 modal）。
- * - 发布（Q3）：不弹确认窗，先校验技能数（空→toast）再直接打开版本管理侧栏。
+ * - 发布（Q3）：不弹确认窗，先跑 md §9.1 六项完整性校验（与详情页共用 computeCompletenessMissing），
+ *   缺项 → toast「请先填写：…」并跳详情页对应页签；全通过才打开版本管理侧栏
+ *   （2026-09-09 PRD 复核·G2 / A1：原「仅校验技能数≥1」的旧门已随 Q11 六项口径退役）。
  * - 数据走 positionMock（api 层分流，VITE_POS_MOCK=0 关闭）；新建/编辑仍走现有流程
  *   （新建小弹窗→工作台整页，Q4 不拆不删）。
  */
@@ -45,8 +47,9 @@ import {
   relistPositionPublication
 } from '@/api/position'
 import { listDataTables } from '@/api/dataTable'
+import { listSampleTasks } from '@/api/sampleTask'
 import { iconIsUrl } from '@/utils/iconDisplay'
-import { POSITION_BUMP_OPTIONS, DESCRIPTION_MAX_LEN } from '@/utils/positionModel'
+import { POSITION_BUMP_OPTIONS, DESCRIPTION_MAX_LEN, computeCompletenessMissing } from '@/utils/positionModel'
 // 居中弹窗外壳（原型 .proto2-dialog 头/脚分隔线档，2026-09-08 原型复刻批次 2A）
 import '@/assets/admin-dialog.css'
 
@@ -251,11 +254,40 @@ function openVersionDialog(row) {
   versionDlgVisible.value = true
 }
 
-// 【发布】入口（Q3：不弹确认窗）：先校验技能数，为空 toast 拦下；否则直接打开版本管理侧栏。
-function onPublish(row) {
-  const skillCount = row.skillCount ?? (Array.isArray(row.skillIds) ? row.skillIds.length : 0)
-  if (!skillCount) {
-    ElMessage.warning('至少关联 1 个岗位私有技能才能发布')
+/**
+ * 【发布】入口（Q3：不弹确认窗）。
+ *
+ * 2026-09-09 PRD 复核·G2（A1）：口径与详情页 openPublish **完全一致**——原「仅校验技能数≥1」
+ * 是 md §9.1 改 6 项前的旧门，已与 `computeCompletenessMissing` 统一（发布/保存共用同一份，
+ * 见 utils/positionModel.js COMPLETENESS_ITEMS）。列表行只带计数摘要、不含 SOP / 示例问题 /
+ * Agent 技能树 / 自动化任务，故此处先拉详情 + 样例任务条数拼出与详情页同形的 detail 入参。
+ * 缺项 → toast「请先填写：…」并跳详情页对应页签（?tab=，详情页 :96 已消费该 query）。
+ */
+const publishCheckingId = ref(null)
+async function onPublish(row) {
+  publishCheckingId.value = row.positionId
+  let detail = null
+  let sampleTaskCount = 0
+  try {
+    // 两路并行；样例任务失败不阻断（计数按 0 走，与详情页 refreshSampleTaskCount 的容错同调）
+    const [d, tasks] = await Promise.all([
+      getPosition(row.positionId),
+      listSampleTasks(row.positionId).catch(() => ({ list: [] }))
+    ])
+    detail = d
+    sampleTaskCount = (tasks?.list || []).length
+  } catch (e) {
+    ElMessage.error(e?.message || '岗位详情读取失败，请重试')
+    return
+  } finally {
+    publishCheckingId.value = null
+  }
+
+  const missing = computeCompletenessMissing({ ...detail, sampleTaskCount })
+  if (missing.length) {
+    ElMessage.warning(`请先填写：${missing.map((i) => i.label).join('、')}`)
+    // 引导进详情页第一个缺失项所在页签（md §9.1「自动定位到第一个缺失项所在页签」同口径）
+    router.push({ name: 'PositionWorkbench', params: { id: row.positionId }, query: { tab: missing[0].tab } })
     return
   }
   openVersionDialog(row)
@@ -546,13 +578,14 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
                   撤回
                 </el-button>
 
-                <!-- 未发布：发布（先校验技能数，Q3 不弹确认窗）+ 删除。
+                <!-- 未发布：发布（先跑 md §9.1 六项完整性校验，Q3 不弹确认窗）+ 删除。
                      2026-09-08 PRD-20260908 对齐：md §3.1 已删发布悬停提示，原型 L1194 发布键亦无 title → 删；
                      删除键 title「删除前需二次确认」原型 L1194 有 → 保留（Q375 挂账） -->
                 <template v-else-if="row.status === 'draft'">
                   <el-button
                     link
                     type="primary"
+                    :loading="publishCheckingId === row.positionId"
                     @click="onPublish(row)"
                   >
                     发布

@@ -416,4 +416,99 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     await mount()
     expect(stateOf(rowByName('已上线服务'))).toBe('未发布')
   })
+
+  /**
+   * 2026-09-09 PRD 复核轮 · G4/A12（Q154「要统一，并且设计成选项B的手动触发」）。
+   * md prd-连接器-MCP.md §一.3 L25「输入或清除搜索内容后，点击【查询】按钮刷新结果，并回到第 1 页」。
+   * 改造前搜索框有 300ms 防抖自动刷新，与【查询】按钮两套并存。
+   */
+  describe('A12 搜索改手动【查询】', () => {
+    /** 工具条上的【查询】按钮（行内按钮都在 .t-row 里，工具条按钮不在） */
+    function queryBtn() {
+      return [...container.querySelectorAll('.el-button')].find(
+        (b) => !b.closest('.t-row') && b.textContent.trim() === '查询'
+      )
+    }
+    const searchInput = () => container.querySelector('.lt-search')
+
+    it('输入关键词不自动刷新（防抖 watch 已删）', async () => {
+      await mount()
+      const callsBefore = adminApi.listMcp.mock.calls.length
+      const input = searchInput()
+      input.value = '报销'
+      input.dispatchEvent(new Event('input'))
+      await nextTick()
+      // 等到超过原 300ms 防抖窗口，仍不该有新请求
+      await new Promise((r) => setTimeout(r, 400))
+      expect(adminApi.listMcp.mock.calls.length).toBe(callsBefore)
+    })
+
+    it('点【查询】才把关键词下发，并回到第 1 页', async () => {
+      await mount()
+      const input = searchInput()
+      input.value = '报销'
+      input.dispatchEvent(new Event('input'))
+      await nextTick()
+      queryBtn().click()
+      await nextTick()
+      await nextTick()
+      const last = adminApi.listMcp.mock.calls.at(-1)[0]
+      expect(last.keyword).toBe('报销')
+      expect(last.page).toBe(1)
+    })
+  })
+
+  /**
+   * 2026-09-09 PRD 复核轮 · G4/A13（Q147「采纳选项B」）。
+   * md §二.2 L57 只列「连接正常、连接异常、未探测」三态 → MCP 列表的验证列永不出「已停用」。
+   * 实现方式是 MCP 消费侧映射（mcpConnStatus），公共件 HealthTag / mcpMeta 不动。
+   */
+  describe('A13 连接状态三态（删「已停用」）', () => {
+    // 局部 import 的真 HealthTag 优先于全局 stub → 断言渲染出的中文标签
+    // （HEALTHY=连接正常 / UNHEALTHY=连接异常 / UNKNOWN=未探测 / DISABLED=已停用，见 positionModel.HEALTH_MAP）
+    const statusOf = (rowEl) => rowEl.querySelector('.health-tag')?.textContent.trim()
+
+    it('后端下发 DISABLED 的行在列表里折回 UNKNOWN（未探测），不渲染「已停用」', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{ ...LIST[0], displayStatus: 'DISABLED' }],
+        total: 1
+      })
+      await mount()
+      expect(statusOf(rowByName('未发布服务'))).toBe('未探测')
+      expect(rowByName('未发布服务').textContent).not.toContain('已停用')
+    })
+
+    it('status=disabled 派生路径同样折回 UNKNOWN（mcpMeta 兜底会给 DISABLED）', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{ id: 'mc_none', name: '未发布服务', transport: 'stdio', toolCount: 2, referencedBySkillCount: 0, status: 'disabled' }],
+        total: 1
+      })
+      await mount()
+      expect(statusOf(rowByName('未发布服务'))).toBe('未探测')
+    })
+
+    it('正常三态原样透出：连接正常 / 连接异常 / 未探测（md §二.2 L57 三态文案）', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [
+          { ...LIST[0], displayStatus: 'HEALTHY' },
+          { ...LIST[1], displayStatus: 'UNHEALTHY' },
+          { ...LIST[2], displayStatus: 'UNKNOWN' }
+        ],
+        total: 3
+      })
+      await mount()
+      expect(statusOf(rowByName('未发布服务'))).toBe('连接正常')
+      expect(statusOf(rowByName('在审服务'))).toBe('连接异常')
+      expect(statusOf(rowByName('已上线服务'))).toBe('未探测')
+    })
+
+    it('发布前置仍按「连接正常」判定：DISABLED 折回 UNKNOWN 后【发布】不可点', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{ ...LIST[0], displayStatus: 'DISABLED' }],
+        total: 1
+      })
+      await mount()
+      expect(btn(rowByName('未发布服务'), '发布').disabled).toBe(true)
+    })
+  })
 })

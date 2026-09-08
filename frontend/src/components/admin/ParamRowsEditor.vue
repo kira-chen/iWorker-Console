@@ -6,11 +6,16 @@
  *  - MCP stdio Env：不显示「位置」列（showIn=false），行 = 名称/描述/客户端填写/平台值；
  *  - API KEY 鉴权：显示「位置」列（showIn=true），行 = 位置/参数名/描述/客户端填写/参数值。
  *
- * 行结构（父组件持有）：{ in?, key, description, clientFill, value, configured, valueMasked? }
+ * 行结构（父组件持有）：
+ *   { in?, key, description, clientFill, value, configured, valueMasked?, editingValue?, pendingDelete? }
  *  - clientFill：true=客户端填写（值由客户端收集，与 value 互斥——勾选即清空禁用）；
  *  - value：平台值明文（仅提交瞬间存在；编辑态留空=保留旧密文，永不回显）；
  *  - configured：该行后端已有密文（决定 value 占位提示「留空保留」）；
- *  - valueMasked：首尾掩码串（全站密钥掩码口径，2026-09-01）——有则占位提示带掩码供核对。
+ *  - valueMasked：首尾掩码串（全站密钥掩码口径，2026-09-01）——有则占位提示带掩码供核对；
+ *  - editingValue / pendingDelete：三步式界面态，仅 threeStep 消费方用（见下方 threeStep prop）。
+ *
+ * 2026-09-09 PRD 复核轮 · G4/A11：新增 threeStep prop（默认 false）——MCP stdio Env 传 true 后
+ * 已配置行走「改值 / 删除→待删除 / 撤销」三步式；API KEY 鉴权不传，行为逐字不变。
  *
  * 行内字段直接 v-model 到行对象（与父共享引用）；增删行 emit update:rows；
  * 任何交互 emit interact（父组件借此清字段级红框）。校验不在本组件（父层 defValidate 收口）。
@@ -65,12 +70,40 @@ const props = defineProps({
   /** 平台值/参数值输入是否走密码态（原型 API 鉴权参数值 `type="password"`）。 */
   secretValue: { type: Boolean, default: false },
   /** 客户端填写说明常显（原型 API 鉴权 `.api-auth-add-note` 与【＋ 添加参数】同行常显，不随勾选出现）。 */
-  clientFillHintAlways: { type: Boolean, default: false }
+  clientFillHintAlways: { type: Boolean, default: false },
+  /**
+   * 三步式改值 / 删除（2026-09-09 PRD 复核轮 · G4/A11，Q137 负责人「先采纳A（保留 改值+待删除+撤销）」）。
+   *
+   * md `prd-连接器-MCP.md` §三.4.2 L283-286：
+   *   「每个已配置名称提供【改值】和【删除】／点击【改值】后，在下方输入区域填写该名称的新值／
+   *     点击【删除】后，该名称显示"待删除"并提供【撤销】／未修改的内容保存后继续保留原值。」
+   *
+   * **仅 MCP stdio Env 传 true**；API KEY 鉴权（ApiEditor）不传，行为与改造前逐字不变——
+   * 该组件两处共用，此 prop 就是清单第三节 G4 冲突①要求的隔离开关。
+   *
+   * 只对「已配置行」（row.configured，即编辑已有 MCP 时后端回来的存量变量）生效：
+   *   - 平台值列不再是可直接编辑的输入框，改为「已配置（不回显）」＋【改值】；
+   *   - 点【改值】置 row.editingValue=true，就地展开输入框填新值，旁边给【取消改值】还原；
+   *   - 点【删除】置 row.pendingDelete=true（不立即移出数组），整行置灰标「待删除」＋【撤销】；
+   *   - 保存时由 utils/mcpEnv.buildEnvSubmit 丢弃 pendingDelete 行 → 后端按「完整期望集」删该 KEY。
+   * 新添加的行（configured=false）不走三步式：本就没有「原值」可保护，直接填、直接移除。
+   */
+  threeStep: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:rows', 'interact'])
 
 function emptyRow() {
-  const row = { key: '', description: '', clientFill: false, value: '', configured: false }
+  // editingValue / pendingDelete 显式置 false：新行 configured=false 本就不走三步式，
+  // 但显式带上让行结构在两条产出路径（此处与 utils/mcpEnv.emptyEnvRow）保持一致。
+  const row = {
+    key: '',
+    description: '',
+    clientFill: false,
+    value: '',
+    configured: false,
+    editingValue: false,
+    pendingDelete: false
+  }
   if (props.showIn) row.in = props.inOptions[0]?.value ?? ''
   return row
 }
@@ -98,8 +131,50 @@ const showClientFillHint = computed(
 function valuePlaceholder(row) {
   if (row.clientFill) return '由客户端填写'
   if (!row.configured) return '必填'
+  // 三步式：点过【改值】才展开输入框，占位直说「填新值」（不再暗示可留空——留空就该点【取消改值】）
+  if (props.threeStep) return row.valueMasked ? `新值（原 ${row.valueMasked}）` : '填写新值'
   // 已配置：占位展示首尾掩码供核对（全站密钥掩码口径），留空=保留原值
   return row.valueMasked ? `当前 ${row.valueMasked}（留空保留）` : '已配置（留空保留原值）'
+}
+
+/* ===== 三步式改值 / 删除（A11，仅 threeStep 且 configured 行；见 threeStep prop 注释） ===== */
+
+/** 该行是否走三步式（已配置的存量行）。新加的行 configured=false，照旧直填直删。 */
+function isManaged(row) {
+  return props.threeStep && !!row.configured
+}
+/** 平台值列是否渲染输入框：非托管行恒是；托管行仅在点过【改值】后。 */
+function showValueInput(row) {
+  return !isManaged(row) || !!row.editingValue
+}
+/** 点【改值】：展开输入区填新值（值本身仍不回显，md L282「仅展示名称，不展示原值」）。 */
+function startEditValue(row) {
+  row.editingValue = true
+  row.value = ''
+  emit('interact')
+}
+/** 点【取消改值】：收起输入区并丢弃本次填的新值 → 回到「未修改，保存后保留原值」。 */
+function cancelEditValue(row) {
+  row.editingValue = false
+  row.value = ''
+  emit('interact')
+}
+/** 点【删除】（托管行）：只置标记不出数组，行置灰标「待删除」，保存时才真丢弃。 */
+function markDelete(row) {
+  row.pendingDelete = true
+  row.editingValue = false
+  row.value = ''
+  emit('interact')
+}
+/** 点【撤销】：清除待删除标记，该变量恢复原样（值仍是后端旧值，本次未动）。 */
+function undoDelete(row) {
+  row.pendingDelete = false
+  emit('interact')
+}
+/** 删除按钮统一入口：托管行走「待删除」中间态，其余行直接移出数组。 */
+function onDeleteClick(row, idx) {
+  if (isManaged(row)) markDelete(row)
+  else removeRow(idx)
 }
 
 // 宿主把「＋ 添加」按钮摆到分区标题行时（addPosition='header'）由此直调，行结构仍由本组件产出
@@ -119,11 +194,30 @@ defineExpose({ addRow })
       <span class="pr-del-head"></span>
     </div>
     <template v-for="(row, i) in rows" :key="i">
-      <div class="pr-row" :class="{ 'has-in': showIn, 'is-card': cardRows }">
-        <el-input v-model="row.key" class="pr-key-input" :placeholder="keyPlaceholder" @input="emit('interact')" />
-        <el-input v-model="row.description" maxlength="200" :placeholder="descPlaceholder" @input="emit('interact')" />
+      <div
+        class="pr-row"
+        :class="{ 'has-in': showIn, 'is-card': cardRows, 'is-pending-delete': row.pendingDelete }"
+      >
+        <el-input
+          v-model="row.key"
+          class="pr-key-input"
+          :placeholder="keyPlaceholder"
+          :disabled="isManaged(row)"
+          @input="emit('interact')"
+        />
+        <el-input
+          v-model="row.description"
+          maxlength="200"
+          :placeholder="descPlaceholder"
+          :disabled="row.pendingDelete"
+          @input="emit('interact')"
+        />
         <span class="pr-cf">
-          <el-checkbox v-model="row.clientFill" @change="onClientFillChange(row)">
+          <el-checkbox
+            v-model="row.clientFill"
+            :disabled="row.pendingDelete"
+            @change="onClientFillChange(row)"
+          >
             <template v-if="clientFillLabel">{{ clientFillLabel }}</template>
           </el-checkbox>
         </span>
@@ -136,15 +230,60 @@ defineExpose({ addRow })
             :disabled="inDisabled(o.value)"
           />
         </el-select>
+        <!-- 平台值列：三步式托管行未点【改值】时不给输入框，只显示状态字 +【改值】（md L281「仅展示名称，不展示原值」） -->
         <el-input
+          v-if="showValueInput(row)"
           v-model="row.value"
           :type="secretValue && !row.clientFill ? 'password' : 'text'"
           :show-password="secretValue && !row.clientFill"
-          :disabled="row.clientFill"
+          :disabled="row.clientFill || row.pendingDelete"
           :placeholder="valuePlaceholder(row)"
           @input="emit('interact')"
         />
-        <el-button link type="danger" :disabled="readonly" @click="removeRow(i)">删除</el-button>
+        <span v-else class="pr-value-state">
+          <template v-if="row.pendingDelete">
+            <span class="pr-pending-tag">待删除</span>
+          </template>
+          <template v-else>
+            <span class="pr-configured">{{ row.clientFill ? '由客户端填写' : '已配置（不回显）' }}</span>
+            <el-button
+              v-if="!readonly && !row.clientFill"
+              link
+              type="primary"
+              class="pr-act"
+              @click="startEditValue(row)"
+            >
+              改值
+            </el-button>
+          </template>
+        </span>
+        <!-- 操作列：托管行三步式（改值中→取消改值；待删除→撤销；否则→删除），其余行照旧直接删除 -->
+        <span class="pr-ops">
+          <el-button
+            v-if="isManaged(row) && row.pendingDelete"
+            link
+            type="primary"
+            class="pr-act"
+            :disabled="readonly"
+            @click="undoDelete(row)"
+          >
+            撤销
+          </el-button>
+          <template v-else>
+            <el-button
+              v-if="isManaged(row) && row.editingValue"
+              link
+              class="pr-act"
+              :disabled="readonly"
+              @click="cancelEditValue(row)"
+            >
+              取消改值
+            </el-button>
+            <el-button link type="danger" class="pr-act" :disabled="readonly" @click="onDeleteClick(row, i)">
+              删除
+            </el-button>
+          </template>
+        </span>
       </div>
       <div
         v-if="rowNotice(row)"
@@ -200,6 +339,47 @@ defineExpose({ addRow })
   color: var(--c-text-muted);
   padding: var(--space-2) 0;
 }
+/* ===== 三步式改值 / 删除（A11，仅 threeStep 消费方 MCP stdio Env 会命中） ===== */
+/* 平台值列的「非输入框」形态：已配置（不回显）＋【改值】，或待删除标签 */
+.pr-value-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+.pr-configured {
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 「待删除」：橙色描边小标签，一眼可见「这行保存后会消失」，但还能撤 */
+.pr-pending-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  color: var(--c-warning, #b7791f);
+  box-shadow: 0 0 0 1px currentColor inset;
+  white-space: nowrap;
+}
+/* 待删除整行降透明：保留在列表里（可撤销），但视觉上退出「有效配置」 */
+.pr-row.is-pending-delete {
+  opacity: 0.6;
+}
+/* 操作列：可能同时放两枚 link 按钮（取消改值 + 删除），故收成一个 flex 容器 */
+.pr-ops {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.pr-ops .pr-act + .pr-act {
+  margin-left: 0;
+}
+
 .pr-cf-head,
 .pr-cf {
   min-width: 64px;

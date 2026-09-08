@@ -8,7 +8,8 @@ import { createApp, h, provide, inject, nextTick } from 'vue'
  * 新口径（照交互原型 v2 positionActions，约 L1170）：
  * - 编辑恒显，审核中 disabled + title「审核中不可编辑」；
  * - 审核中 → 【撤回】（确认说明撤回后恢复提交审核前状态，toast「已撤回」）；
- * - 未发布 → 【发布】（先校验技能数，Q3 不弹确认窗，直接开版本管理侧栏）+【删除】（领用护栏 + 确认文案照新 md）；
+ * - 未发布 → 【发布】（先跑 md §9.1 六项完整性校验，Q3 不弹确认窗，通过则直接开版本管理侧栏）
+ *   +【删除】（领用护栏 + 确认文案照新 md）；
  * - 已发布 → 【停用】（领用护栏文案照新 md；否则确认提交停用审核）+【版本管理】（冻结保留）；
  * - 【查看】固定恒显 → 岗位详情页只读态（query.view=1）。
  *
@@ -40,6 +41,10 @@ vi.mock('@/api/position', () => ({
   relistPositionPublication: vi.fn()
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn().mockResolvedValue([]) }))
+// 2026-09-09 PRD 复核·G2（A1）：【发布】门改跑 md §9.1 六项完整性校验，需读岗位详情 + 自动化任务条数。
+// 默认给「全项齐备」的详情，使既有操作列断言（发布 → 开版本侧栏）不变；缺项用例在下方各自覆写。
+const listSampleTasks = vi.fn()
+vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(...a) }))
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 const ElMessageBox = { prompt: vi.fn(), confirm: vi.fn(), alert: vi.fn() }
@@ -89,6 +94,14 @@ const elButton = {
 }
 
 let app, container
+// 冲干净 microtask 队列（A1 发布门是 async：getPosition + listSampleTasks 两个 await 后才落 UI）
+async function flush(times = 6) {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
 async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -122,9 +135,21 @@ function btn(row, text) {
   return btns(row).find((b) => b.textContent.trim() === text)
 }
 
+// md §9.1 六项齐备的岗位详情（A1 发布门入参）：名称/描述/示例问题 3 条/SOP/Agent 与技能/自动化任务
+const FULL_DETAIL = {
+  name: '可发布草稿岗',
+  description: '描述',
+  exampleQuestions: ['q1', 'q2', 'q3'],
+  positionSop: 'sop',
+  agents: [{ name: 'A1', skills: [{ skillId: 1 }] }]
+}
+
 beforeEach(() => {
   push.mockReset()
   listPositions.mockReset().mockResolvedValue({ list: ROWS, total: ROWS.length })
+  // 默认全项齐备 + 1 条自动化任务；单个用例可覆写以造缺项
+  getPosition.mockReset().mockResolvedValue({ ...FULL_DETAIL })
+  listSampleTasks.mockReset().mockResolvedValue({ list: [{ id: 1 }] })
   unpublishPosition.mockReset().mockResolvedValue({})
   deletePosition.mockReset().mockResolvedValue({})
   withdrawPosition.mockReset().mockResolvedValue({})
@@ -172,17 +197,45 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(el().getAttribute('data-title')).toBe('版本管理')
   })
 
-  it('②b 发布（未发布行，Q3 不弹确认窗）：无技能 toast 拦下；有技能直接开版本管理侧栏', async () => {
+  // 2026-09-09 PRD 复核·G2（A1 / md §9.1）：列表页【发布】门由「技能数≥1」改为与详情页共用的
+  // 六项完整性校验（computeCompletenessMissing），缺项 toast「请先填写：…」并跳详情页对应页签。
+  it('②b 发布（未发布行，Q3 不弹确认窗）：六项齐备直接开版本管理侧栏，不弹确认窗', async () => {
     await mount()
     const el = () => container.querySelector('.ver-dialog')
-    btn(rowByName('草稿岗'), '发布').click()
-    await nextTick()
-    expect(ElMessage.warning).toHaveBeenCalledWith('至少关联 1 个岗位私有技能才能发布')
-    expect(el().getAttribute('data-open')).toBe('false')
     btn(rowByName('可发布草稿岗'), '发布').click()
-    await nextTick()
+    await flush()
+    expect(getPosition).toHaveBeenCalledWith('ps_draft_ok')
+    expect(listSampleTasks).toHaveBeenCalledWith('ps_draft_ok')
     expect(el().getAttribute('data-open')).toBe('true')
+    expect(ElMessage.warning).not.toHaveBeenCalled()
     expect(ElMessageBox.confirm).not.toHaveBeenCalled() // 不弹确认窗
+  })
+
+  it('②c 发布门（A1）：缺项 → toast「请先填写：…」+ 跳详情页第一个缺失项所在页签，不开侧栏', async () => {
+    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（sampleTasks 页签）
+    getPosition.mockResolvedValue({ ...FULL_DETAIL, positionSop: '', agents: [{ name: 'A1', skills: [] }] })
+    listSampleTasks.mockResolvedValue({ list: [] })
+    await mount()
+    btn(rowByName('可发布草稿岗'), '发布').click()
+    await flush()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先填写：岗位 SOP、Agent 与技能、自动化任务')
+    // 第一个缺失项 = 岗位 SOP → persona 页签
+    expect(push).toHaveBeenCalledWith({
+      name: 'PositionWorkbench',
+      params: { id: 'ps_draft_ok' },
+      query: { tab: 'persona' }
+    })
+    expect(container.querySelector('.ver-dialog').getAttribute('data-open')).toBe('false')
+  })
+
+  it('②d 发布门（A1）：岗位详情读取失败 → 报错不跳转、不开侧栏', async () => {
+    getPosition.mockRejectedValue(new Error('boom'))
+    await mount()
+    btn(rowByName('可发布草稿岗'), '发布').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('boom')
+    expect(push).not.toHaveBeenCalled()
+    expect(container.querySelector('.ver-dialog').getAttribute('data-open')).toBe('false')
   })
 
   it('③ 停用（Q5 降级为简单确认）：确认后 unpublishPosition + toast「已提交停用审核」', async () => {

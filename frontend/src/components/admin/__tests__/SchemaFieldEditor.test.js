@@ -226,4 +226,41 @@ describe('N10 · SchemaFieldEditor 多级嵌套', () => {
     expect(after[0]._uid).toBe(before[0])
     expect(after[1]._uid).toBe(before[2])
   })
+
+  /**
+   * 2026-09-09 PRD 复核轮 · G4/A16 · Q117：响应字段补「是否必填」列。
+   * md prd-API.md §五 L160 把「是否必填」列进请求参数与响应字段共同的字段行规则，
+   * L165「勾选后表示运行时必须提供**或返回**该字段」——「返回」即响应侧。
+   * 数据层本就恒带 required（schema.newRow），改造前只是 response 形态把该列 v-if 藏了。
+   */
+  describe('A16/Q117 响应字段必填列', () => {
+    it('response（默认形态）表头出「必填」，行内有必填复选框', async () => {
+      const { container } = await mountEditor([
+        { name: 'code', type: 'string', required: false, description: '' }
+      ])
+      expect(container.querySelector('.sfe-head').textContent).toContain('必填')
+      expect(container.querySelector('.sfe-row .el-checkbox')).toBeTruthy()
+    })
+
+    it('勾选响应字段必填 → 回吐 required=true', async () => {
+      const { container, getRows } = await mountEditor([
+        { name: 'code', type: 'string', required: false, description: '' }
+      ])
+      const cb = container.querySelector('.sfe-row .el-checkbox')
+      cb.checked = true
+      cb.dispatchEvent(new Event('change'))
+      await nextTick()
+      expect(getRows()[0].required).toBe(true)
+    })
+
+    it('response 形态仍不出「请求方法」「默认值」两列（那两列是 request 专属）', async () => {
+      const { container } = await mountEditor([
+        { name: 'code', type: 'string', required: false, description: '' }
+      ])
+      const head = container.querySelector('.sfe-head').textContent
+      expect(head).not.toContain('请求方法')
+      expect(head).not.toContain('默认值')
+      expect(head).toContain('变量类型')
+    })
+  })
 })
