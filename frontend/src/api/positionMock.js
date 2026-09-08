@@ -476,7 +476,7 @@ export async function relistPositionPublication(positionId, version) {
 /* ============================ 工作台：岗位详情树 + Agent/技能引用（2026-09-02 补 mock） ============================ */
 
 const AGENT_MAX = 20 // 与 utils/positionModel LIMITS 同口径（mock 不 import utils，数值对齐即可）
-const SKILL_PER_AGENT_MAX = 20
+const SKILL_PER_AGENT_MAX = 100 // Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
 
 const bySort = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
 

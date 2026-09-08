@@ -5,7 +5,12 @@
  * 与「数据底座 / 效果测试」并列的第三个岗位级 .focus-stage 聚焦弹窗，整体复刻 PositionDataTableStage 骨架：
  *   zoomIn 入场 + .ed-crumb 面包屑顶栏（↩ 返回总览 / ✕）+ 左列表 + 右编辑 master/detail + 脏检查关闭。
  *
- * 左栏（master）：样例条目（拖拽手柄 ⠿ + 名称 + 副行「周期人话摘要 · 引用 N 工具」+ hover 编辑/测试/删除）；
+ * 2026-09-09 原型复刻批次 4B（#16 / #17）：
+ *   - embedded（页签内联）态去卡片外壳（描边/圆角/阴影/zoomIn），左栏 240px 白底、右栏灰底（原型 .pd2-task-layout）；
+ *   - 列表项操作精简为「删除」贴名称行右侧（「编辑」= 点行本身）；单任务启停按 md §7.2 保留，
+ *     但从列表项移入右侧详情卡「基本信息」卡头（负责人 0908 折中）。
+ *
+ * 左栏（master）：样例条目（拖拽手柄 ⠿ + 名称 + 副行「周期人话摘要 · 引用 N 工具」+ hover 删除/测试）；
  *   末尾「＋ 新增样例任务」（软上限 20 满额置灰 + warning）；空态 / loading / error 四态。
  *   拖拽排序：native HTML5 draggable（对齐 AgentLane / SkillCard，本项目未装 vuedraggable，按现实用原生拖拽）
  *   + 即时持久化（乐观更新，失败回滚重拉）。列表不显示任何运行态。
@@ -356,7 +361,7 @@ async function requestClose() {
 </script>
 
 <template>
-  <div class="st-editor">
+  <div class="st-editor" :class="{ 'st-embedded': embedded }">
     <!-- 顶栏面包屑（复刻 .ed-crumb）；Tab 内联模式隐藏 -->
     <div v-if="!embedded" class="ed-crumb">
       <span class="crumb-link" @click="requestClose">⏰ {{ positionName }}</span>
@@ -401,8 +406,10 @@ async function requestClose() {
           >
             <span class="st-drag" title="拖动排序">⠿</span>
             <div class="st-main">
+              <!-- 名称行（#17）：操作精简为「删除」，贴名称行右侧（margin-left:auto）；
+                   「编辑」= 点行本身；启停按 md §7.2 保留，已移入右侧详情卡「基本信息」卡头。 -->
               <div class="st-name">
-                {{ it.name }}
+                <span class="st-name-text">{{ it.name }}</span>
                 <el-tooltip
                   v-if="missingPrompt(it)"
                   content="还没填「一句话指令」，发布时会被拦下，请先补齐"
@@ -410,37 +417,27 @@ async function requestClose() {
                 >
                   <span class="st-flag">缺指令</span>
                 </el-tooltip>
+                <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js） -->
+                <el-button
+                  v-if="EFFECT_TEST_ENABLED"
+                  link
+                  size="small"
+                  class="st-op st-op-test"
+                  :loading="testPanel.loading && testPanel.sampleId === it.id"
+                  :disabled="testPanel.loading"
+                  title="仿真试跑（不产生真实副作用，会消耗模型额度）"
+                  @click.stop="testItem(it)"
+                >测试</el-button>
+                <el-button
+                  link
+                  type="danger"
+                  size="small"
+                  class="st-op st-op-del"
+                  :loading="delBusy === it.id"
+                  @click.stop="removeItem(it)"
+                >删除</el-button>
               </div>
               <div class="st-sub">{{ subLine(it) }}</div>
-            </div>
-            <div class="st-ops">
-              <!-- 单任务启停（md 三.7.2） -->
-              <el-button
-                link
-                size="small"
-                :type="taskEnabled(it) ? 'warning' : 'success'"
-                :loading="statusBusy === it.id"
-                :title="taskEnabled(it) ? '停用后该任务不再自动执行' : '启用后该任务恢复自动执行'"
-                @click.stop="toggleTaskStatus(it)"
-              >{{ taskEnabled(it) ? '停用' : '启用' }}</el-button>
-              <el-button link size="small" @click.stop="selectItem(it)">编辑</el-button>
-              <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js） -->
-              <el-button
-                v-if="EFFECT_TEST_ENABLED"
-                link
-                size="small"
-                :loading="testPanel.loading && testPanel.sampleId === it.id"
-                :disabled="testPanel.loading"
-                title="仿真试跑（不产生真实副作用，会消耗模型额度）"
-                @click.stop="testItem(it)"
-              >测试</el-button>
-              <el-button
-                link
-                type="danger"
-                size="small"
-                :loading="delBusy === it.id"
-                @click.stop="removeItem(it)"
-              >删除</el-button>
             </div>
           </div>
 
@@ -481,9 +478,12 @@ async function requestClose() {
           :key="selectedId"
           :position-id="positionId"
           :sample="selectedSample"
+          :embedded="embedded"
+          :status-busy="selectedSample ? statusBusy === selectedSample.id : false"
           @dirty-change="onEditorDirty"
           @saved="onSaved"
           @created="onCreated"
+          @toggle-status="selectedSample && toggleTaskStatus(selectedSample)"
         />
       </section>
     </div>
@@ -565,6 +565,17 @@ async function requestClose() {
   }
 }
 
+/* ── 页签内联态（#16）：去卡片外壳（描边/圆角/阴影/zoomIn），整块铺满页签，
+      右栏走灰底（对齐原型 .pd2-task-layout{background:#f5f7f6}）── */
+.st-editor.st-embedded {
+  max-width: none;
+  background: var(--bg-sunken);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+
 /* ── 顶栏面包屑（复刻 .ed-crumb） ── */
 .ed-crumb {
   display: flex;
@@ -636,6 +647,11 @@ async function requestClose() {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
 }
+/* 内联态（#16）：左栏 240px 白底右描边，右栏灰底（原型 .pd2-task-layout） */
+.st-embedded .st-body {
+  grid-template-columns: 240px minmax(0, 1fr);
+  background: var(--bg-sunken);
+}
 
 /* ① 列表栏 */
 .st-col-list {
@@ -643,6 +659,13 @@ async function requestClose() {
   background: var(--bg-surface);
   padding: var(--space-3);
   overflow: auto;
+}
+.st-embedded .st-col-list {
+  border-right: 1px solid var(--border-base);
+  padding: var(--space-1) 0 var(--space-2);
+}
+.st-embedded .st-limit-tip {
+  margin: var(--space-2) var(--space-2) var(--space-1);
 }
 .list-error {
   display: flex;
@@ -717,13 +740,40 @@ async function requestClose() {
   flex: 1;
   min-width: 0;
 }
+/* 名称行（#17）：名称 + 缺指令标 + 右侧贴边操作（删除／测试） */
 .st-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--c-text-strong);
+}
+.st-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 行操作贴名称行右侧（原型 .pd2-task-name .danger-link{margin-left:auto}），hover / 选中才浮出 */
+.st-op {
+  flex: 0 0 auto;
+  font-weight: var(--fw-regular);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.st-op-test {
+  margin-left: auto;
+}
+/* 无「测试」入口时由「删除」承担 margin-left:auto */
+.st-op-del {
+  margin-left: auto;
+}
+.st-op-test + .st-op-del {
+  margin-left: 0;
+}
+.st-item:hover .st-op,
+.st-item.on .st-op {
+  opacity: 1;
 }
 .st-sub {
   font-size: var(--fs-xs);
@@ -746,18 +796,18 @@ async function requestClose() {
   vertical-align: middle;
   cursor: help;
 }
-/* hover 行内浮出操作 */
-.st-ops {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
+/* 内联态（#16）：条目改原型 .pd2-task-item——无圆角、下描边分隔，选中态 3px 绿左条 + 淡绿底 */
+.st-embedded .st-item {
+  padding: 11px 14px;
+  border-radius: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border-soft);
 }
-.st-item:hover .st-ops,
-.st-item.on .st-ops {
-  opacity: 1;
+.st-embedded .st-item.on {
+  border-left-color: var(--c-accent);
+}
+.st-embedded .st-new {
+  margin: 6px 8px 10px;
 }
 
 .st-new {
@@ -823,6 +873,11 @@ async function requestClose() {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+/* 内联态（#16）：右栏灰底（内容限宽 860 居中由 SampleTaskEditor 的 embedded 态负责） */
+.st-embedded .st-col-edit,
+.st-embedded .st-placeholder {
+  background: var(--bg-sunken);
 }
 
 /* ── 测试结果面板 ── */

@@ -13,7 +13,16 @@
  * - 显式保存 + 脏检查（切换条目 / 关闭由父组件调 isDirty() 决定是否二次确认）。
  *
  * 保存时机：显式点按钮才提交（不逐字段即时保存，避免半成品样例落库）。
- * 子组件 SchedulePicker / ToolPicker / MarkdownEditor 零改复用。
+ * 子组件 SchedulePicker / ToolPicker / MarkdownEditor 复用（SchedulePicker 内联态传 prototype）。
+ *
+ * 2026-09-09 原型复刻批次 4B（#18 / #19 / #20 / #21 / #22）：
+ * - #18 分区卡头改「3px 绿条 + 灰底头条」，卡体单独 18px 内边距、去阴影（原型 .pd2-task-section-head）；
+ * - #19 调度计划走 SchedulePicker prototype 态；
+ * - #20 详细说明卡加引导文案 + 脚部字数计数（编辑器本体保留 MarkdownEditor，未照搬原型 contenteditable 壳）；
+ * - #21 引用工具卡改「搜索框 + 已引用工具平铺行（含健康度 tag）+ 卡底虚线『+ 添加工具』」，
+ *      「+ 添加工具」开弹窗内复用 ToolPicker 勾选；
+ * - #22 引用平台技能卡改「已选 chips + 搜索 + 卡底满宽虚线『+ 添加技能』」，候选列表默认收起、点按钮才展开。
+ * - md §7.2「支持启用/停用单个任务」的启停开关从列表项移入「基本信息」卡头（负责人 0908 折中）。
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -34,11 +43,18 @@ import { categoryLabel, categoryTagType, hasCategory } from '@/utils/skillCatego
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
   // null = 新建态；样例条目 = 编辑态（回填自该条目）
-  sample: { type: Object, default: null }
+  sample: { type: Object, default: null },
+  // 页签内联态（#16/#18）：右栏内容限宽 860 居中 + 分区卡改原型卡头形态
+  embedded: { type: Boolean, default: false },
+  // 启停请求进行中（父组件 PositionSampleTaskStage 持有 setSampleTaskStatus 调用）
+  statusBusy: { type: Boolean, default: false }
 })
-const emit = defineEmits(['saved', 'created', 'dirty-change'])
+const emit = defineEmits(['saved', 'created', 'dirty-change', 'toggle-status'])
 
 const isEdit = computed(() => !!props.sample)
+
+// 单任务启停（md §7.2）：状态与切换动作都在父组件，这里只呈现 + 上抛
+const taskEnabled = computed(() => (props.sample?.status || 'ENABLED') === 'ENABLED')
 
 // ---- 表单模型（对齐 TaskEditor.form） ----
 function blankSchedule() {
@@ -115,6 +131,9 @@ function normalizeTools(list, fallbackType) {
     code: t.code,
     bizName: t.bizName || t.code,
     description: t.description || '',
+    // 健康度透传（#21 平铺行的「已验证」tag 取此值；ToolPicker 不消费，无副作用）
+    checkStatus: t.checkStatus,
+    displayStatus: t.displayStatus || t.checkStatus,
     requiresConfirmation: false
   }))
 }
@@ -129,6 +148,57 @@ const bizNameMap = computed(() => {
   }
   return m
 })
+
+/* ---------- #21 引用工具卡：搜索 + 已引用工具平铺行 + 「＋ 添加工具」弹窗 ---------- */
+// (type,code) → 候选工具项映射，用于平铺行补名称 / 类型 / 健康度
+const toolMetaMap = computed(() => {
+  const m = new Map()
+  for (const g of ['mock', 'mcp', 'api']) {
+    for (const t of available.value?.[g] || []) m.set(`${t.type}::${t.code}`, t)
+  }
+  return m
+})
+
+// 已引用工具平铺行：名称 / 类型 / 健康度（HEALTHY → 「已验证」）；候选未命中时优雅降级用回填的 bizName
+const toolRows = computed(() =>
+  form.toolRefs.map((t) => {
+    const meta = toolMetaMap.value.get(`${t.type}::${t.code}`) || {}
+    return {
+      type: t.type,
+      code: t.code,
+      bizName: meta.bizName || t.bizName || t.code,
+      health: String(meta.displayStatus || meta.checkStatus || 'UNKNOWN').toUpperCase()
+    }
+  })
+)
+
+const toolKeyword = ref('')
+const visibleToolRows = computed(() => {
+  const q = toolKeyword.value.trim().toLowerCase()
+  if (!q) return toolRows.value
+  return toolRows.value.filter((r) =>
+    [r.bizName, r.type, r.code].some((v) => String(v || '').toLowerCase().includes(q))
+  )
+})
+
+// 「＋ 添加工具」弹窗（原型此按钮无实现；按 md §7.4「继续新增更多工具」补，弹窗内复用 ToolPicker）
+const toolPickerOpen = ref(false)
+const toolDraft = ref([])
+function openToolPicker() {
+  toolDraft.value = form.toolRefs.map((t) => ({ ...t }))
+  toolPickerOpen.value = true
+}
+function confirmToolPicker() {
+  form.toolRefs = toolDraft.value.map((t) => ({ ...t }))
+  clearError('tools')
+  markDirty()
+  toolPickerOpen.value = false
+}
+function removeToolRef(row) {
+  form.toolRefs = form.toolRefs.filter((t) => !(t.type === row.type && t.code === row.code))
+  clearError('tools')
+  markDirty()
+}
 
 /* ============================ 引用平台技能（origin=PLATFORM 已发布给 FDE；候选接口天然排除 FDE 技能） ============================ */
 // 候选 VO（PlatformSkillCandidateVO）：{ id | skillId, code, name, description, category, updatedAt }。
@@ -187,6 +257,16 @@ function removeSkillRef(platformSkillId) {
   markDirty()
   form.skillRefs = form.skillRefs.filter((s) => s.platformSkillId !== platformSkillId)
 }
+
+// #22：候选列表默认收起，点卡底「＋ 添加技能」才展开（原型把输入框文字直接变 chip 属缺陷，不搬）
+const skillPickerOpen = ref(false)
+function toggleSkillPicker() {
+  skillPickerOpen.value = !skillPickerOpen.value
+  if (skillPickerOpen.value && !skillCandidates.value.length) loadSkillCandidates()
+}
+
+/* ---------- #20 详细说明：脚部字数计数（原型 updateEditorCount：折叠空白后计长度） ---------- */
+const sopWordCount = computed(() => form.sopDoc.replace(/\s+/g, ' ').trim().length)
 
 /* ============================ 调度预览（FDE 门，防抖） ============================ */
 const previewSummary = ref('')
@@ -464,13 +544,27 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="ste-body">
+  <div class="ste-body" :class="{ 'ste-embedded': embedded }">
     <div class="ste-scroll">
+      <div class="ste-inner">
       <!-- 分区 1：基本信息 -->
       <section class="te-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 基本信息
+          <!-- 单任务启停（md §7.2）：从列表项移入卡头（负责人 0908 折中） -->
+          <span v-if="isEdit" class="te-card-actions">
+            <el-switch
+              :model-value="taskEnabled"
+              :loading="statusBusy"
+              size="small"
+              @change="emit('toggle-status')"
+            />
+            <span class="te-card-action-label">
+              {{ taskEnabled ? '已启用' : '已停用' }}
+            </span>
+          </span>
         </div>
+        <div class="te-card-body">
         <div class="te-field">
           <label class="te-label">任务名称 <span class="req">*</span></label>
           <el-input
@@ -510,6 +604,7 @@ onMounted(async () => {
             @input="markDirty"
           />
         </div>
+        </div>
       </section>
 
       <!-- 分区 2：调度计划 -->
@@ -517,15 +612,18 @@ onMounted(async () => {
         <div class="te-card-title">
           <span class="te-card-dot"></span> 调度计划
         </div>
-        <SchedulePicker
-          v-model:schedule="form.schedule"
-          :error="errors.schedule"
-          :preview-summary="previewSummary"
-          :preview-times="previewTimes"
-          :preview-loading="previewLoading"
-          :preview-error="previewError"
-          @preview="onScheduleChange"
-        />
+        <div class="te-card-body">
+          <SchedulePicker
+            v-model:schedule="form.schedule"
+            :error="errors.schedule"
+            :preview-summary="previewSummary"
+            :preview-times="previewTimes"
+            :preview-loading="previewLoading"
+            :preview-error="previewError"
+            :prototype="embedded"
+            @preview="onScheduleChange"
+          />
+        </div>
       </section>
 
       <!-- 分区 3：详细说明 -->
@@ -533,111 +631,171 @@ onMounted(async () => {
         <div class="te-card-title">
           <span class="te-card-dot"></span> 详细说明 <span class="req">*</span>
         </div>
-        <p class="te-card-hint">
-          用自然语言写清这件事要怎么办：目标是什么、分哪几步、用到哪些工具、产出什么结果。
-        </p>
-        <MarkdownEditor
-          v-model="form.sopDoc"
-          :error="errors.sopDoc"
-          height="320px"
-          placeholder="例如：每天上班前，用「工单查询工具」拉取昨日工单，汇总成今日待办清单。"
-          @update:model-value="markDirty(); clearError('sopDoc')"
-        />
+        <div class="te-card-body">
+          <p class="te-card-guide">
+            用自然语言写清这件事要怎么办：目标是什么、分哪几步、用到哪些工具、产出什么结果。
+          </p>
+          <MarkdownEditor
+            v-model="form.sopDoc"
+            :error="errors.sopDoc"
+            height="320px"
+            placeholder="例如：每天上班前，用「工单查询工具」拉取昨日工单，汇总成今日待办清单。"
+            @update:model-value="markDirty(); clearError('sopDoc')"
+          />
+          <!-- 脚部只留字数计数（原型 .pd2-task-editor-foot） -->
+          <div class="te-editor-foot">
+            <span class="te-editor-counter">字数: {{ sopWordCount }}</span>
+          </div>
+        </div>
       </section>
 
-      <!-- 分区 4：引用工具 -->
+      <!-- 分区 4：引用工具（#21：搜索 + 平铺行 + 卡底「＋ 添加工具」） -->
       <section class="te-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 引用工具
         </div>
-        <p class="te-card-hint">勾选这条样例要用到的工具；不选工具，多半办不成事。</p>
-        <ToolPicker
-          v-model:selected="form.toolRefs"
-          :available="available"
-          :loading="toolsLoading"
-          :error="errors.tools"
-          :show-confirm="false"
-          @update:selected="markDirty"
-        />
+        <div class="te-card-body">
+          <el-input
+            v-model="toolKeyword"
+            placeholder="搜索工具名称 / 类型"
+            clearable
+            class="tl-search"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+
+          <div v-if="visibleToolRows.length" class="tl-list">
+            <div v-for="r in visibleToolRows" :key="r.type + '::' + r.code" class="tl-row">
+              <strong class="tl-name">{{ r.bizName }}</strong>
+              <small class="tl-type">{{ r.type }}</small>
+              <StatusTag :type="r.health === 'HEALTHY' ? 'success' : 'info'" class="tl-tag">
+                {{ r.health === 'HEALTHY' ? '已验证' : '未验证' }}
+              </StatusTag>
+              <button
+                type="button"
+                class="tl-remove"
+                title="移除该工具"
+                aria-label="移除该工具"
+                @click="removeToolRef(r)"
+              >✕</button>
+            </div>
+          </div>
+          <div v-else class="tl-empty">
+            <template v-if="toolKeyword.trim() && toolRows.length">
+              没有匹配「{{ toolKeyword.trim() }}」的已引用工具。
+            </template>
+            <template v-else>还没有引用工具；不选工具，多半办不成事。</template>
+          </div>
+
+          <button type="button" class="te-dash-add" @click="openToolPicker">+ 添加工具</button>
+          <p v-if="errors.tools" class="te-err">{{ errors.tools }}</p>
+        </div>
       </section>
 
-      <!-- 分区 5：引用平台技能 -->
+      <!-- 分区 5：引用平台技能（#22：chips + 搜索 + 卡底「＋ 添加技能」） -->
       <section class="te-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 引用平台技能
         </div>
-        <p class="te-card-hint">
-          引用<b>平台技能</b>（由系统配置员发布），让这条样例复用现成能力；你自建的 FDE 技能不在此列。
-        </p>
+        <div class="te-card-body">
+          <p class="te-card-guide">
+            引用<b>平台技能</b>（由系统配置员发布），让这条样例复用现成能力；你自建的 FDE 技能不在此列。
+          </p>
 
-        <!-- 已选平台技能 chips（名称 + 可移除） -->
-        <div v-if="form.skillRefs.length" class="sk-chips">
-          <span v-for="s in form.skillRefs" :key="s.platformSkillId" class="sk-chip">
-            <span class="sk-chip-name">{{ s.name || `技能 #${s.platformSkillId}` }}</span>
-            <button
-              type="button"
-              class="sk-chip-x"
-              title="移除"
-              aria-label="移除"
-              @click="removeSkillRef(s.platformSkillId)"
-            >✕</button>
-          </span>
-        </div>
-
-        <el-input
-          v-model="skillKeyword"
-          placeholder="搜索平台技能名 / 描述"
-          clearable
-          class="sk-search"
-          @input="onSkillSearch"
-          @keyup.enter="loadSkillCandidates"
-          @clear="loadSkillCandidates"
-        >
-          <template #prefix><el-icon><Search /></el-icon></template>
-        </el-input>
-
-        <div v-loading="skillsLoading" class="sk-list">
-          <div v-if="!skillsLoading && !skillCandidates.length" class="sk-empty">
-            <template v-if="skillKeyword.trim()">
-              没有匹配「{{ skillKeyword.trim() }}」的平台技能。
-            </template>
-            <template v-else>
-              没有可引用的平台技能（仅展示系统配置员发布给 FDE 的平台技能）。
-            </template>
+          <!-- 已选平台技能 chips（名称 + 可移除） -->
+          <div v-if="form.skillRefs.length" class="sk-chips">
+            <span v-for="s in form.skillRefs" :key="s.platformSkillId" class="sk-chip">
+              <span class="sk-chip-name">{{ s.name || `技能 #${s.platformSkillId}` }}</span>
+              <button
+                type="button"
+                class="sk-chip-x"
+                title="移除"
+                aria-label="移除"
+                @click="removeSkillRef(s.platformSkillId)"
+              >✕</button>
+            </span>
           </div>
-          <div
-            v-for="c in skillCandidates"
-            :key="candId(c)"
-            class="sk-row"
-            :class="{ on: isSkillSelected(c) }"
-            @click="toggleSkill(c)"
+
+          <el-input
+            v-model="skillKeyword"
+            placeholder="搜索平台技能名 / 描述"
+            clearable
+            class="sk-search"
+            @input="onSkillSearch"
+            @keyup.enter="loadSkillCandidates"
+            @clear="loadSkillCandidates"
           >
-            <el-checkbox
-              :model-value="isSkillSelected(c)"
-              class="sk-check"
-              @click.stop="toggleSkill(c)"
-            />
-            <div class="sk-main">
-              <div class="sk-name-line">
-                <span class="sk-name">{{ c.name }}</span>
-                <el-tooltip
-                  v-if="hasCategory(c.category)"
-                  :content="categoryLabel(c.category)"
-                  placement="top"
-                >
-                  <StatusTag :type="categoryTagType(c.category)" class="sk-cat">
-                    {{ categoryLabel(c.category) }}
-                  </StatusTag>
-                </el-tooltip>
-                <code v-if="c.code" class="sk-code">{{ c.code }}</code>
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+
+          <!-- 候选列表默认收起，点卡底「＋ 添加技能」才展开 -->
+          <div v-if="skillPickerOpen" v-loading="skillsLoading" class="sk-list">
+            <div v-if="!skillsLoading && !skillCandidates.length" class="sk-empty">
+              <template v-if="skillKeyword.trim()">
+                没有匹配「{{ skillKeyword.trim() }}」的平台技能。
+              </template>
+              <template v-else>
+                没有可引用的平台技能（仅展示系统配置员发布给 FDE 的平台技能）。
+              </template>
+            </div>
+            <div
+              v-for="c in skillCandidates"
+              :key="candId(c)"
+              class="sk-row"
+              :class="{ on: isSkillSelected(c) }"
+              @click="toggleSkill(c)"
+            >
+              <el-checkbox
+                :model-value="isSkillSelected(c)"
+                class="sk-check"
+                @click.stop="toggleSkill(c)"
+              />
+              <div class="sk-main">
+                <div class="sk-name-line">
+                  <span class="sk-name">{{ c.name }}</span>
+                  <el-tooltip
+                    v-if="hasCategory(c.category)"
+                    :content="categoryLabel(c.category)"
+                    placement="top"
+                  >
+                    <StatusTag :type="categoryTagType(c.category)" class="sk-cat">
+                      {{ categoryLabel(c.category) }}
+                    </StatusTag>
+                  </el-tooltip>
+                  <code v-if="c.code" class="sk-code">{{ c.code }}</code>
+                </div>
+                <div v-if="c.description" class="sk-desc" :title="c.description">{{ c.description }}</div>
               </div>
-              <div v-if="c.description" class="sk-desc" :title="c.description">{{ c.description }}</div>
             </div>
           </div>
+
+          <button type="button" class="te-dash-add" @click="toggleSkillPicker">
+            {{ skillPickerOpen ? '收起技能候选' : '+ 添加技能' }}
+          </button>
+          <p v-if="errors.skills" class="te-err">{{ errors.skills }}</p>
         </div>
-        <p v-if="errors.skills" class="te-err">{{ errors.skills }}</p>
       </section>
+      </div>
     </div>
+
+    <!-- #21「＋ 添加工具」弹窗：复用 ToolPicker 勾选（原型该按钮无实现，行为按 md §7.4 补） -->
+    <el-dialog
+      v-model="toolPickerOpen"
+      title="添加工具"
+      width="640px"
+      append-to-body
+    >
+      <ToolPicker
+        v-model:selected="toolDraft"
+        :available="available"
+        :loading="toolsLoading"
+        :show-confirm="false"
+      />
+      <template #footer>
+        <el-button @click="toolPickerOpen = false">取消</el-button>
+        <el-button type="primary" @click="confirmToolPicker">确定</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 底部 sticky 操作条（复刻数据底座 .meta-actions；单一保存，无启用/草稿双态） -->
     <div class="meta-actions">
@@ -661,39 +819,175 @@ onMounted(async () => {
   min-height: 0;
   overflow: auto;
   padding: var(--space-5);
+}
+/* 页签内联态（#16）：右栏内容限宽 860 居中（原型 .pd2-task-detail-inner） */
+.ste-inner {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
+.ste-embedded .ste-inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
 
-/* 分区卡（逐视觉复用 TaskEditor .te-card） */
+/* 分区卡（#18：卡头带 3px 绿条 + 灰底头条，卡体单独 18px 内边距，去阴影） */
 .te-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-base);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-5);
+  overflow: hidden;
 }
 .te-card-title {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--fs-md);
+  min-height: 46px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-sunken);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
-  margin-bottom: var(--space-4);
 }
-.te-card-dot {
-  width: 6px;
-  height: 16px;
-  border-radius: var(--radius-pill);
+/* 左侧 3px 绿条（原型 .pd2-task-section-head:before） */
+.te-card-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
   background: var(--c-accent);
+}
+/* 原 .te-card-dot 圆点由卡头绿条取代，保留元素但不占位（模板未删，避免影响其他复用点） */
+.te-card-dot {
+  display: none;
+}
+.te-card-body {
+  padding: 18px;
+}
+/* 卡头右侧动作区（启停开关） */
+.te-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.te-card-action-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
 }
 .te-card-hint {
   margin: calc(-1 * var(--space-2)) 0 var(--space-3);
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
   line-height: var(--lh-base);
+}
+/* 卡体内的引导文案（原型 .pd2-task-editor-guide / .pd2-task-field-hint） */
+.te-card-guide {
+  margin: 0 0 12px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: 1.6;
+}
+.te-card-guide b {
+  color: var(--c-text-strong);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── #20 详细说明脚部：只留字数计数（原型 .pd2-task-editor-foot） ── */
+.te-editor-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 6px;
+}
+.te-editor-counter {
+  color: var(--c-text-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── #21 引用工具：搜索 + 已引用工具平铺行 ── */
+.tl-search {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.tl-list {
+  display: grid;
+  gap: 8px;
+}
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.tl-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-type {
+  flex-shrink: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+.tl-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.tl-remove {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-faint);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+.tl-remove:hover {
+  color: var(--c-danger);
+  background: var(--bg-hover);
+}
+.tl-empty {
+  padding: var(--space-5);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+/* 卡底满宽虚线添加按钮（原型 .pd2-task-tool-add / .pd2-task-skill-bottom-add） */
+.te-dash-add {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.te-dash-add:hover {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
 }
 .te-field {
   margin-bottom: var(--space-4);

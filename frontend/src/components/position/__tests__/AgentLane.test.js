@@ -6,7 +6,7 @@ import { createApp, h, nextTick } from 'vue'
  * AgentLane（岗位编辑区 Agent 泳道）行为契约（岗位编辑区加固批，2026-08-08）。
  *
  * 钉住四条口径：
- *  1. 「＋ 引用技能」→ emit pick-skill（岗位页只引用不创建）；达 SKILL_MAX=20 上限入口禁用不 emit；
+ *  1. 「＋ 引用技能」→ emit pick-skill（岗位页只引用不创建）；达 SKILL_MAX 上限入口禁用不 emit；
  *  2. 删 Agent 二次确认（用户拍板文案）：N>0 时确认框必须展示技能数 N 与「未被引用」脱钩语义，
  *     确认→emit delete，取消→不 emit；
  *  3. 跨泳道拖拽：skillId/agentId 按字符串原样透传（方案B——曾因把 sk_ 与 ag_ 前缀 id 做 Number() 化出回归）；
@@ -24,6 +24,7 @@ vi.mock('@/components/position/SkillCard.vue', () => ({
 }))
 
 import AgentLane from '@/components/position/AgentLane.vue'
+import { LIMITS } from '@/utils/positionModel'
 
 const stubs = {
   'el-icon': { template: '<i><slot /></i>' },
@@ -89,11 +90,13 @@ describe('AgentLane · 岗位编辑区泳道行为契约', () => {
     expect(emitted.pick).toEqual(['ag_1'])
   })
 
-  it('达 20 上限：入口置灰显示上限文案，点击不 emit', async () => {
-    const el = mount({ agentId: 'ag_1', name: 'A', skills: skillsOf(20) })
+  // 2026-09-09 原型复刻批次 4C：单 Agent 技能上限由 20 放宽到 LIMITS.SKILL_MAX（Q378 决议 100），
+  // 断言改读常量，避免上限调整时此处与实现漂移。
+  it('达技能上限：入口置灰显示上限文案，点击不 emit', async () => {
+    const el = mount({ agentId: 'ag_1', name: 'A', skills: skillsOf(LIMITS.SKILL_MAX) })
     const add = el.querySelector('.lane-add')
     expect(add.classList.contains('disabled')).toBe(true)
-    expect(add.textContent).toContain('已达 20 个技能上限')
+    expect(add.textContent).toContain(`已达 ${LIMITS.SKILL_MAX} 个技能上限`)
     add.click()
     expect(emitted.pick).toEqual([])
   })
@@ -122,7 +125,7 @@ describe('AgentLane · 岗位编辑区泳道行为契约', () => {
   })
 
   it('跨泳道拖入达上限：轻提示且不 emit move-skill（拖拽路径的上限闸，与「＋引用」入口各守一条）', async () => {
-    const el = mount({ agentId: 'ag_1', name: 'A', skills: skillsOf(20) })
+    const el = mount({ agentId: 'ag_1', name: 'A', skills: skillsOf(LIMITS.SKILL_MAX) })
     el.querySelector('.lane').dispatchEvent(
       dropEvent({ 'text/skill-id': 'sk_new', 'text/from-agent': 'ag_other' })
     )

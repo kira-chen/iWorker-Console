@@ -1,19 +1,19 @@
 <script setup>
 /**
- * 岗位「工作档案」子页面（2026-08-28 负责人定稿）。
+ * 岗位「工作档案」子页面。2026-09-09 原型复刻批次 4A 按 md §4 + 原型最终生效层整体重做骨架。
  *
- * 一份「工作档案」= 一个对象类型（后端 data_table_def；原数据表模型升级）。页面结构：
- *  - 首次进入（没有档案）：页面中部提示「新建工作档案」；
- *  - 已有档案：上部左侧卡片切换多份档案，右侧「保存」「新建工作档案」；
- *  - 每份档案分三区：
- *      ① 上：沉淀策略 —— 抽取方式（自动抽取 / 指定触发）· 置信度阈值（高 / 中 / 低）· 用户确认（低置信度需确认 / 全部需要确认 / 不需要确认）
- *      ② 左下：卡片字段（= 结构化卡位，≤ 8）—— 列表：字段名 / 字段类型 / 字段用途；弹窗编辑整表（DataTableFieldEditor）
- *      ③ 右下：业务规则（= 提取项归纳规则，≤ 8）—— 列表：规则名 / 规则描述 / 归纳方式；弹窗编辑整表（DossierRuleListEditor）
- *  - 档案名称 / 说明 / 状态 / 删除：段标题右侧「档案信息」弹窗。
+ * 骨架（原型 `pane()` L2302 + `alignWorkProfile` L2706 + `enhanceStrategies` L2792 + L4010）：
+ *   左 200px 档案列表面板（每档案一张卡：名称 + 「N 个字段」，底部虚线「＋ 新增」）
+ *   右侧纵排三张卡：
+ *     ① 基本信息（卡头 = 标题 + 右侧【取消】【保存】；卡体 = 档案名称 / 档案说明 两列就地编辑，
+ *        下接分隔线后的三列：抽取方式「指定触发」+ 复选框「自动抽取」/ 置信度阈值 / 用户确认）
+ *     ② 编目信息（行内网格 DossierCatalogGrid，N / 8）
+ *     ③ 档案详情（行内网格 DossierRuleListEditor，N / 8）
+ * 字段定义与校验按 md §4.2.1–4.2.3；原型有而 md 无的（字段类型「标签（枚举）」、唯一 ID 联动必填）不做。
+ * 新建档案弹窗按 md §4.2：【取消】【下一步】+ 提示「工作档案已创建，请继续配置编目信息和档案详情」。
  *
- * 样式沿用岗位详情 Tab 既有范式（assets/position-detail.css：pd-list-head + el-table.pd-table + pd-drawer-form；
- * 弹窗用 el-dialog，与 IntakeEditDialog 同口径）。保存为手动：元信息 → 卡位（原子批量）→ 策略 / 规则。
  * 事件流 / 档案视图 / 抽取 / 归纳等运行时在客户端，本页只配规则。
+ * 保存为手动：元信息 → 卡位（原子批量）→ 策略 / 规则。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -27,7 +27,7 @@ import {
   getTableDeleteImpact,
   saveDossierConfig
 } from '@/api/dataTable'
-import { validateFields, validateTableMeta, normalizeFieldForSubmit, MAX_SLOTS, fieldTypeLabel, slotRoleLabel } from '@/utils/dataTableTypes'
+import { validateFields, validateTableMeta, normalizeFieldForSubmit, MAX_SLOTS } from '@/utils/dataTableTypes'
 import {
   hydrateDossierConfig,
   defaultDossierConfig,
@@ -36,22 +36,21 @@ import {
   dossierSnapshot,
   TIERS,
   CONFIRM_MODES,
-  EXTRACT_MODES,
-  REDUCE_STRATEGIES,
   MAX_RULES
 } from '@/utils/dossierConfig'
-import DataTableFieldEditor from '@/components/admin/DataTableFieldEditor.vue'
+import DossierCatalogGrid from '@/components/position/dossier/DossierCatalogGrid.vue'
 import DossierRuleListEditor from '@/components/position/dossier/DossierRuleListEditor.vue'
 
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
   positionName: { type: String, default: '岗位' },
   tableCount: { type: Number, default: 0 },
-  embedded: { type: Boolean, default: false }
+  embedded: { type: Boolean, default: false },
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['saved', 'update:tableCount'])
 
-/* ============================ 档案列表（卡片） ============================ */
+/* ============================ 档案列表（左侧面板） ============================ */
 const listLoading = ref(false)
 const listError = ref(false)
 const tables = ref([])
@@ -97,7 +96,7 @@ async function removeCurrent() {
     const tip =
       affected > 0
         ? `工作档案「${row.label}」已经存了 ${affected} 条数据。删除后会停用、数据会先保留下来。${refLine}\n确定要删除吗？`
-        : `工作档案「${row.label}」还没有数据。删除后将彻底移除（含卡片字段、业务规则、沉淀策略），无法恢复。${refLine}\n确定要删除吗？`
+        : `工作档案「${row.label}」还没有数据。删除后将彻底移除（含编目信息、档案详情、抽取策略），无法恢复。${refLine}\n确定要删除吗？`
     await ElMessageBox.confirm(tip, '删除工作档案', {
       type: 'warning',
       confirmButtonText: affected > 0 ? '停用并删除' : '彻底删除',
@@ -106,7 +105,6 @@ async function removeCurrent() {
     })
     await deleteDataTable(props.positionId, row.id)
     ElMessage.success('工作档案已删除')
-    infoDialogOpen.value = false
     clearSelection()
     await loadTables()
     if (tables.value.length) {
@@ -142,8 +140,23 @@ const fieldRowErrors = ref({})
 const fieldGlobalError = ref('')
 const dossierErrors = ref({})
 
+/* 编目信息网格只编业务字段；系统字段（uid 等）不出现在网格里，保存时原样带回。 */
+const systemFields = computed(() => fields.value.filter((r) => r.isSystem))
 const bizSlotRows = computed(() => fields.value.filter((r) => !r.isSystem))
-// keySuggestions 已删（2026-09-07 PRD-20260904 对齐 PT-C7：规则名改自由输入，不再限编目字段联想）
+function setBizRows(rows) {
+  fields.value = [...systemFields.value, ...rows]
+}
+/* 行内网格的错误下标以业务行为准，需把 validateFields（含系统行）的下标折算过去 */
+function bizRowErrors(all) {
+  const map = {}
+  fields.value.forEach((r, i) => {
+    if (r.isSystem) return
+    const n = bizSlotRows.value.indexOf(r)
+    if (all[i]) map[n] = all[i]
+  })
+  return map
+}
+const ruleRowErrors = ref({})
 
 /* ---- 脏检查基线快照 ---- */
 const baselineSnapshot = ref('')
@@ -169,6 +182,7 @@ function resetErrors() {
   fieldRowErrors.value = {}
   fieldGlobalError.value = ''
   dossierErrors.value = {}
+  ruleRowErrors.value = {}
 }
 
 function resetForm(label = '', description = '') {
@@ -246,10 +260,11 @@ async function selectTable(row) {
   await loadDetail(row.id)
 }
 
-/* ============================ 新建：先在弹窗里起名，再进编辑态 ============================ */
+/* ============================ 新建：弹窗起名 →【下一步】进编辑态（md §4.2） ============================ */
 const createDialogOpen = ref(false)
 const createDraft = reactive({ label: '', description: '' })
 async function startCreate() {
+  if (props.readonly) return
   if (props.positionId == null) {
     ElMessage.warning('请先保存岗位')
     return
@@ -269,99 +284,28 @@ function confirmCreate() {
   selectedId.value = NEW
   loadError.value = false
   resetForm(label, (createDraft.description || '').trim())
-  // md 三.4.2（2026-09-04 PRD-20260903 对齐）：点【下一步】后提示继续配置编目信息与档案详情
+  // md §4.2：点【下一步】后提示继续配置编目信息与档案详情
   ElMessage.success('工作档案已创建，请继续配置编目信息和档案详情')
 }
 
-/* ============================ 档案信息弹窗（名称 / 说明 / 状态 / 删除） ============================ */
-const infoDialogOpen = ref(false)
-const infoDraft = reactive({ label: '', description: '', status: 'active' })
-function openInfo() {
-  Object.assign(infoDraft, { label: meta.label, description: meta.description, status: meta.status })
-  infoDialogOpen.value = true
+/* ============================ 编目信息 / 档案详情：行内网格 ============================ */
+function onCatalogLimit() {
+  ElMessage.warning(`编目信息最多 ${MAX_SLOTS} 条`)
 }
-function saveInfo() {
-  if (!(infoDraft.label || '').trim()) {
-    ElMessage.warning('档案名称必填')
-    return
-  }
-  meta.label = infoDraft.label.trim()
-  meta.description = infoDraft.description
-  meta.status = infoDraft.status
-  infoDialogOpen.value = false
+function onRuleLimit() {
+  ElMessage.warning(`档案详情最多 ${MAX_RULES} 条`)
+}
+function setRules(rows) {
+  dossier.value = { ...dossier.value, reduceRules: rows }
 }
 
-/* ============================ 卡片字段：弹窗编辑整表 ============================ */
-const slotsDialogOpen = ref(false)
-const slotsDraft = ref([])
-const slotsRowErrors = ref({})
-const slotsGlobalError = ref('')
-function openSlotsEdit() {
-  slotsDraft.value = fields.value.map((r) => ({ ...r, options: (r.options || []).slice() }))
-  if (!slotsDraft.value.some((r) => !r.isSystem)) {
-    slotsDraft.value.push({ fieldCode: '', label: '', fieldType: 'TEXT', required: true, defaultValue: null, options: [], fieldDesc: '', slotRole: 'IDENTITY', isPrimary: true, isSystem: false })
-  }
-  slotsRowErrors.value = {}
-  slotsGlobalError.value = ''
-  slotsDialogOpen.value = true
-}
-function saveSlots() {
-  const r = validateFields(slotsDraft.value)
-  slotsRowErrors.value = r.errors.rows || {}
-  slotsGlobalError.value = r.errors.__global || ''
-  if (!r.ok) return
-  fields.value = slotsDraft.value
-  fieldRowErrors.value = {}
-  fieldGlobalError.value = ''
-  slotsDialogOpen.value = false
-}
-
-/* ============================ 业务规则：弹窗编辑整表 ============================ */
-const rulesDialogOpen = ref(false)
-const rulesDraft = ref([])
-const rulesRowErrors = ref({})
-const rulesGlobalError = ref('')
-function openRulesEdit() {
-  rulesDraft.value = dossier.value.reduceRules.map((r) => ({ ...r, params: { ...(r.params || {}) } }))
-  rulesRowErrors.value = {}
-  rulesGlobalError.value = ''
-  rulesDialogOpen.value = true
-}
-function saveRules() {
-  const res = validateDossierConfig({ ...dossier.value, reduceRules: rulesDraft.value })
-  const rows = {}
-  let global = ''
-  Object.entries(res.errors).forEach(([k, msg]) => {
-    const m = k.match(/^reduceRules\[(\d+)\]\.(?:params\.)?(\w+)$/)
-    if (m) {
-      rows[m[1]] = { ...(rows[m[1]] || {}), [m[2]]: msg }
-    } else if (k === 'reduceRules') {
-      global = msg
-    }
-  })
-  rulesRowErrors.value = rows
-  rulesGlobalError.value = global
-  if (Object.keys(rows).length || global) return
-  dossier.value = { ...dossier.value, reduceRules: rulesDraft.value }
-  rulesDialogOpen.value = false
-}
-function strategyLabel(v) {
-  return REDUCE_STRATEGIES.find((s) => s.value === v)?.label || v
-}
-function ruleStrategyText(r) {
-  return r.strategy === 'SUMMARY' ? `${strategyLabel(r.strategy)}（最近 ${r.params?.n ?? 5} 条）` : strategyLabel(r.strategy)
-}
-
-/* ============================ 沉淀策略（三选项就地编辑） ============================ */
+/* ============================ 抽取策略（md §4.2.1） ============================ */
 function setPolicy(key, value) {
   dossier.value = { ...dossier.value, policy: { ...dossier.value.policy, [key]: value } }
 }
 function policyErr(key) {
   return dossierErrors.value[`policy.${key}`] || ''
 }
-const extractHint = computed(() => EXTRACT_MODES.find((m) => m.value === !!dossier.value.policy.autoExtract)?.hint || '')
-const tierHint = computed(() => TIERS.find((t) => t.value === dossier.value.policy.writeTier)?.hint || '')
-const confirmHint = computed(() => CONFIRM_MODES.find((m) => m.value === dossier.value.policy.confirmMode)?.hint || '')
 
 /* ============================ 保存 ============================ */
 function runLocalValidate() {
@@ -369,21 +313,21 @@ function runLocalValidate() {
   const m = validateTableMeta(meta, { isEdit: isEdit.value })
   Object.assign(metaErrors, { tableCode: m.errors.tableCode || '', label: m.errors.label || '' })
   const f = validateFields(fields.value)
-  fieldRowErrors.value = f.errors.rows || {}
+  fieldRowErrors.value = bizRowErrors(f.errors.rows || {})
   fieldGlobalError.value = f.errors.__global || ''
   const d = validateDossierConfig(dossier.value)
   dossierErrors.value = d.errors
+  const rows = {}
+  Object.entries(d.errors).forEach(([k, msg]) => {
+    const hit = k.match(/^reduceRules\[(\d+)\]\.(?:params\.)?(\w+)$/)
+    if (hit) rows[hit[1]] = { ...(rows[hit[1]] || {}), [hit[2]]: msg }
+  })
+  ruleRowErrors.value = rows
   return m.ok && f.ok && d.ok
 }
 
 function submitIdxToRowIdx(submitIdx) {
-  let n = -1
-  for (let i = 0; i < fields.value.length; i++) {
-    if (fields.value[i].isSystem) continue
-    n += 1
-    if (n === submitIdx) return i
-  }
-  return -1
+  return submitIdx >= 0 && submitIdx < bizSlotRows.value.length ? submitIdx : -1
 }
 
 function applyServerError(e, fallbackMsg) {
@@ -410,7 +354,7 @@ function applyServerError(e, fallbackMsg) {
     const rowIdx = submitIdxToRowIdx(submitIdx)
     if (rowIdx >= 0) {
       fieldRowErrors.value = { ...fieldRowErrors.value, [rowIdx]: { [field || 'fieldCode']: msg } }
-      ElMessage.error(`卡片字段第 ${submitIdx + 1} 行：${msg}`)
+      ElMessage.error(`编目信息第 ${submitIdx + 1} 行：${msg}`)
       return
     }
   }
@@ -418,7 +362,7 @@ function applyServerError(e, fallbackMsg) {
 }
 
 function businessFieldsPayload() {
-  return fields.value.filter((r) => !r.isSystem).map(normalizeFieldForSubmit)
+  return bizSlotRows.value.map(normalizeFieldForSubmit)
 }
 function dossierIsDefault() {
   return dossierSnapshot(dossier.value) === dossierSnapshot(defaultDossierConfig())
@@ -435,7 +379,6 @@ async function saveCreate() {
   if (newId != null && !dossierIsDefault()) {
     await saveDossierConfig(props.positionId, newId, normalizeDossierForSubmit(dossier.value))
   }
-  ElMessage.success('工作档案已创建')
   return newId
 }
 
@@ -451,8 +394,8 @@ async function saveFieldsWithConfirm() {
     const codeLine = codes.length ? `\n会删掉的字段：${codes.join('、')}` : ''
     const tip =
       affected > 0
-        ? `你删掉了一些卡片字段，而这份档案已经存了 ${affected} 条数据。保存后这些字段里已填的内容也会一起去掉。${codeLine}\n确定要这样保存吗？`
-        : `你删掉了一些卡片字段，保存后会移除。${codeLine}\n确定要这样保存吗？`
+        ? `你删掉了一些编目字段，而这份档案已经存了 ${affected} 条数据。保存后这些字段里已填的内容也会一起去掉。${codeLine}\n确定要这样保存吗？`
+        : `你删掉了一些编目字段，保存后会移除。${codeLine}\n确定要这样保存吗？`
     await ElMessageBox.confirm(tip, '确认删除字段', {
       type: 'warning',
       confirmButtonText: '确认保存',
@@ -472,10 +415,10 @@ async function saveEdit() {
   await saveFieldsWithConfirm()
   const saved = await saveDossierConfig(props.positionId, selectedId.value, normalizeDossierForSubmit(dossier.value))
   if (saved) dossier.value = hydrateDossierConfig(saved)
-  ElMessage.success('工作档案已保存')
 }
 
 async function save() {
+  if (props.readonly) return
   if (!runLocalValidate()) {
     ElMessage.warning('请先修正标红项')
     return
@@ -496,6 +439,8 @@ async function save() {
         clearSelection()
       }
     }
+    // md §4.2：【保存】保存当前档案全部配置，提示「配置已保存到页面草稿」
+    ElMessage.success('配置已保存到页面草稿')
     emit('saved')
   } catch (e) {
     if (e === 'cancel' || e === 'close') return
@@ -517,18 +462,28 @@ async function cancelEdit() {
       await loadDetail(selectedId.value)
     }
   }
+  // md §4.2：【取消】放弃本次编辑，提示「已取消未保存修改」
+  ElMessage.info('已取消未保存修改')
 }
 
-function cardSubLine(t) {
-  return `${t.fieldCount ?? 0} 个字段${t.status !== 'active' ? ' · 停用' : ''}`
+/* 左栏卡片副行：md §4.1「卡片显示档案名称 + 该档案下的字段数量」 */
+function cardFieldCount(t) {
+  return t.fieldCount ?? 0
 }
 </script>
 
 <template>
   <div class="pd-pane wd">
-    <!-- 顶部：卡片切换（左）+ 操作（右）；无档案时不渲染顶部条，只留中部提示 -->
-    <div v-if="tables.length || hasSelection || listError" class="pd-list-head wd-top" v-loading="listLoading">
-      <div class="wd-cards">
+    <!-- 首次进入且无档案：中部提示（代码超集，原型无空态） -->
+    <div v-if="!tables.length && !hasSelection && !listLoading && !listError" class="pd-empty wd-empty">
+      <span>还没有工作档案</span>
+      <p class="pd-empty-hint">工作档案围绕一类对象沉淀（如「客户」「项目」）：AI 从对话里记录事实，按你配的规则归纳成档案</p>
+      <el-button v-if="!readonly" type="primary" @click="startCreate">＋ 新增</el-button>
+    </div>
+
+    <!-- 左 200px 档案列表面板 + 右侧三张卡（原型 .wp3-grid） -->
+    <div v-else class="wd-grid">
+      <aside class="wd-side" v-loading="listLoading">
         <div v-if="listError" class="pd-list-sub">
           档案加载失败 <el-button link type="primary" @click="loadTables">重试</el-button>
         </div>
@@ -537,135 +492,159 @@ function cardSubLine(t) {
             v-for="t in tables"
             :key="t.id"
             type="button"
-            class="wd-card"
+            class="wd-profile-card"
             :class="{ on: selectedId === t.id, off: t.status !== 'active' }"
             @click="selectTable(t)"
           >
-            <span class="wd-card-name">{{ t.label }}</span>
-            <span class="wd-card-sub">{{ cardSubLine(t) }}</span>
+            <strong>{{ t.label }}</strong>
+            <span>{{ cardFieldCount(t) }} 个字段<template v-if="t.status !== 'active'"> · 停用</template></span>
           </button>
-          <button v-if="selectedId === NEW" type="button" class="wd-card on">
-            <span class="wd-card-name">{{ meta.label || '新建中…' }}</span>
-            <span class="wd-card-sub">未保存</span>
+          <button v-if="selectedId === NEW" type="button" class="wd-profile-card on">
+            <strong>{{ meta.label || '新建中…' }}</strong>
+            <span>未保存</span>
           </button>
+          <button v-if="!readonly" type="button" class="wd-add-tab" :disabled="selectedId === NEW" @click="startCreate">＋ 新增</button>
         </template>
-      </div>
-      <div class="wd-actions">
-        <el-button v-if="hasSelection" size="small" @click="cancelEdit">取消</el-button>
-        <el-button v-if="hasSelection" type="primary" size="small" :loading="saving" :disabled="loading || loadError" @click="save">
-          {{ isEdit ? '保存' : '创建档案' }}
-        </el-button>
-        <el-button size="small" :disabled="selectedId === NEW" @click="startCreate">＋ 新建工作档案</el-button>
-      </div>
-    </div>
+      </aside>
 
-    <!-- 首次进入：中部提示 -->
-    <div v-if="!hasSelection && !listLoading && !listError" class="pd-empty wd-empty">
-      <span>还没有工作档案</span>
-      <p class="pd-empty-hint">工作档案围绕一类对象沉淀（如「客户」「项目」）：AI 从对话里记录事实，按你配的规则归纳成档案</p>
-      <el-button type="primary" @click="startCreate">＋ 新建工作档案</el-button>
-    </div>
-
-    <div v-else-if="hasSelection && loading"><el-skeleton :rows="8" animated /></div>
-    <div v-else-if="hasSelection && loadError" class="pd-empty">
-      <span>加载失败</span>
-      <el-button type="primary" @click="loadDetail(selectedId)">重试</el-button>
-    </div>
-
-    <template v-else-if="hasSelection">
-      <!-- ① 上：沉淀策略 -->
-      <section class="pd-sec">
-        <div class="pd-sec-title">
-          {{ meta.label }}
-          <span class="pd-sec-sub">{{ meta.description || '沉淀策略 · 决定 AI 什么时候记、多有把握才记、要不要先问你' }}</span>
-          <span class="pd-hint">
-            <el-button link type="primary" size="small" @click="openInfo">档案信息</el-button>
-          </span>
+      <main class="wd-main">
+        <div v-if="hasSelection && loading"><el-skeleton :rows="8" animated /></div>
+        <div v-else-if="hasSelection && loadError" class="pd-empty">
+          <span>加载失败</span>
+          <el-button type="primary" @click="loadDetail(selectedId)">重试</el-button>
         </div>
-        <p v-if="metaErrors.label" class="pd-empty-hint wd-err">{{ metaErrors.label }}</p>
-        <el-form label-position="top" class="wd-policy">
-          <el-form-item label="抽取方式">
-            <el-select :model-value="!!dossier.policy.autoExtract" @update:model-value="setPolicy('autoExtract', $event)">
-              <el-option v-for="m in EXTRACT_MODES" :key="String(m.value)" :value="m.value" :label="m.label" />
-            </el-select>
-            <div class="pd-empty-hint wd-note">{{ extractHint }}</div>
-          </el-form-item>
-          <el-form-item label="置信度阈值" :error="policyErr('writeTier')">
-            <el-select :model-value="dossier.policy.writeTier" @update:model-value="setPolicy('writeTier', $event)">
-              <el-option v-for="t in TIERS" :key="t.value" :value="t.value" :label="t.value === 'MID' ? '中（推荐）' : t.label" />
-            </el-select>
-            <div class="pd-empty-hint wd-note">低于此值不入档 · {{ tierHint }}</div>
-          </el-form-item>
-          <el-form-item label="用户确认" :error="policyErr('confirmMode')">
-            <el-select :model-value="dossier.policy.confirmMode" @update:model-value="setPolicy('confirmMode', $event)">
-              <el-option v-for="m in CONFIRM_MODES" :key="m.value" :value="m.value" :label="m.label" />
-            </el-select>
-            <div class="pd-empty-hint wd-note">{{ confirmHint }}</div>
-          </el-form-item>
-        </el-form>
-      </section>
+        <div v-else-if="!hasSelection" class="pd-empty">
+          <span>请选择左侧的工作档案</span>
+        </div>
 
-      <div class="wd-two">
-        <!-- ② 左下：卡片字段 -->
-        <section class="pd-sec">
-          <div class="pd-list-head">
-            <div class="pd-list-title">
-              卡片字段
-              <span class="pd-list-sub">系统要拿来算账的字段 · {{ bizSlotRows.length }} / {{ MAX_SLOTS }}</span>
+        <template v-else>
+          <!-- ① 基本信息 -->
+          <section class="wd-sec">
+            <div class="wd-sec-head">
+              <strong>基本信息</strong>
+              <span class="wd-spacer"></span>
+              <div v-if="!readonly" class="wd-head-actions">
+                <el-button @click="cancelEdit">取消</el-button>
+                <el-button type="primary" :loading="saving" :disabled="loading || loadError" @click="save">保存</el-button>
+              </div>
             </div>
-            <el-button type="primary" size="small" @click="openSlotsEdit">编辑</el-button>
-          </div>
-          <div class="table-wrap">
-            <el-table :data="bizSlotRows" class="pd-table" empty-text="还没有卡片字段 · 点「编辑」添加">
-              <el-table-column prop="label" label="字段名" min-width="140" />
-              <el-table-column label="字段类型" width="110">
-                <template #default="{ row }">{{ fieldTypeLabel(row.fieldType) }}</template>
-              </el-table-column>
-              <el-table-column label="字段用途" min-width="120">
-                <template #default="{ row }"><span v-if="row.slotRole">{{ slotRoleLabel(row.slotRole) }}</span><span v-else class="pd-faint">普通</span></template>
-              </el-table-column>
-              <el-table-column label="唯一 ID" width="80" align="center">
-                <template #default="{ row }"><span v-if="row.isPrimary">✓</span><span v-else class="pd-faint">—</span></template>
-              </el-table-column>
-            </el-table>
-            <p v-if="fieldGlobalError" class="pd-empty-hint wd-err">{{ fieldGlobalError }}</p>
-            <p v-if="isEdit && recordCount > 0" class="pd-empty-hint">已有 {{ recordCount }} 条数据，新增字段对历史行将取空 / 默认值；已落库字段的类型不可改。</p>
-          </div>
-        </section>
+            <div class="wd-sec-body">
+              <div class="wd-basic-fields">
+                <div class="wd-field">
+                  <label>档案名称</label>
+                  <el-input
+                    v-if="!readonly"
+                    v-model="meta.label"
+                    maxlength="128"
+                    placeholder="如「经营分析报告」"
+                    :class="{ 'is-err': !!metaErrors.label }"
+                  />
+                  <div v-else class="wd-readonly-value">{{ meta.label || '-' }}</div>
+                  <p v-if="metaErrors.label" class="wd-err">{{ metaErrors.label }}</p>
+                </div>
+                <div class="wd-field">
+                  <label>档案说明</label>
+                  <el-input v-if="!readonly" v-model="meta.description" maxlength="500" placeholder="如「沉淀岗位生成的周期分析结论」" />
+                  <div v-else class="wd-readonly-value">{{ meta.description || '-' }}</div>
+                </div>
+              </div>
 
-        <!-- ③ 右下：业务规则 -->
-        <section class="pd-sec">
-          <div class="pd-list-head">
-            <div class="pd-list-title">
-              业务规则
-              <span class="pd-list-sub">同一信息多次出现时怎么合并 · {{ dossier.reduceRules.length }} / {{ MAX_RULES }}</span>
+              <div class="wd-policy">
+                <div class="wd-field">
+                  <label>抽取方式</label>
+                  <div class="wd-extract">
+                    <div class="wd-readonly-value">指定触发</div>
+                    <el-checkbox
+                      :model-value="!!dossier.policy.autoExtract"
+                      :disabled="readonly"
+                      @update:model-value="setPolicy('autoExtract', $event)"
+                    >
+                      自动抽取
+                    </el-checkbox>
+                  </div>
+                </div>
+                <div class="wd-field">
+                  <label>置信度阈值</label>
+                  <el-select
+                    :model-value="dossier.policy.writeTier"
+                    :disabled="readonly"
+                    @update:model-value="setPolicy('writeTier', $event)"
+                  >
+                    <el-option v-for="t in TIERS" :key="t.value" :value="t.value" :label="t.value === 'MID' ? '中（推荐）' : t.label" />
+                  </el-select>
+                  <p v-if="policyErr('writeTier')" class="wd-err">{{ policyErr('writeTier') }}</p>
+                </div>
+                <div class="wd-field">
+                  <label>用户确认</label>
+                  <el-select
+                    :model-value="dossier.policy.confirmMode"
+                    :disabled="readonly"
+                    @update:model-value="setPolicy('confirmMode', $event)"
+                  >
+                    <el-option v-for="m in CONFIRM_MODES" :key="m.value" :value="m.value" :label="m.label" />
+                  </el-select>
+                  <p v-if="policyErr('confirmMode')" class="wd-err">{{ policyErr('confirmMode') }}</p>
+                </div>
+              </div>
+
+              <!-- 删除档案入口（代码超集：原型最终无此入口，保留避免能力回退） -->
+              <div v-if="isEdit && !readonly" class="wd-danger-row">
+                <el-button link type="danger" :loading="delBusy === selectedId" @click="removeCurrent">删除此档案</el-button>
+                <span v-if="meta.tableCode" class="wd-code">系统标识 {{ meta.tableCode }}</span>
+              </div>
             </div>
-            <el-button type="primary" size="small" @click="openRulesEdit">编辑</el-button>
-          </div>
-          <div class="table-wrap">
-            <el-table :data="dossier.reduceRules" class="pd-table" empty-text="还没有业务规则（一律取最新）· 点「编辑」添加">
-              <el-table-column prop="key" label="规则名" min-width="120" />
-              <el-table-column label="规则描述" min-width="180">
-                <template #default="{ row }"><span v-if="row.desc">{{ row.desc }}</span><span v-else class="pd-faint">—</span></template>
-              </el-table-column>
-              <el-table-column label="归纳方式" min-width="140">
-                <template #default="{ row }">{{ ruleStrategyText(row) }}</template>
-              </el-table-column>
-            </el-table>
-            <p v-if="dossierErrors.reduceRules" class="pd-empty-hint wd-err">{{ dossierErrors.reduceRules }}</p>
-          </div>
-        </section>
-      </div>
-    </template>
+          </section>
 
-    <!-- 弹窗：新建工作档案 -->
+          <!-- ② 编目信息 -->
+          <section class="wd-sec">
+            <div class="wd-sec-head">
+              <strong>编目信息</strong>
+              <span>{{ bizSlotRows.length }} / {{ MAX_SLOTS }}</span>
+            </div>
+            <div class="wd-sec-body">
+              <DossierCatalogGrid
+                :rows="bizSlotRows"
+                :row-errors="fieldRowErrors"
+                :global-error="fieldGlobalError"
+                :readonly="readonly"
+                @update:rows="setBizRows"
+                @limit="onCatalogLimit"
+              />
+              <p v-if="isEdit && recordCount > 0" class="pd-empty-hint wd-note">
+                已有 {{ recordCount }} 条数据，新增字段对历史行将取空 / 默认值；已落库字段的类型不可改。
+              </p>
+            </div>
+          </section>
+
+          <!-- ③ 档案详情 -->
+          <section class="wd-sec">
+            <div class="wd-sec-head">
+              <strong>档案详情</strong>
+              <span>{{ dossier.reduceRules.length }} / {{ MAX_RULES }}</span>
+            </div>
+            <div class="wd-sec-body">
+              <DossierRuleListEditor
+                :rows="dossier.reduceRules"
+                :row-errors="ruleRowErrors"
+                :global-error="dossierErrors.reduceRules || ''"
+                :readonly="readonly"
+                @update:rows="setRules"
+                @limit="onRuleLimit"
+              />
+            </div>
+          </section>
+        </template>
+      </main>
+    </div>
+
+    <!-- 弹窗：新建工作档案（md §4.2：【取消】【下一步】） -->
     <el-dialog v-model="createDialogOpen" title="新建工作档案" width="480px" :close-on-click-modal="false" append-to-body>
       <el-form label-position="top" class="pd-drawer-form">
         <el-form-item label="档案名称" required>
-          <el-input v-model="createDraft.label" maxlength="128" placeholder="围绕什么沉淀，如「客户」「项目」「商机」" />
+          <el-input v-model="createDraft.label" maxlength="128" placeholder="如「经营分析报告」" />
         </el-form-item>
         <el-form-item label="说明">
-          <el-input v-model="createDraft.description" type="textarea" :rows="3" placeholder="这份档案记录什么、供哪些办事场景使用（可选）" />
+          <el-input v-model="createDraft.description" type="textarea" :rows="3" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -673,75 +652,34 @@ function cardSubLine(t) {
         <el-button type="primary" @click="confirmCreate">下一步</el-button>
       </template>
     </el-dialog>
-
-    <!-- 弹窗：档案信息 -->
-    <el-dialog v-model="infoDialogOpen" title="档案信息" width="480px" :close-on-click-modal="false" append-to-body>
-      <el-form label-position="top" class="pd-drawer-form">
-        <el-form-item label="档案名称" required>
-          <el-input v-model="infoDraft.label" maxlength="128" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="infoDraft.description" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item v-if="isEdit" label="状态">
-          <el-switch v-model="infoDraft.status" active-value="active" inactive-value="disabled" active-text="启用" inactive-text="停用" />
-        </el-form-item>
-        <el-form-item v-if="isEdit && meta.tableCode" label="系统标识">
-          <span class="pd-mono">{{ meta.tableCode }}</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button v-if="isEdit" link type="danger" :loading="delBusy === selectedId" class="wd-del" @click="removeCurrent">删除此档案</el-button>
-        <el-button @click="infoDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveInfo">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 弹窗：卡片字段整表编辑 -->
-    <el-dialog v-model="slotsDialogOpen" title="编辑卡片字段" width="960px" :close-on-click-modal="false" append-to-body>
-      <div class="wd-dialog-body">
-        <DataTableFieldEditor v-model:rows="slotsDraft" :mode="isEdit ? 'edit' : 'create'" :row-errors="slotsRowErrors" :global-error="slotsGlobalError" />
-      </div>
-      <template #footer>
-        <el-button @click="slotsDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveSlots">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 弹窗：业务规则整表编辑 -->
-    <el-dialog v-model="rulesDialogOpen" title="编辑业务规则" width="960px" :close-on-click-modal="false" append-to-body>
-      <div class="wd-dialog-body">
-        <DossierRuleListEditor v-model:rows="rulesDraft" :row-errors="rulesRowErrors" :global-error="rulesGlobalError" />
-      </div>
-      <template #footer>
-        <el-button @click="rulesDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveRules">确定</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-/* 段落 / 列表 / 表单样式走全局 position-detail.css；这里只有本页布局：顶部卡片行、策略三栏、下方双栏 */
+/* 骨架照原型 .wp3-*：左 200px 档案列表 + 右侧纵排三卡（令牌化，不搬硬编码色值） */
 .wd {
   padding: var(--space-5) var(--space-6) var(--space-8);
 }
-.wd-top {
-  align-items: flex-start;
-  gap: var(--space-4);
+.wd-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  max-width: 1180px;
+  margin: 0 auto;
 }
-.wd-cards {
+.wd-side {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-2);
+  padding: var(--space-1) 0;
   min-width: 0;
 }
-.wd-card {
+.wd-profile-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  min-width: 140px;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-base);
   border-radius: var(--radius-md);
@@ -749,67 +687,157 @@ function cardSubLine(t) {
   cursor: pointer;
   text-align: left;
 }
-.wd-card:hover {
+.wd-profile-card:hover {
   background: var(--bg-hover);
 }
-.wd-card.on {
+.wd-profile-card.on {
   border-color: var(--c-accent);
   background: var(--c-accent-soft);
 }
-.wd-card.off .wd-card-name {
-  color: var(--c-text-muted);
-}
-.wd-card-name {
+.wd-profile-card strong {
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--c-text-strong);
+  line-height: 1.3;
 }
-.wd-card-sub {
+.wd-profile-card.on strong {
+  color: var(--c-accent);
+}
+.wd-profile-card span {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
-.wd-actions {
+.wd-profile-card.off strong {
+  color: var(--c-text-muted);
+}
+.wd-add-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-base);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.wd-add-tab:disabled {
+  color: var(--c-text-muted);
+  cursor: not-allowed;
+}
+.wd-main {
+  min-width: 0;
+}
+.wd-sec {
+  margin-bottom: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+}
+.wd-sec:last-child {
+  margin-bottom: 0;
+}
+.wd-sec-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 50px;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--border-base);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.wd-sec-head strong {
+  font-size: var(--fs-md, 15px);
+  color: var(--c-text-strong);
+}
+.wd-sec-head span {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.wd-spacer {
+  flex: 1;
+}
+.wd-head-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  margin-left: auto;
 }
-.wd-empty {
-  min-height: 360px;
+.wd-sec-body {
+  padding: var(--space-5);
+}
+.wd-basic-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-5);
+}
+.wd-basic-fields + .wd-policy {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-base);
 }
 .wd-policy {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 var(--space-4);
+  gap: var(--space-5);
 }
-.wd-policy :deep(.el-form-item) {
-  margin-bottom: var(--space-2);
+.wd-field {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
 }
-.wd-policy :deep(.el-select) {
+.wd-field label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.wd-field :deep(.el-select) {
   width: 100%;
 }
-.wd-note {
-  margin-top: var(--space-1);
+.wd-extract {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
-.wd-two {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-5);
-  align-items: start;
+.wd-readonly-value {
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  line-height: 32px;
+}
+.wd-danger-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-base);
+}
+.wd-code {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono, monospace);
 }
 .wd-err {
+  margin: 0;
+  font-size: var(--fs-xs);
   color: var(--c-danger);
 }
-.wd-del {
-  margin-right: auto;
+.wd-note {
+  margin-top: var(--space-3);
 }
-.wd-dialog-body {
-  max-height: 64vh;
-  overflow: auto;
+.wd-empty {
+  min-height: 360px;
 }
-@media (max-width: 1000px) {
-  .wd-policy,
-  .wd-two {
+.is-err :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
+}
+@media (max-width: 960px) {
+  .wd-grid,
+  .wd-basic-fields,
+  .wd-policy {
     grid-template-columns: 1fr;
   }
 }

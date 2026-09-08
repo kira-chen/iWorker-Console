@@ -1,35 +1,49 @@
 <script setup>
 /**
- * 工作档案 · 业务规则（归纳规则）整表行编辑器——与 DataTableFieldEditor 同一范式，在弹窗里编辑完整列表。
+ * 工作档案 ·「档案详情」行内可编辑网格（2026-09-09 原型复刻批次 4A，明细 #9）。
+ * 2026-09-07 之前是弹窗里的整表编辑器，本轮按原型 `ruleRows` L2301 改为卡内行内网格。
  *
- * 行结构：{ key(规则名), desc(规则描述), strategy(归纳方式), params:{ n, staleAfterDays, normalize } }
- * 列：规则名 | 规则描述 | 归纳方式（SUMMARY 时行内带「最近 N 条」）| 删除。上限 MAX_RULES。
+ * 布局：规则名 | 规则描述 | 归纳方式（富下拉 DossierStrategySelect）| ×  +「＋ 新增条目」，头部 N / 8。
+ * 字段与校验按 md §4.2.3：规则名自由输入、规则描述即提示词、归纳方式四选一、最多 8 条。
+ * 行结构：{ key(规则名), desc(规则描述), strategy, params:{ n, staleAfterDays, normalize } }。
+ * SUMMARY 的「最近 N 条」是代码超集（md 只写「摘要最近 N 条」不给 N 输入），保留在归纳方式下方一行。
  * 行级错误由父级 rowErrors 传入：{ [idx]: { key?, desc?, strategy?, n? } }
  */
 import { computed } from 'vue'
-import { Delete } from '@element-plus/icons-vue'
-import { REDUCE_STRATEGIES, MAX_RULES, SUMMARY_N_RANGE, emptyReduceRule } from '@/utils/dossierConfig'
+import { MAX_RULES, SUMMARY_N_RANGE, emptyReduceRule } from '@/utils/dossierConfig'
+import DossierStrategySelect from '@/components/position/dossier/DossierStrategySelect.vue'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   rowErrors: { type: Object, default: () => ({}) },
-  globalError: { type: String, default: '' }
+  globalError: { type: String, default: '' },
+  readonly: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:rows'])
+const emit = defineEmits(['update:rows', 'limit'])
 
 const full = computed(() => props.rows.length >= MAX_RULES)
 
 function errOf(idx, key) {
   return props.rowErrors?.[idx]?.[key] || ''
 }
+function rowErrText(idx) {
+  const e = props.rowErrors?.[idx]
+  if (!e) return ''
+  return Object.values(e).filter(Boolean).join(' · ')
+}
 function update(next) {
   emit('update:rows', next)
 }
 function addRow() {
-  if (full.value) return
+  if (props.readonly) return
+  if (full.value) {
+    emit('limit')
+    return
+  }
   update([...props.rows, emptyReduceRule()])
 }
 function removeRow(idx) {
+  if (props.readonly) return
   const next = props.rows.slice()
   next.splice(idx, 1)
   update(next)
@@ -44,147 +58,136 @@ function patchParam(idx, key, value) {
 </script>
 
 <template>
-  <div class="dfe" :class="{ 'dfe-error': !!globalError }">
-    <div class="dfe-guide">
-      业务规则告诉 AI「同一个信息多次出现时怎么合并」：预算新旧值并列保留、决策人越记越多、客户态度只看最新……
-      没配规则的信息一律「取最新」，只给需要特殊处理的配即可，最多 {{ MAX_RULES }} 条。
-    </div>
-    <div class="dfe-head">
+  <div class="drg" :class="{ 'drg-error': !!globalError }">
+    <div class="drg-head drg-grid">
       <span>规则名</span>
       <span>规则描述</span>
       <span>归纳方式</span>
       <span></span>
     </div>
 
-    <div v-for="(row, idx) in rows" :key="idx" class="dfe-row">
-      <div>
-        <!-- 规则名：自由输入（2026-09-07 PRD-20260904 对齐：原受控下拉[限编目字段]改 input，PT-C7） -->
+    <template v-for="(row, idx) in rows" :key="idx">
+      <div class="drg-row drg-grid">
+        <!-- 规则名：自由输入（2026-09-07 PRD-20260904 对齐 PT-C7；md §4.2.3 同口径） -->
         <el-input
           :model-value="row.key"
-          placeholder="如 预算 / 决策人"
+          placeholder="如 指标表现"
+          :disabled="readonly"
           :class="{ 'is-err': errOf(idx, 'key') }"
           @update:model-value="patch(idx, 'key', $event)"
         />
-        <div v-if="errOf(idx, 'key')" class="cell-err">{{ errOf(idx, 'key') }}</div>
-      </div>
-      <div>
         <el-input
           :model-value="row.desc"
           maxlength="200"
-          placeholder="这条规则管什么信息、为什么这样合并（可选）"
+          placeholder="描述 AI 要提取什么内容"
+          :disabled="readonly"
           :class="{ 'is-err': errOf(idx, 'desc') }"
           @update:model-value="patch(idx, 'desc', $event)"
         />
-        <div v-if="errOf(idx, 'desc')" class="cell-err">{{ errOf(idx, 'desc') }}</div>
-      </div>
-      <div class="dfe-strategy">
-        <el-select :model-value="row.strategy" :class="{ 'is-err': errOf(idx, 'strategy') }" @update:model-value="patch(idx, 'strategy', $event)">
-          <el-option v-for="s in REDUCE_STRATEGIES" :key="s.value" :value="s.value" :label="s.label">
-            <span class="opt-label">{{ s.label }}</span>
-            <span class="opt-hint">{{ s.hint }}</span>
-          </el-option>
-        </el-select>
-        <div v-if="row.strategy === 'SUMMARY'" class="dfe-inline">
-          最近
-          <el-input-number
-            :model-value="row.params?.n"
-            :min="SUMMARY_N_RANGE.min"
-            :max="SUMMARY_N_RANGE.max"
-            step-strictly
-            size="small"
-            controls-position="right"
-            @update:model-value="patchParam(idx, 'n', $event)"
+        <div class="drg-strategy">
+          <DossierStrategySelect
+            :model-value="row.strategy"
+            :disabled="readonly"
+            :invalid="!!errOf(idx, 'strategy')"
+            @update:model-value="patch(idx, 'strategy', $event)"
           />
-          条
+          <div v-if="row.strategy === 'SUMMARY'" class="drg-inline">
+            最近
+            <el-input-number
+              :model-value="row.params?.n"
+              :min="SUMMARY_N_RANGE.min"
+              :max="SUMMARY_N_RANGE.max"
+              step-strictly
+              size="small"
+              controls-position="right"
+              :disabled="readonly"
+              @update:model-value="patchParam(idx, 'n', $event)"
+            />
+            条
+          </div>
         </div>
-        <div v-if="errOf(idx, 'n')" class="cell-err">{{ errOf(idx, 'n') }}</div>
+        <button v-if="!readonly" type="button" class="drg-del" title="删除" @click="removeRow(idx)">×</button>
+        <span v-else></span>
       </div>
-      <el-button link type="danger" @click="removeRow(idx)"><el-icon><Delete /></el-icon></el-button>
-    </div>
+      <div v-if="rowErrText(idx)" class="drg-row-err">{{ rowErrText(idx) }}</div>
+    </template>
 
-    <div class="dfe-foot">
-      <el-button link type="primary" :disabled="full" @click="addRow">+ 添加规则</el-button>
-      <span class="dfe-hint">{{ rows.length }} / {{ MAX_RULES }}<template v-if="full"> · 已到上限</template></span>
-    </div>
-    <div v-if="globalError" class="dfe-err-text">{{ globalError }}</div>
+    <button v-if="!readonly" type="button" class="drg-add" @click="addRow">＋ 新增条目</button>
+    <p v-if="globalError" class="drg-err-text">{{ globalError }}</p>
   </div>
 </template>
 
 <style scoped>
-/* 与 DataTableFieldEditor 同一套行编辑器样式（令牌一致，仅列数不同） */
-.dfe {
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  background: var(--bg-sunken);
-}
-.dfe-error {
-  border-color: var(--c-danger);
-}
-.dfe-guide {
-  margin-bottom: var(--space-2);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  line-height: var(--lh-tight, 1.4);
-}
-.dfe-head,
-.dfe-row {
+/* 网格列宽照原型 L2774：minmax(120px,1.1fr) minmax(180px,1.6fr) minmax(260px,2.3fr) 28px */
+.drg-grid {
   display: grid;
-  grid-template-columns: 1.4fr 2fr 1.6fr 36px;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(180px, 1.6fr) minmax(260px, 2.3fr) 28px;
   gap: var(--space-2);
-  align-items: start;
-}
-.dfe-head {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-bottom: var(--space-2);
-  padding: 0 2px;
-}
-.dfe-row {
-  margin-bottom: var(--space-3);
-}
-.dfe-strategy {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.dfe-inline {
-  display: flex;
   align-items: center;
-  gap: var(--space-1);
+}
+.drg-head {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
-.opt-label {
-  margin-right: var(--space-2);
+.drg-row {
+  margin-top: var(--space-2);
 }
-.opt-hint {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-}
-.cell-err {
+.drg-row-err {
   margin-top: 2px;
   font-size: var(--fs-xs);
   color: var(--c-danger);
-  line-height: var(--lh-tight, 1.3);
 }
-.is-err :deep(.el-input__wrapper),
-.is-err :deep(.el-select__wrapper) {
-  box-shadow: 0 0 0 1px var(--c-danger) inset;
+.drg-strategy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
-.dfe-foot {
+.drg-inline {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-1);
-}
-.dfe-hint {
+  gap: var(--space-1);
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
-.dfe-err-text {
+.drg-del {
+  border: 0;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--fs-lg, 16px);
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.drg-del:hover {
+  color: var(--c-danger);
+}
+.drg-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.drg-err-text {
   margin-top: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--c-danger);
+}
+.is-err :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
+}
+@media (max-width: 960px) {
+  .drg-grid {
+    grid-template-columns: 1fr;
+  }
+  .drg-head {
+    display: none;
+  }
 }
 </style>

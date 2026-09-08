@@ -8,6 +8,10 @@
  *
  * 时间口径（契约 §0.3）：times（"HH:mm"）、onceAt（"YYYY-MM-DDTHH:mm" 无时区）、
  * startDate/endDate（纯日期）均为「无时区本地墙钟」，入参不拼时区。
+ *
+ * 2026-09-09 原型复刻批次 4B（#19）：新增 `prototype` 开关（默认 false），
+ * true 时按交互原型 enhanceSchedule 的形态呈现（分段按钮 / 星期按钮条 / ⏰ 时间行 / 绿底执行预览），
+ * 仅岗位「自动化任务」页签传入；数据模型、校验与提交口径完全不变。
  */
 import { computed, watch } from 'vue'
 
@@ -20,7 +24,12 @@ const props = defineProps({
   previewSummary: { type: String, default: '' },
   previewTimes: { type: Array, default: () => [] },
   previewLoading: { type: Boolean, default: false },
-  previewError: { type: String, default: '' }
+  previewError: { type: String, default: '' },
+  // 2026-09-09 原型复刻批次 4B（#19）：岗位「自动化任务」页签按交互原型 enhanceSchedule 呈现——
+  // 周期类型/执行星期改分段按钮组（.pd2-task-segmented / .pd2-task-weekdays），
+  // 定点时间行改「序号圆 + ⏰ 输入框 + ×」，执行预览改绿底框 + 白底药丸。
+  // 默认 false：用户端 TaskEditor 走原 Element Plus 形态，零回归。
+  prototype: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:schedule', 'preview'])
 
@@ -89,6 +98,15 @@ function onType(type) {
   emit('preview')
 }
 
+// 原型态（#19）执行星期按钮：点一下切换该星期的选中态，保持数值升序（提交口径不变）
+function toggleWeekday(value) {
+  const cur = props.schedule.daysOfWeek || []
+  const next = cur.includes(value)
+    ? cur.filter((d) => d !== value)
+    : [...cur, value].sort((a, b) => a - b)
+  patch({ daysOfWeek: next })
+}
+
 /* ---------------- 多定点时间（DAILY/WEEKLY/MONTHLY） ---------------- */
 const times = computed(() => props.schedule.times || [])
 
@@ -119,6 +137,12 @@ function setEndDate(val) {
   patch({ endDate: val || '' })
 }
 
+// 原型态（#19）执行预览药丸文案：原型 normalizePreview 把 ISO 的 T / 秒 / 时区后缀去掉，
+// 只留「YYYY-MM-DD HH:mm」。非 ISO 串原样返回（后端 summary 口径不变）。
+function prettyTime(t) {
+  return String(t ?? '').replace(/T(\d{2}:\d{2})(?::\d{2})?(?:[+-]\d{2}:\d{2}|Z)?$/, ' $1')
+}
+
 // 每月含大日期提示（29–31 小月可能不触发）
 const showMonthHint = computed(
   () =>
@@ -128,11 +152,22 @@ const showMonthHint = computed(
 </script>
 
 <template>
-  <div class="sp" :class="{ 'sp-error': !!error }">
+  <div class="sp" :class="{ 'sp-error': !!error, 'sp-proto': prototype }">
     <!-- 第一步：周期类型 -->
     <div class="sp-row">
       <span class="sp-label">周期类型</span>
-      <el-radio-group :model-value="s.scheduleType" @update:model-value="onType">
+      <!-- 原型态（#19）：分段按钮组，选中绿底 -->
+      <div v-if="prototype" class="sp-seg" role="group" aria-label="周期类型">
+        <button
+          v-for="t in TYPES"
+          :key="t.value"
+          type="button"
+          class="sp-seg-btn"
+          :class="{ on: s.scheduleType === t.value }"
+          @click="onType(t.value)"
+        >{{ t.label }}</button>
+      </div>
+      <el-radio-group v-else :model-value="s.scheduleType" @update:model-value="onType">
         <el-radio-button v-for="t in TYPES" :key="t.value" :value="t.value">
           {{ t.label }}
         </el-radio-button>
@@ -142,7 +177,20 @@ const showMonthHint = computed(
     <!-- 每周：星期多选 -->
     <div v-if="s.scheduleType === 'WEEKLY'" class="sp-row">
       <span class="sp-label">执行星期</span>
+      <!-- 原型态（#19）：七个可切换按钮，选中绿底 -->
+      <div v-if="prototype" class="sp-week-seg" role="group" aria-label="执行星期">
+        <button
+          v-for="d in WEEK_DAYS"
+          :key="d.value"
+          type="button"
+          class="sp-seg-btn"
+          :class="{ on: (s.daysOfWeek || []).includes(d.value) }"
+          :aria-pressed="(s.daysOfWeek || []).includes(d.value)"
+          @click="toggleWeekday(d.value)"
+        >周{{ d.label }}</button>
+      </div>
       <el-checkbox-group
+        v-else
         :model-value="s.daysOfWeek || []"
         class="sp-week"
         @update:model-value="patch({ daysOfWeek: $event })"
@@ -199,7 +247,32 @@ const showMonthHint = computed(
     <!-- 多定点时间（非 ONCE） -->
     <div v-if="s.scheduleType !== 'ONCE'" class="sp-row sp-row-top">
       <span class="sp-label">定点时间</span>
-      <div class="sp-times">
+      <!-- 原型态（#19）：序号圆 + ⏰ 原生 time input + × 删除 + 「+添加时间」文字按钮 -->
+      <div v-if="prototype" class="sp-times">
+        <div v-for="(t, i) in times" :key="i" class="sp-time-row">
+          <span class="sp-time-no">{{ i + 1 }}</span>
+          <div class="sp-time-input">
+            <span class="sp-time-icon">⏰</span>
+            <input
+              type="time"
+              :value="t"
+              aria-label="定点时间"
+              @input="setTime(i, $event.target.value)"
+            />
+          </div>
+          <button
+            v-if="times.length > 1"
+            type="button"
+            class="sp-time-remove"
+            title="删除该时间"
+            aria-label="删除该时间"
+            @click="removeTime(i)"
+          >✕</button>
+        </div>
+        <button type="button" class="sp-add-time-link" @click="addTime">+添加时间</button>
+        <p class="sp-tip">支持一天多个定点（如 09:00 / 11:00 / 13:00），同日自动去重。</p>
+      </div>
+      <div v-else class="sp-times">
         <div v-for="(t, i) in times" :key="i" class="sp-time-item">
           <el-time-picker
             :model-value="t"
@@ -250,8 +323,22 @@ const showMonthHint = computed(
 
     <div v-if="error" class="sp-err-text">{{ error }}</div>
 
+    <!-- 原型态（#19）：执行预览绿底框（✱ 摘要 + 「接下来 N 次：」白底药丸，去 T / 时区后缀） -->
+    <div v-if="prototype" class="sp-proto-preview">
+      <div class="sp-proto-sched">
+        <span v-if="previewLoading">正在推算执行计划…</span>
+        <span v-else-if="previewError" class="is-error">{{ previewError }}</span>
+        <span v-else-if="previewSummary">{{ previewSummary }}</span>
+        <span v-else class="is-faint">完善周期后，这里实时显示执行计划</span>
+      </div>
+      <div v-if="!previewLoading && !previewError && previewTimes.length" class="sp-proto-next">
+        <span class="sp-proto-next-label">接下来 {{ previewTimes.length }} 次：</span>
+        <span v-for="(t, i) in previewTimes" :key="i" class="sp-proto-pill">{{ prettyTime(t) }}</span>
+      </div>
+    </div>
+
     <!-- 人话回显 + 下 N 次预览（由父级 preview-schedule 产出） -->
-    <div class="sp-preview">
+    <div v-else class="sp-preview">
       <div class="sp-preview-head">
         <el-icon class="sp-preview-icon"><MagicStick /></el-icon>
         <span v-if="previewLoading" class="sp-preview-summary">正在推算执行计划…</span>
@@ -401,5 +488,205 @@ const showMonthHint = computed(
 }
 .sp-error {
   /* 容器级描红仅作弱提示，具体字段错误用 sp-err-text */
+}
+
+/* ══════ 原型态（#19，prototype=true）：岗位自动化任务页签专用视觉 ══════ */
+/* 行标签宽度对齐原型 .pd2-task-schedule-label（84px 栅格列） */
+.sp-proto .sp-label {
+  width: 84px;
+}
+.sp-proto .sp-err-text {
+  padding-left: calc(84px + var(--space-4));
+}
+
+/* 周期类型分段按钮组（.pd2-task-segmented） */
+.sp-seg,
+.sp-week-seg {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+/* 执行星期条（.pd2-task-weekdays）：原型无圆角 */
+.sp-week-seg {
+  border-radius: 0;
+}
+.sp-seg-btn {
+  min-width: 70px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--bg-surface);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.sp-week-seg .sp-seg-btn {
+  width: 58px;
+  min-width: 0;
+  height: 34px;
+  padding: 0;
+}
+.sp-seg-btn:last-child {
+  border-right: 0;
+}
+.sp-seg-btn:hover {
+  background: var(--bg-hover);
+}
+.sp-seg-btn.on,
+.sp-seg-btn.on:hover {
+  background: var(--c-accent);
+  color: var(--bg-surface);
+}
+.sp-seg-btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+
+/* 定点时间行（.pd2-task-time-row：序号圆 + ⏰ 输入框 + ×） */
+.sp-time-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sp-time-no {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: 11px;
+}
+.sp-time-input {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: var(--bg-surface);
+  width: 140px;
+}
+.sp-time-input:focus-within {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
+}
+.sp-time-input input {
+  border: 0;
+  outline: 0;
+  width: 100%;
+  height: 36px;
+  font-size: var(--fs-md);
+  background: transparent;
+  color: var(--c-text-strong);
+  font-family: inherit;
+}
+.sp-time-icon {
+  color: var(--c-text-faint);
+  font-size: var(--fs-md);
+}
+.sp-time-remove {
+  border: 0;
+  background: transparent;
+  color: var(--c-danger);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  padding: 2px 4px;
+  line-height: 1;
+}
+.sp-time-remove:hover {
+  opacity: 0.75;
+}
+.sp-add-time-link {
+  border: 0;
+  background: transparent;
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  padding: 4px 0;
+  align-self: flex-start;
+}
+.sp-add-time-link:hover {
+  text-decoration: underline;
+}
+
+/* 执行预览绿底框（.pd2-task-preview） */
+.sp-proto-preview {
+  background: var(--c-accent-fill);
+  border: 1px solid var(--c-accent-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+}
+.sp-proto-sched {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-md);
+  color: var(--c-accent);
+  font-weight: var(--fw-semibold);
+}
+.sp-proto-sched::before {
+  content: '\2731';
+}
+.sp-proto-sched .is-faint {
+  color: var(--c-text-faint);
+  font-weight: var(--fw-regular);
+}
+.sp-proto-sched .is-error {
+  color: var(--c-danger);
+  font-weight: var(--fw-regular);
+}
+.sp-proto-next {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sp-proto-next-label {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+.sp-proto-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--c-accent-soft);
+  font-size: var(--fs-xs);
+  color: var(--c-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 窄屏：分段/星期条撑满 */
+@media (max-width: 760px) {
+  .sp-proto .sp-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  .sp-seg,
+  .sp-week-seg {
+    width: 100%;
+  }
+  .sp-seg-btn {
+    min-width: 0;
+    flex: 1;
+    padding: 0 10px;
+  }
+  .sp-week-seg .sp-seg-btn {
+    width: auto;
+    flex: 1;
+  }
 }
 </style>

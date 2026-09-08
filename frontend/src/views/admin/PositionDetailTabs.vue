@@ -33,7 +33,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
-import { createPosition, publishPosition, getNextVersionLabel, listPositionPublications } from '@/api/position'
+import { createPosition, publishPosition, getNextVersionLabel, listPositionPublications, listSkills } from '@/api/position'
 import { useVersionPublish } from '@/composables/useVersionPublish'
 import { listDataTables } from '@/api/dataTable'
 import {
@@ -58,7 +58,6 @@ import {
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { sourcesText, hasUploadSource } from '@/utils/knowledgeBaseMeta'
-import SkillPickerDialog from '@/components/position/SkillPickerDialog.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
@@ -82,7 +81,8 @@ const store = usePositionStore()
 const isNew = computed(() => route.params.id === 'new')
 
 /* ---------- Tab 切换（9 个 sheet 页；改造：白板+弹窗 → Tab 内联） ---------- */
-const activeTab = ref('persona')
+// 初值可由 ?tab= 指定：技能整页编辑器「← 返回」据此回到来源页签（#15，2026-09-09 批次 4C）。
+const activeTab = ref(typeof route.query.tab === 'string' && route.query.tab ? route.query.tab : 'persona')
 
 /* ---------- 效果测试台（纯前端 demo，就地扮演终端用户试跑该岗位） ---------- */
 const testStageOpen = ref(false)
@@ -392,25 +392,8 @@ async function ensurePersisted() {
 /* ---------- Agent 增删改 ---------- */
 const agentAtLimit = computed(() => store.agents.length >= LIMITS.AGENT_MAX)
 
-async function addAgent() {
-  if (!(await ensurePersisted())) return
-  if (agentAtLimit.value) {
-    ElMessage.warning(`单岗位最多 ${LIMITS.AGENT_MAX} 个 Agent`)
-    return
-  }
-  try {
-    await store.addAgent({ name: '新 Agent', sortOrder: store.agents.length })
-  } catch (e) {
-    ElMessage.error(e?.message || '新建 Agent 失败')
-  }
-}
-async function onAgentRename(agentId, payload) {
-  try {
-    await store.patchAgent(agentId, payload)
-  } catch (e) {
-    ElMessage.error(e?.message || (e?.field === 'name' ? 'Agent 名已存在' : '保存失败'))
-  }
-}
+// 新建 Agent 已并入抽屉（openAgentCreate / saveAgentDraft，2026-09-09 批次 4C）：
+// 原「直建一条『新 Agent』空行」与 onAgentRename 就地改名的两段式退役。
 // 删除 Agent（2026-09-04 PRD-20260903 对齐，md 三.6.3）：确认文案与 toast 逐字照 md。
 async function onAgentDelete(agentId) {
   try {
@@ -430,21 +413,17 @@ async function onAgentDelete(agentId) {
   }
 }
 
-/* ---------- 技能整页编辑（设计 §5：移除聚焦浮层，改新标签开整页编辑器） ---------- */
-// 新标签打开整页技能编辑器（对齐 AdminSkills.openEditorTab 范式）。
+/* ---------- 技能整页编辑（#15，2026-09-09 批次 4C：新标签 → 同页跳转 + 返回回本页签） ----------
+ * 原实现 window.open 开新标签，返回时回不到岗位详情的 Agent 页签（md §6.4 要求
+ * 「编辑完成后可【← 返回】回到岗位详情页」）。改为当前标签路由跳转，并把来源岗位/页签写进
+ * query，由技能编辑页的 backToList 据此回跳。 */
 function openSkillFullPage(skillId) {
-  const href = router.resolve({ name: 'AdminSkillEdit', params: { id: skillId } }).href
-  window.open(href, '_blank')
+  router.push({
+    name: 'AdminSkillEdit',
+    params: { id: skillId },
+    query: { fromPosition: String(store.positionId), fromTab: 'agents' }
+  })
 }
-
-/* ---------- 技能引用（岗位页只引用「已发布」技能，不创建；创建/管理在「技能」页） ---------- */
-/* 从技能库引用已发布 FDE 技能（V84 引用模型） */
-const pickSkillVisible = ref(false)
-const pickSkillAgentId = ref(null)
-// 本岗位已引用的技能 id 集合（跨全部 Agent）：picker 据此置灰，防岗位内重复引用。
-const positionSkillIds = computed(() =>
-  store.allSkills.map((x) => x.skill?.skillId).filter(Boolean)
-)
 /* ---------- Agent 与技能:层级列表（2026-08-22 列表化，对齐截图） ---------- */
 import { categoryLabel } from '@/utils/skillCategory'
 // 扁平化为「Agent 行 + 其下技能行」，供 el-table 层级渲染（kind 区分）。
@@ -471,35 +450,119 @@ function agentSkillToolText(sk) {
 }
 const skillCategoryText = (c) => (c ? categoryLabel(c) : '—')
 
-// Agent 编辑抽屉（名称 + 职责描述）——复用 onAgentRename（emit 同款 payload，逻辑不变）。
+/* ---------- Agent 抽屉：新建 / 编辑同一抽屉（2026-09-09 原型复刻批次 4C，#14） ----------
+ * 原「＋ 新增 Agent」直建一条「新 Agent」空行 + 行内「＋技能」开弹窗挑技能的两段式，按负责人
+ * Q383/Q378 决议合并为：新建与编辑都走同一个 680px 抽屉，抽屉内含「引用技能」勾选区，
+ * 技能引用在保存时按勾选结果与既有引用做差集，增量 assign / detach。 */
 const agentDrawerOpen = ref(false)
+const agentDrawerIsNew = ref(false)
 const agentEditId = ref(null)
-const agentDraft = ref({ name: '', description: '' })
-function openAgentEdit(row) {
-  agentEditId.value = row.agentId
-  agentDraft.value = { name: row.name || '', description: row.description || '' }
-  agentDrawerOpen.value = true
-}
-async function saveAgentDraft() {
-  if (!String(agentDraft.value.name || '').trim()) { ElMessage.warning('请填写 Agent 名称'); return }
-  await onAgentRename(agentEditId.value, { name: agentDraft.value.name.trim(), description: agentDraft.value.description })
-  agentDrawerOpen.value = false
-  // md 三.6.2：保存后提示「Agent 已保存」
-  ElMessage.success('Agent 已保存')
-}
+const agentSaving = ref(false)
+const agentDraft = ref({ name: '', description: '', skillIds: [] })
+// 打开抽屉时的原始引用集合：保存时与 draft.skillIds 求差，决定 assign / detach 哪几条。
+const agentSkillIdsBefore = ref([])
 
-function onPickSkill(agentId) {
-  pickSkillAgentId.value = agentId
-  pickSkillVisible.value = true
-}
-async function onSkillPicked(skillId) {
+// 可引用技能候选（已发布 FDE 技能）——与 SkillPickerDialog 同源（listSkills status=published）。
+const agentSkillOptions = ref([])
+const agentSkillLoading = ref(false)
+const agentSkillKeyword = ref('')
+const agentSkillAtLimit = computed(() => agentDraft.value.skillIds.length >= LIMITS.SKILL_MAX)
+
+async function loadAgentSkillOptions() {
+  agentSkillLoading.value = true
   try {
-    await store.assignSkillToAgent(skillId, pickSkillAgentId.value)
-    ElMessage.success('已引用技能到该 Agent')
+    const kw = agentSkillKeyword.value.trim()
+    const data = await listSkills({ page: 1, size: 200, status: 'published', ...(kw ? { keyword: kw } : {}) })
+    agentSkillOptions.value = Array.isArray(data) ? data : data?.list || []
   } catch (e) {
-    ElMessage.error(e?.message || '引用失败')
+    ElMessage.error(e?.message || '加载技能库失败')
+    agentSkillOptions.value = []
+  } finally {
+    agentSkillLoading.value = false
   }
 }
+let agentSkillSearchTimer = null
+watch(agentSkillKeyword, () => {
+  if (!agentDrawerOpen.value) return
+  if (agentSkillSearchTimer) clearTimeout(agentSkillSearchTimer)
+  agentSkillSearchTimer = setTimeout(loadAgentSkillOptions, 300)
+})
+
+// 达上限后未勾选项置灰（模板已 disabled），此处兜底再拦一次并给文案（md §6.4 逐字）。
+function toggleAgentSkill(skillId) {
+  const list = agentDraft.value.skillIds
+  const i = list.indexOf(skillId)
+  if (i > -1) {
+    list.splice(i, 1)
+    return
+  }
+  if (list.length >= LIMITS.SKILL_MAX) {
+    ElMessage.warning(`每个 Agent 最多引用 ${LIMITS.SKILL_MAX} 个技能`)
+    return
+  }
+  list.push(skillId)
+}
+
+function openAgentDrawer(row, isNew) {
+  agentDrawerIsNew.value = isNew
+  agentEditId.value = isNew ? null : row.agentId
+  const ids = isNew ? [] : (store.agents.find((a) => a.agentId === row.agentId)?.skills || []).map((s) => s.skillId)
+  agentSkillIdsBefore.value = ids.slice()
+  agentDraft.value = { name: isNew ? '' : row.name || '', description: isNew ? '' : row.description || '', skillIds: ids.slice() }
+  agentSkillKeyword.value = ''
+  agentDrawerOpen.value = true
+  loadAgentSkillOptions()
+}
+async function openAgentCreate() {
+  if (!(await ensurePersisted())) return
+  if (agentAtLimit.value) {
+    ElMessage.warning(`单岗位最多 ${LIMITS.AGENT_MAX} 个 Agent`)
+    return
+  }
+  openAgentDrawer(null, true)
+}
+function openAgentEdit(row) {
+  openAgentDrawer(row, false)
+}
+
+/** 把抽屉勾选结果同步到该 Agent 的技能引用：新增走 assign，取消走 detach。 */
+async function syncAgentSkillRefs(agentId) {
+  const before = agentSkillIdsBefore.value
+  const after = agentDraft.value.skillIds
+  for (const id of after.filter((x) => !before.includes(x))) {
+    await store.assignSkillToAgent(id, agentId)
+  }
+  for (const id of before.filter((x) => !after.includes(x))) {
+    await store.detachSkillFromAgent(agentId, id)
+  }
+}
+
+async function saveAgentDraft() {
+  const name = String(agentDraft.value.name || '').trim()
+  const description = String(agentDraft.value.description || '').trim()
+  if (!name) { ElMessage.warning('请填写 Agent 名称'); return }
+  // md §6.2：职责描述必填（Q25④ 上限 500）
+  if (!description) { ElMessage.warning('请填写职责描述'); return }
+  agentSaving.value = true
+  try {
+    let agentId = agentEditId.value
+    if (agentDrawerIsNew.value) {
+      const created = await store.addAgent({ name, description, sortOrder: store.agents.length })
+      agentId = created?.agentId
+    } else {
+      await store.patchAgent(agentId, { name, description })
+    }
+    if (agentId != null) await syncAgentSkillRefs(agentId)
+    agentDrawerOpen.value = false
+    // md §6.2：保存后提示「Agent 已保存」
+    ElMessage.success('Agent 已保存')
+  } catch (e) {
+    ElMessage.error(e?.message || (e?.field === 'name' ? 'Agent 名已存在' : '保存失败'))
+  } finally {
+    agentSaving.value = false
+  }
+}
+
 async function onReorderSkills(agentId, newSkills) {
   store.reorderSkillsLocal(agentId, newSkills)
   // 逐条 PUT sortOrder 持久化（决议 9 整体 PUT 思路，最小代价）
@@ -1072,8 +1135,8 @@ function backToList() {
             </DrawerEditor>
           </el-tab-pane>
 
-          <!-- ③ 工作档案（对象类型配置：卡位 / 应沉淀清单 / 归纳规则 / 沉淀策略；原「数据底座 / 数据表」模型升级）
-               只读态：Stage 未提供 readonly prop，用 pointer-events 冻结兜底（demo 口径，见 PRD-review 记录）。 -->
+          <!-- ③ 工作档案（md §4：左侧档案列表面板 + 右侧 基本信息 / 编目信息 / 档案详情 三卡）
+               2026-09-09 原型复刻批次 4A：Stage 已提供 readonly prop，pd-ro-freeze 仅作兜底。 -->
           <el-tab-pane label="工作档案" name="workProfile">
             <div class="pd-pane pd-pane--flush" :class="{ 'pd-ro-freeze': isReadonly }">
               <PositionDataTableStage
@@ -1081,11 +1144,12 @@ function backToList() {
                 :position-id="store.positionId"
                 :position-name="store.basic.name || '岗位'"
                 :table-count="dtTableCount"
+                :readonly="isReadonly"
                 embedded
                 @update:table-count="dtTableCount = $event"
                 @saved="prefetchDtCount"
               />
-              <div v-else class="pd-empty">保存岗位后即可配置工作档案（对象类型 · 结构化卡位 · 应沉淀清单 · 归纳规则 · 沉淀策略）。</div>
+              <div v-else class="pd-empty">保存岗位后即可配置工作档案（档案模型 · 编目信息 · 档案详情 · 抽取策略）。</div>
             </div>
           </el-tab-pane>
 
@@ -1154,69 +1218,112 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ⑤ Agent 与技能 -->
+          <!-- ⑤ Agent 与技能（2026-09-09 原型复刻批次 4C）
+               形态按负责人 Q383 决议 + 补充说明第 5 条「采纳 A」：二维表（两级），不做泳道、也不做
+               ◆ 技能分类分组的三级结构——行维度 = Agent（◆）与其下技能（·），列维度 = 名称 /
+               职责描述·分类 / 工具 / 操作，同一列在两级上承载各自语义。 -->
           <el-tab-pane label="Agent 与技能" name="agents">
             <div class="pd-pane">
-              <div class="pd-list-head">
-                <div class="pd-list-title">Agent 与技能<span class="pd-list-sub">每个 Agent 是一组技能 · 主实例按职责描述委派子任务</span></div>
-                <el-button v-if="!isReadonly" type="primary" size="small" :disabled="agentAtLimit" @click="addAgent">
-                  {{ agentAtLimit ? `已达 ${LIMITS.AGENT_MAX} 个上限` : '＋ 新增 Agent' }}
-                </el-button>
-              </div>
-              <el-table :data="agentSkillRows" class="pd-table pd-table--tree" row-key="rowKey"
-                        :row-class-name="({ row }) => row.kind === 'agent' ? 'pd-row-agent' : 'pd-row-skill'"
-                        empty-text="暂无 Agent，点「＋ 新 Agent」创建">
-                <el-table-column label="AGENT / 技能" min-width="220">
-                  <template #default="{ row }">
-                    <span v-if="row.kind === 'agent'" class="pd-agent-name">◆ {{ row.name }}</span>
-                    <span v-else class="pd-skill-name">· {{ row.name }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="职责描述 / 分类" min-width="320">
-                  <template #default="{ row }">
-                    <span v-if="row.kind === 'agent'" class="pd-agent-desc">{{ row.description || '—' }}</span>
-                    <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row.category) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="工具" width="120" align="center">
-                  <template #default="{ row }">
-                    <span v-if="row.kind === 'agent'" class="pd-faint">—</span>
-                    <span v-else>{{ row.tools }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="150" fixed="right">
-                  <template #default="{ row }">
-                    <span v-if="isReadonly" class="pd-faint">只读</span>
-                    <template v-else-if="row.kind === 'agent'">
-                      <el-button link type="primary" @click="openAgentEdit(row)">编辑</el-button>
-                      <!-- 每条泳道最多引用 20 个技能，达上限置灰（md §6.4） -->
-                      <el-button link type="primary" :disabled="row.skillCount >= LIMITS.SKILL_MAX" @click="onPickSkill(row.agentId)">＋技能</el-button>
-                      <el-button link type="danger" @click="onAgentDelete(row.agentId)">删除</el-button>
-                    </template>
-                    <template v-else>
-                      <el-button link type="primary" @click="openSkillFullPage(row.skillId)">编辑</el-button>
-                      <el-button link type="danger" @click="onDeleteSkill({ agentId: row.agentId, skillId: row.skillId })">移除</el-button>
-                    </template>
-                  </template>
-                </el-table-column>
-              </el-table>
+              <!-- #13 表格包卡：照原型 agent-task-feedback-refinement 的 sync-agent-card（卡头 + 卡体裹表） -->
+              <section class="pd-card">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">Agent 与技能</span>
+                  <span class="pd-card-sub">每个 Agent 是一组技能 · 主实例按职责描述委派子任务</span>
+                  <span class="pd-card-spacer"></span>
+                  <el-button v-if="!isReadonly" type="primary" size="small" :disabled="agentAtLimit" @click="openAgentCreate">
+                    {{ agentAtLimit ? `已达 ${LIMITS.AGENT_MAX} 个上限` : '＋ 新增 Agent' }}
+                  </el-button>
+                </div>
+                <div class="pd-card-body pd-card-body--flush">
+                  <el-table :data="agentSkillRows" class="pd-table pd-table--tree" row-key="rowKey"
+                            :row-class-name="({ row }) => row.kind === 'agent' ? 'pd-row-agent' : 'pd-row-skill'"
+                            empty-text="暂无 Agent，点「＋ 新增 Agent」创建">
+                    <el-table-column label="AGENT / 技能" min-width="220">
+                      <template #default="{ row }">
+                        <span v-if="row.kind === 'agent'" class="pd-agent-name">◆ {{ row.name }}</span>
+                        <span v-else class="pd-skill-name">· {{ row.name }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="职责描述 / 分类" min-width="320">
+                      <template #default="{ row }">
+                        <span v-if="row.kind === 'agent'" class="pd-agent-desc">{{ row.description || '—' }}</span>
+                        <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row.category) }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="工具" width="120" align="center">
+                      <template #default="{ row }">
+                        <span v-if="row.kind === 'agent'" class="pd-faint">—</span>
+                        <span v-else>{{ row.tools }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="150" fixed="right">
+                      <template #default="{ row }">
+                        <span v-if="isReadonly" class="pd-faint">只读</span>
+                        <!-- #14：Agent 行不再有「＋技能」（原型 L4025 已删该按钮），技能改在抽屉内勾选 -->
+                        <template v-else-if="row.kind === 'agent'">
+                          <el-button link type="primary" @click="openAgentEdit(row)">编辑</el-button>
+                          <el-button link type="danger" @click="onAgentDelete(row.agentId)">删除</el-button>
+                        </template>
+                        <template v-else>
+                          <!-- #15：技能「编辑」同页跳转整页编辑器，返回回到本页签 -->
+                          <el-button link type="primary" @click="openSkillFullPage(row.skillId)">编辑</el-button>
+                          <el-button link type="danger" @click="onDeleteSkill({ agentId: row.agentId, skillId: row.skillId })">移除</el-button>
+                        </template>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </section>
             </div>
 
-            <!-- Agent 编辑抽屉（名称 + 职责描述） -->
-            <DrawerEditor v-model:visible="agentDrawerOpen" title="编辑 Agent" size="480px" append-to-body>
+            <!-- #14 新建 / 编辑 Agent 同一抽屉（680px，照原型 position-agent-drawer）：基本信息 + 引用技能勾选区 -->
+            <DrawerEditor v-model:visible="agentDrawerOpen" :title="agentDrawerIsNew ? '新建 Agent' : '编辑 Agent'" size="680px" append-to-body>
               <el-form label-position="top" class="pd-drawer-form">
-                <!-- 字段上限按 md §6.2（名称 64 / 职责 2000，职责选填；负责人 2026-09-08 裁决「按 md 落地」，原型 L4050 为 60/300 必填，差异挂账） -->
+                <!-- 字段上限按 md §6.2：名称 64（Q25⑤ 全局名称类统一 64，原型 60 不跟进）、
+                     职责描述必填 ≤500（Q25④ 补充说明「取 500，尽量减少例外情况」） -->
                 <el-form-item label="Agent 名称" required>
-                  <el-input v-model="agentDraft.name" maxlength="64" placeholder="如：客户洞察" />
+                  <el-input v-model="agentDraft.name" maxlength="64" show-word-limit placeholder="如：客户洞察" />
                 </el-form-item>
-                <el-form-item label="职责描述">
-                  <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="2000" show-word-limit
+                <el-form-item label="职责描述" required>
+                  <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="500" show-word-limit
                             placeholder="决定主实例把子任务委派给这个 Agent 时的执行口径" />
                 </el-form-item>
               </el-form>
+
+              <!-- 引用技能勾选区（md §6.4）：达 100 上限后未勾选项置灰 -->
+              <section class="pd-card pd-agent-skills">
+                <div class="pd-card-head">
+                  <span class="pd-card-title">引用技能</span>
+                  <span class="pd-card-sub">直接在当前编辑页勾选，可引用已发布技能</span>
+                  <span class="pd-card-spacer"></span>
+                  <span class="pd-agent-skill-count">已勾选：{{ agentDraft.skillIds.length }}/{{ LIMITS.SKILL_MAX }}</span>
+                </div>
+                <div class="pd-card-body">
+                  <el-input v-model="agentSkillKeyword" placeholder="搜索技能名称、描述或标识" clearable />
+                  <div v-loading="agentSkillLoading" class="pd-agent-skill-list">
+                    <div v-if="!agentSkillLoading && !agentSkillOptions.length" class="pd-agent-skill-empty">
+                      暂无可引用的已发布技能
+                    </div>
+                    <el-checkbox
+                      v-for="opt in agentSkillOptions"
+                      :key="opt.id"
+                      :model-value="agentDraft.skillIds.includes(opt.id)"
+                      :disabled="agentSkillAtLimit && !agentDraft.skillIds.includes(opt.id)"
+                      class="pd-agent-skill-row"
+                      @change="toggleAgentSkill(opt.id)"
+                    >
+                      <span class="pd-agent-skill-main">
+                        <strong>{{ opt.name }}</strong>
+                        <small>{{ opt.description || '暂无描述' }}</small>
+                      </span>
+                    </el-checkbox>
+                  </div>
+                </div>
+              </section>
+
               <template #footer>
                 <el-button @click="agentDrawerOpen = false">取消</el-button>
-                <el-button type="primary" @click="saveAgentDraft">保存</el-button>
+                <el-button type="primary" :loading="agentSaving" @click="saveAgentDraft">{{ agentDrawerIsNew ? '新建' : '保存' }}</el-button>
               </template>
             </DrawerEditor>
           </el-tab-pane>
@@ -1278,13 +1385,8 @@ function backToList() {
       </div>
     </div>
 
-    <!-- 从技能库引用已发布 FDE 技能：选中后写引用行到当前 Agent；岗位内已引用的置灰。
-         岗位页只引用、不创建——新技能在「FDE 工作台 → 技能」页创建后再来引用。 -->
-    <SkillPickerDialog
-      v-model="pickSkillVisible"
-      :existing-ids="positionSkillIds"
-      @pick="onSkillPicked"
-    />
+    <!-- 技能引用弹窗（SkillPickerDialog）已随 2026-09-09 批次 4C 退役：技能改在 Agent 抽屉内勾选
+         （负责人 Q383 决议 + 原型 L4025 删 Agent 行「＋技能」），组件文件保留备查。 -->
 
     <!-- 人格 / 采集编辑弹窗已随 2026-09-04 PRD-20260903 对齐退役（内容全部内联进人格 / 采集字段页签），
          PersonaEditDialog / IntakeEditDialog 组件文件保留备查。 -->
@@ -1569,6 +1671,62 @@ function backToList() {
 }
 .pd-table :deep(.pd-row-agent > td) {
   border-top: 1px solid var(--border-base);
+}
+
+/* ---- Agent 与技能：表格包卡 + 抽屉内引用技能勾选区（2026-09-09 原型复刻批次 4C #13/#14） ---- */
+/* 表格直接贴卡体边（卡头已有分隔线，卡体不再补内边距） */
+.pd-card-body--flush {
+  padding: 0;
+}
+.pd-agent-skills {
+  margin-top: var(--space-4);
+}
+.pd-agent-skill-count {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+}
+.pd-agent-skill-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  min-height: 100px;
+}
+.pd-agent-skill-row {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.pd-agent-skill-row :deep(.el-checkbox__label) {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+}
+.pd-agent-skill-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pd-agent-skill-main strong {
+  color: var(--c-text-strong);
+  font-weight: var(--fw-medium);
+}
+.pd-agent-skill-main small {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-agent-skill-empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
 }
 
 /* ---- 2026-09-04 PRD-20260903 对齐新增 ---- */

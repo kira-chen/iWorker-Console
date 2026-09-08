@@ -896,6 +896,16 @@ function backToList() {
     router.push({ name: 'AdminMyApplications' })
     return
   }
+  // 岗位借用态（2026-09-09 批次 4C #15）：从岗位详情「Agent 与技能」页签行内【编辑】进来，
+  // 「← 返回」回到该岗位详情的来源页签，不再落到技能列表。
+  if (route.query?.fromPosition) {
+    router.push({
+      name: 'PositionWorkbench',
+      params: { id: route.query.fromPosition },
+      query: { tab: route.query.fromTab || 'agents' }
+    })
+    return
+  }
   // N8：业务系统技能编辑器「← 返回」回到连接器「业务系统」Tab（无独立技能列表页）。
   if (isBizSystem.value) {
     router.push({ name: 'AdminConnector', query: { tab: 'bizsystem' } })
