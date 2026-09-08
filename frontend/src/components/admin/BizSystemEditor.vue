@@ -20,10 +20,18 @@
  * 打磨说明（CR 落地，沿用）：
  * - 业务页行用稳定本地 uid（_uid）作 v-model/red-box key，避免删中间行索引复用导致 DOM 短暂错位。
  * - 删行后若已有校验错误则即时重跑校验重建 fieldErrors（保留其它行红框、修正索引）。
+ *
+ * 2026-09-09 原型复刻批次 3A（S1 / S3 / B1 / B2 / B3）：
+ * - S1 各分区换 `.section-card`（样式在 assets/admin-shell.css）；「被技能引用」保持非卡片
+ *   `.reference-section`，底部时间行走 `.page-time`；
+ * - S3 图标行换 IconField（预览块 + 并排【从图标库选择】【上传图标】）；
+ * - B1 示例问题并入「基本信息」卡作卡内子分区（原型 L1148，md §三.2 L98 同口径）；
+ * - B2 连接方式 ｜ 登录地址 同行（原型 renderBizEditor L760 form-grid 两列）；
+ * - B3 业务页展开按钮带折叠箭头 caret（原型 `.biz-page-toggle > .caret ▶`，展开旋转）。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import IconField from '@/components/common/IconField.vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fmtTime } from '@/utils/docMeta'
@@ -43,7 +51,7 @@ import {
   BIZ_PAGES_MAX,
   BIZ_QUESTION_MAX
 } from '@/utils/defValidate'
-import { iconIsUrl } from '@/utils/iconDisplay'
+
 
 const router = useRouter()
 
@@ -185,9 +193,7 @@ async function deleteOwnedSkill(skillId) {
 // 是否已达业务页条目上限（达上限禁用「添加」并提示）
 const pagesAtMax = computed(() => form.bizPages.length >= PAGES_MAX)
 
-// 图标：/api/public/icons/ 开头 = 上传的图片（<img> 直接 GET）；否则按 emoji/字符渲染
-const iconIsUrlFlag = computed(() => iconIsUrl(form.icon))
-/** IconPickerPopover 回吐 { icon, iconSource }；此处只取 icon（业务系统不需要来源标记）。 */
+/** IconField 回吐 { icon, iconSource }；此处只取 icon（业务系统不需要来源标记）。 */
 function onIconPick(payload) {
   if (payload && typeof payload.icon === 'string') {
     form.icon = payload.icon
@@ -425,8 +431,8 @@ async function save() {
       <div class="ad-note">业务系统通过登录态托管供技能执行办事操作，可配置最多 20 条业务页入口。</div>
 
       <!-- 基本信息（B10：原「连接」分区并入本卡；删「状态」radio；连接方式只读） -->
-      <section class="ad-sec">
-        <div class="ad-sec-title">基本信息</div>
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
         <el-form label-position="top" :disabled="readonly">
           <div class="ad-row2">
             <el-form-item label="系统名称" :error="fieldErrors.name" required class="ad-name-item">
@@ -437,21 +443,15 @@ async function save() {
                 placeholder="如 客户管理系统 CRM"
               />
             </el-form-item>
-            <!-- 图标（BQ5 指示：必填，复用 McpEditor 的 IconPickerPopover 范式） -->
+            <!-- 图标（BQ5 指示：必填）。S3：预览块 + 并排两个 plain 按钮（原型 `.compact-icon-row`） -->
             <el-form-item label="图标" :error="fieldErrors.icon" required class="ad-icon-item">
-              <div class="ad-icon-row">
-                <span class="ad-icon-preview" :class="{ 'is-empty': !form.icon }">
-                  <img v-if="iconIsUrlFlag" :src="form.icon" alt="" class="ad-icon-img" />
-                  <span v-else-if="form.icon">{{ form.icon }}</span>
-                  <span v-else class="ad-icon-ph">—</span>
-                </span>
-                <IconPickerPopover
-                  v-if="!readonly"
-                  :icon="form.icon"
-                  :position-name="form.name"
-                  @pick="onIconPick"
-                />
-              </div>
+              <IconField
+                :icon="form.icon"
+                :name="form.name"
+                :readonly="readonly"
+                placeholder="—"
+                @pick="onIconPick"
+              />
             </el-form-item>
           </div>
           <!-- 描述（BQ3 指示：必填、≤2000 + 字数统计，占位去「选填」字样） -->
@@ -465,13 +465,16 @@ async function save() {
               placeholder="一句话描述该系统用途"
             />
           </el-form-item>
-          <el-form-item label="连接方式">
-            <!-- 只读展示（B10）：本期仅登录态托管一种，不再给下拉 -->
-            <div class="ad-readonly-value">登录态托管</div>
-          </el-form-item>
-          <el-form-item label="登录地址" :error="fieldErrors.loginUrl" required>
-            <el-input v-model="form.loginUrl" placeholder="https://crm.example.com/login" />
-          </el-form-item>
+          <!-- B2：连接方式 ｜ 登录地址 同行（原型 renderBizEditor form-grid 两列） -->
+          <div class="ad-row2 ad-conn-row">
+            <el-form-item label="连接方式">
+              <!-- 只读展示（B10）：本期仅登录态托管一种，不再给下拉 -->
+              <div class="ad-readonly-value">登录态托管</div>
+            </el-form-item>
+            <el-form-item label="登录地址" :error="fieldErrors.loginUrl" required>
+              <el-input v-model="form.loginUrl" placeholder="https://crm.example.com/login" />
+            </el-form-item>
+          </div>
           <!-- 自动化操作配置占位（BQ1 指示：保留不动，可能是已拍板扩展） -->
           <el-form-item label="自动化操作配置">
             <el-input
@@ -482,16 +485,56 @@ async function save() {
             />
           </el-form-item>
         </el-form>
+
+        <!-- 示例问题（B1：原型 L1148 移入基本信息卡末尾作 `.connector-basic-subsection`；
+             md §三.2 L98「位于基本信息卡片内」同口径。固定 3 条带序号 + AI 生成一次 3 条） -->
+        <div class="connector-basic-subsection" :class="{ 'eq-error': !!fieldErrors.exampleQuestions }">
+          <div class="section-title ad-eq-title">
+            <span>
+              示例问题
+              <span class="section-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
+            </span>
+            <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中文案「生成中…」 -->
+            <el-button
+              v-if="!readonly"
+              class="ad-eq-ai"
+              size="small"
+              :disabled="aiDisabled"
+              :title="aiTitle || undefined"
+              @click="generateQuestions"
+            >
+              {{ aiLabel }}
+            </el-button>
+          </div>
+          <div v-if="fieldErrors.exampleQuestions" class="ad-pages-err">
+            {{ fieldErrors.exampleQuestions }}
+          </div>
+          <div class="ad-eq-list">
+            <div v-for="i in 3" :key="i" class="ad-eq-row">
+              <span class="ad-eq-index">{{ i }}</span>
+              <el-input
+                v-model="form.exampleQuestions[i - 1]"
+                :maxlength="QUESTION_MAX"
+                show-word-limit
+                :disabled="readonly"
+                :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- 业务页（B12：默认收起，标题右侧展开/收起；添加行自动展开） -->
-      <section class="ad-sec">
-        <div class="ad-sec-title ad-pages-title">
-          <span>
+      <section class="section-card">
+        <!-- 卡头右侧动作位用 admin-shell.css 的 .section-head（两端对齐） -->
+        <div class="section-head ad-pages-title">
+          <span class="section-title">
             业务页
-            <span class="ad-sec-sub">可选，办事操作入口；最多 {{ PAGES_MAX }} 条</span>
+            <span class="section-sub">可选，办事操作入口；最多 {{ PAGES_MAX }} 条</span>
           </span>
+          <!-- B3：展开按钮带折叠箭头（原型 `.biz-page-toggle > .caret ▶`，展开时旋转 90°；与 MCP 工具清单同款） -->
           <el-button link type="primary" class="ad-pages-toggle" @click="pagesOpen = !pagesOpen">
+            <span class="ad-caret" :class="{ 'is-open': pagesOpen }">▶</span>
             {{ pagesOpen ? '收起业务页' : '展开业务页' }}{{ form.bizPages.length ? `（${form.bizPages.length}）` : '' }}
           </el-button>
         </div>
@@ -566,46 +609,12 @@ async function save() {
         </div>
       </section>
 
-      <!-- 示例问题（B11/BQ4：固定 3 条带序号 + AI 生成一次 3 条；插在引用区之前） -->
-      <section class="ad-sec" :class="{ 'eq-error': !!fieldErrors.exampleQuestions }">
-        <div class="ad-sec-title ad-eq-title">
-          <span>
-            示例问题
-            <span class="ad-sec-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
-          </span>
-          <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中文案「生成中…」 -->
-          <el-button
-            v-if="!readonly"
-            class="ad-eq-ai"
-            size="small"
-            :disabled="aiDisabled"
-            :title="aiTitle || undefined"
-            @click="generateQuestions"
-          >
-            {{ aiLabel }}
-          </el-button>
-        </div>
-        <div v-if="fieldErrors.exampleQuestions" class="ad-pages-err">{{ fieldErrors.exampleQuestions }}</div>
-        <div class="ad-eq-list">
-          <div v-for="i in 3" :key="i" class="ad-eq-row">
-            <span class="ad-eq-index">{{ i }}</span>
-            <el-input
-              v-model="form.exampleQuestions[i - 1]"
-              :maxlength="QUESTION_MAX"
-              show-word-limit
-              :disabled="readonly"
-              :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
-            />
-          </div>
-        </div>
-      </section>
-
       <!-- N8：业务系统专属技能（BQ1 保留：第三类，从零新建/编辑/删除，仅编辑态）。
            只读查看态隐藏本区（纯管理入口，只读无意义，且避免误触发新建/删除）。 -->
-      <section v-if="isEdit && !readonly" class="ad-sec">
-        <div class="ad-sec-title">
+      <section v-if="isEdit && !readonly" class="section-card">
+        <div class="section-title">
           业务系统专属技能
-          <span class="ad-sec-sub">本业务系统专用的技能，办事时优先调用</span>
+          <span class="section-sub">本业务系统专用的技能，办事时优先调用</span>
         </div>
 
         <!-- 新建入口：从零建一条空白专属技能，再进编辑器填内容 -->
@@ -654,10 +663,10 @@ async function save() {
       </section>
 
       <!-- 被技能引用（只读；副注按 B13 口径：软引用，停用/删除后技能仍可执行） -->
-      <section v-if="isEdit" class="ad-sec">
-        <div class="ad-sec-title">
+      <section v-if="isEdit" class="reference-section">
+        <div class="section-title">
           被技能引用
-          <span class="ad-sec-sub">引用此业务系统的 Skill（只读；停用或删除后技能仍可执行，运行效果可能受限或出现报错）</span>
+          <span class="section-sub">引用此业务系统的 Skill（只读；停用或删除后技能仍可执行，运行效果可能受限或出现报错）</span>
         </div>
         <div v-if="referencedBySkills.length" class="ad-refs">
           <el-tag
@@ -672,8 +681,8 @@ async function save() {
         <div v-else class="ad-refs-empty">暂无技能引用</div>
       </section>
 
-      <!-- 底部弱化时间行（B13：编辑与查看态；未发布显「—」） -->
-      <div v-if="isEdit" class="ad-times">
+      <!-- 底部弱化时间行（B13：编辑与查看态；未发布显「—」）；S1 走原型 `.page-time` -->
+      <div v-if="isEdit" class="page-time">
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
         <span>最近更新时间：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
         <span>最近发布时间：{{ times.publishedAt ? fmtTime(times.publishedAt) : '—' }}</span>
@@ -713,10 +722,16 @@ async function save() {
 </template>
 
 <style scoped>
+/* 本编辑器多包一层 .ad-body（scrollToFirstError 的查询根），故 DrawerEditor 里
+   `.de-body > .section-card` 的 margin 清零选择器命不中——在这里自己承担同样的排布职责。 */
 .ad-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+/* admin-shell.css 的规则是 `body.admin-scope .section-card`（0,2,1），故这里叠一层选择器提权 */
+.ad-body > .section-card.section-card {
+  margin-bottom: 0;
 }
 /* 顶部提示行（B9）：弱底说明条，不抢内容 */
 .ad-note {
@@ -728,17 +743,20 @@ async function save() {
   color: var(--c-text-muted);
   line-height: 1.6;
 }
-.ad-sec-title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-2);
+/* 分区卡（.section-card / .section-title / .section-sub / .section-head / .reference-section /
+   .page-time）样式统一在 assets/admin-shell.css（S1，批次 1 已提供），本文件不重复。 */
+/* 示例问题作基本信息卡内子分区（B1，原型 L1126-1127 `.connector-basic-subsection`）：
+   上边线分隔 margin-top 26 / padding-top 24，标题 17px/700 */
+.connector-basic-subsection {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
 }
-.ad-sec-sub {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
+.connector-basic-subsection > .section-title {
+  margin: 0 0 18px;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
 }
 .req {
   color: var(--c-danger);
@@ -750,31 +768,10 @@ async function save() {
   grid-template-columns: 1fr 200px;
   column-gap: var(--space-4);
 }
-.ad-icon-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.ad-icon-preview {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
-  background: var(--bg-sunken);
-  overflow: hidden;
-}
-.ad-icon-preview.is-empty,
-.ad-icon-ph {
-  color: var(--c-text-faint);
-}
-.ad-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+/* 图标行样式随 IconField 组件走（S3），本文件不再自绘预览格与按钮 */
+/* B2：连接方式 ｜ 登录地址 同行——与「名称 | 图标」不同，这行是等分两列 */
+.ad-conn-row {
+  grid-template-columns: 1fr 1fr;
 }
 /* 连接方式只读展示（B10） */
 .ad-readonly-value {
@@ -798,24 +795,25 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
-/* 底部弱化时间行（B13） */
-.ad-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-}
+/* 底部时间行样式走 admin-shell.css 的 .page-time（S1） */
 
 /* ---- 业务页分区标题（B12：标题左、展开/收起按钮右） ---- */
 .ad-pages-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
 }
 .ad-pages-toggle {
   font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+}
+/* B3：折叠箭头（原型 `.caret ▶`，展开旋转 90°；与 MCP 工具清单 md-caret 同款） */
+.ad-caret {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 10px;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.ad-caret.is-open {
+  transform: rotate(90deg);
 }
 
 /* ---- 示例问题（B11/BQ4） ---- */

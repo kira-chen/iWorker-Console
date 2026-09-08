@@ -16,12 +16,24 @@
  * - 编辑已发布模型的连接字段（baseUrl/model/authType/appId/密钥/extra_body）时先弹确认：
  *   会强制回未发布 + 清空验证态，线上即下线。
  * - 写接口 ApiError 带 field 时红框定位到对应表单项。
+ *
+ * 2026-09-09 原型复刻批次 3A（S1 / S3 / D3 / D5 / D6）：
+ * - S1 各分区换 `.section-card`（样式在 assets/admin-shell.css），时间行走 `.page-time`；
+ * - D3 基本信息补「图标」必填字段（md §三 L247；原型 L1319-1330 addMissingIconField 在
+ *   模型名称后插入「图标*」= 预览 + 【从图标库选择】+【上传图标】，默认字形 ▦），mock 已带 icon 字段；
+ * - S3 图标行走公共 IconField；
+ * - D5「连接与鉴权」区套两列栅格：Base URL 通栏 → 鉴权方式半栏 → API Key 通栏 /
+ *   AppID·API Key·App Secret 三格两列排（原型 L245 form-grid + `#modelAuthFields.field.full`）；
+ * - D6 保存校验失败补 toast「请先修正标红项」（原型 validateModel L246，与三个连接器编辑器同款）。
+ * D4 跳过（md §5.2「【重新验证】仅在编辑状态展示」，原型卡内按钮三态可见——按 md 保留现状）；
+ * D1 跳过（分页形态全站已统一）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FieldHelpLabel from '@/components/admin/FieldHelpLabel.vue'
 import ModelCapabilityTags from '@/components/admin/ModelCapabilityTags.vue'
+import IconField from '@/components/common/IconField.vue'
 import { createModel, updateModel, verifyModel } from '@/api/adminModel'
 import { fmtTime } from '@/utils/docMeta'
 import {
@@ -71,9 +83,14 @@ const PRESET_CARDS = [
   { key: 'custom', label: '自定义' }
 ]
 
+/** 无图标时的默认字形（原型 L1415 `d.icon||'▦'`）。 */
+const DEFAULT_MODEL_ICON = '▦'
+
 const form = reactive({
   providerName: '',
   name: '',
+  // 图标（D3，md §三 L247 必填）：emoji/字符 或 /api/public/icons/<文件名>
+  icon: '',
   category: '',
   baseUrl: '',
   model: '',
@@ -92,6 +109,8 @@ const form = reactive({
 const rules = computed(() => ({
   providerName: [{ required: true, message: '请选择模型提供商', trigger: 'change' }],
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  // 图标必填（D3，md §三 L247）；保存时另有 ▦ 兜底（原型 L1419），此校验只拦「手动清空」这条路
+  icon: [{ required: true, message: '请选择或上传图标', trigger: 'change' }],
   category: [{ required: true, message: '请选择模型类别', trigger: 'change' }],
   baseUrl: [
     { required: true, message: '请输入服务地址（Base URL）', trigger: 'blur' },
@@ -157,6 +176,8 @@ watch(
     const m = props.model
     form.providerName = m?.providerName || ''
     form.name = m?.name || ''
+    // 图标默认 ▦（原型 L1415）：接入态给个可见起点，编辑态回填行上的值
+    form.icon = m?.icon || DEFAULT_MODEL_ICON
     form.category = m?.category || ''
     form.baseUrl = m?.baseUrl || ''
     form.model = m?.model || ''
@@ -229,9 +250,22 @@ function connectionChanged() {
   )
 }
 
+/** IconField 回吐 { icon, iconSource }；此处只取 icon（D3）。 */
+function onIconPick(payload) {
+  if (payload && typeof payload.icon === 'string') {
+    form.icon = payload.icon
+    formRef.value?.clearValidate?.('icon')
+  }
+}
+
 async function save() {
   const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
+  if (!valid) {
+    // D6：行内红字之外再补一条 toast（原型 validateModel L246「请先修正标红项」，
+    // 与 MCP / API / 业务系统三个编辑器同款）——长表单里出错项可能已滚出视口
+    ElMessage.warning('请先修正标红项')
+    return
+  }
 
   if (
     isEdit.value &&
@@ -275,6 +309,8 @@ async function save() {
     const payload = {
       providerName: form.providerName || null,
       name: form.name.trim(),
+      // 图标（D3）：兜底 ▦，与原型 L1419 `d.icon||'▦'` 同口径；列表页 D2 消费本字段
+      icon: form.icon || DEFAULT_MODEL_ICON,
       category: form.category,
       baseUrl: form.baseUrl.trim(),
       model: String(form.model).trim(),
@@ -364,10 +400,10 @@ async function verifyOnly() {
       class="mc-form"
     >
       <!-- 厂商预设（仅新建态，M9 卡片网格单选）：预填可改不锁死 -->
-      <section v-if="!isEdit" class="mc-sec">
-        <div class="mc-sec-title">
+      <section v-if="!isEdit" class="section-card">
+        <div class="section-title">
           厂商预设
-          <span class="mc-sec-sub">自动填充推荐地址，模型标识仍需填写</span>
+          <span class="section-sub">自动填充推荐地址，模型标识仍需填写</span>
         </div>
         <div class="mc-preset-grid">
           <button
@@ -386,8 +422,8 @@ async function verifyOnly() {
       </section>
 
       <!-- 基本信息 -->
-      <section class="mc-sec">
-        <div class="mc-sec-title">基本信息</div>
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
         <div class="mc-grid">
           <el-form-item prop="providerName">
             <template #label>
@@ -409,6 +445,17 @@ async function verifyOnly() {
             </template>
             <!-- 2026-09-01 PRD 对齐：名称上限 100 → 64（与连接器名称同口径） -->
             <el-input v-model="form.name" maxlength="64" placeholder="如 DeepSeek R1" />
+          </el-form-item>
+
+          <!-- 图标（D3）：原型 L1319-1330 在「模型名称」之后插入「图标*」，形态同连接器图标行 -->
+          <el-form-item prop="icon" label="图标" required>
+            <IconField
+              :icon="form.icon"
+              :name="form.name"
+              :readonly="props.readonly"
+              :placeholder="DEFAULT_MODEL_ICON"
+              @pick="onIconPick"
+            />
           </el-form-item>
 
           <el-form-item prop="category">
@@ -474,83 +521,87 @@ async function verifyOnly() {
       </section>
 
       <!-- 连接与鉴权（MQ4 指示：服务地址（Base URL）按原型放本区） -->
-      <section class="mc-sec">
-        <div class="mc-sec-title">
+      <section class="section-card">
+        <div class="section-title">
           连接与鉴权
-          <span class="mc-sec-sub">验证结果决定模型是否可发布</span>
+          <span class="section-sub">验证结果决定模型是否可发布</span>
         </div>
-        <el-form-item prop="baseUrl">
-          <template #label>
-            <FieldHelpLabel label="服务地址（Base URL）" :tip="TIPS.baseUrl" />
-          </template>
-          <el-input v-model="form.baseUrl" maxlength="500" placeholder="如 https://api.deepseek.com/v1" />
-        </el-form-item>
+        <!-- D5：两列栅格（原型 L245 form-grid）——Base URL 通栏 → 鉴权方式半栏 →
+             API Key 通栏 / AppID·API Key·App Secret 三格按两列排 -->
+        <div class="mc-grid">
+          <el-form-item prop="baseUrl" class="mc-span2">
+            <template #label>
+              <FieldHelpLabel label="服务地址（Base URL）" :tip="TIPS.baseUrl" />
+            </template>
+            <el-input v-model="form.baseUrl" maxlength="500" placeholder="如 https://api.deepseek.com/v1" />
+          </el-form-item>
 
-        <el-form-item prop="authType">
-          <template #label>
-            <FieldHelpLabel label="鉴权方式" :tip="TIPS.authType" />
-          </template>
-          <el-radio-group v-model="form.authType">
-            <el-radio value="API_KEY">API Key</el-radio>
-            <el-radio value="APP_ID_SECRET">AppID / AppSecret</el-radio>
-          </el-radio-group>
-        </el-form-item>
+          <el-form-item prop="authType">
+            <template #label>
+              <FieldHelpLabel label="鉴权方式" :tip="TIPS.authType" />
+            </template>
+            <el-radio-group v-model="form.authType">
+              <el-radio value="API_KEY">API Key</el-radio>
+              <el-radio value="APP_ID_SECRET">AppID / AppSecret</el-radio>
+            </el-radio-group>
+          </el-form-item>
 
-        <template v-if="form.authType === 'API_KEY'">
-          <el-form-item prop="apiKey">
-            <template #label>
-              <FieldHelpLabel label="api_key" :tip="TIPS.apiKey" />
-            </template>
-            <el-input
-              v-model="form.apiKey"
-              type="password"
-              show-password
-              autocomplete="new-password"
-              :placeholder="apiKeyMask ? '留空不修改' : '如 sk-...'"
-            />
-            <div v-if="apiKeyMask" class="cred-mask">当前：<code>{{ apiKeyMask }}</code></div>
-          </el-form-item>
-        </template>
-        <template v-else>
-          <!-- 讯飞 MaaS 等三元组平台：HTTP 侧鉴权 = Bearer APIKey:APISecret（AppID 不参与调用，仅归属标识） -->
-          <el-form-item prop="appId">
-            <template #label>
-              <FieldHelpLabel label="app_id" :tip="TIPS.appId" />
-            </template>
-            <el-input v-model="form.appId" maxlength="200" placeholder="应用归属标识（不参与 HTTP 调用）" />
-          </el-form-item>
-          <el-form-item prop="apiKey">
-            <template #label>
-              <FieldHelpLabel label="api_key" :tip="TIPS.appIdApiKey" />
-            </template>
-            <el-input
-              v-model="form.apiKey"
-              type="password"
-              show-password
-              autocomplete="new-password"
-              :placeholder="apiKeyMask ? '留空不修改' : '平台分配的 APIKey'"
-            />
-            <div v-if="apiKeyMask" class="cred-mask">当前：<code>{{ apiKeyMask }}</code></div>
-          </el-form-item>
-          <el-form-item prop="appSecret">
-            <template #label>
-              <FieldHelpLabel label="app_secret" :tip="TIPS.appSecret" />
-            </template>
-            <el-input
-              v-model="form.appSecret"
-              type="password"
-              show-password
-              autocomplete="new-password"
-              :placeholder="appSecretMask ? '留空不修改' : '平台分配的 APISecret'"
-            />
-            <div v-if="appSecretMask" class="cred-mask">当前：<code>{{ appSecretMask }}</code></div>
-          </el-form-item>
-        </template>
+          <template v-if="form.authType === 'API_KEY'">
+            <el-form-item prop="apiKey" class="mc-span2">
+              <template #label>
+                <FieldHelpLabel label="api_key" :tip="TIPS.apiKey" />
+              </template>
+              <el-input
+                v-model="form.apiKey"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                :placeholder="apiKeyMask ? '留空不修改' : '如 sk-...'"
+              />
+              <div v-if="apiKeyMask" class="cred-mask">当前：<code>{{ apiKeyMask }}</code></div>
+            </el-form-item>
+          </template>
+          <template v-else>
+            <!-- 讯飞 MaaS 等三元组平台：HTTP 侧鉴权 = Bearer APIKey:APISecret（AppID 不参与调用，仅归属标识） -->
+            <el-form-item prop="appId">
+              <template #label>
+                <FieldHelpLabel label="app_id" :tip="TIPS.appId" />
+              </template>
+              <el-input v-model="form.appId" maxlength="200" placeholder="应用归属标识（不参与 HTTP 调用）" />
+            </el-form-item>
+            <el-form-item prop="apiKey">
+              <template #label>
+                <FieldHelpLabel label="api_key" :tip="TIPS.appIdApiKey" />
+              </template>
+              <el-input
+                v-model="form.apiKey"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                :placeholder="apiKeyMask ? '留空不修改' : '平台分配的 APIKey'"
+              />
+              <div v-if="apiKeyMask" class="cred-mask">当前：<code>{{ apiKeyMask }}</code></div>
+            </el-form-item>
+            <el-form-item prop="appSecret">
+              <template #label>
+                <FieldHelpLabel label="app_secret" :tip="TIPS.appSecret" />
+              </template>
+              <el-input
+                v-model="form.appSecret"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                :placeholder="appSecretMask ? '留空不修改' : '平台分配的 APISecret'"
+              />
+              <div v-if="appSecretMask" class="cred-mask">当前：<code>{{ appSecretMask }}</code></div>
+            </el-form-item>
+          </template>
+        </div>
       </section>
 
       <!-- 能力信息：已识别能力（验证自动探测，只读）→ 额外参数（M7 顺序按原型） -->
-      <section class="mc-sec">
-        <div class="mc-sec-title">能力信息</div>
+      <section class="section-card">
+        <div class="section-title">能力信息</div>
         <el-form-item>
           <template #label>
             <FieldHelpLabel label="已识别能力" :tip="TIPS.capabilities" />
@@ -581,7 +632,7 @@ async function verifyOnly() {
     </el-form>
 
     <!-- 底部弱化时间行（仅编辑/查看态；未发布显「—」） -->
-    <div v-if="isEdit" class="mc-times">
+    <div v-if="isEdit" class="page-time mc-times">
       <span>创建时间：{{ timeRow.created }}</span>
       <span>最近更新时间：{{ timeRow.updated }}</span>
       <span>最近发布时间：{{ timeRow.published }}</span>
@@ -632,29 +683,27 @@ async function verifyOnly() {
 </template>
 
 <style scoped>
-/* ===== 分区卡片（与 McpEditor / ApiEditor 同构的 section 节奏） ===== */
+/* ===== 分区卡片（S1：.section-card / .section-title / .section-sub / .page-time 样式统一在
+   assets/admin-shell.css，本文件不重复；表单外层 .mc-form 承担卡间距） ===== */
 .mc-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
-.mc-sec-title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-2);
+/* 卡间距由上面的 gap 给，卡自带的 margin-bottom 清零，避免叠成 40。
+   admin-shell.css 的规则是 `body.admin-scope .section-card`（0,2,1），故叠一层选择器提权。 */
+.mc-form > .section-card.section-card {
+  margin-bottom: 0;
 }
-.mc-sec-sub {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
-}
-/* 基本信息两列栅格：字段短、单列排会拉得过长 */
+/* 两列栅格：基本信息 + 连接与鉴权（D5）共用；字段短、单列排会拉得过长 */
 .mc-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: var(--space-4);
+}
+/* 通栏格（原型 `.field.full`）：Base URL 与单 API Key 横跨两列 */
+.mc-span2 {
+  grid-column: 1 / -1;
 }
 
 /* ===== 厂商预设卡片网格（M9，原型 preset-grid 形态） ===== */
@@ -712,14 +761,10 @@ async function verifyOnly() {
   margin-top: var(--space-1);
 }
 
-/* 底部弱化时间行（仅编辑/查看态） */
-.mc-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+/* 底部弱化时间行（仅编辑/查看态）：样式走 admin-shell.css 的 .page-time，这里只补与上方卡的间距。
+   admin-shell.css 的规则是 `body.admin-scope .page-time`（0,2,1），故叠一个类提到 (0,3,0)。 */
+.page-time.mc-times {
   margin-top: var(--space-4);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
 }
 
 /* 已配置凭据的首尾明文掩码提示（只读，供核对配的是哪把密钥；输入框仍是「留空不修改」） */

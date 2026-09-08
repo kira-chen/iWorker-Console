@@ -14,6 +14,18 @@
  *
  * 本组件不直接调后端保存（混合保存由父级编排：debounce / 切技能 / 退聚焦 / 显式保存）；
  * 通过 v-model 把技能编辑态回吐给父级。
+ *
+ * 【2026-09-09 原型复刻批次 3C · C1/C4/C5（静态尺寸照原型 html，逻辑不动）】
+ * 原型基准 = `docs/prd/PRD-20260908/…/数字员工管理端交互原型.html` L114 的 `.skill-editor-*` 一组。
+ * - C1 三栏栏宽 282 / minmax(500px,1fr) / 384（原 240 / 1fr / 320），顶行 48→60px、
+ *   顶行按钮 26→32px；≤1280 档树/中栏同步到原型 ≤1100 档的 230 / minmax(430px,1fr)。
+ * - C4 信息区标签列 64→76px，描述框固定 86px 高，示例问题输入框 38px。
+ * - C5 图标行换 components/common/IconField.vue（预览块 + 并排【从图标库选择】【上传图标】），
+ *   不再是头像触发式 popover；链路仍是 IconPickerPopover（IconField 内部 headless 复用）。
+ * 【按 md 不改并记录】C2 只读态不展示「默认安装 / 技能分类修改」（md §三.3 明确不展示，原型展示为禁用）；
+ *   C3 提交发布后留在编辑页锁定并提示（md §三.1/§四.1，原型直接回列表）。两条均属 md↔原型冲突。
+ * 【复用方】本组件被 AdminSkillEditPage（岗位私有/市场/通用三类）、PositionDetailTabs（岗位工作台）、
+ *   ReviewSkillDetailPage（用户技能审核，reviewMode）共用——C1 栏宽/顶行改动对三处同时生效。
  */
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -22,7 +34,7 @@ import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 import CodeTextEditor from '@/components/position/CodeTextEditor.vue'
 import SkillFileTree from '@/components/position/SkillFileTree.vue'
 import ToolDock from '@/components/position/ToolDock.vue'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import IconField from '@/components/common/IconField.vue'
 import { PUBLISH_READY_TIP, publishDisabledTitle } from '@/api/unifiedSkill'
 import { useAiLiveGenerate, skillExampleQuestion } from '@/utils/aiLiveGenerate'
 import SaveStatusIndicator from '@/components/position/SaveStatusIndicator.vue'
@@ -55,7 +67,6 @@ import {
 } from '@/utils/skillTerms'
 import { estimateTokens, formatTokenEstimate } from '@/utils/tokenEstimate'
 import { isLocked as isPubLocked } from '@/utils/skillPublication'
-import { iconIsUrl } from '@/utils/iconDisplay'
 
 const props = defineProps({
   // 当前技能编辑态：{ skillId, name, triggers[], skillMd, referencedTools[], agentId }
@@ -119,7 +130,7 @@ const props = defineProps({
   /**
    * 2026-09-01 PRD 对齐：技能编辑器语境开关（仅 AdminSkillEditPage 传 true；岗位工作台 /
    * 审核详情页不传，现状表现零变化）。启用后：
-   * - 信息区首行加「图标」必填字段（IconPickerPopover 复用站内范式，疑点4 处置）；
+   * - 信息区首行加「图标」必填字段（2026-09-09 批次 3C · C5 起由 IconField 渲染显式双按钮）；
    * - 描述 2000 字计数 + 新占位（疑点6）；示例问题必填 + 新占位 +【AI 生成】按钮（疑点5）；
    * - 技能分类三类技能均显示（固定 8 类 fieldDict 同源，必选，疑点8）；
    * - 顶栏按钮改【发布】+ 完整发布门（publishReadiness）；只读态顶行加「只读查看」标记；
@@ -202,13 +213,13 @@ function onDockInsert(code, bizName) {
 // 技能编辑器语境工具坞页签收敛：MCP / API / 业务系统（岗位工作台语境不传 → 保持现状）。
 const ADMIN_TOOL_TABS = ['MCP', 'API', 'BIZ_SYSTEM']
 
-// 图标（发布必填集成员）：IconPickerPopover 回吐 { icon }，走 update:skill → 配置区手动保存链路。
+// 图标（发布必填集成员）：IconField 回吐 { icon }，走 update:skill → 配置区手动保存链路。
+// URL/emoji 的预览渲染分支已下沉进 IconField（2026-09-09 批次 3C · C5），本组件不再自绘预览块。
 const skillIcon = computed(() => props.skill?.icon || '')
 function onIconPick(payload) {
   if (ro.value) return
   if (payload && typeof payload.icon === 'string') emitPatch({ icon: payload.icon })
 }
-const iconIsUrlFlag = computed(() => iconIsUrl(skillIcon.value))
 
 // 【AI 生成】示例问题（2026-09-04 PRD-20260903 对齐：改统一 AI 实况生成机制，取代旧
 // mock 固定例句即填）：源=技能描述（空则按钮禁用 + title「请先填写技能描述」），点击进
@@ -910,20 +921,19 @@ onBeforeUnmount(() => {
       <!-- 图标（2026-09-01 疑点4：原型级实现，交互复用站内 IconPickerPopover 范式；
            2026-09-02 起该组件已按 PRD 图标统一规则升级为 5MB/方形裁剪流，本消费方零改动）。
            发布必填集成员；仅技能编辑器语境渲染（岗位工作台不变）。 -->
+      <!-- 2026-09-09 原型复刻批次 3C · C5：图标行改显式双按钮（IconField：预览块 +
+           【从图标库选择】【上传图标】，原型 `.icon-row.compact-icon-row` / L1331 decorateEditor），
+           不再是头像触发式 popover；图标库弹窗 / 上传裁剪链路仍是 IconPickerPopover（IconField 内部
+           headless 复用），只读态两按钮置灰（原型 L1326/L1336 同口径）。 -->
       <div v-if="adminContext" class="ib-field ib-icon">
         <span class="ib-l">图标<em v-if="!ro" class="ib-req">*</em></span>
-        <div class="ib-icon-row">
-          <span class="ib-icon-preview" :class="{ 'is-empty': !skillIcon }">
-            <img v-if="iconIsUrlFlag" :src="skillIcon" alt="" class="ib-icon-img" />
-            <span v-else>{{ skillIcon || '—' }}</span>
-          </span>
-          <IconPickerPopover
-            v-if="!ro"
-            :icon="skillIcon"
-            :position-name="skillName"
-            @pick="onIconPick"
-          />
-        </div>
+        <IconField
+          :icon="skillIcon"
+          :name="skillName"
+          :readonly="ro"
+          placeholder="—"
+          @pick="onIconPick"
+        />
       </div>
 
       <div class="ib-field ib-desc">
@@ -1242,10 +1252,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .focus-editor {
-  /* 抽屉宽度变量（规格 §2.2/§3）：展开 320px / 收起 44px，由 .ed-body.dock-collapsed 切换 */
-  --dock-w: 320px;
+  /* 抽屉宽度变量（规格 §2.2/§3）：展开 384px / 收起 44px，由 .ed-body.dock-collapsed 切换。
+     2026-09-09 原型复刻批次 3C · C1：320→384（原型 L114 `.skill-editor-stage` 第三栏 384px）。 */
+  --dock-w: 384px;
   width: 100%;
-  /* §12 三栏（树 240 + ToolDock 320 = 560 固定 + 中栏 1fr）；放宽上限避免中栏被挤过窄。 */
+  /* §12 三栏（树 282 + ToolDock 384 = 666 固定 + 中栏 1fr）；放宽上限避免中栏被挤过窄。 */
   max-width: min(98vw, 1640px);
   margin: 0 auto;
   height: 100%;
@@ -1277,14 +1288,16 @@ onBeforeUnmount(() => {
     transform: scale(1) translateY(0);
   }
 }
-/* 极简顶行（~48px）：导航/技能名/类别/同组/删除一行；与主区域同底融合、仅下边框 */
+/* 极简顶行（60px）：导航/技能名/类别/同组/删除一行；与主区域同底融合、仅下边框。
+   2026-09-09 原型复刻批次 3C · C1：48→60（原型 L114 `.skill-editor-top{height:60px;min-height:60px}`），
+   内边距同步为原型的 `0 24px`（高度由 min-height 撑，内容纵向居中）。 */
 .ed-topline {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 48px;
-  padding: var(--space-2) var(--space-5);
+  min-height: 60px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border-soft);
   background: var(--bg-app);
   /* 单行不换行：技能名过长省略号截断（.eh-name 已 ellipsis），左右两端 flex-shrink:0 不被挤掉 */
@@ -1321,12 +1334,14 @@ onBeforeUnmount(() => {
 }
 /* 配置区手动保存按钮（2026-08-17 R2）：常驻绿色主按钮、任何时刻可点——不随 configDirty 变色/置灰，
    有未保存配置仅在文本旁加 ● 提示（模板 label）；hover 用 accent-hover 加深（勿用 --bg-hover 覆盖绿底，
-   会出「近白底 + 白字」不可见）；仅提交中（:disabled=configSaving）降透明度防连点。 */
+   会出「近白底 + 白字」不可见）；仅提交中（:disabled=configSaving）降透明度防连点。
+   2026-09-09 原型复刻批次 3C · C1：顶行按钮 26→32px（原型 L114 `.skill-editor-top .primary{height:32px}`，
+   顶行 select 同为 32px）；三枚顶行按钮（保存配置 / 版本发布 / 试跑）同高保持一行齐平。 */
 .topline-savecfg {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  height: 26px;
+  height: 32px;
   padding: 0 12px;
   border: 1px solid var(--c-accent);
   border-radius: var(--radius-sm);
@@ -1351,7 +1366,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  height: 26px;
+  height: 32px;
   padding: 0 12px;
   margin-right: var(--space-2);
   border: 1px solid var(--c-accent);
@@ -1371,7 +1386,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  height: 26px;
+  height: 32px;
   padding: 0 10px;
   border: 1px solid var(--c-accent);
   border-radius: var(--radius-sm);
@@ -1534,11 +1549,21 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
   min-width: 0;
 }
-/* 描述（信息条上行，全宽）：多行框 → label 顶对齐首行 */
+/* 描述（信息条上行，全宽）：多行框 → label 顶对齐首行。
+   2026-09-09 原型复刻批次 3C · C4：描述框固定 86px 高（原型 L114 `.skill-desc-input{height:86px}`
+   = 3 行正文 + 右下计数留白），不随内容伸缩。 */
 .ib-desc {
   align-items: flex-start;
 }
-/* 示例问题（信息条下行，全宽，单行） */
+.ib-desc .ib-input :deep(.el-textarea__inner) {
+  height: 86px;
+  padding-bottom: 24px;
+  resize: none;
+}
+/* 示例问题（信息条下行，全宽，单行）：C4 输入框 38px（原型 `.skill-example-input{height:38px}`） */
+.ib-eq .ib-input :deep(.el-input__wrapper) {
+  height: 38px;
+}
 
 /* N3 技能分类选择器（顶栏，2026-08-18 挪至「默认安装」左邻）：「技能分类：」前置文字 + 下拉框，克制宽度 */
 .eh-cat-l {
@@ -1590,33 +1615,8 @@ onBeforeUnmount(() => {
   background: transparent;
   cursor: not-allowed;
 }
-/* 图标行：预览 + 选择入口（IconPickerPopover 自带触发器） */
-.ib-icon-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.ib-icon-preview {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  font-size: 20px;
-  overflow: hidden;
-}
-.ib-icon-preview.is-empty {
-  color: var(--c-text-faint);
-  font-size: var(--fs-sm);
-}
-.ib-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+/* 图标行（C5）：预览块 + 并排双按钮全部由 components/common/IconField.vue 渲染，
+   本组件不再自绘（原 .ib-icon-row/.ib-icon-preview/.ib-icon-img 三条已随之删除）。 */
 /* 示例问题旁【AI 生成】按钮（常规字重，紧贴输入框右侧） */
 .ib-eq-ai {
   flex-shrink: 0;
@@ -1625,10 +1625,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-/* label 固定宽左对齐 + 不换行；描述/示例问题 label 统一 64px 使左缘对齐。 */
+/* label 固定宽左对齐 + 不换行；描述/示例问题 label 统一 76px 使左缘对齐。
+   2026-09-09 原型复刻批次 3C · C4：64→76（原型 L114 `.skill-info-row{grid-template-columns:76px 1fr}`）。 */
 .ib-l {
   flex-shrink: 0;
-  width: 64px;
+  width: 76px;
   white-space: nowrap;
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
@@ -1690,9 +1691,11 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) var(--dock-w);
   transition: grid-template-columns var(--dur-base) var(--ease-out);
 }
-/* 三栏（包模式，§12）：目录树 240 / 中编辑器 1fr / ToolDock --dock-w */
+/* 三栏（包模式，§12）：目录树 282 / 中编辑器 minmax(500,1fr) / ToolDock --dock-w
+   2026-09-09 原型复刻批次 3C · C1：树 240→282、中栏补 500 最小宽（原型 L114
+   `.skill-editor-stage{grid-template-columns:282px minmax(500px,1fr) 384px}`）。 */
 .ed-body.pkg-mode {
-  grid-template-columns: 240px minmax(0, 1fr) var(--dock-w);
+  grid-template-columns: 282px minmax(500px, 1fr) var(--dock-w);
 }
 .ed-body.dock-collapsed {
   --dock-w: 44px;
@@ -2065,9 +2068,11 @@ onBeforeUnmount(() => {
  *  ≤1100px 树折叠为抽屉（树栏从 grid 移除，☰ 文件 触发）；
  *  ≤900px  四栏/三栏转单列。 */
 @media (max-width: 1280px) {
-  /* 包模式树栏收窄到 ~200px；ToolDock 前移收细条（§12 三栏：树/1fr/dock） */
+  /* 包模式树栏收窄；ToolDock 前移收细条（§12 三栏：树/1fr/dock）。
+     2026-09-09 批次 3C · C1：与原型 ≤1100 档的 230/430 同步（树 200→230、中栏最小 430），
+     dock 仍在本档就收细条（原型无本档，属代码既有窄屏保护，保留）。 */
   .ed-body.pkg-mode:not(.dock-collapsed) {
-    grid-template-columns: 200px minmax(0, 1fr) 44px;
+    grid-template-columns: 230px minmax(430px, 1fr) 44px;
   }
   .ed-body:not(.pkg-mode):not(.dock-collapsed) {
     --dock-w: 44px;

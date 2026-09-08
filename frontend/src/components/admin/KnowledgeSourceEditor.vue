@@ -19,11 +19,22 @@
  *
  * 敏感信息遮罩：明文只在提交瞬间存在，回显一律 maskSecret 掩码；编辑态留空=保留原值（md §八.2）。
  * 修改请求地址 / 鉴权 / 映射（API）或服务地址 / 鉴权 / 工具（MCP）→ 验证状态重置为未验证（md §六.4 / §七.5，mock 保存时同口径）。
+ *
+ * 【2026-09-09 原型复刻批次 3B · D1/D2/D3/D8/D11】静态形态照原型 openSourceEditor / sourceFields / kmcpMarkup：
+ *   D1 各段改 .section-card 卡壳（admin-shell.css = 原型 .proto2-form-sec + 灰底标题条）；标题右侧状态标签去掉
+ *      （原型 drawerShell 第二参为空，启停状态已在正文 radio 体现）；类型 / 状态 hint 改控件下方块级；
+ *      类型说明改 .ksrc-note 灰底圆角块（原型 .pd2-mini-note）；行式栅格 label-width 90（原型 .proto2-ref-group{90px 1fr}）。
+ *   D2 预处理首行改灰底块；Embedding select 全宽 + help 下置；检索策略 2 列网格 + 绿底阈值提示（.proto2-client-threshold）。
+ *   D3 请求配置改 .ksrc-req-grid（原型 .api-src-req-grid{160px minmax(0,1fr)}，检索地址跨列），标签顶置、help 下置。
+ *   D8 MCP 段套卡壳（原型 kmcpMarkup 的意图；L1985 该行 class 用中文弯引号致样式失效，属原型缺陷不搬）；
+ *      传输方式 radio → el-select（原型 kmcpOptions select）；Header 名 / 访问凭证同行两列；超时 help 下置。
+ *   D11 测试连接移到正文最底部裸放（不套卡）、按钮改常规尺寸、成功后文案转「重新测试」；失败态与相对时间按 md 保留。
+ * 跳过并记录：D4 鉴权区按 md 多参数表（Q56/Q57，现状即 md）；D9 检索工具保持平铺复选框（md §七.3 字面「多选复选框形式」）、
+ *   不加原型「拉取工具」按钮（清单由测试连接返回，md §七.3）。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
-import StatusTag from '@/components/StatusTag.vue'
 import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
 import SourceMappingEditor from '@/components/admin/SourceMappingEditor.vue'
 import {
@@ -36,7 +47,6 @@ import {
 import {
   SOURCE_TYPES,
   SOURCE_LABELS,
-  SOURCE_STATUS_META,
   DOC_KIND_OPTIONS,
   PREPROCESS_OPTIONS,
   RETRIEVAL_OPTIONS,
@@ -529,24 +539,18 @@ function close() {
     @retry="load"
     @save="save"
   >
-    <template #title-extra>
-      <StatusTag v-if="detail" :type="(SOURCE_STATUS_META[detail.status] || SOURCE_STATUS_META.ENABLED).type">
-        {{ (SOURCE_STATUS_META[detail.status] || SOURCE_STATUS_META.ENABLED).label }}
-      </StatusTag>
-    </template>
-
     <!-- rules 随类型 / 传输方式动态切换，关掉 validate-on-rule-change 防止切换瞬间对空表单标红 -->
-    <el-form ref="formRef" :model="form" :rules="rules" :validate-on-rule-change="false" label-width="118px" label-position="right" :disabled="viewMode">
-      <!-- 公共字段（md §四.3） -->
-      <section class="ksrc-sec">
-        <div class="ksrc-sec-title">基本信息</div>
-        <el-form-item label="类型">
+    <el-form ref="formRef" :model="form" :rules="rules" :validate-on-rule-change="false" label-width="90px" label-position="right" :disabled="viewMode">
+      <!-- 公共字段（md §四.3）；壳与行式栅格照原型 openSourceEditor：.proto2-form-sec 卡 + .proto2-ref-group{90px 1fr} -->
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
+        <el-form-item label="类型" required>
           <el-radio-group v-model="form.sourceType" :disabled="isEdit || viewMode">
             <el-radio v-for="t in SOURCE_TYPES" :key="t" :value="t">{{ SOURCE_LABELS[t] }}</el-radio>
           </el-radio-group>
-          <span class="ksrc-hint">创建后不可修改</span>
+          <div class="ksrc-help">创建后不可修改</div>
         </el-form-item>
-        <el-form-item label="数据源名称" prop="name">
+        <el-form-item label="数据源名称" prop="name" required>
           <el-input v-model="form.name" maxlength="50" show-word-limit :placeholder="form.sourceType === 'UPLOAD' ? '如 产品资料、案例集' : form.sourceType === 'API' ? '如 国标检索接口' : '如 法规库 MCP'" />
         </el-form-item>
         <el-form-item label="状态">
@@ -554,26 +558,26 @@ function close() {
             <el-radio value="ENABLED">启用</el-radio>
             <el-radio value="DISABLED">停用</el-radio>
           </el-radio-group>
-          <span class="ksrc-hint">停用后跳过检索，但保留配置和引用</span>
+          <div class="ksrc-help">停用后跳过检索，但保留配置和引用</div>
         </el-form-item>
-        <el-form-item label=" ">
-          <span class="ksrc-desc">{{ TYPE_DESC[form.sourceType] }}</span>
-        </el-form-item>
+        <!-- 类型说明：原型 .pd2-mini-note 灰底圆角块，位于卡内末尾、不带标签 -->
+        <div class="ksrc-note ksrc-type-note">{{ TYPE_DESC[form.sourceType] }}</div>
       </section>
 
-      <!-- 上传类：内置 RAG 配置（md §五.1，本轮冻结不动） -->
-      <section v-if="form.sourceType === 'UPLOAD'" class="ksrc-sec">
-        <div class="ksrc-sec-title">内置 RAG 配置</div>
+      <!-- 上传类：内置 RAG 配置（md §五.1；壳与排布照原型 sourceFields('上传')） -->
+      <section v-if="form.sourceType === 'UPLOAD'" class="section-card">
+        <div class="section-title">内置 RAG 配置</div>
         <el-form-item label="文档类型">
           <el-radio-group v-model="form.docKind">
             <el-radio v-for="o in DOC_KIND_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
           </el-radio-group>
-          <span class="ksrc-hint">拆分方式由系统内置方案自动处理</span>
+          <div class="ksrc-help">拆分方式由系统内置方案自动处理</div>
         </el-form-item>
         <!-- 预处理项按文档类型动态展示（md §五.1） -->
         <el-form-item label="文本预处理">
           <div class="ksrc-pre">
-            <div class="ksrc-pre-tip">系统已默认删除目录、页眉页脚、水印</div>
+            <!-- 原型 .pd2-mini-note 灰底圆角块 -->
+            <div class="ksrc-note">系统已默认删除目录、页眉页脚、水印</div>
             <div v-for="o in preprocessVisible" :key="o.key" class="ksrc-pre-item">
               <el-checkbox v-model="form[o.key]">
                 <span class="ksrc-pre-name">{{ o.label }}</span>
@@ -582,17 +586,17 @@ function close() {
             </div>
           </div>
         </el-form-item>
+        <!-- 原型：Embedding select 全宽 + help 下置 -->
         <el-form-item label="向量模型">
-          <div class="ksrc-row">
-            <el-select v-model="form.embeddingModelId" placeholder="选择 Embedding 模型" class="ksrc-half">
-              <el-option v-for="m in embeddingModels" :key="m.id" :label="m.name" :value="m.id" />
-            </el-select>
-            <span class="ksrc-hint">更换后需全量重建索引</span>
-          </div>
+          <el-select v-model="form.embeddingModelId" placeholder="选择 Embedding 模型" class="ksrc-full">
+            <el-option v-for="m in embeddingModels" :key="m.id" :label="m.name" :value="m.id" />
+          </el-select>
+          <div class="ksrc-help">更换后需全量重建索引</div>
         </el-form-item>
+        <!-- 原型：检索策略 = .proto2-form-grid 2 列 [select | Top-K 内联] + 绿底阈值提示框 -->
         <el-form-item label="检索方式">
-          <div class="ksrc-row">
-            <el-select v-model="form.retrieval" class="ksrc-half">
+          <div class="ksrc-grid2">
+            <el-select v-model="form.retrieval">
               <el-option v-for="o in RETRIEVAL_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
             </el-select>
             <div class="ksrc-inline">
@@ -600,35 +604,35 @@ function close() {
               <el-input-number v-model="form.topK" :min="1" :max="20" controls-position="right" />
             </div>
           </div>
-        </el-form-item>
-        <el-form-item label=" ">
-          <div class="ksrc-note">检索阈值不在管理端设置，由客户端每次发起检索时提供。</div>
+          <div class="ksrc-threshold">检索阈值不在管理端设置，由客户端每次发起检索时提供。</div>
         </el-form-item>
       </section>
 
       <!-- API 类（md §六；骨架照原型 sourceFields('API')：请求配置 → 鉴权配置 → 两张映射卡片） -->
       <template v-else-if="form.sourceType === 'API'">
-        <section class="ksrc-sec">
-          <div class="ksrc-sec-title">请求配置</div>
-          <el-form-item label="请求方法" required>
-            <el-select v-model="form.api.method" class="ksrc-half">
-              <el-option v-for="m in API_METHOD_OPTIONS" :key="m" :label="m" :value="m" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="请求地址" prop="api.url" required>
-            <el-input v-model="form.api.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
-          </el-form-item>
-          <el-form-item label="超时时间" required>
-            <div class="ksrc-inline">
-              <el-input-number v-model="form.api.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" />
-              <span class="ksrc-unit">单位毫秒，默认 8000，范围 1000～60000</span>
-            </div>
-          </el-form-item>
+        <!-- 请求配置：照原型 .api-src-req-grid{grid-template-columns:160px minmax(0,1fr)}，
+             第 1 格请求方式、地址 .api-src-full 跨列、超时回到左格（标签顶置、help 下置） -->
+        <section class="section-card">
+          <div class="section-title">请求配置</div>
+          <div class="ksrc-req-grid">
+            <el-form-item label="请求方式" required>
+              <el-select v-model="form.api.method" class="ksrc-full">
+                <el-option v-for="m in API_METHOD_OPTIONS" :key="m" :label="m" :value="m" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="检索地址" prop="api.url" class="ksrc-req-full" required>
+              <el-input v-model="form.api.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
+            </el-form-item>
+            <el-form-item label="超时时间" required>
+              <el-input-number v-model="form.api.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" class="ksrc-full" />
+              <div class="ksrc-help">单位毫秒，默认 8000，范围 1000～60000</div>
+            </el-form-item>
+          </div>
         </section>
-        <section class="ksrc-sec">
-          <div class="ksrc-sec-title">
+        <section class="section-card">
+          <div class="section-title">
             鉴权配置
-            <span class="ksrc-sec-sub">凭证会静态附加到每次请求</span>
+            <span class="section-sub">凭证会静态附加到每次请求</span>
           </div>
           <el-form-item label="鉴权方式" required>
             <el-radio-group v-model="form.api.authType">
@@ -670,7 +674,8 @@ function close() {
             <div v-if="keepApiBearer" class="ksrc-masked">当前：<code>{{ apiBearerMasked }}</code>（留空保持不变，重填覆盖）</div>
           </el-form-item>
         </section>
-        <section class="ksrc-sec">
+        <!-- 映射两卡（SourceMappingEditor 自带 .kmcp-card 卡壳，原型此处也不套 .proto2-form-sec） -->
+        <section class="ksrc-plain-sec">
           <SourceMappingEditor
             :request-rows="apiRequestRows"
             :response-rows="apiResponseRows"
@@ -686,17 +691,20 @@ function close() {
 
       <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态 L1985：连接与鉴权卡 → 检索工具卡 → 测试提示；无映射卡） -->
       <template v-else>
-        <section class="ksrc-sec">
-          <div class="ksrc-sec-title">MCP 检索</div>
+        <!-- 外壳照原型 kmcpMarkup 的**意图**：.proto2-form-sec 卡 +「MCP 检索」灰底标题条。
+             原型 L1985 该行 class 用了中文弯引号导致壳与标题条样式失效，属原型缺陷，不搬。 -->
+        <section class="section-card">
+          <div class="section-title">MCP 检索</div>
           <div class="ksrc-card">
             <div class="ksrc-card-title">
               <strong>连接与鉴权</strong>
               <span>直接配置 MCP 服务连接信息</span>
             </div>
+            <!-- 传输方式：原型为 select（kmcpOptions），非 radio -->
             <el-form-item label="传输方式" required>
-              <el-radio-group v-model="form.mcp.transport">
-                <el-radio v-for="t in TRANSPORT_OPTIONS" :key="t" :value="t">{{ t }}</el-radio>
-              </el-radio-group>
+              <el-select v-model="form.mcp.transport" class="ksrc-half">
+                <el-option v-for="t in TRANSPORT_OPTIONS" :key="t" :label="t" :value="t" />
+              </el-select>
             </el-form-item>
             <template v-if="form.mcp.transport === 'streamable-http'">
               <el-form-item label="MCP 服务地址" prop="mcp.endpoint" required>
@@ -721,29 +729,32 @@ function close() {
                 </el-input>
                 <div v-if="keepMcpCredential" class="ksrc-masked">当前：<code>{{ mcpCredentialMasked }}</code>（留空保持不变，重填覆盖）</div>
               </el-form-item>
+              <!-- 原型：Header 名称 / API Key 同行两列（.kmcp-grid 2 列） -->
               <template v-if="form.mcp.authType === 'header'">
-                <el-form-item label="Header 名" :error="fieldErrors.mcpHeaderName" required>
-                  <el-input
-                    v-model="form.mcp.authHeaderName"
-                    maxlength="128"
-                    class="ksrc-half"
-                    placeholder="如 X-Api-Key"
-                    @input="delete fieldErrors.mcpHeaderName"
-                  />
-                  <span class="ksrc-hint">仅允许字母、数字和连字符</span>
-                </el-form-item>
-                <el-form-item label="访问凭证" :error="fieldErrors.mcpCredential" required>
-                  <el-input
-                    v-model="mcpCredential"
-                    type="password"
-                    show-password
-                    autocomplete="new-password"
-                    class="ksrc-half"
-                    :placeholder="keepMcpCredential ? '已配置（留空保持不变）' : '请输入访问凭证'"
-                    @input="delete fieldErrors.mcpCredential"
-                  />
-                  <div v-if="keepMcpCredential" class="ksrc-masked">当前：<code>{{ mcpCredentialMasked }}</code>（留空保持不变，重填覆盖）</div>
-                </el-form-item>
+                <div class="ksrc-grid2 ksrc-grid2--items">
+                  <el-form-item label="Header 名" :error="fieldErrors.mcpHeaderName" required>
+                    <el-input
+                      v-model="form.mcp.authHeaderName"
+                      maxlength="128"
+                      class="ksrc-full"
+                      placeholder="如 X-Api-Key"
+                      @input="delete fieldErrors.mcpHeaderName"
+                    />
+                    <div class="ksrc-help">仅允许字母、数字和连字符</div>
+                  </el-form-item>
+                  <el-form-item label="访问凭证" :error="fieldErrors.mcpCredential" required>
+                    <el-input
+                      v-model="mcpCredential"
+                      type="password"
+                      show-password
+                      autocomplete="new-password"
+                      class="ksrc-full"
+                      :placeholder="keepMcpCredential ? '已配置（留空保持不变）' : '请输入访问凭证'"
+                      @input="delete fieldErrors.mcpCredential"
+                    />
+                    <div v-if="keepMcpCredential" class="ksrc-masked">当前：<code>{{ mcpCredentialMasked }}</code>（留空保持不变，重填覆盖）</div>
+                  </el-form-item>
+                </div>
               </template>
             </template>
             <template v-else>
@@ -754,7 +765,7 @@ function close() {
               </el-form-item>
               <el-form-item label="Arguments">
                 <el-input v-model="mcpArgsText" type="textarea" :rows="3" :placeholder="ARGS_PLACEHOLDER" />
-                <span class="ksrc-hint-block">选填，每行一个参数</span>
+                <div class="ksrc-help">选填，每行一个参数</div>
               </el-form-item>
               <div class="ksrc-sub">
                 环境变量
@@ -774,11 +785,10 @@ function close() {
               />
               <div v-if="fieldErrors.mcpEnv" class="ksrc-err">{{ fieldErrors.mcpEnv }}</div>
             </template>
+            <!-- 原型 .kmcp-grid 单独一格 + help 下置 -->
             <el-form-item label="超时时间" required>
-              <div class="ksrc-inline">
-                <el-input-number v-model="form.mcp.timeoutMs" :min="1000" :max="120000" :step="1000" controls-position="right" />
-                <span class="ksrc-unit">单位毫秒，默认 10000，范围 1000～120000</span>
-              </div>
+              <el-input-number v-model="form.mcp.timeoutMs" :min="1000" :max="120000" :step="1000" controls-position="right" class="ksrc-half" />
+              <div class="ksrc-help">单位毫秒，默认 10000，范围 1000～120000</div>
             </el-form-item>
           </div>
 
@@ -792,7 +802,7 @@ function close() {
               <el-checkbox-group v-model="mcpToolsSelected" @change="delete fieldErrors.mcpTools">
                 <el-checkbox v-for="t in availableTools" :key="t" :value="t">{{ t }}</el-checkbox>
               </el-checkbox-group>
-              <div class="ksrc-hint-block">至少选择一个检索工具</div>
+              <div class="ksrc-help">至少选择一个检索工具</div>
             </template>
             <div v-else class="ksrc-note">请先完成连接测试以获取工具列表</div>
             <div v-if="fieldErrors.mcpTools" class="ksrc-err">{{ fieldErrors.mcpTools }}</div>
@@ -803,43 +813,101 @@ function close() {
         </section>
       </template>
 
-      <!-- 测试连接（API / MCP 共用，md §六.4 / §七.5） -->
-      <section v-if="form.sourceType !== 'UPLOAD'" class="ksrc-sec">
-        <div class="ksrc-row ksrc-inline">
-          <el-button size="small" :loading="testing" @click="doTest">测试连接</el-button>
-          <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
-          <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
-        </div>
+      <!-- 测试连接（API / MCP 共用，md §六.4 / §七.5）。
+           位置照原型 openSourceEditor：#sourceDynamicFields 之后、正文最底部裸放，不套卡；
+           按钮常规尺寸；测试成功后文案转「重新测试」（原型 test-source）。失败态与相对时间按 md 保留。 -->
+      <section v-if="form.sourceType !== 'UPLOAD'" class="ksrc-test">
+        <el-button :loading="testing" @click="doTest">{{ verify?.verifyStatus === 'SUCCESS' ? '重新测试' : '测试连接' }}</el-button>
+        <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
+        <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
       </section>
     </el-form>
   </DrawerEditor>
 </template>
 
 <style scoped>
-.ksrc-sec {
+/* 分区卡壳走 assets/admin-shell.css 的 .section-card / .section-title / .section-sub
+ * （= 原型 .proto2-form-sec + .proto2-form-title 灰底标题条 + <small> 副注）。
+ * 卡与卡的间距由 DrawerEditor 的 .de-body gap 给；卡内行式栅格照 .proto2-ref-group{90px 1fr}（label-width 90px）。 */
+.section-card :deep(.el-form-item) {
+  margin-bottom: 15px;
+}
+.section-card :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+.section-card :deep(.el-form-item__label) {
+  color: var(--c-text);
+}
+/* 卡内嵌套卡（连接与鉴权 / 检索工具）的标签比基本信息长（MCP 服务地址 / Bearer Token），回到 118px 档不折行。
+ * EP 把 label-width 写成 label 的行内 style.width，故此处需 !important 覆盖（不是全局改档，只作用于本组件的 .ksrc-card）。 */
+.ksrc-card :deep(.el-form-item__label) {
+  width: 118px !important;
+}
+/* 映射两卡外层不套 .section-card（SourceMappingEditor 自带 .kmcp-card） */
+.ksrc-plain-sec {
   display: flex;
   flex-direction: column;
 }
-.ksrc-sec + .ksrc-sec {
-  margin-top: var(--space-5);
+/* 请求配置网格（原型 .api-src-req-grid{160px minmax(0,1fr)}，标签顶置） */
+.ksrc-req-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
 }
-.ksrc-sec-title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-3);
+.ksrc-req-full {
+  grid-column: 1 / -1;
 }
-.ksrc-sec-sub {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
-}
-.ksrc-sec :deep(.el-form-item) {
-  margin-bottom: var(--space-4);
-}
-.ksrc-sec :deep(.el-form-item:last-child) {
+.ksrc-req-grid :deep(.el-form-item) {
   margin-bottom: 0;
+  display: block;
+}
+.ksrc-req-grid :deep(.el-form-item__label) {
+  display: block;
+  width: auto !important; /* EP 把 label-width 写成行内 style.width，顶置标签需覆盖 */
+  margin-bottom: 7px;
+  padding: 0;
+  text-align: left;
+  line-height: 1.4;
+}
+@media (max-width: 1000px) {
+  .ksrc-req-grid {
+    grid-template-columns: 1fr;
+  }
+  .ksrc-req-full {
+    grid-column: auto;
+  }
+}
+/* 两列网格（原型 .proto2-form-grid / .kmcp-grid） */
+.ksrc-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.ksrc-grid2--items :deep(.el-form-item) {
+  margin-bottom: 0;
+  display: block;
+}
+.ksrc-grid2--items :deep(.el-form-item__label) {
+  display: block;
+  width: auto !important; /* EP 把 label-width 写成行内 style.width，顶置标签需覆盖 */
+  margin-bottom: 7px;
+  padding: 0;
+  text-align: left;
+  line-height: 1.4;
+}
+@media (max-width: 1000px) {
+  .ksrc-grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+/* 测试连接：抽屉正文最底部裸放（原型不套卡），按钮 + 同行提示 */
+.ksrc-test {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 /* 卡片骨架照原型 kmcp-card：细边框圆角卡 + 「标题 + 弱色副注」行 */
 .ksrc-card {
@@ -869,15 +937,11 @@ function close() {
   gap: var(--space-4);
   flex-wrap: wrap;
 }
-.ksrc-row {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-  align-items: center;
-  flex-wrap: wrap;
-}
 .ksrc-half {
   width: calc(50% - 5px);
+}
+.ksrc-full {
+  width: 100%;
 }
 .ksrc-inline {
   display: flex;
@@ -896,24 +960,38 @@ function close() {
 .ksrc-hint {
   margin-left: var(--space-2);
 }
-.ksrc-hint-block {
+/* 控件下方 help（原型 .proto2-help{margin-top:6px;font-size:12px;line-height:1.5} / .kmcp-help） */
+.ksrc-help {
   width: 100%;
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-top: var(--space-1);
-}
-.ksrc-desc {
-  font-size: var(--fs-xs);
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--c-text-muted);
 }
+/* 阈值提示（原型 .proto2-client-threshold 绿底圆角块） */
+.ksrc-threshold {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: var(--c-accent-fill);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-text-muted);
+}
+/* 灰底说明块（原型 .pd2-mini-note{padding:11px 13px;border-radius:7px;background:#f3f7f5;font-size:12px;line-height:1.6}） */
 .ksrc-note {
   width: 100%;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  background: var(--c-bg-subtle, var(--c-fill-soft, rgba(0, 0, 0, 0.03)));
-  font-size: var(--fs-xs);
+  padding: 11px 13px;
+  border-radius: 7px;
+  background: var(--bg-sunken);
+  font-size: 12px;
   color: var(--c-text-muted);
-  line-height: 1.55;
+  line-height: 1.6;
+}
+/* 基本信息卡末尾的类型说明块（原型 .pd2-mini-note 在 .proto2-form-body 内最后一项） */
+.ksrc-type-note {
+  margin-top: 15px;
 }
 .ksrc-test-note {
   margin-top: var(--space-3);
@@ -949,16 +1027,15 @@ function close() {
   font-size: var(--fs-xs);
   color: var(--c-danger);
 }
+/* 预处理块：灰底说明 + 复选项列表（原型 .pd2-mini-note + .proto2-pre-list{gap:10px;margin-top:12px}） */
 .ksrc-pre {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 10px;
 }
-.ksrc-pre-tip {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-bottom: var(--space-1);
+.ksrc-pre > .ksrc-note {
+  margin-bottom: 2px;
 }
 .ksrc-pre-item :deep(.el-checkbox) {
   height: auto;

@@ -66,11 +66,20 @@ vi.mock('@/components/position/SkillMilkdownEditor.vue', () => ({
     name: 'SkillMilkdownEditor',
     props: ['modelValue', 'height', 'readonly', 'placeholder'],
     emits: ['update:modelValue'],
-    template: '<textarea class="soul-mde" :readonly="readonly" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+    // data-height 供 E2③「编辑器高度 282」断言（真组件同名 height prop）
+    template: '<textarea class="soul-mde" :data-height="height" :readonly="readonly" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   }
 }))
 vi.mock('@/components/StatusTag.vue', () => ({
   default: { name: 'StatusTag', props: ['type'], template: '<span class="status-tag"><slot /></span>' }
+}))
+// E4（2026-09-09 原型复刻批次 3C）：【检索测试】就地叠弹窗，不再收抽屉跳路由
+vi.mock('@/components/admin/KnowledgeSearchDialog.vue', () => ({
+  default: {
+    name: 'KnowledgeSearchDialog',
+    props: ['visible', 'kb'],
+    template: '<div class="stub-kb-search" :data-visible="String(visible)" :data-kb="kb?.id || \'\'" />'
+  }
 }))
 
 const ExpertEditor = (await import('@/components/admin/ExpertEditor.vue')).default
@@ -81,6 +90,7 @@ const elDrawer = {
   name: 'el-drawer',
   props: ['modelValue', 'title'],
   template: '<div class="el-drawer" v-if="modelValue"><div class="dr-title"><slot name="header">{{ title }}</slot></div><slot /><div class="dr-footer"><slot name="footer" /></div></div>'
+  // 注：DrawerEditor 的 #extra 插槽内容（检索测试弹窗）由默认插槽透传，此桩的 <slot /> 已覆盖
 }
 const elInput = {
   name: 'el-input',
@@ -367,10 +377,48 @@ describe('ExpertEditor — 背景色（2026-09-04 新增必填字段）', () => 
   })
 })
 
+describe('ExpertEditor — 原型复刻批次 3C（2026-09-09）· E1/E2 抽屉内部形态', () => {
+  it('E1：四个分区平铺改为 .section-card 分区卡，且「专家帮你做」并入基本信息卡内作子分区（不再是独立卡）', async () => {
+    await mount({ expertId: 201 })
+    // 编辑态卡：基本信息 / 市场技能引用 / 知识库（「专家帮你做」已并入第一张卡）
+    const cards = [...container.querySelectorAll('.section-card')]
+    const cardTitles = cards.map((c) => c.querySelector(':scope > .section-title')?.textContent.trim().split(/\s+/)[0])
+    expect(cardTitles).toEqual(['基本信息', '市场技能引用', '知识库'])
+    // 「专家帮你做」在基本信息卡内的子分区里，不再自成一卡
+    const sub = container.querySelector('.ee-basic-subsection')
+    expect(sub).toBeTruthy()
+    expect(sub.textContent).toContain('专家帮你做')
+    expect(cards[0].contains(sub)).toBe(true)
+  })
+
+  it('E1：只读查看态三段同样卡片化（基本信息 / 专家帮你做 / 市场技能引用）', async () => {
+    await mount({ expertId: 201, readonly: true })
+    const titles = [...container.querySelectorAll('.section-card > .section-title')].map((t) =>
+      t.textContent.trim().split(/\s+/)[0]
+    )
+    expect(titles).toEqual(['基本信息', '专家帮你做', '市场技能引用'])
+  })
+
+  it('E2/C5：图标行是显式双按钮（IconField：预览块 +【从图标库选择】【上传图标】），不再是头像触发式 popover', async () => {
+    await mount({ expertId: 201 })
+    const row = container.querySelector('.ee-icon-wrap .icon-row')
+    expect(row, '图标行应由 components/common/IconField.vue 渲染').toBeTruthy()
+    expect(row.querySelector('[data-testid="icon-preview"]')).toBeTruthy()
+    const labels = [...row.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+    expect(labels).toEqual(['从图标库选择', '上传图标'])
+  })
+
+  it('E2③：职责描述编辑器高度 282px（原型 L675 工具栏 52 + 文本域 min-height 230）', async () => {
+    await mount({ expertId: 201 })
+    expect(container.querySelector('.soul-mde').dataset.height).toBe('282px')
+  })
+})
+
 describe('ExpertEditor — 示例问题校验收紧（2026-09-04）', () => {
   it('区块标题带必填红星', async () => {
     await mount({ expertId: null })
-    const heads = [...container.querySelectorAll('.ee-sec-head')]
+    // 2026-09-09 原型复刻批次 3C · E1：区标题类名由 .ee-sec-head 换成共享层 .section-title（分区卡片化）
+    const heads = [...container.querySelectorAll('.section-title')]
     const qHead = heads.find((h) => h.textContent.includes('专家帮你做'))
     expect(qHead.querySelector('.ee-req')).toBeTruthy()
     expect(qHead.querySelector('.ee-req').textContent).toBe('*')
@@ -452,6 +500,21 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
       name: 'AdminKnowledgeBase',
       query: { tab: 'kb', action: 'view', kbId: 'kb_1' }
     })
+  })
+
+  it('E4：「检索测试」不收抽屉、不跳路由——就地在专家抽屉上层打开检索测试弹窗（2026-09-09 原型复刻批次 3C，原型 L4175 openSearch 不 closeDrawer）', async () => {
+    await mount({ expertId: 201 })
+    expect(container.querySelector('.stub-kb-search').dataset.visible).toBe('false')
+    const [, test] = [...kbRows()[0].querySelectorAll('.el-button')]
+    test.click()
+    await flush(2)
+    // 抽屉不收（不 emit update:visible false）、不发路由跳转
+    expect(visibleSpy).not.toHaveBeenCalled()
+    expect(routerPush).not.toHaveBeenCalled()
+    // 弹窗就地打开并带上该行知识库
+    const dlg = container.querySelector('.stub-kb-search')
+    expect(dlg.dataset.visible).toBe('true')
+    expect(dlg.dataset.kb).toBe('kb_1')
   })
 
   it('新建态：无专属映射 → 仅企业级可见（2 行、无展开钮）；只读查看态不渲染本区块', async () => {

@@ -16,6 +16,17 @@
  *
  * 岗位白板等既有调用方（不传 typeOptions）行为保持改造前一致：无类型区/无分类列、单包成功仍走
  * created 直达编辑器、createFn(name) 旧签名。
+ *
+ * 【2026-09-09 原型复刻批次 3C · B1/B3（静态布局照原型 html，逻辑不动）】
+ * - B1 弹窗宽 480→520（原型 `.modal.wide{width:min(520px,100vw-32px)}` L110）；拖拽区最小高
+ *   140→148（原型 `.zip-drop-proto` L111）；已选包时拖拽区转 accent 边 + 浅底
+ *  （原型 `.zip-drop-proto.has-files` L1389）。
+ * - B3 技能包行改两列栅格 `minmax(0,1fr) 190px`、padding 12/14、圆角 8、行距 10
+ *  （原型 `.skill-package-row` L1389）；分类下拉由 132px 加宽到占满 190px 列。
+ *   ✕ 删除与逐包导入状态字是代码超集（原型行内只有包名 + 分类），保留在右列内，md 未禁止。
+ * - B2【按 md 不改并记录】未选技能类型时的可操作性：原型 L1408 允许先传包再点击拦截报红字；
+ *   md §三.2 明确「未选择类型、分类或未填写创建内容时不可提交」→ 保持代码现有的
+ *   上传区 + 确认按钮 typeMissing 禁用，不照搬原型的点击拦截。差异属 md↔原型冲突，已入清单。
  */
 import { ref, watch, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -229,7 +240,8 @@ async function confirmCreate() {
   <el-dialog
     :model-value="modelValue"
     :title="title"
-    width="480px"
+    class="skill-create-dialog"
+    width="520px"
     append-to-body
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -246,9 +258,12 @@ async function confirmCreate() {
 
     <!-- 主交互：zip 大拖拽区（多包批量：multiple 可多选/多次追加；列表自管） -->
     <template v-if="createMode === 'zip'">
+      <!-- B1（2026-09-09 原型复刻批次 3C）：拖拽区最小高 148（原型 `.zip-drop-proto` L111），
+           已选包时整块转 accent 边/浅底（原型 L1389 `.zip-drop-proto.has-files`）。 -->
       <el-upload
         ref="zipUploadRef"
         class="zip-drop"
+        :class="{ 'has-files': zipItems.length > 0 }"
         drag
         multiple
         :auto-upload="false"
@@ -271,28 +286,31 @@ async function confirmCreate() {
           class="zip-item"
           :class="{ 'is-error': item.status === 'error' }"
         >
+          <!-- B3：两列栅格（包名 | 190px 分类区），照原型 `.skill-package-row` -->
           <div class="zip-item-main">
             <span class="zip-item-name" :title="item.name">{{ item.name }}</span>
-            <el-select
-              v-if="showCategorySelect"
-              v-model="item.categoryId"
-              class="zip-item-cat"
-              size="small"
-              placeholder="请选择技能分类"
-              clearable
-              :disabled="zipImporting"
-            >
-              <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-            <span v-if="item.status === 'importing'" class="zip-item-state">导入中…</span>
-            <span v-else-if="item.status === 'done'" class="zip-item-state is-ok">已导入</span>
-            <button
-              type="button"
-              class="zip-item-del"
-              :disabled="zipImporting"
-              aria-label="移除该包"
-              @click="removeZipItem(item.key)"
-            >✕</button>
+            <span class="zip-item-right">
+              <el-select
+                v-if="showCategorySelect"
+                v-model="item.categoryId"
+                class="zip-item-cat"
+                size="small"
+                placeholder="请选择技能分类"
+                clearable
+                :disabled="zipImporting"
+              >
+                <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
+              </el-select>
+              <span v-if="item.status === 'importing'" class="zip-item-state">导入中…</span>
+              <span v-else-if="item.status === 'done'" class="zip-item-state is-ok">已导入</span>
+              <button
+                type="button"
+                class="zip-item-del"
+                :disabled="zipImporting"
+                aria-label="移除该包"
+                @click="removeZipItem(item.key)"
+              >✕</button>
+            </span>
           </div>
           <div v-if="item.error" class="zip-item-err">{{ item.error }}</div>
         </div>
@@ -406,13 +424,18 @@ async function confirmCreate() {
 .create-cat {
   width: 100%;
 }
-/* zip 大拖拽区为主：拔高拖拽区 ~140px、大图标，居中 */
+/* zip 大拖拽区为主：拔高拖拽区 148px（原型 `.zip-drop-proto{min-height:148px}`）、大图标，居中 */
 .zip-drop :deep(.el-upload-dragger) {
-  min-height: 140px;
+  min-height: 148px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+/* 已选包态：accent 边 + 浅底（原型 `.skill-create .zip-drop-proto.has-files`） */
+.zip-drop.has-files :deep(.el-upload-dragger) {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 .zip-up-icon {
   font-size: 48px;
@@ -457,42 +480,60 @@ async function confirmCreate() {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
 }
-/* 待导入列表：包名弹性收缩省略，分类下拉/状态/删除靠右 */
+/* 待导入列表：包名弹性收缩省略，分类下拉/状态/删除靠右。
+ * B3（2026-09-09 原型复刻批次 3C）：行距/内边距/圆角照原型 L1389 `.skill-package-list` + `.skill-package-row`
+ *（gap 10、padding 12 14、radius 8、底色 #fafbfa）；行内两列（包名 | 190px 分类区）。
+ * ✕ 删除与逐包状态字是代码超集（原型只有包名 + 分类），保留在第二列内，md 未禁止。 */
 .zip-list {
-  margin-top: var(--space-3);
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 10px;
   max-height: 220px;
   overflow-y: auto;
 }
 .zip-item {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
   background: var(--bg-sunken, transparent);
 }
 .zip-item.is-error {
   border-color: var(--c-danger);
 }
+/* 两列栅格（原型 `.skill-package-row{grid-template-columns:minmax(0,1fr) 190px;gap:14px}`）：
+   左=包名，右=分类下拉 + 状态字 + ✕（后两者为代码超集，随分类同列右对齐） */
 .zip-item-main {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
   align-items: center;
-  gap: var(--space-2);
+  gap: 14px;
 }
 .zip-item-name {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-sm);
-  color: var(--c-text);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-strong);
 }
-/* 每包独立必选分类：占位「请选择技能分类」6 汉字 + 箭头 ≈ 132px */
+/* 每包独立必选分类：占满右列（原型 `.skill-package-row .select{width:100%}` = 190px 列宽） */
 .zip-item-cat {
-  flex-shrink: 0;
-  width: 132px;
+  min-width: 0;
+  width: 100%;
+}
+/* 右列容器：分类下拉占满，状态字/删除键跟在其后（超集） */
+.zip-item-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+@media (max-width: 620px) {
+  .zip-item-main {
+    grid-template-columns: 1fr;
+  }
 }
 .zip-item-state {
   flex-shrink: 0;

@@ -16,11 +16,20 @@
  * Bearer 分支文案（Token/只填 Token 本体）、抽屉末尾示例问题区（固定 3 条 + AI 生成走
  * useAiLiveGenerate + connectorQuestionSet）、工具卡 title 随拉取透传。示例问题区标「必填」
  * 但新原型 validateMcpEditor 覆写未强校验非空——按原型行为不拦保存（PRD 内部差异待裁决）。
+ *
+ * 2026-09-09 原型复刻批次 3A（S1 / S3 / M4 / M5 / M6）：
+ * - S1 各分区换 `.section-card`（灰底抽屉 + 白卡，样式在 assets/admin-shell.css，本文件不重复写卡样式）；
+ * - S3 图标行换 IconField（预览块 + 并排【从图标库选择】【上传图标】，原型 `.icon-row.compact-icon-row`）；
+ * - M4 示例问题并入「基本信息」卡作卡内子分区（原型 L1137-1147 MutationObserver 的最终态，
+ *   `.connector-basic-subsection`：上边线分隔 + 17px 标题）；
+ * - M5 stdio Env 照原型 `.mcp-env-title` 一行（左 Env label + hint / 右【＋ 添加变量】）+
+ *   表头「变量名 / 描述（客户端可见）/ 填写方式 / 平台值」+ 行卡片 + 空态「暂无环境变量」；
+ * - M6 测试连接结果改原型 `.result` 单行提示框（成功绿 / 失败红），文案照原型逐字。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { ElMessage } from 'element-plus'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import IconField from '@/components/common/IconField.vue'
 import {
   createMcp,
   updateMcp,
@@ -38,7 +47,7 @@ import { MCP_AUTH_CONFIG_ENABLED } from '@/utils/featureFlags'
 import { schemaToRows } from '@/utils/schema'
 import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
-import { iconIsUrl } from '@/utils/iconDisplay'
+
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -94,6 +103,8 @@ const authConfigured = computed(
 // 行列表 = 完整期望集（提交后端按 KEY merge，缺 KEY=删除）；value 永不回显（留空=保留旧密文）。
 // 行编辑交互收口在公共组件 ParamRowsEditor（API KEY 鉴权同款，B.3 抽象）。
 const envRows = ref([])
+// Env 行编辑器实例：M5 把【＋ 添加变量】摆到 `.mcp-env-title` 右侧后，由此直调组件的 addRow
+const envEditor = ref(null)
 // Command 纯下拉（拍板）：存量非枚举值（如绝对路径）动态追加为选项回显，不丢数据可正常保存。
 const commandOptions = computed(() => {
   const c = (form.command || '').trim()
@@ -137,17 +148,29 @@ const fetching = ref(false)
 const testResult = ref(null)
 // 连接态三态标签（契约 §1.3）
 const connTag = computed(() => connMeta(conn.connStatus))
+/**
+ * 测试连接结果单行文案（M6，原型 L194 `.result`）：
+ *   成功「握手成功 · 协议 2025-03-26 · Server 1.4.2 · 延迟 86 ms」——缺项自动省略该段；
+ *   失败「连接失败 · 请检查接入方式、地址或鉴权配置」——后端有脱敏 failReason 时接在其后。
+ */
+const testResultText = computed(() => {
+  const r = testResult.value
+  if (!r) return ''
+  if (r.ok) {
+    const parts = ['握手成功']
+    if (r.protocolVersion) parts.push(`协议 ${r.protocolVersion}`)
+    if (r.serverVersion) parts.push(`Server ${r.serverVersion}`)
+    if (r.latencyMs != null) parts.push(`延迟 ${r.latencyMs} ms`)
+    return parts.join(' · ')
+  }
+  const base = '连接失败 · 请检查接入方式、地址或鉴权配置'
+  return r.failReason ? `${base}（${r.failReason}）` : base
+})
 
 function clearErrors() {
   Object.keys(fieldErrors).forEach((k) => delete fieldErrors[k])
 }
-/**
- * 图标是否为图片 URL（V97）。判别口径与岗位头像一致（契约 §2.3）：
- * 以 /api/public/icons/ 开头 = 上传的图片（<img> 直接 GET，免 token）；否则按 emoji 字符渲染。
- */
-const iconIsUrlFlag = computed(() => iconIsUrl(form.icon))
-
-/** IconPickerPopover 回吐 { icon, iconSource }；此处只取 icon（MCP 不需要来源标记）。 */
+/** IconField（内部仍是 IconPickerPopover 的链路）回吐 { icon, iconSource }；此处只取 icon。 */
 function onIconPick(payload) {
   if (payload && typeof payload.icon === 'string') {
     form.icon = payload.icon
@@ -613,7 +636,7 @@ async function save() {
     @save="save"
   >
       <!-- 首行元信息（2026-09-01 拍板：与 API 弹窗同款，时间行上移首行；覆盖 PRD §三.9 底部位置） -->
-      <div v-if="isEdit" class="md-times">
+      <div v-if="isEdit" class="page-time md-times">
         <!-- 2026-09-04 PRD-20260903 对齐：标签照新原型 page-time 全称（含「最近发布时间」，未发布显「—」） -->
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
         <span>最近更新时间：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
@@ -621,7 +644,7 @@ async function save() {
       </div>
 
       <!-- 一键导入：粘贴整段 MCP 配置 JSON，自动解析回填下方字段（仅登记/编辑态，PRD §三.2） -->
-      <section v-if="!props.readonly" class="md-sec md-import">
+      <section v-if="!props.readonly" class="md-import">
         <div class="md-import-head">
           <div>
             <span class="md-sec-title" style="margin: 0">从配置粘贴导入</span>
@@ -661,28 +684,23 @@ async function save() {
         </div>
       </section>
 
-      <section class="md-sec">
-        <div class="md-sec-title">基本信息</div>
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
         <el-form label-position="top" :disabled="props.readonly">
           <!-- 第一行：名称 | 图标 同行（PRD §三.1/原型 basic-info-grid）；code/server 自报 id/状态控件均不展示（§三.3） -->
           <div class="md-row2">
             <el-form-item label="名称" :error="fieldErrors.name" required class="md-name-item">
               <el-input v-model="form.name" maxlength="64" placeholder="如 报销系统 MCP" />
             </el-form-item>
+            <!-- 图标行（S3，原型 `.icon-row.compact-icon-row`）：预览块 + 并排两个 plain 按钮 -->
             <el-form-item label="图标" :error="fieldErrors.icon" required class="md-icon-item">
-              <div class="md-icon-row">
-                <span class="md-icon-preview" :class="{ 'is-empty': !form.icon }">
-                  <img v-if="iconIsUrlFlag" :src="form.icon" alt="" class="md-icon-img" />
-                  <span v-else-if="form.icon">{{ form.icon }}</span>
-                  <span v-else class="md-icon-ph">—</span>
-                </span>
-                <IconPickerPopover
-                  v-if="!props.readonly"
-                  :icon="form.icon"
-                  :position-name="form.name"
-                  @pick="onIconPick"
-                />
-              </div>
+              <IconField
+                :icon="form.icon"
+                :name="form.name"
+                :readonly="props.readonly"
+                placeholder="—"
+                @pick="onIconPick"
+              />
             </el-form-item>
           </div>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>
@@ -697,13 +715,46 @@ async function save() {
             />
           </el-form-item>
         </el-form>
+
+        <!-- 示例问题（M4：原型 L1137-1147 把示例问题段移进基本信息卡末尾作 `.connector-basic-subsection`，
+             上边线分隔 + 17px 标题；文案与【AI 生成】按钮位置照原型逐字） -->
+        <div class="connector-basic-subsection">
+          <div class="section-title md-eq-title">
+            <span>
+              示例问题
+              <span class="section-sub">必填，固定 3 条</span>
+            </span>
+            <el-button
+              v-if="!props.readonly"
+              class="md-eq-ai"
+              size="small"
+              :disabled="aiDisabled"
+              :title="aiTitle || undefined"
+              @click="generateQuestions"
+            >
+              {{ aiLabel }}
+            </el-button>
+          </div>
+          <div class="md-eq-list">
+            <div v-for="i in 3" :key="i" class="md-eq-row">
+              <span class="md-eq-index">{{ i }}</span>
+              <el-input
+                v-model="form.exampleQuestions[i - 1]"
+                :maxlength="QUESTION_MAX"
+                show-word-limit
+                :disabled="props.readonly"
+                :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- 连接与鉴权（PRD §三.4：传输方式首位 → 主要配置 → 元信息紧凑行 → 测试连接 → 超时末位） -->
-      <section class="md-sec">
-        <div class="md-sec-title">
+      <section class="section-card">
+        <div class="section-title">
           连接与鉴权
-          <span class="md-sec-sub">「测试连接」仅做握手探测连通性，不返回工具列表（拉工具见下方）</span>
+          <span class="section-sub">「测试连接」仅做握手探测连通性，不返回工具列表（拉工具见下方）</span>
         </div>
         <el-form label-position="top" :disabled="props.readonly">
           <el-form-item label="传输方式" :error="fieldErrors.transport" required>
@@ -746,16 +797,39 @@ async function save() {
                 placeholder="-y&#10;@modelcontextprotocol/server-foo"
               />
             </el-form-item>
-            <el-form-item :error="fieldErrors.env">
-              <template #label>
-                <span>Env</span>
-                <span class="lbl-hint">
-                  （环境变量声明；平台值加密存储、不回显，编辑留空=保留原值；勾选客户端填写则值由客户端收集）
-                </span>
-              </template>
+            <!-- Env（M5，原型 connFields L180 `.mcp-env-field`）：
+                 标题行 = 左「Env」label + hint／右【＋ 添加变量】；表头四列；行卡片；空态「暂无环境变量」 -->
+            <el-form-item :error="fieldErrors.env" class="md-env-item">
+              <div class="md-env-title">
+                <div class="md-env-title-text">
+                  <span class="md-env-label">Env</span>
+                  <span class="lbl-hint">
+                    （环境变量声明；平台值加密存储、不回显，编辑留空=保留原值；勾选客户端填写则值由客户端收集）
+                  </span>
+                </div>
+                <el-button
+                  v-if="!props.readonly"
+                  link
+                  type="primary"
+                  class="md-env-add"
+                  @click="envEditor?.addRow()"
+                >
+                  ＋ 添加变量
+                </el-button>
+              </div>
               <ParamRowsEditor
+                ref="envEditor"
                 :rows="envRows"
                 :readonly="props.readonly"
+                key-header="变量名"
+                key-placeholder="变量名，如 API_KEY"
+                desc-placeholder="这个变量是做什么的"
+                client-fill-label="客户端填写"
+                client-fill-header="填写方式"
+                always-head
+                card-rows
+                add-position="header"
+                empty-text="暂无环境变量"
                 client-fill-hint="含客户端填写变量：值由客户端收集后才可启用该服务，管理端「测试连接」可能因缺变量失败（属预期）"
                 @update:rows="envRows = $event"
                 @interact="delete fieldErrors.env"
@@ -833,32 +907,16 @@ async function save() {
           </el-button>
           <span class="md-conn-hint">仅验证「连得上、能握手」，数秒内返回</span>
         </div>
-        <!-- 测试连接结果回显 -->
-        <div v-if="testResult" class="md-conn-result">
-          <el-alert
-            v-if="testResult.ok"
-            type="success"
-            :closable="false"
-            title="握手成功"
-          >
-            <template #default>
-              <div class="md-conn-kv">
-                <span v-if="testResult.protocolVersion">协议版本：{{ testResult.protocolVersion }}</span>
-                <span v-if="testResult.serverVersion">Server 版本：{{ testResult.serverVersion }}</span>
-                <span v-if="testResult.latencyMs != null">延迟：{{ testResult.latencyMs }} ms</span>
-              </div>
-            </template>
-          </el-alert>
-          <el-alert
-            v-else
-            type="error"
-            :closable="false"
-            :title="testResult.failReason || '连接失败'"
-          >
-            <template #default>
-              <span class="md-conn-kv">握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试</span>
-            </template>
-          </el-alert>
+        <!-- 测试连接结果回显（M6：照原型 `.result` 单行提示框，成功绿 / 失败红；
+             文案照原型 L194「握手成功 · 协议 … · Server … · 延迟 … ms」/「连接失败 · 请检查接入方式、地址或鉴权配置」。
+             失败时后端脱敏 failReason 更具体，有则接在原型文案之后，不丢诊断信息） -->
+        <div
+          v-if="testResult"
+          class="md-conn-result"
+          :class="testResult.ok ? 'is-success' : 'is-error'"
+          role="status"
+        >
+          {{ testResultText }}
         </div>
         <!-- 超时（PRD §三.4：本区块最后一项，必填，默认 10000，1000～120000 步长 1000） -->
         <el-form label-position="top" :disabled="props.readonly" class="md-timeout-form">
@@ -879,10 +937,11 @@ async function save() {
       </section>
 
       <!-- 工具清单（PRD §三.6：默认收起；工具卡只留名称+描述；入参逐工具「查看入参」折叠） -->
-      <section class="md-sec">
-        <div class="md-sec-title md-tools-head">
-          <span>工具清单
-            <span class="md-sec-sub">由「拉取工具」从 MCP server 同步（只读）；无工具可保存，但不可发布</span>
+      <section class="section-card">
+        <!-- 卡头右侧动作位用 admin-shell.css 的 .section-head（= 原型 .tools-head 两端对齐） -->
+        <div class="section-head md-tools-head">
+          <span class="section-title">工具清单
+            <span class="section-sub">由「拉取工具」从 MCP server 同步（只读）；无工具可保存，但不可发布</span>
           </span>
           <div class="md-tools-actions">
             <el-button link class="md-tools-toggle" @click="toolsOpen = !toolsOpen">
@@ -941,11 +1000,12 @@ async function save() {
         </template>
       </section>
 
-      <!-- 被技能引用（PRD §三.7：普通信息区、只读，副注按软引用口径） -->
-      <section v-if="isEdit" class="md-sec">
-        <div class="md-sec-title">
+      <!-- 被技能引用（PRD §三.7：普通信息区、只读，副注按软引用口径）。
+           S1：照原型 `.reference-section` 保持非卡片（L69），不套 .section-card -->
+      <section v-if="isEdit" class="reference-section">
+        <div class="section-title">
           被技能引用
-          <span class="md-sec-sub">引用此 MCP 的 Skill（只读；停用或删除后技能仍可执行，运行效果可能受限或出现报错）</span>
+          <span class="section-sub">引用此 MCP 的 Skill（只读；停用或删除后技能仍可执行，运行效果可能受限或出现报错）</span>
         </div>
         <div v-if="referencedBySkills.length" class="md-refs">
           <el-tag
@@ -960,48 +1020,25 @@ async function save() {
         <div v-else class="md-refs-empty">暂无技能引用</div>
       </section>
 
-      <!-- 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾追加示例问题区，
-           固定 3 条带序号 +【AI 生成】走统一 AI 实况生成机制；文案照原型逐字） -->
-      <section class="md-sec">
-        <div class="md-sec-title md-eq-title">
-          <span>
-            示例问题
-            <span class="md-sec-sub">必填，固定 3 条</span>
-          </span>
-          <el-button
-            v-if="!props.readonly"
-            class="md-eq-ai"
-            size="small"
-            :disabled="aiDisabled"
-            :title="aiTitle || undefined"
-            @click="generateQuestions"
-          >
-            {{ aiLabel }}
-          </el-button>
-        </div>
-        <div class="md-eq-list">
-          <div v-for="i in 3" :key="i" class="md-eq-row">
-            <span class="md-eq-index">{{ i }}</span>
-            <el-input
-              v-model="form.exampleQuestions[i - 1]"
-              :maxlength="QUESTION_MAX"
-              show-word-limit
-              :disabled="props.readonly"
-              :placeholder="i === 1 ? '帮我发起一个明天下午的请假审批' : '请输入示例问题'"
-            />
-          </div>
-        </div>
-      </section>
-
   </DrawerEditor>
 </template>
 
 <style scoped>
+/* 分区卡（.section-card / .section-title / .section-sub / .section-head / .reference-section /
+   .page-time）样式统一在 assets/admin-shell.css（S1，批次 1 已提供），本文件不重复。
+   .md-sec-title 保留给非卡片的导入面板标题（原型 `.import-box` 亦非卡片）。 */
 .md-sec-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
   margin-bottom: var(--space-2);
+}
+/* 时间行照原型 L2206 移到抽屉首行：`.page-time` 的上分隔线在首行读作「悬空线」，就地去掉。
+   admin-shell.css 的规则是 `body.admin-scope .page-time`（0,2,1），故这里叠一个类提到 (0,3,0)。 */
+.page-time.md-times {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 /* 一键导入面板（表单顶部；粘贴配置 → 解析回填） */
 .md-import {
@@ -1037,6 +1074,19 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
   margin-left: var(--space-2);
+}
+/* 示例问题作基本信息卡内子分区（M4，原型 L1126-1127 `.connector-basic-subsection`）：
+   上边线分隔 margin-top 26 / padding-top 24，标题 17px/700 */
+.connector-basic-subsection {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
+}
+.connector-basic-subsection > .section-title {
+  margin: 0 0 18px;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
 }
 .req {
   color: var(--c-danger);
@@ -1113,14 +1163,7 @@ async function save() {
   align-items: center;
   gap: var(--space-2);
 }
-/* 底部时间行（PRD §三.9：弱化小字，不用独立卡片） */
-.md-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-}
+/* 时间行样式走 admin-shell.css 的 .page-time（S1）；本文件仅在上方去掉首行的上分隔线 */
 /* Bearer 前置段（完整请求头格式，与 ApiEditor 同款）：等宽字体弱色 */
 .md-bearer-input :deep(.el-input-group__prepend) {
   font-family: var(--font-mono);
@@ -1148,14 +1191,48 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
+/* 测试连接结果（M6，原型 `.result` 单行提示框）：成功绿 / 失败红，一行说完 */
 .md-conn-result {
   margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
 }
-.md-conn-kv {
+.md-conn-result.is-success {
+  border-color: var(--c-success);
+  background: var(--bg-success-soft, var(--bg-sunken));
+  color: var(--c-success);
+}
+.md-conn-result.is-error {
+  border-color: var(--c-danger);
+  background: var(--bg-danger-soft, var(--bg-sunken));
+  color: var(--c-danger);
+}
+/* Env 标题行（M5，原型 `.mcp-env-title`）：左 label + hint / 右【＋ 添加变量】 */
+.md-env-title {
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  font-size: var(--fs-xs);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.md-env-title-text {
+  min-width: 0;
+}
+.md-env-label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-strong);
+}
+.md-env-add {
+  flex: none;
+  white-space: nowrap;
+}
+/* Env 的 label 已并入 .md-env-title，隐藏 el-form-item 自带的空 label 位 */
+.md-env-item :deep(.el-form-item__label) {
+  display: none;
 }
 .md-err-text {
   font-size: var(--fs-xs);
@@ -1282,39 +1359,7 @@ async function save() {
   background: var(--bg-sunken);
 }
 
-/* ===== 图标 / 超时（V97） ===== */
-.md-icon-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-/* 预览格：定宽定高，emoji 与图片共用同一视觉框，避免选不同形态时行高跳动 */
-.md-icon-preview {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  font-size: 20px;
-  line-height: 1;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--c-bg-subtle);
-  overflow: hidden;
-}
-.md-icon-preview.is-empty {
-  border-style: dashed;
-}
-.md-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.md-icon-ph {
-  color: var(--c-text-faint);
-  font-size: var(--fs-sm);
-}
+/* 图标行样式随 IconField 组件走（S3），本文件不再自绘预览格与按钮 */
 .md-timeout-hint {
   margin-top: var(--space-1);
   margin-left: 0;

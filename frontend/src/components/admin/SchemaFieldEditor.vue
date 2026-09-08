@@ -12,6 +12,16 @@
  *
  * 递归：模板内用组件自身文件名 <SchemaFieldEditor> 自引用（Vue SFC 支持递归组件）。
  *
+ * 2026-09-09 原型复刻批次 3A · A5：**同表扁平缩进行**（原型 requestRowsHtml/responseRowsHtml L899-900
+ * + schemaBlock L901）。原实现把子字段渲染成独立缩进块（带「X 的子字段」小标题 + 各自的空态与脚），
+ * 层数一多就是一堆嵌套盒子；原型是一张表、一份表头，子字段按 depth 左缩进（24/48/72px，最深 3 级）
+ * 直接跟在父行后面，对象/数组行的操作区多出【＋子字段】link。改造点：
+ *   - 顶层组件把树拍平成 `flatRows`（带 depth / path），一次 v-for 渲染完，表头只在顶层出一份；
+ *   - 请求方法列各层都在（原型 req-row 每层都有 `.req-method`；原先仅顶层）；
+ *   - 去掉子块标题 / 子块空态 / 子块脚，底部只留一处【＋ 添加字段】+ 嵌套提示；
+ *   - 删除仍用 popconfirm（md §三.5 要求二次确认；原型 `window.confirm` 属原型形态，不搬）。
+ * 组件不再自递归；depth 只作缩进量，不再控制列形态。
+ *
  * 稳定 key（CR 落地，参照 BizSystemEditor 业务页行 _uid 范式）：
  * 每行分配一个仅前端用的自增 _uid 作 v-for key（不用数组索引），删中间行时后续行（含展开的
  * 子编辑器 DOM）不再串位/输入态错乱。_uid 是纯 UI 键——rowsToSchema 只读 name/type/
@@ -29,13 +39,11 @@ function nextUid() {
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
-  // 字段级错误文案（来自后端 data.field 命中 inputSchema/outputSchema 时）；仅顶层展示
+  // 字段级错误文案（来自后端 data.field 命中 inputSchema/outputSchema 时）
   error: { type: String, default: '' },
-  // 嵌套深度（0=顶层）：控制缩进与文案层级提示，子级由父级递增传入
-  depth: { type: Number, default: 0 },
   /**
    * 列形态（2026-09-01 拍板）：
-   * - request：参数名 | 描述 | 类型 | 请求方法（仅顶层，默认 Query）| 必填 | 默认值
+   * - request：参数名 | 描述 | 类型 | 请求方法（默认 Query）| 必填 | 默认值
    * - response（默认）：参数名 | 描述 | 变量类型
    */
   variant: { type: String, default: 'response' }
@@ -43,11 +51,12 @@ const props = defineProps({
 const emit = defineEmits(['update:rows'])
 
 const isRequest = computed(() => props.variant === 'request')
-// 请求方法列仅请求参数顶层有意义（子字段位置随父字段，天然在 Body 结构里）
-const showIn = computed(() => isRequest.value && props.depth === 0)
-const gridClass = computed(() =>
-  isRequest.value ? (showIn.value ? 'sfe-grid-req' : 'sfe-grid-req-child') : 'sfe-grid-resp'
-)
+// A5：请求方法列各层都在（原型 requestRowsHtml 每层行都渲染 `.req-method`）
+const showIn = computed(() => isRequest.value)
+const gridClass = computed(() => (isRequest.value ? 'sfe-grid-req' : 'sfe-grid-resp'))
+// 缩进最深 3 级（原型 `depth-1/2/3` = 左缩进 24/48/72px，再深不继续缩进）
+const INDENT_PX = 24
+const MAX_INDENT_DEPTH = 3
 
 // 给一批行补齐缺失的 _uid（对象/数组行的 children 一并递归补齐）。返回 { rows, changed }：
 // changed 表示确有行缺 _uid（需 emit 回父级），无缺失则原样返回、不触发多余更新。
@@ -85,23 +94,76 @@ watch(
 function update(next) {
   emit('update:rows', next)
 }
-function addRow() {
+
+/**
+ * 树 → 扁平展示行（A5）：先序遍历，每行带 depth（缩进量）与 path（在树中的下标链，
+ * 供增删改按路径定位）。父行紧跟其子行，正是原型 requestRowsHtml 递归拼串的顺序。
+ */
+const flatRows = computed(() => {
+  const out = []
+  const walk = (rows, depth, path) => {
+    ;(rows || []).forEach((row, i) => {
+      const p = [...path, i]
+      out.push({ row, depth, path: p })
+      if (typeHasChildren(row.type) && Array.isArray(row.children)) {
+        walk(row.children, depth + 1, p)
+      }
+    })
+  }
+  walk(props.rows, 0, [])
+  return out
+})
+
+function newRow() {
   const row = { _uid: nextUid(), name: '', type: 'string', required: false, description: '' }
   if (isRequest.value) {
     row.defaultValue = ''
-    if (showIn.value) row.in = 'QUERY' // 请求方法默认 Query（拍板）
+    row.in = 'QUERY' // 请求方法默认 Query（拍板）
   }
-  update([...props.rows, row])
+  return row
 }
-function removeRow(idx) {
-  const next = props.rows.slice()
-  next.splice(idx, 1)
-  update(next)
+
+/**
+ * 按 path 就地改写树并回吐新数组（沿路径逐层浅拷贝，不改父级传入的对象）。
+ * mutate 收到目标行所在的**数组副本**与该行下标，返回值忽略——直接改副本即可。
+ */
+function mutateAt(path, mutate) {
+  const rebuild = (rows, depth) => {
+    const next = rows.slice()
+    const idx = path[depth]
+    if (depth === path.length - 1) {
+      mutate(next, idx)
+      return next
+    }
+    const child = { ...next[idx] }
+    child.children = rebuild(child.children || [], depth + 1)
+    next[idx] = child
+    return next
+  }
+  update(rebuild(props.rows, 0))
 }
-function patch(idx, key, value) {
-  const next = props.rows.map((r, i) => {
-    if (i !== idx) return r
-    const row = { ...r, [key]: value }
+
+/** 顶层追加一行（表底【＋ 添加字段】）。 */
+function addRow() {
+  update([...props.rows, newRow()])
+}
+
+/** 行内【＋子字段】（原型 L899 `.api-schema-child`）：给对象/数组行的 children 追加一行。 */
+function addChild(path) {
+  mutateAt(path, (arr, idx) => {
+    const row = { ...arr[idx] }
+    row.children = [...(row.children || []), newRow()]
+    arr[idx] = row
+  })
+}
+
+function removeRow(path) {
+  mutateAt(path, (arr, idx) => arr.splice(idx, 1))
+}
+
+function patch(path, key, value) {
+  mutateAt(path, (arr, idx) => {
+    const row = { ...arr[idx], [key]: value }
     // 切成对象/数组时，若未初始化子字段则给空数组；切离时移除 children，避免残留脏数据下发（PRD §5）
     if (key === 'type') {
       if (typeHasChildren(value)) {
@@ -110,14 +172,10 @@ function patch(idx, key, value) {
         delete row.children
       }
     }
-    return row
+    arr[idx] = row
   })
-  update(next)
 }
-// 子字段区更新：把某行的 children 整体替换
-function patchChildren(idx, childRows) {
-  patch(idx, 'children', childRows)
-}
+
 // 删除确认文案：有子字段时明示连带删除
 function removeConfirmText(row) {
   return Array.isArray(row.children) && row.children.length
@@ -127,9 +185,9 @@ function removeConfirmText(row) {
 </script>
 
 <template>
-  <div class="sfe" :class="{ 'sfe-error': !!error, 'sfe-nested': depth > 0 }">
-    <!-- 列头仅顶层渲染一次；子层（depth>0）隐藏列头，减轻多层嵌套的纵向噪声 -->
-    <div v-if="rows.length && depth === 0" class="sfe-head" :class="gridClass">
+  <div class="sfe" :class="{ 'sfe-error': !!error }">
+    <!-- 表头只一份（原型 schemaBlock L901 `.schema-header-row`），子字段行共用同一套列 -->
+    <div v-if="flatRows.length" class="sfe-head" :class="gridClass">
       <span>参数名</span>
       <span>描述</span>
       <span>{{ isRequest ? '类型' : '变量类型' }}</span>
@@ -138,95 +196,91 @@ function removeConfirmText(row) {
       <span v-if="isRequest">默认值</span>
       <span class="col-op"></span>
     </div>
-    <template v-for="(row, idx) in rows" :key="row._uid">
-      <div class="sfe-row" :class="gridClass">
-        <el-input
-          :model-value="row.name"
-          placeholder="如 billNo"
-          @update:model-value="patch(idx, 'name', $event)"
+    <!-- 扁平缩进行（A5）：父行后紧跟其子行，depth 决定左缩进；每行列完整 -->
+    <div
+      v-for="item in flatRows"
+      :key="item.row._uid"
+      class="sfe-row"
+      :class="[gridClass, { 'is-child': item.depth > 0 }]"
+      :style="{ marginLeft: `${Math.min(item.depth, MAX_INDENT_DEPTH) * INDENT_PX}px` }"
+    >
+      <el-input
+        :model-value="item.row.name"
+        placeholder="参数名"
+        @update:model-value="patch(item.path, 'name', $event)"
+      />
+      <el-input
+        :model-value="item.row.description"
+        placeholder="描述"
+        @update:model-value="patch(item.path, 'description', $event)"
+      />
+      <el-select
+        :model-value="item.row.type"
+        @update:model-value="patch(item.path, 'type', $event)"
+      >
+        <el-option
+          v-for="t in FIELD_TYPES"
+          :key="t.value"
+          :value="t.value"
+          :label="t.label"
         />
-        <el-input
-          :model-value="row.description"
-          placeholder="字段说明（可选）"
-          @update:model-value="patch(idx, 'description', $event)"
+      </el-select>
+      <el-select
+        v-if="showIn"
+        :model-value="item.row.in || 'QUERY'"
+        @update:model-value="patch(item.path, 'in', $event)"
+      >
+        <el-option
+          v-for="o in PARAM_IN_OPTIONS"
+          :key="o.value"
+          :value="o.value"
+          :label="o.label"
         />
-        <el-select
-          :model-value="row.type"
-          @update:model-value="patch(idx, 'type', $event)"
+      </el-select>
+      <el-checkbox
+        v-if="isRequest"
+        class="col-req"
+        :model-value="item.row.required"
+        @update:model-value="patch(item.path, 'required', $event)"
+      />
+      <el-input
+        v-if="isRequest"
+        :model-value="item.row.defaultValue || ''"
+        placeholder="默认值（可选）"
+        @update:model-value="patch(item.path, 'defaultValue', $event)"
+      />
+      <!-- 行操作区（原型 `.api-schema-row-actions`）：对象/数组行多出【＋子字段】，其后是删除 -->
+      <div class="sfe-row-actions col-op">
+        <el-button
+          v-if="typeHasChildren(item.row.type)"
+          link
+          type="primary"
+          class="sfe-child-add"
+          @click="addChild(item.path)"
         >
-          <el-option
-            v-for="t in FIELD_TYPES"
-            :key="t.value"
-            :value="t.value"
-            :label="t.label"
-          />
-        </el-select>
-        <el-select
-          v-if="showIn"
-          :model-value="row.in || 'QUERY'"
-          @update:model-value="patch(idx, 'in', $event)"
-        >
-          <el-option
-            v-for="o in PARAM_IN_OPTIONS"
-            :key="o.value"
-            :value="o.value"
-            :label="o.label"
-          />
-        </el-select>
-        <el-checkbox
-          v-if="isRequest"
-          class="col-req"
-          :model-value="row.required"
-          @update:model-value="patch(idx, 'required', $event)"
-        />
-        <el-input
-          v-if="isRequest"
-          :model-value="row.defaultValue || ''"
-          placeholder="默认值（可选）"
-          @update:model-value="patch(idx, 'defaultValue', $event)"
-        />
+          ＋子字段
+        </el-button>
         <!-- 删除前二次确认（PRD §5）；popconfirm 就地确认，不弹全局遮罩 -->
         <el-popconfirm
-          :title="removeConfirmText(row)"
+          :title="removeConfirmText(item.row)"
           confirm-button-text="删除"
           cancel-button-text="取消"
           confirm-button-type="danger"
           width="240"
-          @confirm="removeRow(idx)"
+          @confirm="removeRow(item.path)"
         >
           <template #reference>
-            <el-button class="col-op" link type="danger">
+            <el-button link type="danger">
               <el-icon><Delete /></el-icon>
             </el-button>
           </template>
         </el-popconfirm>
       </div>
-      <!-- 类型为对象/数组：缩进展开子字段区，递归复用本组件（任意层级） -->
-      <div v-if="typeHasChildren(row.type)" class="sfe-children">
-        <div class="sfe-children-title">
-          {{ row.name || (row.type === 'array' ? '（未命名数组）' : '（未命名对象）') }} 的子字段
-          <span class="sfe-children-hint">
-            {{ row.type === 'array'
-              ? '该字段是数组，下面配数组元素内部的字段；子字段仍可是对象/数组，可继续往里套'
-              : '该字段是对象，下面配它内部的字段；子字段仍可是对象/数组，可继续往里套' }}
-          </span>
-        </div>
-        <SchemaFieldEditor
-          :rows="row.children || []"
-          :depth="depth + 1"
-          :variant="variant"
-          @update:rows="patchChildren(idx, $event)"
-        />
-      </div>
-    </template>
-    <div v-if="rows.length === 0" class="sfe-empty">
-      {{ depth > 0 ? '暂无子字段，可不配置' : '暂无字段，可不配置（留空表示不约束）' }}
     </div>
+    <div v-if="flatRows.length === 0" class="sfe-empty">暂无字段，可不配置（留空表示不约束）</div>
     <div class="sfe-foot">
-      <el-button link type="primary" @click="addRow">
-        {{ depth > 0 ? '+ 添加子字段' : '+ 添加字段' }}
-      </el-button>
-      <span v-if="depth === 0" class="sfe-hint">类型选「对象」或「数组」可展开配子字段，支持任意层级嵌套</span>
+      <el-button link type="primary" @click="addRow">＋ 添加字段</el-button>
+      <span class="sfe-hint">类型选「对象」或「数组」可展开配子字段，支持任意层级嵌套</span>
     </div>
     <div v-if="error" class="sfe-err-text">{{ error }}</div>
   </div>
@@ -242,13 +296,6 @@ function removeConfirmText(row) {
 .sfe-error {
   border-color: var(--c-danger);
 }
-/* 嵌套子字段区：透明底、去外框，靠左侧强调条 + 缩进表达层级，避免多层套盒视觉过重 */
-.sfe-nested {
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-}
 .sfe-head,
 .sfe-row {
   display: grid;
@@ -256,15 +303,14 @@ function removeConfirmText(row) {
   align-items: center;
 }
 /* 列宽按形态分流（2026-09-01 拍板列序）：
-   response：参数名|描述|变量类型；request：参数名|描述|类型|请求方法(仅顶层)|必填|默认值 */
-.sfe-grid-resp {
-  grid-template-columns: 1.4fr 1.8fr 1.1fr 36px;
-}
+   response：参数名|描述|变量类型；request：参数名|描述|类型|请求方法|必填|默认值
+   （A5：请求方法列各层都在，子层不再另设一套列宽） */
 .sfe-grid-req {
-  grid-template-columns: 1.2fr 1.5fr 1fr 0.9fr 44px 1fr 36px;
+  /* 末列放【＋子字段】+ 删除两枚按钮，比原来的 36px 单删除列宽 */
+  grid-template-columns: 1.2fr 1.5fr 1fr 0.9fr 44px 1fr 96px;
 }
-.sfe-grid-req-child {
-  grid-template-columns: 1.2fr 1.5fr 1fr 44px 1fr 36px;
+.sfe-grid-resp {
+  grid-template-columns: 1.4fr 1.8fr 1.1fr 96px;
 }
 .sfe-head {
   font-size: var(--fs-xs);
@@ -275,25 +321,32 @@ function removeConfirmText(row) {
 .sfe-row {
   margin-bottom: var(--space-2);
 }
+/* 子字段行（A5，原型 `.depth-1/2/3`）：左缩进由行内 marginLeft 给，另加一条连接线标层级 */
+.sfe-row.is-child {
+  position: relative;
+  padding-left: var(--space-2);
+}
+.sfe-row.is-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  border-left: 2px solid var(--border-base);
+}
 .col-req {
   justify-self: center;
 }
-/* 子字段容器：左强调条 + 缩进，层级一目了然，深层不迷路 */
-.sfe-children {
-  margin: 0 0 var(--space-3) var(--space-2);
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--c-accent);
+/* 行操作区（原型 `.api-schema-row-actions`）：【＋子字段】+ 删除并排右对齐 */
+.sfe-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
 }
-.sfe-children-title {
+.sfe-child-add {
+  white-space: nowrap;
   font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-2);
-}
-.sfe-children-hint {
-  font-weight: var(--fw-regular);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
 }
 .sfe-empty {
   color: var(--c-text-muted);

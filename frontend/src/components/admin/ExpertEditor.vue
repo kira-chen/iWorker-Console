@@ -33,13 +33,31 @@
  * - 技能引用区后新增只读「知识库」区块（当前专家可见范围内的知识库：搜索 + 默认露 2 行 +
  *   展开更多（N）；数据走 api/knowledgeBase.listKnowledgeBases 既有只读接口，按专家可见范围过滤——
  *   mock 侧映射种子见 domainExpertMock.getExpertKbScopeRefId；查看/检索测试跳知识库模块路由带参）。
+ *
+ * 【2026-09-09 原型复刻批次 3C · E1–E6（静态布局照原型 html，逻辑按 md + 代码现状）】
+ * - E1 分区卡片化：四个 `.ee-sec` 换 `.section-card`（样式在 assets/admin-shell.css，本文件不重写卡样式），
+ *   「专家帮你做」并入「基本信息」卡末尾作子分区 `.ee-basic-subsection`（原型 L1111
+ *   `.expert-basic-subsection`：上边框 + margin-top 26 + padding-top 24）；DrawerEditor 不改（只消费）。
+ * - E2 基本信息两列栅格（原型 L690 `.form-grid` + L16 `.section-card .form-grid{repeat(2,1fr)}`）：
+ *   专家名｜分类、图标｜背景色 各占半列，简介 / 职责描述通栏（`.ee-full`）；label 置顶（label-position=top）；
+ *   图标行换 `components/common/IconField.vue`（预览 + 【从图标库选择】【上传图标】，原型 L1331 decorateEditor）；
+ *   职责描述编辑器高度 320→282（原型 L675：工具栏 52 + 文本域 min-height 230）。
+ * - E3 市场技能卡：min-height 84 / padding 16 15 14 44 / checkbox 绝对定位左上 / 选中态左侧 4px 绿条，
+ *   【展开更多】改 plain 按钮居中 34px（原型 L1096–L1101、L686–L688）。
+ * - E4 知识库卡交互流照原型 L4174–L4175：【检索测试】**不收抽屉**，就地叠 KnowledgeSearchDialog；
+ *   【查看】收抽屉 + 深链落知识库查看态（深链键名统一走 utils/knowledgeDeepLink，不改该工具）。
+ * - E5 知识库表格：搜索框 ⌕ 前缀、表头 36px、行 padding 11/10、12px 字（原型 L4113–L4130）。
+ * - E6 抽屉宽 min(780px,88vw)：DrawerEditor 默认已是 780（批次 1 落地），本文件不额外传 size；
+ *   遮罩点击 toast 属 DrawerEditor 共用行为 → 记「需共享层跟进」，本批不改。
+ * - E7 示例问题【AI 生成】保持区级一枚（md §三.3 写"每行一个" ↔ 原型/代码区级一枚，按口径保持 md 现状不动）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import StatusTag from '@/components/StatusTag.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
+import IconField from '@/components/common/IconField.vue'
+import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 import { KIND, derivePublishView, isLocked } from '@/utils/publishState'
 import {
@@ -119,7 +137,8 @@ function pickBackground(color) {
   errors.backgroundColor = ''
 }
 
-// 图标走岗位配置同款 IconPickerPopover（图标库 / 上传 / AI 生成），选中回吐仅取 icon 值。
+// 图标走 IconField（预览块 + 显式双按钮，2026-09-09 批次 3C · E2；图标库 / 上传裁剪链路仍是
+// IconPickerPopover 的 headless 复用），选中回吐仅取 icon 值。
 function onPickIcon({ icon }) {
   form.avatar = icon || ''
   if (form.avatar) errors.avatar = ''
@@ -258,13 +277,27 @@ function kbDocText(row) {
 }
 
 /**
- * 「查看」/「检索测试」→ 收抽屉、跳知识库模块路由（带 action/kbId 深链参数）。
+ * 【查看】→ 收抽屉、跳知识库模块路由（带 action=view/kbId 深链参数），由知识库列表页直开查看态。
  * 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
- * 此前发 kbAction 与消费端 action 不对齐，跳过去查看抽屉 / 检索测试弹窗不会打开，已修）。
+ * 此前发 kbAction 与消费端 action 不对齐，跳过去查看抽屉不会打开，已修）。
+ * 对应原型 L4174：`closeDrawer(); state.module='knowledge'; render(); openKbViewer(kb)`。
  */
-function jumpKnowledge(row, action) {
+function viewKnowledge(row) {
   close()
-  router.push(kbRouteLocation({ action, kbId: row.id }))
+  router.push(kbRouteLocation({ action: 'view', kbId: row.id }))
+}
+
+/**
+ * 【检索测试】→ **不收抽屉**，就地在专家抽屉之上叠检索测试弹窗（原型 L4175：`openSearch(kb)` 不 closeDrawer）。
+ * 2026-09-09 原型复刻批次 3C · E4：此前与【查看】同走 close() + 深链跳转，一点就丢失编辑中的表单，
+ * 与原型「叠在抽屉之上、测完回到原处继续编」的交互不符。
+ * 弹窗挂在 DrawerEditor 的 #extra 插槽内（抽屉子树）以保证层级压在抽屉之上。
+ */
+const searchKb = ref(null)
+const searchVisible = ref(false)
+function testKnowledge(row) {
+  searchKb.value = row
+  searchVisible.value = true
 }
 
 /* ==================== 加载 ==================== */
@@ -481,8 +514,8 @@ const metaItems = computed(() => {
     <template #default>
       <!-- ======== 只读查看态（原型 openExpertViewer 形态） ======== -->
       <template v-if="props.readonly">
-        <section class="ee-sec">
-          <h3 class="ee-sec-head">基本信息</h3>
+        <section class="section-card">
+          <h3 class="section-title">基本信息</h3>
           <div class="ee-view-grid">
             <div class="ee-view-field">
               <span class="ee-view-label">专家名</span>
@@ -507,8 +540,8 @@ const metaItems = computed(() => {
           </div>
         </section>
 
-        <section class="ee-sec">
-          <h3 class="ee-sec-head">专家帮你做</h3>
+        <section class="section-card">
+          <h3 class="section-title">专家帮你做</h3>
           <div class="ee-view-questions">
             <div
               v-for="(q, i) in detail?.exampleQuestions || []"
@@ -518,10 +551,10 @@ const metaItems = computed(() => {
           </div>
         </section>
 
-        <section class="ee-sec">
-          <h3 class="ee-sec-head">
+        <section class="section-card">
+          <h3 class="section-title">
             市场技能引用
-            <span class="ee-sec-sub">{{ viewSkills.length }} 个技能</span>
+            <span class="section-sub">{{ viewSkills.length }} 个技能</span>
           </h3>
           <div v-if="viewSkills.length" class="ee-sk-grid">
             <div v-for="s in viewSkills" :key="s.skillId" class="ee-sk-card">
@@ -554,11 +587,12 @@ const metaItems = computed(() => {
         <!-- 顶部说明条（原型 expert-editor-note） -->
         <div class="ee-note">专家由多个市场技能组成。技能保持引用关系，市场技能更新后专家会同步使用最新内容。</div>
 
-        <!-- ① 基本信息 -->
-        <section class="ee-sec">
-          <h3 class="ee-sec-head">基本信息</h3>
+        <!-- ① 基本信息（E1 卡片化 + E2 两列栅格：专家名｜分类、图标｜背景色，简介 / 职责描述通栏；
+             「专家帮你做」并入本卡末尾作子分区） -->
+        <section class="section-card">
+          <h3 class="section-title">基本信息</h3>
 
-          <el-form label-width="88px" label-position="left">
+          <el-form label-position="top" class="ee-form-grid">
             <el-form-item label="专家名" required :error="errors.name">
               <el-input
                 v-model="form.name"
@@ -580,16 +614,18 @@ const metaItems = computed(() => {
               </el-select>
             </el-form-item>
             <el-form-item label="图标" required :error="errors.avatar">
-              <!-- 沿用现有 IconPickerPopover（图标库 / 上传裁剪 / AI 生成；2026-09-02 组件已升级 PRD 统一规则）。
-                   2026-09-04：外层 --ee-bg 变量把「背景色」实时同步到图标预览背景（原型 syncEditorColor）。 -->
+              <!-- 图标行（E2/C5，原型 L1331 decorateEditor 后的 `.icon-row.compact-icon-row`）：
+                   预览块 + 并排【从图标库选择】【上传图标】两枚 plain 按钮，链路仍是 IconPickerPopover
+                   的图标库弹窗 / 上传裁剪（IconField 内部 headless 复用），只读态两按钮置灰。
+                   外层 --ee-bg 变量把「背景色」实时同步到预览块背景（原型 syncEditorColor）。 -->
               <span class="ee-icon-wrap" :style="{ '--ee-bg': form.backgroundColor }">
-                <IconPickerPopover
-                  v-if="!disabled"
+                <IconField
                   :icon="form.avatar"
-                  :position-name="form.name"
+                  :name="form.name"
+                  :readonly="disabled"
+                  placeholder="—"
                   @pick="onPickIcon"
                 />
-                <span v-else class="ee-avatar-ro">{{ form.avatar || '—' }}</span>
               </span>
             </el-form-item>
             <!-- 背景色（2026-09-04 新增必填，字段顺序：图标之后、简介之前——原型 finalizeExpertLayout）：
@@ -618,7 +654,7 @@ const metaItems = computed(() => {
                 <div class="ee-bg-hint">用于专家图标和客户端卡片背景，固定提供 7 种颜色</div>
               </div>
             </el-form-item>
-            <el-form-item label="简介" required :error="errors.intro">
+            <el-form-item label="简介" required :error="errors.intro" class="ee-full">
               <el-input
                 v-model="form.intro"
                 type="textarea"
@@ -629,13 +665,14 @@ const metaItems = computed(() => {
                 placeholder="一句话说明该专家能解决什么问题"
               />
             </el-form-item>
-            <!-- 职责描述：Markdown 编辑器就地内嵌，字数计数浮在编辑框右下角内 -->
-            <el-form-item label="职责描述" required :error="errors.roleDesc">
+            <!-- 职责描述：Markdown 编辑器就地内嵌，字数计数浮在编辑框右下角内。
+                 高度 282 = 原型 L675 工具栏 52 + 文本域 min-height 230（E2③）。 -->
+            <el-form-item label="职责描述" required :error="errors.roleDesc" class="ee-full">
               <div class="ee-soul">
                 <div class="ee-soul-mde">
                   <SkillMilkdownEditor
                     :model-value="form.roleDesc"
-                    height="320px"
+                    height="282px"
                     :readonly="disabled"
                     placeholder="你是……专家，专注……。你擅长：1) … 2) …。回答风格：稳、细、主动、有分寸。支持 Markdown：# 标题、- 列表、**加粗**"
                     @update:model-value="form.roleDesc = $event"
@@ -647,49 +684,51 @@ const metaItems = computed(() => {
               </div>
             </el-form-item>
           </el-form>
-        </section>
 
-        <!-- ② 专家帮你做（示例问题，必填固定 3 条；区标题补必填红星——2026-09-04 原型 finalizeExpertLayout；
-             区级【AI 生成】走统一 AI 实况生成机制：源=简介，空则禁用 + title 引导） -->
-        <section class="ee-sec">
-          <div class="ee-sec-headrow">
-            <h3 class="ee-sec-head">
-              <span class="ee-req">*</span>
-              专家帮你做
-              <span class="ee-sec-sub">必填，最多填写 3 条示例问题</span>
-            </h3>
-            <el-button
-              v-if="!disabled"
-              plain
-              size="small"
-              :disabled="aiQuestionsDisabled"
-              :title="aiQuestionsTitle || undefined"
-              @click="aiGenerateQuestions"
-            >{{ aiQuestionsLabel }}</el-button>
-          </div>
-          <div class="ee-q-list">
-            <div v-for="(q, i) in form.exampleQuestions" :key="i" class="ee-q-row">
-              <span class="ee-q-index">{{ i + 1 }}</span>
-              <!-- 校验收紧（2026-09-04）：3 条全填；空输入框在校验失败时标红（ee-q-invalid） -->
-              <el-input
-                :ref="(el) => setQuestionRef(el, i)"
-                v-model="form.exampleQuestions[i]"
-                maxlength="60"
-                :disabled="disabled"
-                :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
-                :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"
-                @input="errors.examples = ''"
-              />
+          <!-- ②「专家帮你做」（示例问题，必填固定 3 条）——E1：原型 L1111 把本段从独立卡移进
+               「基本信息」卡内作子分区（上边框分隔）。区标题必填红星（2026-09-04 finalizeExpertLayout）；
+               区级【AI 生成】走统一 AI 实况生成机制（源=简介，空则禁用 + title 引导）。
+               md §三.3 写「每条输入行旁展示【AI 生成】」↔ 原型/代码为区级一枚 → 本批按口径保持现状（E7）。 -->
+          <div class="ee-basic-subsection">
+            <div class="ee-sec-headrow">
+              <h3 class="section-title ee-sub-title">
+                <span class="ee-req">*</span>
+                专家帮你做
+                <span class="section-sub">必填，最多填写 3 条示例问题</span>
+              </h3>
+              <el-button
+                v-if="!disabled"
+                plain
+                size="small"
+                :disabled="aiQuestionsDisabled"
+                :title="aiQuestionsTitle || undefined"
+                @click="aiGenerateQuestions"
+              >{{ aiQuestionsLabel }}</el-button>
             </div>
+            <div class="ee-q-list">
+              <div v-for="(q, i) in form.exampleQuestions" :key="i" class="ee-q-row">
+                <span class="ee-q-index">{{ i + 1 }}</span>
+                <!-- 校验收紧（2026-09-04）：3 条全填；空输入框在校验失败时标红（ee-q-invalid） -->
+                <el-input
+                  :ref="(el) => setQuestionRef(el, i)"
+                  v-model="form.exampleQuestions[i]"
+                  maxlength="60"
+                  :disabled="disabled"
+                  :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
+                  :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"
+                  @input="errors.examples = ''"
+                />
+              </div>
+            </div>
+            <div v-if="errors.examples" class="ee-field-err">{{ errors.examples }}</div>
           </div>
-          <div v-if="errors.examples" class="ee-field-err">{{ errors.examples }}</div>
         </section>
 
         <!-- ③ 市场技能引用（内嵌卡片勾选；新建态即可勾选） -->
-        <section class="ee-sec">
-          <h3 class="ee-sec-head">
+        <section class="section-card">
+          <h3 class="section-title">
             市场技能引用
-            <span class="ee-sec-sub">仅展示可引用的市场技能，至少添加 1 个</span>
+            <span class="section-sub">仅展示可引用的市场技能，至少添加 1 个</span>
           </h3>
           <div class="ee-sk-pickhead">
             <el-input
@@ -726,8 +765,9 @@ const metaItems = computed(() => {
               没有匹配的市场技能
             </div>
           </div>
+          <!-- 【展开更多（N）】：原型 L686–L688 `.expert-skill-more` = 34px 居中 plain 按钮（非文字链） -->
           <div v-if="showMoreRow" class="ee-sk-more-row">
-            <el-button link type="primary" @click="skillExpanded = !skillExpanded">
+            <el-button plain class="ee-more-btn" @click="skillExpanded = !skillExpanded">
               {{ skillExpanded ? '收起' : `展开更多（${hiddenCount}）` }}
             </el-button>
           </div>
@@ -736,16 +776,27 @@ const metaItems = computed(() => {
 
         <!-- ④ 只读「知识库」区块（2026-09-04 原型 expert-knowledge-card-module：技能引用区后）。
              列=知识库名称/数据源/文档数量/状态/操作；默认露 2 行 + 展开更多（N）；搜索时全量匹配。 -->
-        <section class="ee-sec ee-kb-sec">
-          <h3 class="ee-sec-head">
+        <section class="section-card ee-kb-sec">
+          <h3 class="section-title">
             知识库
-            <span class="ee-sec-sub">当前专家可见范围内的知识库</span>
+            <span class="section-sub">当前专家可见范围内的知识库</span>
           </h3>
+          <!-- 搜索框 ⌕ 前缀（E5，原型 L4116 `.expert-kb-search:before`） -->
           <div class="ee-kb-search">
-            <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable />
+            <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable>
+              <template #prefix><span class="ee-kb-search-icon">⌕</span></template>
+            </el-input>
           </div>
           <div v-loading="kbLoading" class="ee-kb-tablewrap">
             <table class="ee-kb-table">
+              <!-- 列宽照原型 L4158 colgroup（table-layout:fixed 依赖它） -->
+              <colgroup>
+                <col style="width: 34%" />
+                <col style="width: 22%" />
+                <col style="width: 10%" />
+                <col style="width: 12%" />
+                <col style="width: 22%" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>知识库名称</th>
@@ -764,17 +815,19 @@ const metaItems = computed(() => {
                   <td><span class="ee-kb-source">{{ kbSourcesText(r) || '—' }}</span></td>
                   <td>{{ kbDocText(r) }}</td>
                   <td><span class="ee-kb-status">{{ kbStateMeta(r).label }}</span></td>
+                  <!-- E4：【查看】收抽屉 + 深链落知识库查看态；【检索测试】不收抽屉、就地叠弹窗 -->
                   <td class="ee-kb-ops">
-                    <el-button link type="primary" @click="jumpKnowledge(r, 'view')">查看</el-button>
-                    <el-button link type="primary" @click="jumpKnowledge(r, 'search')">检索测试</el-button>
+                    <el-button link type="primary" @click="viewKnowledge(r)">查看</el-button>
+                    <el-button link type="primary" @click="testKnowledge(r)">检索测试</el-button>
                   </td>
                 </tr>
               </tbody>
             </table>
             <div v-if="!kbLoading && !kbShown.length" class="ee-kb-empty">未找到匹配的知识库</div>
           </div>
+          <!-- 【展开更多（N）】：原型 L4127 plain 居中、min-width 112 -->
           <div v-if="kbShowMore" class="ee-kb-more">
-            <el-button plain size="small" @click="kbExpanded = !kbExpanded">
+            <el-button plain class="ee-more-btn ee-kb-more-btn" @click="kbExpanded = !kbExpanded">
               {{ kbExpanded ? '收起' : `展开更多（${kbExtraCount}）` }}
             </el-button>
           </div>
@@ -797,25 +850,23 @@ const metaItems = computed(() => {
         </el-button>
       </template>
     </template>
+
+    <!-- E4：检索测试弹窗叠在专家抽屉之上（原型 L4175 `openSearch(kb)` 不 closeDrawer）。
+         挂 #extra（抽屉子树内）保证层级压在抽屉之上、且不被 .de-body 的滚动容器裁切。 -->
+    <template #extra>
+      <KnowledgeSearchDialog v-model:visible="searchVisible" :kb="searchKb" />
+    </template>
   </DrawerEditor>
 </template>
 
 <style scoped>
-/* 三级间距节奏：段与段 20px（DrawerEditor 的 .de-body gap）> 段标题与内容 12px > 字段之间 16px。 */
-.ee-sec {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.ee-sec-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  line-height: 1.4;
+/* 分区卡（E1）：卡壳样式（白底/描边/圆角/灰底卡头）来自 assets/admin-shell.css 的 .section-card，
+ * 本文件只补专家抽屉自己的排版，不重复写卡样式、不改共享层。
+ * 卡标题在专家抽屉里提到 17px/700（原型 L1082 `.drawer.expert-editor-drawer .section-title`）。 */
+.section-card > .section-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 24px;
 }
 .ee-sec-headrow {
   display: flex;
@@ -823,28 +874,61 @@ const metaItems = computed(() => {
   justify-content: space-between;
   gap: var(--space-3);
 }
-.ee-sec-sub {
-  font-weight: var(--fw-normal);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
+/* 子分区标题（.section-title 在卡内是贴边灰底条，子分区里要退回普通标题） */
+.ee-sub-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
 }
 .ee-field-err {
   font-size: var(--fs-xs);
   color: var(--c-danger);
 }
-.ee-sec :deep(.el-form) {
-  padding-left: var(--space-4);
-}
-.ee-sec :deep(.el-form-item) {
+.section-card :deep(.el-form-item) {
   margin-bottom: var(--space-4);
 }
-.ee-sec :deep(.el-form-item:last-child) {
+.section-card :deep(.el-form-item:last-child) {
   margin-bottom: 0;
 }
 .ee-empty {
   font-size: var(--fs-sm);
   color: var(--c-text-faint);
   padding: var(--space-3) 0;
+}
+
+/* —— 基本信息两列栅格（E2，原型 L16 `.section-card .form-grid{repeat(2,minmax(0,1fr))}` + L51 gap 18/22） —— */
+.ee-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.ee-form-grid :deep(.el-form-item) {
+  margin-bottom: 0;
+  min-width: 0;
+}
+/* 通栏字段（简介 / 职责描述） */
+.ee-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 620px) {
+  .ee-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* —— 「专家帮你做」子分区（E1，原型 L1102 `.expert-basic-subsection`：上边框 + 26/24 间距） —— */
+.ee-basic-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
 }
 
 /* 顶部说明条（原型 expert-editor-note） */
@@ -858,11 +942,7 @@ const metaItems = computed(() => {
 }
 
 .ee-category {
-  width: 220px;
-}
-.ee-avatar-ro {
-  font-size: var(--fs-sm);
-  color: var(--c-text-muted);
+  width: 100%;
 }
 
 /* —— 必填红星（区块标题级，2026-09-04 原型 expert-required-mark） —— */
@@ -871,8 +951,9 @@ const metaItems = computed(() => {
   font-weight: var(--fw-normal);
 }
 
-/* —— 图标预览背景实时联动背景色（原型 syncEditorColor；--ee-bg 由模板落值） —— */
-.ee-icon-wrap :deep(.ip-avatar) {
+/* —— 图标预览背景实时联动背景色（原型 syncEditorColor；--ee-bg 由模板落值）。
+       2026-09-09 批次 3C · E2：图标行换 IconField 后预览块类名由 .ip-avatar 变为 .icon-preview。 —— */
+.ee-icon-wrap :deep(.icon-preview) {
   background: var(--ee-bg, transparent);
   transition: background-color 0.15s ease;
 }
@@ -978,22 +1059,26 @@ const metaItems = computed(() => {
   color: var(--c-warning);
 }
 
-/* —— 专家帮你做（编号 + 输入行，原型 fixed-entry-row） —— */
+/* —— 专家帮你做（编号 + 输入行；原型 L1090 抽屉内 `.fixed-entry-row` = 30px 轨 / gap 10 / 行距 14，
+       编号块 28px、输入框 46px 高） —— */
 .ee-q-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding-left: var(--space-4);
+  gap: 14px;
 }
 .ee-q-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
+  padding: 2px 0;
+}
+.ee-q-row :deep(.el-input__wrapper) {
+  height: 46px;
 }
 .ee-q-index {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: var(--radius-pill);
@@ -1002,13 +1087,19 @@ const metaItems = computed(() => {
   font-size: var(--fs-xs);
 }
 
-/* —— 市场技能引用（内嵌选择器） —— */
+/* —— 市场技能引用（内嵌选择器）——
+ * E3 照原型 L1093–L1101（抽屉 polish 层）：搜索框 42px 与摘要同行、卡两列 gap 12、
+ * 卡 min-height 84 / padding 16 15 14 44、checkbox 绝对定位左上（15/14）、
+ * 选中态左侧 4px 绿条 + 绿底 + 1px 绿描边、hover 上浮 2px。 */
 .ee-sk-pickhead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
-  padding-left: var(--space-4);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ee-sk-search :deep(.el-input__wrapper) {
+  height: 42px;
 }
 .ee-sk-summary {
   font-size: var(--fs-xs);
@@ -1018,39 +1109,57 @@ const metaItems = computed(() => {
 .ee-sk-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding-left: var(--space-4);
+  gap: 12px;
 }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .ee-sk-grid {
     grid-template-columns: 1fr;
   }
 }
 .ee-skill-check {
+  position: relative;
   display: flex;
-  gap: var(--space-2);
-  align-items: flex-start;
-  padding: var(--space-3);
+  min-height: 84px;
+  margin: 0;
+  padding: 16px 15px 14px 44px;
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: var(--bg-base);
+  border-radius: 10px;
+  background: var(--bg-surface, var(--bg-base));
+  overflow: hidden;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
 }
 .ee-skill-check:hover {
-  border-color: var(--c-primary, #409eff);
+  border-color: var(--c-accent, #409eff);
+  box-shadow: var(--shadow-md, 0 8px 20px rgba(27, 48, 39, 0.12));
+  transform: translateY(-2px);
 }
 .ee-skill-check.checked {
-  border-color: var(--c-primary, #409eff);
+  border-color: var(--c-accent, #409eff);
   background: var(--c-accent-soft, var(--bg-hover));
+  box-shadow: 0 0 0 1px var(--c-accent, #409eff);
+}
+/* 选中态左侧 4px 竖条（原型 `.skill-check:has(input:checked)::before`） */
+.ee-skill-check.checked::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--c-accent, #409eff);
 }
 .ee-skill-check.disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
 .ee-skill-check input {
-  margin-top: 3px;
-  accent-color: var(--c-primary, #409eff);
+  position: absolute;
+  top: 15px;
+  left: 14px;
+  margin: 0;
+  accent-color: var(--c-accent, #409eff);
   flex: none;
 }
 .ee-skill-body {
@@ -1086,7 +1195,17 @@ const metaItems = computed(() => {
   grid-column: 1 / -1;
 }
 .ee-sk-more-row {
-  padding-left: var(--space-4);
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+/* 【展开更多（N）】/【收起】统一 plain 按钮 34px（原型 `.expert-skill-more` L688 / `.expert-kb-more` L4127） */
+.ee-more-btn {
+  height: 34px;
+  padding: 0 15px;
+}
+.ee-kb-more-btn {
+  min-width: 112px;
 }
 
 /* —— 只读查看态 —— */
@@ -1094,7 +1213,6 @@ const metaItems = computed(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3) var(--space-4);
-  padding-left: var(--space-4);
 }
 .ee-view-full {
   grid-column: 1 / -1;
@@ -1122,7 +1240,6 @@ const metaItems = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding-left: var(--space-4);
 }
 .ee-view-question {
   padding: var(--space-2) var(--space-3);
@@ -1162,25 +1279,32 @@ const metaItems = computed(() => {
   white-space: nowrap;
 }
 
-/* —— 只读「知识库」区块（原型 expert-knowledge-card-style 移植，令牌化） —— */
+/* —— 只读「知识库」区块（原型 expert-knowledge-card-style L4113–L4130 移植，令牌化） —— */
 .ee-kb-search {
-  padding-left: var(--space-4);
+  position: relative;
+  margin: 2px 0 12px;
+}
+/* ⌕ 前缀图标（原型 `.expert-kb-search:before`，此处用 el-input 的 #prefix 插槽承载） */
+.ee-kb-search-icon {
+  color: var(--c-text-faint);
+  font-size: 15px;
+  line-height: 1;
 }
 .ee-kb-tablewrap {
-  margin-left: var(--space-4);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--bg-base);
-  overflow-x: auto;
+  overflow: hidden;
 }
 .ee-kb-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-xs);
+  table-layout: fixed;
+  font-size: 12px;
 }
 .ee-kb-table th {
   height: 36px;
-  padding: 0 var(--space-3);
+  padding: 0 10px;
   text-align: left;
   color: var(--c-text-faint);
   background: var(--bg-sunken);
@@ -1188,7 +1312,7 @@ const metaItems = computed(() => {
   white-space: nowrap;
 }
 .ee-kb-table td {
-  padding: var(--space-3);
+  padding: 11px 10px;
   border-top: 1px solid var(--border-soft);
   vertical-align: middle;
   color: var(--c-text-muted);
@@ -1197,7 +1321,7 @@ const metaItems = computed(() => {
 .ee-kb-table td strong {
   display: block;
   color: var(--c-text-strong);
-  font-size: var(--fs-sm);
+  font-size: 13px;
   font-weight: var(--fw-medium);
 }
 .ee-kb-table td small {
@@ -1224,7 +1348,7 @@ const metaItems = computed(() => {
   white-space: nowrap;
 }
 .ee-kb-empty {
-  padding: var(--space-5) var(--space-4);
+  padding: 28px 16px;
   text-align: center;
   color: var(--c-text-faint);
   font-size: var(--fs-sm);
@@ -1232,26 +1356,29 @@ const metaItems = computed(() => {
 .ee-kb-more {
   display: flex;
   justify-content: center;
-  padding-left: var(--space-4);
+  padding-top: 12px;
+}
+/* 窄屏：表格横向滚动（原型 L4130 @media 720px） */
+@media (max-width: 720px) {
+  .ee-kb-tablewrap {
+    overflow-x: auto;
+  }
+  .ee-kb-table {
+    min-width: 720px;
+  }
 }
 
-/* —— 底部时间条（原型 page-time） —— */
+/* —— 底部时间条（原型 page-time；卡外独立成行，左右 2px 与卡对齐） —— */
 .ee-meta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
-  padding-top: var(--space-3);
+  padding: var(--space-3) 2px 2px;
   border-top: 1px solid var(--border-soft);
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
 }
 .ee-meta span {
   white-space: nowrap;
-}
-
-/* 空态/错误同样跟随字段缩进 */
-.ee-sec .ee-empty,
-.ee-sec .ee-field-err {
-  padding-left: var(--space-4);
 }
 </style>

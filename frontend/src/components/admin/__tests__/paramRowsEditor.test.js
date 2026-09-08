@@ -13,10 +13,19 @@ const ParamRowsEditor = (await import('@/components/admin/ParamRowsEditor.vue'))
 
 const elInput = {
   name: 'el-input',
-  props: { modelValue: String, disabled: Boolean, placeholder: String, maxlength: [String, Number] },
+  // type / showPassword：2026-09-09 批次 3A · A4 的 secretValue 密码态由此透出供断言
+  props: {
+    modelValue: String,
+    disabled: Boolean,
+    placeholder: String,
+    maxlength: [String, Number],
+    type: { type: String, default: 'text' },
+    showPassword: Boolean
+  },
   emits: ['update:modelValue', 'input'],
   template:
     '<input class="el-input" :value="modelValue" :disabled="disabled" :placeholder="placeholder"' +
+    ' :type="type" :data-show-password="showPassword ? \'1\' : \'0\'"' +
     ' @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
 }
 const elSelect = {
@@ -35,9 +44,11 @@ const elCheckbox = {
   name: 'el-checkbox',
   props: { modelValue: Boolean },
   emits: ['update:modelValue', 'change'],
+  // 带默认插槽：clientFillLabel（原型 label.mcp-env-client 的「客户端填写」四字）走这里
   template:
-    '<input class="el-checkbox" type="checkbox" :checked="modelValue"' +
-    ' @change="$emit(\'update:modelValue\', $event.target.checked); $emit(\'change\', $event.target.checked)" />'
+    '<label class="el-checkbox-wrap"><input class="el-checkbox" type="checkbox" :checked="modelValue"' +
+    ' @change="$emit(\'update:modelValue\', $event.target.checked); $emit(\'change\', $event.target.checked)" />' +
+    '<slot /></label>'
 }
 const elButton = {
   name: 'el-button',
@@ -158,5 +169,67 @@ describe('ParamRowsEditor', () => {
     container.remove()
     const has = mountEditor({ clientFillHint: '值由客户端收集', rows: [row({ key: 'A', clientFill: true })] })
     expect(has.querySelector('.pr-cf-hint').textContent).toContain('客户端收集')
+  })
+
+  /* ===== 2026-09-09 原型复刻批次 3A（M5 MCP Env 形态 / A4 API 鉴权形态） ===== */
+
+  it('新增 prop 全部默认关闭：既有消费方形态不变（无空态、表头随行、添加在表底、无行卡片）', () => {
+    const el = mountEditor({ rows: [] })
+    expect(el.querySelector('.pr-empty')).toBeNull()
+    expect(el.querySelector('.pr-row-head')).toBeNull()
+    expect(el.querySelector('.pr-add button')).not.toBeNull()
+    expect(el.querySelector('.pr-row.is-card')).toBeNull()
+  })
+
+  it('M5 MCP Env 形态：表头恒显 + 第三列「填写方式」+ 空态「暂无环境变量」+ 行卡片 + 添加不在表底', () => {
+    const el = mountEditor({
+      rows: [],
+      keyHeader: '变量名',
+      clientFillHeader: '填写方式',
+      alwaysHead: true,
+      cardRows: true,
+      addPosition: 'header',
+      emptyText: '暂无环境变量'
+    })
+    const head = el.querySelector('.pr-row-head')
+    expect(head).not.toBeNull() // 无行也显表头（原型 .mcp-env-head）
+    expect(head.textContent).toContain('变量名')
+    expect(head.textContent).toContain('填写方式')
+    expect(el.querySelector('.pr-empty').textContent).toContain('暂无环境变量')
+    // 添加按钮交给宿主摆到 .mcp-env-title 右侧，组件自己不再在表底渲染
+    expect(el.querySelector('.pr-add')).toBeNull()
+  })
+
+  it('M5 行卡片 + clientFillLabel：勾选框旁带「客户端填写」四字（原型 label.mcp-env-client）', () => {
+    const el = mountEditor({
+      rows: [row({ key: 'API_KEY' })],
+      cardRows: true,
+      clientFillLabel: '客户端填写'
+    })
+    const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
+    expect(dataRow.classList.contains('is-card')).toBe(true)
+    expect(el.querySelector('.pr-cf').textContent).toContain('客户端填写')
+  })
+
+  it('A4 API 鉴权形态：参数值密码态 + 客户端填写说明常显（不必先勾选）', () => {
+    const el = mountEditor({
+      rows: [row({ key: 'X-Api-Key', value: '' })],
+      showIn: true,
+      inOptions: [{ value: 'HEADER', label: 'Header' }],
+      secretValue: true,
+      clientFillHint: '客户端填写参数由客户端收集，平台不存值',
+      clientFillHintAlways: true
+    })
+    // 没有任何客户端填写行，说明仍在（原型 .api-auth-add-note 常显）
+    expect(el.querySelector('.pr-cf-hint').textContent).toContain('平台不存值')
+    const valueInput = el.querySelectorAll('.pr-row:not(.pr-row-head) input.el-input')[2]
+    expect(valueInput.getAttribute('type')).toBe('password')
+  })
+
+  it('A4 密码态遇「客户端填写」行回落明文（值本就由客户端收集、框已禁用，不必再打码）', () => {
+    const el = mountEditor({ rows: [row({ key: 'k', clientFill: true })], secretValue: true })
+    const valueInput = el.querySelectorAll('.pr-row:not(.pr-row-head) input.el-input')[2]
+    expect(valueInput.getAttribute('type')).toBe('text')
+    expect(valueInput.disabled).toBe(true)
   })
 })

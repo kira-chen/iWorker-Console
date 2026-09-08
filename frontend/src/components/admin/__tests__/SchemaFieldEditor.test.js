@@ -5,10 +5,14 @@ import { createApp, h, nextTick, ref } from 'vue'
 /**
  * N10：入参/出参「字段行编辑器」支持任意层级嵌套。
  * 验证：
- *  - 顶层「添加字段」emit 新行；
- *  - 类型切「对象 object」→ 展开缩进子字段区（递归本组件），并给该行补空 children；
- *  - 子字段区「添加子字段」→ emit 的行携带 children；
+ *  - 顶层「＋ 添加字段」emit 新行；
+ *  - 类型切「对象 object」→ 给该行补空 children，行操作区出现【＋子字段】；
+ *  - 行内【＋子字段】→ emit 的行携带 children；
  *  - 切离 object 时移除 children，不残留脏数据。
+ *
+ * 2026-09-09 原型复刻批次 3A · A5：子字段由「独立缩进块 + 递归组件」改为**同表扁平缩进行**
+ * （原型 requestRowsHtml/responseRowsHtml L899-900）。断言随之从 `.sfe-children` 容器与
+ * 「+ 添加子字段」脚按钮，改为父行操作区的【＋子字段】与扁平行数（`.sfe-row.is-child`）。
  */
 
 // EP 存根：把类型下拉暴露成可直接设值的 select，按钮按文案可点。
@@ -93,19 +97,21 @@ afterEach(() => {
 })
 
 describe('N10 · SchemaFieldEditor 多级嵌套', () => {
-  it('顶层「添加字段」emit 新的空字符串行（含稳定 _uid）', async () => {
+  it('顶层「＋ 添加字段」emit 新的空字符串行（含稳定 _uid）', async () => {
     const { container, getRows } = await mountEditor([])
-    findBtn(container, '+ 添加字段').click()
+    findBtn(container, '＋ 添加字段').click()
     await nextTick()
     expect(stripUid(getRows())).toEqual([
       { name: '', type: 'string', required: false, description: '' }
     ])
   })
 
-  it('类型切 object → 补空 children 并展开缩进子字段区', async () => {
+  it('类型切 object → 补空 children，行操作区出现【＋子字段】（A5 扁平形态）', async () => {
     const { container, getRows } = await mountEditor([
       { name: 'user', type: 'string', required: false, description: '' }
     ])
+    // 标量行没有【＋子字段】
+    expect(findBtn(container, '＋子字段')).toBeFalsy()
     const typeSelect = container.querySelector('.el-select')
     typeSelect.value = 'object'
     typeSelect.dispatchEvent(new Event('change'))
@@ -114,24 +120,29 @@ describe('N10 · SchemaFieldEditor 多级嵌套', () => {
     expect(getRows()[0].children).toEqual([])
     // 顶层行仍带稳定 _uid
     expect(typeof getRows()[0]._uid).toBe('number')
-    // 展开了子字段区（左强调条容器）
-    expect(container.querySelector('.sfe-children')).toBeTruthy()
-    // 子字段区有「添加子字段」按钮
-    expect(findBtn(container, '+ 添加子字段')).toBeTruthy()
+    // 对象行的操作区多出【＋子字段】（原型 L899 `.api-schema-child`）
+    expect(findBtn(container, '＋子字段')).toBeTruthy()
+    // 不再有独立子字段块
+    expect(container.querySelector('.sfe-children')).toBeNull()
   })
 
-  it('子字段区添加子字段 → emit 的行携带 children', async () => {
+  it('行内【＋子字段】→ emit 的行携带 children，且子行以缩进行渲染在父行之后', async () => {
     const { container, getRows } = await mountEditor([
       { name: 'user', type: 'object', required: false, description: '', children: [] }
     ])
-    findBtn(container, '+ 添加子字段').click()
+    findBtn(container, '＋子字段').click()
     await nextTick()
     expect(stripUid(getRows())[0].children).toEqual([
       { name: '', type: 'string', required: false, description: '' }
     ])
+    // 同一张表里两行：父行 + 缩进子行（表头不计）
+    const rowEls = container.querySelectorAll('.sfe-row')
+    expect(rowEls.length).toBe(2)
+    expect(rowEls[0].classList.contains('is-child')).toBe(false)
+    expect(rowEls[1].classList.contains('is-child')).toBe(true)
   })
 
-  it('object 切回标量类型 → 移除 children，不残留脏数据', async () => {
+  it('object 切回标量类型 → 移除 children，子行与【＋子字段】一并消失', async () => {
     const { container, getRows } = await mountEditor([
       {
         name: 'user',
@@ -141,14 +152,40 @@ describe('N10 · SchemaFieldEditor 多级嵌套', () => {
         children: [{ name: 'id', type: 'number', required: false, description: '' }]
       }
     ])
+    // 切换前：父行 + 子行两行
+    expect(container.querySelectorAll('.sfe-row').length).toBe(2)
     const typeSelect = container.querySelector('.el-select')
     typeSelect.value = 'string'
     typeSelect.dispatchEvent(new Event('change'))
     await nextTick()
     expect(getRows()[0].type).toBe('string')
     expect('children' in getRows()[0]).toBe(false)
-    // 子字段区随之消失
-    expect(container.querySelector('.sfe-children')).toBeNull()
+    expect(container.querySelectorAll('.sfe-row').length).toBe(1)
+    expect(findBtn(container, '＋子字段')).toBeFalsy()
+  })
+
+  it('删除子字段行 → 只删该子行，父行与兄弟子行不动（按 path 定位，不串位）', async () => {
+    const { container, getRows } = await mountEditor([
+      {
+        name: 'user',
+        type: 'object',
+        required: false,
+        description: '',
+        children: [
+          { name: 'id', type: 'number', required: false, description: '' },
+          { name: 'nick', type: 'string', required: false, description: '' }
+        ]
+      }
+    ])
+    await nextTick()
+    // 扁平后的三行：user / id / nick —— 删第二个子行 nick
+    const rowEls = container.querySelectorAll('.sfe-row')
+    expect(rowEls.length).toBe(3)
+    rowEls[2].querySelector('.pc-confirm').click()
+    await nextTick()
+    const rows = getRows()
+    expect(rows[0].name).toBe('user')
+    expect(rows[0].children.map((c) => c.name)).toEqual(['id'])
   })
 
   it('inbound rows 缺 _uid → 就地补齐并回写父级（含 object 子字段递归补）', async () => {

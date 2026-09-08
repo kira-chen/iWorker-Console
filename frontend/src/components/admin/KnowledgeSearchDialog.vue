@@ -6,6 +6,14 @@
  * 【结果】总数 + 耗时 + 各数据源召回统计；结果卡片=排名 / 相关度 / 数据源类型 / 来源名称 /
  *   页码定位 / 命中内容（长内容默认收起可展开）；单个数据源失败展示该来源错误、不影响其余结果。
  * 【空态】未测试时「输入问题后点击"开始测试"」；无可用数据源时提示先配置并启用数据源。
+ *
+ * 【2026-09-09 原型复刻批次 3B · G1–G5】静态形态照原型 openSearch / run-search：
+ *   G1 宽度 720 → 680（原型 .proto2-dialog{width:min(680px,calc(100vw - 36px))}）；标题「检索测试 · [知识库名]」已一致；
+ *   G2 表单改 2 列网格（.proto2-form-grid：检索问题跨列，第 2 行 Top K | 数据源范围），标签顶置；
+ *   G3 统计条改灰底圆角条 + 三段独立 span（.kb2-search-stats，gap 18），去掉延伸 hr；
+ *   G4 卡头首段改「#N 来源文档名」加粗（原型 <strong>），分数绿色加粗，来源行只留「数据源名 · 第 N 页」；
+ *      数据源类型 tag 与长内容折叠按 md §三.7 保留；
+ *   G5 加载骨架为代码超集（编码规范「关键交互需 loading」），不动。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { searchKnowledgeBase } from '@/api/knowledgeBase'
@@ -80,10 +88,15 @@ async function runTest() {
     result.done = true
   }
 }
+/**
+ * 卡片头第二行来源（原型 .kb2-result-source「产品资料文档库 · 第 18 页」）：
+ * 来源文档名已随排名进 <strong>，这里只留「数据源名 · 第 N 页」。
+ */
 function sourceLine(it) {
-  const s = it.source || '未知来源'
-  const line = it.page ? `${s} · 第 ${it.page} 页` : s
-  return it.sourceName ? `${it.sourceName} / ${line}` : line
+  const parts = []
+  if (it.sourceName) parts.push(it.sourceName)
+  if (it.page) parts.push(`第 ${it.page} 页`)
+  return parts.join(' · ')
 }
 function isLong(it) {
   return (it.content || '').length > CLAMP_LEN
@@ -96,7 +109,7 @@ function close() {
 <template>
   <el-dialog
     :model-value="visible"
-    width="720px"
+    width="680px"
     :close-on-click-modal="false"
     class="kb-search-dialog"
     @update:model-value="close"
@@ -136,15 +149,19 @@ function close() {
         <el-skeleton v-if="searching" :rows="5" animated />
 
         <template v-else-if="result.done">
-          <div class="ks-meta">
-            <span>召回 {{ result.items.length }} 条 · 耗时 {{ result.elapsedMs }} ms<template v-if="stats"> · {{ stats }}</template></span>
-            <hr />
+          <!-- 统计条照原型 .kb2-search-stats：灰底圆角条、三段独立 span（gap 18） -->
+          <div class="ks-stats">
+            <span>召回 {{ result.items.length }} 条</span>
+            <span>耗时 {{ result.elapsedMs }} ms</span>
+            <span v-if="stats">{{ stats }}</span>
           </div>
           <div v-if="!result.items.length && !result.errors.length" class="ks-empty">没有检索到相关内容，试试换个问法</div>
           <div class="ks-list">
             <article v-for="it in result.items" :key="it.rank" class="ks-card">
+              <!-- 卡片头照原型 .kb2-result-head：「#N 来源文档名」加粗 + 绿色加粗分数 + 灰 12px 来源行；
+                   数据源类型 tag 按 md §三.7（展示数据源类型）保留 -->
               <div class="ks-card-head">
-                <span class="ks-rank">#{{ it.rank }}</span>
+                <strong class="ks-rank">#{{ it.rank }} {{ it.source || '未知来源' }}</strong>
                 <span class="ks-score">{{ Number(it.score).toFixed(2) }}</span>
                 <el-tag size="small" type="info" effect="plain">{{ SOURCE_LABELS[it.sourceType] || it.sourceType }}</el-tag>
                 <span class="ks-source">{{ sourceLine(it) }}</span>
@@ -191,37 +208,44 @@ function close() {
   flex-direction: column;
   gap: var(--space-4);
 }
+/* 表单网格照原型 .proto2-form-grid{grid-template-columns:1fr 1fr;gap:17px 20px}：检索问题 .full 跨列，
+ * 第 2 行 [Top K | 数据源范围]；标签顶置（.proto2-label{margin-bottom:7px}） */
 .ks-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px 20px;
 }
 .ks-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 160px;
+  gap: 7px;
+  min-width: 0;
 }
 .ks-field--full {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
+}
+@media (max-width: 1000px) {
+  .ks-form {
+    grid-template-columns: 1fr;
+  }
+  .ks-field--full {
+    grid-column: auto;
+  }
 }
 .ks-label {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  color: var(--c-text);
 }
-.ks-meta {
+/* 结果统计条（原型 .kb2-search-stats{display:flex;gap:18px;padding:11px 13px;border-radius:7px;background:#f3f7f5}） */
+.ks-stats {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 11px 13px;
+  border-radius: 7px;
+  background: var(--bg-sunken);
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
-}
-.ks-meta hr {
-  flex: 1;
-  border: 0;
-  border-top: 1px solid var(--border-soft);
-  margin: 0;
 }
 .ks-empty {
   padding: var(--space-6) 0;
@@ -236,41 +260,48 @@ function close() {
   max-height: 420px;
   overflow: auto;
 }
+/* 结果卡（原型 .kb2-result{padding:13px 14px;border:1px solid #dfe5e1;border-radius:8px}） */
 .ks-card {
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  padding: 13px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .ks-card.err {
   border-color: var(--c-danger-soft);
   background: var(--c-danger-soft);
   color: var(--c-danger);
 }
+/* 卡头（原型 .kb2-result-head{display:flex;align-items:center;gap:9px;margin-bottom:8px}） */
 .ks-card-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 9px;
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
+/* 「#N 来源文档名」加粗常规字号（原型 <strong>） */
 .ks-rank {
-  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
 }
 .ks-card.err .ks-rank {
   color: var(--c-danger);
 }
+/* 分数：绿色加粗（原型 .kb2-score{color:#078b61;font-weight:650}） */
 .ks-score {
-  font-family: var(--font-mono);
+  font-weight: 650;
   color: var(--c-accent);
   font-variant-numeric: tabular-nums;
 }
+/* 来源行：灰 12px（原型 .kb2-result-source{color:#7d8882;font-size:12px}） */
 .ks-source {
-  color: var(--c-text);
+  font-size: 12px;
+  color: var(--c-text-muted);
 }
 .ks-content {
   margin: 0;

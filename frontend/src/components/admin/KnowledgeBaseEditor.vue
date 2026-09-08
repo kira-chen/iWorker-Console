@@ -14,6 +14,16 @@
  *
  * 【关键变更回未发布】（md §三.5）已发布库改数据源引用或可见范围 → 保存前二次确认，确认后回未发布重审。
  * 【岗位上下文】（md §三.8）positionLock 传入时类型锁「岗位知识库」、可见范围锁当前岗位，均不可更改。
+ *
+ * 【2026-09-09 原型复刻批次 3B · C1–C5/C8】静态形态照原型 openKbEditor：
+ *   C1 两段改 .section-card 卡壳（admin-shell.css，= 原型 .proto2-form-sec + .proto2-form-title 灰底标题条），
+ *      第二段无标题条、用 .kb-ds-header「数据源 + 副注」作区块头；
+ *   C2 基本信息 2 列网格（.proto2-form-grid 1fr 1fr / gap 17 20，描述跨列）+ 标签顶置、help 下置；
+ *   C3 类型改 el-select（原型 <select id="kbEditType">），企业类型可见范围改 disabled el-select 单项「全员」；
+ *   C4 引用行标签窄档 44px（原型 .kb-ds-label）、计数「N / 5」加粗（原型 <strong>）；
+ *   C5 底部按钮样式档：删除=文字链 link danger、撤回=无色 plain、提交发布=primary；
+ *   C8 标题右侧状态标签（原型 drawerShell 第二参 kTag）——已一致。
+ * 处理逻辑与 mock 交互按 md + 代码现状不变。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -363,41 +373,45 @@ function close() {
       <StatusTag v-if="detail" :type="stateMeta(detail).type">{{ stateMeta(detail).label }}</StatusTag>
     </template>
 
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="112px" label-position="right" :disabled="readonlyAll">
-      <!-- ① 基本信息（md §三.3.1） -->
-      <section class="kb-sec">
-        <div class="kb-sec-title">基本信息</div>
-        <el-form-item label="知识库名称" prop="name">
-          <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="如 产品与解决方案库" />
-        </el-form-item>
-        <el-form-item label="类型" prop="kbType">
-          <el-radio-group v-model="form.kbType" :disabled="typeLocked">
-            <el-radio v-for="o in KB_TYPE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-          </el-radio-group>
-          <span class="kb-hint">{{ positionLock && !isEdit ? '岗位知识库不可更改' : '创建后不可更改' }}</span>
-        </el-form-item>
-        <el-form-item label="可见范围" prop="scopeRefId">
-          <div class="kb-scope">
-            <el-input v-if="form.kbType === 'ENTERPRISE'" model-value="全员" disabled />
+    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :disabled="readonlyAll">
+      <!-- ① 基本信息（md §三.3.1）；壳与网格照原型 openKbEditor：.proto2-form-sec 卡 + .proto2-form-grid 两列 -->
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
+        <div class="kb-grid">
+          <el-form-item label="知识库名称" prop="name" required>
+            <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="如 产品与解决方案库" />
+          </el-form-item>
+          <el-form-item label="类型" prop="kbType" required>
+            <el-select v-model="form.kbType" :disabled="typeLocked" class="kb-full">
+              <el-option v-for="o in KB_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+            </el-select>
+            <div class="kb-help">{{ positionLock && !isEdit ? '岗位知识库不可更改' : '创建后不可更改' }}</div>
+          </el-form-item>
+          <el-form-item label="可见范围" prop="scopeRefId" required>
+            <el-select v-if="form.kbType === 'ENTERPRISE'" model-value="ALL" disabled class="kb-full">
+              <el-option label="全员" value="ALL" />
+            </el-select>
             <el-select v-else v-model="form.scopeRefId" filterable :disabled="scopeLocked" :placeholder="`选择${scopeLabel}`" class="kb-full">
               <el-option v-for="o in scopeOptions" :key="o.id" :label="o.name" :value="o.id" />
             </el-select>
-            <div class="kb-hint kb-hint--block">{{ positionLock ? '可见范围锁定为当前岗位' : SCOPE_HELP[form.kbType] }}</div>
-          </div>
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="必填：这个知识库放什么、给谁用" />
-        </el-form-item>
+            <div class="kb-help">{{ positionLock ? '可见范围锁定为当前岗位' : SCOPE_HELP[form.kbType] }}</div>
+          </el-form-item>
+          <el-form-item label="描述" prop="description" class="kb-grid-full" required>
+            <el-input v-model="form.description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="必填：这个知识库放什么、给谁用" />
+          </el-form-item>
+        </div>
       </section>
 
-      <!-- ② 数据源引用（md §三.3.2）：只引用，不在此创建或编辑数据源 -->
-      <section class="kb-sec">
-        <div class="kb-sec-title">
-          数据源
-          <span class="kb-sec-sub">从「数据源管理」里选引用，每类最多 {{ MAX_SOURCES_PER_TYPE }} 个；新建与配置去「数据源管理」子页</span>
+      <!-- ② 数据源引用（md §三.3.2）：只引用，不在此创建或编辑数据源。
+           照原型第二段 .proto2-form-sec 无灰底标题条，内部 .kb-ds-header 作区块头 -->
+      <section class="section-card kb-ds-card">
+        <div class="kb-ds-header">
+          <strong>数据源</strong>
+          <span class="kb-ds-header-hint">从「数据源管理」里选引用，每类最多 {{ MAX_SOURCES_PER_TYPE }} 个；新建与配置去「数据源管理」子页</span>
         </div>
 
-        <el-form-item v-for="t in SOURCE_TYPES" :key="t" :label="SOURCE_LABELS[t]">
+        <!-- 引用行左标签窄档 44px（原型 .kb-ds-label），与基本信息的顶置标签不同档 -->
+        <el-form-item v-for="t in SOURCE_TYPES" :key="t" :label="SOURCE_LABELS[t]" class="kb-ds-item" label-position="right" label-width="44px">
           <div class="kb-ref">
             <el-select
               v-model="refs[t]"
@@ -414,7 +428,7 @@ function close() {
               </el-option>
             </el-select>
             <div class="kb-ref-foot">
-              <span class="kb-ref-count">{{ refs[t].length }} / {{ MAX_SOURCES_PER_TYPE }}</span>
+              <strong class="kb-ref-count">{{ refs[t].length }} / {{ MAX_SOURCES_PER_TYPE }}</strong>
               <span class="kb-ref-desc">{{ SOURCE_DESC[t] }}</span>
             </div>
             <div v-for="(w, i) in refWarnings(t)" :key="i" class="kb-ref-warn">⚠ {{ w }}</div>
@@ -430,24 +444,24 @@ function close() {
         <template v-if="viewMode">
           <span class="kb-foot-sp" />
           <el-button @click="close">关闭</el-button>
-          <el-button v-if="pendingLocked" type="warning" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
+          <el-button v-if="pendingLocked" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
           <el-button v-else-if="isOffline(detail)" type="primary" :loading="busy === 'publish'" @click="doPublish">提交发布</el-button>
         </template>
         <!-- 编辑抽屉·审核中：关闭·撤回（配置只读） -->
         <template v-else-if="pendingLocked">
           <span class="kb-foot-sp" />
           <el-button @click="close">关闭</el-button>
-          <el-button type="warning" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
+          <el-button plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>
         </template>
         <!-- 编辑抽屉：新建=取消·保存；未发布=删除···取消·保存·提交发布；已发布=取消·保存（提交停用已删，md §三.4.1） -->
         <template v-else>
-          <el-button v-if="isEdit && isOffline(detail)" type="danger" plain :loading="busy === 'delete'" :disabled="saving" @click="doDelete">删除</el-button>
+          <el-button v-if="isEdit && isOffline(detail)" link type="danger" :loading="busy === 'delete'" :disabled="saving" @click="doDelete">删除</el-button>
           <span class="kb-foot-sp" />
           <el-button :disabled="saving" @click="close">取消</el-button>
           <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
           <el-tooltip v-if="isEdit && isOffline(detail)" :disabled="!publishBlock" :content="publishBlock || ''" placement="top">
             <span>
-              <el-button type="success" :disabled="saving" :loading="busy === 'publish'" @click="doPublish">提交发布</el-button>
+              <el-button type="primary" :disabled="saving" :loading="busy === 'publish'" @click="doPublish">提交发布</el-button>
             </span>
           </el-tooltip>
         </template>
@@ -457,51 +471,76 @@ function close() {
 </template>
 
 <style scoped>
-/* 段 20（外壳 gap）> 字段 16 > 段标题-内容 12（规范 §6.2） */
-.kb-sec {
-  display: flex;
-  flex-direction: column;
+/* 分区卡壳走 assets/admin-shell.css 的 .section-card / .section-title（原型 .proto2-form-sec + .proto2-form-title）。
+ * 卡内网格照原型 .proto2-form-grid{grid-template-columns:1fr 1fr;gap:17px 20px}，.full 跨两列。 */
+.kb-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px 20px;
 }
-.kb-sec + .kb-sec {
-  margin-top: var(--space-5);
+.kb-grid-full {
+  grid-column: 1 / -1;
 }
-.kb-sec-title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-3);
-}
-.kb-sec-sub {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
-}
-.kb-sec :deep(.el-form-item) {
-  margin-bottom: var(--space-4);
-}
-.kb-sec :deep(.el-form-item:last-child) {
+.kb-grid :deep(.el-form-item) {
   margin-bottom: 0;
+}
+/* 标签顶置、必填星号前置（原型 .proto2-label 内 <span class="required">*</span> 在文字前） */
+.kb-grid :deep(.el-form-item__label) {
+  margin-bottom: 7px;
+  padding: 0;
+  line-height: 1.4;
+  color: var(--c-text);
+}
+@media (max-width: 1000px) {
+  .kb-grid {
+    grid-template-columns: 1fr;
+  }
+  .kb-grid-full {
+    grid-column: auto;
+  }
+}
+/* 控件下方 help（原型 .proto2-help{margin-top:6px;font-size:12px}） */
+.kb-help {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
 }
 .kb-full {
   width: 100%;
 }
-.kb-scope {
-  width: 100%;
+/* 数据源段：无灰底标题条，内部区块头（原型 .kb-ds-header{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}） */
+.kb-ds-card {
+  padding-top: 20px;
+}
+.kb-ds-header {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
 }
-.kb-hint {
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
+.kb-ds-header strong {
+  font-size: 14px;
   white-space: nowrap;
+  color: var(--c-text-strong);
 }
-.kb-hint--block {
-  margin-left: 0;
-  white-space: normal;
+.kb-ds-header-hint {
+  font-size: 12px;
   line-height: 1.5;
+  color: var(--c-text-muted);
+}
+/* 引用行：左标签窄档（原型 .kb-ds-label 44px 右对齐），宽度由 label-width="44px" 给 */
+.kb-ds-item :deep(.el-form-item__label) {
+  justify-content: flex-end;
+  padding-right: 12px;
+  color: var(--c-text);
+}
+.kb-ds-item {
+  margin-bottom: 12px;
+}
+.kb-ds-item:last-child {
+  margin-bottom: 0;
 }
 /* 数据源引用块 */
 .kb-ref {
@@ -510,16 +549,20 @@ function close() {
   flex-direction: column;
   gap: var(--space-1);
 }
+/* 计数行照原型 .kb-ds-count：12px 弱色、N / 5 加粗深一档 */
 .kb-ref-foot {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--fs-xs);
+  margin-top: 5px;
+  padding-left: 2px;
+  font-size: 12px;
   color: var(--c-text-muted);
 }
 .kb-ref-count {
   font-variant-numeric: tabular-nums;
-  color: var(--c-text-faint);
+  font-weight: 600;
+  color: var(--c-text);
 }
 .kb-ref-warn {
   font-size: var(--fs-xs);

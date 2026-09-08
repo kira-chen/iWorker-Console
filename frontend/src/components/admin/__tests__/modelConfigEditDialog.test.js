@@ -79,11 +79,26 @@ const stubs = {
   }
 }
 
+// 图标行（2026-09-09 原型复刻批次 3A · D3/S3）：桩化 IconField，暴露当前图标与「选一个」的入口，
+// 免得把 IconPickerPopover 的图标库 / 上传 / 裁剪整条链路拖进本单测。
+vi.mock('@/components/common/IconField.vue', () => ({
+  default: {
+    name: 'IconField',
+    props: ['icon', 'name', 'readonly', 'placeholder', 'size'],
+    emits: ['pick'],
+    template:
+      '<div class="icon-field-stub" :data-icon="icon" :data-placeholder="placeholder"' +
+      ' :data-readonly="readonly ? \'1\' : \'0\'">' +
+      '<button class="icon-pick" @click="$emit(\'pick\', { icon: \'★\' })" /></div>'
+  }
+}))
+
 const Dialog = (await import('@/components/admin/ModelConfigEditDialog.vue')).default
 
 let app, container, savedSpy, visibleRef, modelRef
 
-async function mount(model = null, extraProps = {}) {
+// stubOverrides：个别用例要换掉某个桩（如 D6 需要一个 validate 会 reject 的 el-form）
+async function mount(model = null, extraProps = {}, stubOverrides = {}) {
   container = document.createElement('div')
   document.body.appendChild(container)
   savedSpy = vi.fn()
@@ -101,7 +116,7 @@ async function mount(model = null, extraProps = {}) {
         })
     }
   })
-  for (const [name, comp] of Object.entries(stubs)) app.component(name, comp)
+  for (const [name, comp] of Object.entries({ ...stubs, ...stubOverrides })) app.component(name, comp)
   app.mount(container)
   // 打开对话框触发 visible watch（表单初始化）
   visibleRef.value = true
@@ -194,9 +209,11 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     expect(container.querySelector('.mc-preset-card.active .mc-preset-name').textContent.trim()).toBe('DeepSeek')
   })
 
+  // 2026-09-09 原型复刻批次 3A · S1：分区标题类名由 .mc-sec-title 改为公共 .section-title
+  // （样式统一收到 assets/admin-shell.css 的 .section-card 一组）。
   it('分区结构（M7）：厂商预设/基本信息/连接与鉴权/能力信息 分区卡齐全，服务地址在连接与鉴权区', async () => {
     await mount(null)
-    const titles = [...container.querySelectorAll('.mc-sec-title')].map((t) => t.textContent)
+    const titles = [...container.querySelectorAll('.section-title')].map((t) => t.textContent)
     expect(titles.some((t) => t.includes('厂商预设'))).toBe(true)
     expect(titles.some((t) => t.includes('基本信息'))).toBe(true)
     expect(titles.some((t) => t.includes('连接与鉴权'))).toBe(true)
@@ -455,6 +472,73 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     verifyOnlyBtn().click()
     await flush()
     expect(api.verifyModel).toHaveBeenCalledWith('md_1')
+    expect(api.updateModel).not.toHaveBeenCalled()
+  })
+
+  /* ===== 2026-09-09 原型复刻批次 3A（D3 / D5 / D6） ===== */
+
+  it('D3 图标字段：基本信息里「模型名称」之后一格；新建默认 ▦，编辑回填行上的图标', async () => {
+    await mount()
+    const fields = [...container.querySelectorAll('.fi')]
+    const nameIdx = fields.findIndex((f) => f.dataset.prop === 'name')
+    const iconIdx = fields.findIndex((f) => f.dataset.prop === 'icon')
+    expect(nameIdx).toBeGreaterThan(-1)
+    // 原型 L1319-1330 addMissingIconField 就是插在模型名称 .field 之后
+    expect(iconIdx).toBe(nameIdx + 1)
+    // 新建默认字形 ▦（原型 L1415）
+    expect(container.querySelector('.icon-field-stub').dataset.icon).toBe('▦')
+
+    app.unmount()
+    container.remove()
+    await mount({ id: 'md_1', name: '老模型', icon: '◎' })
+    expect(container.querySelector('.icon-field-stub').dataset.icon).toBe('◎')
+  })
+
+  it('D3 图标：选中后随 payload 下发（列表页 D2 消费本字段）', async () => {
+    await mount()
+    setInput('name', 'A')
+    setInput('baseUrl', 'https://a/v1')
+    setInput('model', 'm')
+    setInput('apiKey', 'sk-x')
+    container.querySelector('.icon-pick').click()
+    await nextTick()
+    api.createModel.mockResolvedValue({ id: 'md_new' })
+    saveBtn().click()
+    await flush()
+    expect(api.createModel.mock.calls.at(-1)[0].icon).toBe('★')
+  })
+
+  it('D3 图标：查看态两按钮置灰（readonly 透传给 IconField）', async () => {
+    await mount({ id: 'md_1', name: '老模型', icon: '◎' }, { readonly: true })
+    expect(container.querySelector('.icon-field-stub').dataset.readonly).toBe('1')
+  })
+
+  it('D5「连接与鉴权」两列栅格：Base URL 与单 API Key 通栏，鉴权方式半栏', async () => {
+    await mount()
+    const grids = [...container.querySelectorAll('.mc-grid')]
+    // 基本信息 + 连接与鉴权 两处栅格
+    expect(grids.length).toBe(2)
+    const conn = grids[1]
+    expect(conn.querySelector('[data-prop="baseUrl"]').classList.contains('mc-span2')).toBe(true)
+    expect(conn.querySelector('[data-prop="apiKey"]').classList.contains('mc-span2')).toBe(true)
+    expect(conn.querySelector('[data-prop="authType"]').classList.contains('mc-span2')).toBe(false)
+  })
+
+  it('D6 保存校验不过：除行内红字外再 toast「请先修正标红项」，且不发保存请求', async () => {
+    // 本例把 el-form 的 validate 桩成 reject（EP 校验失败即 reject），走 catch(() => false) 分支
+    const failingForm = {
+      template: '<form class="el-form"><slot /></form>',
+      methods: {
+        validate: () => Promise.reject(new Error('invalid')),
+        clearValidate() {},
+        validateField() {}
+      }
+    }
+    await mount(null, {}, { 'el-form': failingForm })
+    saveBtn().click()
+    await flush()
+    expect(msg.warning).toHaveBeenCalledWith('请先修正标红项')
+    expect(api.createModel).not.toHaveBeenCalled()
     expect(api.updateModel).not.toHaveBeenCalled()
   })
 })

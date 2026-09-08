@@ -23,6 +23,18 @@
  * API_KEY 鉴权参数行走 validateApiAuthParams（去重/互斥/必值，编辑态已配置行留空=保留原值）、
  * BEARER Token 必填（编辑态已配置留空=保留）、schema 字段名非空且同层唯一。
  * 鉴权密钥脱敏：编辑态已配置只显「已配置」，绝不回显明文，也不进 console。
+ *
+ * 2026-09-09 原型复刻批次 3A（S1 / S3 / A3 / A4 / A5）：
+ * - S1 各分区换 `.section-card`（样式在 assets/admin-shell.css）；「被技能引用」保持非卡片
+ *   `.reference-section`，时间行走 `.page-time`；
+ * - S3 图标行换 IconField（预览块 + 并排【从图标库选择】【上传图标】）；
+ * - A3 基本信息卡照原型最终态：名称 ｜ 所属服务提供系统 同行 → 描述通栏 → 操作性质单格；
+ *   删原型/md 均无的「状态」启用/停用 radio。图标与示例问题按 md 保留（Q101/Q102 负责人已确认
+ *   以 md 为准——原型最终层的删除属原型缺陷，不搬）；
+ * - A4 鉴权配置卡内细节照原型 authMasterContent L3645：「客户端填写参数由客户端收集，平台不存值」
+ *   常显（不再随勾选出现）、参数值密码态、Bearer placeholder「粘贴Bearer Token（不含Bearer前缀）」、
+ *   无行时「暂无鉴权参数」空态；
+ * - A5 请求参数 / 响应字段嵌套改扁平缩进行（详见 SchemaFieldEditor）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -39,8 +51,7 @@ import { rowsToSchema, schemaToRows, validateRows } from '@/utils/schema'
 import { fmtTime } from '@/utils/docMeta'
 import SchemaFieldEditor from './SchemaFieldEditor.vue'
 import ParamRowsEditor from './ParamRowsEditor.vue'
-import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
-import { iconIsUrl } from '@/utils/iconDisplay'
+import IconField from '@/components/common/IconField.vue'
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 
 const props = defineProps({
@@ -65,7 +76,8 @@ const form = reactive({
   providerSystemId: null,
   url: '',
   method: 'GET',
-  // 启用/停用（原型 renderApiEditor 状态单选；仅配置项示意，与发布状态机无联动）
+  // 启用/停用：2026-09-09 批次 3A · A3 起不再有录入控件——md §三.2 无此项，原型最终态亦被
+  // L788-790 删除。字段本身保留：mock 详情/列表仍带 enabled，payload 漏传会把存量抹掉。
   enabled: true,
   // 读/写：write → 客户端实际执行前必须经用户确认；read 直接执行（PRD §三.2）
   readWrite: 'read',
@@ -93,9 +105,7 @@ const {
   },
   isReadonly: () => props.readonly
 })
-// 图标：URL/dataURL 按图片渲染，否则按 emoji/字符（全站统一判断）
-const iconIsUrlFlag = computed(() => iconIsUrl(form.icon))
-/** IconPickerPopover 回吐 { icon, iconSource }；此处只取 icon。 */
+/** IconField 回吐 { icon, iconSource }；此处只取 icon。 */
 function onIconPick(payload) {
   if (payload && typeof payload.icon === 'string') {
     form.icon = payload.icon
@@ -408,39 +418,22 @@ async function save() {
     @retry="load"
     @save="save"
   >
-      <!-- 首行元信息（拍板：原顶部提示行删除，创建/更新/发布时间上移至此弱色展示） -->
-      <div v-if="isEdit" class="ad-meta-row">
+      <!-- 首行元信息（拍板：原顶部提示行删除，创建/更新/发布时间上移至此弱色展示）。
+           A6 核对：md §三.1 要求的顶部提示行原型无——按 md 保留现状（此处不加），差异已记 Q114 -->
+      <div v-if="isEdit" class="page-time ad-meta-row">
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
         <span>最近更新：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
         <span>最近发布：{{ times.publishedAt ? fmtTime(times.publishedAt) : '—' }}</span>
       </div>
 
-      <section class="ad-sec">
-        <div class="ad-sec-title">基本信息</div>
+      <section class="section-card">
+        <div class="section-title">基本信息</div>
         <el-form label-position="top" :disabled="readonly">
-          <!-- 原型最终态布局（addConnectorIconField 在名称后注入图标）：名称 | 图标 → 所属系统 -->
+          <!-- A3：照原型最终态首行「名称 ｜ 所属服务提供系统」同行 -->
           <div class="ad-row2">
             <el-form-item label="名称" :error="fieldErrors.name" required>
               <el-input v-model="form.name" maxlength="128" placeholder="如 报销查询 API" />
             </el-form-item>
-            <!-- 图标（2026-09-02 B-5 拍板加回：原型后置补丁层实为 API 抽屉注入图标，推翻 N4-① 旧结论） -->
-            <el-form-item label="图标" :error="fieldErrors.icon" required>
-              <div class="ad-icon-row">
-                <span class="ad-icon-preview" :class="{ 'is-empty': !form.icon }">
-                  <img v-if="iconIsUrlFlag" :src="form.icon" alt="" class="ad-icon-img" />
-                  <span v-else-if="form.icon">{{ form.icon }}</span>
-                  <span v-else class="ad-icon-ph">—</span>
-                </span>
-                <IconPickerPopover
-                  v-if="!readonly"
-                  :icon="form.icon"
-                  :position-name="form.name"
-                  @pick="onIconPick"
-                />
-              </div>
-            </el-form-item>
-          </div>
-          <div class="ad-row2">
             <el-form-item label="所属服务提供系统" :error="fieldErrors.providerSystemId" required>
               <el-select
                 v-model="form.providerSystemId"
@@ -462,26 +455,20 @@ async function save() {
               </div>
             </el-form-item>
           </div>
-          <el-form-item label="API 描述" :error="fieldErrors.description" required>
-            <el-input
-              v-model="form.description"
-              type="textarea"
-              :rows="2"
-              :autosize="{ minRows: 2, maxRows: 4 }"
-              maxlength="2000"
-              show-word-limit
-              placeholder="一句话说明这个 API 是做什么的（如：按报销单号查询报销状态）"
-            />
-          </el-form-item>
-          <!-- 状态 | 操作性质 同行（原型 renderApiEditor 第三行） -->
+          <!-- 图标（md §三.2 L106「图标：必填」；原型最终层 L2181 把它删了属原型缺陷，
+               Q101 负责人已确认以 md 为准，故保留）。S3：预览块 + 并排两个 plain 按钮 -->
           <div class="ad-row2">
-            <el-form-item label="状态">
-              <el-radio-group v-model="form.enabled">
-                <el-radio :value="true">启用</el-radio>
-                <el-radio :value="false">停用</el-radio>
-              </el-radio-group>
+            <el-form-item label="图标" :error="fieldErrors.icon" required>
+              <IconField
+                :icon="form.icon"
+                :name="form.name"
+                :readonly="readonly"
+                placeholder="—"
+                @pick="onIconPick"
+              />
             </el-form-item>
-            <!-- 操作性质（PRD §三.2）：写操作在客户端实际执行前必须经用户确认，读操作直接执行 -->
+            <!-- 操作性质（PRD §三.2）：写操作在客户端实际执行前必须经用户确认，读操作直接执行。
+                 原型最终态此项独占一格（「状态」启用/停用 radio 被 L788-790 删除，md 亦无，一并删） -->
             <el-form-item :error="fieldErrors.readWrite">
               <template #label>
                 <span>这个操作会改动数据吗？</span>
@@ -497,14 +484,62 @@ async function save() {
               <div class="ad-rw-hint">写操作在客户端执行前会先弹确认；读操作直接执行。</div>
             </el-form-item>
           </div>
-
+          <el-form-item label="API 描述" :error="fieldErrors.description" required>
+            <el-input
+              v-model="form.description"
+              type="textarea"
+              :rows="2"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              maxlength="2000"
+              show-word-limit
+              placeholder="一句话说明这个 API 是做什么的（如：按报销单号查询报销状态）"
+            />
+          </el-form-item>
         </el-form>
+
+        <!-- 示例问题（md §三.2 L118「位于基本信息卡片内」；2026-09-06 Q1 拍板需要填写。
+             原型最终层 L2182 删除属原型缺陷，Q102 负责人已确认以 md 为准 → 保留并按 md 放进基本信息卡，
+             形态与 MCP / 业务系统同款子分区） -->
+        <div class="connector-basic-subsection" :class="{ 'ad-eq-error': !!fieldErrors.exampleQuestions }">
+          <div class="section-title ad-eq-title">
+            <span>
+              示例问题
+              <span class="section-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
+            </span>
+            <el-button
+              v-if="!readonly"
+              class="ad-eq-ai"
+              size="small"
+              :disabled="aiDisabled"
+              :title="aiTitle || undefined"
+              @click="generateQuestions"
+            >
+              {{ aiLabel }}
+            </el-button>
+          </div>
+          <div class="ad-eq-list">
+            <div v-for="i in 3" :key="i" class="ad-eq-row">
+              <span class="ad-eq-index">{{ i }}</span>
+              <el-input
+                v-model="form.exampleQuestions[i - 1]"
+                :maxlength="QUESTION_MAX"
+                show-word-limit
+                :disabled="readonly"
+                :placeholder="i === 1 ? '帮我查询报销单的当前审批状态' : '请输入示例问题'"
+                @input="delete fieldErrors.exampleQuestions"
+              />
+            </div>
+          </div>
+          <div v-if="fieldErrors.exampleQuestions" class="ad-eq-err-msg">
+            {{ fieldErrors.exampleQuestions }}
+          </div>
+        </div>
       </section>
 
       <!-- 请求配置（拍板：请求方式|API 地址 同行，方式下拉收窄；健康检查路径已删）。
            先于鉴权（提案 20260831-2 B.1 拍板）：鉴权 BODY 位的行级软提示依赖已选请求方式 -->
-      <section class="ad-sec">
-        <div class="ad-sec-title">请求配置</div>
+      <section class="section-card">
+        <div class="section-title">请求配置</div>
         <el-form label-position="top" :disabled="readonly">
           <div class="ad-req-row">
             <el-form-item label="请求方式" :error="fieldErrors.method" required class="ad-req-method">
@@ -520,10 +555,10 @@ async function save() {
       </section>
 
       <!-- 鉴权配置（提案 20260831-2 B 节；2026-09-01 拍板提示文案从简，静态附加说明收进标题副注） -->
-      <section class="ad-sec">
-        <div class="ad-sec-title">
+      <section class="section-card">
+        <div class="section-title">
           鉴权配置
-          <span class="ad-sec-sub">凭证会静态附加到每次请求</span>
+          <span class="section-sub">凭证会静态附加到每次请求</span>
         </div>
         <el-form label-position="top" :disabled="readonly">
           <el-form-item label="鉴权类型">
@@ -533,6 +568,9 @@ async function save() {
             <div v-if="willClearSecret" class="ad-auth-warn">保存后将清除已配置的密钥</div>
           </el-form-item>
           <template v-if="isApiKey">
+            <!-- A4：说明常显（原型 `.api-auth-add-note` 与【＋ 添加参数】同行，不随勾选出现）；
+                 参数值密码态；无行时空态「暂无鉴权参数」（代码选 API_KEY 时预置一行，空态一般见不到，
+                 但删光最后一行仍会落到空态） -->
             <el-form-item label="鉴权参数" :error="fieldErrors.authConfig">
               <ParamRowsEditor
                 :rows="authRows"
@@ -544,8 +582,11 @@ async function save() {
                 key-placeholder="如 X-Api-Key"
                 value-header="参数值"
                 desc-placeholder="选填：这个参数是做什么的"
-                add-label="+ 添加参数"
+                add-label="＋ 添加参数"
+                empty-text="暂无鉴权参数"
+                secret-value
                 client-fill-hint="客户端填写参数由客户端收集，平台不存值"
+                client-fill-hint-always
                 @update:rows="authRows = $event"
                 @interact="delete fieldErrors.authConfig"
               />
@@ -570,7 +611,7 @@ async function save() {
                   show-password
                   autocomplete="new-password"
                   class="ad-bearer-input"
-                  :placeholder="keepOldSecret ? '已配置（留空保持不变）' : '请输入 Token'"
+                  :placeholder="keepOldSecret ? '已配置（留空保持不变）' : '粘贴Bearer Token（不含Bearer前缀）'"
                   @input="delete fieldErrors.authValue"
                 >
                   <template #prepend>Authorization: Bearer</template>
@@ -586,22 +627,22 @@ async function save() {
       </section>
 
       <!-- 请求参数 / 响应字段（PRD §三.5）：结构化输入/输出约束，均选填 -->
-      <section class="ad-sec">
-        <div class="ad-sec-title">
+      <section class="section-card">
+        <div class="section-title">
           请求参数
           <span class="ad-sec-field">requestSchema</span>
-          <span class="ad-sec-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
+          <span class="section-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
         </div>
         <el-form :disabled="readonly">
           <SchemaFieldEditor v-model:rows="requestRows" variant="request" :error="fieldErrors.requestSchema" />
         </el-form>
       </section>
 
-      <section class="ad-sec">
-        <div class="ad-sec-title">
+      <section class="section-card">
+        <div class="section-title">
           响应字段
           <span class="ad-sec-field">responseSchema</span>
-          <span class="ad-sec-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
+          <span class="section-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
         </div>
         <el-form :disabled="readonly">
           <SchemaFieldEditor v-model:rows="responseRows" variant="response" :error="fieldErrors.responseSchema" />
@@ -610,10 +651,10 @@ async function save() {
 
       <!-- 被技能引用（原型 renderApiEditor 同款：标题+副注+tag 列表；时间行已上移首行。
            原型副注"被引用时不可删除"与软引用可删拍板冲突，未采纳——差异已记待裁决 -->
-      <section v-if="isEdit" class="ad-sec">
-        <div class="ad-sec-title">
+      <section v-if="isEdit" class="reference-section">
+        <div class="section-title">
           被技能引用
-          <span class="ad-sec-sub">只读；停用或删除后引用技能仍可执行，可能受限或报错</span>
+          <span class="section-sub">只读；停用或删除后引用技能仍可执行，可能受限或报错</span>
         </div>
         <div v-if="referencedBySkills.length" class="ad-refs">
           <el-tag
@@ -627,63 +668,31 @@ async function save() {
         </div>
         <div v-else class="ad-refs-empty">暂无技能引用</div>
       </section>
-
-      <!-- 示例问题（2026-09-06 Q1 拍板：需要填写；固定 3 条带序号 +【AI 生成】，与 MCP/业务系统同形态） -->
-      <section class="ad-sec" :class="{ 'ad-eq-error': !!fieldErrors.exampleQuestions }">
-        <div class="ad-sec-title ad-eq-title">
-          <span>
-            示例问题
-            <span class="ad-sec-sub">必填，固定 3 条</span>
-          </span>
-          <el-button
-            v-if="!readonly"
-            class="ad-eq-ai"
-            size="small"
-            :disabled="aiDisabled"
-            :title="aiTitle || undefined"
-            @click="generateQuestions"
-          >
-            {{ aiLabel }}
-          </el-button>
-        </div>
-        <div class="ad-eq-list">
-          <div v-for="i in 3" :key="i" class="ad-eq-row">
-            <span class="ad-eq-index">{{ i }}</span>
-            <el-input
-              v-model="form.exampleQuestions[i - 1]"
-              :maxlength="QUESTION_MAX"
-              show-word-limit
-              :disabled="readonly"
-              :placeholder="i === 1 ? '帮我查询报销单的当前审批状态' : '请输入示例问题'"
-              @input="delete fieldErrors.exampleQuestions"
-            />
-          </div>
-        </div>
-        <div v-if="fieldErrors.exampleQuestions" class="ad-eq-err-msg">{{ fieldErrors.exampleQuestions }}</div>
-      </section>
   </DrawerEditor>
 </template>
 
 <style scoped>
-/* 首行元信息（创建/更新/发布时间）：弱色提示行，不抢内容 */
-.ad-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
+/* 分区卡（.section-card / .section-title / .section-sub / .reference-section / .page-time）
+   样式统一在 assets/admin-shell.css（S1，批次 1 已提供），本文件不重复。
+   首行元信息走 `.page-time`；照原型 L2159 移到抽屉首行后，去掉其上分隔线（悬空线）。
+   admin-shell.css 的规则是 `body.admin-scope .page-time`（0,2,1），故叠一个类提到 (0,3,0)。 */
+.page-time.ad-meta-row {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
-.ad-sec-title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-  margin-bottom: var(--space-2);
+/* 示例问题作基本信息卡内子分区（A3/md §三.2 L118，原型 L1126-1127 `.connector-basic-subsection`）：
+   上边线分隔 margin-top 26 / padding-top 24，标题 17px/700 */
+.connector-basic-subsection {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
 }
-.ad-sec-sub {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  margin-left: var(--space-2);
+.connector-basic-subsection > .section-title {
+  margin: 0 0 18px;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
 }
 /* 字段技术名（requestSchema/responseSchema 等）：弱色等宽副标 */
 .ad-sec-field {
@@ -701,34 +710,8 @@ async function save() {
 .ad-w {
   width: 100%;
 }
-/* 图标行（B-5 加回，样式与 BizSystemEditor 同款） */
-.ad-icon-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.ad-icon-preview {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
-  background: var(--bg-sunken);
-  overflow: hidden;
-}
-.ad-icon-preview.is-empty,
-.ad-icon-ph {
-  color: var(--c-text-faint);
-}
-.ad-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* 两列行（原型 form-grid 同款）：名称|图标、所属系统 */
+/* 图标行样式随 IconField 组件走（S3），本文件不再自绘预览格与按钮 */
+/* 两列行（原型 form-grid 同款）：名称 | 所属服务提供系统、图标 | 操作性质 */
 .ad-row2 {
   display: flex;
   gap: var(--space-4);

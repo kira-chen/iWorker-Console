@@ -6,6 +6,13 @@
  * 删除文件、切片和索引内容）；存在解析中任务时每 3 秒自动刷新，全部结束后停止轮询；
  * 顶部汇总文档总数与解析成功数（判断是否满足发布条件）。格式 / 大小不符合的文件在上传前拦截并说明支持范围。
  * 库维度配置（文档类型 / 预处理 / 向量模型 / 检索方式）在「编辑」抽屉（KnowledgeSourceEditor）里改。
+ *
+ * 【2026-09-09 原型复刻批次 3B · F1/F2/F3】静态形态照原型 openDocs：
+ *   F1 上传区改虚线框居中（.kb2-doc-upload：按钮在上、说明在下），表格 margin-top 18；
+ *   F2 表格收敛为 5 列（文件名 / 大小 / 切片 / 解析状态 / 操作），失败原因移入状态格第二行
+ *      （.kb2-doc-fail-reason 红字 12px + title 悬浮全文）；
+ *   F3 标题「文档管理 · 名称」与顶部汇总（md §五.3 定义、原型无）已一致，未改。
+ * 上传说明文案随文档类型动态（代码超集，保留）。
  */
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -136,36 +143,39 @@ function close() {
     </template>
 
     <div class="kdoc-body">
-      <div class="kdoc-toolbar">
+      <!-- 上传区照原型 .kb2-doc-upload：虚线框内居中「按钮在上、说明在下」 -->
+      <div class="kdoc-upload">
         <el-upload :show-file-list="false" :before-upload="beforeUpload" :http-request="doUpload" :accept="acceptExt.join(',')" multiple>
           <el-button type="primary" :loading="uploading">＋ 选择文件上传</el-button>
         </el-upload>
-        <span class="kdoc-hint">
+        <div class="kdoc-hint">
           「{{ DOC_KIND_LABELS[docKind] }}」类型 · 支持 {{ acceptExt.join('、').replaceAll('.', '').toUpperCase() }}，单文件最大 {{ MAX_DOC_MB }}MB；可一次选择多个文件
-        </span>
+        </div>
       </div>
 
+      <!-- 5 列（文件名 / 大小 / 切片 / 解析状态 / 操作）；失败原因作为状态格内第二行（原型 .kb2-doc-fail-reason，md §五.3 未定位置） -->
       <el-table v-if="docs.length" :data="docs" size="small" class="kdoc-table">
         <el-table-column label="文件名" prop="fileName" min-width="170" show-overflow-tooltip />
         <el-table-column label="大小" width="90">
           <template #default="{ row }"><span class="kdoc-num">{{ fmtSize(row.size) }}</span></template>
         </el-table-column>
-        <el-table-column label="切片数" width="76" align="center">
+        <el-table-column label="切片" width="76" align="center">
           <template #default="{ row }">
             <span v-if="row.parseStatus === 'PARSED'" class="kdoc-num">{{ row.chunkCount }}</span>
             <span v-else class="cell-na">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="解析状态" width="100">
+        <el-table-column label="解析状态" min-width="160">
           <template #default="{ row }">
-            <span class="kdoc-dot" :class="DOC_PARSE_META[row.parseStatus]?.type || 'info'" />
-            {{ DOC_PARSE_META[row.parseStatus]?.label || row.parseStatus }}
-          </template>
-        </el-table-column>
-        <el-table-column label="失败原因" min-width="130" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.parseStatus === 'FAILED' && row.errorReason" class="kdoc-err">{{ row.errorReason }}</span>
-            <span v-else class="cell-na">—</span>
+            <span class="kdoc-status">
+              <span class="kdoc-dot" :class="DOC_PARSE_META[row.parseStatus]?.type || 'info'" />
+              {{ DOC_PARSE_META[row.parseStatus]?.label || row.parseStatus }}
+            </span>
+            <span
+              v-if="row.parseStatus === 'FAILED' && row.errorReason"
+              class="kdoc-fail-reason"
+              :title="row.errorReason"
+            >{{ row.errorReason }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="64" align="right">
@@ -188,30 +198,59 @@ function close() {
 .kdoc-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
 }
-.kdoc-toolbar {
+/* 上传区（原型 .kb2-doc-upload{padding:18px;border:1px dashed;border-radius:8px;text-align:center}） */
+.kdoc-upload {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed var(--border-base);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  text-align: center;
 }
 .kdoc-hint {
-  font-size: var(--fs-xs);
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--c-text-muted);
 }
+/* 表格与上传区间距照原型 style="margin-top:18px" */
 .kdoc-table {
   width: 100%;
+  margin-top: 18px;
+}
+.kdoc-empty {
+  margin-top: 18px;
+}
+/* 解析状态格：状态行 + 失败原因第二行（原型 .kb2-doc-status / .kb2-doc-fail-reason） */
+.kdoc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kdoc-fail-reason {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--c-danger);
+  cursor: help;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kdoc-num {
   font-variant-numeric: tabular-nums;
 }
+/* 状态圆点（原型 .kb2-doc-status:before{width:7px;height:7px}），间距由 .kdoc-status 的 gap 给 */
 .kdoc-dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
+  flex: 0 0 auto;
   background: var(--c-text-faint);
 }
 .kdoc-dot.success {
@@ -222,9 +261,6 @@ function close() {
 }
 .kdoc-dot.danger {
   background: var(--c-danger);
-}
-.kdoc-err {
-  color: var(--c-danger);
 }
 .kdoc-empty {
   padding: var(--space-6) 0;
