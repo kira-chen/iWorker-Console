@@ -137,12 +137,13 @@ describe('knowledgeBaseMock —— 知识库状态机（PRD-20260903 §三）', 
   })
 
   it('已发布改可见范围 → 回未发布重审（md §三.5）；名称描述照常保存不回退', async () => {
-    // 种子 kb_4：岗位知识库（ps_1）已发布
-    let r = await update('kb_4', { name: '销售话术与异议处理', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_1' })
+    // 种子 kb_4：岗位知识库（ps_1）已发布。
+    // 2026-09-10 D3：岗位种子对齐岗位模块四岗后，ps_1/ps_2 = 经营分析岗/财务审核岗，名称与断言随种子更新。
+    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_1' })
     expect(r.status).toBe('PUBLISHED')
-    r = await update('kb_4', { name: '销售话术与异议处理', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_2' })
+    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_2' })
     expect(r.status).toBe('DRAFT')
-    expect(r.scopeRefName).toBe('HR 专员')
+    expect(r.scopeRefName).toBe('财务审核岗')
   })
 })
 

@@ -630,13 +630,16 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
           <!-- 最近更新时间：排序列，默认由近到远（保存/提交审核后按新时间重排）；
-               sortable="custom" 交 mock 全量排序，不只排当页（批次 2C · E-A1） -->
+               sortable="custom" 交 mock 全量排序，不只排当页（批次 2C · E-A1）。
+               E5（2026-09-10）：随操作列一起右侧固定——1440 宽下表格总宽超出容器时
+               本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
           <el-table-column
             prop="updatedAt"
             label="最近更新时间"
             :width="COL.TIME"
             sortable="custom"
             :sort-orders="['descending', 'ascending']"
+            fixed="right"
           >
             <template #default="{ row }">
               <span v-if="row.updatedAt">{{ row.updatedAt }}</span>

@@ -336,9 +336,10 @@ async function publish(row) {
   runAction(row, 'publish', () => publishApi(row.id), '已提交发布审核')
 }
 
-/** 撤回：按待审类型恢复——待审发布 → 未发布；待审停用 → 已发布。 */
+/** 撤回：按待审类型恢复——待审发布 → 未发布；待审停用 → 已发布。
+ *  D1（2026-09-10）：状态词取 TRI_STATE_META label 同源（输出不变），不再手写字面量。 */
 async function withdraw(row) {
-  const backTo = row.pendingAction === 'DEACTIVATE' ? '已发布' : '未发布'
+  const backTo = (row.pendingAction === 'DEACTIVATE' ? TRI_STATE_META.PUBLISHED : TRI_STATE_META.UNPUBLISHED).label
   try {
     await ElMessageBox.confirm(`撤回后「${row.name}」将回到${backTo}状态。`, '撤回审核', {
       type: 'warning',

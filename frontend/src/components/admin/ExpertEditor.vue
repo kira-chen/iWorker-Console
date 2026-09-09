@@ -59,7 +59,7 @@ import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
-import { KIND, derivePublishView, deriveTriView, isLocked } from '@/utils/publishState'
+import { KIND, deriveTriView, isLocked } from '@/utils/publishState'
 import {
   getExpert,
   createExpert,
@@ -190,12 +190,11 @@ const locked = computed(() => isLocked(KIND.DOMAIN_EXPERT, detail.value || {}))
 const disabled = computed(() => props.readonly || locked.value)
 
 // 三态展示映射（同列表页 displayView：草稿→未发布、各审核中→审核中、已发布→已发布）
-// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView，返回结构与 tagType 键名保留。
+// 2026-09-10 D2 收敛：模板只消费 label/tagType，直接取 deriveTriView（此前先 derivePublishView
+// 再整包 spread 属死代码）。
 const view = computed(() => {
-  const d = detail.value || {}
-  const v = derivePublishView(KIND.DOMAIN_EXPERT, { status: d.status, pendingAction: d.pendingAction })
-  const tri = deriveTriView(KIND.DOMAIN_EXPERT, d)
-  return { ...v, label: tri.label, tagType: tri.type }
+  const tri = deriveTriView(KIND.DOMAIN_EXPERT, detail.value || {})
+  return { label: tri.label, tagType: tri.type }
 })
 
 /* ==================== 市场技能引用（内嵌选择器） ==================== */
@@ -507,12 +506,13 @@ watch(
 const metaItems = computed(() => {
   const d = detail.value
   if (!d) return []
-  const t = (v) => (v ? fmtTime(v) : '-')
+  // E11（2026-09-10）：空值占位统一长横「—」（全站 NA 口径，见 utils/tableLayout.NA）
+  const t = (v) => (v ? fmtTime(v) : '—')
   return [
     `创建时间：${t(d.createdAt)}`,
     `最近更新时间：${t(d.updatedAt)}`,
     `最近发布时间：${t(d.publishedAt)}`,
-    `最新版本：${d.latestVersionLabel || '-'}`
+    `最新版本：${d.latestVersionLabel || '—'}`
   ]
 })
 </script>
@@ -1279,7 +1279,8 @@ const metaItems = computed(() => {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: var(--bg-base);
-  color: var(--c-text-muted);
+  /* E6（2026-09-10）：查看态展示的是真实配置内容，用正文色；灰阶（muted/faint）只留给占位/空态 */
+  color: var(--c-text);
   font-size: var(--fs-sm);
 }
 

@@ -116,8 +116,9 @@ const statusLabel = computed(() => {
   if (!d) return '—'
   return deriveTriView(KIND.POSITION, d).label
 })
-const latestVersion = computed(() => props.snapshot?.version || detail.value?.latestVersion || '-')
-const updatedAt = computed(() => (detail.value?.updatedAt ? fmtTime(detail.value.updatedAt) : '-'))
+// E11（2026-09-10）：空值占位统一长横「—」（全站 NA 口径）
+const latestVersion = computed(() => props.snapshot?.version || detail.value?.latestVersion || '—')
+const updatedAt = computed(() => (detail.value?.updatedAt ? fmtTime(detail.value.updatedAt) : '—'))
 /** 快照提交时间（读快照时展示，标明这份配置的时点）。 */
 const snapshotAt = computed(() => (props.snapshot?.submittedAt ? fmtTime(props.snapshot.submittedAt) : ''))
 
@@ -148,7 +149,7 @@ defineExpose({ reload: load })
         </div>
         <div class="pvd-field pvd-field--full">
           <div class="pvd-label">岗位描述</div>
-          <div class="pvd-readonly pvd-readonly--multi">{{ description || '-' }}</div>
+          <div class="pvd-readonly pvd-readonly--multi">{{ description || '—' }}</div>
         </div>
       </div>
       <!-- A5：读快照时标明时点；无快照且实体也取不到时才是「只剩申请行数据」的降级态 -->

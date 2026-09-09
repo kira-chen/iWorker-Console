@@ -33,7 +33,8 @@ let providerSystems = [
   { id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口' },
   { id: 'pv_2', name: '客户数据平台', description: '客户资料、商机和跟进记录接口' },
   { id: 'pv_3', name: '内容服务中心', description: '内容审核与素材服务' },
-  { id: 'pv_4', name: '星火智能体平台', description: '接入星火平台发布的智能体、任务链与知识库能力（OpenAI 协议 v3）' }
+  // E8（2026-09-10）：描述首句用大白话说清「这是干什么的」，协议等技术细节退到句尾括号
+  { id: 'pv_4', name: '星火智能体平台', description: '用星火平台上已发布的智能体、任务链和知识库来干活（按 OpenAI 协议 v3 接入）' }
 ]
 
 /* ---------------- API 定义 ---------------- */
@@ -201,8 +202,9 @@ let apis = [
     code: 'api_1105',
     name: '星火智能体会话',
     icon: '🤖',
+    // E8（2026-09-10）：首句大白话讲用途；参数固定值、续聊机制等技术细节挪到「接入说明」句
     description:
-      '调用星火平台已发布的智能体进行对话（OpenAI 协议 v3）。bodyId/appId/stream 为接入时确定的固定值；多轮对话回传上一轮响应中的 sessionId 续聊',
+      '和星火平台上的智能体对话，让它帮忙写材料、答问题、做总结。接入说明：OpenAI 协议 v3；bodyId/appId/stream 为接入时确定的固定值；多轮对话回传上一轮响应中的 sessionId 续聊',
     providerSystemId: 'pv_4',
     method: 'POST',
     readWrite: 'read',
@@ -277,8 +279,9 @@ let apis = [
     code: 'api_1106',
     name: '星火任务链执行',
     icon: '🔗',
+    // E8（2026-09-10）：首句大白话讲用途；参数结构等技术细节挪到「接入说明」句
     description:
-      '触发星火平台任务链编排并获取节点输出（OpenAI 协议 v3）。parameter.input 按任务链协议的接口详情填写（节点 ID → 参数对象）',
+      '把一件事交给星火平台上编排好的任务链自动跑完，并拿回每步的结果。接入说明：OpenAI 协议 v3；parameter.input 按任务链协议的接口详情填写（节点 ID → 参数对象）',
     providerSystemId: 'pv_4',
     method: 'POST',
     readWrite: 'write',
@@ -351,8 +354,9 @@ let apis = [
     code: 'api_1107',
     name: '星火知识库问答',
     icon: '📚',
+    // E8（2026-09-10）：首句大白话讲用途；参数固定值、续聊机制等技术细节挪到「接入说明」句
     description:
-      '基于星火平台知识库进行检索问答（OpenAI 协议 v3）。bodyId/appId/stream 为接入时确定的固定值；多轮对话回传上一轮响应中的 sessionId 续聊',
+      '在星火平台的知识库里查资料并直接给出答案，适合制度、产品资料类问答。接入说明：OpenAI 协议 v3；bodyId/appId/stream 为接入时确定的固定值；多轮对话回传上一轮响应中的 sessionId 续聊',
     providerSystemId: 'pv_4',
     method: 'POST',
     readWrite: 'read',
@@ -430,8 +434,9 @@ let apis = [
 // 两个 let 数组（deleteXxx 走整体重赋值，restore 同样直接重赋值即可，不存在跨结构共享引用）。
 // 无 Map/Set、无派生索引；「验证中」仅是 healthCheckApi 延时期间的 UI 瞬态，模型里只落
 // null/HEALTHY/UNHEALTHY 三个稳定值——restore 兜底把未知值归一为 null（未探测），避免脏数据卡中间态。
+// version 2（2026-09-10 E8）：星火系列种子描述改「大白话首句 + 接入说明」措辞，旧快照弃用回种子。
 const persist = attachPersist('apiConnector', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (

@@ -40,7 +40,7 @@ import {
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import '@/assets/connector.css'
 // 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
-import { COL, opsWidth } from '@/utils/tableLayout'
+import { COL, opsWidth, NA } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -80,11 +80,11 @@ function onSortChange({ prop, order }) {
 
 /* ---------- 状态三态展示映射（展示层三态；同 AdminPositions displayView） ---------- */
 // 草稿(INITIAL)→未发布；REVIEWING / PUBLISHED_REVIEWING / PUBLISHED_DELISTING →审核中；PUBLISHED→已发布。
-// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView，返回结构与 tagType 键名保留。
+// 2026-09-10 D2 收敛：模板只消费 label/tagType，直接取 deriveTriView（此前先 derivePublishView
+// 再整包 spread 属死代码——细分 5 态词表仍由 versionAdapter 的 deriveView 走 derivePublishView）。
 function displayView(row) {
-  const v = derivePublishView(KIND.DOMAIN_EXPERT, { status: row.status, pendingAction: row.pendingAction })
   const tri = deriveTriView(KIND.DOMAIN_EXPERT, row)
-  return { ...v, label: tri.label, tagType: tri.type }
+  return { label: tri.label, tagType: tri.type }
 }
 // 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回（isLocked 对专家即 !!pendingAction，批 2-2 收编）
 function isReviewing(row) {
@@ -326,8 +326,10 @@ async function stopExpert(row) {
           :default-sort="{ prop: 'updatedAt', order: 'descending' }"
           @sort-change="onSortChange"
         >
-          <!-- 专家名：图标 avatar + 名称 + 三态状态标签同格（原型 expert-primary，独立状态列已并入） -->
-          <el-table-column label="专家名" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+          <!-- 专家名：图标 avatar + 名称 + 三态状态标签同格（原型 expert-primary，独立状态列已并入）。
+               2026-09-10 体验优化 E1：列级 show-overflow-tooltip 会连状态标签一起截成「…」，
+               改为名字自身弹性收缩省略（标签/头像 flex:none 恒完整），悬停提示走原生 title（同原型 skill-name 口径）。 -->
+          <el-table-column label="专家名" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
               <span class="ex-primary">
                 <!-- 2026-09-04 PRD-20260903：头像按行「背景色」着色（原型 paintExpertList；缺省回落令牌底色） -->
@@ -338,7 +340,7 @@ async function stopExpert(row) {
                   <img v-if="iconIsUrl(row.avatar)" :src="row.avatar" alt="" class="ex-avatar-img" />
                   <span v-else>{{ row.avatar || '☆' }}</span>
                 </span>
-                <a class="ex-name" @click="openEdit(row)">{{ row.name }}</a>
+                <a class="ex-name" :title="row.name" @click="openEdit(row)">{{ row.name }}</a>
                 <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
               </span>
             </template>
@@ -355,11 +357,11 @@ async function stopExpert(row) {
           <el-table-column label="技能数" :width="COL.COUNT" align="center">
             <template #default="{ row }">{{ row.skillCount }}</template>
           </el-table-column>
-          <!-- 最新版本：无版本「-」（原型 muted-value） -->
+          <!-- 最新版本：无版本时占位「—」（E11 全站统一长横；原型两种横线混用，按站内 NA 口径取长横） -->
           <el-table-column label="最新版本" :width="COL.TAG" align="center">
             <template #default="{ row }">
               <span v-if="row.latestVersionLabel">{{ row.latestVersionLabel }}</span>
-              <span v-else class="cell-na">-</span>
+              <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
           <!-- 最近更新时间：可排序，默认降序（mock 排序） -->
@@ -447,12 +449,16 @@ async function stopExpert(row) {
 </template>
 
 <style scoped>
-/* 专家名列：图标 + 名称 + 状态标签同格（原型 expert-primary） */
+/* 专家名列：图标 + 名称 + 状态标签同格（原型 expert-primary）。
+   E1（2026-09-10）：窄屏时只让名字收缩省略，状态标签与头像 flex:none 不被截断 */
 .ex-primary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+}
+.ex-primary .status-tag {
+  flex: none;
 }
 /* 图标：定宽定高小方块（原型 expert-avatar，与 MCP/岗位列表图标同构） */
 .ex-avatar-img {
@@ -483,6 +489,8 @@ async function stopExpert(row) {
   color: #1f1f1f; /* 定值：不能用令牌，令牌在暗色下本身就翻成近白 */
 }
 .ex-name {
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--c-primary, #409eff);
   cursor: pointer;
   overflow: hidden;

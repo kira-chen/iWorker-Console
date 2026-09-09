@@ -53,9 +53,12 @@ const EXPERTS = [
   { id: 'ex_1', name: '方案专家' },
   { id: 'ex_2', name: '售后专家' }
 ]
+// D3（2026-09-10）：岗位可见范围种子与岗位模块（positionMock 401-404 四岗）对齐——
+// 岗位详情知识页签按「岗位名」关联（PositionDetailTabs 以 scopeRefName === 岗位名过滤），
+// 此前挂「销售顾问 / HR 专员」两个不存在的岗位，页签恒空、无从演示。
 const POSITIONS = [
-  { id: 'ps_1', name: '销售顾问' },
-  { id: 'ps_2', name: 'HR 专员' }
+  { id: 'ps_1', name: '经营分析岗' }, // = positionMock 401
+  { id: 'ps_2', name: '财务审核岗' } // = positionMock 403
 ]
 const EMBEDDING_MODELS = [
   { id: 'md_emb_1', name: 'text-embedding-3-small' },
@@ -152,8 +155,9 @@ let rows = [
   { id: 'kb_1', name: '产品与解决方案库', kbType: 'ENTERPRISE', scopeRefId: null, description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
   { id: 'kb_2', name: '报价政策与折扣权限', kbType: 'ENTERPRISE', scopeRefId: null, description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
   { id: 'kb_3', name: '法规与标准库', kbType: 'ENTERPRISE', scopeRefId: null, description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
-  { id: 'kb_4', name: '销售话术与异议处理', kbType: 'POSITION', scopeRefId: 'ps_1', description: '销售顾问岗位的话术手册与常见异议处理方案。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
-  { id: 'kb_5', name: '竞品资料库', kbType: 'POSITION', scopeRefId: 'ps_1', description: '主要竞品的产品资料与市场情报，供销售顾问对比分析。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
+  // D3：两库分别挂经营分析岗（ps_1）与财务审核岗（ps_2），名称/描述随岗位改写，让两岗知识页签都有数据可演示
+  { id: 'kb_4', name: '经营分析指标口径库', kbType: 'POSITION', scopeRefId: 'ps_1', description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
+  { id: 'kb_5', name: '财务审核制度库', kbType: 'POSITION', scopeRefId: 'ps_2', description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
   { id: 'kb_6', name: '2026 产品白皮书库', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
   { id: 'kb_7', name: '薪酬与绩效制度', kbType: 'ENTERPRISE', scopeRefId: null, description: '', status: 'DRAFT', pendingAction: null, sourceIds: [] }
 ]
@@ -176,8 +180,10 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // 结构化行，MCP 删除引用现有模式改 transport/tools 数组；旧快照结构不兼容，直接弃用回种子。
 // version 5（2026-09-08）：PRD-20260908 md §七 删除 MCP 请求/响应映射——MCP 种子 config 去掉 requestMap/responseMap；
 // 旧快照含该两键，弃用回种子。
+// version 6（2026-09-10 D3）：岗位可见范围种子对齐岗位模块四岗（销售顾问/HR 专员 → 经营分析岗/财务审核岗，
+// kb_4/kb_5 名称描述随岗位改写）；旧快照仍挂不存在的岗位名，弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 5,
+  version: 6,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (

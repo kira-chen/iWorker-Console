@@ -119,12 +119,11 @@ function onSortChange({ prop, order }) {
 
 /* ---------- 状态三态展示映射（Q6：展示层三态，细分 5 态词表仍归 derivePublishView） ---------- */
 // 草稿(INITIAL)→未发布；REVIEWING / PUBLISHED_REVIEWING / PUBLISHED_DELISTING →审核中；PUBLISHED→已发布。
-// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView（此前本页手工覆盖 label/tagType）；
-// 返回结构保留 derivePublishView 的其余字段与 tagType 键名不变。
+// 2026-09-10 D2 收敛：模板只消费 label/tagType，直接取 deriveTriView（此前先 derivePublishView
+// 再整包 spread 属死代码——细分 5 态词表仍由 versionAdapter 的 deriveView 走 derivePublishView）。
 function displayView(row) {
-  const v = derivePublishView(KIND.POSITION, { status: row.status, pendingAction: row.pendingAction })
   const tri = deriveTriView(KIND.POSITION, row)
-  return { ...v, label: tri.label, tagType: tri.type }
+  return { label: tri.label, tagType: tri.type }
 }
 // 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回（isLocked 对岗位即 !!pendingAction，批 2-2 收编）
 function isReviewing(row) {
@@ -598,7 +597,9 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
           </el-table-column>
 
           <!-- 最近更新时间（精确到分钟）：可排序，默认降序（服务端/mock 排序）；单行不换行（原型 .updated-cell） -->
-          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="POS_COL.TIME">
+          <!-- E5（2026-09-10）：时间列随操作列一起右侧固定——1440 宽下表格总宽超出容器时
+               本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
+          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="POS_COL.TIME" fixed="right">
             <template #default="{ row }">
               <span v-if="row.updatedAt" class="pos-time">{{ fmtTime(row.updatedAt) }}</span>
               <span v-else class="cell-na">—</span>

@@ -182,7 +182,8 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ sort: 'desc' }))
   })
 
-  it('行渲染：状态标签并入专家名列（三态映射）；分类列；最新版本无版本显「-」', async () => {
+  // 2026-09-10 E11：版本空值占位由「-」统一为全站长横「—」（utils/tableLayout.NA），断言随行为更新
+  it('行渲染：状态标签并入专家名列（三态映射）；分类列；最新版本无版本显「—」', async () => {
     await mount()
     const rows = rowEls()
     expect(rows).toHaveLength(3)
@@ -194,7 +195,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     // 名称列内含头像 + 名称 + 标签同格
     expect(rows[0].querySelector('.ex-primary .ex-avatar')).toBeTruthy()
     expect(rows[0].textContent).toContain('投资') // 分类列
-    expect(rows[1].textContent).toContain('-') // 无版本占位
+    expect(rows[1].textContent).toContain('—') // 无版本占位（E11 全站统一长横）
   })
 
   it('头像按行「背景色」着色（2026-09-04 PRD-20260903）；行无背景色 → 不写内联背景（回落令牌底色）', async () => {
