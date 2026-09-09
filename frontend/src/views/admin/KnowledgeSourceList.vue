@@ -121,6 +121,8 @@ function restoreListState() {
 function syncListState() {
   if (!route?.query || !router) return
   const next = { ...route.query }
+  // 同上：清掉知识库子页的状态键，避免切页签后对方的键留在地址栏（互不影响，只是不留垃圾）
+  for (const k of ['kw', 'kbType', 'st', 'p']) delete next[k]
   const put = (k, v) => {
     if (v === '' || v == null) delete next[k]
     else next[k] = String(v)

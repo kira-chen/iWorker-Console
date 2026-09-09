@@ -173,6 +173,9 @@ function restoreListState() {
 function syncListState() {
   if (!route?.query || !router) return
   const next = { ...route.query }
+  // 顺手清掉另一子页（数据源）的状态键：两个子页共用同一条 URL，切页签时对方的键会留在地址栏，
+  // 分享出去看着像是本页带了筛选。功能上互不影响（各自只读自己的键），纯粹是不留垃圾。
+  for (const k of ['srcKw', 'srcType', 'srcSt', 'srcP']) delete next[k]
   const put = (k, v) => {
     if (v === '' || v == null) delete next[k]
     else next[k] = String(v)
