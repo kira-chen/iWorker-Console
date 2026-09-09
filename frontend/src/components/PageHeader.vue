@@ -80,18 +80,11 @@ defineProps({
   line-height: var(--lh-base);
   color: var(--c-text-muted);
 }
-/* 管理后台档位（2026-09-08 原型复刻批次 1 · A4）：原型 L23–24
- * `h1{font-size:25px;font-weight:650;letter-spacing:-.02em}` / `p{margin:5px 0 0;font-size:15px;color:#68736d}`。
- * 以 body.admin-scope 限定（router 按 /admin 前缀挂），员工端页头仍是 22px/600 + 13px 档。 */
-:global(body.admin-scope) .page-header-title {
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-:global(body.admin-scope) .page-header-sub {
-  margin-top: 5px;
-  font-size: 15px;
-}
+/* 管理后台档位（25px/650 + 副标题 15px）移到 assets/admin-shell.css。
+ * 原因（2026-09-09 修）：这里曾写作 `:global(body.admin-scope) .page-header-title`，
+ * scoped 编译把它降解成了 `body.admin-scope { font-size:25px; font-weight:650 }`——
+ * 后半个选择器丢失，25px/650 落到 body 上并继承给整个后台，表格每一格都被加粗。
+ * 全局选择器 + scoped 类混写容易踩这个坑，故统一放到本就限定 body.admin-scope 的全局表里。 */
 .page-header-scope {
   flex-shrink: 0;
   width: 180px;

@@ -85,6 +85,21 @@ body.admin-scope .lt-search {
   width: 300px;
 }
 
+/* 页头档位（原型 L23–24 `h1{font-size:25px;font-weight:650;letter-spacing:-.02em}` /
+ * `p{margin:5px 0 0;font-size:15px}`）。员工端页头不带 admin-scope，仍是 22px/600 + 13px 档。
+ * 2026-09-09 从 PageHeader.vue 的 scoped 块搬来：那里写成 `:global(body.admin-scope) .page-header-title`
+ * 会被 scoped 编译降解成 `body.admin-scope { font-size:25px; font-weight:650 }`（后半截选择器丢失），
+ * 导致整个后台继承 650、表格每格都加粗。全局选择器不要写在 scoped 块里。 */
+body.admin-scope .page-header-title {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+body.admin-scope .page-header-sub {
+  margin-top: 5px;
+  font-size: 15px;
+}
+
 /* ---------------------------------------------------------------------------
  * 2. 分页器（原型 L13 .pager / L1512 .fm5-pager / L1549 pagerHtml）
  * 结构由 components/admin/ListPagination.vue 渲染：
