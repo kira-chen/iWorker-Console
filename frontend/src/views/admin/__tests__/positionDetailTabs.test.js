@@ -6,7 +6,7 @@ import { createApp, h, nextTick } from 'vue'
  * PositionDetailTabs · 页签信息架构契约。
  *
  * 2026-09-04 PRD-20260903 对齐重写（原 9-Tab 断言过时）：
- * - 新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统；
+ * - md 六页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务（业务系统页签 2026-09-09 已移除）；
  *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本=Q2 冻结）。
  * - 人格页签为 md 三.2 六区块（岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
@@ -95,10 +95,15 @@ beforeEach(() => { store.load.mockClear(); store.saveBasic.mockClear(); routeMoc
 afterEach(() => { app?.unmount(); container?.remove() })
 
 describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）', () => {
-  it('渲染新 PRD 七页签 + demo 扩展三页签，label 与顺序正确', async () => {
+  // 2026-09-09 负责人裁决：移除「业务系统」与「版本」两个页签。
+  // - 业务系统：原 md §1.3 第 7 页签 + §8 整节，md 已同步删除；
+  // - 版本：demo 扩展页签，正式入口是岗位列表页【版本管理】（md §3.7），详情页属重复入口。
+  it('渲染 md 六页签 + demo 扩展两页签，label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试', '版本'])
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '运行', '效果测试'])
+    expect(labels).not.toContain('业务系统')
+    expect(labels).not.toContain('版本')
   })
 
   it('「人格」Tab 含 md §2 六区块：岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名）', async () => {
@@ -153,11 +158,7 @@ describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）
     expect(paneText('runtime')).toContain('开发中')
   })
 
-  it('「业务系统」页签挂载引用面板（PositionBizSystemsPane，桩渲染）', async () => {
-    await mount()
-    const biz = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'bizSystems')
-    expect(biz?.querySelector('.stub')).toBeTruthy()
-  })
+  // 原「业务系统页签挂载引用面板」用例随该页签移除一并删除（2026-09-09 负责人裁决）
 
   it('效果测试在 EFFECT_TEST_ENABLED=false 时显「开发中」占位（不擅自开启被关链路）', async () => {
     await mount()

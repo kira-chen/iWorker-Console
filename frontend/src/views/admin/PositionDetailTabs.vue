@@ -73,14 +73,12 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
 import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
 import PositionDataTableStage from '@/components/position/PositionDataTableStage.vue'
 import PositionSampleTaskStage from '@/components/position/PositionSampleTaskStage.vue'
-import PositionVersionHistoryDialog from '@/components/position/PositionVersionHistoryDialog.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 import AdminRail from '@/components/admin/AdminRail.vue'
 // Tab 内联编辑器（2026-09-04 PRD-20260903 对齐：领用页文案列表 / 图标 popover / 业务系统页签）
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
-import PositionBizSystemsPane from '@/components/position/PositionBizSystemsPane.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 // 效果测试台异步加载：仅在点「效果测试」打开时拉取，避免把对话链路提前并入白板首屏 + 保持现有测试 import 图不变。
 const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
@@ -822,11 +820,8 @@ const {
   load: loadNextVersionLabel
 } = useVersionPublish({ fetchNextLabel: () => getNextVersionLabel(store.positionId) })
 
-// 版本历史对话框（管理侧 §6.6 C/D）：仅已发布岗位有版本快照可看/下线。
-const versionHistoryVisible = ref(false)
-function openVersionHistory() {
-  versionHistoryVisible.value = true
-}
+// 版本历史对话框随「版本」页签一并移除（2026-09-09 负责人裁决）：
+// 版本管理的正式入口在岗位列表页【版本管理】按钮（md §3.7），详情页不再重复承载。
 
 async function explicitSave() {
   // 技能整页化后白板无聚焦态，技能保存在整页编辑器自管；此处只存身份卡基本信息。
@@ -1407,19 +1402,13 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ⑦ 业务系统（2026-09-04 PRD-20260903 对齐新增，md 三.8：引用已发布业务系统） -->
-          <el-tab-pane label="业务系统" name="bizSystems">
-            <div class="pd-pane">
-              <PositionBizSystemsPane
-                :business-system-ids="store.basic.businessSystemIds || []"
-                :readonly="isReadonly"
-                @update:business-system-ids="patchBasic('businessSystemIds', $event)"
-              />
-            </div>
-          </el-tab-pane>
+          <!-- 「业务系统」页签已按 2026-09-09 负责人裁决移除（原 md §1.3 第 7 页签 / §8 整节）。
+               岗位与业务系统的引用关系改由业务系统模块自身承载；md 已同步删除相应章节。
+               store.basic.businessSystemIds 字段保留（mock 与 payload 链路未动），避免存量数据被抹。 -->
 
-          <!-- 以下三页签为 demo 既有扩展，按 2026-09-04 对齐拍板保留在新 PRD 七页签之后：
-               运行（规划位）/ 效果测试（featureFlag 承载）/ 版本（Q2 冻结：版本管理全链保持现状）。 -->
+          <!-- 以下两页签为 demo 既有扩展：运行（规划位）/ 效果测试（featureFlag 承载）。
+               「版本」页签已按 2026-09-09 负责人裁决移除——版本管理的正式入口是岗位列表页
+               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。 -->
           <el-tab-pane label="运行" name="runtime">
             <div class="pd-pane"><div class="pd-empty pd-dev">🚧 运行 · 开发中</div></div>
           </el-tab-pane>
@@ -1437,15 +1426,6 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="版本" name="version">
-            <div class="pd-pane">
-              <div v-if="store.isPublished" class="pd-empty">
-                <el-button type="primary" @click="openVersionHistory">🗂 打开版本历史</el-button>
-                <p class="pd-empty-hint">查看已发布版本、下线 / 恢复历史版本。</p>
-              </div>
-              <div v-else class="pd-empty">岗位尚未发布，暂无版本记录。发布后可在此管理版本。</div>
-            </div>
-          </el-tab-pane>
         </el-tabs>
       </div>
     </div>
@@ -1469,13 +1449,6 @@ function backToList() {
       :next-loading="nextLabelLoading"
       @update:bump="setVersionBump"
       @publish="doPublish"
-    />
-
-    <!-- 版本历史（管理侧 §6.6 C/D）：只读版本列表 + 下线/恢复历史版本 -->
-    <PositionVersionHistoryDialog
-      v-model="versionHistoryVisible"
-      :position-id="store.positionId"
-      :position-name="store.basic?.name || '岗位'"
     />
 
     <!-- 检索测试弹窗（md §5.3 / Q455）：知识页签行内【检索测试】原地打开，全平台同一个独立弹窗 -->
