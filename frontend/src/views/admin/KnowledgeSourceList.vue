@@ -9,7 +9,8 @@
  * 【操作】查看·编辑固定；上传类+文档管理；未被引用+删除（二次确认），被引用时删除置灰并
  *   提示「正被知识库引用，请先解除引用」（md §四.2，逐字）。
  */
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, watch, onMounted, onActivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -101,7 +102,41 @@ async function doDelete(row) {
   }
 }
 
-onMounted(reload)
+/* ---------- 查询条件与分页位置的刷新保持（md §二.2） ----------
+ * 与知识库子页同一机制：状态落 URL query，刷新还原、变更回写。
+ * 键名加 src 前缀，避免与同容器另一子页（?tab=kb）的 kw/kbType/st/p 撞名。 */
+// 本页在部分单测里不挂路由（无 router 实例），故取值均做空值兜底，缺路由时静默跳过状态保持。
+const route = useRoute()
+const router = useRouter()
+const STATE_KEYS = { KW: 'srcKw', TYPE: 'srcType', STATUS: 'srcSt', PAGE: 'srcP' }
+function restoreListState() {
+  const q = route?.query
+  if (!q) return
+  if (q[STATE_KEYS.KW]) keyword.value = String(q[STATE_KEYS.KW])
+  if (q[STATE_KEYS.TYPE]) typeFilter.value = String(q[STATE_KEYS.TYPE])
+  if (q[STATE_KEYS.STATUS]) statusFilter.value = String(q[STATE_KEYS.STATUS])
+  const p = Number(q[STATE_KEYS.PAGE])
+  if (Number.isFinite(p) && p > 0) page.value = p
+}
+function syncListState() {
+  if (!route?.query || !router) return
+  const next = { ...route.query }
+  const put = (k, v) => {
+    if (v === '' || v == null) delete next[k]
+    else next[k] = String(v)
+  }
+  put(STATE_KEYS.KW, keyword.value.trim())
+  put(STATE_KEYS.TYPE, typeFilter.value)
+  put(STATE_KEYS.STATUS, statusFilter.value)
+  put(STATE_KEYS.PAGE, page.value > 1 ? page.value : '')
+  router.replace({ query: next })
+}
+watch([keyword, typeFilter, statusFilter, page], syncListState)
+
+onMounted(() => {
+  restoreListState()
+  reload()
+})
 // 知识库子页里改了引用关系会影响「被引用」列，切回时刷新
 onActivated(reload)
 </script>
@@ -119,10 +154,13 @@ onActivated(reload)
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <!-- md §四.1 筛选项首项为显式「全部」：空值即不筛选，与点 × 清除等价，但下拉里看得见 -->
       <el-select v-model="typeFilter" placeholder="全部类型" clearable class="lt-filter" @change="search">
+        <el-option label="全部类型" value="" />
         <el-option v-for="t in SOURCE_TYPES" :key="t" :label="SOURCE_LABELS[t]" :value="t" />
       </el-select>
       <el-select v-model="statusFilter" placeholder="全部状态" clearable class="lt-filter" @change="search">
+        <el-option label="全部状态" value="" />
         <el-option label="启用" value="ENABLED" />
         <el-option label="停用" value="DISABLED" />
       </el-select>

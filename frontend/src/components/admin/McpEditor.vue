@@ -75,7 +75,7 @@ const form = reactive({
   transport: 'streamable-http',
   endpoint: '',
   // —— stdio 专用连接字段（设计 §6.1；http 不显示/不下发）——
-  command: '', // 启动命令（不含参数）；V110 纯下拉（MCP_COMMAND_OPTIONS，存量非枚举值动态追加回显）
+  command: '', // 启动命令（不含参数）；纯下拉，取值限 MCP_COMMAND_OPTIONS 五项
   argsText: '', // args 多行文本，每行一个 arg；提交时拆成数组
   status: 'active',
   authConfigMasked: false,
@@ -105,11 +105,9 @@ const authConfigured = computed(
 const envRows = ref([])
 // Env 行编辑器实例：M5 把【＋ 添加变量】摆到 `.mcp-env-title` 右侧后，由此直调组件的 addRow
 const envEditor = ref(null)
-// Command 纯下拉（拍板）：存量非枚举值（如绝对路径）动态追加为选项回显，不丢数据可正常保存。
-const commandOptions = computed(() => {
-  const c = (form.command || '').trim()
-  return c && !MCP_COMMAND_OPTIONS.includes(c) ? [c, ...MCP_COMMAND_OPTIONS] : MCP_COMMAND_OPTIONS
-})
+// Command 纯下拉（2026-09-09 负责人拍板：仅下拉、仅这 5 个枚举值，不支持自由输入）。
+// 原先会把存量非枚举值动态追加成选项回显，本轮按裁决移除——种子与 demo 数据均为枚举内取值。
+const commandOptions = MCP_COMMAND_OPTIONS
 // 工具清单（只读，来自拉取）：[{ name, description, writeClass, inputSchema, _flatRows }]。
 // inputSchema 保留 server 原始对象（保存时原样透传，不经字段行往返、不丢约束细节）；
 // _flatRows 为预计算的只读展示行（schema 拍平，随 load/拉取一次性生成）。
@@ -786,7 +784,7 @@ async function save() {
                 <span>Command <em class="req">*</em></span>
                 <span class="lbl-hint">（仅命令本身，参数填下方 args）</span>
               </template>
-              <!-- 纯下拉（拍板）：枚举常见命令；存量非枚举值（如绝对路径）动态追加为选项回显 -->
+              <!-- 纯下拉（拍板）：仅 npx/uvx/node/python3/docker 五项，不支持自由输入 -->
               <el-select v-model="form.command" class="md-w" placeholder="选择启动命令">
                 <el-option v-for="c in commandOptions" :key="c" :value="c" :label="c" />
               </el-select>
@@ -1343,6 +1341,8 @@ async function save() {
   gap: var(--space-2);
 }
 .md-eq-ai {
+  /* 常规字重（一览表附录「AI 生成按钮样式」：技能/专家/连接器统一不加粗） */
+  font-weight: var(--fw-regular, 400);
   white-space: nowrap;
 }
 .md-eq-list {

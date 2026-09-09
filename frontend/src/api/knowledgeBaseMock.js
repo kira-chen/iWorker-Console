@@ -599,6 +599,14 @@ export async function createSource(payload) {
 export async function updateSource(id, payload) {
   await delay()
   const s = findSource(id)
+  // 被知识库引用时不允许停用（2026-09-09 负责人拍板「数据源被绑定时不允许停用，必须先解除
+  // 关联」）——与删除保护同一口径，使「停用的数据源不可被引用」在数据上恒成立：既不能引用
+  // 停用的源（候选列表已过滤），也不能把已被引用的源停用。
+  // 放在字段校验之前：这道拦截与配置填得对不对无关，不该被校验错误盖过。
+  if ((payload.status || s.status) === 'DISABLED' && s.status !== 'DISABLED') {
+    const refs = referencedBy(id)
+    if (refs.length) conflict(`正被知识库引用，请先解除引用后再停用（${refs.map((r) => r.name).join('、')}）`)
+  }
   validateSource(payload, id)
   validateSourceConfig(payload, s)
   const cfg = mergeConfig(s, payload)

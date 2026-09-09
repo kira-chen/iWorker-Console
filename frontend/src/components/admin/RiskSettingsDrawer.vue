@@ -3,13 +3,15 @@
  * 用户技能审核 · 风险设置抽屉（2026-09-08 PRD-20260908 对齐，md §七 / 原型 renderRiskDrawerBody L4487–4494）。
  *
  * DrawerEditor 780 壳 + 两张 section-card：
- *   1. 「当前审查尺度」单选 通用 / 严格 / 宽松（md §7.1 顺序，默认通用）——选择即时生效并持久化（setCurrentScale）
+ *   1. 「当前审查尺度」单选 通用 / 严格 / 宽松（md §7.1 顺序，默认通用）——只改草稿，随【保存设置】落库
  *   2. 「审核尺度模板配置」说明文「维护三套审核尺度模板，管控技能上传的安全检测策略。」+ Tab 宽松 / 通用 / 严格
  *      （默认打开通用）+ 表格 检测项 | 说明 | 触发审核的最低风险等级（第三列纵向单选，选项集合按检测项 md §7.2 表一）
  * 底部：【恢复默认】（当前 Tab 草稿回默认值表 + toast「已恢复默认设置」）｜【取消】（不保存，关闭）｜
  *      【保存设置】（保存当前 Tab → toast「「尺度名」审核尺度设置已保存」并关闭）。
- * 【与原型的差别】原型 SCALE_DESC 段描述"阻断/告警/放行"旧模型且与默认值表自相矛盾，不搬；原型【取消】不回滚属缺陷，
- * 此处模板改动走草稿、取消即弃（当前审查尺度单选按 md 即时生效，不在草稿范围）。
+ * 【与原型/旧 md 的差别】原型 SCALE_DESC 段描述"阻断/告警/放行"旧模型且与默认值表自相矛盾，不搬。
+ * 【2026-09-09 负责人拍板】「保存设置才视为生效，取消则清空当前未保存的内容」——覆盖 md §七 L150/L184
+ * 「即时生效、取消不回滚」的旧口径：模板配置与当前审查尺度**全部走草稿**，点【保存设置】才一并落库，
+ * 【取消】关闭即丢弃（抽屉每次打开都 load() 重取，天然回到已保存态）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -76,17 +78,13 @@ watch(
   { immediate: true }
 )
 
-/** 当前审查尺度：选择即时生效（md §7.1） */
-async function onCurrentScaleChange(scale) {
-  const prev = currentScale.value
+/**
+ * 当前审查尺度：只改本地草稿，点【保存设置】才落库（2026-09-09 负责人拍板
+ * 「保存设置才视为生效，取消则清空当前未保存的内容」——覆盖 md §七 L150/L184「即时生效、
+ * 取消不回滚」的旧口径）。抽屉每次打开都会 load() 重取，故取消即等于丢弃未保存改动。
+ */
+function onCurrentScaleChange(scale) {
   currentScale.value = scale
-  try {
-    await setCurrentScale(scale)
-    emit('saved', { currentScale: scale })
-  } catch (e) {
-    currentScale.value = prev
-    ElMessage.error(e?.message || '设置当前审查尺度失败，请重试')
-  }
 }
 
 function resetCurrentTab() {
@@ -98,9 +96,11 @@ async function save() {
   const scale = activeTab.value
   saving.value = true
   try {
+    // 一并落「当前审查尺度」：它同样只是草稿，不保存就不生效（负责人 2026-09-09 拍板）
+    await setCurrentScale(currentScale.value)
     await saveRiskTemplate(scale, drafts[scale])
     ElMessage.success(`「${scale}」审核尺度设置已保存`)
-    emit('saved', { scale })
+    emit('saved', { scale, currentScale: currentScale.value })
     vis.value = false
   } catch (e) {
     ElMessage.error(e?.message || '保存失败，请重试')

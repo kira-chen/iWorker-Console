@@ -56,6 +56,13 @@ vi.mock('@/components/admin/ListStates.vue', () => ({ default: { template: '<div
 vi.mock('@/components/admin/ListPagination.vue', () => ({ default: { template: '<div class="list-pager" />' } }))
 // 版本管理已由三个同构弹窗合并为统一 VersionDrawer（2026-08-23），入参改为 adapter。
 vi.mock('@/components/admin/VersionDrawer.vue', () => ({ default: { props: ['modelValue', 'adapter'], template: '<div class="ver-dialog" :data-open="modelValue" :data-entity="adapter?.entityLabel" :data-title="adapter?.title" />' } }))
+// 发布前检查弹窗（2026-09-09 拍板：列表页【发布】改走它，与详情页同一组件）
+vi.mock('@/components/position/PublishCheckDialog.vue', () => ({
+  default: {
+    props: ['visible', 'check', 'publishing', 'versionLabel', 'releaseNotes', 'bump', 'firstPublish', 'atMax', 'nextLoading'],
+    template: '<div class="pub-check" :data-open="visible" :data-passed="check?.blockingPassed" />'
+  }
+}))
 vi.mock('@/components/test/EffectTestStage.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 
@@ -199,16 +206,21 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
 
   // 2026-09-09 PRD 复核·G2（A1 / md §9.1）：列表页【发布】门由「技能数≥1」改为与详情页共用的
   // 六项完整性校验（computeCompletenessMissing），缺项 toast「请先填写：…」并跳详情页对应页签。
-  it('②b 发布（未发布行，Q3 不弹确认窗）：六项齐备直接开版本管理侧栏，不弹确认窗', async () => {
+  // 2026-09-09 负责人拍板：列表页与详情页两个【发布】入口行为一致，六项齐备后统一开
+  // 「发布前检查弹窗」（md §3.3/§9.2）。原断言「直接开版本管理侧栏」是 Q3 旧口径（原型作
+  // 基准时的处理），原型已退场故推翻。【版本管理】按钮仍走 VersionDrawer，见 ②e。
+  it('②b 发布（未发布行）：六项齐备 → 开发布前检查弹窗，不开版本侧栏、不弹 confirm', async () => {
     await mount()
-    const el = () => container.querySelector('.ver-dialog')
     btn(rowByName('可发布草稿岗'), '发布').click()
     await flush()
     expect(getPosition).toHaveBeenCalledWith('ps_draft_ok')
     expect(listSampleTasks).toHaveBeenCalledWith('ps_draft_ok')
-    expect(el().getAttribute('data-open')).toBe('true')
+    const dlg = container.querySelector('.pub-check')
+    expect(dlg.getAttribute('data-open')).toBe('true')
+    expect(dlg.getAttribute('data-passed')).toBe('true') // 六项齐备 → 可发布
+    expect(container.querySelector('.ver-dialog').getAttribute('data-open')).not.toBe('true')
     expect(ElMessage.warning).not.toHaveBeenCalled()
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled() // 不弹确认窗
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
   })
 
   it('②c 发布门（A1）：缺项 → toast「请先填写：…」+ 跳详情页第一个缺失项所在页签，不开侧栏', async () => {

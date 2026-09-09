@@ -158,6 +158,19 @@ describe('knowledgeBaseMock —— 数据源（2026-09-07 PRD-20260904 数据源
     await expect(removeSource(s.id)).resolves.toBe(null)
   })
 
+  // 2026-09-09 负责人拍板「停用的数据源不可被引用」→ 落地为「被引用时不允许停用」，
+  // 与删除保护同一口径，保证不存在「已停用但仍被引用」的数据（md §三.3.2）。
+  it('被知识库引用的数据源停用被阻断；解除引用后可停用', async () => {
+    await expect(updateSource('ks_1a', { name: '企业制度库文档', status: 'DISABLED' })).rejects.toMatchObject({
+      code: 409,
+      message: expect.stringContaining('请先解除引用后再停用')
+    })
+    // 未被引用的可正常停用
+    const s = await createSource({ sourceType: 'API', name: uniq('可停用接口'), config: apiConfig() })
+    const off = await updateSource(s.id, { sourceType: 'API', name: s.name, status: 'DISABLED', config: apiConfig() })
+    expect(off.status).toBe('DISABLED')
+  })
+
   it('API 保存校验（md §六.1）：地址必填合法 / 方法枚举 / 超时范围', async () => {
     await expect(createSource({ sourceType: 'API', name: uniq('无地址'), config: apiConfig({ url: '' }) })).rejects.toMatchObject({ field: 'url' })
     await expect(createSource({ sourceType: 'API', name: uniq('坏地址'), config: apiConfig({ url: 'ftp://x' }) })).rejects.toMatchObject({ field: 'url' })

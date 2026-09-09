@@ -11,9 +11,11 @@
  * - 操作列（照原型 positionActions）：编辑（审核中 disabled）+ 按状态给 发布/删除、撤回、停用/版本管理；
  *   【查看】暂不实现（Q4 待拍板）；测试按钮维持 EFFECT_TEST_ENABLED flag 现状。
  * - 强确认降级（Q5）：停用/删除改普通二次确认（文案照原型 modal）。
- * - 发布（Q3）：不弹确认窗，先跑 md §9.1 六项完整性校验（与详情页共用 computeCompletenessMissing），
- *   缺项 → toast「请先填写：…」并跳详情页对应页签；全通过才打开版本管理侧栏
- *   （2026-09-09 PRD 复核·G2 / A1：原「仅校验技能数≥1」的旧门已随 Q11 六项口径退役）。
+ * - 发布：先跑 md §9.1 六项完整性校验（与详情页共用 computeCompletenessMissing），缺项 →
+ *   toast「请先填写：…」并跳详情页对应页签；全通过才打开**发布前检查弹窗**（md §3.3/§9.2，
+ *   与详情页【发布岗位】同一组件 PublishCheckDialog、同一 useVersionPublish 编排）。
+ *   2026-09-09 负责人拍板两个【发布】入口行为一致——原 Q3「照原型不弹确认窗」是原型作基准
+ *   时的处理，原型已退场、md 成为唯一口径。【版本管理】仍走 VersionDrawer，两者互不影响。
  * - 数据走 positionMock（api 层分流，VITE_POS_MOCK=0 关闭）；新建/编辑仍走现有流程
  *   （新建小弹窗→工作台整页，Q4 不拆不删）。
  */
@@ -49,7 +51,14 @@ import {
 import { listDataTables } from '@/api/dataTable'
 import { listSampleTasks } from '@/api/sampleTask'
 import { iconIsUrl } from '@/utils/iconDisplay'
-import { POSITION_BUMP_OPTIONS, DESCRIPTION_MAX_LEN, computeCompletenessMissing } from '@/utils/positionModel'
+import {
+  POSITION_BUMP_OPTIONS,
+  DESCRIPTION_MAX_LEN,
+  computeCompletenessMissing,
+  computePublishCheck
+} from '@/utils/positionModel'
+import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
+import { useVersionPublish } from '@/composables/useVersionPublish'
 // 居中弹窗外壳（原型 .proto2-dialog 头/脚分隔线档，2026-09-08 原型复刻批次 2A）
 import '@/assets/admin-dialog.css'
 
@@ -290,7 +299,55 @@ async function onPublish(row) {
     router.push({ name: 'PositionWorkbench', params: { id: row.positionId }, query: { tab: missing[0].tab } })
     return
   }
-  openVersionDialog(row)
+  // 校验通过 → 发布前检查弹窗（md §3.3/§9.2）。2026-09-09 负责人拍板：列表页与详情页两个
+  // 【发布】入口行为一致，均先弹检查窗（原 Q3「照原型不弹」是原型作基准时的处理，原型已退场）。
+  publishRow.value = row
+  publishCheckDetail.value = { ...detail, sampleTaskCount }
+  publishDialogVisible.value = true
+  loadNextVersionLabel()
+}
+
+/* ---------- 发布前检查弹窗（md §9.2；与详情页共用 PublishCheckDialog + useVersionPublish） ---------- */
+const publishRow = ref(null)
+const publishCheckDetail = ref(null)
+const publishDialogVisible = ref(false)
+const publishing = ref(false)
+const publishCheck = computed(() =>
+  publishCheckDetail.value
+    ? computePublishCheck(publishCheckDetail.value)
+    : { items: [], blockingPassed: false }
+)
+const {
+  versionLabel,
+  releaseNotes,
+  atMax: versionAtMax,
+  nextLoading: nextLabelLoading,
+  bump: versionBump,
+  firstPublish: versionFirstPublish,
+  setBump: setVersionBump,
+  load: loadNextVersionLabel
+} = useVersionPublish({
+  fetchNextLabel: () => getNextVersionLabel(publishRow.value?.positionId)
+})
+
+async function doPublish() {
+  const row = publishRow.value
+  if (!row) return
+  publishing.value = true
+  try {
+    await publishPosition(row.positionId, {
+      versionLabel: versionLabel.value.trim(),
+      bump: versionBump.value,
+      releaseNotes: releaseNotes.value.trim()
+    })
+    publishDialogVisible.value = false
+    ElMessage.success('已提交发布审核')
+    fetchList()
+  } catch (e) {
+    ElMessage.error(e?.message || '发布失败')
+  } finally {
+    publishing.value = false
+  }
 }
 
 /**
@@ -695,6 +752,21 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
       v-model="versionDlgVisible"
       :adapter="versionAdapter"
       @done="onVersionDone"
+    />
+
+    <!-- 发布前检查弹窗（md §9.2）：与详情页【发布岗位】同一组件、同一口径（2026-09-09 拍板两入口一致） -->
+    <PublishCheckDialog
+      v-model:visible="publishDialogVisible"
+      v-model:release-notes="releaseNotes"
+      :version-label="versionLabel"
+      :bump="versionBump"
+      :first-publish="versionFirstPublish"
+      :check="publishCheck"
+      :publishing="publishing"
+      :at-max="versionAtMax"
+      :next-loading="nextLabelLoading"
+      @update:bump="setVersionBump"
+      @publish="doPublish"
     />
 
   </div>

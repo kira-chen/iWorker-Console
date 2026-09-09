@@ -724,6 +724,7 @@ const metaItems = computed(() => {
                 v-if="!disabled"
                 plain
                 size="small"
+                class="ee-eq-ai"
                 :disabled="aiQuestionsDisabled"
                 :title="aiQuestionsTitle || undefined"
                 @click="aiGenerateQuestions"
@@ -897,6 +898,12 @@ const metaItems = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+/* 示例问题【AI 生成】按钮：常规字重（一览表附录「AI 生成按钮样式」——技能/专家/连接器统一
+   不加粗）。不显式写就会落 Element Plus 的 --el-font-weight-primary: 500。 */
+.ee-eq-ai {
+  font-weight: var(--fw-regular, 400);
+  white-space: nowrap;
 }
 /* 子分区标题（.section-title 在卡内是贴边灰底条，子分区里要退回普通标题） */
 .ee-sub-title {

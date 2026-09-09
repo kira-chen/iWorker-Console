@@ -98,6 +98,8 @@ const detail = ref(null)
 
 const targetId = computed(() => props.sourceId || createdId.value)
 const isEdit = computed(() => !!targetId.value)
+/** 引用本数据源的知识库名（被引用时禁止停用，md §三.3.2） */
+const referencedNames = computed(() => (detail.value?.referencedBy || []).map((r) => r.name))
 const viewMode = computed(() => props.mode === 'view' && isEdit.value)
 
 const form = reactive({
@@ -556,9 +558,16 @@ function close() {
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio value="ENABLED">启用</el-radio>
-            <el-radio value="DISABLED">停用</el-radio>
+            <!-- 被知识库引用时不允许停用（md §三.3.2，2026-09-09 拍板）：就地置灰并说明原因，
+                 不让人填完一屏再在保存时被后端拦下 -->
+            <el-radio value="DISABLED" :disabled="referencedNames.length > 0">停用</el-radio>
           </el-radio-group>
-          <div class="ksrc-help">停用后跳过检索，但保留配置和引用</div>
+          <div class="ksrc-help">
+            <template v-if="referencedNames.length">
+              正被知识库引用（{{ referencedNames.join('、') }}），需先解除引用才能停用
+            </template>
+            <template v-else>停用后跳过检索；停用期间不可被知识库引用</template>
+          </div>
         </el-form-item>
         <!-- 类型说明：原型 .pd2-mini-note 灰底圆角块，位于卡内末尾、不带标签 -->
         <div class="ksrc-note ksrc-type-note">{{ TYPE_DESC[form.sourceType] }}</div>

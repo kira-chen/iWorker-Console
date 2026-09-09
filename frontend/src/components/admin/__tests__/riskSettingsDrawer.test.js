@@ -129,17 +129,29 @@ describe('RiskSettingsDrawer（2026-09-08 PRD-20260908 对齐）', () => {
     expect(container.textContent).not.toContain('阻断')
   })
 
-  it('当前审查尺度：选择即时生效（调 setCurrentScale），失败回滚', async () => {
+  // 2026-09-09 负责人拍板「保存设置才视为生效，取消则清空当前未保存的内容」——覆盖
+  // md §七 L150/L184 的「即时生效、取消不回滚」旧口径。原断言测的正是被推翻的行为。
+  it('当前审查尺度：选择只改草稿，不即时落库；【保存设置】时才写入', async () => {
     await mount()
     ;[...container.querySelectorAll('.rsd-current input')].find((i) => i.value === '严格').dispatchEvent(new Event('change'))
     await flush()
-    expect(setCurrentScale).toHaveBeenCalledWith('严格')
+    // 选中态更新，但未调接口
     expect(container.querySelector('.rsd-current').dataset.value).toBe('严格')
-    setCurrentScale.mockRejectedValueOnce(new Error('设置失败'))
+    expect(setCurrentScale).not.toHaveBeenCalled()
+    // 点【保存设置】才落库
+    footBtn('保存设置').click()
+    await flush()
+    expect(setCurrentScale).toHaveBeenCalledWith('严格')
+  })
+
+  it('当前审查尺度：【取消】丢弃未保存的选择（不调 setCurrentScale）', async () => {
+    await mount()
     ;[...container.querySelectorAll('.rsd-current input')].find((i) => i.value === '宽松').dispatchEvent(new Event('change'))
     await flush()
-    expect(container.querySelector('.rsd-current').dataset.value).toBe('严格')
-    expect(ElMessage.error).toHaveBeenCalledWith('设置失败')
+    footBtn('取消').click()
+    await flush()
+    expect(setCurrentScale).not.toHaveBeenCalled()
+    expect(saveRiskTemplate).not.toHaveBeenCalled()
   })
 
   it('Tab 宽松 / 通用 / 严格，默认打开通用；表格三列、四检测项展示名、各项可选等级集合与默认值（md §7.2）', async () => {

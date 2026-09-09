@@ -14,7 +14,7 @@
  *   &kbId=xx&action=view|edit|search          → 打开对应的查看 / 编辑抽屉、检索测试弹窗
  *   action / kbId 消费一次后从地址栏清除（positionId 保留，承载上下文）。
  */
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, watch, onMounted, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
@@ -154,8 +154,40 @@ async function consumeRouteQuery() {
   router.replace({ query: rest })
 }
 
+/* ---------- 查询条件与分页位置的刷新保持（md §二.2） ----------
+ * 落在 URL query 上（本页本就用 query 传 tab/positionId，同一机制不另造存储）：
+ * 刷新即从 query 还原，改筛选/翻页时回写。positionId 带来的类型锁定优先级更高，
+ * 故 restore 放在 consumeRouteQuery 之后执行，不覆盖它设的 typeFilter。 */
+const STATE_KEYS = { KW: 'kw', TYPE: 'kbType', STATUS: 'st', PAGE: 'p' }
+function restoreListState() {
+  // 部分单测不挂路由，取不到 route 时静默跳过状态保持
+  const q = route?.query
+  if (!q) return
+  if (q[STATE_KEYS.KW]) keyword.value = String(q[STATE_KEYS.KW])
+  // 类型：positionId 场景已锁 POSITION，不再被 query 覆盖
+  if (q[STATE_KEYS.TYPE] && !positionCtx.value) typeFilter.value = String(q[STATE_KEYS.TYPE])
+  if (q[STATE_KEYS.STATUS]) statusFilter.value = String(q[STATE_KEYS.STATUS])
+  const p = Number(q[STATE_KEYS.PAGE])
+  if (Number.isFinite(p) && p > 0) page.value = p
+}
+function syncListState() {
+  if (!route?.query || !router) return
+  const next = { ...route.query }
+  const put = (k, v) => {
+    if (v === '' || v == null) delete next[k]
+    else next[k] = String(v)
+  }
+  put(STATE_KEYS.KW, keyword.value.trim())
+  put(STATE_KEYS.TYPE, typeFilter.value)
+  put(STATE_KEYS.STATUS, statusFilter.value)
+  put(STATE_KEYS.PAGE, page.value > 1 ? page.value : '')
+  router.replace({ query: next })
+}
+watch([keyword, typeFilter, statusFilter, page], syncListState)
+
 onMounted(() => {
   consumeRouteQuery()
+  restoreListState()
   reload()
 })
 // 数据源子页里改了名称 / 启停会影响本页展示，切回时刷新
@@ -175,10 +207,13 @@ onActivated(reload)
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <!-- md §三.1 筛选项首项为显式「全部」：空值即不筛选，与点 × 清除等价，但下拉里看得见 -->
       <el-select v-model="typeFilter" placeholder="全部类型" clearable class="lt-filter" @change="search">
+        <el-option label="全部类型" value="" />
         <el-option v-for="o in KB_TYPE_FILTER_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-select v-model="statusFilter" placeholder="全部状态" clearable class="lt-filter" @change="search">
+        <el-option label="全部状态" value="" />
         <el-option v-for="o in STATUS_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-button @click="search">查询</el-button>

@@ -66,6 +66,8 @@ import {
   genKeyFromLabel
 } from '@/utils/positionModel'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
+// 「生成中…」按钮文案走全站共享常量（本页原先硬写三个 ASCII 点，与其余 5 个编辑器不一致）
+import { AI_LIVE_BUSY_LABEL } from '@/utils/aiLiveGenerate'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { sourcesText, hasUploadSource } from '@/utils/knowledgeBaseMeta'
 import StatusTag from '@/components/StatusTag.vue'
@@ -1043,7 +1045,7 @@ function backToList() {
                     :title="descEmpty ? '请先填写岗位描述' : undefined"
                     @click="aiGenQuestions"
                   >
-                    {{ aiQuestionsBusy ? '生成中...' : 'AI 生成' }}
+                    {{ aiQuestionsBusy ? AI_LIVE_BUSY_LABEL : 'AI 生成' }}
                   </el-button>
                 </div>
                 <div class="pd-card-body">
@@ -1080,7 +1082,7 @@ function backToList() {
                     :title="descEmpty ? '请先填写岗位描述' : undefined"
                     @click="aiGenSop"
                   >
-                    {{ aiSopBusy ? '生成中...' : 'AI 生成' }}
+                    {{ aiSopBusy ? AI_LIVE_BUSY_LABEL : 'AI 生成' }}
                   </el-button>
                 </div>
                 <div class="pd-card-body">
@@ -1853,6 +1855,13 @@ function backToList() {
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
+  white-space: nowrap;
+}
+/* 示例问题 / 岗位 SOP 的【AI 生成】按钮：常规字重，与技能/专家/连接器四处一致
+   （一览表附录「AI 生成按钮样式」）。原先该类只在模板上挂着、没有任何样式定义，
+   落 Element Plus 默认 500 而显得比同类按钮粗。 */
+.pd-ai-btn {
+  font-weight: var(--fw-regular, 400);
   white-space: nowrap;
 }
 .pd-card-sub {

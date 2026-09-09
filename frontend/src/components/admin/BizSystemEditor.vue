@@ -835,6 +835,8 @@ async function save() {
   gap: var(--space-2);
 }
 .ad-eq-ai {
+  /* 常规字重（一览表附录「AI 生成按钮样式」：技能/专家/连接器统一不加粗） */
+  font-weight: var(--fw-regular, 400);
   white-space: nowrap;
 }
 .ad-eq-list {

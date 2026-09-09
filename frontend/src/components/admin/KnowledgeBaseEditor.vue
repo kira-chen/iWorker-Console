@@ -118,8 +118,16 @@ const scopeLocked = computed(
   () => readonlyAll.value || !!props.positionLock || (isEdit.value && form.kbType === 'EXPERT')
 )
 
+/**
+ * 可引用候选：只出「启用」的数据源（2026-09-09 负责人拍板「停用的数据源不可被引用」）。
+ * 已被本知识库引用的停用源仍保留在列表里，否则存量数据会在下拉里凭空消失、无法手动移除
+ * ——正常链路下这种组合已不可能出现（停用侧有引用即拦，见 knowledgeBaseMock.updateSource），
+ * 此处仅作存量兜底。
+ */
 function poolOf(type) {
-  return sourcePool.value.filter((s) => s.sourceType === type)
+  return sourcePool.value.filter(
+    (s) => s.sourceType === type && (s.status !== 'DISABLED' || (refs[type] || []).includes(s.id))
+  )
 }
 function sourceById(id) {
   return sourcePool.value.find((s) => s.id === id) || null
