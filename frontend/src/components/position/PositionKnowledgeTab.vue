@@ -17,6 +17,7 @@ import { useRouter } from 'vue-router'
 import { usePositionStore } from '@/stores/position'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { sourcesText, hasUploadSource, stateMeta as kbStateMeta } from '@/utils/knowledgeBaseMeta'
+import { NA } from '@/utils/tableLayout'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 
@@ -70,8 +71,8 @@ watch(activeTab, (tab) => {
 // 知识库三态标签：2026-09-09 冗余治理批 2-1 收编——本地复制品删除，改用 utils/knowledgeBaseMeta
 // 的 stateMeta(row)（pendingAction 在途→审核中；PUBLISHED→已发布；DRAFT→未发布，输出逐字相同）
 // 「数据源」列汇总（上传 ×N / API ×N / MCP ×N）与「文档数量」口径同知识库列表页 / 专家抽屉
-const kbSourcesText = (row) => sourcesText(row) || '-'
-const kbDocText = (row) => (hasUploadSource(row) ? Number(row.docCount || 0).toLocaleString('en-US') : '-')
+const kbSourcesText = (row) => sourcesText(row) || NA
+const kbDocText = (row) => (hasUploadSource(row) ? Number(row.docCount || 0).toLocaleString('en-US') : NA)
 // 跳知识库模块：query 携带岗位上下文（positionId/positionName）+ 深链动作（action/kbId），
 // 键名与消费端 KnowledgeBaseList 同源于 utils/knowledgeDeepLink（2026-09-08 原型复刻批次 1 · C-H2：
 // 此前发 kbAction/fromPositionId 与消费端 action/positionId 不对齐，跳过去抽屉不开、岗位上下文不生效，已修）。
@@ -131,7 +132,7 @@ function gotoKbModule(action, row) {
         </template>
       </el-table-column>
       <el-table-column label="知识库描述" min-width="200" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.description || '-' }}</template>
+        <template #default="{ row }">{{ row.description || NA }}</template>
       </el-table-column>
       <el-table-column label="数据源" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ kbSourcesText(row) }}</template>

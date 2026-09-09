@@ -539,13 +539,13 @@ function cardFieldCount(t) {
                     placeholder="如「经营分析报告」"
                     :class="{ 'is-err': !!metaErrors.label }"
                   />
-                  <div v-else class="wd-readonly-value">{{ meta.label || '-' }}</div>
+                  <div v-else class="wd-readonly-value">{{ meta.label || '—' }}</div>
                   <p v-if="metaErrors.label" class="wd-err">{{ metaErrors.label }}</p>
                 </div>
                 <div class="wd-field">
                   <label>档案说明</label>
                   <el-input v-if="!readonly" v-model="meta.description" maxlength="500" placeholder="如「沉淀岗位生成的周期分析结论」" />
-                  <div v-else class="wd-readonly-value">{{ meta.description || '-' }}</div>
+                  <div v-else class="wd-readonly-value">{{ meta.description || '—' }}</div>
                 </div>
               </div>
 

@@ -123,3 +123,18 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* 查看/审核锁定只读态（2026-09-10 体验批 E6，负责人批准）：
+   disabled 控件里的「真实内容」用正文色，避免与 placeholder 灰混淆
+   （最终用户反馈：查看模式盯几秒才确定灰字是内容不是提示）；
+   placeholder 单独钉回弱色，保住「没填 vs 有内容」的视觉区分。 */
+.pd-card .el-input.is-disabled .el-input__inner,
+.pd-card .el-textarea.is-disabled .el-textarea__inner {
+  color: var(--c-text);
+  -webkit-text-fill-color: var(--c-text);
+}
+.pd-card .el-input.is-disabled .el-input__inner::placeholder,
+.pd-card .el-textarea.is-disabled .el-textarea__inner::placeholder {
+  color: var(--c-text-faint);
+  -webkit-text-fill-color: var(--c-text-faint);
+}
