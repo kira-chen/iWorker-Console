@@ -56,6 +56,20 @@ function hasNamedExport(source, name) {
 
 const IMPORT_RE = /import\s*\{([^}]+)\}\s*from\s*['"](@\/[^'"]+)['"]/g
 
+/**
+ * 解析 import 大括号内的导入名。先剥掉块内 `//` 与注释（2026-09-10 负责人批
+ * 准修复：此前注释文字会被并进导入名导致误报，2026-09-09 批 2-2 实施时炸过一次、
+ * 当时以挪注释规避），再按逗号切分、去 as 别名。
+ */
+function parseImportNames(braceContent) {
+  return braceContent
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '')
+    .split(',')
+    .map((s) => s.trim().split(/\s+as\s+/)[0].trim())
+    .filter((s) => s && s !== 'default')
+}
+
 describe('模块图静态守卫（构建期不报、运行时才炸的两类问题）', () => {
   const files = collect(SRC)
 
@@ -80,10 +94,7 @@ describe('模块图静态守卫（构建期不报、运行时才炸的两类问�
         const target = resolveAlias(m[2])
         if (!target || !target.endsWith('.js')) continue // .vue 的具名导出不适用
         const targetSrc = fs.readFileSync(target, 'utf8')
-        const names = m[1]
-          .split(',')
-          .map((s) => s.trim().split(/\s+as\s+/)[0].trim())
-          .filter((s) => s && s !== 'default')
+        const names = parseImportNames(m[1])
         for (const n of names) {
           if (!hasNamedExport(targetSrc, n)) {
             broken.push(`${path.relative(SRC, f)} 导入 { ${n} } 自 ${m[2]}`)
@@ -100,5 +111,8 @@ describe('模块图静态守卫（构建期不报、运行时才炸的两类问�
     expect(hasNamedExport(fake, 'realTwo')).toBe(true) // async function 形态
     expect(hasNamedExport(fake, 'notExported')).toBe(false)
     expect(hasNamedExport('export { a, b } from "./x"', 'b')).toBe(true)
+    // import 块内注释不得被并进导入名（2026-09-10 修复的回归 fixture）
+    expect(parseImportNames('a, // 行注释\n b as c, /* 块注释 */ d')).toEqual(['a', 'b', 'd'])
+    expect(parseImportNames('\n  // 整行注释\n  x,\n  y as z\n')).toEqual(['x', 'y'])
   })
 })
