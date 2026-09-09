@@ -15,14 +15,11 @@
  * 里真实存在的实体，分发见 GovObjectDetail.vue。
  */
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相
+import { nowMinuteText as now } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const clone = (v) => JSON.parse(JSON.stringify(v))
-const now = () => {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
 
 /* ---------------- 种子（原型 var myApplications 逐字抄录） ---------------- */
 function seedRows() {

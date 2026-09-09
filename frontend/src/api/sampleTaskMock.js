@@ -10,6 +10,9 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：nowIso（带 +08:00 本地 ISO）与 fmtDt（Date→「YYYY-MM-DD HH:mm」）两份本地复制品
+// 改引 utils/datetime 单一真相（fmtMinute 接受 Date 入参，输出同串）
+import { nowIsoLocal as nowIso, fmtMinute as fmtDt } from '@/utils/datetime'
 
 const delay = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -17,15 +20,6 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 const SAMPLE_SOFT_LIMIT = 20 // 与 utils/positionModel LIMITS.SAMPLE_TASK_MAX 同口径
 
 let sampleSeq = 7101
-
-function nowIso() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}+08:00`
-  )
-}
 
 /* ---------------- 调度摘要 / 预览（本地纯计算，无时区：按浏览器本地墙钟） ---------------- */
 
@@ -49,11 +43,6 @@ export function summarizeSchedule(schedule = {}) {
     default:
       return `每天 ${t}`
   }
-}
-
-function fmtDt(d) {
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** 从当前时刻起算的未来 count 个触发时间（人话字符串数组，供预览面板）。 */

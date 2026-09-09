@@ -24,6 +24,8 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
+import { nowIsoLocal as nowIso } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -46,16 +48,6 @@ const safeBackground = (v) =>
 const EXPERT_KB_SCOPE_SEED = { 201: 'ex_1', 202: 'ex_2' }
 export function getExpertKbScopeRefId(expertId) {
   return EXPERT_KB_SCOPE_SEED[String(expertId)] || null
-}
-
-// 北京时间「现在」→ ISO 串（mock 内时间统一带 +08:00，展示走 fmtTime 精确到分钟）
-function nowIso() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}+08:00`
-  )
 }
 
 /* ---------------- 市场技能候选（原型 skillRows 中 type=PLATFORM 三条） ---------------- */

@@ -59,14 +59,11 @@ export function isTaskRunning(task) {
 /**
  * 格式化带时区 ISO-8601 时刻为本地可读 `YYYY-MM-DD HH:mm`。
  * 仅用于「记录类」时刻（lastRunAt/nextRunAt/startedAt/finishedAt/nextRunTimes）。
+ * 2026-09-09 收编：正本迁至 utils/datetime.fmtMinute，导出名保持不变。
+ * （旧实现非法值走 `String(iso)`，正本为原样返回；全仓传入均为 mock 自产合法 ISO 串，
+ * 两者等价，等价性在 datetime.test.js 钉死。）
  */
-export function fmtDateTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+export { fmtMinute as fmtDateTime } from './datetime'
 
 // 耗时毫秒 → 人话（与 ReActSteps 一致：>=1s 用 x.xs，否则 xxms）。运行中 null 返回空。
 export function fmtDuration(ms) {

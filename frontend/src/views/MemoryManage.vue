@@ -8,6 +8,7 @@ import {
   CODE_VERSION_CONFLICT
 } from '@/stores/memory'
 import { ApiError } from '@/api/request'
+import { fmtMinute } from '@/utils/datetime'
 import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -39,13 +40,8 @@ function onTypeChange() {
 function rowTitle(row) {
   return (row.title && row.title.trim()) || row.contentPreview || '（无标题）'
 }
-function fmtTime(iso) {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// 2026-09-09 收编：格式化走 utils/datetime.fmtMinute；本页空值口径独有为 '-'（其余页为空串），显式保留
+const fmtTime = (iso) => (iso ? fmtMinute(iso) : '-')
 
 /* ---------------- 查看详情 ---------------- */
 const detailVisible = ref(false)

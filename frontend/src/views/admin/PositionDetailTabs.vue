@@ -69,7 +69,7 @@ import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 // 「生成中…」按钮文案走全站共享常量（本页原先硬写三个 ASCII 点，与其余 5 个编辑器不一致）
 import { AI_LIVE_BUSY_LABEL } from '@/utils/aiLiveGenerate'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
-import { sourcesText, hasUploadSource } from '@/utils/knowledgeBaseMeta'
+import { sourcesText, hasUploadSource, stateMeta as kbStateMeta } from '@/utils/knowledgeBaseMeta'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
@@ -686,7 +686,7 @@ function applyKbQuery() {
 const kbVisibleRows = computed(() => {
   const { keyword, status } = kbApplied.value
   return kbRows.value.filter(
-    (r) => (!keyword || String(r.name || '').toLowerCase().includes(keyword)) && (!status || kbStatusView(r).label === status)
+    (r) => (!keyword || String(r.name || '').toLowerCase().includes(keyword)) && (!status || kbStateMeta(r).label === status)
   )
 })
 const kbLoading = ref(false)
@@ -712,11 +712,8 @@ async function loadPositionKbs() {
 watch(activeTab, (tab) => {
   if (tab === 'knowledge' && !kbLoaded.value && !kbLoading.value) loadPositionKbs()
 }, { immediate: true })
-const kbStatusView = (row) => {
-  if (row.pendingAction) return { label: '审核中', type: 'warning' }
-  if (row.status === 'PUBLISHED') return { label: '已发布', type: 'success' }
-  return { label: '未发布', type: 'info' }
-}
+// 知识库三态标签：2026-09-09 冗余治理批 2-1 收编——本地复制品删除，改用 utils/knowledgeBaseMeta
+// 的 stateMeta(row)（pendingAction 在途→审核中；PUBLISHED→已发布；DRAFT→未发布，输出逐字相同）
 // 「数据源」列汇总（上传 ×N / API ×N / MCP ×N）与「文档数量」口径同知识库列表页 / 专家抽屉
 const kbSourcesText = (row) => sourcesText(row) || '-'
 const kbDocText = (row) => (hasUploadSource(row) ? Number(row.docCount || 0).toLocaleString('en-US') : '-')
@@ -1263,7 +1260,7 @@ function backToList() {
                 </el-table-column>
                 <el-table-column label="状态" width="100" align="center">
                   <template #default="{ row }">
-                    <el-tag size="small" :type="kbStatusView(row).type" effect="plain">{{ kbStatusView(row).label }}</el-tag>
+                    <el-tag size="small" :type="kbStateMeta(row).type" effect="plain">{{ kbStateMeta(row).label }}</el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column label="操作" width="170" fixed="right">

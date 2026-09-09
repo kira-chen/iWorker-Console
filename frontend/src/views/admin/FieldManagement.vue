@@ -18,6 +18,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ListStates from '@/components/admin/ListStates.vue'
 import '@/assets/connector.css'
 import { listFieldDict, saveFieldOptions } from '@/api/fieldDict'
 
@@ -172,44 +173,46 @@ onMounted(fetchAll)
     />
 
     <div v-loading="loading" class="conn-list">
-      <el-empty v-if="!loading && loadError" :image-size="96" description="加载失败">
-        <el-button @click="fetchAll">重试</el-button>
-      </el-empty>
+      <!-- 失败态收编（2026-09-09 冗余治理批 2-1）：错误分支交 ListStates 统一出——fetchAll 起手即置
+           loadError=false，故其 v-if="error" 与原「!loading && loadError」逐帧等价；empty 恒 false（默认），
+           页内多分支空态原样留在默认插槽 -->
+      <ListStates :loading="loading" :error="loadError" @retry="fetchAll">
 
-      <!-- 按「类别」分组（分层结构：类别头 + 组内字段卡片） -->
-      <div v-for="g in groups" :key="g.category" class="aps-group">
-        <!-- 类别头（无操作按钮：类别固定，不可新建/编辑/删除） -->
-        <div class="aps-group-head">
-          <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.category)">
-            <el-icon><component :is="isCollapsed(g.category) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
-          </el-button>
-          <span class="aps-group-name">{{ g.category }}</span>
-          <span v-if="g.desc" class="aps-group-desc">{{ g.desc }}</span>
-          <span class="aps-group-count">{{ g.fields.length }} 个字段</span>
-          <span class="aps-group-sp"></span>
-        </div>
+        <!-- 按「类别」分组（分层结构：类别头 + 组内字段卡片） -->
+        <div v-for="g in groups" :key="g.category" class="aps-group">
+          <!-- 类别头（无操作按钮：类别固定，不可新建/编辑/删除） -->
+          <div class="aps-group-head">
+            <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.category)">
+              <el-icon><component :is="isCollapsed(g.category) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
+            </el-button>
+            <span class="aps-group-name">{{ g.category }}</span>
+            <span v-if="g.desc" class="aps-group-desc">{{ g.desc }}</span>
+            <span class="aps-group-count">{{ g.fields.length }} 个字段</span>
+            <span class="aps-group-sp"></span>
+          </div>
 
-        <!-- 组内字段卡片 -->
-        <div v-if="!isCollapsed(g.category)" class="aps-group-body">
-          <div v-for="fld in g.fields" :key="fld.key" class="np-row np-row--hover conn-row">
-            <div class="conn-main">
-              <div class="conn-line1">
-                <span class="conn-name">{{ fld.name }}</span>
-                <span class="fm-count">{{ fld.count }} 个选项</span>
+          <!-- 组内字段卡片 -->
+          <div v-if="!isCollapsed(g.category)" class="aps-group-body">
+            <div v-for="fld in g.fields" :key="fld.key" class="np-row np-row--hover conn-row">
+              <div class="conn-main">
+                <div class="conn-line1">
+                  <span class="conn-name">{{ fld.name }}</span>
+                  <span class="fm-count">{{ fld.count }} 个选项</span>
+                </div>
+                <div class="conn-line2 fm-preview">
+                  <span v-if="fld.preview">{{ fld.preview }}</span>
+                  <span v-else class="fm-na">暂无选项</span>
+                </div>
               </div>
-              <div class="conn-line2 fm-preview">
-                <span v-if="fld.preview">{{ fld.preview }}</span>
-                <span v-else class="fm-na">暂无选项</span>
+              <div class="conn-ops">
+                <el-button link type="primary" @click="openEdit(fld)">
+                  <el-icon><Edit /></el-icon> 编辑
+                </el-button>
               </div>
-            </div>
-            <div class="conn-ops">
-              <el-button link type="primary" @click="openEdit(fld)">
-                <el-icon><Edit /></el-icon> 编辑
-              </el-button>
             </div>
           </div>
         </div>
-      </div>
+      </ListStates>
     </div>
 
     <!-- 编辑弹窗：草稿编辑 +【完成】统一保存（原型 600px；点遮罩关闭 = 放弃未保存修改，md §三） -->

@@ -30,16 +30,12 @@
 import { ApiError } from './request'
 import { getFieldOptionNames } from './fieldDictMock'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相（mock 引 utils 为既有范式）
+import { nowMinuteText as nowText } from '@/utils/datetime'
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms))
 
 /* ============================ 工具函数 ============================ */
-
-function nowText() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
 
 function parseVersion(label) {
   const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(label || '').trim())

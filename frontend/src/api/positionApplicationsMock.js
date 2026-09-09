@@ -31,6 +31,8 @@ import { ApiError } from './request'
 import { getPositionNameById } from './positionMock'
 import { setUserPosition, getAssignmentByUserId } from './positionAssignmentMock'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：处理时间戳（与种子同形「YYYY-MM-DD HH:mm」墙钟串，md §4.2「精确到分钟」）改引 utils/datetime 单一真相
+import { nowMinuteText as nowMinute } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -93,13 +95,6 @@ function toRow(r) {
     processedBy: r.processedBy || '',
     rejectReason: r.rejectReason || ''
   }
-}
-
-/** 处理时间戳：与种子同形的「YYYY-MM-DD HH:mm」墙钟串（md §4.2「精确到分钟」）。 */
-function nowMinute() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** 处理落章：状态 + 处理时间 + 处理人一并固化（md §五「处理结果与处理人、处理时间一并记录」）。 */

@@ -131,14 +131,8 @@ export function fmtSize(bytes) {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`
 }
 
-// ISO 时间 → YYYY-MM-DD HH:mm
-export function fmtTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// ISO 时间 → YYYY-MM-DD HH:mm（2026-09-09 收编：正本迁至 utils/datetime.fmtMinute，导出名保持不变）
+export { fmtMinute as fmtTime } from './datetime'
 
 /**
  * ISO 时间 → 相对时间（「刚刚 / N 秒前 / N 分钟前 / N 小时前 / N 天前」）。

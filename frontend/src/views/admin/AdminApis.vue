@@ -38,6 +38,7 @@ import ApiEditor from '@/components/admin/ApiEditor.vue'
 import ProviderSystemEditor from '@/components/admin/ProviderSystemEditor.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
+import ListStates from '@/components/admin/ListStates.vue'
 import { useDynPageSize } from '@/composables/useDynPageSize'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
@@ -412,243 +413,245 @@ async function removeApi(row) {
     </ListToolbar>
 
     <div v-loading="loading" class="conn-list">
-      <el-empty v-if="!loading && loadError" :image-size="96" description="加载失败">
-        <el-button @click="fetchAll">重试</el-button>
-      </el-empty>
-      <!-- 零分组空态：明确引导先建分组才能建 API（PRD §四） -->
-      <el-empty
-        v-else-if="!loading && hasNoGroups"
-        :image-size="96"
-        description="还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API"
-      >
-        <el-button type="primary" @click="openCreatePs">
-          <el-icon><Plus /></el-icon> 新建服务提供系统
-        </el-button>
-      </el-empty>
-      <!-- 搜索/筛选无命中（PRD §四：保留当前条件） -->
-      <el-empty
-        v-else-if="!loading && !groups.length"
-        :image-size="96"
-        description="没有匹配的 API"
-      />
-
-      <!-- 两层：服务提供系统分组 → 其下 API 表格 -->
-      <div v-for="g in pagedGroups" :key="g.ps.id" class="aps-group">
-        <!-- 分组节头（系统仅作聚合容器，不含启用/停用） -->
-        <div class="aps-group-head">
-          <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.ps.id)">
-            <el-icon><component :is="isCollapsed(g.ps.id) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
+      <!-- 失败态收编（2026-09-09 冗余治理批 2-1）：错误分支交 ListStates 统一出——fetchAll 起手即置
+           loadError=false，故其 v-if="error" 与原「!loading && loadError」逐帧等价；empty 恒 false（默认），
+           页内多分支空态原样留在默认插槽 -->
+      <ListStates :loading="loading" :error="loadError" @retry="fetchAll">
+        <!-- 零分组空态：明确引导先建分组才能建 API（PRD §四） -->
+        <el-empty
+          v-if="!loading && hasNoGroups"
+          :image-size="96"
+          description="还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API"
+        >
+          <el-button type="primary" @click="openCreatePs">
+            <el-icon><Plus /></el-icon> 新建服务提供系统
           </el-button>
-          <span class="aps-group-name">{{ g.ps.name }}</span>
-          <span v-if="g.ps.description" class="aps-group-desc">{{ g.ps.description }}</span>
-          <span class="aps-group-count">{{ groupApiCount(g) }} 个 API</span>
-          <span class="aps-group-sp"></span>
-          <div class="aps-group-actions">
-            <el-button link type="primary" @click="openCreateApi(g.ps.id)">
-              <el-icon><Plus /></el-icon> 在本系统下新建 API
+        </el-empty>
+        <!-- 搜索/筛选无命中（PRD §四：保留当前条件） -->
+        <el-empty
+          v-else-if="!loading && !groups.length"
+          :image-size="96"
+          description="没有匹配的 API"
+        />
+
+        <!-- 两层：服务提供系统分组 → 其下 API 表格 -->
+        <div v-for="g in pagedGroups" :key="g.ps.id" class="aps-group">
+          <!-- 分组节头（系统仅作聚合容器，不含启用/停用） -->
+          <div class="aps-group-head">
+            <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.ps.id)">
+              <el-icon><component :is="isCollapsed(g.ps.id) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
             </el-button>
-            <el-button link type="primary" @click="openEditPs(g.ps)">编辑系统</el-button>
-            <el-tooltip
-              placement="top"
-              :disabled="groupApiCount(g) === 0"
-              :content="`该系统下有 ${groupApiCount(g)} 个 API，需先迁移或删除后才能删除系统`"
-            >
-              <span class="aps-del-wrap">
-                <el-button
-                  link
-                  type="danger"
-                  :loading="psDelBusy === g.ps.id"
-                  :disabled="groupApiCount(g) > 0"
-                  @click="removePs(g)"
-                >删除系统</el-button>
-              </span>
-            </el-tooltip>
-          </div>
-        </div>
-
-        <!-- 分组内 API 表格（列结构对齐 PRD §二.1）；表格套 .table-wrap（原型 L781），卡内去描边圆角（L727） -->
-        <div v-if="!isCollapsed(g.ps.id)" class="aps-group-body">
-          <div v-if="!g.apis.length" class="aps-group-empty">
-            该系统下暂无 API · 点「在本系统下新建 API」添加
-          </div>
-          <div v-else class="table-wrap aps-table-wrap">
-          <el-table
-            :data="g.apis"
-            empty-text="该系统下暂无 API"
-            row-key="id"
-            :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          >
-            <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
-            <el-table-column label="API" :min-width="220">
-              <template #default="{ row }">
-                <div class="api-cell">
-                  <span class="api-cell-icon" :class="{ 'is-empty': !row.icon }">
-                    <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="api-cell-icon-img" />
-                    <span v-else-if="row.icon">{{ row.icon }}</span>
-                    <span v-else>—</span>
-                  </span>
-                  <div class="api-cell-text">
-                    <div class="api-cell-name-line">
-                      <span class="api-cell-name">{{ row.name }}</span>
-                      <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
-                    </div>
-                    <el-tooltip
-                      :content="row.description"
-                      :disabled="!row.description"
-                      placement="top"
-                    >
-                      <div class="api-cell-desc">{{ row.description || '—' }}</div>
-                    </el-tooltip>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-
-            <!-- 请求方式：GET/POST/PUT/DELETE/PATCH -->
-            <el-table-column label="请求方式" :width="COL.TAG - 4">
-              <template #default="{ row }">
-                <el-tag size="small" type="info" effect="plain">{{ row.method || '—' }}</el-tag>
-              </template>
-            </el-table-column>
-
-            <!-- 性质：读/写 -->
-            <el-table-column label="性质" :width="COL.COUNT" align="center">
-              <template #default="{ row }">
-                <StatusTag :type="natureMeta(row).type">{{ natureMeta(row).label }}</StatusTag>
-              </template>
-            </el-table-column>
-
-            <!-- 引用情况：N 个技能引用（点击弹引用清单）/ 暂无引用 -->
-            <el-table-column label="引用情况" :min-width="110">
-              <template #default="{ row }">
-                <el-button
-                  v-if="row.referencedBySkillCount > 0"
-                  link
-                  type="primary"
-                  @click="openRefs(row)"
-                >{{ row.referencedBySkillCount }} 个技能引用</el-button>
-                <span v-else class="cell-na">暂无引用</span>
-              </template>
-            </el-table-column>
-
-            <!-- 最近更新时间：精确到分钟，支持点击排序 -->
-            <el-table-column label="最近更新时间" prop="updatedAt" sortable :width="COL.TIME + 24">
-              <template #default="{ row }">
-                <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
-                <span v-else class="cell-na">—</span>
-              </template>
-            </el-table-column>
-
-            <!-- 验证：结果标签 + 最近验证时间 + 重新验证入口，悬浮承载排障信息 -->
-            <el-table-column label="验证" :min-width="150">
-              <template #default="{ row }">
-                <div class="mc-vc">
-                  <HealthTag :status="resolveDisplayStatus(row)" />
-                  <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>
-                  <span v-else-if="row.lastCheckedAt" class="mc-vc-time">
-                    {{ fmtShortTime(row.lastCheckedAt) }}
-                  </span>
-                  <el-tooltip
-                    :content="verifyTip(row)"
-                    placement="top"
-                    effect="dark"
-                    popper-class="mc-vc-tip"
-                  >
-                    <el-icon
-                      class="mc-vc-refresh"
-                      :class="{ 'is-spinning': checkBusy === row.id }"
-                      role="button"
-                      :aria-label="checkBusy === row.id ? '正在验证' : '重新验证连通性'"
-                      @click.stop="checkBusy !== row.id && checkNow(row)"
-                    >
-                      <Refresh />
-                    </el-icon>
-                  </el-tooltip>
-                </div>
-              </template>
-            </el-table-column>
-
-            <!-- 操作：查看/编辑/发布·撤回·停用/删除（PRD §二.2 按状态组合） -->
-            <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
-              <template #default="{ row }">
-                <div class="tbl-ops">
-                  <!-- ① 查看（只读）/ 编辑 -->
-                  <el-button link type="primary" @click="openViewApi(row)">查看</el-button>
-                  <el-tooltip v-if="isLocked(row)" content="审核中不可编辑，如需修改请先撤回" placement="top">
-                    <span class="tbl-ops-wrap">
-                      <el-button link type="primary" disabled>编辑</el-button>
-                    </span>
-                  </el-tooltip>
-                  <el-button v-else link type="primary" @click="openEditApi(row)">编辑</el-button>
-
-                  <span class="tbl-ops-sep" aria-hidden="true"></span>
-
-                  <!-- ② 发布 / 撤回 / 停用（同一位置随状态切换，互斥 if/else-if 链） -->
+            <span class="aps-group-name">{{ g.ps.name }}</span>
+            <span v-if="g.ps.description" class="aps-group-desc">{{ g.ps.description }}</span>
+            <span class="aps-group-count">{{ groupApiCount(g) }} 个 API</span>
+            <span class="aps-group-sp"></span>
+            <div class="aps-group-actions">
+              <el-button link type="primary" @click="openCreateApi(g.ps.id)">
+                <el-icon><Plus /></el-icon> 在本系统下新建 API
+              </el-button>
+              <el-button link type="primary" @click="openEditPs(g.ps)">编辑系统</el-button>
+              <el-tooltip
+                placement="top"
+                :disabled="groupApiCount(g) === 0"
+                :content="`该系统下有 ${groupApiCount(g)} 个 API，需先迁移或删除后才能删除系统`"
+              >
+                <span class="aps-del-wrap">
                   <el-button
-                    v-if="canWithdraw(row)"
-                    link
-                    type="warning"
-                    :loading="busy[row.id] === 'withdraw'"
-                    @click="withdraw(row)"
-                  >
-                    撤回
-                  </el-button>
-                  <template v-else-if="canPublish(row)">
-                    <el-tooltip
-                      v-if="!verifyPassed(row)"
-                      content="连通性验证通过后才可提交发布"
-                      placement="top"
-                    >
-                      <span class="tbl-ops-wrap">
-                        <el-button link type="success" disabled>发布</el-button>
-                      </span>
-                    </el-tooltip>
-                    <el-button
-                      v-else
-                      link
-                      type="success"
-                      :loading="busy[row.id] === 'publish'"
-                      @click="publish(row)"
-                    >
-                      发布
-                    </el-button>
-                  </template>
-                  <el-button
-                    v-else-if="canDeactivate(row)"
-                    link
-                    type="warning"
-                    :loading="busy[row.id] === 'deactivate'"
-                    @click="deactivate(row)"
-                  >
-                    停用
-                  </el-button>
-
-                  <!-- ③ 危险操作置末：删除（软引用，被引用也可删） -->
-                  <el-button
-                    v-if="canDelete(row)"
                     link
                     type="danger"
-                    :loading="busy[row.id] === 'delete'"
-                    @click="removeApi(row)"
-                  >
-                    删除
-                  </el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
+                    :loading="psDelBusy === g.ps.id"
+                    :disabled="groupApiCount(g) > 0"
+                    @click="removePs(g)"
+                  >删除系统</el-button>
+                </span>
+              </el-tooltip>
+            </div>
+          </div>
+
+          <!-- 分组内 API 表格（列结构对齐 PRD §二.1）；表格套 .table-wrap（原型 L781），卡内去描边圆角（L727） -->
+          <div v-if="!isCollapsed(g.ps.id)" class="aps-group-body">
+            <div v-if="!g.apis.length" class="aps-group-empty">
+              该系统下暂无 API · 点「在本系统下新建 API」添加
+            </div>
+            <div v-else class="table-wrap aps-table-wrap">
+            <el-table
+              :data="g.apis"
+              empty-text="该系统下暂无 API"
+              row-key="id"
+              :default-sort="{ prop: 'updatedAt', order: 'descending' }"
+            >
+              <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
+              <el-table-column label="API" :min-width="220">
+                <template #default="{ row }">
+                  <div class="api-cell">
+                    <span class="api-cell-icon" :class="{ 'is-empty': !row.icon }">
+                      <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="api-cell-icon-img" />
+                      <span v-else-if="row.icon">{{ row.icon }}</span>
+                      <span v-else>—</span>
+                    </span>
+                    <div class="api-cell-text">
+                      <div class="api-cell-name-line">
+                        <span class="api-cell-name">{{ row.name }}</span>
+                        <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+                      </div>
+                      <el-tooltip
+                        :content="row.description"
+                        :disabled="!row.description"
+                        placement="top"
+                      >
+                        <div class="api-cell-desc">{{ row.description || '—' }}</div>
+                      </el-tooltip>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+
+              <!-- 请求方式：GET/POST/PUT/DELETE/PATCH -->
+              <el-table-column label="请求方式" :width="COL.TAG - 4">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info" effect="plain">{{ row.method || '—' }}</el-tag>
+                </template>
+              </el-table-column>
+
+              <!-- 性质：读/写 -->
+              <el-table-column label="性质" :width="COL.COUNT" align="center">
+                <template #default="{ row }">
+                  <StatusTag :type="natureMeta(row).type">{{ natureMeta(row).label }}</StatusTag>
+                </template>
+              </el-table-column>
+
+              <!-- 引用情况：N 个技能引用（点击弹引用清单）/ 暂无引用 -->
+              <el-table-column label="引用情况" :min-width="110">
+                <template #default="{ row }">
+                  <el-button
+                    v-if="row.referencedBySkillCount > 0"
+                    link
+                    type="primary"
+                    @click="openRefs(row)"
+                  >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+                  <span v-else class="cell-na">暂无引用</span>
+                </template>
+              </el-table-column>
+
+              <!-- 最近更新时间：精确到分钟，支持点击排序 -->
+              <el-table-column label="最近更新时间" prop="updatedAt" sortable :width="COL.TIME + 24">
+                <template #default="{ row }">
+                  <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
+                  <span v-else class="cell-na">—</span>
+                </template>
+              </el-table-column>
+
+              <!-- 验证：结果标签 + 最近验证时间 + 重新验证入口，悬浮承载排障信息 -->
+              <el-table-column label="验证" :min-width="150">
+                <template #default="{ row }">
+                  <div class="mc-vc">
+                    <HealthTag :status="resolveDisplayStatus(row)" />
+                    <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>
+                    <span v-else-if="row.lastCheckedAt" class="mc-vc-time">
+                      {{ fmtShortTime(row.lastCheckedAt) }}
+                    </span>
+                    <el-tooltip
+                      :content="verifyTip(row)"
+                      placement="top"
+                      effect="dark"
+                      popper-class="mc-vc-tip"
+                    >
+                      <el-icon
+                        class="mc-vc-refresh"
+                        :class="{ 'is-spinning': checkBusy === row.id }"
+                        role="button"
+                        :aria-label="checkBusy === row.id ? '正在验证' : '重新验证连通性'"
+                        @click.stop="checkBusy !== row.id && checkNow(row)"
+                      >
+                        <Refresh />
+                      </el-icon>
+                    </el-tooltip>
+                  </div>
+                </template>
+              </el-table-column>
+
+              <!-- 操作：查看/编辑/发布·撤回·停用/删除（PRD §二.2 按状态组合） -->
+              <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
+                <template #default="{ row }">
+                  <div class="tbl-ops">
+                    <!-- ① 查看（只读）/ 编辑 -->
+                    <el-button link type="primary" @click="openViewApi(row)">查看</el-button>
+                    <el-tooltip v-if="isLocked(row)" content="审核中不可编辑，如需修改请先撤回" placement="top">
+                      <span class="tbl-ops-wrap">
+                        <el-button link type="primary" disabled>编辑</el-button>
+                      </span>
+                    </el-tooltip>
+                    <el-button v-else link type="primary" @click="openEditApi(row)">编辑</el-button>
+
+                    <span class="tbl-ops-sep" aria-hidden="true"></span>
+
+                    <!-- ② 发布 / 撤回 / 停用（同一位置随状态切换，互斥 if/else-if 链） -->
+                    <el-button
+                      v-if="canWithdraw(row)"
+                      link
+                      type="warning"
+                      :loading="busy[row.id] === 'withdraw'"
+                      @click="withdraw(row)"
+                    >
+                      撤回
+                    </el-button>
+                    <template v-else-if="canPublish(row)">
+                      <el-tooltip
+                        v-if="!verifyPassed(row)"
+                        content="连通性验证通过后才可提交发布"
+                        placement="top"
+                      >
+                        <span class="tbl-ops-wrap">
+                          <el-button link type="success" disabled>发布</el-button>
+                        </span>
+                      </el-tooltip>
+                      <el-button
+                        v-else
+                        link
+                        type="success"
+                        :loading="busy[row.id] === 'publish'"
+                        @click="publish(row)"
+                      >
+                        发布
+                      </el-button>
+                    </template>
+                    <el-button
+                      v-else-if="canDeactivate(row)"
+                      link
+                      type="warning"
+                      :loading="busy[row.id] === 'deactivate'"
+                      @click="deactivate(row)"
+                    >
+                      停用
+                    </el-button>
+
+                    <!-- ③ 危险操作置末：删除（软引用，被引用也可删） -->
+                    <el-button
+                      v-if="canDelete(row)"
+                      link
+                      type="danger"
+                      :loading="busy[row.id] === 'delete'"
+                      @click="removeApi(row)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
-           单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
-      <ListPagination
-        :total="groups.length"
-        v-model:page="psPage"
-        :page-size="psPageSize"
-        unit="个"
-      />
+        <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
+             单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
+        <ListPagination
+          :total="groups.length"
+          v-model:page="psPage"
+          :page-size="psPageSize"
+          unit="个"
+        />
+      </ListStates>
     </div>
 
     <ApiEditor

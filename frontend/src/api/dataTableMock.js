@@ -10,19 +10,12 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
+import { nowIsoLocal as nowIso } from '@/utils/datetime'
 
 const delay = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 const err = (message, { field = null, code = 40000, data = null } = {}) =>
   new ApiError({ code, message, field, data })
-
-function nowIso() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}+08:00`
-  )
-}
 
 let tableSeq = 9101
 let fieldSeq = 95001
