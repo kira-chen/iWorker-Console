@@ -94,8 +94,10 @@ let positions = [
     name: '市场研究岗',
     description: '负责行业资料整理、竞品跟踪与研究结论沉淀',
     icon: '⌁',
-    skillIds: [],
-    agentCount: 0,
+    // 2026-09-09 补全为「未发布 + 六项齐备」样本（见 workbench 404 注释）。
+    // skillIds 与其余种子同为数值口径（syncCounts 走 numericSkillId 归一，'sk_309'→309）
+    skillIds: [303],
+    agentCount: 1,
     claimedUserCount: 0,
     status: 'draft',
     pendingAction: null,
@@ -186,18 +188,24 @@ function buildWorkbenchSeed() {
         { agentId: 506, name: '单据核验', description: '核验报销材料与财务单据，输出风险提示', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] }
       ]
     },
+    // 2026-09-09 负责人要求补全：原为全空的「空白岗位」样本，每次发布校验都被报 4 项缺失，
+    // 且新做的「发布前检查弹窗」在种子数据下永远点不到（唯一的未发布岗位恰好不完整）。
+    // 补齐后：市场研究岗成为「未发布 + 六项齐备」的可演示样本，点【发布】即弹检查窗。
     404: {
-      intro: '',
+      intro: '负责行业资料整理与竞品跟踪的研究 AI 同事',
       iconSource: 'library',
-      claimDesc: [],
-      claimDescriptions: [],
-      exampleQuestions: ['', '', ''],
-      positionSop: '',
+      claimDesc: [{ emoji: '⌁', content: '行业资料自动整理，竞品动态定期跟踪' }],
+      claimDescriptions: ['行业资料自动整理，竞品动态定期跟踪'],
+      exampleQuestions: ['整理这个行业的最新政策变化', '汇总主要竞品上季度的动作', '生成一份行业研究摘要'],
+      positionSop:
+        '1. 明确研究主题与范围，收集公开行业资料。\n2. 调用竞品跟踪 Agent 汇总竞品动作与市场变化。\n3. 区分事实与推断，标注待验证信息。\n4. 输出结构化研究结论并沉淀到工作档案。',
       businessSystemIds: [],
-      persona: '',
+      persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
       intakeSchema: [],
-      recommendedQuestions: ['', '', '', ''],
-      agents: []
+      recommendedQuestions: ['整理这个行业的最新政策变化', '汇总主要竞品上季度的动作', '生成一份行业研究摘要', '这个赛道近半年有哪些新玩家'],
+      agents: [
+        { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_303', sortOrder: 0 }] }
+      ]
     }
   }
 }
@@ -812,7 +820,7 @@ export function __resetPositionMock() {
     { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], agentCount: 3, claimedUserCount: 26, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
     { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], agentCount: 2, claimedUserCount: 18, status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
     { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, claimedUserCount: 6, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
-    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [], agentCount: 0, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
+    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [303], agentCount: 1, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
   ]
   publications = {
     401: [
@@ -844,7 +852,8 @@ export function __resetPositionMock() {
 const persist = attachPersist('position', {
   // v3（2026-09-09 发布前收口）：财务审核岗种子 latestVersion 由 'v1.0.0' 改空——首版在审不应
   // 展示待审版本号（md §二.1）。种子结构变更须 bump，否则存量快照会把旧值带回来。
-  version: 3,
+  // v4（2026-09-09 负责人要求）：市场研究岗（404）由全空补全为「未发布 + 六项齐备」样本。
+  version: 4,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

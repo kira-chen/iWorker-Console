@@ -68,8 +68,9 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(d.exampleQuestions.every((q) => q.trim())).toBe(true)
     expect(d.positionSop.startsWith('1. ')).toBe(true)
     expect(d.businessSystemIds).toEqual(['biz_2101'])
-    // 空白岗位（市场研究岗）新字段为空态
-    const empty = await getPosition(404)
+    // 空态样本改用「新建岗位」：种子 404 市场研究岗已于 2026-09-09 补全为六项齐备，
+    // 全套种子里不再有空白岗位；新建态才是这些字段真正的空态来源。
+    const empty = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
     expect(empty.claimDescriptions).toEqual([])
     expect(empty.exampleQuestions).toEqual(['', '', ''])
     expect(empty.positionSop).toBe('')
@@ -112,7 +113,8 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
     expect(a1.name).toBe('新 Agent')
     expect(a2.name).toBe('新 Agent 2')
     const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.agentCount).toBe(2)
+    // 3 = 种子 1 个（竞品跟踪，2026-09-09 补全）+ 本用例新建 2 个
+    expect(row.agentCount).toBe(3)
   })
 
   it('updateAgent 改名重名 1005；deleteAgent 回 orphanedSkillCount 并同步技能数', async () => {
@@ -129,17 +131,18 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
 
 describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同源联动）', () => {
   it('assignSkill 拉入技能：列表技能数 +1，技能 refNames 追加岗位名；detach 反向摘除', async () => {
+    // 404 种子自 2026-09-09 起有 1 个 Agent（竞品跟踪）+ 1 个技能（sk_307），故基线为 1 而非 0
     const d = await getPosition(404)
+    expect(d.agents).toHaveLength(1)
     const agent = await createAgent(404, { name: '研究员' })
-    expect(d.agents).toHaveLength(0)
     const vo = await assignSkill('sk_301', agent.agentId)
     expect(vo).toMatchObject({ skillId: 'sk_301', name: '日报周报生成' })
     let row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(1)
+    expect(row.skillCount).toBe(2) // sk_307（种子）+ sk_301（本用例）
     expect(_getRaw('sk_301').refNames).toContain('市场研究岗')
     await detachSkill(agent.agentId, 'sk_301')
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(0)
+    expect(row.skillCount).toBe(1) // 摘除 sk_301 后只剩种子的 sk_307
     expect(_getRaw('sk_301').refNames).not.toContain('市场研究岗')
   })
 

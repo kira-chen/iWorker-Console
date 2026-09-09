@@ -5,7 +5,7 @@
  * SampleTaskEditor）所调端点：列表/详情/新建/编辑/排序/删除/启停/调度预览/试跑（试跑入口现由
  * EFFECT_TEST_ENABLED=false 隐藏，mock 仍给拟真结果兜底，避免开关打开后报错）。
  *
- * 种子与 positionMock 4 条岗位同源：401 经营分析岗 2 条、402 客户成功岗 1 条、403/404 空态。
+ * 种子与 positionMock 4 条岗位同源：401 经营分析岗 2 条、402 客户成功岗 1 条、404 市场研究岗 1 条、403 空态。
  * toolRefs / skillRefs 从 unifiedSkillMock 的工具目录与平台技能同口径取名，不造第二份真相。
  */
 import { ApiError } from './request'
@@ -141,7 +141,25 @@ function buildSeed() {
       }
     ],
     403: [],
-    404: []
+    // 2026-09-09 负责人要求补全市场研究岗（404）：自动化任务是发布阻断六项之一，缺它这条
+    // 岗位就永远发不出去、发布前检查弹窗也点不到。补 1 条与该岗位职责一致的周期任务。
+    404: [
+      {
+        id: 7004,
+        positionId: 404,
+        name: '每周竞品动态汇总',
+        prompt: '汇总本周主要竞品的产品、价格与市场动作，输出对比结论',
+        remark: '周一晨会前送达',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'WEEKLY', times: ['09:00'], daysOfWeek: [1], daysOfMonth: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 每周竞品动态汇总\n\n1. 收集主要竞品本周的公开动作（产品 / 价格 / 市场）\n2. 与上周对比，标注变化点\n3. 区分事实与推断，输出对比结论与关注建议\n',
+        toolRefs: [{ type: 'MCP', code: 'mcp__zhishiku', bizName: '知识库 MCP' }],
+        skillRefs: [{ platformSkillId: 'sk_303', name: '会议纪要整理' }],
+        sortOrder: 0,
+        createdAt: '2026-08-23T10:00:00+08:00',
+        updatedAt: '2026-08-23T10:00:00+08:00'
+      }
+    ]
   }
 }
 
@@ -149,7 +167,9 @@ let samplesByPosition = buildSeed()
 
 // 【持久化 2026-09-02】状态镜像到 localStorage；写点=下方各 persist() 调用处（只读与调度预览不落盘）。
 const persist = attachPersist('sampleTask', {
-  version: 1,
+  // v2（2026-09-09）：404 市场研究岗补 1 条自动化任务（种子结构变更须 bump，否则存量快照会
+  // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
+  version: 2,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {

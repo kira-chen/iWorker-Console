@@ -28,20 +28,25 @@ const validPayload = (over = {}) => ({
 })
 
 describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 mock）', () => {
-  it('种子与岗位同源：401 两条（含 scheduleSummary/toolRefs/skillRefs），403/404 空态', async () => {
+  // 2026-09-09：404 市场研究岗补全为「未发布 + 六项齐备」样本后不再是空态，空态样本改用 403。
+  it('种子与岗位同源：401 两条 / 404 一条（含 scheduleSummary/toolRefs/skillRefs），403 空态', async () => {
     const p401 = await listSampleTasks(401)
     expect(p401.total).toBe(2)
     expect(p401.list[0]).toMatchObject({ name: '每日经营晨报', scheduleSummary: '每天 08:30' })
     expect(p401.list[0].skillRefs[0]).toMatchObject({ platformSkillId: 'sk_302' })
     expect(p401.list[1].scheduleSummary).toBe('每周一 09:00')
-    expect((await listSampleTasks(404)).list).toEqual([])
+    const p404 = await listSampleTasks(404)
+    expect(p404.total).toBe(1)
+    expect(p404.list[0]).toMatchObject({ name: '每周竞品动态汇总', scheduleSummary: '每周一 09:00' })
+    expect((await listSampleTasks(403)).list).toEqual([])
   })
 
   it('新建/编辑校验与回显：缺名/缺 SOP 被拦（field 定位），成功回 VO 含摘要', async () => {
     await expect(createSampleTask(404, validPayload({ name: '' }))).rejects.toMatchObject({ field: 'name' })
     await expect(createSampleTask(404, validPayload({ sopDoc: ' ' }))).rejects.toMatchObject({ field: 'sopDoc' })
     const vo = await createSampleTask(404, validPayload())
-    expect(vo).toMatchObject({ name: '竞品周报采集', status: 'ENABLED', scheduleSummary: '每天 10:00', sortOrder: 0 })
+    // sortOrder 为 1：404 种子已有 1 条（每周竞品动态汇总），新建的排在其后
+    expect(vo).toMatchObject({ name: '竞品周报采集', status: 'ENABLED', scheduleSummary: '每天 10:00', sortOrder: 1 })
     const upd = await updateSampleTask(404, vo.id, validPayload({ name: '竞品日报采集', schedule: { scheduleType: 'WEEKLY', times: ['09:30'], daysOfWeek: [1, 3] } }))
     expect(upd.scheduleSummary).toBe('每周一、三 09:30')
     expect((await getSampleTask(404, vo.id)).name).toBe('竞品日报采集')
