@@ -426,6 +426,7 @@ async function save() {
   <DrawerEditor
     :visible="visible"
     entity="业务系统"
+    create-text="保存"
     :is-edit="isEdit"
     :readonly="readonly"
     :loading="loading"

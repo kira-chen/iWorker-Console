@@ -476,6 +476,12 @@ async function stopExpert(row) {
   background: var(--bg-sunken);
   overflow: hidden;
 }
+/* 行内 style 只覆盖底色，字色仍走令牌——暗色主题下字色翻成近白，配调色板的浅色底
+   （#DCF5E4 等 7 色全是为浅色主题设计的低饱和浅色）字形几乎看不见。
+   有自定义底色时固定用深色字，两个主题下都保证对比度。 */
+.ex-avatar[style*='background'] {
+  color: #1f1f1f; /* 定值：不能用令牌，令牌在暗色下本身就翻成近白 */
+}
 .ex-name {
   color: var(--c-primary, #409eff);
   cursor: pointer;

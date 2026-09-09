@@ -61,6 +61,7 @@ function onConfirm() {
       type="textarea"
       :rows="4"
       maxlength="500"
+      show-word-limit
       placeholder="请输入明确的驳回原因"
       @input="error = ''"
     />

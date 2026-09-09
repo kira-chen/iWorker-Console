@@ -468,7 +468,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbBtn('收起')).toBeTruthy()
   })
 
-  it('行内容：数据源连排 / 文档数量 / 状态；搜索过滤全量匹配并隐藏展开钮；无匹配显「未找到匹配的知识库」', async () => {
+  it('行内容：数据源连排 / 文档数量 / 状态；搜索过滤全量匹配并隐藏展开钮；无匹配显「没有匹配的知识库」', async () => {
     await mount({ expertId: 201 })
     const firstRow = kbRows()[0]
     expect(firstRow.textContent).toContain('产品与解决方案库')
@@ -484,7 +484,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbBtn('展开更多（1）')).toBeUndefined()
     await type(search, '不存在的库')
     expect(kbRows()).toHaveLength(0)
-    expect(kbSec().textContent).toContain('未找到匹配的知识库')
+    expect(kbSec().textContent).toContain('没有匹配的知识库')
   })
 
   it('「查看」/「检索测试」→ 收抽屉并跳知识库路由带参（action/kbId 与消费端 KnowledgeBaseList 同键；2026-09-08 原型复刻批次 1 · C-H2 对齐）', async () => {

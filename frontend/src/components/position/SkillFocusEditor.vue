@@ -297,8 +297,12 @@ const exampleQuestion = computed({
 // V89：'system'（系统默认技能通道）与 'platform' 同为平台族——审核锁定/发布语义一致，
 // 仅市场用户面字段由 hideMarketFields 另行隐藏；文件/工具端点前缀由 skillSource 原样下传分流。
 const isPlatformSkill = computed(() => props.skillSource === 'platform' || props.skillSource === 'system')
-// 审核中锁定：平台技能有在审提交（首发在审 / 已发布或已下架之上新版在审）时锁定编辑器。
-const locked = computed(() => isPlatformSkill.value && isPubLocked(props.publications))
+// 审核中锁定：有在审提交（首发在审 / 已发布或已下架之上新版在审）时锁定编辑器。
+// 三类技能一视同仁——md §三.1 L73「审核中的技能只能查看，不可编辑」无类型限定，
+// §二.3.2 L66 亦明写「三类技能的按钮组合和流程规则完全一致」。原先加了 isPlatformSkill
+// 前置，岗位私有（fde）技能在审时不锁：列表【编辑】虽置灰，但走编辑路由/岗位详情/深链
+// 即可绕过并保存成功，破坏「审核对象 = 提交那刻的快照」这一口径。
+const locked = computed(() => isPubLocked(props.publications))
 // 有效只读 = 外部只读态（平台 Tab 只读详情）或审核中锁定。写入口 v-if / 子组件 readonly 一律按它取。
 const ro = computed(() => props.readonly || locked.value)
 const showDefaultInstall = computed(() => !ro.value && isPlatformSkill.value && !props.hideMarketFields)

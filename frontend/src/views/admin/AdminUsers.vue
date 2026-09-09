@@ -54,6 +54,8 @@ const roleDlgVisible = ref(false)
 const roleDlgUser = ref(null)
 const delBusy = ref(null)
 const resetBusy = ref(null)
+// 当前展开【更多】菜单的行 id：驱动箭头 ▾/▴ 翻转（md §二.2.4）
+const moreOpenId = ref(null)
 
 // 取数 / 回第 1 页 / 翻页均由 useAdminList 提供：fetchList=list.reload、reload=list.search、翻页=list.goPage
 const fetchList = list.reload
@@ -296,9 +298,14 @@ const emptyText = computed(() =>
                 trigger="click"
                 placement="bottom-end"
                 @command="(cmd) => onMoreCommand(cmd, row)"
+                @visible-change="(v) => (moreOpenId = v ? row.id : null)"
               >
                 <el-button link type="primary" class="users-more-btn">
-                  更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  <!-- md §二.2.4：收起 ▾ / 展开 ▴ -->
+                  更多<el-icon class="el-icon--right">
+                    <ArrowUp v-if="moreOpenId === row.id" />
+                    <ArrowDown v-else />
+                  </el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -309,6 +316,7 @@ const emptyText = computed(() =>
                       command="delete"
                       divided
                       class="users-more-del"
+                      title="删除前需二次确认"
                       :disabled="delBusy === row.id"
                     >
                       删除用户

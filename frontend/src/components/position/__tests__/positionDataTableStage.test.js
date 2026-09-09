@@ -138,7 +138,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     const firstRowTypeOpts = Array.from(el.querySelectorAll('.dcg-row')[0].querySelectorAll('.sel')[0].querySelectorAll('.opt')).map((o) => o.textContent.trim())
-    expect(firstRowTypeOpts).toEqual(['日期', '长文本', '短文本', '整数', '小数', '是/否'])
+    expect(firstRowTypeOpts).toEqual(['日期', '长文本', '短文本', '整数', '小数', '是否'])
   })
 
   it('保存走 元信息 → 卡位 → dossier 三步，payload 已归一化，提示「配置已保存到页面草稿」', async () => {

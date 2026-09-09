@@ -98,8 +98,17 @@ describe('审核锁定 × 通道矩阵（穷举：漏归类通道 = 在审仍可
     expect(saveCfgBtn(el)).toBeNull()
   })
 
-  it('fde + 同形 publications → 不锁（发布态仅对平台族有意义）', () => {
+  // 2026-09-09 发布前收口：原断言「fde 在审不锁」是旧口径。md §三.1 L73「审核中的技能只能
+  // 查看，不可编辑」无类型限定，§二.3.2 L66「三类技能的按钮组合和流程规则完全一致」——
+  // 岗位私有技能在审时同样必须锁定，否则可绕过列表的置灰按钮改掉在审对象。
+  it('fde + 在审 → 同样锁定（三类技能规则一致，md §二.3.2 L66）', () => {
     const el = mount({ skillSource: 'fde', publications: REVIEWING })
+    expect(lockNotice(el)).toBeTruthy()
+    expect(saveCfgBtn(el)).toBeNull()
+  })
+
+  it('fde + 干净 PUBLISHED → 不锁（无在途提交即可编辑）', () => {
+    const el = mount({ skillSource: 'fde', publications: PUBLISHED_CLEAN })
     expect(lockNotice(el)).toBeNull()
     expect(saveCfgBtn(el)).toBeTruthy()
   })

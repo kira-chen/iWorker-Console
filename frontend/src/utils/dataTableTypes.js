@@ -21,7 +21,7 @@ export const DATA_FIELD_TYPES = [
   { value: 'LONGTEXT', label: '长文本', hint: '大段文字，如备注 / 纪要', control: 'textarea' },
   { value: 'INTEGER', label: '整数', hint: '个数，如数量', control: 'integer' },
   { value: 'DECIMAL', label: '小数', hint: '带小数，如金额 / 百分比', control: 'decimal' },
-  { value: 'BOOLEAN', label: '是/否', hint: '开关，如是否关键客户', control: 'boolean' },
+  { value: 'BOOLEAN', label: '是否', hint: '开关，如是否关键客户', control: 'boolean' }, // md §4.2.2 逐字
   { value: 'DATE', label: '日期', hint: '某一天，如招标日期', control: 'date' },
   // 【已退役为只读兼容项，2026-09-09 PRD 复核 A3 / Q25①】md §4.2.2 的字段类型只列 6 项（日期 / 长文本 /
   // 短文本 / 整数 / 小数 / 是否），不含「标签（枚举）」。工作档案编目信息的可选下拉由 DossierCatalogGrid

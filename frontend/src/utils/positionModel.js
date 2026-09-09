@@ -495,7 +495,7 @@ export function normalizePublishWarnings(warnings) {
 // 更新类型词 + hint（原型 positionBumpHint），顺序照原型：修订版本 / 功能更新 / 重大更新。
 // 列表页版本管理侧栏（AdminPositions bumpOptions）与详情页发布前检查弹窗共用同一份。
 export const POSITION_BUMP_OPTIONS = [
-  { value: 'NONE', label: '修订版本', hint: '修复问题或小幅配置调整' },
+  { value: 'NONE', label: '修复更新', hint: '修复问题或小幅配置调整' }, // md §3.7 逐字（Patch）
   { value: 'MINOR', label: '功能更新', hint: '新增岗位能力或岗位技能' },
   { value: 'MAJOR', label: '重大更新', hint: '岗位职责或流程发生不兼容变更' }
 ]

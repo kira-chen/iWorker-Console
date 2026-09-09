@@ -13,7 +13,7 @@ import { createApp, h } from 'vue'
  * 另钉：有硬阻断时发布表单区不渲染（避免阻断项未修就先填版本，规格 N5）。
  *
  * 2026-09-08 PRD-20260908 对齐（md §3.7 / §9.2、原型 L1224）：版本号不再手填——「更新类型」三选一
- * （修订版本 / 功能更新 / 重大更新，v-model:bump 回吐由父级 useVersionPublish 算号）+ 只读版本号 + 类型 hint；
+ * （修复更新 / 功能更新 / 重大更新，v-model:bump 回吐由父级 useVersionPublish 算号）+ 只读版本号 + 类型 hint；
  * 首个版本无类型可选、hint「首个版本」。原「版本号未递增软提示」用例随手填路径废止。
  */
 
@@ -145,7 +145,7 @@ describe('PublishCheckDialog · 发布提交门穷举（四个条件缺一不可
     const el = mount({ versionLabel: 'v1.2.1', bump: 'NONE', 'onUpdate:bump': bumpSpy })
     expect(el.querySelector('.pub-ver-num').textContent).toBe('v1.2.1')
     expect(el.querySelectorAll('.pub-ver .el-input-stub').length).toBe(1) // 仅升级说明一个输入框，版本号不可手输
-    expect([...el.querySelectorAll('.el-radio-btn')].map((b) => b.textContent.trim())).toEqual(['修订版本', '功能更新', '重大更新'])
+    expect([...el.querySelectorAll('.el-radio-btn')].map((b) => b.textContent.trim())).toEqual(['修复更新', '功能更新', '重大更新'])
     expect(el.textContent).toContain('修复问题或小幅配置调整') // 选中类型 hint
     el.querySelector('.el-radio-btn[data-v="MAJOR"]').click()
     expect(bumpSpy).toHaveBeenCalledWith('MAJOR')

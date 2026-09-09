@@ -225,7 +225,7 @@ function aiGenQuestions() {
   setTimeout(() => {
     patchBasic('exampleQuestions', genExampleQuestions(store.basic?.name, store.basic?.description))
     aiQuestionsBusy.value = false
-    ElMessage.success('AI 内容已生成，请确认后保存')
+    ElMessage.success('已生成示例问题') // md §2.4 逐字
   }, 500)
 }
 function aiGenSop() {
@@ -234,7 +234,7 @@ function aiGenSop() {
   setTimeout(() => {
     patchBasic('positionSop', genPositionSop(store.basic?.name, store.basic?.description))
     aiSopBusy.value = false
-    ElMessage.success('AI 内容已生成，请确认后保存')
+    ElMessage.success('已生成岗位 SOP') // md §2.5 逐字
   }, 500)
 }
 
@@ -411,7 +411,8 @@ async function onAgentDelete(agentId) {
     await ElMessageBox.confirm(
       '删除该 Agent 后会解除其技能关联，技能本身不会被删除。确认删除？',
       '删除 Agent',
-      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
+      // md §6.3 确认按钮逐字为【确认删除】
+      { type: 'warning', confirmButtonText: '确认删除', confirmButtonClass: 'el-button--danger' }
     )
   } catch {
     return
@@ -969,7 +970,8 @@ function backToList() {
               <!-- 1. 岗位图标（原型 position-icon-section：预览 + 从图标库选择 / 上传图标） -->
               <section class="pd-card">
                 <div class="pd-card-head">
-                  <span class="pd-card-title">岗位图标<i class="pd-req">*</i></span>
+                  <!-- 一览表 §一 第 7 行：岗位图标为「选填」，不挂必填星（校验里本就不拦） -->
+                  <span class="pd-card-title">岗位图标</span>
                   <span class="pd-card-sub">用于岗位列表与员工端展示</span>
                 </div>
                 <div class="pd-card-body">
@@ -1125,7 +1127,7 @@ function backToList() {
                 <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时填写，最多 {{ LIMITS.INTAKE_MAX }} 个</span></div>
                 <el-button v-if="!isReadonly" type="primary" size="small" :disabled="intakeAtLimit" @click="openIntakeCreate">＋ 新增采集字段</el-button>
               </div>
-              <el-table :data="intakeRows" class="pd-table" empty-text="暂无采集字段，点「新增字段」添加">
+              <el-table :data="intakeRows" class="pd-table" empty-text="暂无采集字段，点「新增采集字段」添加">
                 <el-table-column type="index" label="#" width="52" />
                 <el-table-column prop="label" label="字段名" min-width="160" />
                 <el-table-column label="字段 key" min-width="140">

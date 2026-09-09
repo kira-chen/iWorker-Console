@@ -43,13 +43,13 @@ describe('字段类型常量', () => {
     expect(isValidFieldType('TEXT')).toBe(true)
     expect(isValidFieldType('DATETIME')).toBe(false)
   })
-  it('label 为业务白话、不暴露裸英文类型名；布尔称「是/否」', () => {
+  it('label 为业务白话、不暴露裸英文类型名；布尔称「是否」（md §4.2.2 逐字）', () => {
     const byVal = DATA_FIELD_TYPES.reduce((m, t) => ((m[t.value] = t), m), {})
     expect(byVal.TEXT.label).toBe('短文本')
     expect(byVal.LONGTEXT.label).toBe('长文本')
     expect(byVal.INTEGER.label).toBe('整数')
     expect(byVal.DECIMAL.label).toBe('小数')
-    expect(byVal.BOOLEAN.label).toBe('是/否')
+    expect(byVal.BOOLEAN.label).toBe('是否')
     expect(byVal.DATE.label).toBe('日期')
     // 不应把底层英文类型名塞进 label 给用户看
     DATA_FIELD_TYPES.forEach((t) => {
@@ -62,7 +62,7 @@ describe('字段类型常量', () => {
 describe('fieldTypeLabel 类型 → 中文 label', () => {
   it('已知类型转中文 label', () => {
     expect(fieldTypeLabel('TEXT')).toBe('短文本')
-    expect(fieldTypeLabel('BOOLEAN')).toBe('是/否')
+    expect(fieldTypeLabel('BOOLEAN')).toBe('是否')
     expect(fieldTypeLabel('DATE')).toBe('日期')
   })
   it('未知类型原样回显 String(type)', () => {

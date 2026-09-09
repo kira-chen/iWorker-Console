@@ -847,7 +847,7 @@ const metaItems = computed(() => {
                 </tr>
               </tbody>
             </table>
-            <div v-if="!kbLoading && !kbShown.length" class="ee-kb-empty">未找到匹配的知识库</div>
+            <div v-if="!kbLoading && !kbShown.length" class="ee-kb-empty">没有匹配的知识库</div>
           </div>
           <!-- 【展开更多（N）】：原型 L4127 plain 居中、min-width 112 -->
           <div v-if="kbShowMore" class="ee-kb-more">
@@ -979,6 +979,8 @@ const metaItems = computed(() => {
        2026-09-09 批次 3C · E2：图标行换 IconField 后预览块类名由 .ip-avatar 变为 .icon-preview。 —— */
 .ee-icon-wrap :deep(.icon-preview) {
   background: var(--ee-bg, transparent);
+  /* 7 色板全是为浅色主题设计的浅色底，字色若跟令牌翻白则暗色下看不见图标——定值深字。 */
+  color: #1f1f1f;
   transition: background-color 0.15s ease;
 }
 
