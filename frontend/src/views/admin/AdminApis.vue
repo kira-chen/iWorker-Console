@@ -15,7 +15,7 @@
  * 【查询（PRD §一）】搜索名称或描述 + 状态筛选，点【查询】按当前条件刷新（Enter 同）；
  *   搜索/筛选后只展示存在匹配 API 的分组，无筛选时展示全部分组（含空分组）。
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listApis,
@@ -37,6 +37,8 @@ import HealthTag from '@/components/HealthTag.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
 import ProviderSystemEditor from '@/components/admin/ProviderSystemEditor.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
+import ListPagination from '@/components/admin/ListPagination.vue'
+import { useDynPageSize } from '@/composables/useDynPageSize'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
 const loading = ref(true)
@@ -158,6 +160,24 @@ const groups = computed(() => {
 function groupApiCount(g) {
   return g.ps.apiCount ?? g.apis.length
 }
+
+/* ---------------- 分页：按「服务提供系统」分页（2026-09-09 负责人裁决） ----------------
+ * 全站列表统一分页（09-08 拍板），但本页是「服务提供系统分组 + 组内 API 表」的双层结构。
+ * 负责人明确：**按业务系统（= 服务提供系统）分页，不按 API 分页** —— 即一页放 N 个系统，
+ * 每个系统下的 API 全部展示，避免同一系统的 API 被切到两页而读不全。
+ * 因此计数单位是「个」（系统），不是「条」（API）；每页条数仍走全站统一的视口算法。
+ */
+const psPage = ref(1)
+const psPageSize = useDynPageSize()
+const pagedGroups = computed(() => {
+  const start = (psPage.value - 1) * psPageSize.value
+  return groups.value.slice(start, start + psPageSize.value)
+})
+// 条件变化致总数缩水时，把越界页钳回末页（与 useAdminList 同口径）
+watch([() => groups.value.length, psPageSize], () => {
+  const max = Math.max(1, Math.ceil(groups.value.length / Math.max(1, psPageSize.value)))
+  if (psPage.value > max) psPage.value = max
+})
 
 /* ---------------- 数据加载 ---------------- */
 async function fetchAll() {
@@ -413,7 +433,7 @@ async function removeApi(row) {
       />
 
       <!-- 两层：服务提供系统分组 → 其下 API 表格 -->
-      <div v-for="g in groups" :key="g.ps.id" class="aps-group">
+      <div v-for="g in pagedGroups" :key="g.ps.id" class="aps-group">
         <!-- 分组节头（系统仅作聚合容器，不含启用/停用） -->
         <div class="aps-group-head">
           <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.ps.id)">
@@ -620,6 +640,15 @@ async function removeApi(row) {
           </div>
         </div>
       </div>
+
+      <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
+           单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
+      <ListPagination
+        :total="groups.length"
+        v-model:page="psPage"
+        :page-size="psPageSize"
+        unit="个"
+      />
     </div>
 
     <ApiEditor
