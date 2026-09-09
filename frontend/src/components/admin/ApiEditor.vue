@@ -284,6 +284,9 @@ async function load() {
   }
 }
 
+// immediate 必需：治理侧 GovObjectDetail 是「按 kind 条件挂载 + 同一 tick 置 visible」，
+// 组件创建时 visible 已是 true，没有 false→true 跃迁，不加 immediate 抽屉会恒为空
+// （2026-09-09 收口回归 P1）。常驻挂载场景初值为 false，直接 return，无副作用。
 watch(
   () => [props.visible, props.apiId],
   ([vis]) => {
@@ -291,7 +294,8 @@ watch(
       loadProviderSystems()
       load()
     }
-  }
+  },
+  { immediate: true }
 )
 
 function close() {

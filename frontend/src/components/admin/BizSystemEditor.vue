@@ -262,11 +262,13 @@ async function load() {
   }
 }
 
+// immediate 必需，同 ApiEditor：治理侧条件挂载时组件创建即 visible=true，无跃迁（2026-09-09 收口回归 P1）
 watch(
   () => [props.visible, props.bizId],
   ([vis]) => {
     if (vis) load()
-  }
+  },
+  { immediate: true }
 )
 
 function close() {

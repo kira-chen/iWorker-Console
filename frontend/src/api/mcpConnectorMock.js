@@ -149,7 +149,12 @@ const iso = (s) => `${s.replace(' ', 'T')}:00+08:00`
 const PROTO_SEEDS = [
   { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, refs: ['市场研究助手', '销售方案生成', '客户问题解答'], updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp' },
   { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, refs: ['报销单查询', '财务单据助手'], updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp' },
-  { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, refs: [], updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx' },
+  // env 两条样例（一条平台值 + 一条客户端填写）：让 stdio 环境变量的「改值 / 待删除 / 撤销」
+  // 三步式交互开箱即可点到，否则种子全是 env:[]，演示时会被误判为功能没做（2026-09-09 收口回归 P2）
+  { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, refs: [], updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx', env: [
+    { key: 'WORKSPACE_ROOT', description: '允许访问的工作区根目录', clientFill: false, value: '/srv/iworker/workspace' },
+    { key: 'ACCESS_TOKEN', description: '由使用者在客户端填写的访问令牌', clientFill: true, value: '' }
+  ] },
   { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, refs: ['项目周报', '任务风险识别', '研发进度跟踪', '会议行动项'], updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp' },
   { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, refs: [], updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx' },
   { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp' },
@@ -172,6 +177,8 @@ function seedToMcp(s) {
     endpoint: s.endpoint || '',
     command: s.command || '',
     args: s.command ? ['-y', `@modelcontextprotocol/server-${s.code.replace(/_/g, '-')}`] : [],
+    // 种子可选覆盖 env（见 local_files）；不给则沿用 mkMcp 的空数组
+    env: s.env ? s.env.map((e) => ({ ...e })) : [],
     timeoutMs: 10000,
     tools: mkTools(s.tools, s.code, s.name.replace(/ MCP$/, '')),
     exampleQuestions: [`帮我查一下${s.name.replace(/ MCP$/, '')}里的最新记录`, '帮我查询当前可用的工具', '帮我执行一次常用业务操作'],
@@ -248,7 +255,7 @@ const persist = attachPersist('mcpConnector', {
   // v3（2026-09-08 原型复刻批次 2C）：种子由 1 条补齐到 11 条（原型 rows），旧快照丢弃重播种
   // v4（2026-09-09 PRD 复核轮 · G4 · B 组）：种子新增 `_mockUnhealthy`（探测失败分支标记），
   //    旧快照里的行没有该字段会让「报销系统 / 资产管理」两行永远探测成功 → 丢弃重播种
-  version: 4,
+  version: 5,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {

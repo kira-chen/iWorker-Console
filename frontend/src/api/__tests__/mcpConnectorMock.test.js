@@ -151,4 +151,26 @@ describe('mcpConnectorMock —— 2026-09-04 PRD-20260903 对齐新口径', () =
       expect((await testMcpConn({ id: 'expense_mcp' })).ok).toBe(false)
     })
   })
+  // 2026-09-09 收口回归 P2：stdio 种子原本 env 全空，A11 新做的「改值 / 待删除 / 撤销」三步式
+  // 交互开箱一个入口都点不到，演示时会被误判为功能没做。种子补样例后钉住，防再被清空。
+  describe('P2：stdio 种子自带 env 样例（三步式交互开箱可达）', () => {
+    it('本地文件 MCP 带两条 env：平台值行掩码、客户端填写行无值', async () => {
+      const d = await getMcp('local_files')
+      expect(d.transport).toBe('stdio')
+      const env = d.env || []
+      expect(env.length).toBe(2)
+
+      const platform = env.find((e) => e.key === 'WORKSPACE_ROOT')
+      expect(platform).toBeTruthy()
+      expect(platform.clientFill).toBe(false)
+      // 平台值出参必须是掩码串、绝不回显明文（mock 头注的脱敏约定）
+      expect(platform.valueMasked).toBeTruthy()
+      expect(platform.valueMasked).not.toContain('/srv/iworker/workspace')
+
+      const clientFill = env.find((e) => e.key === 'ACCESS_TOKEN')
+      expect(clientFill).toBeTruthy()
+      expect(clientFill.clientFill).toBe(true)
+      expect(clientFill.valueMasked).toBe(false)
+    })
+  })
 })

@@ -311,11 +311,13 @@ async function load() {
   }
 }
 
+// immediate 必需，同 ApiEditor：治理侧条件挂载时组件创建即 visible=true，无跃迁（2026-09-09 收口回归 P1）
 watch(
   () => [props.visible, props.mcpId],
   ([vis]) => {
     if (vis) load()
-  }
+  },
+  { immediate: true }
 )
 
 // 切换 transport 时清理「另一形态」字段值，避免提交脏数据（设计 §6 / 实现要点 5）。

@@ -193,6 +193,7 @@ async function load() {
     loading.value = false
   }
 }
+// immediate 必需，同 ApiEditor：治理侧条件挂载时组件创建即 visible=true，无跃迁（2026-09-09 收口回归 P1）
 watch(
   () => props.visible,
   (v) => {
@@ -202,7 +203,8 @@ watch(
     resetForm()
     formRef.value?.clearValidate()
     load()
-  }
+  },
+  { immediate: true }
 )
 watch(
   () => form.kbType,
