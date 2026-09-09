@@ -389,7 +389,10 @@ const routes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: { name: 'Chat' }
+    // 员工端封存时（FRONT_RUNTIME_ENABLED=false）'Chat' 只会渲染功能封存占位页，敲错 URL 会被
+    // 扔出后台壳且无回路；与 '/'、'/admin'、登录守卫三处「都落 AdminPositions」的口径也矛盾。
+    // 故按 flag 决定去向：封存期回后台首页，解封后仍回员工端对话页。
+    redirect: () => ({ name: FRONT_RUNTIME_ENABLED ? 'Chat' : 'AdminPositions' })
   }
 ]
 

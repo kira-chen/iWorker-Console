@@ -60,7 +60,13 @@ const props = defineProps({
    */
   buttons: { type: Array, default: () => [] },
   /** 进行中的按钮 key（转圈 + 全条禁点防重复提交）。 */
-  busyKey: { type: String, default: '' }
+  busyKey: { type: String, default: '' },
+  /**
+   * 是否启用「快照缺失即阻止审核」闸门。仅审核中心传 true——md §七 L102 是审核中心的规则，
+   * 目的是不让人对着看不到提交内容的对象做审核结论。我的申请是提交人自己回看，md §4.2–4.4
+   * 明确「详情主体继续复用业务模块查看态」，终态申请本就不该被这道闸门挡在外面。
+   */
+  snapshotGate: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'action'])
 
@@ -122,7 +128,9 @@ watch(
   { immediate: true }
 )
 /** 需快照的三类且快照缺失 → 阻止审核（md §七 L102），不打开业务详情、吸底条只留「关闭」。 */
-const snapshotMissing = computed(() => needsSnapshot(props.kind) && !snapshotLoading.value && !snapshot.value)
+const snapshotMissing = computed(
+  () => props.snapshotGate && needsSnapshot(props.kind) && !snapshotLoading.value && !snapshot.value
+)
 /** 快照缺失态下只保留「关闭」，驳回/通过等按钮一律撤下（md §七「阻止审核」）。 */
 const effectiveButtons = computed(() =>
   snapshotMissing.value ? props.buttons.filter((b) => b.key === 'close') : props.buttons

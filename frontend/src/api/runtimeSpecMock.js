@@ -21,6 +21,7 @@
  * 用户管理侧尚无「运行规格」分配字段，暂为本文件静态绑定——待用户侧字段落地后双向联动。
  */
 import { ApiError } from './request'
+import { attachPersist } from './mockPersist'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 let seq = 10
@@ -89,6 +90,20 @@ const specs = [
     createdAt: '2026-08-20 15:48', updatedAt: '2026-08-26 10:08'
   }
 ]
+
+// localStorage 持久化（全站 mock 约定）：本模块此前漏接，新建/改名/删除刷新即回种子态，
+// 与其它 17 个 mock 行为不一致。seq 必须一并入快照，否则恢复后新建 id 会与存量重号。
+const persist = attachPersist('runtimeSpec', {
+  version: 1,
+  snapshot: () => ({ seq, specs }),
+  restore: (d) => {
+    if (!d || !Number.isFinite(d.seq) || !Array.isArray(d.specs)) {
+      throw new Error('runtimeSpec 快照形状不合法')
+    }
+    seq = d.seq
+    specs.splice(0, specs.length, ...d.specs)
+  }
+})
 
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
 
@@ -175,6 +190,7 @@ export async function createRuntimeSpec(payload) {
   const next = applyPayload(null, payload)
   const s = { id: ++seq, ...next, usedUsers: [], createdAt: now(), updatedAt: now() }
   specs.push(s)
+  persist()
   return toRow(s)
 }
 
@@ -182,6 +198,7 @@ export async function updateRuntimeSpec(id, payload) {
   await delay()
   const s = findOr404(id)
   Object.assign(s, applyPayload(s, payload), { updatedAt: now() })
+  persist()
   return toRow(s)
 }
 
@@ -198,5 +215,6 @@ export async function deleteRuntimeSpec(id) {
     )
   }
   specs.splice(specs.indexOf(s), 1)
+  persist()
   return true
 }

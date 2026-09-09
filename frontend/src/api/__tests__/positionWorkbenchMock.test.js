@@ -177,6 +177,8 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     await publishPosition(402, { versionLabel: 'v002', releaseNotes: '工作台发布' })
     const row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')
-    expect(row.latestVersion).toBe('v002')
+    // 显式 versionLabel 走 pendingVersion；latestVersion 不动（md §二.1 不展示待审核版本号）
+    expect(row.pendingVersion).toBe('v002')
+    expect(row.latestVersion).toBe('v1.4.0')
   })
 })

@@ -31,13 +31,17 @@ function seedRows() {
     { id: 3, name: '人力资源系统', description: '员工、组织、请假和入转调离管理', type: 'BIZ_SYSTEM', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW' },
     { id: 4, name: 'Kimi K2', description: '长上下文文本生成模型', type: 'MODEL', subType: 'PUBLISH', target: 'USER_END', submitterName: 'platform.admin', submitterId: 1, submittedAt: '2026-08-27 16:20', status: 'PENDING_REVIEW' },
     { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', target: 'FDE_WORKBENCH', submitterName: 'wangfang', submitterId: 4, submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW' },
-    { id: 6, name: '法务审阅专家', description: '辅助审阅合同条款并提示风险', type: 'EXPERT', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:18', status: 'PENDING_REVIEW' },
+    { id: 6, name: '研究报告专家', description: '从公开资料生成行业研究与竞品报告', type: 'EXPERT', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:18', status: 'PENDING_REVIEW' },
     { id: 7, name: '行业研究助手', description: '由客户端用户上传的研究技能', type: 'SKILL', platformSource: 'USER_UPLOADED', target: 'USER_END', submitterName: 'zhangwei', submitterId: 1, submittedAt: '2026-08-28 08:55', status: 'PENDING_REVIEW' },
     { id: 8, name: '企业知识库 MCP', description: '连接企业知识库，提供文档检索与内容读取能力', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:05', status: 'PENDING_REVIEW', code: 'knowledge.search', writeClass: 'READ', requiresConfirmation: false }
   ]
   // 原型补丁逻辑逐字对应：申请类型与申请版本
+  // 【2026-09-09 发布前收口】id 6（专家）原为 DELIST，但专家 mock 里没有任何「已发布 + 停用在审」
+  // 的实体可指：203 是全套种子唯一的草稿样本（多处用例依赖，不能动），204 才是真正在审的那条，
+  // 且它是 PUBLISH 方向。改指 204 并同步申请类型为 VERSION_PUBLISH，使审核中心与业务模块自洽
+  // （原口径下审核快照永不补播，审核人点【查看】必撞「无法查看」）。
   rows.forEach((r) => {
-    if ([3, 6].includes(r.id)) {
+    if (r.id === 3) {
       r.requestAction = 'DELIST'
       r.version = 'v2.0.0'
     } else if ([1, 4, 8].includes(r.id)) {
@@ -66,7 +70,7 @@ function seedRows() {
     3: 'biz_2102',
     4: 'md_104',
     5: 403,
-    6: 203,
+    6: 204, // 研究报告专家（唯一在审专家；原指 203 草稿态 → 无审核快照）
     7: 'sk_309',
     8: 'knowledge_hub'
   }
@@ -146,7 +150,9 @@ export function cancelReviewRow(type, refId) {
 // version 4（2026-09-09 PRD 复核 G2）：refId 借名缺陷修正 —— 种子 1/3/5 的 name/description 对齐
 // 其 refId 所指实体本体，8 的 refId 由 spark_bridge_mcp 改指同名 knowledge_hub；旧快照丢弃回种子。
 const persist = attachPersist('reviews', {
-  version: 4,
+  // version 5（2026-09-09 发布前收口）：种子 6 由「法务审阅专家 203 · DELIST」改指
+  // 「研究报告专家 204 · VERSION_PUBLISH」——203 是草稿态、永远补播不出审核快照。
+  version: 5,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {

@@ -32,6 +32,7 @@ import {
   requestActionTagType
 } from '@/utils/reviewMeta'
 import { confirmApproveReview } from '@/utils/govDialogs'
+import { needsSnapshot, loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
 import { listReviews, approveReview, rejectReview } from '@/api/reviews'
 // 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
 import { COL, opsWidth } from '@/utils/tableLayout'
@@ -125,7 +126,21 @@ function onDetailAction(key) {
   }
 }
 
+/**
+ * 快照闸门（md §七 L102）：岗位/专家/技能缺版本快照时阻止审核。
+ * 抽屉里由 GovObjectDetail 撤下按钮实现，但列表行的【驳回】【通过】不经过抽屉——不在这里
+ * 再拦一次，就能绕过闸门直接对着看不到提交内容的对象下审核结论。
+ */
+async function blockedBySnapshot(row) {
+  const kind = kindOf(row)
+  if (!needsSnapshot(kind)) return false
+  if (await loadReviewSnapshot(kind, row.refId)) return false
+  ElMessage.warning(SNAPSHOT_MISSING_HINT)
+  return true
+}
+
 async function approve(row) {
+  if (await blockedBySnapshot(row)) return
   if (!(await confirmApproveReview(row))) return
   busyRowId.value = row.id
   busyAction.value = 'approve'
@@ -142,7 +157,8 @@ async function approve(row) {
   }
 }
 
-function openReject(row) {
+async function openReject(row) {
+  if (await blockedBySnapshot(row)) return
   rejectTarget.value = row
   rejectVisible.value = true
 }
@@ -283,6 +299,7 @@ async function submitReject(reason) {
       :item="detailRow"
       :buttons="DETAIL_BUTTONS"
       :busy-key="busyAction || ''"
+      snapshot-gate
       @action="onDetailAction"
     />
 

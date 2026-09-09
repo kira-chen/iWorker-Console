@@ -102,7 +102,10 @@ const skills = [
     id: 'sk_302', type: 'PLATFORM', name: '经营数据分析', icon: '⌕',
     description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析',
     refNames: ['经营分析专家', '企业知识助手', '研究报告专家'], // 与 domainExpertMock 实际引用同源
+    // 审核中心种子 id 2（VERSION_PUBLISH）指向本技能，但本体原为 pendingAction 空 → 不会补播审核
+    // 快照，审核人点【查看】只能撞「无法查看」。此处置为在审，与 sk_309（停用在审）同一范式。
     status: 'published', version: 'v1.4.0',
+    pendingAction: 'publish', pendingVersion: 'v1.2.0', pendingReleaseNotes: '补充经营异常归因说明',
     createdAt: '2026-08-24 09:18', updatedAt: '2026-08-24 09:18', publishedAt: '2026-08-24 16:18',
     exampleQuestion: '帮我分析上个月的经营数据异常',
     toolRefs: ['mcp__zhishiku', 'api__customer', 'api__search', 'mcp__baoxiao', 'biz__renshi'],
@@ -583,8 +586,28 @@ export async function relistSkill(id) {
 
 /* ============================ 版本历史（快照启用/禁用） ============================ */
 
+// 种子快照沿用早期字段名（size/publisher/notes/disabledAt），而消费端 VersionHistoryList
+// 按专家侧的规范字段名取值（sizeBytes/publishedBy/releaseNotes/delistedAt）——不映射会让
+// md §四.3 要求的「文件大小、发布人、禁用时间、升级说明」四项全部不渲染。统一在此归一化，
+// 出参同时保留旧名以免其它消费点被动改。size 为 '22.4 KB' 形态的展示串，需还原成字节给 fmtSize。
+const KB = 1024
+function sizeToBytes(size) {
+  if (typeof size === 'number') return size
+  const m = /^\s*([\d.]+)\s*(B|KB|MB|GB)?\s*$/i.exec(String(size ?? ''))
+  if (!m) return null
+  const mult = { B: 1, KB: KB, MB: KB ** 2, GB: KB ** 3 }[(m[2] || 'B').toUpperCase()]
+  return Math.round(Number(m[1]) * mult)
+}
 function snapshotVO(sn) {
-  return { ...sn, versionLabel: sn.version, verLabel: sn.version }
+  return {
+    ...sn,
+    versionLabel: sn.version,
+    verLabel: sn.version,
+    sizeBytes: sn.sizeBytes != null ? sn.sizeBytes : sizeToBytes(sn.size),
+    publishedBy: sn.publishedBy || sn.publisher || '',
+    releaseNotes: sn.releaseNotes || sn.notes || '',
+    delistedAt: sn.delistedAt || sn.disabledAt || ''
+  }
 }
 
 export async function listSnapshots(id) {
@@ -793,8 +816,10 @@ let reviewSnapshots = {}
 
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots；旧快照无该键 → 兜底 {} 并对
 // 种子在审技能补播，避免既有在审行「快照缺失」误拦。
+// version 3（2026-09-09 发布前收口）：sk_302 补 pendingAction:'publish' + pendingVersion v1.2.0——
+// 审核中心 id 2 引用它，原种子无在途标记 → 无审核快照，审核人点【查看】只能撞「无法查看」。
 const persist = attachPersist('unifiedSkill', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (

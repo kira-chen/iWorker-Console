@@ -59,8 +59,14 @@ describe('reviewsMock · 审核中心内存 mock', () => {
   })
 
   it('申请类型筛选 + 升序排序', async () => {
-    const { list } = await listReviews({ requestAction: 'DELIST', sortDir: 'asc' })
-    expect(list.map((r) => r.id)).toEqual([3, 6])
+    // 取 VERSION_PUBLISH 做多行样本：DELIST 自 2026-09-09 起只剩 id 3 一条（原 id 6 改指
+    // 在审的专家 204、方向为 VERSION_PUBLISH），单行验证不出排序。按提交时间升序：
+    // 5(08-27 14:05) → 7(08-28 08:55) → 2(08-28 09:18) → 6(08-28 10:18)
+    const { list } = await listReviews({ requestAction: 'VERSION_PUBLISH', sortDir: 'asc' })
+    expect(list.map((r) => r.id)).toEqual([5, 7, 2, 6])
+    // DELIST 仍可筛出且只此一条
+    const delist = await listReviews({ requestAction: 'DELIST' })
+    expect(delist.list.map((r) => r.id)).toEqual([3])
   })
 
   it('通过发布申请 → PUBLISHED 并移出待审列表', async () => {

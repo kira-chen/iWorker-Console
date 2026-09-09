@@ -209,10 +209,19 @@ export async function getMyApplication(id) {
   return clone(findOr404(id))
 }
 
-/** 撤回（原型 withdraw 口径）：result → WITHDRAWN，审核人置「—」。 */
+/**
+ * 撤回：仅「待审核」可撤（md §五 状态流转表）。
+ * md §七「撤回时申请已被审核 → 阻止撤回并刷新最新审核结果」：并发场景下列表可能还是旧的
+ * （另一端已审完），此处按服务端口径拦下，页面 catch 后弹 toast + 重取列表即满足该条。
+ */
 export async function withdrawMyApplication(id) {
   await delay()
   const row = findOr404(id)
+  if (row.result !== 'PENDING') {
+    const err = new Error('该申请已被审核，无法撤回，请查看最新审核结果')
+    err.code = 409
+    throw err
+  }
   row.result = 'WITHDRAWN'
   row.reviewedAt = now()
   row.reviewer = '—'
@@ -224,6 +233,12 @@ export async function withdrawMyApplication(id) {
 export async function resubmitMyApplication(id) {
   await delay()
   const row = findOr404(id)
+  // 仅「已驳回 / 已撤回」可重新提交（md §五 状态流转表只给这两条边）
+  if (row.result !== 'REJECTED' && row.result !== 'WITHDRAWN') {
+    const err = new Error('仅已驳回或已撤回的申请可重新提交')
+    err.code = 409
+    throw err
+  }
   row.result = 'PENDING'
   row.submittedAt = now()
   row.reviewedAt = ''

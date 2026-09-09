@@ -881,7 +881,8 @@ async function doPublish() {
         type: 'warning'
       })
     } else {
-      ElMessage.success('已发布')
+      // 提交后岗位进入「审核中」而非已上线，文案按 md §3.3 取「已提交发布审核」
+      ElMessage.success('已提交发布审核')
     }
   } catch (e) {
     ElMessage.error(e?.message || '发布失败')

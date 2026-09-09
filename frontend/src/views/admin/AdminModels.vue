@@ -379,7 +379,8 @@ async function disable(row) {
   try {
     await ElMessageBox.confirm(
       (row.isDefault ? '该模型当前是默认模型，停用生效后将同时取消其默认标记。' : '') +
-        `提交后进入审核，**审核通过前该模型对客户端仍然可用**；` +
+        // 弹窗按 md §三.7 为纯文本（dangerouslyUseHTMLString: false），带 ** 只会原样显示星号
+        `提交后进入审核，审核通过前该模型对客户端仍然可用；` +
         `审核通过后客户端将无法再获取模型「${row.name}」的调用配置。确认提交停用？`,
       '停用模型',
       { type: 'warning', confirmButtonText: '提交审核', dangerouslyUseHTMLString: false }

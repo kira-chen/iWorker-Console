@@ -84,7 +84,8 @@ let positions = [
     pendingAction: 'PUBLISH',
     pendingVersion: 'v1.0.0',
     pendingReleaseNotes: '首个版本',
-    latestVersion: 'v1.0.0',
+    // 首版在审、尚无审核通过的发布，故最新版本为空（md §二.1：不展示待审核版本号）
+    latestVersion: '',
     createdAt: '2026-08-20T15:40:00+08:00',
     updatedAt: '2026-08-25T10:18:00+08:00'
   },
@@ -417,7 +418,8 @@ export async function publishPosition(id, payload = {}) {
   p.pendingAction = 'PUBLISH'
   p.pendingVersion = label
   p.pendingReleaseNotes = String(payload.releaseNotes || '').trim()
-  p.latestVersion = label
+  // latestVersion 只记「最近一次审核通过并正式发布」的版本（md §二.1：不展示待审核版本号），
+  // 在审版本一律走 pendingVersion；审核通过落快照时才推进 latestVersion。
   p.updatedAt = nowIso()
   // A5：提交审核即存版本快照（md §四 L48）
   writeReviewSnapshot(p, rows.length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
@@ -809,7 +811,7 @@ export function __resetPositionMock() {
   positions = [
     { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], agentCount: 3, claimedUserCount: 26, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
     { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], agentCount: 2, claimedUserCount: 18, status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
-    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, claimedUserCount: 6, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: 'v1.0.0', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
+    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, claimedUserCount: 6, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
     { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [], agentCount: 0, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
   ]
   publications = {
@@ -840,7 +842,9 @@ export function __resetPositionMock() {
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持），
 // 旧快照无该键 → restore 兜底为 {}，并对种子在审岗位补播一份，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('position', {
-  version: 2,
+  // v3（2026-09-09 发布前收口）：财务审核岗种子 latestVersion 由 'v1.0.0' 改空——首版在审不应
+  // 展示待审版本号（md §二.1）。种子结构变更须 bump，否则存量快照会把旧值带回来。
+  version: 3,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

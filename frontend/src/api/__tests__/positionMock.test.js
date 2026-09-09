@@ -70,7 +70,10 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     await publishPosition(402, { bump: 'MINOR', releaseNotes: '新增能力' })
     let row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')
-    expect(row.latestVersion).toBe('v1.5.0') // MINOR 进位
+    // md §二.1「最新版本」只记审核通过并正式发布的版本，不展示待审核版本号：
+    // MINOR 进位后的 v1.5.0 只进 pendingVersion，latestVersion 仍是已发布的 v1.4.0
+    expect(row.pendingVersion).toBe('v1.5.0')
+    expect(row.latestVersion).toBe('v1.4.0')
     await withdrawPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBeNull()
@@ -83,7 +86,8 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     await publishPosition(404, { releaseNotes: 'x' })
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')
-    expect(row.latestVersion).toBe('v1.0.0') // 首发固定 v1.0.0
+    expect(row.pendingVersion).toBe('v1.0.0') // 首发固定 v1.0.0，且只进 pendingVersion
+    expect(row.latestVersion).toBe('') // 尚无审核通过的发布 → 列表显示「—」
   })
 
   it('删除与联动取名（Q10：岗位名单一真相源）', async () => {

@@ -86,9 +86,29 @@ function isLocked(row) {
 
 // 取数编排统一走 useAdminList；mock 返全量（mock 层不动）→ paged:'client' 本地切片分页
 // （2026-09-08 原型复刻批次 1：负责人拍板全站所有列表页都分页、同一控件；原 B5「移除分页」paged:false 废止）。
-const list = useAdminList(listBizSystems, { paged: 'client', params: () => ({ ...applied }) })
+// 「最近更新时间」列头排序（md §二.1）必须在切片之前对全量做，否则 el-table 内置排序只会
+// 重排当前页那几行，跨页顺序是错的（且翻页/刷新后又被 mock 的固定 desc 覆盖）。
+// 排序方向由 @sort-change 记到 sortDir，走 clientPipeline 参与全量排序——与 AdminRoles 同一范式。
+const sortDir = ref('desc')
+const list = useAdminList(listBizSystems, {
+  paged: 'client',
+  params: () => ({ ...applied }),
+  clientPipeline: (all) =>
+    [...all].sort((a, b) =>
+      sortDir.value === 'desc'
+        ? String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+        : String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''))
+    )
+})
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 const fetchList = list.reload
+
+// 列头点击排序：只记方向后重取，实际排序在 clientPipeline 里对全量做（见上）。
+function onSortChange({ prop, order }) {
+  if (prop !== 'updatedAt' || !order) return
+  sortDir.value = order === 'ascending' ? 'asc' : 'desc'
+  list.search()
+}
 
 // 点【查询】/ 回车：把输入区条件应用后刷新（回第 1 页）
 function search() {
@@ -198,7 +218,8 @@ async function remove(row) {
     await ElMessageBox.confirm(
       `删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「${row.name}」？`,
       '删除业务系统',
-      { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
+      // 确认按钮照 md §二.3 逐字取「继续删除」（软引用语义：提示影响后仍可继续）
+      { type: 'warning', confirmButtonText: '继续删除', confirmButtonClass: 'el-button--danger' }
     )
   } catch (e) {
     return
@@ -255,6 +276,7 @@ async function remove(row) {
         :data="rows"
         row-key="id"
         :default-sort="{ prop: 'updatedAt', order: 'descending' }"
+        @sort-change="onSortChange"
       >
         <!-- 业务系统：图标 + 名称 + 状态标签，第二行描述（缩略，悬停看全文）（B2） -->
         <el-table-column label="业务系统" :min-width="240">
@@ -301,7 +323,8 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：精确到分钟，列头点击排序（B2） -->
-        <el-table-column label="最近更新时间" prop="updatedAt" sortable :width="COL.TIME + 24">
+        <!-- sortable="custom"：排序交给 clientPipeline 对全量做，内置排序只会重排当前页 -->
+        <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="COL.TIME + 24">
           <template #default="{ row }">
             <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
             <span v-else class="cell-na">—</span>

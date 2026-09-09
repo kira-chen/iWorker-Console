@@ -112,6 +112,8 @@ function seedExperts() {
       roleDesc: '你是一名严谨的合同审阅专家，按风险等级说明问题并给出修改建议。',
       exampleQuestions: ['帮我审阅这份合同的风险条款', '帮我生成一份合同修改建议', '帮我解释这条违约责任'],
       skillIds: [304],
+      // 本条是全套种子里唯一的「草稿 + 无版本 + 无在途」样本，多处用例依赖它验证
+      // 「草稿不可停用」「专家无版本」等分支，勿改状态。
       status: 'draft',
       pendingAction: null,
       latestVersionLabel: '',
@@ -172,7 +174,9 @@ let reviewSnapshots = {}
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持）；
 // 旧快照无该键 → 兜底 {} 并对种子在审专家补播，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('domainExpert', {
-  version: 2,
+  // v3（2026-09-09 发布前收口）：专家 203 由 draft/无在途 改为 published + pendingAction:'DELIST'
+  // 并补 v2.0.0 版本行——审核中心 id 6 与我的申请 510 引用它，原种子下审核快照缺失、点【查看】即空。
+  version: 3,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {

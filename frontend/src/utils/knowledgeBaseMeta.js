@@ -232,7 +232,9 @@ export function validateResponseMap(rows) {
 export const API_DEFAULTS = Object.freeze({
   url: '', // 请求地址：≤500，合法 http/https（md §六.1）
   method: 'POST', // POST | GET | PUT | DELETE | PATCH，默认 POST（md §六.1）
-  authType: 'NONE', // NONE | API_KEY | BEARER（md §六.1：无鉴权、API KEY、Bearer Token，默认无鉴权）
+  // NONE | API_KEY | BEARER（md §六.1：无鉴权、API KEY、Bearer Token，默认 **API KEY**）
+  // 注意别照抄 MCP 侧：§七.2.1 的 streamable-http 默认才是「无鉴权」，两处默认值相反。
+  authType: 'API_KEY',
   timeoutMs: 8000 // 1000～60000ms，默认 8000ms（md §六.1）
 })
 export const MCP_DEFAULTS = Object.freeze({
