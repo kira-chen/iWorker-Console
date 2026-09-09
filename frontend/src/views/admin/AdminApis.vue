@@ -29,6 +29,7 @@ import {
 } from '@/api/apiConnector'
 import { resolveDisplayStatus } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
+import { TRI_STATE_META } from '@/utils/publishTriState'
 import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
@@ -77,10 +78,11 @@ const STATE_OPTIONS = [
   { value: 'PENDING_REVIEW', label: '审核中' },
   { value: 'PUBLISHED', label: '已发布' }
 ]
+// label/type 同源 utils/publishTriState（2026-09-09 批 2-2 收编；本页枚举键名映射保留）
 const STATE_META = {
-  PUBLISHED: { type: 'success', label: '已发布' },
-  PENDING_REVIEW: { type: 'warning', label: '审核中' },
-  NOT_PUBLISHED: { type: 'info', label: '未发布' }
+  PUBLISHED: TRI_STATE_META.PUBLISHED,
+  PENDING_REVIEW: TRI_STATE_META.REVIEWING,
+  NOT_PUBLISHED: TRI_STATE_META.UNPUBLISHED
 }
 function stateMeta(row) {
   return STATE_META[row.status] || STATE_META.NOT_PUBLISHED

@@ -4,10 +4,12 @@ import {
   isReviewRequired,
   deriveBodyState,
   derivePublishView,
+  deriveTriView,
   isVisibleDownstream,
   isLocked,
   canDelete
 } from '@/utils/publishState'
+import { TRI_STATE_META, triFromRow } from '@/utils/publishTriState'
 
 /**
  * 发布态统一前端层（发布统一方案 B3）单测。
@@ -106,5 +108,45 @@ describe('publishState 统一层', () => {
     ).toBe(true)
     expect(isLocked(KIND.POSITION, { status: 'published' })).toBe(false)
     expect(isLocked(KIND.POSITION, { status: 'published', pendingAction: 'DELIST' })).toBe(true)
+  })
+})
+
+/**
+ * deriveTriView（2026-09-09 批 2-2 新增）：列表/抽屉三态折叠的官方出口。
+ * 按方案真值表 pendingAction∈{null,PUBLISH,DELIST} × status∈{draft,published} 六格逐格钉死，
+ * 岗位/专家两 kind 同跑；另钉 TRI_STATE_META 词表字面量与 triFromRow 同真值表等价（同值换来源的护栏）。
+ */
+describe('deriveTriView 三态折叠（批 2-2 收编 5 处手工覆盖）', () => {
+  const TABLE = [
+    // [pendingAction, status, 期望词表键]
+    [null, 'draft', 'UNPUBLISHED'],
+    [null, 'published', 'PUBLISHED'],
+    ['PUBLISH', 'draft', 'REVIEWING'],
+    ['PUBLISH', 'published', 'REVIEWING'],
+    ['DELIST', 'draft', 'REVIEWING'],
+    ['DELIST', 'published', 'REVIEWING']
+  ]
+
+  it('真值表六格逐格（岗位/专家两 kind）', () => {
+    for (const kind of [KIND.POSITION, KIND.DOMAIN_EXPERT]) {
+      for (const [pendingAction, status, expected] of TABLE) {
+        const v = deriveTriView(kind, { status, pendingAction })
+        expect(v).toBe(TRI_STATE_META[expected]) // 返回词表条目本身（单一真相，非拷贝）
+      }
+    }
+  })
+
+  it('TRI_STATE_META 词表字面量钉死（全站三态文案与标签色的单一真相）', () => {
+    expect(TRI_STATE_META.UNPUBLISHED).toEqual({ label: '未发布', type: 'info' })
+    expect(TRI_STATE_META.REVIEWING).toEqual({ label: '审核中', type: 'warning' })
+    expect(TRI_STATE_META.PUBLISHED).toEqual({ label: '已发布', type: 'success' })
+  })
+
+  it('triFromRow 通用折叠：同真值表（小写 status 域），且大写 PUBLISHED 亦落已发布', () => {
+    for (const [pendingAction, status, expected] of TABLE) {
+      expect(triFromRow({ status, pendingAction })).toBe(TRI_STATE_META[expected])
+    }
+    expect(triFromRow({ status: 'PUBLISHED', pendingAction: null })).toBe(TRI_STATE_META.PUBLISHED)
+    expect(triFromRow(null)).toBe(TRI_STATE_META.UNPUBLISHED)
   })
 })

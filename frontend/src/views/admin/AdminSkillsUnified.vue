@@ -28,8 +28,13 @@ import {
   SKILL_TYPE,
   SKILL_TYPE_LABEL,
   SKILL_TYPE_OPTIONS,
-  SKILL_EDIT_ROUTE
+  SKILL_EDIT_ROUTE,
+  SKILL_DISPLAY_STATE as PUB_STATE_TO_DISPLAY,
+  SKILL_DISPLAY_LABEL as DISPLAY_STATE_LABEL,
+  SKILL_DISPLAY_TAG as DISPLAY_STATE_TAG
 } from '@/api/unifiedSkill'
+// ↑ 三态映射同源 api 层（2026-09-09 批 2-2 收编：此前三块本地复制品逐字重复，删除改引；
+//   别名保留本页原名，调用点零改动）
 import { getSkill } from '@/api/position'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 // 技能分类选项统一同源 fieldDict（固定 8 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 后端接口。
@@ -105,28 +110,9 @@ watch(
 /**
  * 三类技能统一三态（未发布/审核中/已发布）：由 publications 经 derivePlatformState 收拢。
  * 岗位私有已接入同构状态机（mock 层为其派生 publications）；无 publications 的存量行按本体 status 兜底。
+ * 映射表同源 api/unifiedSkill 的 SKILL_DISPLAY_STATE/LABEL/TAG（import 别名保留本页原名）；
+ * 视图侧保留未映射态 console.warn 分支——api 层 deriveSkillDisplayView 的兜底是静默的，此处要留警告。
  */
-const PUB_STATE_TO_DISPLAY = {
-  PUBLISHED: 'PUBLISHED',
-  REVIEWING: 'REVIEWING',
-  PUBLISHED_REVIEWING: 'REVIEWING',
-  DELISTED_REVIEWING: 'REVIEWING',
-  PUBLISHED_DELISTING: 'REVIEWING', // V100 停用审核中 → 审核中
-  INITIAL: 'UNPUBLISHED',
-  REJECTED: 'UNPUBLISHED',
-  DELISTED: 'UNPUBLISHED'
-}
-const DISPLAY_STATE_LABEL = {
-  PUBLISHED: '已发布',
-  REVIEWING: '审核中',
-  UNPUBLISHED: '未发布'
-}
-const DISPLAY_STATE_TAG = {
-  PUBLISHED: 'success',
-  REVIEWING: 'warning',
-  UNPUBLISHED: 'info'
-}
-
 function displayState(row) {
   if (Array.isArray(row.publications)) {
     const raw = derivePlatformState(row.publications)

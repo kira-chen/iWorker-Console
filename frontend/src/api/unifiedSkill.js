@@ -3,6 +3,7 @@ import { listSkills, createStandaloneSkill, deleteSkill, setSkillStatus, updateS
 import { platformSkillApi, systemSkillApi } from './platformSkill'
 import * as mock from './unifiedSkillMock'
 import { derivePlatformState, stateActions } from '@/utils/skillPublication'
+import { TRI_STATE_META } from '@/utils/publishTriState'
 
 /**
  * 合并技能管理页 API 层（ADMIN 专属）。
@@ -160,15 +161,16 @@ export const SKILL_DISPLAY_STATE = {
   REJECTED: 'UNPUBLISHED',
   DELISTED: 'UNPUBLISHED'
 }
+// label/tag 字面量同源 utils/publishTriState（2026-09-09 批 2-2 收编，键名与导出形保持不变）
 export const SKILL_DISPLAY_LABEL = {
-  PUBLISHED: '已发布',
-  REVIEWING: '审核中',
-  UNPUBLISHED: '未发布'
+  PUBLISHED: TRI_STATE_META.PUBLISHED.label,
+  REVIEWING: TRI_STATE_META.REVIEWING.label,
+  UNPUBLISHED: TRI_STATE_META.UNPUBLISHED.label
 }
 export const SKILL_DISPLAY_TAG = {
-  PUBLISHED: 'success',
-  REVIEWING: 'warning',
-  UNPUBLISHED: 'info'
+  PUBLISHED: TRI_STATE_META.PUBLISHED.type,
+  REVIEWING: TRI_STATE_META.REVIEWING.type,
+  UNPUBLISHED: TRI_STATE_META.UNPUBLISHED.type
 }
 
 /**

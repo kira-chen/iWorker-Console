@@ -31,7 +31,7 @@ import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
-import { KIND, derivePublishView, canDelete } from '@/utils/publishState'
+import { KIND, derivePublishView, deriveTriView, isLocked, canDelete } from '@/utils/publishState'
 import { fmtTime } from '@/utils/docMeta'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
@@ -117,17 +117,18 @@ function onSortChange({ prop, order }) {
   fetchList()
 }
 
-/* ---------- 状态三态展示映射（Q6：展示层做，不改共享 publishState 语义） ---------- */
+/* ---------- 状态三态展示映射（Q6：展示层三态，细分 5 态词表仍归 derivePublishView） ---------- */
 // 草稿(INITIAL)→未发布；REVIEWING / PUBLISHED_REVIEWING / PUBLISHED_DELISTING →审核中；PUBLISHED→已发布。
+// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView（此前本页手工覆盖 label/tagType）；
+// 返回结构保留 derivePublishView 的其余字段与 tagType 键名不变。
 function displayView(row) {
   const v = derivePublishView(KIND.POSITION, { status: row.status, pendingAction: row.pendingAction })
-  if (row.pendingAction) return { ...v, label: '审核中', tagType: 'warning' }
-  if (v.state === 'PUBLISHED') return { ...v, label: '已发布', tagType: 'success' }
-  return { ...v, label: '未发布', tagType: 'info' }
+  const tri = deriveTriView(KIND.POSITION, row)
+  return { ...v, label: tri.label, tagType: tri.type }
 }
-// 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回
+// 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回（isLocked 对岗位即 !!pendingAction，批 2-2 收编）
 function isReviewing(row) {
-  return !!row.pendingAction
+  return isLocked(KIND.POSITION, row)
 }
 
 // 图标 URL/dataURL 判断收口至 utils/iconDisplay（W-3 图标统一规则配套）

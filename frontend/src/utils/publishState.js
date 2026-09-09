@@ -21,6 +21,7 @@ import {
   skillOnlineState,
   isLocked as skillIsLocked
 } from './skillPublication'
+import { TRI_STATE_META } from './publishTriState'
 
 /** 三类种类标识（与后端 PublishableKind 对齐）。 */
 export const KIND = {
@@ -103,6 +104,17 @@ export function derivePublishView(kind, source) {
     actions: meta.actions,
     reviewRequired: isReviewRequired(kind)
   }
+}
+
+/**
+ * 列表/抽屉三态折叠视图（md 口径：在途一律「审核中」）——此前 5 处视图各自读 pendingAction
+ * 手工覆盖 derivePublishView 的 label/tagType，2026-09-09 批 2-2 收编于此（折叠规则单一真相）。
+ * 返回 TRI_STATE_META 条目 { label, type }；需要细分 5 态词表的场景仍用 derivePublishView。
+ */
+export function deriveTriView(kind, source) {
+  if (source?.pendingAction) return TRI_STATE_META.REVIEWING
+  const v = derivePublishView(kind, source)
+  return v.state === 'PUBLISHED' ? TRI_STATE_META.PUBLISHED : TRI_STATE_META.UNPUBLISHED
 }
 
 /**

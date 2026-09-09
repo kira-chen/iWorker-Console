@@ -44,6 +44,7 @@ import { fmtTime } from '@/utils/docMeta'
 // 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { TRI_STATE_META } from '@/utils/publishTriState'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -53,12 +54,13 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 // 防存量脏数据或回滚场景下渲染出裸枚举。
 // 三态（V98）：发布与停用两条都要过审，中间同为「审核中」。
 // DELISTED/REJECTED 为历史遗留态，V98 迁移已归一为 DRAFT；保留兜底映射防存量脏数据渲染裸枚举。
+// label/type 同源 utils/publishTriState（2026-09-09 批 2-2 收编；本页 5 键折 3 态的键名映射保留）
 const STATE_META = {
-  DRAFT: { label: '未发布', type: 'info' },
-  DELISTED: { label: '未发布', type: 'info' },
-  REJECTED: { label: '未发布', type: 'info' },
-  PENDING_REVIEW: { label: '审核中', type: 'warning' },
-  PUBLISHED: { label: '已发布', type: 'success' }
+  DRAFT: TRI_STATE_META.UNPUBLISHED,
+  DELISTED: TRI_STATE_META.UNPUBLISHED,
+  REJECTED: TRI_STATE_META.UNPUBLISHED,
+  PENDING_REVIEW: TRI_STATE_META.REVIEWING,
+  PUBLISHED: TRI_STATE_META.PUBLISHED
 }
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: '未发布' },

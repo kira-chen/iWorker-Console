@@ -59,7 +59,7 @@ import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
-import { KIND, derivePublishView, isLocked } from '@/utils/publishState'
+import { KIND, derivePublishView, deriveTriView, isLocked } from '@/utils/publishState'
 import {
   getExpert,
   createExpert,
@@ -190,12 +190,12 @@ const locked = computed(() => isLocked(KIND.DOMAIN_EXPERT, detail.value || {}))
 const disabled = computed(() => props.readonly || locked.value)
 
 // 三态展示映射（同列表页 displayView：草稿→未发布、各审核中→审核中、已发布→已发布）
+// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView，返回结构与 tagType 键名保留。
 const view = computed(() => {
   const d = detail.value || {}
   const v = derivePublishView(KIND.DOMAIN_EXPERT, { status: d.status, pendingAction: d.pendingAction })
-  if (d.pendingAction) return { ...v, label: '审核中', tagType: 'warning' }
-  if (v.state === 'PUBLISHED') return { ...v, label: '已发布', tagType: 'success' }
-  return { ...v, label: '未发布', tagType: 'info' }
+  const tri = deriveTriView(KIND.DOMAIN_EXPERT, d)
+  return { ...v, label: tri.label, tagType: tri.type }
 })
 
 /* ==================== 市场技能引用（内嵌选择器） ==================== */

@@ -34,6 +34,7 @@ import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { TRI_STATE_META } from '@/utils/publishTriState'
 
 // 输入区（暂存）与已应用条件分离：点【查询】才生效（与 API 连接器页同口径）
 const query = reactive({ keyword: '', state: '' })
@@ -55,10 +56,11 @@ const STATE_OPTIONS = [
   { value: 'PENDING_REVIEW', label: '审核中' },
   { value: 'PUBLISHED', label: '已发布' }
 ]
+// label/type 同源 utils/publishTriState（2026-09-09 批 2-2 收编；本页枚举键名映射保留）
 const STATE_META = {
-  PUBLISHED: { type: 'success', label: '已发布' },
-  PENDING_REVIEW: { type: 'warning', label: '审核中' },
-  NOT_PUBLISHED: { type: 'info', label: '未发布' }
+  PUBLISHED: TRI_STATE_META.PUBLISHED,
+  PENDING_REVIEW: TRI_STATE_META.REVIEWING,
+  NOT_PUBLISHED: TRI_STATE_META.UNPUBLISHED
 }
 function stateMeta(row) {
   return STATE_META[row.status] || STATE_META.NOT_PUBLISHED

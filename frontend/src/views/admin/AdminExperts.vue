@@ -44,7 +44,7 @@ import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
-import { KIND, derivePublishView } from '@/utils/publishState'
+import { KIND, derivePublishView, deriveTriView, isLocked } from '@/utils/publishState'
 import { fmtTime } from '@/utils/docMeta'
 import ExpertEditor from '@/components/admin/ExpertEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
@@ -78,17 +78,17 @@ function onSortChange({ prop, order }) {
   fetchList()
 }
 
-/* ---------- 状态三态展示映射（展示层做，不改共享 publishState 语义；同 AdminPositions displayView） ---------- */
+/* ---------- 状态三态展示映射（展示层三态；同 AdminPositions displayView） ---------- */
 // 草稿(INITIAL)→未发布；REVIEWING / PUBLISHED_REVIEWING / PUBLISHED_DELISTING →审核中；PUBLISHED→已发布。
+// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView，返回结构与 tagType 键名保留。
 function displayView(row) {
   const v = derivePublishView(KIND.DOMAIN_EXPERT, { status: row.status, pendingAction: row.pendingAction })
-  if (row.pendingAction) return { ...v, label: '审核中', tagType: 'warning' }
-  if (v.state === 'PUBLISHED') return { ...v, label: '已发布', tagType: 'success' }
-  return { ...v, label: '未发布', tagType: 'info' }
+  const tri = deriveTriView(KIND.DOMAIN_EXPERT, row)
+  return { ...v, label: tri.label, tagType: tri.type }
 }
-// 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回
+// 审核中（任一在途待审动作）→ 编辑置灰、操作列只给撤回（isLocked 对专家即 !!pendingAction，批 2-2 收编）
 function isReviewing(row) {
-  return !!row.pendingAction
+  return isLocked(KIND.DOMAIN_EXPERT, row)
 }
 
 /* ---------- 编辑 / 查看抽屉（新建 / 编辑 / 只读查看共用 ExpertEditor） ---------- */

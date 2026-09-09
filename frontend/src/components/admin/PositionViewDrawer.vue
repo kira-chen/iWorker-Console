@@ -21,6 +21,7 @@ import { ref, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import { fmtTime } from '@/utils/docMeta'
+import { KIND, deriveTriView } from '@/utils/publishState'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -109,11 +110,11 @@ const skillNames = computed(() => {
 })
 
 // 状态三态展示映射（与岗位列表 displayView 同口径）：在途待审 → 审核中；published → 已发布；其余 → 未发布
+// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView（本抽屉只消费 label）
 const statusLabel = computed(() => {
   const d = detail.value
   if (!d) return '—'
-  if (d.pendingAction) return '审核中'
-  return d.status === 'published' ? '已发布' : '未发布'
+  return deriveTriView(KIND.POSITION, d).label
 })
 const latestVersion = computed(() => props.snapshot?.version || detail.value?.latestVersion || '-')
 const updatedAt = computed(() => (detail.value?.updatedAt ? fmtTime(detail.value.updatedAt) : '-'))

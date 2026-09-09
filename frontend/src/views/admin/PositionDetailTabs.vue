@@ -70,6 +70,7 @@ import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import { AI_LIVE_BUSY_LABEL } from '@/utils/aiLiveGenerate'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { sourcesText, hasUploadSource, stateMeta as kbStateMeta } from '@/utils/knowledgeBaseMeta'
+import { KIND, deriveTriView, isLocked } from '@/utils/publishState'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import PublishCheckDialog from '@/components/position/PublishCheckDialog.vue'
@@ -178,15 +179,14 @@ function onVisibilityChange() {
 
 /* ---------- 只读态（2026-09-04 PRD-20260903 对齐） ----------
  * 列表【查看】进入携带 query.view=1 → 全页签只读、顶部无保存/发布；
- * 审核中（detail.pendingAction 非空）同样锁定只读（md 三.10「审核中：全部页签只读」）。 */
-const isReadonly = computed(() => route.query.view === '1' || !!store.detail?.pendingAction)
+ * 审核中（detail.pendingAction 非空）同样锁定只读（md 三.10「审核中：全部页签只读」）。
+ * 2026-09-09 批 2-2 收编：锁定改 publishState.isLocked（对岗位即 !!pendingAction）。 */
+const isReadonly = computed(() => route.query.view === '1' || isLocked(KIND.POSITION, store.detail))
 
 // 顶部状态标签三态（md 三.1：未发布 灰 / 审核中 橙 / 已发布 绿）
-const statusView = computed(() => {
-  if (store.detail?.pendingAction) return { label: '审核中', type: 'warning' }
-  if (store.isPublished) return { label: '已发布', type: 'success' }
-  return { label: '未发布', type: 'info' }
-})
+// 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView（返回 { label, type } 同形；
+// store.isPublished ≡ detail.status==='published'，detail 为空时两版同落「未发布」）
+const statusView = computed(() => deriveTriView(KIND.POSITION, store.detail || {}))
 
 /* ---------- 人格 Tab 内联绑定（md 三.2 六区块；改动 patch→store.basic，随顶部【保存】提交） ---------- */
 function patchBasic(key, value) {
