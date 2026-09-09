@@ -199,7 +199,7 @@ describe('DrawerEditor · 全站抽屉一致性', () => {
     // （DrawerEditor 壳），不再需要白名单
     'PositionSampleTaskStage.vue': '只读测试面板，无表单',
     'SkillFocusEditor.vue': '左侧文件栏（direction=ltr/260px），是导航不是编辑器',
-    'ConnectorPublishDrawer.vue': '发布流程 + 自定义 header，非标准表单编辑器',
+    // 2026-09-09 代码冗余清理：ConnectorPublishDrawer 为零引用死文件，已删除，无需再留白名单
     'DrawerEditor.vue': '外壳自身'
   }
 
@@ -218,19 +218,23 @@ describe('DrawerEditor · 全站抽屉一致性', () => {
   it('含输入控件的裸抽屉必须禁「点遮罩关闭」（防误触丢草稿）', async () => {
     const files = import.meta.glob('@/**/*.vue', { query: '?raw', import: 'default', eager: true })
     expect(Object.keys(files).length).toBeGreaterThan(50)
-    let checked = 0
+    let bareDrawers = 0
     for (const [path, src] of Object.entries(files)) {
       const name = path.split('/').pop()
       if (name === 'DrawerEditor.vue' || !/<el-drawer[\s>]/.test(src)) continue
+      bareDrawers++
       // 抽屉段落内出现输入类控件即视为「有可丢失状态」
       const seg = src.slice(src.indexOf('<el-drawer'))
       const hasInput = /el-checkbox-group|<el-input|<el-switch|<el-radio-group/.test(seg)
       if (hasInput) {
-        checked++
         expect(seg, `${name} 抽屉内有输入控件但未禁点遮罩关闭`).toContain('close-on-click-modal')
       }
     }
-    // 自证确实检查到了含输入的裸抽屉（当前为 ConnectorPublishDrawer / SkillFocusEditor）
-    expect(checked).toBeGreaterThan(0)
+    // 自证确实扫到了裸抽屉（否则上面的循环零次执行，断言形同虚设）。
+    // 2026-09-09 代码冗余清理后，唯一「含输入控件」的裸抽屉 ConnectorPublishDrawer 已作为零引用
+    // 死文件删除，故当前含输入的裸抽屉数为 0——剩余三个（DocDetailDrawer / SkillFocusEditor /
+    // PositionSampleTaskStage）都是只读形态。这里改为自证「裸抽屉本身扫到了」，
+    // 上面的 close-on-click-modal 守卫对将来新增的含输入裸抽屉仍然生效。
+    expect(bareDrawers).toBeGreaterThan(0)
   })
 })

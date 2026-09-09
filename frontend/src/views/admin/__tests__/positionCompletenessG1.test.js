@@ -86,10 +86,9 @@ vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
-  '@/components/position/SkillPickerDialog.vue',
-  '@/components/position/PositionVersionHistoryDialog.vue', '@/components/position/PositionDataTableStage.vue',
+  '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
-  '@/components/position/IconPickerPopover.vue', '@/components/position/PositionBizSystemsPane.vue',
+  '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue'
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))

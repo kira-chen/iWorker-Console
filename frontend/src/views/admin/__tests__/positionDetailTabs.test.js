@@ -57,10 +57,10 @@ vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
-  '@/components/position/SkillPickerDialog.vue', '@/components/position/PublishCheckDialog.vue',
-  '@/components/position/PositionVersionHistoryDialog.vue', '@/components/position/PositionDataTableStage.vue',
+  '@/components/position/PublishCheckDialog.vue',
+  '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
-  '@/components/position/IconPickerPopover.vue', '@/components/position/PositionBizSystemsPane.vue',
+  '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
   '@/components/admin/KnowledgeSearchDialog.vue'
