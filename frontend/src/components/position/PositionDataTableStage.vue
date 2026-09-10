@@ -662,16 +662,19 @@ function cardFieldCount(t) {
 
 <style scoped>
 /* 骨架照原型 .wp3-*：左 200px 档案列表 + 右侧纵排三卡（令牌化，不搬硬编码色值） */
+/* 根元素已带 .pd-pane（max-width:1180px + margin:0 auto），外层页签内容区
+   本身也有 24px 左右留白；此处再加 24px 横向 padding 会让两栏比原型窄 ~102px
+   （对表实测 grid 1078 vs 原型 1180，且逐级传导到右栏与每个字段格）。
+   横向内缩去掉，只保留竖向留白。 */
 .wd {
-  padding: var(--space-5) var(--space-6) var(--space-8);
+  padding: var(--space-5) 0 var(--space-8);
 }
 .wd-grid {
   display: grid;
+  /* 原型 .wp3-grid：200px + 1fr，栏间距 18px（就近取 --space-5 20px） */
   grid-template-columns: 200px 1fr;
   gap: var(--space-5);
   align-items: start;
-  max-width: 1180px;
-  margin: 0 auto;
 }
 .wd-side {
   display: flex;
@@ -685,9 +688,11 @@ function cardFieldCount(t) {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-md);
+  /* 原型 .wp3-profile-card：padding 10px 14px、圆角 8px（现状 8/12 + 6px 偏紧偏方） */
+  padding: 10px 14px;
+  /* 同 .wd-sec：描边浓度对齐原型 .wp3-profile-card 的 #dfe5e1 */
+  border: 1px solid var(--border-admin-card);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
   cursor: pointer;
   text-align: left;
@@ -697,11 +702,15 @@ function cardFieldCount(t) {
 }
 .wd-profile-card.on {
   border-color: var(--c-accent);
-  background: var(--c-accent-soft);
+  /* 原型 .wp3-profile-card.on{background:#f0faf5}——不透明浅绿。
+     原用 --c-accent-soft 是半透明叠色晕（用于聚焦外环），压在白卡上偏浓；
+     改用不透明浅填充令牌 --c-accent-fill（浅 #ecfdf5 / 暗 #123a2c）。 */
+  background: var(--c-accent-fill);
 }
 .wd-profile-card strong {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
+  /* 原型 .wp3-profile-card strong：14px / 600（现状 13px / 500 过弱，选中态标题压不住） */
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
   line-height: 1.3;
 }
@@ -720,9 +729,10 @@ function cardFieldCount(t) {
   align-items: center;
   justify-content: center;
   min-height: 34px;
-  padding: var(--space-2) var(--space-3);
+  /* 原型 .wp3-add-tab：padding 7px 14px、圆角 6px */
+  padding: 7px 14px;
   border: 1px dashed var(--border-base);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--c-accent);
   font-size: var(--fs-sm);
@@ -736,10 +746,14 @@ function cardFieldCount(t) {
   min-width: 0;
 }
 .wd-sec {
+  /* 原型 .wp3-sec：卡间距 18px、圆角 9px（就近取令牌 --radius-lg 8px） */
   margin-bottom: var(--space-5);
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-md);
+  /* 卡描边走 --border-admin-card（浅色 #dde4e0 ≈ 原型 .wp3-sec 的 #dfe5e1，
+     暗色自动落 --border-base），与采集 / 知识 / Agent 三页签同源。 */
+  border: 1px solid var(--border-admin-card);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 .wd-sec:last-child {
   margin-bottom: 0;
@@ -747,12 +761,14 @@ function cardFieldCount(t) {
 .wd-sec-head {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  /* 原型 .wp3-head：gap 10px（现状 12px）；圆角交由 .wd-sec 的 overflow:hidden 裁切 */
+  gap: 10px;
   min-height: 50px;
   padding: 0 var(--space-5);
   border-bottom: 1px solid var(--border-base);
-  background: var(--bg-sunken);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  /* 卡头灰条走 --bg-admin-card-head（浅色 #f8faf9 = 原型 .wp3-head 同值，暗色有映射），
+     与采集 / 知识 / Agent 三页签同源。 */
+  background: var(--bg-admin-card-head);
 }
 .wd-sec-head strong {
   font-size: var(--fs-md, 15px);

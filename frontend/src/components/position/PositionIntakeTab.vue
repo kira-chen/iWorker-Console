@@ -182,7 +182,10 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
    照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
 .pd-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
+  /* 2026-09-10 A 组盒模型对表：卡描边走 --border-admin-card（浅色 #dde4e0 ≈ 原型
+     pd2-section 的 #dfe5e1，暗色自动落 --border-base），此前 --border-base 在浅色下
+     是 10% 黑的半透明灰、比原型描边淡一档 */
+  border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -191,15 +194,19 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  /* 对表：原型 pd2-list-head 定高 50px、纵向 padding 为 0（靠 min-height + 居中撑），
+     现状多加了上下 8px，实测卡头比原型高一档 */
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
+  /* 对表：卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射） */
+  background: var(--bg-admin-card-head);
 }
 .pd-card-title {
   display: inline-flex;
   align-items: center;
   font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
+  /* 对表：原型 pd2-list-head strong 为 <strong> 默认 700，现状 600 偏轻 */
+  font-weight: var(--fw-bold);
   color: var(--c-text-strong);
   white-space: nowrap;
 }

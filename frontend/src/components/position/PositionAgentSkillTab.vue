@@ -406,18 +406,67 @@ async function onDeleteSkill({ agentId, skillId }) {
 .pd-agent-desc {
   color: var(--c-text-base);
 }
-.pd-table :deep(.pd-row-agent) {
-  background: var(--bg-subtle, var(--fill-subtle));
+/* Agent 行底纹（原型 .sync-agent-row td{background:#f8faf9}）。
+   原写法引的 --bg-subtle / --fill-subtle 两个令牌在 tokens.css 里都不存在，
+   规则一直是哑的（对表实测底色 transparent）；改用确实存在且双主题都定义了的
+   --bg-admin-card-head（浅色恰为 #f8faf9，暗色映射到 --bg-sunken）。
+   背景要落在 td 上：EP 的单元格自带 background，打在 tr 上会被盖住。 */
+.pd-table :deep(.pd-row-agent > td.el-table__cell) {
+  background: var(--bg-admin-card-head);
+}
+/* 固定列（操作列 fixed="right"）在 theme.css 里被钉了不透明 --bg-surface 打底
+   （防横向滚动透底），特指度高于上一条，Agent 行的底纹会在操作列断掉。
+   这里按同款特指度把固定列也刷成 Agent 行底纹，保证整行一色。 */
+.pd-table :deep(.el-table__body > tr.pd-row-agent > td.el-table-fixed-column--right),
+.pd-table :deep(.el-table__body > tr.pd-row-agent > td.el-table-fixed-column--left) {
+  background-color: var(--bg-admin-card-head);
 }
 .pd-table :deep(.pd-row-agent > td) {
   border-top: 1px solid var(--border-base);
 }
 
-/* ---- Agent 与技能：表格包卡 + 抽屉内引用技能勾选区（2026-09-09 原型复刻批次 4C #13/#14） ---- */
-/* 表格直接贴卡体边（卡头已有分隔线，卡体不再补内边距） */
-.pd-card-body--flush {
+/* ---- 2026-09-10 B 路逐像素对齐（原型 .sync-table，全量盒模型对表） ----
+ * 原型表格是紧凑密度：行高 43px（表头 41px）、单元格 padding 11px 12px、
+ * 首末列 18px 外边距、字号 13px；Agent 行整行加粗 + 底纹。现状继承站内通用
+ * el-table 密度（行 60px / 表头 48px / 字号 14px），观感明显松散于原型。
+ * 只在本页签的 .pd-table--tree 内收紧，不动 theme.css 的全站表格规则。 */
+/* admin-shell.css 给全站列表表格钉了 th 48px / td 60px 的行高（那是列表页密度，
+   照原型列表页定的）；本页签是卡内嵌套表，原型密度为 th 41px / 行 43px，故在
+   .pd-table--tree 内把高度交回内容撑（height:auto），只保留单元格 padding。 */
+/* 特指度须压过 admin-shell.css 的 `body.admin-scope .el-table td.el-table__cell`
+   (0,2,3)，故这里带上 .el-table 一段凑到 (0,3,2)。 */
+.pd-table--tree.el-table :deep(th.el-table__cell),
+.pd-table--tree.el-table :deep(td.el-table__cell) {
+  height: auto;
   padding: 0;
 }
+.pd-table--tree.el-table :deep(.el-table__cell .cell) {
+  padding: 11px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+/* 表头底色：原型卡内表头是浅灰 #f7f9f8（比列表页表头 --bg-admin-table-head
+   #f2f5f3 更淡），与卡头灰条同层级，故复用 --bg-admin-card-head；
+   字重跟原型的 600（站内列表页表头为 500）。 */
+.pd-table--tree.el-table {
+  --el-table-header-bg-color: var(--bg-admin-card-head);
+}
+.pd-table--tree.el-table :deep(th.el-table__cell) {
+  font-weight: var(--fw-semibold);
+}
+/* 首末列贴卡边 18px（原型 .sync-agent-card-body 覆写） */
+.pd-table--tree.el-table :deep(.el-table__cell:first-child .cell) {
+  padding-left: var(--space-5);
+}
+.pd-table--tree.el-table :deep(.el-table__cell:last-child .cell) {
+  padding-right: var(--space-5);
+}
+/* Agent 行整行加粗（原型 .sync-agent-row td{font-weight:600}） */
+.pd-table--tree.el-table :deep(.pd-row-agent > td .cell) {
+  font-weight: var(--fw-semibold);
+}
+
+/* ---- Agent 与技能：表格包卡 + 抽屉内引用技能勾选区（2026-09-09 原型复刻批次 4C #13/#14） ---- */
 .pd-agent-skills {
   margin-top: var(--space-4);
 }
@@ -429,7 +478,9 @@ async function onDeleteSkill({ agentId, skillId }) {
 .pd-agent-skill-list {
   max-height: 46vh;
   overflow-y: auto;
-  min-height: 100px;
+  /* 原型 .position-agent-skill-list 实测高 282px（约 4 行常显）；
+     现状 min-height 100px 只露 2 行，勾选区显得局促。 */
+  min-height: 282px;
 }
 .pd-agent-skill-row {
   display: flex;
@@ -471,18 +522,25 @@ async function onDeleteSkill({ agentId, skillId }) {
 /* ---- 人格页签卡片样式的 Agent 页签用份（照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体） ---- */
 .pd-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
+  /* 盒模型对表：卡描边走 --border-admin-card（浅色 #dde4e0 ≈ 原型 .sync-agent-card
+     的 #dfe5e1，暗色自动落 --border-base）；--border-base 在浅色下是 10% 黑半透明，
+     比原型描边淡一档。与采集 / 知识两页签同源。 */
+  border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .pd-card-head {
-  min-height: 50px;
+  /* 原型 .pd2-task-section-head 实测 46px（现状 50px 略高半档） */
+  min-height: 46px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  /* 原型 .pd2-task-section-head：左右 18px、上下由 min-height 撑（无竖向 padding） */
+  padding: 0 var(--space-5);
   border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
+  /* 卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射），
+     与采集 / 知识两页签同源（PositionIntakeTab、PositionKnowledgeTab 已用此令牌）。 */
+  background: var(--bg-admin-card-head);
 }
 .pd-card-title {
   display: inline-flex;
@@ -505,5 +563,14 @@ async function onDeleteSkill({ agentId, skillId }) {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+/* 表格直接贴卡体边（卡头已有分隔线，卡体不再补内边距）。
+   原型 .sync-agent-card-body{padding:0} 且不是 flex 容器——现状 .pd-card-body
+   的 display:flex + gap:8px 会在表格外再垫一圈，一并归零。
+   注：必须排在 .pd-card-body 之后（同特指度靠源码顺序决胜）。 */
+.pd-card-body--flush {
+  display: block;
+  padding: 0;
+  gap: 0;
 }
 </style>

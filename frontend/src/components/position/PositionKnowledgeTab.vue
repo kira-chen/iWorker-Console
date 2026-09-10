@@ -196,13 +196,15 @@ function gotoKbModule(action, row) {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  /* 对表：原型 pd2-kb-toolbar padding 14px 16px（现状纵向 12px 少一档） */
+  padding: 14px var(--space-4);
 }
 /* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同 Agent 页签的 scope 复制口径，
    照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
 .pd-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
+  /* 2026-09-10 A 组盒模型对表：同采集页签，卡描边改 --border-admin-card 对齐原型描边浓度 */
+  border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -211,15 +213,17 @@ function gotoKbModule(action, row) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  /* 对表：原型 pd2-list-head 纵向 padding 为 0，靠 50px 定高居中 */
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
+  background: var(--bg-admin-card-head);
 }
 .pd-card-title {
   display: inline-flex;
   align-items: center;
   font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
+  /* 对表：原型 <strong> 默认 700 */
+  font-weight: var(--fw-bold);
   color: var(--c-text-strong);
   white-space: nowrap;
 }
