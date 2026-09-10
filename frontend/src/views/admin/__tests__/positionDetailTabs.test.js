@@ -101,14 +101,17 @@ beforeEach(() => { store.load.mockClear(); store.saveBasic.mockClear(); routeMoc
 afterEach(() => { app?.unmount(); container?.remove() })
 
 describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）', () => {
-  // 2026-09-09 负责人裁决：移除「业务系统」与「版本」两个页签。
-  // - 业务系统：原 md §1.3 第 7 页签 + §8 整节，md 已同步删除；
-  // - 版本：demo 扩展页签，正式入口是岗位列表页【版本管理】（md §3.7），详情页属重复入口。
-  it('渲染 md 六页签 + demo 扩展两页签，label 与顺序正确', async () => {
+  // 页签集合的裁决沿革（改这条断言前先读完，它是历次裁决的载体）：
+  // - 2026-09-09：移除「业务系统」与「版本」；「运行」「效果测试」保持空置占位。
+  // - 2026-09-10 上午：负责人就页签数拍板「维持现状 8 个，页签数量上 html 原型不作准」。
+  // - 2026-09-10 下午：业务系统页签带完整逻辑重新实现（引用/查看/排序，数据经
+  //   store.basic.businessSystemIds 落库），负责人复核后裁决「**选 C · 9 页签全留**」——
+  //   即 md 六页签 + 业务系统 + 运行 + 效果测试。运行/效果测试仍按 09-09 指示空置占位。
+  // 注：md §1.3 仍写「固定 6 页签」，与现状 9 个属负责人认可的已知偏差（09-10 在册）。
+  it('渲染 md 六页签 + 业务系统 + demo 扩展两页签，共 9 个，label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '运行', '效果测试'])
-    expect(labels).not.toContain('业务系统')
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试'])
     expect(labels).not.toContain('版本')
   })
 

@@ -77,6 +77,10 @@ import PositionIntakeTab from '@/components/position/PositionIntakeTab.vue'
 import PositionKnowledgeTab from '@/components/position/PositionKnowledgeTab.vue'
 import PositionAgentSkillTab from '@/components/position/PositionAgentSkillTab.vue'
 import PositionBusinessSystemTab from '@/components/position/PositionBusinessSystemTab.vue'
+// 效果测试页签（2026-09-10「选 C · 9 页签全留」裁决后随页签一并恢复）：
+// 开关关闭时只渲染「开发中」占位，异步加载避免把测试台打进主 chunk。
+import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
+const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -616,8 +620,26 @@ function backToList() {
           </el-tab-pane>
 
           <!-- 「版本」页签已按 2026-09-09 负责人裁决移除——版本管理的正式入口是岗位列表页
-               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。
-               「运行」和「效果测试」页签已删除（2026-09-10）。 -->
+               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。 -->
+
+          <!-- 「运行」「效果测试」：2026-09-10 一度被删，同日负责人裁决「选 C · 9 页签全留」后恢复。
+               二者按 2026-09-09 负责人指示保持空置（占位不实现），勿再当作冗余删除。 -->
+          <el-tab-pane label="运行" name="runtime">
+            <div class="pd-pane"><div class="pd-empty pd-dev">🚧 运行 · 开发中</div></div>
+          </el-tab-pane>
+
+          <el-tab-pane label="效果测试" name="effectTest">
+            <div class="pd-pane pd-pane--flush">
+              <EffectTestStage
+                v-if="EFFECT_TEST_ENABLED"
+                mode="position"
+                :position="{ basic: store.basic, agents: store.agents, tableCount: dtTableCount }"
+                :position-id="store.positionId"
+                embedded
+              />
+              <div v-else class="pd-empty pd-dev">🚧 效果测试 · 开发中</div>
+            </div>
+          </el-tab-pane>
 
         </el-tabs>
       </div>
