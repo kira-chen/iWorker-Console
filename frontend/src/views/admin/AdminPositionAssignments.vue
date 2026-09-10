@@ -26,7 +26,7 @@
  * 骨架沿用列表页规范（2026-08-22 统一）：取数编排 useAdminList、失败/空态 ListStates、
  * 分页 ListPagination；数据走 positionAssignmentMock / positionApplicationsMock（api 层分流）。
  */
-import { h, ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { h, ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { confirmDialog } from '@/composables/useConfirm'
 import PageHeader from '@/components/PageHeader.vue'

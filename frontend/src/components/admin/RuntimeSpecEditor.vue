@@ -6,26 +6,26 @@
  *   首行元信息（编辑态：创建 / 最近更新时间，弱色提示展示，与 API/MCP 抽屉同款）
  *   → 基本信息（规格名称[必填≤64,平台内唯一]；能力边界说明[必填≤200]——
  *     D17：FDE 只见「规格名 + 能力边界说明」，此字段是 FDE 唯一可见内容）
- *   → 资源配置（k8s Pod：CPU 核 / 内存 Gi / 临时磁盘 Gi，映射 resources.requests=limits，
+ *   → 资源配置（k8s Pod：CPU 核 / 内存 Gi / 临时存储 Gi，映射 resources.requests=limits，
  *     demo 不真连集群，映射关系以弱色提示展示）
- *   → 运行策略（任务超时 / 空闲回收 / 并发上限 / 使用需审批；均为平台侧业务策略——
- *     任务超时=调用方计时 N 分钟无结果主动结束任务。出网配置项 2026-09-03 拍板取消）
- *   → 在用用户（编辑态只读：用户名 tag + 审批态；短期版本按用户分配 Pod，
- *     用户侧分配字段落地后双向联动）。
- *
- * 2026-09-02 修正：绑定对象为用户而非岗位；不设「默认规格」。
+ *   → 适用范围（岗位批量继承 + 是否允许个人申请；申请固定进入审批）
+ *   → 运行策略（Pod 就绪等待超时 / 空闲回收 / 最大存活时长）
+ *   → 生效情况（岗位继承、个人覆盖、默认兜底）。
  * 护栏：重名走 mock ApiError 的 field 定位就地红框。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
-import { getRuntimeSpec, createRuntimeSpec, updateRuntimeSpec } from '@/api/runtimeSpec'
+import { getRuntimeSpec, getRuntimeSpecLimits, createRuntimeSpec, updateRuntimeSpec } from '@/api/runtimeSpec'
+import { listPositions } from '@/api/position'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   /** 编辑目标 id；null = 新建 */
-  specId: { type: [Number, String], default: null }
+  specId: { type: [Number, String], default: null },
+  /** 查看态：复用同一抽屉，只读展示完整配置。 */
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -37,12 +37,15 @@ const form = reactive({
   cpu: 2,
   memoryGi: 4,
   diskGi: 20,
-  timeoutMin: 10,
+  readinessTimeoutMin: 10,
   idleRecycleMin: 20,
-  concurrency: 80,
-  requireApproval: false
+  maxLifetimeHours: 0,
+  positionIds: [],
+  allowUserApply: true
 })
-const meta = reactive({ createdAt: '', updatedAt: '', usedUsers: [], requireApprovalStored: false })
+const meta = reactive({ createdAt: '', updatedAt: '', effectiveUsers: [], pendingUsers: [], isDefault: false })
+const resourceLimits = reactive({ cpu: 32, memoryGi: 128, diskGi: 500 })
+const positions = ref([])
 
 const loading = ref(false)
 const loadError = ref(false)
@@ -56,28 +59,35 @@ function clearErrors() {
 function resetForm() {
   Object.assign(form, {
     name: '', boundaryDesc: '', cpu: 2, memoryGi: 4, diskGi: 20,
-    timeoutMin: 10, idleRecycleMin: 20, concurrency: 80, requireApproval: false
+    readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0,
+    positionIds: [], allowUserApply: true
   })
-  Object.assign(meta, { createdAt: '', updatedAt: '', usedUsers: [], requireApprovalStored: false })
+  Object.assign(meta, { createdAt: '', updatedAt: '', effectiveUsers: [], pendingUsers: [], isDefault: false })
   clearErrors()
 }
 
 async function load() {
   resetForm()
-  if (!isEdit.value) return
   loading.value = true
   loadError.value = false
   try {
+    const [positionData, limitData] = await Promise.all([
+      listPositions({ size: 200, status: 'published' }),
+      getRuntimeSpecLimits()
+    ])
+    positions.value = positionData?.list || []
+    Object.assign(resourceLimits, limitData)
+    if (!isEdit.value) return
     const d = await getRuntimeSpec(props.specId)
     Object.assign(form, {
       name: d.name, boundaryDesc: d.boundaryDesc,
       cpu: d.cpu, memoryGi: d.memoryGi, diskGi: d.diskGi,
-      timeoutMin: d.timeoutMin, idleRecycleMin: d.idleRecycleMin, concurrency: d.concurrency,
-      requireApproval: d.requireApproval
+      readinessTimeoutMin: d.readinessTimeoutMin, idleRecycleMin: d.idleRecycleMin, maxLifetimeHours: d.maxLifetimeHours,
+      positionIds: d.positionIds || [], allowUserApply: d.allowUserApply
     })
     Object.assign(meta, {
       createdAt: d.createdAt, updatedAt: d.updatedAt,
-      usedUsers: d.usedUsers, requireApprovalStored: d.requireApproval
+      effectiveUsers: d.effectiveUsers || [], pendingUsers: d.pendingUsers || [], isDefault: d.isDefault
     })
   } catch (e) {
     loadError.value = true
@@ -94,16 +104,25 @@ function validate() {
   if (!form.name.trim()) errors.name = '规格名称不能为空'
   if (!form.boundaryDesc.trim()) errors.boundaryDesc = '能力边界说明必填（FDE 唯一可见的内容）'
   for (const [k, label] of [
-    ['cpu', 'CPU'], ['memoryGi', '内存'], ['diskGi', '临时磁盘'],
-    ['timeoutMin', '任务超时'], ['idleRecycleMin', '空闲回收'], ['concurrency', '并发上限']
+    ['cpu', 'CPU'], ['memoryGi', '内存'], ['diskGi', '临时存储'],
+    ['readinessTimeoutMin', '就绪等待超时'], ['idleRecycleMin', '空闲回收']
   ]) {
     if (!(Number(form[k]) > 0)) errors[k] = `${label}须大于 0`
+  }
+  if (!(Number(form.maxLifetimeHours) >= 0) || !Number.isInteger(Number(form.maxLifetimeHours))) {
+    errors.maxLifetimeHours = '最大存活时长须为非负整数'
+  }
+  for (const [k, label, unit] of [
+    ['cpu', 'CPU', '核'], ['memoryGi', '内存', 'Gi'], ['diskGi', '临时存储', 'Gi']
+  ]) {
+    if (Number(form[k]) > resourceLimits[k]) errors[k] = `${label}不能超过平台单实例上限 ${resourceLimits[k]} ${unit}`
   }
   Object.assign(fieldErrors, errors)
   return Object.keys(errors).length === 0
 }
 
 async function save() {
+  if (props.readonly) return
   if (!validate()) return
   saving.value = true
   try {
@@ -132,6 +151,7 @@ async function save() {
     :visible="visible"
     entity="规格"
     :is-edit="isEdit"
+    :readonly="readonly"
     :loading="loading"
     :error="loadError"
     :saving="saving"
@@ -149,9 +169,17 @@ async function save() {
 
     <section class="rs-sec">
       <div class="rs-sec-title">基本信息</div>
+      <el-alert
+        v-if="meta.isDefault"
+        title="这是平台默认运行规格：未绑定岗位或岗位未配置专属规格的用户自动使用；默认规格不可删除。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="rs-default-alert"
+      />
       <el-form label-position="top">
         <el-form-item label="规格名称" :error="fieldErrors.name" required>
-          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 标准、高敏" />
+          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 标准、高敏" :disabled="readonly" />
         </el-form-item>
         <el-form-item label="能力边界说明" :error="fieldErrors.boundaryDesc" required>
           <el-input
@@ -160,7 +188,8 @@ async function save() {
             :rows="2"
             maxlength="200"
             show-word-limit
-            placeholder="如：可处理 100MB 以内文件，单次任务最长 10 分钟"
+            placeholder="如：适合常规文档处理，可处理 100MB 以内文件"
+            :disabled="readonly"
           />
           <div class="rs-hint">FDE 只看到「规格名 + 能力边界说明」，看不到任何技术参数</div>
         </el-form-item>
@@ -168,20 +197,52 @@ async function save() {
     </section>
 
     <section class="rs-sec">
+      <div class="rs-sec-title">适用范围<span class="rs-sec-sub">岗位用于批量配置，个人配置作为例外覆盖</span></div>
+      <el-form label-position="top">
+        <el-form-item label="适用岗位">
+          <el-select
+            v-model="form.positionIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="不选择则不按岗位自动生效"
+            :disabled="readonly"
+            class="rs-select"
+          >
+            <el-option v-for="p in positions" :key="p.positionId" :label="p.name" :value="p.positionId" />
+          </el-select>
+          <div class="rs-hint">一个岗位最多对应一个运行规格；保存后，该岗位用户批量继承此规格</div>
+        </el-form-item>
+        <el-form-item label="允许用户申请">
+          <el-switch v-model="form.allowUserApply" :disabled="readonly || meta.isDefault" />
+          <div class="rs-hint">开启后，用户可按任务需要提交申请；所有个人申请均须审批，审批通过前继续使用原规格</div>
+        </el-form-item>
+      </el-form>
+    </section>
+
+    <section class="rs-sec">
       <div class="rs-sec-title">资源配置<span class="rs-sec-sub">k8s Pod 资源（demo：requests = limits）</span></div>
+      <el-alert
+        :title="`当前平台单实例上限：CPU ${resourceLimits.cpu} 核、内存 ${resourceLimits.memoryGi} Gi、临时存储 ${resourceLimits.diskGi} Gi。上限由平台根据集群可调度能力统一配置。`"
+        type="info"
+        :closable="false"
+        show-icon
+        class="rs-limit-alert"
+      />
       <el-form label-position="top">
         <div class="rs-row3">
           <el-form-item label="CPU（核）" :error="fieldErrors.cpu" required>
-            <el-input-number v-model="form.cpu" :min="0.5" :step="0.5" class="rs-num" />
-            <div class="rs-hint">resources.cpu</div>
+            <el-input-number v-model="form.cpu" :min="0.5" :max="resourceLimits.cpu" :step="0.5" class="rs-num" :disabled="readonly" />
+            <div class="rs-hint">最多 {{ resourceLimits.cpu }} 核 · resources.cpu</div>
           </el-form-item>
           <el-form-item label="内存（Gi）" :error="fieldErrors.memoryGi" required>
-            <el-input-number v-model="form.memoryGi" :min="1" :step="1" class="rs-num" />
-            <div class="rs-hint">resources.memory</div>
+            <el-input-number v-model="form.memoryGi" :min="1" :max="resourceLimits.memoryGi" :step="1" class="rs-num" :disabled="readonly" />
+            <div class="rs-hint">最多 {{ resourceLimits.memoryGi }} Gi · resources.memory</div>
           </el-form-item>
-          <el-form-item label="临时磁盘（Gi）" :error="fieldErrors.diskGi" required>
-            <el-input-number v-model="form.diskGi" :min="1" :step="5" class="rs-num" />
-            <div class="rs-hint">resources.ephemeral-storage</div>
+          <el-form-item label="临时存储（Gi）" :error="fieldErrors.diskGi" required>
+            <el-input-number v-model="form.diskGi" :min="1" :max="resourceLimits.diskGi" :step="5" class="rs-num" :disabled="readonly" />
+            <div class="rs-hint">最多 {{ resourceLimits.diskGi }} Gi · resources.ephemeral-storage</div>
           </el-form-item>
         </div>
       </el-form>
@@ -191,40 +252,32 @@ async function save() {
       <div class="rs-sec-title">运行策略</div>
       <el-form label-position="top">
         <div class="rs-row3">
-          <el-form-item label="任务超时（分钟）" :error="fieldErrors.timeoutMin" required>
-            <el-input-number v-model="form.timeoutMin" :min="1" class="rs-num" />
-            <div class="rs-hint">调用方发起任务后计时，超时未返回结果则主动结束该任务</div>
+          <el-form-item label="Pod 就绪超时（分钟）" :error="fieldErrors.readinessTimeoutMin" required>
+            <el-input-number v-model="form.readinessTimeoutMin" :min="1" class="rs-num" :disabled="readonly" />
+            <div class="rs-hint">创建 Pod 后等待 warmed=true，写入时转为秒；不是任务超时</div>
           </el-form-item>
           <el-form-item label="空闲回收（分钟）" :error="fieldErrors.idleRecycleMin" required>
-            <el-input-number v-model="form.idleRecycleMin" :min="1" class="rs-num" />
+            <el-input-number v-model="form.idleRecycleMin" :min="1" class="rs-num" :disabled="readonly" />
             <div class="rs-hint">空闲达时长后回收 Pod</div>
           </el-form-item>
-          <el-form-item label="并发上限" :error="fieldErrors.concurrency" required>
-            <el-input-number v-model="form.concurrency" :min="1" class="rs-num" />
-            <div class="rs-hint">该规格同时运行的实例数</div>
-          </el-form-item>
-        </div>
-        <div class="rs-row2">
-          <el-form-item label="使用需审批">
-            <el-switch v-model="form.requireApproval" />
-            <div class="rs-hint">开启后，为用户分配该规格需管理员审批通过</div>
+          <el-form-item label="最大存活时长（小时）" :error="fieldErrors.maxLifetimeHours" required>
+            <el-input-number v-model="form.maxLifetimeHours" :min="0" :step="1" class="rs-num" :disabled="readonly" />
+            <div class="rs-hint">0 表示不限；对已运行 Pod 也生效</div>
           </el-form-item>
         </div>
       </el-form>
     </section>
 
-    <!-- 在用用户（编辑态只读；短期版本为每个用户分配 Pod，用户侧分配字段落地后双向联动） -->
     <section v-if="isEdit" class="rs-sec">
-      <div class="rs-sec-title">在用用户<span class="rs-sec-sub">只读 · 短期版本按用户分配 Pod</span></div>
-      <div v-if="meta.usedUsers.length" class="rs-used">
-        <span v-for="u in meta.usedUsers" :key="u.username" class="rs-used-item">
+      <div class="rs-sec-title">生效情况<span class="rs-sec-sub">只读 · 个人配置 &gt; 岗位继承 &gt; 平台默认</span></div>
+      <div v-if="meta.effectiveUsers.length" class="rs-used">
+        <span v-for="u in meta.effectiveUsers.slice(0, 10)" :key="u.username" class="rs-used-item">
           <StatusTag type="info">{{ u.name }}</StatusTag>
-          <StatusTag v-if="meta.requireApprovalStored && u.approval" :type="u.approval === 'APPROVED' ? 'success' : 'warning'">
-            {{ u.approval === 'APPROVED' ? '已审批' : '待审批' }}
-          </StatusTag>
+          <span class="rs-source">{{ u.source === 'USER' ? '个人配置' : u.source === 'POSITION' ? `岗位 · ${u.positionName}` : '平台默认' }}</span>
         </span>
       </div>
-      <div v-else class="rs-used-empty">暂无用户使用</div>
+      <div v-else class="rs-used-empty">暂无用户生效</div>
+      <div v-if="meta.pendingUsers.length" class="rs-pending">另有 {{ meta.pendingUsers.length }} 个个人申请待审批</div>
     </section>
   </DrawerEditor>
 </template>
@@ -269,6 +322,9 @@ async function save() {
 .rs-num {
   width: 100%;
 }
+.rs-select { width: 100%; }
+.rs-default-alert { margin-bottom: var(--space-3); }
+.rs-limit-alert { margin-bottom: var(--space-3); }
 .rs-hint {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
@@ -289,4 +345,10 @@ async function save() {
   font-size: var(--fs-sm);
   color: var(--c-text-faint);
 }
+.rs-source,
+.rs-pending {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.rs-pending { margin-top: var(--space-2); }
 </style>

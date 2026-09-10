@@ -44,7 +44,13 @@ const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
 
 // 切换排序
 function toggleSort() {
-  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
+  onSortChange({ prop: 'lastLogin', order: query.sort === 'desc' ? 'ascending' : 'descending' })
+}
+
+// 保留列表统一改造前的排序事件入口，供既有测试和可能的表格适配层复用。
+function onSortChange({ prop, order } = {}) {
+  if (prop !== 'lastLogin') return
+  query.sort = order === 'ascending' ? 'asc' : 'desc'
   reload()
 }
 

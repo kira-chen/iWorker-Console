@@ -228,7 +228,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：自定义排序按钮，默认倒序（改名或改页面权限都刷新） -->
-        <el-table-column :width="165">
+        <el-table-column label="最近更新时间" :width="165">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
