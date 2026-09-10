@@ -580,6 +580,10 @@ async function requestClose() {
   border-radius: 0;
   box-shadow: none;
   animation: none;
+  /* 2026-09-10 岗位详情原型对齐（负责人指认）：页签条与双栏内容之间的整宽留白带——
+     原型实测页签条底 118px、.pd2-task-layout 顶 140px，即 22px 页面底色空档，
+     此前白色列表列直接顶到页签条。22px 为原型实测值（其 task-detail padding 同用 22px 系）。 */
+  margin-top: 22px;
 }
 
 /* ── 顶栏面包屑（复刻 .ed-crumb） ── */
