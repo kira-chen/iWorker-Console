@@ -657,10 +657,14 @@ async function requestClose() {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
 }
-/* 内联态（#16）：左栏 240px 白底右描边，右栏灰底（原型 .pd2-task-layout） */
+/* 内联态（#16）：左栏 240px，右栏 1fr（原型 .pd2-task-layout 实测 240px 1fr / gap 0）。
+   2026-09-10 逐像素对齐（负责人指认「边框与对齐」）：原型两栏各自是独立白卡
+   （1px #dfe5e1 + 8px 圆角），此前现状两栏无外框、右栏通底，故补 gap 与卡片化。 */
 .st-embedded .st-body {
   grid-template-columns: 240px minmax(0, 1fr);
   background: var(--bg-sunken);
+  gap: 16px;
+  align-items: start;
 }
 
 /* ① 列表栏 */
@@ -670,9 +674,15 @@ async function requestClose() {
   padding: var(--space-3);
   overflow: auto;
 }
+/* 列表栏卡片化（原型 .pd2-task-list 实测：1px 边框 + 8px 圆角 + 白底 + padding 0） */
 .st-embedded .st-col-list {
-  border-right: 1px solid var(--border-base);
-  padding: var(--space-1) 0 var(--space-2);
+  border: 1px solid var(--border-base);
+  /* 原型 .pd2-task-list / .pd2-task-detail 实测 8px */
+  border-radius: 8px;
+  background: var(--bg-surface);
+  padding: 0;
+  overflow: hidden auto;
+  align-self: stretch;
 }
 .st-embedded .st-limit-tip {
   margin: var(--space-2) var(--space-2) var(--space-1);
@@ -700,17 +710,20 @@ async function requestClose() {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  /* 2026-09-10 逐像素对齐原型 .pd2-task-item：11px 14px、无圆角、下边线分隔、左 3px 选中条 */
+  padding: 11px 14px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-soft);
   cursor: pointer;
   position: relative;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
   transition: background var(--dur-fast) var(--ease-out);
 }
 .st-item:hover {
   background: var(--bg-hover);
 }
 .st-item.on {
+  /* 原型 .pd2-task-item.active 底色 #edf7f2；站内对应令牌即 --bg-selected（双主题已定义） */
   background: var(--bg-selected);
   border-left-color: var(--c-accent);
 }
@@ -884,10 +897,16 @@ async function requestClose() {
   min-height: 0;
   overflow: hidden;
 }
-/* 内联态（#16）：右栏灰底（内容限宽 860 居中由 SampleTaskEditor 的 embedded 态负责） */
+/* 内联态右栏卡片化（原型 .pd2-task-detail 实测：1px 边框 + 8px 圆角 + 白底 +
+   padding 22px 28px 80px）。此前为通底灰面无外框，是「边框缺失」的主因。 */
 .st-embedded .st-col-edit,
 .st-embedded .st-placeholder {
-  background: var(--bg-sunken);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  padding: 22px 28px 80px;
+  overflow: hidden auto;
+  align-self: stretch;
 }
 
 /* ── 测试结果面板 ── */

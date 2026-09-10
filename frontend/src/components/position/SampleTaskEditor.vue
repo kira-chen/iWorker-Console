@@ -824,16 +824,24 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--space-4);
 }
+/* 2026-09-10 逐像素对齐：内联态右栏 padding 已由 .st-col-edit 按原型
+   （22px 28px 80px）承担，此处不再叠加；卡间距改用原型的 20px。 */
+.ste-embedded .ste-scroll {
+  padding: 0;
+  overflow: visible;
+}
 .ste-embedded .ste-inner {
   max-width: 860px;
   margin: 0 auto;
+  gap: 20px;
 }
 
 /* 分区卡（#18：卡头带 3px 绿条 + 灰底头条，卡体单独 18px 内边距，去阴影） */
 .te-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-base);
-  border-radius: var(--radius-lg);
+  /* 原型 .pd2-task-section 实测 9px */
+  border-radius: 9px;
   overflow: hidden;
 }
 .te-card-title {
@@ -1162,5 +1170,13 @@ onMounted(async () => {
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-soft);
   background: var(--bg-sunken);
+}
+/* 2026-09-10 逐像素对齐：内联态右栏已卡片化并自带滚动（padding-bottom 80px 给按钮留位，
+   同原型 .pd2-task-detail），此处若继续 sticky 会浮在卡片底部盖住内容——改为随内容流。 */
+.ste-embedded .meta-actions {
+  position: static;
+  border-top: none;
+  background: transparent;
+  padding: var(--space-4) 0 0;
 }
 </style>
