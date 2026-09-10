@@ -23,6 +23,11 @@ export function getRuntimeSpec(id) {
   return request.get(`/fde/runtime-specs/${id}`)
 }
 
+export function getRuntimeSpecLimits() {
+  if (USE_MOCK) return mock.getRuntimeSpecLimits()
+  return request.get('/fde/runtime-specs/limits')
+}
+
 export function createRuntimeSpec(payload) {
   if (USE_MOCK) return mock.createRuntimeSpec(payload)
   return request.post('/fde/runtime-specs', payload, W)
@@ -36,4 +41,24 @@ export function updateRuntimeSpec(id, payload) {
 export function deleteRuntimeSpec(id) {
   if (USE_MOCK) return mock.deleteRuntimeSpec(id)
   return request.delete(`/fde/runtime-specs/${id}`, W)
+}
+
+export function listRuntimeSpecUsers(id, params = {}) {
+  if (USE_MOCK) return mock.listRuntimeSpecUsers(id, params)
+  return request.get(`/fde/runtime-specs/${id}/users`, { params })
+}
+
+export function assignRuntimeSpecUsers(id, usernames) {
+  if (USE_MOCK) return mock.assignRuntimeSpecUsers(id, usernames)
+  return request.put(`/fde/runtime-specs/${id}/users`, { usernames }, W)
+}
+
+export function applyRuntimeSpecForUser(id, username) {
+  if (USE_MOCK) return mock.applyRuntimeSpecForUser(id, username)
+  return request.post(`/fde/runtime-specs/${id}/applications`, { username }, W)
+}
+
+export function unassignRuntimeSpecUser(id, username) {
+  if (USE_MOCK) return mock.unassignRuntimeSpecUser(id, username)
+  return request.delete(`/fde/runtime-specs/${id}/users/${encodeURIComponent(username)}`, W)
 }

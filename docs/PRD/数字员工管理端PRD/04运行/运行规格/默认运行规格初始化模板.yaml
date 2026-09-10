@@ -1,0 +1,23 @@
+# 默认运行规格初始化模板
+# 使用方式：研发可直接将下列键值写入默认规格的代码或配置文件。
+# 现场适配时只修改值，不删除、改名或增加字段。
+# CPU 和存储均必须保持 request = limit。
+
+cpuRequest: "2"
+cpuLimit: "2"
+
+memoryRequest: "4Gi"
+memoryLimit: "4Gi"
+
+ephemeralStorageRequest: "20Gi"
+ephemeralStorageLimit: "20Gi"
+
+# Pod 创建后等待 warmed=true 的总超时，单位：秒。
+# 这不是单次任务执行超时。
+readinessTimeoutSeconds: 600
+
+# Pod 连续空闲后回收的等待时间，单位：秒。
+idleTimeoutSeconds: 1200
+
+# Pod 最大存活时间，单位：秒。0 表示不限。
+maxLifetimeSeconds: 0
