@@ -149,16 +149,21 @@ function openEdit(row) {
 // 展示全部四态；默认按提交时间由近到远，点列头切换升降序（分组「待审核置顶」由 mock 保持不变，
 // 仅组内顺序反转，见 positionApplicationsMock.listPositionApplications）。
 const appSortDir = ref('desc')
+
+// 排序方向箭头
+const appSortArrow = computed(() => appSortDir.value === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleAppSort() {
+  appSortDir.value = appSortDir.value === 'desc' ? 'asc' : 'desc'
+  appList.search()
+}
+
 // 审核状态筛选（md §4.1）：'' = 全部状态；切换后回第 1 页
 const appQuery = reactive({ reviewStatus: '' })
 const appList = useAdminList(listPositionApplications, {
   params: () => ({ sortDir: appSortDir.value, reviewStatus: appQuery.reviewStatus })
 })
-
-function onAppSortChange({ order }) {
-  appSortDir.value = order === 'ascending' ? 'asc' : 'desc'
-  appList.search()
-}
 
 // 审核结果标签四色（md §4.2）：待审核黄 / 已通过绿 / 已驳回红 / 已重新绑定蓝
 const REVIEW_STATUS_OPTIONS = [
@@ -438,12 +443,12 @@ onMounted(() => {
                 <span class="pa-username">{{ row.requestedPositionName || '—' }}</span>
               </template>
             </el-table-column>
-            <el-table-column
-              label="提交时间"
-              prop="submittedAt"
-              sortable="custom"
-              :width="COL.TIME"
-            >
+            <el-table-column :width="COL.TIME">
+              <template #header>
+                <button type="button" class="time-sort" @click="toggleAppSort">
+                  提交时间 <span class="time-sort-arrow">{{ appSortArrow }}</span>
+                </button>
+              </template>
               <template #default="{ row }">
                 <span class="pa-time">{{ row.submittedAt }}</span>
               </template>
@@ -582,5 +587,30 @@ onMounted(() => {
 /* 「重新绑定」回跳置顶高亮（原型 paFocusUserId 行） */
 .pa-table :deep(.pa-row-focus) td {
   background: var(--c-accent-fill);
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 </style>
