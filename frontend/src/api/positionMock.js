@@ -536,7 +536,7 @@ function syncCounts(p) {
 function skillRefVO(ref) {
   const raw = skillMock._getRaw(ref.skillId)
   if (!raw) {
-    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0 }
+    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0, toolCount: 0 }
   }
   // 类别派生口径与后端一致：引用业务系统/数据表 → 操作类，否则查询类
   const isOperation = (raw.toolRefs || []).some((c) => String(c).startsWith('biz__') || String(c).startsWith('table__'))
@@ -548,7 +548,10 @@ function skillRefVO(ref) {
     category: isOperation ? 'OPERATION' : 'QUERY',
     status: raw.status,
     versionLabel: raw.version || '',
-    sortOrder: ref.sortOrder ?? 0
+    sortOrder: ref.sortOrder ?? 0,
+    // 2026-09-10 D1（md §6.4 技能子行「工具数量」）：summary 形状补工具数——读时派生自
+    // 技能本体 toolRefs（unifiedSkillMock 单一真相），非落盘字段，无需 bump persist version。
+    toolCount: (raw.toolRefs || []).length
   }
 }
 

@@ -74,21 +74,17 @@ const agentSkillRows = computed(() => {
   for (const a of store.agents) {
     out.push({ kind: 'agent', agentId: a.agentId, name: a.name, description: a.description || '', skillCount: (a.skills || []).length })
     for (const sk of a.skills || []) {
-      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolText(sk) })
+      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolCount(sk) })
     }
   }
   return out
 })
-// 工具读写摘要：referencedTools 在总览态被剥离（store 稳定性），此处能拿到就算读/写、拿不到显 —。
-function agentSkillToolText(sk) {
-  const refs = sk?.referencedTools
-  if (!Array.isArray(refs) || !refs.length) return '—'
-  const write = refs.filter((t) => t.requiresConfirmation).length
-  const read = refs.length - write
-  const parts = []
-  if (read) parts.push(`${read} 读`)
-  if (write) parts.push(`${write} 写`)
-  return parts.join(' · ') || '—'
+// 工具数量（md §6.4：技能子行展示「工具数量」，2026-09-10 D1 修复——此前总览态恒显「—」）：
+// 总览 summary VO 自带 toolCount（mock 同源自技能本体 toolRefs 条数）；聚焦态 detail 形状
+// 兜底数 referencedTools；均缺按 0 计（md 未细化无工具口径，按数值 0 展示）。
+function agentSkillToolCount(sk) {
+  if (Number.isFinite(sk?.toolCount)) return sk.toolCount
+  return Array.isArray(sk?.referencedTools) ? sk.referencedTools.length : 0
 }
 const skillCategoryText = (c) => (c ? categoryLabel(c) : '—')
 
@@ -325,17 +321,26 @@ async function onDeleteSkill({ agentId, skillId }) {
 
   <!-- #14 新建 / 编辑 Agent 同一抽屉（680px，照原型 position-agent-drawer）：基本信息 + 引用技能勾选区 -->
   <DrawerEditor v-model:visible="agentDrawerOpen" :title="agentDrawerIsNew ? '新建 Agent' : '编辑 Agent'" size="680px" append-to-body>
-    <el-form label-position="top" class="pd-drawer-form">
-      <!-- 字段上限按 md §6.2：名称 64（Q25⑤ 全局名称类统一 64，原型 60 不跟进）、
-           职责描述必填 ≤500（Q25④ 补充说明「取 500，尽量减少例外情况」） -->
-      <el-form-item label="Agent 名称" required>
-        <el-input v-model="agentDraft.name" maxlength="64" show-word-limit placeholder="如：客户洞察" />
-      </el-form-item>
-      <el-form-item label="职责描述" required>
-        <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="500" show-word-limit
-                  placeholder="决定主实例把子任务委派给这个 Agent 时的执行口径" />
-      </el-form-item>
-    </el-form>
+    <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：名称 / 职责描述包进「基本信息」分组卡
+         （照原型抽屉分组形态，与下方「引用技能」卡同款 .pd-card 家族） -->
+    <section class="pd-card">
+      <div class="pd-card-head">
+        <span class="pd-card-title">基本信息</span>
+      </div>
+      <div class="pd-card-body">
+        <el-form label-position="top" class="pd-drawer-form">
+          <!-- 字段上限按 md §6.2：名称 64（Q25⑤ 全局名称类统一 64，原型 60 不跟进）、
+               职责描述必填 ≤500（Q25④ 补充说明「取 500，尽量减少例外情况」） -->
+          <el-form-item label="Agent 名称" required>
+            <el-input v-model="agentDraft.name" maxlength="64" show-word-limit placeholder="如：客户洞察" />
+          </el-form-item>
+          <el-form-item label="职责描述" required>
+            <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="500" show-word-limit
+                      placeholder="决定主实例把子任务委派给这个 Agent 时的执行口径" />
+          </el-form-item>
+        </el-form>
+      </div>
+    </section>
 
     <!-- 引用技能勾选区（md §6.4）：达 100 上限后未勾选项置灰 -->
     <section class="pd-card pd-agent-skills">

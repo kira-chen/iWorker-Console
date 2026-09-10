@@ -79,39 +79,48 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
 
 <template>
   <div class="pd-pane">
-    <div class="pd-list-head">
-      <!-- 表头副题照原型 intakePane L1854；达 10 个【新增采集字段】置灰（md §3.1） -->
-      <div class="pd-list-title">采集字段<span class="pd-list-sub">员工领用时填写，最多 {{ LIMITS.INTAKE_MAX }} 个</span></div>
-      <el-button v-if="!isReadonly" type="primary" size="small" :disabled="intakeAtLimit" @click="openIntakeCreate">＋ 新增采集字段</el-button>
-    </div>
-    <el-table :data="intakeRows" class="pd-table" empty-text="暂无采集字段，点「新增采集字段」添加">
-      <el-table-column type="index" label="#" width="52" />
-      <el-table-column prop="label" label="字段名" min-width="160" />
-      <el-table-column label="字段 key" min-width="140">
-        <template #default="{ row }"><span class="pd-mono">{{ row.key || genKeyFromLabel(row.label) || '—' }}</span></template>
-      </el-table-column>
-      <el-table-column label="类型" width="120">
-        <template #default="{ row }">{{ intakeTypeLabel(row.type) }}</template>
-      </el-table-column>
-      <el-table-column label="必填" width="80" align="center">
-        <template #default="{ row }">{{ row.required ? '是' : '否' }}</template>
-      </el-table-column>
-      <el-table-column label="选项" min-width="180">
-        <template #default="{ row }">
-          <span v-if="isSelectType(row.type)">{{ (row.options || []).filter(Boolean).join(' / ') || '—' }}</span>
-          <span v-else class="pd-faint">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="130" fixed="right">
-        <template #default="{ row, $index }">
-          <span v-if="isReadonly" class="pd-faint">只读</span>
-          <template v-else>
-            <el-button link type="primary" @click="openIntakeEdit(row, $index)">编辑</el-button>
-            <el-button link type="danger" @click="deleteIntakeRow($index)">删除</el-button>
-          </template>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：区块头 + 表格整体并入一张白卡
+         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与 Agent 页签同款包卡） -->
+    <section class="pd-card">
+      <div class="pd-card-head">
+        <!-- 表头副题照原型 intakePane L1854；达 10 个【新增采集字段】置灰（md §3.1） -->
+        <span class="pd-card-title">采集字段</span>
+        <span class="pd-card-sub">员工领用时填写，最多 {{ LIMITS.INTAKE_MAX }} 个</span>
+        <span class="pd-card-spacer"></span>
+        <el-button v-if="!isReadonly" type="primary" size="small" :disabled="intakeAtLimit" @click="openIntakeCreate">＋ 新增采集字段</el-button>
+      </div>
+      <div class="pd-card-body pd-card-body--flush">
+        <!-- 2026-09-10 D2：锁定态（isReadonly）无【新增采集字段】按钮，空态文案不再引导点按钮 -->
+        <el-table :data="intakeRows" class="pd-table" :empty-text="isReadonly ? '暂无采集字段' : '暂无采集字段，点「新增采集字段」添加'">
+          <el-table-column type="index" label="#" width="52" />
+          <el-table-column prop="label" label="字段名" min-width="160" />
+          <el-table-column label="字段 key" min-width="140">
+            <template #default="{ row }"><span class="pd-mono">{{ row.key || genKeyFromLabel(row.label) || '—' }}</span></template>
+          </el-table-column>
+          <el-table-column label="类型" width="120">
+            <template #default="{ row }">{{ intakeTypeLabel(row.type) }}</template>
+          </el-table-column>
+          <el-table-column label="必填" width="80" align="center">
+            <template #default="{ row }">{{ row.required ? '是' : '否' }}</template>
+          </el-table-column>
+          <el-table-column label="选项" min-width="180">
+            <template #default="{ row }">
+              <span v-if="isSelectType(row.type)">{{ (row.options || []).filter(Boolean).join(' / ') || '—' }}</span>
+              <span v-else class="pd-faint">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="130" fixed="right">
+            <template #default="{ row, $index }">
+              <span v-if="isReadonly" class="pd-faint">只读</span>
+              <template v-else>
+                <el-button link type="primary" @click="openIntakeEdit(row, $index)">编辑</el-button>
+                <el-button link type="danger" @click="deleteIntakeRow($index)">删除</el-button>
+              </template>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </section>
   </div>
 
   <!-- 采集字段编辑抽屉 -->
@@ -168,5 +177,41 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同 Agent 页签的 scope 复制口径，
+   照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
+.pd-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.pd-card-head {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-sunken);
+}
+.pd-card-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  white-space: nowrap;
+}
+.pd-card-sub {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
+}
+.pd-card-spacer {
+  margin-left: auto;
+}
+.pd-card-body--flush {
+  padding: 0;
 }
 </style>

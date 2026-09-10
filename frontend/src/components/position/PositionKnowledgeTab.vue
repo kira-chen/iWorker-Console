@@ -100,65 +100,72 @@ function gotoKbModule(action, row) {
 
 <template>
   <div class="pd-pane">
-    <!-- 区块头照原型 pdHead('知识库','该岗位可见范围内的知识库')；新建按钮已删（md §5.2 / 原型 L4021） -->
-    <div class="pd-list-head">
-      <div class="pd-list-title">知识库<span class="pd-list-sub">该岗位可见范围内的知识库</span></div>
-    </div>
-    <!-- 工具栏照原型 pd2-kb-toolbar：搜索知识库名称 / 全部状态 / 查询 -->
-    <div class="pd-kb-toolbar">
-      <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable class="pd-kb-search" @keyup.enter="applyKbQuery" />
-      <el-select v-model="kbStatus" placeholder="全部状态" clearable class="pd-kb-status">
-        <el-option label="未发布" value="未发布" />
-        <el-option label="审核中" value="审核中" />
-        <el-option label="已发布" value="已发布" />
-      </el-select>
-      <el-button @click="applyKbQuery">查询</el-button>
-    </div>
-    <div v-if="kbError" class="pd-empty">
-      知识库加载失败
-      <el-button link type="primary" @click="loadPositionKbs">重试</el-button>
-    </div>
-    <!-- 列照 md §5.1 / 原型 L1871：知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作；空态照原型 -->
-    <el-table
-      v-else
-      v-loading="kbLoading"
-      :data="kbVisibleRows"
-      class="pd-table"
-      empty-text="暂无该岗位可见的知识库"
-    >
-      <el-table-column label="知识库名称" min-width="200">
-        <template #default="{ row }">
-          <span class="pd-kb-name" :title="row.description || ''">{{ row.name }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="知识库描述" min-width="200" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.description || NA }}</template>
-      </el-table-column>
-      <el-table-column label="数据源" min-width="160" show-overflow-tooltip>
-        <template #default="{ row }">{{ kbSourcesText(row) }}</template>
-      </el-table-column>
-      <el-table-column label="文档数量" width="90" align="right">
-        <template #default="{ row }">{{ kbDocText(row) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="100" align="center">
-        <template #default="{ row }">
-          <el-tag size="small" :type="kbStateMeta(row).type" effect="plain">{{ kbStateMeta(row).label }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="170" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="gotoKbModule('view', row)">查看</el-button>
-          <el-button
-            v-if="row.status === 'PUBLISHED'"
-            link
-            type="primary"
-            @click="openKbSearch(row)"
-          >
-            检索测试
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：区块头 + 工具栏 + 表格整体并入一张白卡
+         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与 Agent 页签同款包卡） -->
+    <section class="pd-card">
+      <!-- 区块头照原型 pdHead('知识库','该岗位可见范围内的知识库')；新建按钮已删（md §5.2 / 原型 L4021） -->
+      <div class="pd-card-head">
+        <span class="pd-card-title">知识库</span>
+        <span class="pd-card-sub">该岗位可见范围内的知识库</span>
+      </div>
+      <div class="pd-card-body pd-card-body--flush">
+        <!-- 工具栏照原型 pd2-kb-toolbar：搜索知识库名称 / 全部状态 / 查询 -->
+        <div class="pd-kb-toolbar">
+          <el-input v-model="kbKeyword" placeholder="搜索知识库名称" clearable class="pd-kb-search" @keyup.enter="applyKbQuery" />
+          <el-select v-model="kbStatus" placeholder="全部状态" clearable class="pd-kb-status">
+            <el-option label="未发布" value="未发布" />
+            <el-option label="审核中" value="审核中" />
+            <el-option label="已发布" value="已发布" />
+          </el-select>
+          <el-button @click="applyKbQuery">查询</el-button>
+        </div>
+        <div v-if="kbError" class="pd-empty">
+          知识库加载失败
+          <el-button link type="primary" @click="loadPositionKbs">重试</el-button>
+        </div>
+        <!-- 列照 md §5.1 / 原型 L1871：知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作；空态照原型 -->
+        <el-table
+          v-else
+          v-loading="kbLoading"
+          :data="kbVisibleRows"
+          class="pd-table"
+          empty-text="暂无该岗位可见的知识库"
+        >
+          <el-table-column label="知识库名称" min-width="200">
+            <template #default="{ row }">
+              <span class="pd-kb-name" :title="row.description || ''">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="知识库描述" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.description || NA }}</template>
+          </el-table-column>
+          <el-table-column label="数据源" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ kbSourcesText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="文档数量" width="90" align="right">
+            <template #default="{ row }">{{ kbDocText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="kbStateMeta(row).type" effect="plain">{{ kbStateMeta(row).label }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="gotoKbModule('view', row)">查看</el-button>
+              <el-button
+                v-if="row.status === 'PUBLISHED'"
+                link
+                type="primary"
+                @click="openKbSearch(row)"
+              >
+                检索测试
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </section>
   </div>
 
   <!-- 检索测试弹窗（md §5.3 / Q455）：知识页签行内【检索测试】原地打开，全平台同一个独立弹窗 -->
@@ -183,12 +190,46 @@ function gotoKbModule(action, row) {
   color: var(--c-text-strong);
   font-weight: var(--fw-medium);
 }
-/* 知识页签工具栏（原型 pd2-kb-toolbar：搜索 220 / 状态 130 / 查询，gap 12） */
+/* 知识页签工具栏（原型 pd2-kb-toolbar：搜索 220 / 状态 130 / 查询，gap 12）
+   2026-09-10 S3 入卡后改内边距铺排（卡体 --flush 无内边距，表格贴边、工具栏自带留白） */
 .pd-kb-toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同 Agent 页签的 scope 复制口径，
+   照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
+.pd-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.pd-card-head {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-sunken);
+}
+.pd-card-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  white-space: nowrap;
+}
+.pd-card-sub {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
+}
+.pd-card-body--flush {
+  padding: 0;
 }
 .pd-kb-search {
   width: 220px;

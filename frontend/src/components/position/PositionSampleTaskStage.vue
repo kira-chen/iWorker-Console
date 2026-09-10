@@ -67,7 +67,14 @@ async function loadList() {
   }
 }
 
-onMounted(loadList)
+onMounted(async () => {
+  await loadList()
+  // 2026-09-10 S2（岗位详情原型对齐排查·负责人裁决）：进入页签列表非空即自动选中第一条，
+  // 右侧直接展示编辑器（照原型落地态；md §7 未规定落地态，不涉口径）。空列表仍走既有占位空态。
+  if (selectedId.value == null && items.value.length) {
+    selectedId.value = items.value[0].id
+  }
+})
 
 // 缺「一句话指令」标记：样例默认启用（ENABLED），发布时后端硬拦空 prompt（1003）。
 // 前端在列表侧提前给可感知提示（红点 tag），让 FDE 发布前就能看出哪条样例还没填指令、需补齐。
