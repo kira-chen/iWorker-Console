@@ -1119,7 +1119,10 @@ export const units = [
         },
         containers: {
           页面根: { proto: '.page', app: '.page' },
-          内容层: { proto: '.page', app: '.list-page' },
+          // 2026-09-10 修配置：原型侧原误写 `.page`（与「页面根」同一个元素），
+          // 等于拿页面根去比内容层，恒报 6 条假差异（x/width/padding）。
+          // 改为与其余列表单元同口径 `.page > div:last-child`。
+          内容层: { proto: '.page > div:last-child', app: '.list-page' },
           页头: { proto: '.page-head', app: '.page-header' },
           页头标题: { proto: '.page-head h1', app: '.page-header-title' },
           页头副文案: { proto: '.page-head p', app: '.page-header-sub' },
