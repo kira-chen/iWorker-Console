@@ -1,0 +1,60 @@
+# 提交自动体检（GitHub Actions）
+# ============================================================================
+# 【这是什么】
+# 每次有人把代码推上 GitHub，GitHub 就用它自己的机器自动跑一遍单测与构建，
+# 结果直接标在提交旁边：✅ 绿勾 = 没问题，❌ 红叉 = 有问题点进去看日志。
+#
+# 【为什么加】
+# 2026-09-10：一次直推 main 的提交带着 2 个白屏页面（computed 未 import）和
+# 22 条测试失败进了主干，另一路开发 pull 到后被迫停摆半天。根因不是没规矩
+# （CLAUDE.md 早就写了「commit 前全量测试须绿」），而是规矩靠人自觉、漏跑了没人拦。
+# 装上这个之后，跑不跑测试不再取决于是否记得。
+#
+# 【它不做什么】
+# 只体检、不拦截、不改代码。红叉不会阻止推送，只是让问题在几分钟内被看见，
+# 而不是等别人 pull 下来踩坑才发现。
+#
+# 【费用】私有仓库每月 2000 分钟免费额度；本项目单次约 3-5 分钟，用不完。
+name: CI
+
+# 触发时机：推到任何分支、以及针对 main 的 PR
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: 单测 + 构建
+    runs-on: ubuntu-latest
+    # 正常 3-5 分钟；卡死时不至于空耗额度
+    timeout-minutes: 15
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node 环境
+        uses: actions/setup-node@v4
+        with:
+          # 与本机开发环境同一大版本（本机 v26）
+          node-version: '22'
+          # 缓存 npm 依赖，第二次以后快很多
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        working-directory: frontend
+        # npm ci 严格按 package-lock 安装，比 npm install 快且可复现
+        run: npm ci
+
+      - name: 跑单元测试
+        working-directory: frontend
+        # 就是本地的 npm run test（vitest run，约 1834 条用例）
+        run: npm run test
+
+      - name: 跑生产构建
+        working-directory: frontend
+        # 单测过了不代表能构建出来，两道都要过
+        run: npm run build
