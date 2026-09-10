@@ -362,5 +362,7 @@ async function submitReject(reason) {
 }
 .rev-sort-arrow {
   margin-left: 2px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 </style>

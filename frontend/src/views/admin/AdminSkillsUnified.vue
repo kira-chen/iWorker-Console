@@ -80,10 +80,12 @@ const actionBusy = ref(null) // 行级互斥：停用/删除/撤回共用（一�
 const fetchList = list.reload
 const reload = list.search
 
-/** 「最近更新时间」列头排序：切方向后按当前条件重取（mock 全量排序）；order=null 回落默认降序。 */
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
+// 排序方向箭头
+const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
   fetchList()
 }
 
@@ -570,8 +572,6 @@ onBeforeUnmount(() => {
           v-loading="loading"
           :data="rows"
           row-key="id"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="onSortChange"
         >
           <!-- 技能名：图标 + 名称（超长换行完整展示）+ 三态状态标签；首列宽照原型 L1275（290px，批次 2C · E-A2） -->
           <el-table-column label="技能名" :min-width="290">
@@ -629,18 +629,15 @@ onBeforeUnmount(() => {
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
-          <!-- 最近更新时间：排序列，默认由近到远（保存/提交审核后按新时间重排）；
-               sortable="custom" 交 mock 全量排序，不只排当页（批次 2C · E-A1）。
+          <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远；
                E5（2026-09-10）：随操作列一起右侧固定——1440 宽下表格总宽超出容器时
                本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
-          <el-table-column
-            prop="updatedAt"
-            label="最近更新时间"
-            :width="COL.TIME"
-            sortable="custom"
-            :sort-orders="['descending', 'ascending']"
-            fixed="right"
-          >
+          <el-table-column :width="COL.TIME" fixed="right">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSort">
+                最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span v-if="row.updatedAt">{{ row.updatedAt }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
@@ -805,6 +802,32 @@ onBeforeUnmount(() => {
 .ver-num {
   font-variant-numeric: tabular-nums;
 }
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
+}
+
 /* 效果测试台浮层：覆盖视口承载 EffectTestStage（自带居中卡） */
 .focus-stage {
   position: fixed;

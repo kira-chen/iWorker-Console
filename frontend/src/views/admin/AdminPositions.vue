@@ -72,6 +72,15 @@ const router = useRouter()
 const query = reactive({ keyword: '', status: 'all', sort: 'desc' })
 const busyId = ref(null)
 
+// 排序箭头显示
+const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
+
+// 切换排序方向
+function toggleSort() {
+  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
+  fetchList()
+}
+
 /* ---------- 服务端分页：取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md） ---------- */
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7/B1，负责人拍板全站统一；原固定 12 已移除）。
 const list = useAdminList(listPositions, {
@@ -109,13 +118,6 @@ function onStatusChange(v) {
 // 关键词搜索：回车 / 【查询】按钮触发（原型口径，2026-09-01 起不再实时防抖）。
 // 清空（clearable ×）后也刷新一次，避免残留旧结果。
 
-// 「最近更新时间」列排序（el-table sortable="custom" → 服务端/mock 排序）。
-// Element 三态循环里 order=null（取消排序）时回落默认降序。
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
-  fetchList()
-}
 
 /* ---------- 状态三态展示映射（Q6：展示层三态，细分 5 态词表仍归 derivePublishView） ---------- */
 // 草稿(INITIAL)→未发布；REVIEWING / PUBLISHED_REVIEWING / PUBLISHED_DELISTING →审核中；PUBLISHED→已发布。
@@ -539,8 +541,6 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
           v-loading="showLoading"
           :data="rows"
           row-key="positionId"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="onSortChange"
         >
           <!-- 列宽策略照原型 L1200 <colgroup> 250/300/70/80/80/100/165/300（2026-09-08 原型复刻批次 2A · B7）：
                名称 / 描述两列取 min-width 按比例伸缩，计数 / 版本 / 时间定宽；操作列 fixed="right"（代码超集）保留 -->
@@ -596,10 +596,15 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
             </template>
           </el-table-column>
 
-          <!-- 最近更新时间（精确到分钟）：可排序，默认降序（服务端/mock 排序）；单行不换行（原型 .updated-cell） -->
+          <!-- 最近更新时间（精确到分钟）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序；单行不换行 -->
           <!-- E5（2026-09-10）：时间列随操作列一起右侧固定——1440 宽下表格总宽超出容器时
                本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
-          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="POS_COL.TIME" fixed="right">
+          <el-table-column :width="POS_COL.TIME" fixed="right">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSort">
+                最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span v-if="row.updatedAt" class="pos-time">{{ fmtTime(row.updatedAt) }}</span>
               <span v-else class="cell-na">—</span>
@@ -838,6 +843,31 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
 /* 时间单行不换行（原型 .updated-cell） */
 .pos-time {
   white-space: nowrap;
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 
 /* 新建岗位弹窗表单（原型 .pd2-popup-form 单列 grid gap 9；label 上间距 7）：

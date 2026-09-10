@@ -306,6 +306,8 @@ onBeforeUnmount(() => {
 }
 .fb-sort-arrow {
   margin-left: 2px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 /* 附图编号按钮（原型 .fm5-thumbs{gap:7px} .fm5-thumb{48px 方块、1px 描边、圆角 6、灰底、12px；hover 绿边绿字}） */
 .fb-thumbs {

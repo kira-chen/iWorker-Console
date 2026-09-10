@@ -213,10 +213,12 @@ const searchList = list.search
 
 onMounted(fetchList)
 
-/** 最近更新时间列头点击排序：切方向后按当前条件重取（分区规则不变）。 */
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  sortOrder.value = order === 'ascending' ? 'asc' : 'desc'
+// 排序方向箭头
+const sortArrow = computed(() => sortOrder.value === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
   searchList()
 }
 
@@ -498,8 +500,6 @@ async function remove(row) {
           v-loading="loading"
           :data="rows"
           row-key="id"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="onSortChange"
         >
           <!-- 模型名称：主列（2026-09-01 PRD 对齐原型 renderModels）：
                厂商首字 logo 块 + 名称 + 状态标签（未发布/审核中/已发布）+ 默认标签。
@@ -546,16 +546,14 @@ async function remove(row) {
             </template>
           </el-table-column>
 
-          <!-- 最近更新时间（2026-09-01 PRD 对齐，取代创建时间列）：列表排序依据
-               （默认模型在前，两区内按最近更新时间由近到远，列头可点切换方向）。
-               精确到分钟——同一天内改多个模型时需要能分辨先后。 -->
-          <el-table-column
-            label="最近更新时间"
-            prop="updatedAt"
-            sortable="custom"
-            :sort-orders="['descending', 'ascending']"
-            :width="COL.TIME + 24"
-          >
+          <!-- 最近更新时间（2026-09-01 PRD 对齐，取代创建时间列）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），
+               默认模型在前，两区内按最近更新时间由近到远 -->
+          <el-table-column :width="COL.TIME + 24">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSort">
+                最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
               <span v-else class="cell-na">—</span>
@@ -844,6 +842,31 @@ async function remove(row) {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 
 /* ===== 操作列：仅统一间距，配色沿用 Element 语义 type（对齐平台技能页） ===== */

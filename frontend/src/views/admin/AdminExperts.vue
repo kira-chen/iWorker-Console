@@ -71,10 +71,12 @@ const reload = list.search
 
 onMounted(fetchList)
 
-// 「最近更新时间」列排序（el-table sortable="custom" → mock 排序）；order=null 回落默认降序
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
+// 排序方向箭头
+const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
   fetchList()
 }
 
@@ -323,8 +325,7 @@ async function stopExpert(row) {
           :data="rows"
           style="width: 100%"
           row-key="id"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="onSortChange"
+        >
         >
           <!-- 专家名：图标 avatar + 名称 + 三态状态标签同格（原型 expert-primary，独立状态列已并入）。
                2026-09-10 体验优化 E1：列级 show-overflow-tooltip 会连状态标签一起截成「…」，
@@ -364,8 +365,13 @@ async function stopExpert(row) {
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
-          <!-- 最近更新时间：可排序，默认降序（mock 排序） -->
-          <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="COL.TIME">
+          <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
+          <el-table-column :width="COL.TIME">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSort">
+                最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
               <span v-else class="cell-na">—</span>
@@ -502,5 +508,30 @@ async function stopExpert(row) {
 }
 .ex-category {
   color: var(--c-text-muted);
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 </style>

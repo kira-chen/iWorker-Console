@@ -282,6 +282,8 @@ onMounted(() => {
 }
 .usr-sort-icon {
   margin-left: 2px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 .usr-ops {
   display: flex;
