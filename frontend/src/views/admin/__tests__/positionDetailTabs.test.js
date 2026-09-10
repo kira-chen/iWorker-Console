@@ -39,7 +39,11 @@ const routeMock = { params: { id: '5' }, query: {}, meta: {} }
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  onBeforeRouteLeave: () => {}
+  onBeforeRouteLeave: () => {},
+  // 2026-09-10：新增的业务系统页签经 api/admin → api/request → src/router 拖入真实 router 模块，
+  // 整模块 mock 后需喂它能跑通的工厂（口径同 components/admin/__tests__/expertEditor.test.js）。
+  createRouter: () => ({ beforeEach: vi.fn(), afterEach: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  createWebHistory: () => ({})
 }))
 vi.mock('@/api/position', () => ({
   createPosition: vi.fn(), publishPosition: vi.fn(() => Promise.resolve({})), getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')), listPositionPublications: vi.fn(() => Promise.resolve([]))
@@ -52,7 +56,9 @@ vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+// 2026-09-10：featureFlags 新增 FRONT_RUNTIME_ENABLED（yuepu 删「运行/效果测试」页签那批），
+// mock 未同步补上会让引用它的组件加载即报错，故此处与真实模块的导出保持一致。
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [

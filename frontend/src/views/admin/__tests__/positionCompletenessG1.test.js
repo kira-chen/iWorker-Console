@@ -58,7 +58,11 @@ const routeMock = { params: { id: '5' }, query: {}, meta: {} }
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
   useRouter: () => ({ push: routerPushSpy, replace: vi.fn(), resolve: () => ({ href: '/x' }) }),
-  onBeforeRouteLeave: () => {}
+  onBeforeRouteLeave: () => {},
+  // 2026-09-10：新增的业务系统页签经 api/admin → api/request → src/router 拖入真实 router 模块，
+  // 整模块 mock 后需喂它能跑通的工厂（口径同 components/admin/__tests__/expertEditor.test.js）。
+  createRouter: () => ({ beforeEach: vi.fn(), afterEach: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  createWebHistory: () => ({})
 }))
 const getNextVersionLabelSpy = vi.fn(() => Promise.resolve('v1.0.0'))
 vi.mock('@/api/position', () => ({
@@ -82,7 +86,9 @@ vi.mock('@/composables/useVersionPublish', () => ({
     setBump: vi.fn(), load: vi.fn()
   })
 }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+// 2026-09-10：featureFlags 新增 FRONT_RUNTIME_ENABLED（yuepu 删「运行/效果测试」页签那批），
+// mock 未同步补上会让引用它的组件加载即报错，故此处与真实模块的导出保持一致。
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',

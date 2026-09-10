@@ -64,7 +64,9 @@ vi.mock('@/components/position/PublishCheckDialog.vue', () => ({
   }
 }))
 vi.mock('@/components/test/EffectTestStage.vue', () => ({ default: { template: '<div />' } }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+// 2026-09-10：featureFlags 新增 FRONT_RUNTIME_ENABLED（yuepu 删「运行/效果测试」页签那批），
+// mock 未同步补上会让引用它的组件加载即报错，故此处与真实模块的导出保持一致。
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).default
 
