@@ -156,11 +156,35 @@ function isIrrelevant (prop, protoBox, appBox) {
   // 判定基准只取【横向】x/width：纵向 y/height 受数据条数影响（见下方 (f)），
   // 把它们纳入判定会让本规则几乎永远不成立 —— 实测「面板根」的这四条假差异
   // 在 6 个页签各重复一次，正是被 y 挡住导致的。横向一致即可证明留白等价。
-  if (/^(padding|margin)-/.test(prop)) {
-    const sameBox = ['x', 'width'].every(
+  //
+  // ── 2026-09-10 第二批跑批修正：本规则必须【分轴】判定 ──────────────
+  // 原写法一旦横向对齐，就把【四个方向】的 padding/margin 差异全滤掉了。
+  // 但「横向外框一致」只能证明【左右】留白等价，证明不了上下。
+  //
+  // 实证（全站列表页扩配置那轮抓到的真漏报）：共享 DrawerEditor 的抽屉正文，
+  // 原型 .drawer-body padding 22px 28px 28px、现状 .el-drawer__body 22px 28px 34px
+  // —— padding-bottom 差了 6px，是真差异（正是豁免 T2 登记在案的那一条）。
+  // 而抽屉两侧 x=820 / width=780 逐值相同（抽屉宽度是写死的），
+  // 于是 sameBox 成立，这条真差异被当噪声吞掉，报告里一个字都没有。
+  // 后果比多报还严重：T2 那轮显示「命中 4 条」，但 4 条全是底栏按钮的
+  // padding 被 /drawer/i 选择器误扫进去的，它要豁免的那条正主反而没进表 ——
+  // 豁免的自证机制因此失真（看着有效，其实拦的不是同一个东西）。
+  //
+  // → 改为：横向外框一致 ⇒ 只滤 padding-left/right、margin-left/right；
+  //   纵向要滤，必须纵向外框（y/height）也一致（--strict 之外 y/height 本身
+  //   走 (f) 过滤，所以这里显式比对，不依赖差异表里有没有它们）。
+  const pm = /^(padding|margin)-(top|right|bottom|left)$/.exec(prop)
+  if (pm) {
+    const same = (keys) => keys.every(
       (k) => normalize(k, protoBox[k]) === normalize(k, appBox[k])
     )
-    if (sameBox) return true
+    const isHorizontal = pm[2] === 'left' || pm[2] === 'right'
+    if (isHorizontal) {
+      if (same(['x', 'width'])) return true
+    } else {
+      // 纵向：上下留白记在谁头上等价，前提是【纵向】外框也一模一样
+      if (same(['x', 'width']) && same(['y', 'height'])) return true
+    }
   }
 
   // ------------------------------------------------------------------

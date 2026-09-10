@@ -22,6 +22,12 @@ export const COLLECTED_PROPS = [
   'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
   // 圆角
   'border-radius',
+  // 描边阴影 —— 【Element Plus 的输入类控件不用 border 画描边】
+  // 实测 .el-input__wrapper / .el-select__wrapper 的 border-width 全是 0，
+  // 那圈灰线是 `box-shadow: 0 0 0 1px inset` 画出来的。
+  // 不采这一项的话，全站所有输入框/下拉的「描边颜色不对」都查不出来 ——
+  // border-* 四项两侧都读成 0，工具会一致地报「无差异」，属于漏报而非无差异。
+  'box-shadow',
   // 底色 —— 坑 2 的主战场
   'background-color',
   // 间距
@@ -160,7 +166,13 @@ export function collectInPage (args) {
   for (var n = 0; n < names.length; n++) {
     var name = names[n]
     var sel = mapping[name]
-    var el = pickVisible(root.querySelectorAll(sel))
+    // root.querySelectorAll 只找【后代】，找不到 root 自己。
+    // 但「把根容器本身也列进容器映射表」是很自然的诉求（页面根 = .page /
+    // .list-page，正是留白与限宽差异最爱出没的地方）。
+    // 2026-09-10 第三批实跑首轮就栽在这：`页面根` 两侧齐齐「未命中」，
+    // 看起来像两边都没这个容器，实际上它就是 root 本人。
+    // → 先看 root 自己匹不匹配这个选择器，匹配就用 root。
+    var el = (root.matches && root.matches(sel)) ? root : pickVisible(root.querySelectorAll(sel))
     if (!el) {
       result[name] = { __missing: true }
       continue

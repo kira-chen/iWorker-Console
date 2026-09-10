@@ -72,16 +72,37 @@ export const exemptions = [
 
   {
     id: 'T2',
-    title: '共享 DrawerEditor 抽屉 body padding（22px 28px 34px vs 原型 20px 24px 30px）',
+    title: '抽屉 body padding：站内共享 DrawerEditor 统一 22/28/34，与原型【部分壳】不一致',
     decidedOn: '2026-09-10',
     decidedBy: '负责人',
     source: 'docs/PRD-review/2026-09-10.md · 「四页签逐像素对齐批次」待裁决 T2 + 文末拍板行',
+    // 【适用范围实测收窄，2026-09-10 全站扫描】原标题写成「vs 原型 20px 24px 30px」，
+    // 容易被读成「全站抽屉都差这一档」。实测并非如此：原型里抽屉壳不止一种——
+    //   · 专家新建抽屉、知识库 proto2-drawer → 20/24/30，与站内不同（本豁免要挡的就是这两类）
+    //   · 角色/用户技能审核/审核中心/我的申请 四处 → 22/28/34/28，与站内共享 DrawerEditor 完全一致，零差异
+    // 所以本豁免只在「原型用了另一种壳」的抽屉上命中；其余抽屉本就对齐，不需要豁免。
+    // 全站 31 单元实跑命中 5 条，全部落在上述两类壳，符合预期。
     condition:
-      '抽屉正文区（选择器含 drawer / el-drawer__body / pd2-drawer-body）的 padding 差异。' +
-      '出自全站共享的 DrawerEditor，改则全站抽屉一起变。',
+      '抽屉【正文区那一层本身】（.drawer-body / .el-drawer__body / .proto2-drawer-body，' +
+      '或语义名叫「抽屉正文」的容器）的 padding 差异。' +
+      '出自全站共享的 DrawerEditor，改则全站抽屉一起变。' +
+      '【范围限定】只认正文区这一层，不含抽屉里的任何子元素 —— 见下方 match() 注释。',
     match (diff) {
-      const isDrawerBody = /drawer/i.test(`${diff.selectorProto} ${diff.selectorApp} ${diff.container}`)
-      return isDrawerBody && diff.prop.startsWith('padding-')
+      // ── 2026-09-10 第二批跑批修正：原判定条件过宽 ──────────────────
+      // 原写法是 /drawer/i 扫【整串选择器 + 容器名】，只要沾上 drawer 三个字母
+      // 就算数。实跑后果：专家新建抽屉那一轮「T2 命中 4 条」，4 条全是底栏
+      // 取消/主按钮的 padding-top/bottom —— 它们的现状选择器写作
+      // `.el-drawer__footer .el-button…`，含 "drawer"，于是被整片豁免掉了。
+      // 而 T2 真正要豁免的 .el-drawer__body 那一条（padding-bottom 28px vs 34px）
+      // 当时正被 report.js 的 (e) 规则吞掉，压根没进判定。
+      // 结果就是：豁免看着"有效"，实际拦的是不该拦的东西，还顺手把
+      // 「底栏按钮内距不一致」这条真差异藏了起来。
+      // → 收窄到【正文区那一层本身】，用锚定到元素末尾的选择器匹配。
+      const scope = `${diff.selectorProto} ${diff.selectorApp}`
+      const isDrawerBodyItself =
+        /(^|[\s,])(\.drawer-body|\.el-drawer__body|\.proto2-drawer-body)\s*(,|$)/.test(scope) ||
+        diff.container === '抽屉正文'
+      return isDrawerBodyItself && diff.prop.startsWith('padding-')
     }
   },
 
