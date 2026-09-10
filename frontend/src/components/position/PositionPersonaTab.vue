@@ -262,7 +262,10 @@ function aiGenSop() {
 /* ---- 人格页签卡片（照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体） ---- */
 .pd-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
+  /* 2026-09-10 像素账本 G3 附带（描边铺开）：本页签是四个 pd-card 页签里唯一漏改的一个——
+     采集 / 知识 / Agent 三页签早前已改 --border-admin-card，人格页签仍留着半透明
+     --border-base（浅色 10% 黑），同一套卡在四个页签间描边深浅不一。此处补齐。 */
+  border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -272,8 +275,10 @@ function aiGenSop() {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
+  /* 卡头分隔线与卡描边同浓度：半透明 --border-soft 叠在灰底卡头上会比卡描边淡一档 */
+  border-bottom: 1px solid var(--border-admin-card);
+  /* 卡头灰条与其余三页签同源（--bg-admin-card-head，浅色 #f8faf9 = 原型同值） */
+  background: var(--bg-admin-card-head);
 }
 .pd-card-title {
   display: inline-flex;

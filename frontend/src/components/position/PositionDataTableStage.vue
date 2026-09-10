@@ -765,7 +765,8 @@ function cardFieldCount(t) {
   gap: 10px;
   min-height: 50px;
   padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--border-base);
+  /* 2026-09-10 像素账本 G3 附带：卡头分隔线与 .wd-sec 卡描边同浓度（原半透明淡一档） */
+  border-bottom: 1px solid var(--border-admin-card);
   /* 卡头灰条走 --bg-admin-card-head（浅色 #f8faf9 = 原型 .wp3-head 同值，暗色有映射），
      与采集 / 知识 / Agent 三页签同源。 */
   background: var(--bg-admin-card-head);

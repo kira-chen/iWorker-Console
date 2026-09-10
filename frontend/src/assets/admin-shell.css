@@ -52,11 +52,17 @@ body.admin-scope .el-table {
 }
 
 /* 表格（原型 L38–40 + L1740）：th 48px / 13px / 底 #f2f5f3；td 60px；cell padding 0 16px；行 hover #f7faf8 */
+/* 表格描边（2026-09-10 像素账本 G3）：从半透明 --border-soft 改为不透明 --border-admin-card。
+ * 【为什么这是缺陷而不是「色值差一档」】--border-soft 浅色下是 rgba(55,53,47,0.06)，
+ * 半透明描边会**与它叠在什么底色上有关**：表头底是 #f2f5f3、数据行底是白、行 hover 又是 #f7faf8，
+ * 同一条线在三种底色上合成出三种颜色，横向扫读时分隔线深浅不匀。原型用的是不透明
+ * `rgb(223,229,225)`，一条线到底、不随底色变。--border-admin-card 浅色 #dde4e0 即取自该值
+ * （每通道差 ≤2，账本判定为同色），暗色映射 --border-base 保持既有暗色观感。 */
 body.admin-scope .el-table {
   --el-table-header-bg-color: var(--bg-admin-table-head);
   --el-table-header-text-color: var(--c-admin-table-head);
   --el-table-row-hover-bg-color: var(--bg-admin-row-hover);
-  --el-table-border-color: var(--border-soft);
+  --el-table-border-color: var(--border-admin-card);
 }
 body.admin-scope .el-table th.el-table__cell {
   height: 48px;

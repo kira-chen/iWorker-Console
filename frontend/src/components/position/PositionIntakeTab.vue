@@ -197,7 +197,8 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   /* 对表：原型 pd2-list-head 定高 50px、纵向 padding 为 0（靠 min-height + 居中撑），
      现状多加了上下 8px，实测卡头比原型高一档 */
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--border-soft);
+  /* 2026-09-10 像素账本 G3 附带：卡头分隔线与卡描边同浓度（原不透明 vs 半透明差一档） */
+  border-bottom: 1px solid var(--border-admin-card);
   /* 对表：卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射） */
   background: var(--bg-admin-card-head);
 }

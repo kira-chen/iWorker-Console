@@ -170,7 +170,10 @@ function close() {
   margin: 0;
   padding: 0 28px;
   background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-base);
+  /* 2026-09-10 像素账本 G3 附带（描边铺开）：头/脚是白条压在抽屉灰底(--bg-admin-drawer)上，
+     半透明 --border-base 会随「白条一侧 vs 灰底一侧」合成出两种深浅；原型是不透明
+     rgb(223,229,225)。改走 --border-admin-card（浅色 #dde4e0，暗色映射 --border-base）。 */
+  border-bottom: 1px solid var(--border-admin-card);
 }
 .el-drawer.de-drawer .el-drawer__title {
   line-height: 1.3;
@@ -188,7 +191,8 @@ function close() {
   flex: 0 0 66px;
   padding: 0 28px;
   background: var(--bg-surface);
-  border-top: 1px solid var(--border-base);
+  /* 同上（G3 附带）：底栏白条压灰底，描边取不透明卡描边令牌 */
+  border-top: 1px solid var(--border-admin-card);
 }
 .el-drawer.de-drawer .el-drawer__footer .el-button + .el-button {
   margin-left: 0;

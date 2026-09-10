@@ -676,7 +676,8 @@ async function requestClose() {
 }
 /* 列表栏卡片化（原型 .pd2-task-list 实测：1px 边框 + 8px 圆角 + 白底 + padding 0） */
 .st-embedded .st-col-list {
-  border: 1px solid var(--border-base);
+  /* 2026-09-10 像素账本 G3 附带（描边铺开）：同右栏编辑器，白卡描边走不透明令牌 */
+  border: 1px solid var(--border-admin-card);
   /* 原型 .pd2-task-list / .pd2-task-detail 实测 8px */
   border-radius: 8px;
   background: var(--bg-surface);
@@ -713,7 +714,9 @@ async function requestClose() {
   /* 2026-09-10 逐像素对齐原型 .pd2-task-item：11px 14px、无圆角、下边线分隔、左 3px 选中条 */
   padding: 11px 14px;
   border-radius: 0;
-  border-bottom: 1px solid var(--border-soft);
+  /* 2026-09-10 像素账本 G3 附带：条目分隔线与所在白卡描边同浓度（原型 rgb(237,240,238)）；
+     半透明 --border-soft 会随行 hover 底色变深浅，与表格行分隔线是同一类实现缺陷。 */
+  border-bottom: 1px solid var(--border-admin-card);
   cursor: pointer;
   position: relative;
   border-left: 3px solid transparent;
@@ -902,7 +905,9 @@ async function requestClose() {
 .st-embedded .st-col-edit,
 .st-embedded .st-placeholder {
   background: var(--bg-surface);
-  border: 1px solid var(--border-base);
+  /* 2026-09-10 像素账本 G3 附带（描边铺开）：白卡浮在页签灰底上，描边取不透明卡描边令牌
+     （半透明 --border-base 在灰底/白底交界处会合成出两种深浅），与左栏任务列表同源。 */
+  border: 1px solid var(--border-admin-card);
   border-radius: 8px;
   padding: 22px 28px 80px;
   overflow: hidden auto;

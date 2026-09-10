@@ -537,7 +537,8 @@ async function onDeleteSkill({ agentId, skillId }) {
   gap: var(--space-2);
   /* 原型 .pd2-task-section-head：左右 18px、上下由 min-height 撑（无竖向 padding） */
   padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--border-soft);
+  /* 2026-09-10 像素账本 G3 附带：卡头分隔线与卡描边同浓度（原不透明 vs 半透明差一档） */
+  border-bottom: 1px solid var(--border-admin-card);
   /* 卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射），
      与采集 / 知识两页签同源（PositionIntakeTab、PositionKnowledgeTab 已用此令牌）。 */
   background: var(--bg-admin-card-head);

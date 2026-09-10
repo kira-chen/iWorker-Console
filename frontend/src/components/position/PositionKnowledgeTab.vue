@@ -215,7 +215,8 @@ function gotoKbModule(action, row) {
   gap: var(--space-2);
   /* 对表：原型 pd2-list-head 纵向 padding 为 0，靠 50px 定高居中 */
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--border-soft);
+  /* 2026-09-10 像素账本 G3 附带：卡头分隔线与卡描边同浓度（原不透明 vs 半透明差一档） */
+  border-bottom: 1px solid var(--border-admin-card);
   background: var(--bg-admin-card-head);
 }
 .pd-card-title {

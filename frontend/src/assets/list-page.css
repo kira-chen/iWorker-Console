@@ -41,6 +41,38 @@
   flex-wrap: wrap;
 }
 
+/* 工具栏高度档（2026-09-10 像素账本 G9，10 个单元复现）
+ * ---------------------------------------------------------------------------
+ * 【差异】原型工具栏是一条 ~76px 高的带子，现状整条只有控件本身的 38px —— 留白整个丢了。
+ * 实测（技能列表页，1440×900）：原型工具栏盒 116→192(h76)、表格从 192 起；
+ * 现状工具栏 116→154(h38)、表格从 174 起，**整页下半截上移了 18px**。
+ *
+ * 【为什么写 min-height 而不是 padding:17px 0】原型里工具栏有三种写法，
+ * 但**三种都在表达同一件事：这条带子 ~76px 高**，只是把高度记在了不同属性上：
+ *   .module-toolbar / .kb2-toolbar  min-height:76px + padding:17px 0
+ *   .fm5-toolbar                    min-height:76px，无纵向 padding
+ *   .toolbar                        height:78px / 74px，无纵向 padding
+ * 照抄 padding 只对得上第一种，另两种反而会被顶出多余内距（首轮实测：连接器 MCP 与
+ * 岗位管理两个单元由「无差异」变成「padding 0 → 17px」的新差异）。
+ * 取 min-height 才是三者的公约数：.list-toolbar 本来就是 align-items:center 的 flex，
+ * 控件在 76px 内自动居中，实测与写 padding 的几何逐值相同（工具栏 116→192、搜索框 135→173）。
+ *
+ * 【为什么要连 margin-bottom 一起写】原型 `#view` 是普通块容器，工具栏与表格**直接相邻**
+ * （表格 top 192 = 工具栏 bottom 192，间距 0），呼吸感全在工具栏这条带子自己的高度里；
+ * 而现状 .list-page 是 `gap:20px` 的 flex 容器，工具栏与表格之间已有 20px。
+ * 不抵消就会变成 76 + 20，比原型多出一档。故用 -20px 下外边距吃掉这一次 gap。
+ * 上方 gap 保留：页头→工具栏 = 8(页头 margin) + 20(gap) = 28，正是原型
+ * `.page-head+.module-hidden+#view{margin-top:28px}` 的那 28px，本来就对，不动。
+ *
+ * 【作用域】限定 body.admin-scope：原型只覆盖管理后台，员工端列表不套这套密度。
+ * 实测改后技能页逐值与原型一致：工具栏 116→192(h76)、搜索框 135→173、表格 192、分页 619。
+ * ------------------------------------------------------------------------ */
+body.admin-scope .list-toolbar {
+  box-sizing: border-box;
+  min-height: 76px;
+  margin-bottom: calc(-1 * var(--space-5));
+}
+
 /* 右对齐组：主操作按钮（及将来可能的角标），推到工具行最右、与搜索框水平平齐 */
 .list-toolbar-right {
   margin-left: auto;
