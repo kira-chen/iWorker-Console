@@ -82,15 +82,14 @@ function missingPrompt(it) {
   return !String(it?.prompt || '').trim()
 }
 
-// 副行：周期人话摘要 · 引用 N 个工具（无工具显「未引用工具」）· 引用 M 平台技能（有才显）
-// 副行摘要（2026-09-04 PRD-20260903 对齐 md 三.7 命名）：触发条件（定时周期）· 执行动作（引用的技能/工具）
+// 副行摘要（2026-09-10 岗位详情原型对齐 L3：照原型态精简为「每周 09:00 · 2 个工具」，
+// 原「触发条件：…·执行动作引用…」长句在卡宽内必截断出省略号；现行 md §7 未规定列表副行文案）
 function subLine(it) {
   const n = (it.toolRefs || []).length
-  const tool = n > 0 ? `执行动作引用 ${n} 个工具` : '未配置执行动作'
-  const sched = it.scheduleSummary ? `触发条件：${it.scheduleSummary}` : '未设置触发条件'
+  const sched = it.scheduleSummary || '未设置触发'
   const m = (it.skillRefs || []).length
   const skill = m > 0 ? ` · ${m} 个技能` : ''
-  return `${sched} · ${tool}${skill}`
+  return `${sched} · ${n} 个工具${skill}`
 }
 
 /* ---------- 单任务启停（2026-09-04 PRD-20260903 对齐 md 三.7.2：支持启用/停用单个任务） ---------- */

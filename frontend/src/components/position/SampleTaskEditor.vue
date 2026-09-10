@@ -566,11 +566,11 @@ onMounted(async () => {
         </div>
         <div class="te-card-body">
         <div class="te-field">
-          <label class="te-label">任务名称 <span class="req">*</span></label>
+          <!-- 2026-09-10 岗位详情原型对齐（L1）：字数计数照原型移到标签行右侧，不再用输入框内 word-limit -->
+          <label class="te-label">任务名称 <span class="req">*</span><span class="te-count">{{ (form.name || '').length }} / 60</span></label>
           <el-input
             v-model="form.name"
             maxlength="60"
-            show-word-limit
             placeholder="给样例起个名字，如「每日工单汇总」"
             :class="{ 'is-err': errors.name }"
             @input="markDirty(); clearError('name')"
@@ -578,13 +578,12 @@ onMounted(async () => {
           <p v-if="errors.name" class="te-err">{{ errors.name }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">一句话指令 <span class="req">*</span></label>
+          <label class="te-label">一句话指令 <span class="req">*</span><span class="te-count">{{ (form.prompt || '').length }} / {{ PROMPT_MAX }}</span></label>
           <el-input
             v-model="form.prompt"
             type="textarea"
-            :rows="3"
+            :rows="4"
             :maxlength="PROMPT_MAX"
-            show-word-limit
             placeholder="到点让搭子做什么，自包含大白话，可含 [SILENT] 降噪（无实质变化只输出不打扰）"
             :class="{ 'is-err': errors.prompt }"
             @input="markDirty(); clearError('prompt')"
@@ -593,13 +592,12 @@ onMounted(async () => {
           <p v-if="errors.prompt" class="te-err">{{ errors.prompt }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">说明（备注）</label>
+          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 200</span></label>
           <el-input
             v-model="form.remark"
             type="textarea"
-            :rows="2"
+            :rows="4"
             maxlength="200"
-            show-word-limit
             placeholder="这条样例帮领用者做什么、适合谁用（可不填）"
             @input="markDirty"
           />
@@ -996,10 +994,17 @@ onMounted(async () => {
   margin-bottom: 0;
 }
 .te-label {
-  display: block;
+  display: flex;
+  align-items: center;
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
   margin-bottom: var(--space-2);
+}
+/* 字数计数（原型态：标签行右端灰字，如「6 / 60」） */
+.te-count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
 }
 .req {
   color: var(--c-danger);
