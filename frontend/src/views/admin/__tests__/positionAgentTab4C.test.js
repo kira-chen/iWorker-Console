@@ -70,13 +70,14 @@ vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
   '@/components/position/PublishCheckDialog.vue',
   '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/PositionBusinessSystemTab.vue',
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩

@@ -82,12 +82,13 @@ vi.mock('@/composables/useVersionPublish', () => ({
     setBump: vi.fn(), load: vi.fn()
   })
 }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
   '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/PositionBusinessSystemTab.vue',
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue'
 ]) {

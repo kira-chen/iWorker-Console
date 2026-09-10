@@ -6,8 +6,8 @@ import { createApp, h, nextTick } from 'vue'
  * PositionDetailTabs · 页签信息架构契约。
  *
  * 2026-09-04 PRD-20260903 对齐重写（原 9-Tab 断言过时）：
- * - md 六页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务（业务系统页签 2026-09-09 已移除）；
- *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本=Q2 冻结）。
+ * - md 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统；
+ *   其后保留 demo 既有扩展页签运行 / 效果测试。
  * - 人格页签为 md 三.2 六区块（岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
  * - 只读态（query.view=1）：顶部隐藏【保存】【发布岗位】。
@@ -52,7 +52,7 @@ vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
 
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [
@@ -60,6 +60,7 @@ for (const p of [
   '@/components/position/PublishCheckDialog.vue',
   '@/components/position/PositionDataTableStage.vue',
   '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/PositionBusinessSystemTab.vue',
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
@@ -95,14 +96,13 @@ beforeEach(() => { store.load.mockClear(); store.saveBasic.mockClear(); routeMoc
 afterEach(() => { app?.unmount(); container?.remove() })
 
 describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）', () => {
-  // 2026-09-09 负责人裁决：移除「业务系统」与「版本」两个页签。
-  // - 业务系统：原 md §1.3 第 7 页签 + §8 整节，md 已同步删除；
-  // - 版本：demo 扩展页签，正式入口是岗位列表页【版本管理】（md §3.7），详情页属重复入口。
-  it('渲染 md 六页签 + demo 扩展两页签，label 与顺序正确', async () => {
+  // 2026-09-10 主线恢复「业务系统」页签；版本管理仍保留在岗位列表入口。
+  it('渲染 md 七页签，label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '运行', '效果测试'])
-    expect(labels).not.toContain('业务系统')
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统'])
+    expect(labels).not.toContain('运行')
+    expect(labels).not.toContain('效果测试')
     expect(labels).not.toContain('版本')
   })
 
@@ -148,21 +148,22 @@ describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）
     expect(top.textContent).not.toContain('发布岗位')
   })
 
-  it('「知识」为只读列表（区块头 + 工具栏【查询】，无新建 / 编辑入口，md §5.2 已删）；「运行」仍为占位', async () => {
+  it('「知识」为只读列表（区块头 + 工具栏【查询】，无新建 / 编辑入口，md §5.2 已删）', async () => {
     await mount()
     const paneText = (name) => [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === name)?.textContent || ''
     expect(paneText('knowledge')).not.toContain('开发中')
     expect(paneText('knowledge')).toContain('该岗位可见范围内的知识库')
     expect(paneText('knowledge')).toContain('查询')
     expect(paneText('knowledge')).not.toContain('新建知识库')
-    expect(paneText('runtime')).toContain('开发中')
   })
 
-  // 原「业务系统页签挂载引用面板」用例随该页签移除一并删除（2026-09-09 负责人裁决）
+  // 业务系统面板自身行为由组件测试覆盖，本文件只钉页签信息架构。
 
-  it('效果测试在 EFFECT_TEST_ENABLED=false 时显「开发中」占位（不擅自开启被关链路）', async () => {
+  it('运行、效果测试和版本页签均已从岗位详情移除', async () => {
     await mount()
-    const et = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'effectTest')
-    expect(et?.textContent).toContain('开发中')
+    const names = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-name'))
+    expect(names).not.toContain('runtime')
+    expect(names).not.toContain('effectTest')
+    expect(names).not.toContain('versions')
   })
 })

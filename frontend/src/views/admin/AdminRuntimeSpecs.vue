@@ -55,11 +55,12 @@ function refresh() {
   loadSummary()
 }
 
-function handleSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  query.sortOrder = order || 'descending'
+function toggleSortOrder() {
+  query.sortOrder = query.sortOrder === 'descending' ? 'ascending' : 'descending'
   reload()
 }
+
+const sortArrow = computed(() => query.sortOrder === 'descending' ? '↓' : '↑')
 
 onMounted(refresh)
 
@@ -188,8 +189,6 @@ function usedTip(row) {
           v-loading="loading"
           :data="rows"
           row-key="id"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="handleSortChange"
         >
           <!-- 规格：名称 + 第二行能力边界说明（截图两行式主列） -->
           <el-table-column label="规格" min-width="210">
@@ -236,7 +235,12 @@ function usedTip(row) {
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="最近更新" prop="updatedAt" width="132" sortable="custom" :sort-orders="['descending', 'ascending']">
+          <el-table-column width="132">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSortOrder">
+                最近更新 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }"><span class="rs-muted">{{ row.updatedAt }}</span></template>
           </el-table-column>
           <el-table-column label="操作" width="224" fixed="right" header-class-name="rs-nowrap-header">
@@ -326,6 +330,27 @@ function usedTip(row) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.time-sort:hover {
+  color: var(--c-accent);
+}
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 .rs-actions {
   display: flex;
