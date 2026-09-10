@@ -17,7 +17,7 @@
  *   配色对齐模型页：常规=primary、正向状态操作（发布）=success、
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -52,6 +52,15 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 //   → 切换即刷新，但用的是 applied.keyword（未点查询的输入不生效），两条口径互不打架。
 const query = reactive({ keyword: '', state: '' })
 const applied = reactive({ keyword: '', state: '', sort: 'desc' })
+
+// 排序方向箭头
+const sortArrow = computed(() => applied.sort === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  applied.sort = applied.sort === 'desc' ? 'asc' : 'desc'
+  fetchList()
+}
 
 // 服务端分页：mock listMcp(page/size/keyword/state/sort) 返回当前页 list + 过滤后全量 total。
 
@@ -260,13 +269,6 @@ function onStateChange() {
   return reload()
 }
 
-/** 「最近更新时间」列头排序：切方向后按当前条件重取（mock 全量排序）；order=null 回落默认降序。 */
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  applied.sort = order === 'ascending' ? 'asc' : 'desc'
-  fetchList()
-}
-
 onMounted(fetchList)
 
 function openCreate() {
@@ -470,8 +472,6 @@ async function remove(row) {
         v-loading="loading"
         :data="rows"
         row-key="id"
-        :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-        @sort-change="onSortChange"
       >
         <!-- 服务：合并列（PRD §二.1/原型 service-summary）——图标+名称加粗+发布状态标签，
              第二行描述缩略（hover 全文）；不设独立状态列与描述列。
@@ -526,15 +526,13 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 最近更新时间（PRD §二.1）：配置/工具清单最近一次保存成功的时间，可排序（默认由近到远；
-             sortable="custom" 交 mock 全量排序，不只排当页） -->
-        <el-table-column
-          label="最近更新时间"
-          prop="updatedAt"
-          sortable="custom"
-          :sort-orders="['descending', 'ascending']"
-          :width="COL.TIME + 24"
-        >
+        <!-- 最近更新时间（PRD §二.1）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远 -->
+        <el-table-column :width="COL.TIME + 24">
+          <template #header>
+            <button type="button" class="time-sort" @click="toggleSort">
+              最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+            </button>
+          </template>
           <template #default="{ row }">
             <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
             <span v-else class="cell-na">—</span>
@@ -808,6 +806,31 @@ async function remove(row) {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 
 </style>

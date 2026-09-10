@@ -12,8 +12,11 @@
  * - 脏检查：以最近一次 hydrate 的 basic 快照为基线，离开路由 / 关闭窗口时有未保存修改则提示。
  *
  * 2026-09-04 PRD-20260903 对齐改造：
- * - 页签调整为新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统（新增）；
- *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本页签为 Q2 冻结项，走现有版本侧栏链路）。
+ * - 页签调整为新 PRD 七页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统（新增）。
+ *
+ * 2026-09-10 页签调整：
+ * - 删除「运行」和「效果测试」页签。
+ * - 恢复「业务系统」页签，展示岗位引用的已发布业务系统列表。
  * - 人格页签重排为 md §2 六区块：岗位图标 / 岗位描述 / 领用页文案 / 示例问题(3 条+AI 生成) /
  *   岗位 SOP(4000+AI 生成) / 岗位人格；原「推荐问题 4 条」editor 退役（文件保留）。
  * - 顶部栏对齐 md §1.2：名称 64 字 / 三态状态标签 / 版本号 / 未保存提示 / 保存 / 发布岗位；
@@ -61,7 +64,6 @@ import {
   recommendedQuestionsComplete,
   normalizeExampleQuestions
 } from '@/utils/positionModel'
-import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import { KIND, deriveTriView, isLocked } from '@/utils/publishState'
 import StatusTag from '@/components/StatusTag.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -74,8 +76,7 @@ import PositionPersonaTab from '@/components/position/PositionPersonaTab.vue'
 import PositionIntakeTab from '@/components/position/PositionIntakeTab.vue'
 import PositionKnowledgeTab from '@/components/position/PositionKnowledgeTab.vue'
 import PositionAgentSkillTab from '@/components/position/PositionAgentSkillTab.vue'
-// 效果测试台异步加载：仅在点「效果测试」打开时拉取，避免把对话链路提前并入白板首屏 + 保持现有测试 import 图不变。
-const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
+import PositionBusinessSystemTab from '@/components/position/PositionBusinessSystemTab.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -97,15 +98,7 @@ provide('pdActiveTab', activeTab)
 provide('pdEqShowErrors', eqShowErrors)
 provide('pdEnsurePersisted', ensurePersisted)
 
-/* ---------- 效果测试台（纯前端 demo，就地扮演终端用户试跑该岗位） ---------- */
 const testStageOpen = ref(false)
-function openTest() {
-  // 把当前岗位对象（basic + agents + 数据表数）传入；缺字段由测试台 mock 兜底。
-  testStageOpen.value = true
-}
-function closeTest() {
-  testStageOpen.value = false
-}
 
 /* ---------- 加载 ---------- */
 const intakeErrors = ref({})
@@ -617,29 +610,14 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- 「业务系统」页签已按 2026-09-09 负责人裁决移除（原 md §1.3 第 7 页签 / §8 整节）。
-               岗位与业务系统的引用关系改由业务系统模块自身承载；md 已同步删除相应章节。
-               store.basic.businessSystemIds 字段保留（mock 与 payload 链路未动），避免存量数据被抹。 -->
-
-          <!-- 以下两页签为 demo 既有扩展：运行（规划位）/ 效果测试（featureFlag 承载）。
-               「版本」页签已按 2026-09-09 负责人裁决移除——版本管理的正式入口是岗位列表页
-               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。 -->
-          <el-tab-pane label="运行" name="runtime">
-            <div class="pd-pane"><div class="pd-empty pd-dev">🚧 运行 · 开发中</div></div>
+          <!-- ⑦ 业务系统（2026-09-10 恢复：展示岗位引用的已发布业务系统列表） -->
+          <el-tab-pane label="业务系统" name="businessSystems">
+            <PositionBusinessSystemTab :is-readonly="isReadonly" />
           </el-tab-pane>
 
-          <el-tab-pane label="效果测试" name="effectTest">
-            <div class="pd-pane pd-pane--flush">
-              <EffectTestStage
-                v-if="EFFECT_TEST_ENABLED"
-                mode="position"
-                :position="{ basic: store.basic, agents: store.agents, tableCount: dtTableCount }"
-                :position-id="store.positionId"
-                embedded
-              />
-              <div v-else class="pd-empty pd-dev">🚧 效果测试 · 开发中</div>
-            </div>
-          </el-tab-pane>
+          <!-- 「版本」页签已按 2026-09-09 负责人裁决移除——版本管理的正式入口是岗位列表页
+               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。
+               「运行」和「效果测试」页签已删除（2026-09-10）。 -->
 
         </el-tabs>
       </div>

@@ -146,6 +146,34 @@ function verifyTip(row) {
 // 零分组前置约束：无任何服务提供系统时禁建 API（每个 API 必落真实分组）。加载中不算零分组。
 const hasNoGroups = computed(() => !loading.value && providerSystems.value.length === 0)
 
+// 排序状态：每个分组独立排序
+const groupSorts = ref({}) // { [psId]: 'desc' | 'asc' }
+
+// 获取分组排序方向
+function getGroupSort(psId) {
+  return groupSorts.value[psId] || 'desc'
+}
+
+// 排序箭头
+function sortArrow(psId) {
+  return getGroupSort(psId) === 'desc' ? '↓' : '↑'
+}
+
+// 切换分组排序
+function toggleGroupSort(psId) {
+  groupSorts.value[psId] = getGroupSort(psId) === 'desc' ? 'asc' : 'desc'
+}
+
+// 排序API列表
+function sortApis(apis, psId) {
+  const order = getGroupSort(psId)
+  return [...apis].sort((a, b) => {
+    const timeA = a.updatedAt || ''
+    const timeB = b.updatedAt || ''
+    return order === 'desc' ? timeB.localeCompare(timeA) : timeA.localeCompare(timeB)
+  })
+}
+
 // 两层数据：每个分组 + 其下 API。搜索/筛选时只展示有命中 API 的分组（PRD §一.2）。
 const groups = computed(() => {
   const byPs = {}
@@ -155,7 +183,7 @@ const groups = computed(() => {
   }
   const searching = !!applied.keyword || !!applied.state
   return providerSystems.value
-    .map((ps) => ({ ps, apis: byPs[ps.id] || [] }))
+    .map((ps) => ({ ps, apis: sortApis(byPs[ps.id] || [], ps.id) }))
     .filter((g) => !searching || g.apis.length > 0)
 })
 
@@ -481,7 +509,6 @@ async function removeApi(row) {
               :data="g.apis"
               empty-text="该系统下暂无 API"
               row-key="id"
-              :default-sort="{ prop: 'updatedAt', order: 'descending' }"
             >
               <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
               <el-table-column label="API" :min-width="220">
@@ -536,8 +563,13 @@ async function removeApi(row) {
                 </template>
               </el-table-column>
 
-              <!-- 最近更新时间：精确到分钟，支持点击排序 -->
-              <el-table-column label="最近更新时间" prop="updatedAt" sortable :width="COL.TIME + 24">
+              <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
+              <el-table-column :width="COL.TIME + 24">
+                <template #header>
+                  <button type="button" class="time-sort" @click="toggleGroupSort(g.ps.id)">
+                    最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.ps.id) }}</span>
+                  </button>
+                </template>
                 <template #default="{ row }">
                   <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
                   <span v-else class="cell-na">—</span>
@@ -853,6 +885,31 @@ async function removeApi(row) {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 </style>
 

@@ -39,6 +39,15 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 // sort：最近登录时间排序方向（原型 userSort，默认倒序；「从未登录」恒排最后由 mock 承担）
 const query = reactive({ keyword: '', roleCode: '', status: '', sort: 'desc' })
 
+// 排序方向箭头
+const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
+  reload()
+}
+
 // 取数编排统一走 useAdminList（列表页规范，见 docs/frontend/规范-管理后台列表页.md）：
 // 四态 / 分页 / 空筛选项过滤 / 防空页回退 / 竞态防护均由其承担，本页只描述「取什么」。
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · G#2，原「每页 10 条」覆盖已移除，全站统一）
@@ -173,14 +182,6 @@ function onMoreCommand(cmd, row) {
   else if (cmd === 'delete') remove(row)
 }
 
-// 「最近登录时间」列排序（el-table sortable="custom" → mock 排序）；order=null 回落默认倒序。
-// 切换排序回第 1 页（原型 L261 user-sort：state.userPage=1）
-function onSortChange({ prop, order }) {
-  if (prop !== 'lastLogin') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
-  reload()
-}
-
 // 两种空态（原型只有「没有符合条件的用户」一种；md §一.3 / §二.4 只定义「还没有用户 · …」）：
 // 有任一搜索 / 筛选条件 → 原型文案（是条件问题，不是没数据）；无条件 → md 引导文案
 const hasFilter = computed(() => !!(query.keyword.trim() || query.roleCode || query.status))
@@ -249,8 +250,6 @@ const emptyText = computed(() =>
         <el-table
           :data="rows"
           class="users-table"
-          :default-sort="{ prop: 'lastLogin', order: 'descending' }"
-          @sort-change="onSortChange"
         >
           <!-- 用户名加粗（原型 td.user-name 600） -->
           <el-table-column label="用户名" min-width="140" show-overflow-tooltip>
@@ -281,8 +280,13 @@ const emptyText = computed(() =>
               </span>
             </template>
           </el-table-column>
-          <!-- 最近登录时间（2026-09-01 原「创建时间」）：可排序默认倒序；从未登录显「从未登录」且恒排最后 -->
-          <el-table-column label="最近登录时间" prop="lastLogin" sortable="custom" :width="165">
+          <!-- 最近登录时间：自定义排序按钮，默认倒序；从未登录显「从未登录」且恒排最后 -->
+          <el-table-column :width="165">
+            <template #header>
+              <button type="button" class="time-sort" @click="toggleSort">
+                最近登录时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }">
               <span v-if="row.lastLogin" class="users-time">{{ fmtTime(row.lastLogin) }}</span>
               <span v-else class="users-time">从未登录</span>
@@ -390,6 +394,32 @@ const emptyText = computed(() =>
 .users-time {
   white-space: nowrap;
 }
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
+}
+
 /* 操作列三个元素（编辑/设置角色/更多下拉）垂直居中对齐——
    「更多」包在 el-dropdown（inline-block 基线对齐）里，默认会比并排的 el-button 偏高，
    用 flex + align-items:center 统一压平，间距用 gap 取代原 margin。 */

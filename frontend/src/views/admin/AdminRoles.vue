@@ -35,6 +35,15 @@ const keyword = ref('')
 const appliedKeyword = ref('')
 const sortDir = ref('desc')
 
+// 排序方向箭头
+const sortArrow = computed(() => sortDir.value === 'desc' ? '↓' : '↑')
+
+// 切换排序
+function toggleSort() {
+  sortDir.value = sortDir.value === 'desc' ? 'asc' : 'desc'
+  list.search()
+}
+
 // 取数编排统一走 useAdminList（列表页规范）。mock 返全量（mock 层不动），本页本地筛选 + 排序后
 // 由 useAdminList 的 paged:'client' 切片分页（2026-09-08 原型复刻批次 1 · G#9：负责人拍板
 // 全站所有列表页都分页，角色 md「不分页」与之冲突、差异记 02-审查结果；原 paged:false 废止）。
@@ -61,11 +70,6 @@ function applySearch() {
 function onClearSearch() {
   keyword.value = ''
   applySearch()
-}
-function onSortChange({ prop, order }) {
-  if (prop !== 'updatedAt') return
-  sortDir.value = order === 'ascending' ? 'asc' : 'desc'
-  list.search()
 }
 
 // 「真的没数据」与「筛选无结果」共用同一引导空态（本页统一文案）
@@ -195,8 +199,6 @@ async function remove(row) {
           v-loading="loading"
           :data="rows"
           row-key="id"
-          :default-sort="{ prop: 'updatedAt', order: 'descending' }"
-          @sort-change="onSortChange"
         >
         <!-- 列宽照原型 L315 <colgroup> 185 / 110 / auto / 165 / 135（2026-09-08 原型复刻批次 2A · G#10） -->
         <!-- 角色名称：主列（原型 <strong> 600）。code 不展示——它只是系统内标识，创建/编辑都不填 -->
@@ -225,8 +227,13 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 最近更新时间：可排序，默认倒序（改名或改页面权限都刷新） -->
-        <el-table-column label="最近更新时间" prop="updatedAt" sortable="custom" :width="165">
+        <!-- 最近更新时间：自定义排序按钮，默认倒序（改名或改页面权限都刷新） -->
+        <el-table-column :width="165">
+          <template #header>
+            <button type="button" class="time-sort" @click="toggleSort">
+              最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
+            </button>
+          </template>
           <template #default="{ row }">
             <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
             <span v-else class="cell-na">—</span>
@@ -274,6 +281,31 @@ async function remove(row) {
 .rl-name {
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
+}
+
+/* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
+.time-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-base);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.time-sort:hover {
+  color: var(--c-accent);
+}
+
+.time-sort-arrow {
+  font-size: 12px;
+  color: var(--c-text-base);
+  font-weight: var(--fw-medium);
 }
 
 /* 页面权限单元格：一支一行（用户端 / 管理端），行内「√ 分支（页面、…）」 */
