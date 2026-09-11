@@ -121,10 +121,10 @@
    * ---------------------------------------------------------------------- */
   /* 2026-08-22 按实测重分配（与 utils/tableLayout.js 同源同值，改一处必须改两处） */
   --col-status: 84px;      /* 状态徽标列 */
-  --col-time: 152px;       /* 时间戳列（等宽数字，定宽对齐） */
+  --col-time: 168px;       /* 时间戳列（等宽数字，定宽对齐）；2026-09-11 152→168 随 tableLayout.js */
   --col-user: 132px;       /* 用户名 / 提交人 / 上传用户 */
   --col-count: 80px;       /* 纯数字列（工具数 / 被引用 / 上下文），居中 */
-  --col-tag: 104px;        /* 单标签列（类别 / 传输 / 来源 / 用途） */
+  --col-tag: 136px;        /* 单标签列（类别 / 传输 / 来源 / 用途）；2026-09-11 104→136 随 tableLayout.js */
   --col-name-min: 180px;   /* 名称主列最小宽（不定宽，吃剩余空间） */
   --col-desc-min: 240px;   /* 描述列最小宽（配 show-overflow-tooltip） */
 }
@@ -301,8 +301,13 @@
    裸挂在 .cell 下，压根没有容器类。按容器类名收作用域必然漏网，
    改用「后台表格内的链接按钮」这个不变量，一条规则覆盖所有列表页。
    同时覆盖表格内的 <a>（专家名、引用情况等行内链接原是 EP 蓝 / 品牌绿）。 */
+/* 抽屉内的手写 <table>（非 el-table）也算表格操作列：专家抽屉的知识库表
+   （.ee-kb-ops）用的是原生 table，够不着上面的 .el-table 选择器，
+   不带上会出现「列表页蓝、点开抽屉又变绿」的割裂。 */
 body.admin-scope .el-table .el-button.is-link.el-button--primary,
-body.admin-scope .el-table .el-button.is-link.el-button--success {
+body.admin-scope .el-table .el-button.is-link.el-button--success,
+body.admin-scope .ee-kb-ops .el-button.is-link.el-button--primary,
+body.admin-scope .ee-kb-ops .el-button.is-link.el-button--success {
   color: var(--c-admin-link);
 }
 body.admin-scope .el-table .el-button.is-link.el-button--warning {
