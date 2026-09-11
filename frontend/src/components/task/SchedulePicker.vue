@@ -13,7 +13,7 @@
  * true 时按交互原型 enhanceSchedule 的形态呈现（分段按钮 / 星期按钮条 / ⏰ 时间行 / 绿底执行预览），
  * 仅岗位「自动化任务」页签传入；数据模型、校验与提交口径完全不变。
  */
-import { computed, watch } from 'vue'
+import { computed, watch, ref } from 'vue'
 
 const props = defineProps({
   // Schedule 对象（受控）
@@ -149,25 +149,204 @@ const showMonthHint = computed(
     props.schedule.scheduleType === 'MONTHLY' &&
     monthDays.value.some((d) => Number(d) >= 29)
 )
+
+/* ══════ prototype=true 专用：三模式调度 ══════ */
+
+const PROTO_MODES = [
+  { value: 'PERIODIC', label: '按周期' },
+  { value: 'INTERVAL', label: '每间隔' },
+  { value: 'ONCE', label: '单次' }
+]
+
+const PERIODIC_PRESETS = [
+  { value: 'DAILY',             label: '每天',      scheduleType: 'DAILY',   daysOfWeek: [],    daysOfMonth: [] },
+  { value: 'WEEKLY_MON',        label: '每周一',    scheduleType: 'WEEKLY',  daysOfWeek: [1],   daysOfMonth: [] },
+  { value: 'WEEKLY_MON_WED_FRI',label: '每周一三五',scheduleType: 'WEEKLY',  daysOfWeek: [1,3,5],daysOfMonth: [] },
+  { value: 'WEEKLY_FRI',        label: '每周五',    scheduleType: 'WEEKLY',  daysOfWeek: [5],   daysOfMonth: [] },
+  { value: 'MONTHLY_1',         label: '每月1日',   scheduleType: 'MONTHLY', daysOfWeek: [],    daysOfMonth: [1] }
+]
+
+const INTERVAL_UNITS = [
+  { value: 'HOUR', label: '小时' },
+  { value: 'DAY',  label: '天' },
+  { value: 'WEEK', label: '周' }
+]
+
+function onProtoMode(mode) {
+  if (mode === props.schedule.scheduleMode) return
+  const next = { ...props.schedule, scheduleMode: mode }
+  if (mode === 'ONCE') {
+    next.scheduleType = 'ONCE'
+  } else if (mode === 'INTERVAL') {
+    next.scheduleType = `INTERVAL_${next.intervalUnit || 'DAY'}`
+  } else {
+    // PERIODIC：恢复到 periodicPreset 对应的 scheduleType
+    const preset = PERIODIC_PRESETS.find((p) => p.value === (next.periodicPreset || 'DAILY')) || PERIODIC_PRESETS[0]
+    next.scheduleType = preset.scheduleType
+    next.daysOfWeek = preset.daysOfWeek.slice()
+    next.daysOfMonth = preset.daysOfMonth.slice()
+    if (!next.times || !next.times.length) next.times = ['09:00']
+  }
+  emit('update:schedule', next)
+  emit('preview')
+}
+
+function onProtoPreset(preset) {
+  if (preset.value === props.schedule.periodicPreset) return
+  const cur = props.schedule.times?.length ? props.schedule.times : ['09:00']
+  emit('update:schedule', {
+    ...props.schedule,
+    scheduleMode: 'PERIODIC',
+    periodicPreset: preset.value,
+    scheduleType: preset.scheduleType,
+    daysOfWeek: preset.daysOfWeek.slice(),
+    daysOfMonth: preset.daysOfMonth.slice(),
+    times: cur
+  })
+  emit('preview')
+}
+
+function onProtoIntervalCount(val) {
+  const count = Math.max(1, parseInt(val) || 1)
+  emit('update:schedule', { ...props.schedule, intervalCount: count })
+  emit('preview')
+}
+
+function onProtoIntervalUnit(unit) {
+  emit('update:schedule', {
+    ...props.schedule,
+    intervalUnit: unit,
+    scheduleType: `INTERVAL_${unit}`
+  })
+  emit('preview')
+}
+
+function onProtoTime(val) {
+  emit('update:schedule', { ...props.schedule, times: [val || '09:00'] })
+  emit('preview')
+}
 </script>
 
 <template>
   <div class="sp" :class="{ 'sp-error': !!error, 'sp-proto': prototype }">
+
+    <!-- ══════ prototype=true：按周期 / 每间隔 / 单次 三模式 ══════ -->
+    <template v-if="prototype">
+      <!-- 顶层模式 Tab -->
+      <div class="sp-row">
+        <span class="sp-label">执行频率</span>
+        <div class="sp-seg" role="group" aria-label="执行频率模式">
+          <button
+            v-for="m in PROTO_MODES"
+            :key="m.value"
+            type="button"
+            class="sp-seg-btn"
+            :class="{ on: (schedule.scheduleMode || 'PERIODIC') === m.value }"
+            @click="onProtoMode(m.value)"
+          >{{ m.label }}</button>
+        </div>
+      </div>
+
+      <!-- 按周期：5 个预设快捷按钮 + 时间 -->
+      <template v-if="(schedule.scheduleMode || 'PERIODIC') === 'PERIODIC'">
+        <div class="sp-row">
+          <span class="sp-label">周期</span>
+          <div class="sp-seg sp-seg-preset" role="group" aria-label="周期预设">
+            <button
+              v-for="p in PERIODIC_PRESETS"
+              :key="p.value"
+              type="button"
+              class="sp-seg-btn"
+              :class="{ on: (schedule.periodicPreset || 'DAILY') === p.value }"
+              @click="onProtoPreset(p)"
+            >{{ p.label }}</button>
+          </div>
+        </div>
+        <div class="sp-row sp-row-top">
+          <span class="sp-label">定点时间</span>
+          <div class="sp-times">
+            <div class="sp-time-row">
+              <div class="sp-time-input">
+                <span class="sp-time-icon">⏰</span>
+                <input
+                  type="time"
+                  :value="(schedule.times || ['09:00'])[0]"
+                  aria-label="定点时间"
+                  @input="onProtoTime($event.target.value)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 每间隔：数字 + 单位 -->
+      <template v-else-if="schedule.scheduleMode === 'INTERVAL'">
+        <div class="sp-row">
+          <span class="sp-label">间隔</span>
+          <div class="sp-interval-row">
+            <span class="sp-interval-label">每</span>
+            <input
+              type="number"
+              min="1"
+              class="sp-interval-input"
+              :value="schedule.intervalCount || 1"
+              aria-label="间隔数量"
+              @input="onProtoIntervalCount($event.target.value)"
+            />
+            <div class="sp-seg" role="group" aria-label="间隔单位">
+              <button
+                v-for="u in INTERVAL_UNITS"
+                :key="u.value"
+                type="button"
+                class="sp-seg-btn"
+                :class="{ on: (schedule.intervalUnit || 'DAY') === u.value }"
+                @click="onProtoIntervalUnit(u.value)"
+              >{{ u.label }}</button>
+            </div>
+            <span class="sp-interval-label">执行一次</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- 单次：日历时间选择器 -->
+      <template v-else-if="schedule.scheduleMode === 'ONCE'">
+        <div class="sp-row">
+          <span class="sp-label">执行时间</span>
+          <el-date-picker
+            :model-value="schedule.onceAt"
+            type="datetime"
+            placeholder="选择具体日期和时间"
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DDTHH:mm"
+            @update:model-value="setOnceAt"
+          />
+        </div>
+      </template>
+
+      <div v-if="error" class="sp-err-text">{{ error }}</div>
+
+      <!-- 执行预览绿底框 -->
+      <div class="sp-proto-preview">
+        <div class="sp-proto-sched">
+          <span v-if="previewLoading">正在推算执行计划…</span>
+          <span v-else-if="previewError" class="is-error">{{ previewError }}</span>
+          <span v-else-if="previewSummary">{{ previewSummary }}</span>
+          <span v-else class="is-faint">完善周期后，这里实时显示执行计划</span>
+        </div>
+        <div v-if="!previewLoading && !previewError && previewTimes.length" class="sp-proto-next">
+          <span class="sp-proto-next-label">接下来 {{ previewTimes.length }} 次：</span>
+          <span v-for="(t, i) in previewTimes" :key="i" class="sp-proto-pill">{{ prettyTime(t) }}</span>
+        </div>
+      </div>
+    </template>
+
+    <!-- ══════ prototype=false（用户端 TaskEditor）：原有 Element Plus 形态，完全不变 ══════ -->
+    <template v-else>
     <!-- 第一步：周期类型 -->
     <div class="sp-row">
       <span class="sp-label">周期类型</span>
-      <!-- 原型态（#19）：分段按钮组，选中绿底 -->
-      <div v-if="prototype" class="sp-seg" role="group" aria-label="周期类型">
-        <button
-          v-for="t in TYPES"
-          :key="t.value"
-          type="button"
-          class="sp-seg-btn"
-          :class="{ on: s.scheduleType === t.value }"
-          @click="onType(t.value)"
-        >{{ t.label }}</button>
-      </div>
-      <el-radio-group v-else :model-value="s.scheduleType" @update:model-value="onType">
+      <el-radio-group :model-value="s.scheduleType" @update:model-value="onType">
         <el-radio-button v-for="t in TYPES" :key="t.value" :value="t.value">
           {{ t.label }}
         </el-radio-button>
@@ -177,20 +356,7 @@ const showMonthHint = computed(
     <!-- 每周：星期多选 -->
     <div v-if="s.scheduleType === 'WEEKLY'" class="sp-row">
       <span class="sp-label">执行星期</span>
-      <!-- 原型态（#19）：七个可切换按钮，选中绿底 -->
-      <div v-if="prototype" class="sp-week-seg" role="group" aria-label="执行星期">
-        <button
-          v-for="d in WEEK_DAYS"
-          :key="d.value"
-          type="button"
-          class="sp-seg-btn"
-          :class="{ on: (s.daysOfWeek || []).includes(d.value) }"
-          :aria-pressed="(s.daysOfWeek || []).includes(d.value)"
-          @click="toggleWeekday(d.value)"
-        >周{{ d.label }}</button>
-      </div>
       <el-checkbox-group
-        v-else
         :model-value="s.daysOfWeek || []"
         class="sp-week"
         @update:model-value="patch({ daysOfWeek: $event })"
@@ -247,32 +413,7 @@ const showMonthHint = computed(
     <!-- 多定点时间（非 ONCE） -->
     <div v-if="s.scheduleType !== 'ONCE'" class="sp-row sp-row-top">
       <span class="sp-label">定点时间</span>
-      <!-- 原型态（#19）：序号圆 + ⏰ 原生 time input + × 删除 + 「+添加时间」文字按钮 -->
-      <div v-if="prototype" class="sp-times">
-        <div v-for="(t, i) in times" :key="i" class="sp-time-row">
-          <span class="sp-time-no">{{ i + 1 }}</span>
-          <div class="sp-time-input">
-            <span class="sp-time-icon">⏰</span>
-            <input
-              type="time"
-              :value="t"
-              aria-label="定点时间"
-              @input="setTime(i, $event.target.value)"
-            />
-          </div>
-          <button
-            v-if="times.length > 1"
-            type="button"
-            class="sp-time-remove"
-            title="删除该时间"
-            aria-label="删除该时间"
-            @click="removeTime(i)"
-          >✕</button>
-        </div>
-        <button type="button" class="sp-add-time-link" @click="addTime">+添加时间</button>
-        <p class="sp-tip">支持一天多个定点（如 09:00 / 11:00 / 13:00），同日自动去重。</p>
-      </div>
-      <div v-else class="sp-times">
+      <div class="sp-times">
         <div v-for="(t, i) in times" :key="i" class="sp-time-item">
           <el-time-picker
             :model-value="t"
@@ -323,22 +464,8 @@ const showMonthHint = computed(
 
     <div v-if="error" class="sp-err-text">{{ error }}</div>
 
-    <!-- 原型态（#19）：执行预览绿底框（✱ 摘要 + 「接下来 N 次：」白底药丸，去 T / 时区后缀） -->
-    <div v-if="prototype" class="sp-proto-preview">
-      <div class="sp-proto-sched">
-        <span v-if="previewLoading">正在推算执行计划…</span>
-        <span v-else-if="previewError" class="is-error">{{ previewError }}</span>
-        <span v-else-if="previewSummary">{{ previewSummary }}</span>
-        <span v-else class="is-faint">完善周期后，这里实时显示执行计划</span>
-      </div>
-      <div v-if="!previewLoading && !previewError && previewTimes.length" class="sp-proto-next">
-        <span class="sp-proto-next-label">接下来 {{ previewTimes.length }} 次：</span>
-        <span v-for="(t, i) in previewTimes" :key="i" class="sp-proto-pill">{{ prettyTime(t) }}</span>
-      </div>
-    </div>
-
     <!-- 人话回显 + 下 N 次预览（由父级 preview-schedule 产出） -->
-    <div v-else class="sp-preview">
+    <div class="sp-preview">
       <div class="sp-preview-head">
         <el-icon class="sp-preview-icon"><MagicStick /></el-icon>
         <span v-if="previewLoading" class="sp-preview-summary">正在推算执行计划…</span>
@@ -351,6 +478,7 @@ const showMonthHint = computed(
         <li v-for="(t, i) in previewTimes" :key="i" class="sp-next-item">{{ t }}</li>
       </ul>
     </div>
+    </template>
   </div>
 </template>
 
@@ -666,6 +794,40 @@ const showMonthHint = computed(
   font-size: var(--fs-xs);
   color: var(--c-accent);
   font-variant-numeric: tabular-nums;
+}
+
+/* 预设按钮组宽一些（5 个按钮） */
+.sp-seg-preset .sp-seg-btn {
+  min-width: 88px;
+}
+
+/* 每间隔行：数字输入 + 单位按钮组内联 */
+.sp-interval-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sp-interval-label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.sp-interval-input {
+  width: 64px;
+  height: 36px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: var(--bg-surface);
+  color: var(--c-text-strong);
+  font-size: var(--fs-md);
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+}
+.sp-interval-input:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
 }
 
 /* 窄屏：分段/星期条撑满 */

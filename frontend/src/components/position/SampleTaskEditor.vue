@@ -59,6 +59,10 @@ const taskEnabled = computed(() => (props.sample?.status || 'ENABLED') === 'ENAB
 // ---- 表单模型（对齐 TaskEditor.form） ----
 function blankSchedule() {
   return {
+    scheduleMode: 'PERIODIC',
+    periodicPreset: 'DAILY',
+    intervalCount: 1,
+    intervalUnit: 'DAY',
     scheduleType: 'DAILY',
     daysOfWeek: [],
     daysOfMonth: [],
@@ -76,6 +80,7 @@ const form = reactive({
   remark: '',
   schedule: blankSchedule(),
   sopDoc: '',
+  preKick: false,
   toolRefs: [], // { type, code, requiresConfirmation }（ToolPicker selected 结构）
   skillRefs: [] // { platformSkillId, name }（引用平台技能）
 })
@@ -287,11 +292,13 @@ function onScheduleChange() {
 }
 
 function scheduleReady(sc) {
-  if (sc.scheduleType === 'ONCE') return !!sc.onceAt
+  const mode = sc.scheduleMode || 'PERIODIC'
+  if (mode === 'ONCE' || sc.scheduleType === 'ONCE') return !!sc.onceAt
+  if (mode === 'INTERVAL') return (sc.intervalCount || 0) > 0
   if (!sc.times || !sc.times.length || sc.times.some((t) => !t)) return false
   if (sc.scheduleType === 'WEEKLY') return (sc.daysOfWeek || []).length > 0
   if (sc.scheduleType === 'MONTHLY') return (sc.daysOfMonth || []).length > 0
-  return true // DAILY
+  return true // DAILY / INTERVAL_*
 }
 
 async function doPreview() {
@@ -364,12 +371,18 @@ function validate() {
   }
 
   const sc = form.schedule
-  if (sc.scheduleType === 'ONCE') {
+  const mode = sc.scheduleMode || 'PERIODIC'
+  if (mode === 'ONCE' || sc.scheduleType === 'ONCE') {
     if (!sc.onceAt) {
       errors.schedule = '请选择执行时间'
       ok = false
     } else if (new Date(sc.onceAt).getTime() <= Date.now()) {
       errors.schedule = '这个时间已经过去了，请选个以后的时间'
+      ok = false
+    }
+  } else if (mode === 'INTERVAL') {
+    if (!(sc.intervalCount > 0)) {
+      errors.schedule = '请填写间隔数量'
       ok = false
     }
   } else {
@@ -444,6 +457,7 @@ async function save() {
     remark: form.remark.trim() || undefined,
     schedule: buildSchedule(),
     sopDoc: form.sopDoc,
+    preKick: form.preKick,
     toolRefs: buildToolRefs(),
     skillRefs: buildSkillRefs()
     // 无 enable / status：样例默认启用（后端缺省 ENABLED），列表不呈现运行态。
@@ -501,6 +515,10 @@ function fillFrom(sample) {
     form.prompt = sample.prompt || ''
     form.remark = sample.remark || ''
     form.schedule = {
+      scheduleMode: sample.schedule?.scheduleMode || 'PERIODIC',
+      periodicPreset: sample.schedule?.periodicPreset || 'DAILY',
+      intervalCount: sample.schedule?.intervalCount || 1,
+      intervalUnit: sample.schedule?.intervalUnit || 'DAY',
       scheduleType: sample.schedule?.scheduleType || 'DAILY',
       daysOfWeek: sample.schedule?.daysOfWeek || [],
       daysOfMonth: sample.schedule?.daysOfMonth || [],
@@ -510,6 +528,7 @@ function fillFrom(sample) {
       endDate: sample.schedule?.endDate || ''
     }
     form.sopDoc = sample.sopDoc || ''
+    form.preKick = sample.preKick ?? false
     form.toolRefs = (sample.toolRefs || []).map((t) => ({
       type: t.type,
       code: t.code,
@@ -621,17 +640,26 @@ onMounted(async () => {
             :prototype="embedded"
             @preview="onScheduleChange"
           />
+          <div class="te-pre-kick">
+            <el-checkbox v-model="form.preKick" @change="markDirty">
+              空闲时段提前准备
+            </el-checkbox>
+            <p class="te-pre-kick-hint">
+              送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。
+              关闭则到点才开始执行，结果会晚几分钟。
+            </p>
+          </div>
         </div>
       </section>
 
-      <!-- 分区 3：详细说明 -->
+      <!-- 分区 3：提示词 -->
       <section class="te-card">
         <div class="te-card-title">
-          <span class="te-card-dot"></span> 详细说明 <span class="req">*</span>
+          <span class="te-card-dot"></span> 提示词 <span class="req">*</span>
         </div>
         <div class="te-card-body">
           <p class="te-card-guide">
-            用自然语言写清这件事要怎么办：目标是什么、分哪几步、用到哪些工具、产出什么结果。
+            描述任务目标、产出格式和推送方式
           </p>
           <MarkdownEditor
             v-model="form.sopDoc"
@@ -1157,6 +1185,19 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 空闲时段提前准备勾选区 */
+.te-pre-kick {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.te-pre-kick-hint {
+  margin: 4px 0 0 24px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  line-height: 1.6;
 }
 
 /* 底部 sticky 操作条（复刻数据底座 .meta-actions） */

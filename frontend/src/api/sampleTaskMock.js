@@ -39,6 +39,12 @@ export function summarizeSchedule(schedule = {}) {
       const days = (schedule.daysOfMonth || []).join('、')
       return `每月 ${days || '—'} 日 ${t}`
     }
+    case 'INTERVAL_HOUR':
+      return `每 ${schedule.intervalCount || 1} 小时执行一次`
+    case 'INTERVAL_DAY':
+      return `每 ${schedule.intervalCount || 1} 天执行一次`
+    case 'INTERVAL_WEEK':
+      return `每 ${schedule.intervalCount || 1} 周执行一次`
     case 'DAILY':
     default:
       return `每天 ${t}`
@@ -158,7 +164,7 @@ let samplesByPosition = buildSeed()
 const persist = attachPersist('sampleTask', {
   // v2（2026-09-09）：404 市场研究岗补 1 条自动化任务（种子结构变更须 bump，否则存量快照会
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
-  version: 2,
+  version: 3,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {
@@ -182,6 +188,7 @@ function findSample(positionId, sampleId) {
 function toVO(s, warnings) {
   const vo = {
     ...s,
+    preKick: s.preKick ?? false,
     schedule: JSON.parse(JSON.stringify(s.schedule)),
     toolRefs: (s.toolRefs || []).map((t) => ({ ...t })),
     skillRefs: (s.skillRefs || []).map((r) => ({ ...r })),
@@ -199,6 +206,10 @@ function normalizeUpsert(payload = {}) {
     remark: String(payload.remark || ''),
     schedule: {
       scheduleType: payload.schedule?.scheduleType || 'DAILY',
+      scheduleMode: payload.schedule?.scheduleMode || 'PERIODIC',
+      periodicPreset: payload.schedule?.periodicPreset || 'DAILY',
+      intervalCount: payload.schedule?.intervalCount || 1,
+      intervalUnit: payload.schedule?.intervalUnit || 'DAY',
       times: [...(payload.schedule?.times || [])],
       daysOfWeek: [...(payload.schedule?.daysOfWeek || [])],
       daysOfMonth: [...(payload.schedule?.daysOfMonth || [])],
@@ -207,6 +218,7 @@ function normalizeUpsert(payload = {}) {
       endDate: payload.schedule?.endDate || ''
     },
     sopDoc: String(payload.sopDoc || ''),
+    preKick: payload.preKick ?? false,
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' }))
   }
