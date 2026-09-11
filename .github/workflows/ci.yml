@@ -52,6 +52,9 @@ jobs:
       - name: 跑单元测试
         working-directory: frontend
         # 就是本地的 npm run test（vitest run，约 1834 条用例）
+        # TZ 与本机开发环境保持一致，避免 fmtMinute() 等本地时间方法在 UTC 机器上跑出不同结果
+        env:
+          TZ: Asia/Shanghai
         run: npm run test
 
       - name: 跑生产构建
