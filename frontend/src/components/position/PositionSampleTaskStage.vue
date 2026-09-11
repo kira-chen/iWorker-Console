@@ -575,15 +575,17 @@ async function requestClose() {
       右栏走灰底（对齐原型 .pd2-task-layout{background:#f5f7f6}）── */
 .st-editor.st-embedded {
   max-width: none;
+  /* 内联态需要明确高度，让内部 flex 链路（.st-body flex:1 + 列表栏 overflow:auto）能闭合生效。
+     父链：.el-tabs__content(flex:1;min-height:0;overflow:auto) → .el-tab-pane(height:100%)
+     → .pd-pane--flush(height:100%) → 本元素 → .st-body(flex:1) → 列表栏(overflow:auto)
+     用 calc 减去 margin-top，避免溢出父容器。 */
+  height: calc(100% - 22px);
+  margin-top: 22px;
   background: var(--bg-sunken);
   border: none;
   border-radius: 0;
   box-shadow: none;
   animation: none;
-  /* 2026-09-10 岗位详情原型对齐（负责人指认）：页签条与双栏内容之间的整宽留白带——
-     原型实测页签条底 118px、.pd2-task-layout 顶 140px，即 22px 页面底色空档，
-     此前白色列表列直接顶到页签条。22px 为原型实测值（其 task-detail padding 同用 22px 系）。 */
-  margin-top: 22px;
 }
 
 /* ── 顶栏面包屑（复刻 .ed-crumb） ── */
@@ -656,6 +658,7 @@ async function requestClose() {
   min-height: 0;
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
+  overflow: hidden;
 }
 /* 内联态（#16）：左栏 240px，右栏 1fr（原型 .pd2-task-layout 实测 240px 1fr / gap 0）。
    2026-09-10 逐像素对齐（负责人指认「边框与对齐」）：原型两栏各自是独立白卡
@@ -664,7 +667,9 @@ async function requestClose() {
   grid-template-columns: 240px minmax(0, 1fr);
   background: var(--bg-sunken);
   gap: 16px;
-  align-items: start;
+  /* stretch 让两栏高度跟随 .st-body（flex:1 撑满父容器），从而使列表栏 overflow:auto 生效 */
+  align-items: stretch;
+  overflow: hidden;
 }
 
 /* ① 列表栏 */
@@ -682,6 +687,8 @@ async function requestClose() {
   border-radius: 8px;
   background: var(--bg-surface);
   padding: 0;
+  /* 直接限高让列表可滚：100vh 减去顶部导航(56px)+页签头(~48px)+margin-top(22px)+底部余量(40px) */
+  max-height: calc(100vh - 166px);
   overflow: hidden auto;
   align-self: stretch;
 }
@@ -910,8 +917,11 @@ async function requestClose() {
   border: 1px solid var(--border-admin-card);
   border-radius: 8px;
   padding: 22px 28px 80px;
-  overflow: hidden auto;
-  align-self: stretch;
+  box-sizing: border-box;
+  /* 固定高度让子 .ste-body { height:100% } 有参照，从而 ste-scroll { overflow:auto } 能生效 */
+  height: calc(100vh - 166px);
+  overflow: hidden;
+  align-self: start;
 }
 
 /* ── 测试结果面板 ── */

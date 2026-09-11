@@ -116,6 +116,99 @@ function buildSeed() {
         sortOrder: 1,
         createdAt: '2026-08-18T11:00:00+08:00',
         updatedAt: '2026-08-24T09:10:00+08:00'
+      },
+      {
+        id: 7011,
+        positionId: 401,
+        name: '月度目标达成预警',
+        prompt: '每月 25 日检查本月目标达成进度，低于 80% 时发出预警',
+        remark: '',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'MONTHLY', times: ['10:00'], daysOfMonth: [25], daysOfWeek: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 月度目标达成预警\n\n1. 拉取本月 KPI 完成数据\n2. 计算达成率\n3. 低于 80% 触发预警通知\n',
+        toolRefs: [{ type: 'API', code: 'api__customer', bizName: '客户数据 API' }],
+        skillRefs: [],
+        sortOrder: 2,
+        createdAt: '2026-08-20T09:00:00+08:00',
+        updatedAt: '2026-08-20T09:00:00+08:00'
+      },
+      {
+        id: 7012,
+        positionId: 401,
+        name: '供应商付款提醒',
+        prompt: '每周五下班前汇总本周应付未付的供应商账款，提醒财务处理',
+        remark: '',
+        status: 'DISABLED',
+        schedule: { scheduleType: 'WEEKLY', times: ['17:00'], daysOfWeek: [5], daysOfMonth: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 供应商付款提醒\n\n1. 查询本周到期应付账款\n2. 按优先级排序\n3. 生成汇总清单发财务\n',
+        toolRefs: [],
+        skillRefs: [],
+        sortOrder: 3,
+        createdAt: '2026-08-21T10:00:00+08:00',
+        updatedAt: '2026-08-21T10:00:00+08:00'
+      },
+      {
+        id: 7013,
+        positionId: 401,
+        name: '库存低位预警',
+        prompt: '每天检查核心 SKU 库存水位，低于安全库存时发出补货预警',
+        remark: '',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'DAILY', times: ['09:00'], daysOfWeek: [], daysOfMonth: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 库存低位预警\n\n1. 拉取核心 SKU 实时库存\n2. 对照安全库存阈值\n3. 低于阈值触发补货建议\n',
+        toolRefs: [{ type: 'MCP', code: 'mcp__zhishiku', bizName: '知识库 MCP' }],
+        skillRefs: [],
+        sortOrder: 4,
+        createdAt: '2026-08-22T11:00:00+08:00',
+        updatedAt: '2026-08-22T11:00:00+08:00'
+      },
+      {
+        id: 7014,
+        positionId: 401,
+        name: '客户满意度周报',
+        prompt: '每周汇总客户投诉、好评与 NPS 数据，生成满意度周报',
+        remark: '',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'WEEKLY', times: ['08:00'], daysOfWeek: [2], daysOfMonth: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 客户满意度周报\n\n1. 汇总本周客户反馈\n2. 统计投诉率与好评率\n3. 计算 NPS 并与上周对比\n',
+        toolRefs: [{ type: 'API', code: 'api__customer', bizName: '客户数据 API' }],
+        skillRefs: [{ platformSkillId: 'sk_302', name: '经营数据分析' }],
+        sortOrder: 5,
+        createdAt: '2026-08-23T09:00:00+08:00',
+        updatedAt: '2026-08-23T09:00:00+08:00'
+      },
+      {
+        id: 7015,
+        positionId: 401,
+        name: '季度财务简报',
+        prompt: '季度末汇总财务核心指标，生成董事会简报',
+        remark: '仅季末执行',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'MONTHLY', times: ['09:00'], daysOfMonth: [28], daysOfWeek: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 季度财务简报\n\n1. 汇总收入、成本、利润三张表\n2. 对照年度预算计算偏差\n3. 生成董事会格式简报\n',
+        toolRefs: [
+          { type: 'MCP', code: 'mcp__zhishiku', bizName: '知识库 MCP' },
+          { type: 'API', code: 'api__customer', bizName: '客户数据 API' }
+        ],
+        skillRefs: [],
+        sortOrder: 6,
+        createdAt: '2026-08-24T10:00:00+08:00',
+        updatedAt: '2026-08-24T10:00:00+08:00'
+      },
+      {
+        id: 7016,
+        positionId: 401,
+        name: '员工考勤异常汇总',
+        prompt: '每周一汇总上周员工考勤异常情况（迟到/早退/缺勤）',
+        remark: '',
+        status: 'ENABLED',
+        schedule: { scheduleType: 'WEEKLY', times: ['09:30'], daysOfWeek: [1], daysOfMonth: [], onceAt: '', startDate: '', endDate: '' },
+        sopDoc: '# 员工考勤异常汇总\n\n1. 拉取上周打卡记录\n2. 识别迟到、早退、缺勤条目\n3. 按部门汇总并通知 HR\n',
+        toolRefs: [],
+        skillRefs: [],
+        sortOrder: 7,
+        createdAt: '2026-08-25T09:00:00+08:00',
+        updatedAt: '2026-08-25T09:00:00+08:00'
       }
     ],
     402: [
@@ -164,7 +257,7 @@ let samplesByPosition = buildSeed()
 const persist = attachPersist('sampleTask', {
   // v2（2026-09-09）：404 市场研究岗补 1 条自动化任务（种子结构变更须 bump，否则存量快照会
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
-  version: 3,
+  version: 4,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {

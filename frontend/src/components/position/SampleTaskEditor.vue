@@ -854,9 +854,16 @@ onMounted(async () => {
 }
 /* 2026-09-10 逐像素对齐：内联态右栏 padding 已由 .st-col-edit 按原型
    （22px 28px 80px）承担，此处不再叠加；卡间距改用原型的 20px。 */
+.ste-embedded .ste-body {
+  /* embedded 态：撑满外层 .st-col-edit（height: calc(100vh-166px)），内部 ste-scroll 负责滚动 */
+  height: 100%;
+  overflow: hidden;
+}
 .ste-embedded .ste-scroll {
   padding: 0;
-  overflow: visible;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
 }
 .ste-embedded .ste-inner {
   max-width: 860px;

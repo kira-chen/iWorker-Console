@@ -29,9 +29,9 @@ const validPayload = (over = {}) => ({
 
 describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 mock）', () => {
   // 2026-09-09：404 市场研究岗补全为「未发布 + 六项齐备」样本后不再是空态，空态样本改用 403。
-  it('种子与岗位同源：401 两条 / 404 一条（含 scheduleSummary/toolRefs/skillRefs），403 空态', async () => {
+  it('种子与岗位同源：401 八条 / 404 一条（含 scheduleSummary/toolRefs/skillRefs），403 空态', async () => {
     const p401 = await listSampleTasks(401)
-    expect(p401.total).toBe(2)
+    expect(p401.total).toBe(8)
     expect(p401.list[0]).toMatchObject({ name: '每日经营晨报', scheduleSummary: '每天 08:30' })
     expect(p401.list[0].skillRefs[0]).toMatchObject({ platformSkillId: 'sk_302' })
     expect(p401.list[1].scheduleSummary).toBe('每周一 09:00')
@@ -54,9 +54,11 @@ describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 m
 
   it('排序：orderedIds 生效；集合不一致 409', async () => {
     const before = (await listSampleTasks(401)).list
-    await reorderSampleTasks(401, [before[1].id, before[0].id])
+    // 前两条对调，其余不变，必须传全量 id
+    const reordered = [before[1].id, before[0].id, ...before.slice(2).map((s) => s.id)]
+    await reorderSampleTasks(401, reordered)
     const after = (await listSampleTasks(401)).list
-    expect(after.map((s) => s.id)).toEqual([before[1].id, before[0].id])
+    expect(after.map((s) => s.id)).toEqual(reordered)
     await expect(reorderSampleTasks(401, [before[0].id])).rejects.toMatchObject({ code: 409 })
   })
 
@@ -65,7 +67,7 @@ describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 m
     await setSampleTaskStatus(401, list[0].id, 'DISABLED')
     expect((await getSampleTask(401, list[0].id)).status).toBe('DISABLED')
     await deleteSampleTask(401, list[0].id)
-    expect((await listSampleTasks(401)).total).toBe(1)
+    expect((await listSampleTasks(401)).total).toBe(7)
     await expect(deleteSampleTask(401, list[0].id)).rejects.toThrow('不存在')
   })
 

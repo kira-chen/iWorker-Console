@@ -556,7 +556,7 @@ function backToList() {
         </div>
         <div v-else-if="store.loading" class="board-state"></div>
 
-        <el-tabs v-else-if="store.basic" v-model="activeTab" class="pd-tabs">
+        <el-tabs v-else-if="store.basic" v-model="activeTab" :class="['pd-tabs', { 'tab-flush': ['sampleTasks', 'dataTable', 'effectTest'].includes(activeTab) }]">
           <!-- ① 人格（md §2 六区块；卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片
                （头：标题+必填星+弱色说明，体：内容+底部 hint），区块顺序 图标→描述→领用页文案→示例问题→SOP→人格） -->
           <el-tab-pane label="人格" name="persona">
@@ -937,6 +937,11 @@ function backToList() {
   overflow: auto;
   background: var(--bg-sunken);
   padding: 0 var(--space-6);
+}
+/* 铺满型页签（自动化任务/数据底座/效果测试）：内容区禁止外层滚动，把滚动权交给内部组件 */
+.pd-tabs.tab-flush :deep(.el-tabs__content) {
+  overflow: hidden;
+  padding: 0;
 }
 .pd-tabs :deep(.el-tab-pane) {
   height: 100%;
