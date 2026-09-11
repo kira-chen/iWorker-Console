@@ -585,7 +585,7 @@ async function removeApi(row) {
               </el-table-column>
 
               <!-- 验证：结果标签 + 最近验证时间 + 重新验证入口，悬浮承载排障信息 -->
-              <el-table-column label="验证" :min-width="150">
+              <el-table-column label="验证" :min-width="200">
                 <template #default="{ row }">
                   <div class="mc-vc">
                     <HealthTag :status="resolveDisplayStatus(row)" />

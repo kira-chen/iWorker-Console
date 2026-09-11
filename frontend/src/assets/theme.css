@@ -331,7 +331,11 @@ body.admin-scope .el-table .cell a[class]:hover {
 }
 /* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实。
    放在配色规则之后，确保禁用态不被上面的 type 选择器覆盖。 */
+/* 抽屉/弹窗内的禁用链接按钮同样压灰：原先只限定 .el-table，
+   抽屉里的禁用链接（如 MCP 抽屉「拉取工具」）会落回 EP 默认的浅绿，看着像可点。 */
 [data-theme] .tbl-ops .el-button.is-link.is-disabled,
+body.admin-scope .el-drawer .el-button.is-link.is-disabled,
+body.admin-scope .el-dialog .el-button.is-link.is-disabled,
 body.admin-scope .el-table .el-button.is-link.is-disabled,
 body.admin-scope .el-table .el-button.is-link.el-button--primary.is-disabled,
 body.admin-scope .el-table .el-button.is-link.el-button--success.is-disabled,

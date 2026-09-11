@@ -17,6 +17,8 @@ import RuntimeSpecEditor from '@/components/admin/RuntimeSpecEditor.vue'
 import RuntimeSpecUserDialog from '@/components/admin/RuntimeSpecUserDialog.vue'
 import { listRuntimeSpecs, deleteRuntimeSpec } from '@/api/runtimeSpec'
 import { useAdminList } from '@/composables/useAdminList'
+// 列宽单一真相源：时间列改用共享 COL.TIME（本页原为硬编码 132px，放不下完整时间戳）
+import { COL } from '@/utils/tableLayout'
 import '@/assets/connector.css'
 
 const query = reactive({ keyword: '', usage: '', sortOrder: 'descending' })
@@ -235,7 +237,10 @@ function usedTip(row) {
               </span>
             </template>
           </el-table-column>
-          <el-table-column width="132">
+          <!-- 2026-09-11 补 col-nowrap + 宽度 132→COL.TIME(168)：本列用自定义表头（无 label）、
+               宽度也是页内硬编码，09-11 那轮按 COL.* 常量扫「定类型字段」时整列漏掉，
+               导致时间值在 132px 里折成「2026-08-30 / 14:12」两行——时间断行即读不出分钟。 -->
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSortOrder">
                 最近更新 <span class="time-sort-arrow">{{ sortArrow }}</span>

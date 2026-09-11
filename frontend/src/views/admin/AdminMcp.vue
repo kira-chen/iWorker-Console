@@ -556,7 +556,7 @@ async function remove(row) {
           时间用相对值（「27 天前」）：「正常」是关于现在的断言、数据却是关于过去的记录，
           不显示新旧，一个 30 天前的绿标签会被读成「现在没问题」。
         -->
-        <el-table-column label="验证" :min-width="168">
+        <el-table-column label="验证" :min-width="200">
           <template #default="{ row }">
             <div class="mc-vc">
               <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标旋转表达「正在重测」 -->
