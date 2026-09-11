@@ -104,7 +104,9 @@ function isOnline(row) {
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
-          <el-table-column label="终端" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <!-- 终端列用 TAG 档而非 STATUS 档（2026-09-11）：值是「Windows」标签而非状态词，
+               STATUS(84px) 减去内距后放不下，加 nowrap 后会截成「Window…」。 -->
+          <el-table-column label="终端" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag type="accent">{{ row.terminal }}</StatusTag>
             </template>

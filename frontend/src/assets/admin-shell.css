@@ -73,13 +73,69 @@ body.admin-scope .el-table th.el-table__cell {
   font-size: 13px;
   font-weight: var(--fw-medium);
 }
+/* 行高档位（2026-09-11 负责人指示）：内容区 28px + 上下各 10px = 行高 48px。
+ *
+ * 【两类表分开处理，判据是"内容本身多高"而不是页面名】
+ *   - 单行页（专家/用户/岗位/技能…）：内容 28px → 行高正好 48px，即本次要的档；
+ *   - 两行页（连接器/审核中心等「主名 + 副描述」结构）：负责人指示**先保持不变**，
+ *     即维持改造前的 60px —— 故 height 仍给 60px 作为下限，两行内容（实测 41~47px）
+ *     在 60px 内居中，与改造前逐像素一致。
+ *
+ * 【实现】td 给 height:48px（EP 的 height 实为最小高度，内容更高时行会自然撑开），
+ * .cell 用 min-height:28px + 10px 纵向内距表达「内容 28 + 上下各 10」。
+ * 两行内容 41~49px + 20px 内距会把行顶到 60px 以上、破坏「保持不变」，
+ * 故两行单元格所在的行退回「0 纵向内距 + 60px」档。
+ *
+ * 【判据用"有没有副描述行"，不是"有没有 div"】先试过 `:has(> .cell > div)`，
+ * 按"内部有无块级子元素"判两行——误伤一片：用户页 .users-role-tags、技能页 .sk-title、
+ * 模型页 .md-name-cell 都是**单行**内容却用 div 包着，被整片卡在 60px 下不来。
+ * 结构标签不是"几行"的可靠信号。真正的两行结构都是「主名 + 副描述」，
+ * 副描述固定带 -desc 类（.mc-service-desc / .rev-desc / .kb-desc …），据此判定才准。
+ * 新增两行页若用别的副描述类名，在下面这组选择器里补一条即可。
+ *
+ * 【为什么不用 display:flex 一把梭】flex 会把两行结构（主名 + 副描述）拍成左右并排，
+ * 实测连接器首列由 47px 变 69px、语义也错了。 */
 body.admin-scope .el-table td.el-table__cell {
-  height: 60px;
+  height: 48px;
   padding: 0;
 }
+body.admin-scope .el-table td.el-table__cell > .cell {
+  min-height: 28px;
+  padding: 10px 16px;
+}
+/* 两行单元格（主名 + 副描述）：退回改造前的 0 纵向内距 + 60px 行高档，
+   保证连接器、审核中心、知识库这类页面本次零变化。 */
+body.admin-scope .el-table tr:has(.mc-service-desc) td.el-table__cell,
+body.admin-scope .el-table tr:has(.rev-desc) td.el-table__cell,
+body.admin-scope .el-table tr:has(.kb-desc) td.el-table__cell,
+body.admin-scope .el-table tr:has(.api-service-desc) td.el-table__cell {
+  height: 60px;
+}
+body.admin-scope .el-table tr:has(.mc-service-desc) td.el-table__cell > .cell,
+body.admin-scope .el-table tr:has(.rev-desc) td.el-table__cell > .cell,
+body.admin-scope .el-table tr:has(.kb-desc) td.el-table__cell > .cell,
+body.admin-scope .el-table tr:has(.api-service-desc) td.el-table__cell > .cell {
+  padding-top: 0;
+  padding-bottom: 0;
+}
 body.admin-scope .el-table .el-table__cell .cell {
-  padding: 0 16px;
   line-height: 1.5;
+}
+/* 行内图标统一 28px（负责人指示「icon 和文本的高度限定在 28px」）。
+ * 各页原本各自写 32px（.ex-avatar / .pos-icon / .mc-icon / .sk-icon …），
+ * 32px 会把行高顶到 52px、吃不到 48px 档，故在共享层统一压到 28px——
+ * 改这一处即可，不必逐页改（各页的圆角/底色/字号仍归各页自己管）。
+ * 字号同步 18px→16px，否则 emoji 在 28px 盒子里会贴边。 */
+body.admin-scope .el-table td.el-table__cell .cell .ex-avatar,
+body.admin-scope .el-table td.el-table__cell .cell .pos-icon,
+body.admin-scope .el-table td.el-table__cell .cell .mc-icon,
+body.admin-scope .el-table td.el-table__cell .cell .sk-icon,
+body.admin-scope .el-table td.el-table__cell .cell .kb-icon,
+body.admin-scope .el-table td.el-table__cell .cell .md-logo,
+body.admin-scope .el-table td.el-table__cell .cell .api-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
 }
 /* ---------------------------------------------------------------------------
  * 禁止换行（2026-09-11 负责人指示）：表头、定类型字段、操作列一律单行展示。
