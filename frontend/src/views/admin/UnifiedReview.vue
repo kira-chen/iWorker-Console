@@ -281,15 +281,15 @@ async function submitReject(reason) {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 业务原生只读详情（SKILL 走整页路由，不进此组件） -->
     <GovObjectDetail

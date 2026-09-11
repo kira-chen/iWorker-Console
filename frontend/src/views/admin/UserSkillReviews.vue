@@ -241,10 +241,10 @@ onMounted(() => {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
+
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <!-- 查看技能抽屉（审核动作回到本页统一处理） -->
     <UserSkillAuditDrawer

@@ -366,17 +366,17 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-
-          <!-- 统一分页条（原型 fm5-pager「共 N 条 · 每页 X 条 ‹ 页码 ›」恒显；2026-09-08 原型复刻批次 1 · C2：
-               本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
-          <ListPagination
-            v-model:page="page"
-            v-model:page-size="pageSize"
-            :total="total"
-            @change="onPageChange"
-          />
         </ListStates>
       </div>
+
+      <!-- 统一分页条（原型 fm5-pager「共 N 条 · 每页 X 条 ‹ 页码 ›」恒显；2026-09-08 原型复刻批次 1 · C2：
+           本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
+      <ListPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        @change="onPageChange"
+      />
     </div>
 
     <!-- ============ 页签二：岗位申请审批（PRD-20260903 §四） ============ -->
@@ -493,15 +493,15 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-
-          <ListPagination
-            v-model:page="appList.page.value"
-            v-model:page-size="appList.pageSize.value"
-            :total="appList.total.value"
-            @change="appList.reload"
-          />
         </ListStates>
       </div>
+
+      <ListPagination
+        v-model:page="appList.page.value"
+        v-model:page-size="appList.pageSize.value"
+        :total="appList.total.value"
+        @change="appList.reload"
+      />
     </div>
 
     <!-- 修改绑定弹窗：分配页签与审批页签【重新绑定】共用（md §4.3.3 与 §3.3 一致）；

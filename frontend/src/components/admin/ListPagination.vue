@@ -20,7 +20,7 @@
  *   <ListPagination :total="l.total" v-model:page="l.page" :page-size="l.pageSize"
  *                   @change="l.reload" />
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   total: { type: Number, default: 0 },
@@ -31,30 +31,49 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:page', 'update:pageSize', 'change'])
 
-/** 每页条数下拉选项（设计稿「10条/页」）。含当前值以免动态值不在表内时下拉显示空白。 */
+/**
+ * 每页条数下拉选项（设计稿「10条/页」）。
+ *
+ * 【为什么不把当前值并进选项】初版写成 `new Set([...SIZE_OPTIONS, props.pageSize])`，
+ * 而全站默认每页条数是按窗口高度动态算的（useDynPageSize，5~30 任意值），
+ * 于是下拉里会冒出「9条/页」「13条/页」这种随窗口高度变化的怪选项——
+ * 稿面是固定档位，用户也不该在下拉里看到这种值。改为固定四档：
+ * 动态值只作为「当前显示值」（select 的 :value 命中不了任何 option 时显示空，
+ * 故另给一个只读的当前档 option 承载它，标注「自动」以示区别）。
+ */
 const SIZE_OPTIONS = [10, 20, 30, 50]
-const sizeOptions = computed(() => {
-  const s = new Set([...SIZE_OPTIONS, props.pageSize])
-  return [...s].sort((a, b) => a - b)
-})
+/** 当前值不在固定档位里时（= 按窗口高度自动算出来的），单独给一个「自动」档承载 */
+const autoSize = computed(() => (SIZE_OPTIONS.includes(props.pageSize) ? null : props.pageSize))
 function onSizeChange(v) {
   const n = Number(v)
   if (!n || n === props.pageSize) return
   emit('update:pageSize', n) // useAdminList 侧 watch(pageSize) 会自动回第 1 页重拉
 }
 
-/** 跳至第 N 页：回车或失焦提交，越界夹到合法范围（不报错，按设计稿只是个输入框）。 */
+/**
+ * 跳至第 N 页：回车或失焦提交，越界夹到合法范围（不报错，按稿面只是个输入框）。
+ * 输入框常显当前页（稿面里「跳至 [1] 页」的框里是有值的），提交后回填为新当前页，
+ * 而不是清空——清空会让这个框看起来像坏了。
+ */
 const jumpText = ref('')
 function onJump() {
-  const n = Number(String(jumpText.value).trim())
-  jumpText.value = ''
-  if (!Number.isFinite(n) || n < 1) return
-  go(Math.min(Math.round(n), pages.value))
+  const raw = String(jumpText.value).trim()
+  const n = Number(raw)
+  if (!raw || !Number.isFinite(n) || n < 1) {
+    jumpText.value = String(current.value) // 非法输入：回填当前页
+    return
+  }
+  const target = Math.min(Math.round(n), pages.value)
+  jumpText.value = String(target)
+  go(target)
 }
 
 const visible = computed(() => props.total > 0)
 const pages = computed(() => Math.max(1, Math.ceil(props.total / Math.max(1, props.pageSize))))
 const current = computed(() => Math.min(Math.max(1, props.page), pages.value))
+// 跳页框常显当前页：必须放在 current 声明之后（放前面会 ReferenceError：
+// const 的 TDZ 让 watch 在初始化前就取值）。
+watch(current, (v) => { jumpText.value = String(v) }, { immediate: true })
 
 /** 页码序列：数字或 '…'（省略占位，key 用前缀区分首尾两处） */
 const items = computed(() => {
@@ -102,7 +121,10 @@ function go(n) {
     </div>
     <div class="list-pager-tools">
       <select class="page-size" :value="pageSize" aria-label="每页条数" @change="onSizeChange($event.target.value)">
-        <option v-for="s in sizeOptions" :key="s" :value="s">{{ s }}{{ unit }}/页</option>
+        <!-- 动态档（按窗口高度自动算出的值）：不在固定档位里时单独列出并标「自动」，
+             避免下拉里混进「9条/页」这类随窗口高度变化的怪选项 -->
+        <option v-if="autoSize" :value="autoSize">{{ autoSize }}{{ unit }}/页（自动）</option>
+        <option v-for="s in SIZE_OPTIONS" :key="s" :value="s">{{ s }}{{ unit }}/页</option>
       </select>
       <span class="page-jump">
         跳至

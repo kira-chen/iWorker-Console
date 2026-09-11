@@ -219,15 +219,15 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 全文弹窗（原型 feedback-detail L1671：520px；明细项 label 上 / 值下 + 完整内容纯文本 + 底部【关闭】） -->
     <el-dialog v-model="detailVisible" title="反馈详情" width="520px" class="fb-detail-dialog">

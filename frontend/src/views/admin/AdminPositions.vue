@@ -693,16 +693,18 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
         </el-table>
       </ListStates>
 
-      <!-- 底部分页（统一控件，恒显「共 N 条 · 每页 X 条 ‹ 页码 ›」，2026-09-08 原型复刻批次 1） -->
-      <div v-if="rows.length" class="pos-foot">
-        <ListPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
-      </div>
     </div>
+    <!-- 底部分页：2026-09-11 去掉 .pos-foot 包裹层并移到卡片之外——该层
+         justify-content:flex-end 会把分页条整体压到右侧，与全站「左总数 / 中页码 / 右工具」
+         的三段式打架（本页实测分页条左边界 1026px，其余页 239px，即负责人报的
+         「各列表页翻页区位置不统一」）。现与其余列表页一致：卡外、全宽三段式。 -->
+    <ListPagination
+      v-if="rows.length"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 效果测试台（聚焦舞台浮层，复刻 AdminSkills 做法：fixed inset:0、z-modal、mask 背景；关闭走 v-if，组件 onUnmounted 兜底 cancel） -->
     <div v-if="testVisible" class="focus-stage" v-loading="testLoading">
@@ -883,12 +885,8 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
    el-dialog teleport 到 body，scoped 命不中，故写在下方非 scoped 块 */
 
 /* 底部分页 */
-.pos-foot {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: var(--space-4);
-}
+/* .pos-foot 已于 2026-09-11 删除：其 justify-content:flex-end 把分页条压到右侧，
+   与全站三段式分页布局冲突（见模板处注释）。分页条改用组件自身的全宽布局。 */
 </style>
 
 <style>

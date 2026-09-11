@@ -326,15 +326,15 @@ async function resubmit(row, key = 'resubmit') {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 业务原生详情（SKILL 走整页路由、未知类型走 toast，均不进此组件） -->
     <GovObjectDetail

@@ -259,14 +259,13 @@ async function remove(row) {
           </template>
         </el-table-column>
         </el-table>
-
-        <!-- 统一分页条（每页条数按窗口高度动态；2026-09-08 原型复刻批次 1）。
-             2026-09-09 PRD-20260908 复核批次 0（G7）：由 ListStates 外移入默认插槽内，
-             与组织域其余五页（AdminUsers / UserSkillReviews / AdminLoginLogs / AdminFeedback）
-             一致——md §「与平台其余列表页一致」；避免加载失败/空态下仍渲染出一条分页条。 -->
-        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
+
+    <!-- 统一分页条（每页条数按窗口高度动态；2026-09-08 原型复刻批次 1）。
+         2026-09-11：与全站列表页统一——分页条置于表格卡（.table-wrap）之外、作为卡片的同级后继，
+         对齐设计稿与 AdminExperts 等既有页面。 -->
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <RoleEditor
       v-model:visible="editorVisible"

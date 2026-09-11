@@ -145,15 +145,15 @@ function isOnline(row) {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
   </div>
 </template>
 

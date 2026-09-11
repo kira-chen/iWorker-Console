@@ -685,17 +685,17 @@ async function removeApi(row) {
             </div>
           </div>
         </div>
-
-        <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
-             单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
-        <ListPagination
-          :total="groups.length"
-          v-model:page="psPage"
-          v-model:page-size="psPageSize"
-          unit="个"
-        />
       </ListStates>
     </div>
+
+    <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
+         单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
+    <ListPagination
+      :total="groups.length"
+      v-model:page="psPage"
+      v-model:page-size="psPageSize"
+      unit="个"
+    />
 
     <ApiEditor
       v-model:visible="editorVisible"

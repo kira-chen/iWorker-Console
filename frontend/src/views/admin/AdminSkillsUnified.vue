@@ -724,9 +724,10 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
         </el-table>
-        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
+
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <!-- 引用清单弹窗：标题按引用主体切换，正文名称顿号连接 -->
     <el-dialog v-model="refsVisible" :title="refsTitle" width="420px" append-to-body>
