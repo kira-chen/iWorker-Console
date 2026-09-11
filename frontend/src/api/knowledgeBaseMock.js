@@ -152,14 +152,14 @@ sources.find((s) => s.id === 'ks_5b').verifyError = 'TIMEOUT: 连接超时（800
 Object.assign(sources.find((s) => s.id === 'ks_old'), { status: 'DISABLED', verifyStatus: 'FAILED', verifiedAt: null, verifyError: 'HTTP 502 Bad Gateway' })
 
 let rows = [
-  { id: 'kb_1', name: '产品与解决方案库', kbType: 'ENTERPRISE', scopeRefId: null, description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
-  { id: 'kb_2', name: '报价政策与折扣权限', kbType: 'ENTERPRISE', scopeRefId: null, description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
-  { id: 'kb_3', name: '法规与标准库', kbType: 'ENTERPRISE', scopeRefId: null, description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
+  { id: 'kb_1', name: '产品与解决方案库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
+  { id: 'kb_2', name: '报价政策与折扣权限', icon: '💰', kbType: 'ENTERPRISE', scopeRefId: null, description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
+  { id: 'kb_3', name: '法规与标准库', icon: '⚖️', kbType: 'ENTERPRISE', scopeRefId: null, description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
   // D3：两库分别挂经营分析岗（ps_1）与财务审核岗（ps_2），名称/描述随岗位改写，让两岗知识页签都有数据可演示
-  { id: 'kb_4', name: '经营分析指标口径库', kbType: 'POSITION', scopeRefId: 'ps_1', description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
-  { id: 'kb_5', name: '财务审核制度库', kbType: 'POSITION', scopeRefId: 'ps_2', description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
-  { id: 'kb_6', name: '2026 产品白皮书库', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
-  { id: 'kb_7', name: '薪酬与绩效制度', kbType: 'ENTERPRISE', scopeRefId: null, description: '', status: 'DRAFT', pendingAction: null, sourceIds: [] }
+  { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefId: 'ps_1', description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
+  { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefId: 'ps_2', description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
+  { id: 'kb_6', name: '2026 产品白皮书库', icon: '📄', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
+  { id: 'kb_7', name: '薪酬与绩效制度', icon: '', kbType: 'ENTERPRISE', scopeRefId: null, description: '', status: 'DRAFT', pendingAction: null, sourceIds: [] }
 ]
 // 文档按上传类数据源 id 归属；parseReadyAt=解析完成时间戳（listDocs 读到该时刻后 PARSING → PARSED，供轮询示意）
 const docsBySource = {
@@ -182,8 +182,9 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // 旧快照含该两键，弃用回种子。
 // version 6（2026-09-10 D3）：岗位可见范围种子对齐岗位模块四岗（销售顾问/HR 专员 → 经营分析岗/财务审核岗，
 // kb_4/kb_5 名称描述随岗位改写）；旧快照仍挂不存在的岗位名，弃用回种子。
+// version 7（2026-09-11）：知识库种子加 icon 字段；旧快照无该字段，弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -301,7 +302,7 @@ function validate(payload, selfId) {
 export async function create(payload) {
   await delay()
   validate(payload)
-  const r = { id: nid('kb'), name: payload.name.trim(), kbType: payload.kbType, scopeRefId: payload.scopeRefId || null, description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
+  const r = { id: nid('kb'), name: payload.name.trim(), icon: payload.icon || '', kbType: payload.kbType, scopeRefId: payload.scopeRefId || null, description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
   rows = [r, ...rows]
   persist()
   return vo(r)
@@ -317,6 +318,7 @@ export async function update(id, payload) {
   const scopeChanged = nextScope !== r.scopeRefId
   Object.assign(r, {
     name: payload.name.trim(),
+    icon: payload.icon ?? r.icon,
     description: String(payload.description || '').trim(),
     scopeRefId: nextScope,
     sourceIds: [...(payload.sourceIds || [])]

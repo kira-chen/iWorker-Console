@@ -257,7 +257,6 @@ const kbKeyword = ref('')
 const kbExpanded = ref(false)
 
 async function loadKnowledge() {
-  if (props.readonly) return // 原型只在编辑器挂本区块，openExpertViewer 查看态不挂
   kbLoading.value = true
   try {
     const data = await listKnowledgeBases({ page: 1, size: 200 })
@@ -536,69 +535,7 @@ const metaItems = computed(() => {
     </template>
 
     <template #default>
-      <!-- ======== 只读查看态（原型 openExpertViewer 形态） ======== -->
-      <template v-if="props.readonly">
-        <section class="section-card">
-          <h3 class="section-title">基本信息</h3>
-          <div class="ee-view-grid">
-            <div class="ee-view-field">
-              <span class="ee-view-label">专家名</span>
-              <span class="ee-view-value">{{ detail?.name || '—' }}</span>
-            </div>
-            <div class="ee-view-field">
-              <span class="ee-view-label">状态</span>
-              <span class="ee-view-value"><StatusTag :type="view.tagType">{{ view.label }}</StatusTag></span>
-            </div>
-            <div class="ee-view-field">
-              <span class="ee-view-label">分类</span>
-              <span class="ee-view-value">{{ detail?.category || '—' }}</span>
-            </div>
-            <div class="ee-view-field ee-view-full">
-              <span class="ee-view-label">简介</span>
-              <span class="ee-view-value">{{ detail?.intro || '—' }}</span>
-            </div>
-            <div class="ee-view-field ee-view-full">
-              <span class="ee-view-label">职责描述</span>
-              <span class="ee-view-value ee-view-pre">{{ detail?.roleDesc || '—' }}</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="section-card">
-          <h3 class="section-title">专家帮你做</h3>
-          <div class="ee-view-questions">
-            <div
-              v-for="(q, i) in detail?.exampleQuestions || []"
-              :key="i"
-              class="ee-view-question"
-            >{{ i + 1 }}. {{ q }}</div>
-          </div>
-        </section>
-
-        <section class="section-card">
-          <h3 class="section-title">
-            市场技能引用
-            <span class="section-sub">{{ viewSkills.length }} 个技能</span>
-          </h3>
-          <div v-if="viewSkills.length" class="ee-sk-grid">
-            <div v-for="s in viewSkills" :key="s.skillId" class="ee-sk-card">
-              <div class="ee-sk-main">
-                <div class="ee-sk-name" :title="s.name">{{ s.name }}</div>
-                <div class="ee-sk-desc" :title="s.description || ''">{{ s.description || '—' }}</div>
-              </div>
-            </div>
-          </div>
-          <div v-else class="ee-empty">暂无技能引用</div>
-        </section>
-
-        <div class="ee-meta">
-          <span v-for="m in metaItems" :key="m">{{ m }}</span>
-        </div>
-      </template>
-
-      <!-- ======== 新建 / 编辑态 ======== -->
-      <template v-else>
-        <!-- 审核锁定提示（兜底：列表已把审核中行的编辑置灰） -->
+      <!-- 审核锁定提示（兜底：列表已把审核中行的编辑置灰） -->
         <el-alert
           v-if="locked"
           type="warning"
@@ -858,11 +795,10 @@ const metaItems = computed(() => {
           </div>
         </section>
 
-        <!-- 底部时间条（编辑态；原型 metaHtml：创建/最近更新/最近发布/最新版本） -->
+        <!-- 底部时间条（编辑/查看态；原型 metaHtml：创建/最近更新/最近发布/最新版本） -->
         <div v-if="isEdit && detail" class="ee-meta">
           <span v-for="m in metaItems" :key="m">{{ m }}</span>
         </div>
-      </template>
     </template>
 
     <!-- 底部按钮：查看=【关闭】；新建=【取消】【创建专家】；编辑=【取消】【发布】【保存】 -->

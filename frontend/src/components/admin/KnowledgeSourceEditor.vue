@@ -136,6 +136,10 @@ let muteVerifyReset = false
 
 const rules = computed(() => ({
   name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
+  embeddingModelId:
+    form.sourceType === 'UPLOAD'
+      ? [{ required: true, message: '请选择向量模型', trigger: 'change' }]
+      : [],
   'api.url':
     form.sourceType === 'API'
       ? [
@@ -596,7 +600,7 @@ function close() {
           </div>
         </el-form-item>
         <!-- 原型：Embedding select 全宽 + help 下置 -->
-        <el-form-item label="向量模型">
+        <el-form-item label="向量模型" prop="embeddingModelId" required>
           <el-select v-model="form.embeddingModelId" placeholder="选择 Embedding 模型" class="ksrc-full">
             <el-option v-for="m in embeddingModels" :key="m.id" :label="m.name" :value="m.id" />
           </el-select>

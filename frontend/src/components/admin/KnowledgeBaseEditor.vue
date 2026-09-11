@@ -29,6 +29,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
+import IconField from '@/components/common/IconField.vue'
 import {
   getKnowledgeBase,
   createKnowledgeBase,
@@ -89,7 +90,7 @@ const viewMode = computed(() => props.mode === 'view' && isEdit.value)
 const pendingLocked = computed(() => isPending(detail.value)) // 审核中：配置锁定，仅允许查看或撤回
 const readonlyAll = computed(() => viewMode.value || pendingLocked.value)
 
-const form = reactive({ name: '', kbType: 'ENTERPRISE', scopeRefId: '', description: '' })
+const form = reactive({ name: '', icon: '', kbType: 'ENTERPRISE', scopeRefId: '', description: '' })
 /** 每类选中的数据源 id 列表（引用）。 */
 const refs = reactive({ UPLOAD: [], API: [], MCP: [] })
 
@@ -173,6 +174,7 @@ function resetForm() {
   const lock = props.positionLock
   Object.assign(form, {
     name: '',
+    icon: '',
     kbType: lock ? 'POSITION' : 'ENTERPRISE',
     scopeRefId: lock ? lock.id : '',
     description: ''
@@ -182,6 +184,7 @@ function resetForm() {
 function hydrate(d) {
   detail.value = d
   form.name = d.name || ''
+  form.icon = d.icon || ''
   form.kbType = d.kbType || 'ENTERPRISE'
   form.scopeRefId = d.scopeRefId || ''
   form.description = d.description || ''
@@ -228,6 +231,7 @@ function allRefIds() {
 function buildPayload() {
   return {
     name: form.name.trim(),
+    icon: form.icon,
     kbType: form.kbType,
     scopeRefId: form.kbType === 'ENTERPRISE' ? null : form.scopeRefId || null,
     description: form.description.trim(),
@@ -388,9 +392,14 @@ function close() {
       <section class="section-card">
         <div class="section-title">基本信息</div>
         <div class="kb-grid">
+          <!-- 第一行：名称 + 图标 -->
           <el-form-item label="知识库名称" prop="name" required>
             <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="如 产品与解决方案库" />
           </el-form-item>
+          <el-form-item label="图标">
+            <IconField :icon="form.icon" :name="form.name" :readonly="readonlyAll" @pick="({ icon }) => (form.icon = icon)" />
+          </el-form-item>
+          <!-- 第二行：类型 + 可见范围 -->
           <el-form-item label="类型" prop="kbType" required>
             <el-select v-model="form.kbType" :disabled="typeLocked" class="kb-full">
               <el-option v-for="o in KB_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />

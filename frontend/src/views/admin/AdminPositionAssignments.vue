@@ -413,7 +413,6 @@ onMounted(() => {
             :data="appList.rows.value"
             class="pa-table"
             :default-sort="{ prop: 'submittedAt', order: appSortDir === 'desc' ? 'descending' : 'ascending' }"
-            @sort-change="onAppSortChange"
           >
             <el-table-column label="用户名" min-width="120" show-overflow-tooltip>
               <template #default="{ row }">

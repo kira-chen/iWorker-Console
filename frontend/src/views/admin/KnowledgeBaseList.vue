@@ -24,6 +24,7 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import KnowledgeBaseEditor from '@/components/admin/KnowledgeBaseEditor.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
+import { iconIsUrl } from '@/utils/iconDisplay'
 import {
   listKnowledgeBases,
   getKnowledgeBase,
@@ -238,9 +239,17 @@ onActivated(reload)
         <el-table v-loading="loading" :data="rows" row-key="id">
           <el-table-column label="知识库" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
-              <!-- 名称点击进入编辑或查看（md §三.2）：审核中锁定 → 查看，其余 → 编辑 -->
-              <span class="kb-name kb-link" @click="isPending(row) ? openView(row) : openEdit(row)">{{ row.name }}</span>
-              <div v-if="row.description" class="kb-desc">{{ row.description }}</div>
+              <!-- 图标 + 名称行（名称点击进入编辑或查看，md §三.2）：审核中锁定 → 查看，其余 → 编辑 -->
+              <div class="kb-name-cell">
+                <span class="kb-cell-icon" :class="{ 'is-empty': !row.icon }">
+                  <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="kb-cell-icon-img" />
+                  <span v-else-if="row.icon">{{ row.icon }}</span>
+                </span>
+                <div class="kb-cell-text">
+                  <span class="kb-name kb-link" @click="isPending(row) ? openView(row) : openEdit(row)">{{ row.name }}</span>
+                  <div v-if="row.description" class="kb-desc">{{ row.description }}</div>
+                </div>
+              </div>
             </template>
           </el-table-column>
 
@@ -315,6 +324,36 @@ onActivated(reload)
 </template>
 
 <style scoped>
+.kb-name-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* 图标块照 BizSystems/MCP/API 统一口径：26px、圆角 5、浅灰底 */
+.kb-cell-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: var(--c-bg-hover, #f5f5f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  overflow: hidden;
+  margin-top: 1px;
+}
+.kb-cell-icon.is-empty {
+  background: transparent;
+}
+.kb-cell-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.kb-cell-text {
+  min-width: 0;
+}
 .kb-name {
   color: var(--c-text-strong);
 }
