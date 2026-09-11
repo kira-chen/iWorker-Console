@@ -558,9 +558,14 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
                 </span>
                 <span class="pos-name-line">
                   <span class="pos-name" :title="row.name">{{ row.name }}</span>
-                  <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
                 </span>
               </span>
+            </template>
+          </el-table-column>
+          <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
             </template>
           </el-table-column>
 

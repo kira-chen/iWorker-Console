@@ -485,12 +485,17 @@ async function remove(row) {
                   <span v-else>{{ row.icon }}</span>
                 </span>
                 <span class="mc-name">{{ row.name }}</span>
-                <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
               </div>
               <div class="mc-service-desc" :class="{ 'is-indent': row.icon }" :title="row.description || ''">
                 {{ row.description || '—' }}
               </div>
             </div>
+          </template>
+        </el-table-column>
+        <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
           </template>
         </el-table-column>
 

@@ -338,15 +338,19 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     expect(adminApi.healthCheckTool).toHaveBeenCalledWith('MCP', 'mc_none')
   })
 
-  it('列结构对齐 PRD-20260828 §二.1（2026-09-01）：服务合并列 + 引用情况 + 最近更新时间', async () => {
+  it('列结构：服务合并列 + 独立状态列 + 引用情况 + 最近更新时间', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.t-cell')].map((c) => c.getAttribute('data-label'))
-    // 服务列合并名称/描述/状态标签，不再有独立的 服务描述/状态/创建时间 列
+    // 服务列仍合并名称/描述，但【状态】已拆回独立列
+    // （2026-09-11 负责人指示「按照设计图拆出来」，依据《列表页UI.png》——
+    //  稿面「状态」是独立一列且紧跟名称列之后；此前 2026-09-01 的「并入名称格」口径作废）。
     expect(labels).not.toContain('服务描述')
-    expect(labels).not.toContain('状态')
     expect(labels).not.toContain('创建时间')
+    expect(labels).toContain('状态')
+    // 状态列紧跟「服务」列之后
+    expect(labels.indexOf('状态')).toBe(labels.indexOf('服务') + 1)
     expect(labels).toEqual(
-      expect.arrayContaining(['服务', '传输方式', '工具数', '引用情况', '最近更新时间', '验证', '操作'])
+      expect.arrayContaining(['服务', '状态', '传输方式', '工具数', '引用情况', '最近更新时间', '验证', '操作'])
     )
   })
 

@@ -327,9 +327,10 @@ async function stopExpert(row) {
           row-key="id"
         >
         >
-          <!-- 专家名：图标 avatar + 名称 + 三态状态标签同格（原型 expert-primary，独立状态列已并入）。
-               2026-09-10 体验优化 E1：列级 show-overflow-tooltip 会连状态标签一起截成「…」，
-               改为名字自身弹性收缩省略（标签/头像 flex:none 恒完整），悬停提示走原生 title（同原型 skill-name 口径）。 -->
+          <!-- 专家名：图标 avatar + 名称（2026-09-11 按《列表页UI.png》把状态标签拆回独立列，
+               稿面「状态」紧跟名称列之后；此前是三态标签与名称同格）。
+               2026-09-10 体验优化 E1：列级 show-overflow-tooltip 会连标签一起截成「…」，
+               改为名字自身弹性收缩省略（头像 flex:none 恒完整），悬停提示走原生 title。 -->
           <el-table-column label="专家名" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
               <span class="ex-primary">
@@ -342,8 +343,12 @@ async function stopExpert(row) {
                   <span v-else>{{ row.avatar || '☆' }}</span>
                 </span>
                 <a class="ex-name" :title="row.name" @click="openEdit(row)">{{ row.name }}</a>
-                <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
               </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
             </template>
           </el-table-column>
           <el-table-column label="专家描述" :min-width="COL.DESC_MIN" show-overflow-tooltip>

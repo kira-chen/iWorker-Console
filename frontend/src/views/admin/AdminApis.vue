@@ -511,7 +511,9 @@ async function removeApi(row) {
               row-key="id"
             >
               <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
-              <el-table-column label="API" :min-width="220">
+              <!-- min-width 220→174（2026-09-11）：状态标签拆出独立列后，名称行不再与标签抢位，
+                   收回 46px 让本表回到视口内（拆列前 1166px 不溢出，拆后 1212px 溢出 46px）。 -->
+              <el-table-column label="API" :min-width="174">
                 <template #default="{ row }">
                   <div class="api-cell">
                     <span class="api-cell-icon" :class="{ 'is-empty': !row.icon }">
@@ -522,7 +524,6 @@ async function removeApi(row) {
                     <div class="api-cell-text">
                       <div class="api-cell-name-line">
                         <span class="api-cell-name">{{ row.name }}</span>
-                        <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                       </div>
                       <el-tooltip
                         :content="row.description"
@@ -533,6 +534,13 @@ async function removeApi(row) {
                       </el-tooltip>
                     </div>
                   </div>
+                </template>
+              </el-table-column>
+              <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后
+                   （与下方「性质」列是两回事：性质=读/写，状态=发布态） -->
+              <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                 </template>
               </el-table-column>
 

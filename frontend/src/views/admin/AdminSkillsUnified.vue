@@ -573,7 +573,8 @@ onBeforeUnmount(() => {
           :data="rows"
           row-key="id"
         >
-          <!-- 技能名：图标 + 名称（超长换行完整展示）+ 三态状态标签；首列宽照原型 L1275（290px，批次 2C · E-A2） -->
+          <!-- 技能名：图标 + 名称（超长换行完整展示）；首列宽照原型 L1275（290px，批次 2C · E-A2）。
+               2026-09-11 按《列表页UI.png》把三态状态标签拆回独立列（稿面「状态」紧跟名称列之后）。 -->
           <el-table-column label="技能名" :min-width="290">
             <template #default="{ row }">
               <div class="sk-title">
@@ -582,8 +583,12 @@ onBeforeUnmount(() => {
                   <span v-else>{{ row.icon }}</span>
                 </span>
                 <span class="sk-name">{{ row.name }}</span>
-                <StatusTag :type="displayStateTag(row)">{{ displayStateLabel(row) }}</StatusTag>
               </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <StatusTag :type="displayStateTag(row)">{{ displayStateLabel(row) }}</StatusTag>
             </template>
           </el-table-column>
           <!-- 技能描述：独立列，单行缩略悬停全文；无描述占位符 -->

@@ -293,13 +293,18 @@ async function remove(row) {
               <div class="biz-cell-text">
                 <div class="biz-cell-name-line">
                   <span class="biz-cell-name" :title="row.name">{{ row.name }}</span>
-                  <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                 </div>
                 <div class="biz-cell-desc" :title="row.description || ''">
                   {{ row.description || '—' }}
                 </div>
               </div>
             </div>
+          </template>
+        </el-table-column>
+        <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
           </template>
         </el-table-column>
 

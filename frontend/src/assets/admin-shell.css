@@ -146,6 +146,28 @@ body.admin-scope .el-table .el-table__cell .cell {
    强行改 28px 会撑破轨道、让图标与描述错位——而这些页负责人要求「保持不变」。
    初版误列了 .kb-icon / .api-icon 两个**根本不存在**的类名（真实为 -cell-icon），
    看着覆盖了其实一条没生效，现按实际存在且需要归一的类名重列。 */
+/* 行图标改圆形（2026-09-11 负责人指示「按照设计图把样式改为圆形就可以，
+   不用管是不是字形图标」）：稿面行内是圆形头像，故只改圆角、不换内容形态
+   （仍是 emoji / 字形 / 图片，各页自管）。
+   这条**覆盖全部 8 个行图标**（含两行页的 -cell-icon 系列）——圆角不改尺寸，
+   不会像上面的 28px 归一那样撑破两行页的固定栅格轨道，故可安全全覆盖。
+   图片型图标（-img 子元素）本就 100% 填满父盒，父盒 overflow:hidden 会一并裁圆。 */
+body.admin-scope .el-table td.el-table__cell .cell .ex-avatar,
+body.admin-scope .el-table td.el-table__cell .cell .pos-icon,
+body.admin-scope .el-table td.el-table__cell .cell .sk-icon,
+body.admin-scope .el-table td.el-table__cell .cell .md-logo,
+body.admin-scope .el-table td.el-table__cell .cell .mc-icon,
+body.admin-scope .el-table td.el-table__cell .cell .kb-cell-icon,
+body.admin-scope .el-table td.el-table__cell .cell .api-cell-icon,
+body.admin-scope .el-table td.el-table__cell .cell .biz-cell-icon {
+  border-radius: 50%;
+}
+/* 图片型图标：父盒 overflow:hidden 已能裁圆，但 .ex-avatar-img / .sk-icon-img
+   自带 --radius-sm 圆角，在圆形父盒里会露出直角边，一并改圆。 */
+body.admin-scope .el-table td.el-table__cell .cell .ex-avatar-img,
+body.admin-scope .el-table td.el-table__cell .cell .sk-icon-img {
+  border-radius: 50%;
+}
 body.admin-scope .el-table td.el-table__cell .cell .ex-avatar,
 body.admin-scope .el-table td.el-table__cell .cell .pos-icon,
 body.admin-scope .el-table td.el-table__cell .cell .sk-icon,
