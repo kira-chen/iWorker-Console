@@ -205,7 +205,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     const heads = [...container.querySelectorAll('.te-card-title')].map((n) => n.textContent.trim())
     expect(heads[0]).toContain('基本信息')
     expect(heads[1]).toContain('调度计划')
-    expect(heads[2]).toContain('详细说明')
+    expect(heads[2]).toContain('提示词')
     expect(heads[3]).toContain('引用工具')
     expect(heads[4]).toContain('引用平台技能')
     expect(container.querySelectorAll('.te-card-body').length).toBe(5)
@@ -310,8 +310,12 @@ describe('自动化任务 · 调度计划原型态（4B #19）', () => {
 
   function mountSched(extra = {}) {
     const schedule = ref({
-      scheduleType: 'WEEKLY',
-      daysOfWeek: [1],
+      scheduleMode: 'PERIODIC',
+      periodicPreset: 'DAILY',
+      intervalCount: 1,
+      intervalUnit: 'DAY',
+      scheduleType: 'DAILY',
+      daysOfWeek: [],
       daysOfMonth: [],
       times: ['09:00'],
       onceAt: '',
@@ -334,60 +338,79 @@ describe('自动化任务 · 调度计划原型态（4B #19）', () => {
     return schedule
   }
 
-  it('prototype=true：周期类型走分段按钮组，当前项高亮；点「每天」切类型', async () => {
-    const schedule = mountSched({ prototype: true, previewSummary: '每周 09:00', previewTimes: [] })
+  it('prototype=true：顶层三个模式 Tab（按周期/每间隔/单次），当前项高亮', async () => {
+    const schedule = mountSched({ prototype: true, previewSummary: '每天 09:00', previewTimes: [] })
     await flush()
-    const segs = [...container.querySelectorAll('.sp-seg .sp-seg-btn')].map((b) => b.textContent.trim())
-    expect(segs).toEqual(['每天', '每周', '每月', '仅一次'])
-    expect(container.querySelector('.sp-seg .sp-seg-btn.on').textContent.trim()).toBe('每周')
-    container.querySelectorAll('.sp-seg .sp-seg-btn')[0].click()
-    await flush()
-    expect(schedule.value.scheduleType).toBe('DAILY')
+    // 只选第一行的模式 Tab，不包括预设按钮
+    const modeRow = container.querySelector('.sp-row:first-child .sp-seg')
+    const modes = [...modeRow.querySelectorAll('.sp-seg-btn')].map((b) => b.textContent.trim())
+    expect(modes).toEqual(['按周期', '每间隔', '单次'])
+    expect(modeRow.querySelector('.sp-seg-btn.on').textContent.trim()).toBe('按周期')
   })
 
-  it('prototype=true：每周出七个执行星期按钮，点击切换 daysOfWeek 且保持升序', async () => {
+  it('prototype=true 按周期模式：5个预设快捷按钮，点击切换', async () => {
     const schedule = mountSched({ prototype: true })
     await flush()
-    const days = [...container.querySelectorAll('.sp-week-seg .sp-seg-btn')]
-    expect(days.map((b) => b.textContent.trim())).toEqual(['周一', '周二', '周三', '周四', '周五', '周六', '周日'])
-    expect(days[0].classList.contains('on')).toBe(true)
-    days[4].click() // 周五 = 5
+    const presets = [...container.querySelectorAll('.sp-seg-preset .sp-seg-btn')].map((b) => b.textContent.trim())
+    expect(presets).toEqual(['每天', '每周一', '每周一三五', '每周五', '每月1日'])
+    expect(container.querySelector('.sp-seg-preset .sp-seg-btn.on').textContent.trim()).toBe('每天')
+    // 点击「每周一」
+    container.querySelectorAll('.sp-seg-preset .sp-seg-btn')[1].click()
     await flush()
-    expect(schedule.value.daysOfWeek).toEqual([1, 5])
-    // 再点周一取消
-    container.querySelectorAll('.sp-week-seg .sp-seg-btn')[0].click()
-    await flush()
-    expect(schedule.value.daysOfWeek).toEqual([5])
+    expect(schedule.value.scheduleType).toBe('WEEKLY')
+    expect(schedule.value.daysOfWeek).toEqual([1])
+    expect(schedule.value.periodicPreset).toBe('WEEKLY_MON')
   })
 
-  it('prototype=true：定点时间行为「序号圆 + ⏰ time input」，改值回写 times', async () => {
+  it('prototype=true 按周期模式：定点时间行为「⏰ time input」，改值回写 times', async () => {
     const schedule = mountSched({ prototype: true })
     await flush()
-    expect(container.querySelector('.sp-time-no').textContent.trim()).toBe('1')
     const input = container.querySelector('.sp-time-input input')
     expect(input.type).toBe('time')
+    expect(input.value).toBe('09:00')
     input.value = '18:30'
     input.dispatchEvent(new Event('input'))
     await flush()
     expect(schedule.value.times).toEqual(['18:30'])
-    // 「+添加时间」文字按钮
-    const addTime = container.querySelector('.sp-add-time-link')
-    expect(addTime.textContent.trim()).toBe('+添加时间')
-    addTime.click()
+  })
+
+  it('prototype=true 每间隔模式：数字输入 + 单位按钮组', async () => {
+    const schedule = mountSched({ prototype: true })
     await flush()
-    expect(schedule.value.times.length).toBe(2)
+    // 切换到「每间隔」
+    container.querySelectorAll('.sp-seg .sp-seg-btn')[1].click()
+    await flush()
+    expect(schedule.value.scheduleMode).toBe('INTERVAL')
+    // 数字输入框
+    const numInput = container.querySelector('.sp-interval-input')
+    expect(numInput).not.toBeNull()
+    expect(numInput.value).toBe('1')
+    // 单位按钮组
+    const units = [...container.querySelectorAll('.sp-interval-row .sp-seg .sp-seg-btn')].map((b) => b.textContent.trim())
+    expect(units).toEqual(['小时', '天', '周'])
+    expect(container.querySelector('.sp-interval-row .sp-seg .sp-seg-btn.on').textContent.trim()).toBe('天')
+  })
+
+  it('prototype=true 单次模式：显示日期选择器', async () => {
+    const schedule = mountSched({ prototype: true })
+    await flush()
+    // 切换到「单次」
+    container.querySelectorAll('.sp-seg .sp-seg-btn')[2].click()
+    await flush()
+    expect(schedule.value.scheduleMode).toBe('ONCE')
+    expect(schedule.value.scheduleType).toBe('ONCE')
   })
 
   it('prototype=true：执行预览走绿底框 + 白底药丸，药丸去掉 T 与时区后缀', async () => {
     mountSched({
       prototype: true,
-      previewSummary: '每周 09:00',
+      previewSummary: '每天 09:00',
       previewTimes: ['2026-09-07T09:00:00+08:00', '2026-09-14T09:00:00+08:00']
     })
     await flush()
     const box = container.querySelector('.sp-proto-preview')
     expect(box).not.toBeNull()
-    expect(box.querySelector('.sp-proto-sched').textContent.trim()).toBe('每周 09:00')
+    expect(box.querySelector('.sp-proto-sched').textContent.trim()).toContain('每天 09:00')
     expect(box.querySelector('.sp-proto-next-label').textContent.trim()).toBe('接下来 2 次：')
     const pills = [...box.querySelectorAll('.sp-proto-pill')].map((p) => p.textContent.trim())
     expect(pills).toEqual(['2026-09-07 09:00', '2026-09-14 09:00'])
@@ -398,9 +421,8 @@ describe('自动化任务 · 调度计划原型态（4B #19）', () => {
   it('prototype 缺省（用户端 TaskEditor 口径）：仍走 el-radio-button / el-time-picker / .sp-preview（零回归）', async () => {
     mountSched({ previewSummary: '每周 09:00', previewTimes: ['2026-09-07T09:00:00+08:00'] })
     await flush()
-    expect(container.querySelector('.sp-seg')).toBeNull()
-    expect(container.querySelector('.sp-week-seg')).toBeNull()
-    expect(container.querySelector('.sp-time-input')).toBeNull()
+    expect(container.querySelector('.sp-seg-preset')).toBeNull()
+    expect(container.querySelector('.sp-interval-row')).toBeNull()
     expect(container.querySelector('.sp-proto-preview')).toBeNull()
     expect(container.querySelector('.sp-preview')).not.toBeNull()
   })
