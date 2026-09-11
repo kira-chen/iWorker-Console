@@ -391,12 +391,12 @@ describe('ExpertEditor — 原型复刻批次 3C（2026-09-09）· E1/E2 抽屉�
     expect(cards[0].contains(sub)).toBe(true)
   })
 
-  it('E1：只读查看态三段同样卡片化（基本信息 / 专家帮你做 / 市场技能引用）', async () => {
+  it('E1：只读查看态三段同样卡片化（基本信息 / 市场技能引用 / 知识库，与编辑态一致）', async () => {
     await mount({ expertId: 201, readonly: true })
     const titles = [...container.querySelectorAll('.section-card > .section-title')].map((t) =>
       t.textContent.trim().split(/\s+/)[0]
     )
-    expect(titles).toEqual(['基本信息', '专家帮你做', '市场技能引用'])
+    expect(titles).toEqual(['基本信息', '市场技能引用', '知识库'])
   })
 
   it('E2/C5：图标行是显式双按钮（IconField：预览块 +【从图标库选择】【上传图标】），不再是头像触发式 popover', async () => {
@@ -517,7 +517,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(dlg.dataset.kb).toBe('kb_1')
   })
 
-  it('新建态：无专属映射 → 仅企业级可见（2 行、无展开钮）；只读查看态不渲染本区块', async () => {
+  it('新建态：无专属映射 → 仅企业级可见（2 行、无展开钮）；只读查看态同样渲染本区块', async () => {
     await mount({ expertId: null })
     expect(getExpertKbScopeRefId).not.toHaveBeenCalled()
     expect(kbRows()).toHaveLength(2)
@@ -525,8 +525,8 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     app.unmount(); container.remove()
 
     await mount({ expertId: 201, readonly: true })
-    expect(kbSec()).toBeNull()
-    expect(listKnowledgeBases).toHaveBeenCalledTimes(1) // 仅前面新建态那次；只读态不拉取
+    expect(kbSec()).not.toBeNull()
+    expect(listKnowledgeBases).toHaveBeenCalledTimes(2) // 新建态 + 只读态各一次
   })
 })
 
@@ -642,28 +642,29 @@ describe('ExpertEditor — 编辑', () => {
 })
 
 describe('ExpertEditor — 只读查看（原型 openExpertViewer）', () => {
-  it('标题「查看专家」：展示状态/分类、编号示例问题、技能引用（N 个技能）、时间条；footer 仅【关闭】', async () => {
+  it('标题「查看专家」：展示状态/分类、示例问题、技能引用、时间条；footer 仅【关闭】，所有字段禁用', async () => {
     await mount({ expertId: 201, readonly: true })
     expect(container.querySelector('.dr-title').textContent).toContain('查看专家')
     expect(container.textContent).toContain('已发布')
     expect(container.textContent).toContain('投资')
-    // 编号列表
-    expect(container.textContent).toContain('1. 帮我生成一份行业调研报告')
-    expect(container.textContent).toContain('2 个技能')
+    // 示例问题回填到输入框（disabled）
+    expect(inputs()[2].value).toBe('帮我生成一份行业调研报告')
+    expect(inputs()[2].disabled).toBe(true)
+    expect(container.textContent).toContain('已选择 2 个 · 共 3 个市场技能')
     expect(container.textContent).toContain('经营数据分析')
     expect(container.querySelector('.ee-meta').textContent).toContain('最新版本：v2.3.0')
-    // 仅关闭：无保存/发布/勾选入口
+    // 仅关闭：无保存/发布
     expect(btn('关闭')).toBeTruthy()
     expect(btn('保存')).toBeUndefined()
     expect(btn('发布')).toBeUndefined()
-    expect(skillChecks()).toHaveLength(0)
+    // 所有字段禁用
+    expect(inputs()[0].disabled).toBe(true)
   })
 
-  it('无技能引用 → 「暂无技能引用」', async () => {
+  it('无技能引用 → 「已选择 0 个」汇总 + 无技能卡片', async () => {
     getExpert.mockResolvedValueOnce({ ...DETAIL, skillIds: [], skills: [] })
     await mount({ expertId: 201, readonly: true })
-    expect(container.textContent).toContain('0 个技能')
-    expect(container.textContent).toContain('暂无技能引用')
+    expect(container.textContent).toContain('已选择 0 个 · 共 3 个市场技能')
   })
 })
 
