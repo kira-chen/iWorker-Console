@@ -295,27 +295,43 @@
    选中态、聚焦环，全站主色不受影响（详见 tokens.css 的 --c-admin-link 注释）。
    按 EP 的 type 分档：primary=查看/编辑/版本管理，success=发布/上架，
    warning=停用/下架/撤回，danger=删除/驳回。稿面中 primary 与 success 同为蓝。 */
-[data-theme] .tbl-ops .el-button.is-link.el-button--primary,
-[data-theme] .tbl-ops .el-button.is-link.el-button--success {
+/* 【作用域按"在不在后台表格里"，不按 .tbl-ops】（2026-09-11 修）
+   最初只写 .tbl-ops，结果 8 个页面漏改——它们的操作区各用各的容器
+   （.rev-ops / .ma-ops / .usr-ops / .rs-actions），技能页与岗位管理页甚至直接
+   裸挂在 .cell 下，压根没有容器类。按容器类名收作用域必然漏网，
+   改用「后台表格内的链接按钮」这个不变量，一条规则覆盖所有列表页。
+   同时覆盖表格内的 <a>（专家名、引用情况等行内链接原是 EP 蓝 / 品牌绿）。 */
+body.admin-scope .el-table .el-button.is-link.el-button--primary,
+body.admin-scope .el-table .el-button.is-link.el-button--success {
   color: var(--c-admin-link);
 }
-[data-theme] .tbl-ops .el-button.is-link.el-button--warning {
+body.admin-scope .el-table .el-button.is-link.el-button--warning {
   color: var(--c-admin-link-warn);
 }
-[data-theme] .tbl-ops .el-button.is-link.el-button--danger {
+body.admin-scope .el-table .el-button.is-link.el-button--danger {
   color: var(--c-admin-link-danger);
 }
+/* 表格内的行内链接（专家名 .ex-name、技能名、「N 个专家引用」等）：
+   这些是 <a> 不是 el-button，原先各页各写色值——专家名写死 EP 蓝 #409eff
+   （`var(--c-primary)` 在本站并不存在，恒回落到这个硬编码值）、引用情况走品牌绿。
+   统一收到操作链接蓝，与同表的操作链接一致。 */
+body.admin-scope .el-table .cell a[class],
+body.admin-scope .el-table .cell .el-link {
+  color: var(--c-admin-link);
+}
 /* hover 加深而非换色：稿面未给 hover 态，沿用「同色加深」的站内既有做法 */
-[data-theme] .tbl-ops .el-button.is-link:not(.is-disabled):hover {
+body.admin-scope .el-table .el-button.is-link:not(.is-disabled):hover,
+body.admin-scope .el-table .cell a[class]:hover {
   opacity: 0.75;
 }
 /* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实。
    放在配色规则之后，确保禁用态不被上面的 type 选择器覆盖。 */
 [data-theme] .tbl-ops .el-button.is-link.is-disabled,
-[data-theme] .tbl-ops .el-button.is-link.el-button--primary.is-disabled,
-[data-theme] .tbl-ops .el-button.is-link.el-button--success.is-disabled,
-[data-theme] .tbl-ops .el-button.is-link.el-button--warning.is-disabled,
-[data-theme] .tbl-ops .el-button.is-link.el-button--danger.is-disabled {
+body.admin-scope .el-table .el-button.is-link.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--primary.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--success.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--warning.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--danger.is-disabled {
   color: var(--c-text-faint);
 }
 /* 主操作 ↔ 状态/危险操作 的分隔线：细、弱、不抢眼，仅作分组暗示 */

@@ -753,7 +753,9 @@ onBeforeUnmount(() => {
 /* 技能名单元格：图标 + 名称（换行完整展示）+ 状态标签（原型 time-sort-and-full-skill-name-lock） */
 .sk-title {
   display: flex;
-  align-items: flex-start;
+  /* 2026-09-11：flex-start → center。行高收到 28px 后，图标 28px 而技能名 20px、
+     状态标签 19px，顶对齐会让文字与标签贴着图标上沿、看起来整列没纵向居中。 */
+  align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
