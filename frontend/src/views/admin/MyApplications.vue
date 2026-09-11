@@ -241,24 +241,24 @@ async function resubmit(row, key = 'resubmit') {
               <div v-if="row.description" class="ma-desc" :title="row.description">{{ row.description }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="业务类型" :width="COL.TAG">
+          <el-table-column label="业务类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="myAppBizTypeTagType(row.businessType)">
                 {{ myAppBizTypeLabel(row.businessType) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请类型" :width="COL.TAG">
+          <el-table-column label="申请类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="requestActionTagType(row.applicationType)">
                 {{ requestActionLabel(row.applicationType) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请版本" :width="COL.TAG">
+          <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.version || '—' }}</template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <!-- 原型 L1562：列头为文字按钮「申请时间 ↓ / ↑」，点击切换正倒序 -->
             <template #header>
               <button type="button" class="ma-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
@@ -267,7 +267,7 @@ async function resubmit(row, key = 'resubmit') {
             </template>
             <template #default="{ row }">{{ row.submittedAt ? fmtTime(row.submittedAt) : '—' }}</template>
           </el-table-column>
-          <el-table-column label="审核结果" :width="COL.TAG">
+          <el-table-column label="审核结果" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <!-- 已驳回且有原因：悬停气泡展示驳回原因 -->
               <el-tooltip

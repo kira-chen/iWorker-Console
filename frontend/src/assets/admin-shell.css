@@ -58,11 +58,14 @@ body.admin-scope .el-table {
  * 同一条线在三种底色上合成出三种颜色，横向扫读时分隔线深浅不匀。原型用的是不透明
  * `rgb(223,229,225)`，一条线到底、不随底色变。--border-admin-card 浅色 #dde4e0 即取自该值
  * （每通道差 ≤2，账本判定为同色），暗色映射 --border-base 保持既有暗色观感。 */
+/* 2026-09-11《列表页UI.png》对齐：表头底 #f2f5f3→#f7f7f7、表头字 #59645e→#8d8d8d、
+ * 分隔线 #dde4e0→#ebedf0 —— 稿面整体去掉了原型的绿调，转为中性灰。
+ * 仍走「不透明描边」这一条（上面那段注释的结论不变），只是换了取值。 */
 body.admin-scope .el-table {
-  --el-table-header-bg-color: var(--bg-admin-table-head);
-  --el-table-header-text-color: var(--c-admin-table-head);
+  --el-table-header-bg-color: var(--bg-admin-head);
+  --el-table-header-text-color: var(--c-admin-head);
   --el-table-row-hover-bg-color: var(--bg-admin-row-hover);
-  --el-table-border-color: var(--border-admin-card);
+  --el-table-border-color: var(--border-admin-row);
 }
 body.admin-scope .el-table th.el-table__cell {
   height: 48px;
@@ -77,6 +80,38 @@ body.admin-scope .el-table td.el-table__cell {
 body.admin-scope .el-table .el-table__cell .cell {
   padding: 0 16px;
   line-height: 1.5;
+}
+/* ---------------------------------------------------------------------------
+ * 禁止换行（2026-09-11 负责人指示）：表头、定类型字段、操作列一律单行展示。
+ *
+ * 【为什么分三条而不是一把梭给所有 td】名称列、描述列、角色标签列**需要**换行或
+ * 省略，全表禁用换行会把长描述挤成一行横向撑爆表格。故只锁三类：
+ *   ① 表头 —— 列宽本就按「表头文字宽」推导（tableLayout.js），换行说明宽度没吃住，
+ *      单行 + 省略号比折成两行更易横向扫读；
+ *   ② 操作列 —— 固定列，按钮数已分挡定宽（opsWidth），换行会让行高跳动；
+ *   ③ 定类型字段 —— 版本号 / 数字 / 日期时间等，语义上是一个不可断开的值，
+ *      断行后「2026-08-24 / 09:18」读起来像两个值。这类列挂 .col-nowrap
+ *      （见 tableLayout.js 的 NOWRAP_CLASS，随 COL.TIME/COUNT/STATUS/TAG 一起用）。
+ * ------------------------------------------------------------------------ */
+body.admin-scope .el-table th.el-table__cell > .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 带排序箭头的表头：EP 把箭头放在 .cell 内，nowrap 后箭头需与文字同行不被挤掉 */
+body.admin-scope .el-table th.el-table__cell > .cell .caret-wrapper,
+body.admin-scope .el-table th.el-table__cell > .cell .sort-btn {
+  flex: none;
+}
+/* 操作列（右侧固定列）整列不换行 */
+body.admin-scope .el-table .el-table-fixed-column--right > .cell {
+  white-space: nowrap;
+}
+/* 定类型字段列：版本号 / 数字 / 日期时间 / 状态 / 单标签 */
+body.admin-scope .el-table .col-nowrap > .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* 固定列 hover 叠色随行 hover 令牌走（theme.css 里用 --bg-hover，这里跟表格 hover 对齐） */
 body.admin-scope .el-table__body tr.hover-row > td.el-table-fixed-column--left,
@@ -102,8 +137,11 @@ body.admin-scope .page-header-title {
   letter-spacing: -0.02em;
 }
 body.admin-scope .page-header-sub {
-  margin-top: 5px;
+  /* margin-top 归零（2026-09-11）：5px 是上下堆叠时代的留白，09-10 页头改左右并排后
+     它会把副文案顶离标题基线，与 PageHeader.vue 的 align-items:baseline 打架。 */
+  margin-top: 0;
   font-size: 15px;
+  color: var(--c-admin-sub);
 }
 
 /* ---------------------------------------------------------------------------
@@ -146,6 +184,22 @@ body.admin-scope .page-header-sub {
 }
 .list-pager .page-btn.active {
   font-weight: var(--fw-semibold);
+}
+/* 当前页改「白底 + 描边框」（2026-09-11《列表页UI.png》对齐）：稿面里当前页不是绿软底，
+ * 而是一个描边方框；hover 仍保留浅灰反馈。
+ * 【必须限定 body.admin-scope】.list-pager 这个类名与员工端 Space.vue / MemoryManage.vue
+ * 的 scoped 同名类撞车（那两页是 el-pagination 结构、无 .page-btn 子元素），
+ * 不限定作用域会把后台样式漏进员工端。 */
+body.admin-scope .list-pager .page-btn:hover {
+  background: var(--bg-hover);
+  color: var(--c-text);
+}
+body.admin-scope .list-pager .page-btn.active,
+body.admin-scope .list-pager .page-btn.active:hover {
+  background: var(--bg-surface);
+  color: var(--c-text-strong);
+  border: 1px solid var(--border-admin-row);
+  font-weight: var(--fw-medium);
 }
 .list-pager .page-btn:disabled {
   color: var(--c-text-faint);

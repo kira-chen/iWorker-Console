@@ -537,14 +537,14 @@ async function removeApi(row) {
               </el-table-column>
 
               <!-- 请求方式：GET/POST/PUT/DELETE/PATCH -->
-              <el-table-column label="请求方式" :width="COL.TAG - 4">
+              <el-table-column label="请求方式" :width="COL.TAG - 4" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
                   <el-tag size="small" type="info" effect="plain">{{ row.method || '—' }}</el-tag>
                 </template>
               </el-table-column>
 
               <!-- 性质：读/写 -->
-              <el-table-column label="性质" :width="COL.COUNT" align="center">
+              <el-table-column label="性质" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
                   <StatusTag :type="natureMeta(row).type">{{ natureMeta(row).label }}</StatusTag>
                 </template>
@@ -564,7 +564,7 @@ async function removeApi(row) {
               </el-table-column>
 
               <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
-              <el-table-column :width="COL.TIME + 24">
+              <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #header>
                   <button type="button" class="time-sort" @click="toggleGroupSort(g.ps.id)">
                     最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.ps.id) }}</span>

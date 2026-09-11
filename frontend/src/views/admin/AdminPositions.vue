@@ -493,7 +493,11 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
 
 // 列宽照原型 L1200 <colgroup>（2026-09-08 原型复刻批次 2A · B7）：250/300/70/80/80/100/165；
 // 名称 / 描述为 min-width 随余量按比例伸缩，其余定宽。共享 COL 常量仍用于操作列（opsWidth）。
-const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100, TIME: 165 }
+// 2026-09-11 表头改不换行后的重定宽：列宽减 .cell 的 32px 内距才是表头可用宽。
+// 三个计数列表头分别需 技能数 53 / Agent 数 85 / 领用数 53，故 SKILL_COUNT/COUNT 各按
+// 「最长表头 + 32 内距」取整；本表共 10 列，NAME/DESC 同步收窄让总宽回到视口内
+// （放宽计数列却不收窄主列，会把表格顶出横向滚动，反而把领用数挤出屏幕）。
+const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 100, TIME: 165 }
 </script>
 
 <template>
@@ -569,19 +573,19 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
           </el-table-column>
 
           <!-- 三个计数列：表头与单元格 title 悬停口径提示（照原型）；领用数 0 直接显 0 -->
-          <el-table-column :width="POS_COL.SKILL_COUNT">
+          <el-table-column :width="POS_COL.SKILL_COUNT" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header><span class="pos-count-help" :title="COUNT_TIPS.skill">技能数</span></template>
             <template #default="{ row }">
               <span class="pos-count-help" :title="COUNT_TIPS.skill">{{ row.skillCount ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="POS_COL.COUNT">
+          <el-table-column :width="POS_COL.COUNT" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header><span class="pos-count-help" :title="COUNT_TIPS.agent">Agent 数</span></template>
             <template #default="{ row }">
               <span class="pos-count-help" :title="COUNT_TIPS.agent">{{ row.agentCount ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="POS_COL.COUNT">
+          <el-table-column :width="POS_COL.COUNT" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header><span class="pos-count-help" :title="COUNT_TIPS.claim">领用数</span></template>
             <template #default="{ row }">
               <span class="pos-count-help" :title="COUNT_TIPS.claim">{{ row.claimedUserCount ?? 0 }}</span>
@@ -589,7 +593,7 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
           </el-table-column>
 
           <!-- 最新版本：普通文本（不再用 tag）；无版本 → 「—」 -->
-          <el-table-column label="最新版本" :width="POS_COL.VERSION">
+          <el-table-column label="最新版本" :width="POS_COL.VERSION" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="row.latestVersion">{{ row.latestVersion }}</span>
               <span v-else class="cell-na">—</span>
@@ -599,7 +603,7 @@ const POS_COL = { NAME: 250, DESC: 300, SKILL_COUNT: 70, COUNT: 80, VERSION: 100
           <!-- 最近更新时间（精确到分钟）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序；单行不换行 -->
           <!-- E5（2026-09-10）：时间列随操作列一起右侧固定——1440 宽下表格总宽超出容器时
                本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
-          <el-table-column :width="POS_COL.TIME" fixed="right">
+          <el-table-column :width="POS_COL.TIME" fixed="right" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

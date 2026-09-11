@@ -523,13 +523,13 @@ async function remove(row) {
           </el-table-column>
 
           <!-- 类别：标签格式（与能力/状态标签同族视觉，弱化为 info 不与状态争色） -->
-          <el-table-column label="类别" :width="COL.TAG">
+          <el-table-column label="类别" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <el-tag size="small" type="info" effect="plain">{{ categoryLabel(row.category) }}</el-tag>
             </template>
           </el-table-column>
 
-          <el-table-column label="上下文" :width="COL.COUNT" align="center">
+          <el-table-column label="上下文" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="row.contextWindow">{{ formatWindow(row.contextWindow) }}</span>
               <span v-else class="cell-na">—</span>
@@ -537,7 +537,7 @@ async function remove(row) {
           </el-table-column>
 
           <!-- 温度：选填字段，未设＝跟随厂商默认，故空值显占位而非 0（0 是合法取值，不能混淆） -->
-          <el-table-column label="温度" :width="COL.COUNT" align="center">
+          <el-table-column label="温度" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="row.defaultTemperature != null">{{ row.defaultTemperature }}</span>
               <el-tooltip v-else content="未设置，调用时跟随厂商默认值" placement="top" effect="dark">
@@ -548,7 +548,7 @@ async function remove(row) {
 
           <!-- 最近更新时间（2026-09-01 PRD 对齐，取代创建时间列）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），
                默认模型在前，两区内按最近更新时间由近到远 -->
-          <el-table-column :width="COL.TIME + 24">
+          <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

@@ -347,7 +347,7 @@ onMounted(() => {
             <el-table-column prop="displayName" label="显示名" min-width="130" show-overflow-tooltip>
               <template #default="{ row }">{{ row.displayName || '—' }}</template>
             </el-table-column>
-            <el-table-column label="状态" :width="COL.STATUS">
+            <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <StatusTag :type="row.status === 'active' ? 'success' : 'info'">
                   {{ row.status === 'active' ? '启用' : '停用' }}
@@ -423,7 +423,7 @@ onMounted(() => {
               <template #default="{ row }">{{ row.displayName || '—' }}</template>
             </el-table-column>
             <!-- 状态：取该用户在分配列表中的启用/停用状态（md §4.2） -->
-            <el-table-column label="状态" :width="COL.STATUS">
+            <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <StatusTag :type="row.status === 'active' ? 'success' : 'info'">
                   {{ row.status === 'active' ? '启用' : '停用' }}
@@ -442,7 +442,7 @@ onMounted(() => {
                 <span class="pa-username">{{ row.requestedPositionName || '—' }}</span>
               </template>
             </el-table-column>
-            <el-table-column :width="COL.TIME">
+            <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #header>
                 <button type="button" class="time-sort" @click="toggleAppSort">
                   提交时间 <span class="time-sort-arrow">{{ appSortArrow }}</span>
@@ -472,7 +472,7 @@ onMounted(() => {
               </template>
             </el-table-column>
             <!-- 处理时间 / 处理人：待审核记录显示「—」（md §4.2） -->
-            <el-table-column label="处理时间" :width="COL.TIME">
+            <el-table-column label="处理时间" :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <span class="pa-time">{{ row.processedAt || '—' }}</span>
               </template>

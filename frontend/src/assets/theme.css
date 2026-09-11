@@ -290,8 +290,32 @@
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
-/* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实 */
-[data-theme] .tbl-ops .el-button.is-link.is-disabled {
+/* 操作链接配色（2026-09-11《列表页UI.png》对齐）：稿面里操作列是「蓝 / 橙 / 红」三档，
+   不再跟随品牌绿。只改 .tbl-ops 内的链接按钮，不动 --c-accent——品牌绿仍用于标签、
+   选中态、聚焦环，全站主色不受影响（详见 tokens.css 的 --c-admin-link 注释）。
+   按 EP 的 type 分档：primary=查看/编辑/版本管理，success=发布/上架，
+   warning=停用/下架/撤回，danger=删除/驳回。稿面中 primary 与 success 同为蓝。 */
+[data-theme] .tbl-ops .el-button.is-link.el-button--primary,
+[data-theme] .tbl-ops .el-button.is-link.el-button--success {
+  color: var(--c-admin-link);
+}
+[data-theme] .tbl-ops .el-button.is-link.el-button--warning {
+  color: var(--c-admin-link-warn);
+}
+[data-theme] .tbl-ops .el-button.is-link.el-button--danger {
+  color: var(--c-admin-link-danger);
+}
+/* hover 加深而非换色：稿面未给 hover 态，沿用「同色加深」的站内既有做法 */
+[data-theme] .tbl-ops .el-button.is-link:not(.is-disabled):hover {
+  opacity: 0.75;
+}
+/* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实。
+   放在配色规则之后，确保禁用态不被上面的 type 选择器覆盖。 */
+[data-theme] .tbl-ops .el-button.is-link.is-disabled,
+[data-theme] .tbl-ops .el-button.is-link.el-button--primary.is-disabled,
+[data-theme] .tbl-ops .el-button.is-link.el-button--success.is-disabled,
+[data-theme] .tbl-ops .el-button.is-link.el-button--warning.is-disabled,
+[data-theme] .tbl-ops .el-button.is-link.el-button--danger.is-disabled {
   color: var(--c-text-faint);
 }
 /* 主操作 ↔ 状态/危险操作 的分隔线：细、弱、不抢眼，仅作分组暗示 */

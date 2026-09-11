@@ -605,7 +605,7 @@ onBeforeUnmount(() => {
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="toolCount" label="工具数" :width="COL.COUNT" align="center" />
+          <el-table-column prop="toolCount" label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap" />
           <!-- 引用情况：可点击弹引用清单弹窗；通用技能不参与引用（占位符） -->
           <el-table-column label="引用情况" :width="140">
             <template #default="{ row }">
@@ -623,7 +623,7 @@ onBeforeUnmount(() => {
               <span v-else class="cell-na">暂无引用</span>
             </template>
           </el-table-column>
-          <el-table-column label="最新版本" :width="100">
+          <el-table-column label="最新版本" :width="100" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="latestVersion(row)" class="ver-num">{{ latestVersion(row) }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
           <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远；
                E5（2026-09-10）：随操作列一起右侧固定——1440 宽下表格总宽超出容器时
                本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
-          <el-table-column :width="COL.TIME" fixed="right">
+          <el-table-column :width="COL.TIME" fixed="right" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

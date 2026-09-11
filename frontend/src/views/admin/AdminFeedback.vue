@@ -174,14 +174,14 @@ onBeforeUnmount(() => {
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
-          <el-table-column label="终端" :width="COL.TAG">
+          <el-table-column label="终端" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="terminalTagType(row.terminal)">
                 {{ terminalLabel(row.terminal) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <!-- 原型 L1566：列头为文字按钮「反馈时间 ↓ / ↑」，点击切换正倒序 -->
             <template #header>
               <button type="button" class="fb-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">

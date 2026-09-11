@@ -100,3 +100,21 @@ body.admin-scope .list-toolbar {
   min-width: 132px;
   white-space: nowrap;
 }
+/* 主操作按钮改近黑底（2026-09-11《列表页UI.png》对齐，采样 rgb(20,22,25)）。
+ * 只覆盖后台列表页的 .lt-create，不动 el-button--primary 本身——抽屉「保存」、
+ * 弹窗「确定」等仍是品牌绿，全站主按钮观感不受影响。
+ * 暗色下近黑底会与页面底(#191919)糊在一起，故暗色映射为浅底深字（见 tokens.css）。 */
+body.admin-scope .lt-create.el-button--primary {
+  --el-button-bg-color: var(--bg-admin-primary);
+  --el-button-border-color: var(--bg-admin-primary);
+  --el-button-hover-bg-color: var(--bg-admin-primary);
+  --el-button-hover-border-color: var(--bg-admin-primary);
+  --el-button-active-bg-color: var(--bg-admin-primary);
+  --el-button-active-border-color: var(--bg-admin-primary);
+  --el-button-text-color: var(--bg-surface);
+  --el-button-hover-text-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+}
+body.admin-scope .lt-create.el-button--primary:hover {
+  opacity: 0.85;
+}

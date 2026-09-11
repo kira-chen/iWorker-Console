@@ -135,15 +135,30 @@
   /* ---------- 管理后台壳层专用（2026-09-08 原型复刻批次 1）----------
    * 原型 Taste 层（L18–71）的浅灰绿底 + 白卡体系；员工端不用这组，故独立于 --bg-app。
    * 浅色照原型取值，暗色在下方主题块内映射到既有暗色令牌。 */
-  --bg-admin-main: #f6f8f7; /* 后台主区底（原型 .main） */
+  --bg-admin-main: #fcfcfc; /* 后台主区底（2026-09-11 UI 稿：原型绿灰 #f6f8f7 → 中性近白，采样 rgb(252,252,252)） */
   --bg-admin-drawer: #f5f7f6; /* 抽屉正文灰底（原型 .drawer） */
   --bg-admin-card-head: #f8faf9; /* 抽屉分区卡头灰条（原型 .section-card>.section-title） */
   --border-admin-card: #dde4e0; /* 抽屉分区卡描边 */
-  --border-admin-table: #e1e6e3; /* 表格白卡描边（原型 .table-wrap） */
+  --border-admin-table: #ebedf0; /* 表格白卡描边（2026-09-11 UI 稿：与行分隔线同色，去绿调） */
   --bg-admin-table-head: #f2f5f3; /* 表头底（原型 .table th） */
   --c-admin-table-head: #59645e; /* 表头字色 */
   --bg-admin-row-hover: #f7faf8; /* 行 hover（原型 tr:hover td） */
   --shadow-admin-card: 0 1px 3px rgba(34, 55, 46, 0.045);
+
+  /* ---------- 列表页 UI 稿对齐（2026-09-11 负责人提供《列表页UI.png》）----------
+   * 取值方式：脚本对设计稿逐区域采样（众数取底色、最深值取字色），不靠肉眼估色。
+   * 为什么另起一组而不改 --c-accent：稿面里「查看/编辑」等操作链接是蓝色，但
+   * 品牌绿仍在（标签、选中态）。--c-accent 被全站主按钮/侧栏头像/聚焦环共用，
+   * 改它会把整个产品染蓝，远超列表页范围。故操作链接单立 --c-admin-link。 */
+  --c-admin-link: #216bff; /* 操作链接主色（查看/编辑/版本管理/发布），采样 rgb(33,107,255) */
+  --c-admin-link-warn: #fa830c; /* 状态类操作（停用/撤回），采样 rgb(250,131,12) */
+  --c-admin-link-danger: #fa3946; /* 破坏性操作（删除/驳回），采样 rgb(250,57,70) */
+  --bg-admin-page: #fcfcfc; /* 后台主区底（稿面比原 #f6f8f7 更白、去绿调） */
+  --border-admin-row: #ebedf0; /* 行分隔线，采样 rgb(235,237,240) */
+  --bg-admin-head: #f7f7f7; /* 表头底，采样 rgb(247,247,247) */
+  --c-admin-head: #8d8d8d; /* 表头字，采样 rgb(141,141,141) */
+  --bg-admin-primary: #141619; /* 主按钮（＋新建 X）近黑底，采样 rgb(20,22,25) */
+  --c-admin-sub: #8e8e8e; /* 页头副文案，采样 rgb(142,142,142) */
 }
 
 /* ===========================================================================
@@ -205,6 +220,19 @@
   --c-admin-table-head: var(--c-text-muted);
   --bg-admin-row-hover: var(--bg-hover);
   --shadow-admin-card: var(--shadow-sm);
+
+  /* 列表页 UI 稿对齐（暗色映射）：稿面只有浅色，这里按既有暗色策略提亮，
+     蓝/橙/红在 #191919 底上用浅一档的值保证对比度；主按钮近黑底在暗色下会糊成一片，
+     故暗色改用表面提亮色 + 文字反白（见 list-page.css 的 .lt-create 规则）。 */
+  --c-admin-link: #6ea3ff;
+  --c-admin-link-warn: #f0a355;
+  --c-admin-link-danger: #f06b6b;
+  --bg-admin-page: var(--bg-app);
+  --border-admin-row: var(--border-base);
+  --bg-admin-head: var(--bg-sunken);
+  --c-admin-head: var(--c-text-muted);
+  --bg-admin-primary: #e9e9e7;
+  --c-admin-sub: var(--c-text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

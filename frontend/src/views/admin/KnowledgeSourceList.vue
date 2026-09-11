@@ -190,7 +190,7 @@ onActivated(reload)
             </template>
           </el-table-column>
 
-          <el-table-column label="类型" :width="COL.TAG">
+          <el-table-column label="类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <el-tag size="small" type="info" effect="plain">{{ SOURCE_LABELS[row.sourceType] || row.sourceType }}</el-tag>
             </template>
@@ -203,7 +203,7 @@ onActivated(reload)
           </el-table-column>
 
           <!-- 停用数据源不会参与知识检索（md §四.2） -->
-          <el-table-column label="状态" :width="COL.STATUS">
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="(SOURCE_STATUS_META[row.status] || SOURCE_STATUS_META.ENABLED).type">
                 {{ (SOURCE_STATUS_META[row.status] || SOURCE_STATUS_META.ENABLED).label }}

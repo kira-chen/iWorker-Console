@@ -224,19 +224,19 @@ async function submitReject(reason) {
               <div v-if="row.description" class="rev-desc" :title="row.description">{{ row.description }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="业务类型" :width="COL.TAG">
+          <el-table-column label="业务类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="reviewBizTypeTagType(row.type)">{{ reviewBizTypeLabel(row) }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请类型" :width="COL.TAG">
+          <el-table-column label="申请类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="requestActionTagType(row.requestAction)">
                 {{ requestActionLabel(row.requestAction) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请版本" :width="COL.TAG">
+          <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.version || '—' }}</template>
           </el-table-column>
           <el-table-column label="提交人" :width="COL.USER">
@@ -244,7 +244,7 @@ async function submitReject(reason) {
               <span class="rev-submitter">{{ row.submitterName || '未知' }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <!-- 原型 L1565：列头为文字按钮「提交时间 ↓ / ↑」，点击切换正倒序 -->
             <template #header>
               <button type="button" class="rev-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">

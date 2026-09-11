@@ -36,7 +36,10 @@ export const COL = {
   /** 用户名 / 提交人 / 上传用户 */
   USER: 132,
   /** 纯数字列（工具数 / 被引用 / 上下文 / 技能数），配 align="center"。
-   *  实测最长表头「Agent数」53px —— 本列瓶颈是表头而非值（值最长仅 13px） */
+   *  实测最长表头「Agent数」53px —— 本列瓶颈是表头而非值（值最长仅 13px）。
+   *  【2026-09-11 表头改不换行后的约束】列宽减去 .cell 的 32px 左右内距才是表头可用宽，
+   *  故 80px 只够放 3 个中文字（48px）。带空格的「Agent 数」实测需 85px，已在
+   *  AdminPositions 用页内 POS_COL.COUNT=120 单独放宽；新增列若表头超 3 字勿直接用本值。 */
   COUNT: 80,
   /** 单标签列（类别 / 传输 / 来源 / 用途）。
    *  注意：表头超过 6 个中文字的列（如「最近发布版本」84px）不适用本值，
@@ -82,3 +85,18 @@ export function opsWidth(maxButtons) {
 
 /** 空值占位符：全站统一用它，不要各页再写裸 '—' 或 '-'。 */
 export const NA = '—'
+
+/**
+ * 「定类型字段」列的不换行类名（2026-09-11 负责人指示）。
+ *
+ * <p>用法：给版本号 / 纯数字 / 日期时间 / 状态 / 单标签这类列加
+ * `class-name="COL_NOWRAP" label-class-name="COL_NOWRAP"`，
+ * 样式实现在 `assets/admin-shell.css`（`.col-nowrap > .cell`）。</p>
+ *
+ * <p>【为什么不直接在 CSS 里按列宽选中】EP 不给列输出语义类名，按宽度选中要写
+ * `[style*="width: 152px"]` 这类脆选择器，改一次列宽就失效。挂类名是显式契约。</p>
+ *
+ * <p>【哪些列不该加】名称列、描述列、多标签列——它们需要换行或 tooltip 省略，
+ * 强行单行会横向撑爆表格。</p>
+ */
+export const COL_NOWRAP = 'col-nowrap'

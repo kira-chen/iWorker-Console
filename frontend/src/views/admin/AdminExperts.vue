@@ -349,24 +349,24 @@ async function stopExpert(row) {
           <el-table-column label="专家描述" :min-width="COL.DESC_MIN" show-overflow-tooltip>
             <template #default="{ row }">{{ row.intro || '—' }}</template>
           </el-table-column>
-          <el-table-column label="分类" :width="COL.TAG" align="center">
+          <el-table-column label="分类" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="row.category" class="ex-category">{{ row.category }}</span>
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能数" :width="COL.COUNT" align="center">
+          <el-table-column label="技能数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.skillCount }}</template>
           </el-table-column>
           <!-- 最新版本：无版本时占位「—」（E11 全站统一长横；原型两种横线混用，按站内 NA 口径取长横） -->
-          <el-table-column label="最新版本" :width="COL.TAG" align="center">
+          <el-table-column label="最新版本" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="row.latestVersionLabel">{{ row.latestVersionLabel }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
           <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

@@ -495,13 +495,13 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 传输方式：展示完整枚举值（stdio / streamable-http），无内容显示 — -->
-        <el-table-column label="传输方式" :width="COL.TAG + 24">
+        <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <el-tag size="small" type="info" effect="plain">{{ row.transport || '—' }}</el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="工具数" :width="COL.COUNT" align="center">
+        <el-table-column label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <span v-if="row.toolCount">{{ row.toolCount }}</span>
             <el-tooltip v-else content="尚未拉取到工具，请在编辑器内「拉取工具」" placement="top" effect="dark">
@@ -527,7 +527,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间（PRD §二.1）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远 -->
-        <el-table-column label="最近更新时间" :width="COL.TIME + 24">
+        <el-table-column label="最近更新时间" :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

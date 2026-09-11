@@ -326,7 +326,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
-        <el-table-column :width="COL.TIME + 24">
+        <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
