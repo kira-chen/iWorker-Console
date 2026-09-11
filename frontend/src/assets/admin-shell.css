@@ -237,6 +237,59 @@ body.admin-scope .page-header-sub {
 .list-pager-info {
   margin-right: 10px;
 }
+/* 分页条三段式（2026-09-11 对齐《列表页UI.png》，负责人指示「跟着设计稿走」）：
+   左=总数、中=页码、右=每页条数 + 跳页。只在后台生效——员工端 Space/MemoryManage
+   有同名 .list-pager（el-pagination 结构），不能被这套三段布局改到。 */
+body.admin-scope .list-pager {
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+body.admin-scope .list-pager-info {
+  margin-right: 0;
+  white-space: nowrap;
+}
+body.admin-scope .list-pager-nav {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+body.admin-scope .list-pager-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+body.admin-scope .list-pager .page-size {
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-admin-row);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--c-text);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+body.admin-scope .list-pager .page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+body.admin-scope .list-pager .page-jump-input {
+  width: 48px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-admin-row);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--c-text);
+  font-size: var(--fs-xs);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+body.admin-scope .list-pager .page-jump-input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+}
 .list-pager .page-btn {
   min-width: 28px;
   height: 28px;

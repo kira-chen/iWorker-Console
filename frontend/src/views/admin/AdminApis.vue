@@ -683,7 +683,7 @@ async function removeApi(row) {
         <ListPagination
           :total="groups.length"
           v-model:page="psPage"
-          :page-size="psPageSize"
+          v-model:page-size="psPageSize"
           unit="个"
         />
       </ListStates>

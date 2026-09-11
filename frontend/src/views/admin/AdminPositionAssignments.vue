@@ -371,7 +371,7 @@ onMounted(() => {
                本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
           <ListPagination
             v-model:page="page"
-            :page-size="pageSize"
+            v-model:page-size="pageSize"
             :total="total"
             @change="onPageChange"
           />
@@ -496,7 +496,7 @@ onMounted(() => {
 
           <ListPagination
             v-model:page="appList.page.value"
-            :page-size="appList.pageSize.value"
+            v-model:page-size="appList.pageSize.value"
             :total="appList.total.value"
             @change="appList.reload"
           />

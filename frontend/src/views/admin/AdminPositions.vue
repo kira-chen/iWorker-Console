@@ -692,7 +692,7 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
       <div v-if="rows.length" class="pos-foot">
         <ListPagination
           v-model:page="page"
-          :page-size="pageSize"
+          v-model:page-size="pageSize"
           :total="total"
           @change="fetchList"
         />

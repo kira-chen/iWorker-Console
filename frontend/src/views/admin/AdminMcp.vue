@@ -672,7 +672,7 @@ async function remove(row) {
     <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
     <ListPagination
       v-model:page="page"
-      :page-size="pageSize"
+      v-model:page-size="pageSize"
       :total="total"
       @change="fetchList"
     />

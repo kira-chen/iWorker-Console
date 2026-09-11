@@ -242,7 +242,7 @@ onMounted(() => {
           </el-table-column>
         </el-table>
 
-        <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
 

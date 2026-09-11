@@ -20,7 +20,7 @@
  *   <ListPagination :total="l.total" v-model:page="l.page" :page-size="l.pageSize"
  *                   @change="l.reload" />
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   total: { type: Number, default: 0 },
@@ -29,7 +29,28 @@ const props = defineProps({
   /** 条数单位（默认「条」；原型按组分页的场景可传「组」） */
   unit: { type: String, default: '条' }
 })
-const emit = defineEmits(['update:page', 'change'])
+const emit = defineEmits(['update:page', 'update:pageSize', 'change'])
+
+/** 每页条数下拉选项（设计稿「10条/页」）。含当前值以免动态值不在表内时下拉显示空白。 */
+const SIZE_OPTIONS = [10, 20, 30, 50]
+const sizeOptions = computed(() => {
+  const s = new Set([...SIZE_OPTIONS, props.pageSize])
+  return [...s].sort((a, b) => a - b)
+})
+function onSizeChange(v) {
+  const n = Number(v)
+  if (!n || n === props.pageSize) return
+  emit('update:pageSize', n) // useAdminList 侧 watch(pageSize) 会自动回第 1 页重拉
+}
+
+/** 跳至第 N 页：回车或失焦提交，越界夹到合法范围（不报错，按设计稿只是个输入框）。 */
+const jumpText = ref('')
+function onJump() {
+  const n = Number(String(jumpText.value).trim())
+  jumpText.value = ''
+  if (!Number.isFinite(n) || n < 1) return
+  go(Math.min(Math.round(n), pages.value))
+}
 
 const visible = computed(() => props.total > 0)
 const pages = computed(() => Math.max(1, Math.ceil(props.total / Math.max(1, props.pageSize))))
@@ -62,19 +83,40 @@ function go(n) {
 
 <template>
   <div v-if="visible" class="list-pager" role="navigation" aria-label="分页">
-    <span class="list-pager-info">共 {{ total }} {{ unit }} · 每页 {{ pageSize }} {{ unit }}</span>
-    <button type="button" class="page-btn" :disabled="current === 1" aria-label="上一页" @click="go(current - 1)">‹</button>
-    <template v-for="it in items" :key="it.key">
-      <span v-if="it.num === null" class="page-ellipsis">…</span>
-      <button
-        v-else
-        type="button"
-        class="page-btn"
-        :class="{ active: it.num === current }"
-        :aria-current="it.num === current ? 'page' : undefined"
-        @click="go(it.num)"
-      >{{ it.num }}</button>
-    </template>
-    <button type="button" class="page-btn" :disabled="current === pages" aria-label="下一页" @click="go(current + 1)">›</button>
+    <!-- 总数左对齐（设计稿「共 600 条数据」）；页码居中；每页条数与跳页在右 -->
+    <span class="list-pager-info">共 {{ total }} {{ unit }}数据</span>
+    <div class="list-pager-nav">
+      <button type="button" class="page-btn" :disabled="current === 1" aria-label="上一页" @click="go(current - 1)">‹</button>
+      <template v-for="it in items" :key="it.key">
+        <span v-if="it.num === null" class="page-ellipsis">…</span>
+        <button
+          v-else
+          type="button"
+          class="page-btn"
+          :class="{ active: it.num === current }"
+          :aria-current="it.num === current ? 'page' : undefined"
+          @click="go(it.num)"
+        >{{ it.num }}</button>
+      </template>
+      <button type="button" class="page-btn" :disabled="current === pages" aria-label="下一页" @click="go(current + 1)">›</button>
+    </div>
+    <div class="list-pager-tools">
+      <select class="page-size" :value="pageSize" aria-label="每页条数" @change="onSizeChange($event.target.value)">
+        <option v-for="s in sizeOptions" :key="s" :value="s">{{ s }}{{ unit }}/页</option>
+      </select>
+      <span class="page-jump">
+        跳至
+        <input
+          v-model="jumpText"
+          class="page-jump-input"
+          type="text"
+          inputmode="numeric"
+          aria-label="跳至页码"
+          @keyup.enter="onJump"
+          @blur="onJump"
+        />
+        页
+      </span>
+    </div>
   </div>
 </template>

@@ -264,7 +264,7 @@ async function remove(row) {
              2026-09-09 PRD-20260908 复核批次 0（G7）：由 ListStates 外移入默认插槽内，
              与组织域其余五页（AdminUsers / UserSkillReviews / AdminLoginLogs / AdminFeedback）
              一致——md §「与平台其余列表页一致」；避免加载失败/空态下仍渲染出一条分页条。 -->
-        <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
 

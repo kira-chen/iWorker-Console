@@ -261,7 +261,7 @@ function usedTip(row) {
             {{ summary.specCount }} 个规格 · {{ summary.positionCount }} 个岗位已配置 · {{ summary.userCount }} 个用户有生效规格
           </span>
           <span class="rs-foot-sp"></span>
-          <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
+          <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
         </div>
       </ListStates>
     </div>

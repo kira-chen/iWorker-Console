@@ -344,7 +344,7 @@ const emptyText = computed(() =>
 
         <ListPagination
           v-model:page="page"
-          :page-size="pageSize"
+          v-model:page-size="pageSize"
           :total="total"
           @change="fetchList"
         />

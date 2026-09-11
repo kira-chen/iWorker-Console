@@ -309,7 +309,7 @@ onActivated(reload)
       </ListStates>
     </div>
 
-    <ListPagination :total="total" v-model:page="page" :page-size="pageSize" @change="reload" />
+    <ListPagination :total="total" v-model:page="page" v-model:page-size="pageSize" @change="reload" />
 
     <KnowledgeBaseEditor
       v-model:visible="editorVisible"

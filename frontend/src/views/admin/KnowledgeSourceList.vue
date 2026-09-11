@@ -244,7 +244,7 @@ onActivated(reload)
       </ListStates>
     </div>
 
-    <ListPagination :total="total" v-model:page="page" :page-size="pageSize" @change="reload" />
+    <ListPagination :total="total" v-model:page="page" v-model:page-size="pageSize" @change="reload" />
 
     <KnowledgeSourceEditor v-model:visible="editorVisible" :source-id="editingId" :mode="editorMode" @saved="reload" @changed="reload" />
     <KnowledgeSourceDocsDrawer v-model:visible="docsVisible" :source="docsTarget" @changed="reload" />
