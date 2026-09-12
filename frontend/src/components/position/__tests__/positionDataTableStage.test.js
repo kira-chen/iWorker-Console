@@ -95,7 +95,6 @@ const detail = {
   ],
   dossier: {
     policy: { writeTier: 'HIGH', confirmMode: 'ALL' },
-    checklist: [{ key: '决策人', when: { type: 'ALWAYS' } }],
     reduceRules: [{ key: '预算', strategy: 'CONFLICTS', params: { staleAfterDays: 30 }, desc: '客户口径' }, { key: '态势', strategy: 'SUMMARY', params: { n: 3 } }]
   }
 }
@@ -161,7 +160,8 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     const dossierPayload = api.saveDossierConfig.mock.calls[0][2]
     expect(dossierPayload.policy.writeTier).toBe('HIGH')
     expect(dossierPayload.policy.confirmMode).toBe('ALL')
-    expect(dossierPayload.checklist).toEqual([{ key: '决策人', when: { type: 'ALWAYS' }, hint: null }])
+    // 2026-09-12 负责人决策 6（审计 J13）：md §4.2.1 无应沉淀清单，payload 不再带 checklist
+    expect(dossierPayload.checklist).toBeUndefined()
     expect(dossierPayload.reduceRules).toEqual([
       { key: '预算', strategy: 'CONFLICTS', params: { normalize: true, staleAfterDays: 30 }, desc: '客户口径' },
       { key: '态势', strategy: 'SUMMARY', params: { n: 3 }, desc: null }

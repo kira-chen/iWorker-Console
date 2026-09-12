@@ -1,9 +1,12 @@
 /**
- * 工作档案·对象类型配置（沉淀策略 / 应沉淀清单 / 归纳规则）常量 + 默认值 + 前端轻校验 + 提交归一化。
+ * 工作档案·对象类型配置（沉淀策略 / 归纳规则）常量 + 默认值 + 前端轻校验 + 提交归一化。
  *
- * 与后端 DossierConfigService / DossierConfigVO 同口径（契约 §1.12）；后端是 schema 唯一守门人，
- * 前端只做「能一眼定位到行」的轻校验，错误 key 与后端 data.field 的点路径一致
- * （如 checklist[2].key / reduceRules[0].params.n / policy.pendingTtlDays）。
+ * 前端只做「能一眼定位到行」的轻校验，错误 key 是可直接定位控件的点路径
+ * （如 reduceRules[0].key / reduceRules[0].params.n / policy.writeTier）。
+ *
+ * 2026-09-12 负责人决策 6（审计 J13）：md 岗位 §4.2.1 的配置控件只有抽取方式（autoExtract）、
+ * 置信度阈值（writeTier）、用户确认（confirmMode）三项，已清掉 md 无条款且 UI 零渲染的
+ * policy.askTier / policy.pendingTtlDays / checklist（应沉淀清单及其条件结构）。
  */
 
 /** 置信度档位（设计 §4.1 / §8.1）。 */
@@ -22,15 +25,6 @@ export const REDUCE_STRATEGIES = [
   { value: 'CONFLICTS', label: '保留冲突并列', hint: '变化即信号的数值 / 承诺：预算、报价、交付日期' }
 ]
 
-/** 应沉淀项适用条件类型（设计 §1.5）。 */
-export const CONDITION_TYPES = [
-  { value: 'ALWAYS', label: '总是' },
-  { value: 'EQUALS', label: '某卡位 = 值' },
-  { value: 'IN', label: '某卡位 ∈ 取值' },
-  { value: 'HAS', label: '档案里已有某键名' },
-  { value: 'KEY_DATE_WITHIN', label: '关键日期在 N 天内' }
-]
-
 /** 用户确认方式（2026-08-28 管理端三选一）。 */
 export const CONFIRM_MODES = [
   { value: 'LOW_ONLY', label: '低置信度需确认（推荐）', hint: '有把握的直接记；没把握的先问你' },
@@ -45,36 +39,23 @@ export const EXTRACT_MODES = [
 /** 业务规则上限（与卡片字段对称，2026-08-28）。 */
 export const MAX_RULES = 8
 
-export const TTL_RANGE = { min: 1, max: 90 }
 export const SUMMARY_N_RANGE = { min: 1, max: 50 }
 export const STALE_DAYS_RANGE = { min: 1, max: 365 }
-export const MAX_ITEMS = 50
 export const MAX_KEY_LEN = 64
-export const MAX_HINT_LEN = 500
 
 export function defaultPolicy() {
   return {
     autoExtract: true,
     writeTier: 'MID',
-    askTier: 'LOW',
     dropIfQuoteMissing: true,
     confirmSlotChange: true,
     confirmNewKey: false,
-    pendingTtlDays: 7,
     confirmMode: 'LOW_ONLY'
   }
 }
 
 export function defaultDossierConfig() {
-  return { policy: defaultPolicy(), checklist: [], reduceRules: [] }
-}
-
-export function emptyCondition(type = 'ALWAYS') {
-  return { type, field: '', value: '', values: [], days: 30 }
-}
-
-export function emptyChecklistItem() {
-  return { key: '', when: emptyCondition(), hint: '' }
+  return { policy: defaultPolicy(), reduceRules: [] }
 }
 
 export function emptyReduceRule() {
@@ -86,20 +67,6 @@ export function hydrateDossierConfig(raw) {
   const d = defaultDossierConfig()
   const src = raw || {}
   const policy = { ...d.policy, ...(src.policy || {}) }
-  const checklist = (src.checklist || []).map((it) => {
-    const w = it?.when || {}
-    return {
-      key: it?.key || '',
-      when: {
-        type: w.type || 'ALWAYS',
-        field: w.field || '',
-        value: w.value || '',
-        values: Array.isArray(w.values) ? w.values.slice() : [],
-        days: w.days ?? 30
-      },
-      hint: it?.hint || ''
-    }
-  })
   const reduceRules = (src.reduceRules || []).map((r) => {
     const p = r?.params || {}
     return {
@@ -109,12 +76,12 @@ export function hydrateDossierConfig(raw) {
       params: { n: p.n ?? 5, staleAfterDays: p.staleAfterDays ?? null, normalize: p.normalize ?? true }
     }
   })
-  return { policy, checklist, reduceRules }
+  return { policy, reduceRules }
 }
 
 /**
  * 轻校验。返回 { ok, errors: { [dotPath]: msg } }。
- * dotPath 与后端 data.field 一致，组件按路径取错回显。
+ * dotPath 即控件定位路径，组件按路径取错回显。
  */
 export function validateDossierConfig(cfg) {
   const errors = {}
@@ -123,36 +90,7 @@ export function validateDossierConfig(cfg) {
   }
   const p = cfg?.policy || {}
   if (!TIER_ORDER.includes(p.writeTier)) err('policy.writeTier', '请选择直接入档线')
-  if (!TIER_ORDER.includes(p.askTier)) err('policy.askTier', '请选择先问后写线')
-  if (TIER_ORDER.includes(p.writeTier) && TIER_ORDER.includes(p.askTier)
-    && TIER_ORDER.indexOf(p.askTier) > TIER_ORDER.indexOf(p.writeTier)) {
-    err('policy.askTier', '先问后写线不能高于直接入档线')
-  }
   if (!CONFIRM_MODES.some((m) => m.value === p.confirmMode)) err('policy.confirmMode', '请选择用户确认方式')
-  const ttl = Number(p.pendingTtlDays)
-  if (!Number.isInteger(ttl) || ttl < TTL_RANGE.min || ttl > TTL_RANGE.max) {
-    err('policy.pendingTtlDays', `须为 ${TTL_RANGE.min}–${TTL_RANGE.max} 的整数`)
-  }
-
-  const seenKeys = new Set()
-  ;(cfg?.checklist || []).forEach((it, i) => {
-    const key = (it?.key || '').trim()
-    if (!key) err(`checklist[${i}].key`, '应沉淀项不能为空')
-    else if (key.length > MAX_KEY_LEN) err(`checklist[${i}].key`, `不超过 ${MAX_KEY_LEN} 字`)
-    else if (seenKeys.has(key)) err(`checklist[${i}].key`, `重复：${key}`)
-    seenKeys.add(key)
-    const w = it?.when || { type: 'ALWAYS' }
-    if (w.type && w.type !== 'ALWAYS') {
-      if (!(w.field || '').trim()) err(`checklist[${i}].when.field`, '请选择条件引用的卡位/键名')
-      if (w.type === 'EQUALS' && !(w.value || '').trim()) err(`checklist[${i}].when.value`, '请填比较值')
-      if (w.type === 'IN' && !(w.values || []).some((v) => String(v).trim())) err(`checklist[${i}].when.values`, '至少一个取值')
-      if (w.type === 'KEY_DATE_WITHIN') {
-        const d = Number(w.days)
-        if (!Number.isInteger(d) || d < 1 || d > STALE_DAYS_RANGE.max) err(`checklist[${i}].when.days`, `须为 1–${STALE_DAYS_RANGE.max} 的整数`)
-      }
-    }
-    if ((it?.hint || '').length > MAX_HINT_LEN) err(`checklist[${i}].hint`, `不超过 ${MAX_HINT_LEN} 字`)
-  })
 
   const seenRules = new Set()
   if ((cfg?.reduceRules || []).length > MAX_RULES) err('reduceRules', `业务规则最多 ${MAX_RULES} 条`)
@@ -189,22 +127,11 @@ export function normalizeDossierForSubmit(cfg) {
   const policy = {
     autoExtract: !!p.autoExtract,
     writeTier: p.writeTier,
-    askTier: p.askTier,
     dropIfQuoteMissing: !!p.dropIfQuoteMissing,
     confirmSlotChange: !!p.confirmSlotChange,
     confirmNewKey: !!p.confirmNewKey,
-    pendingTtlDays: Number(p.pendingTtlDays),
     confirmMode: p.confirmMode
   }
-  const checklist = (cfg?.checklist || []).map((it) => {
-    const w = it.when || { type: 'ALWAYS' }
-    let when = { type: 'ALWAYS' }
-    if (w.type === 'EQUALS') when = { type: 'EQUALS', field: (w.field || '').trim(), value: (w.value || '').trim() }
-    else if (w.type === 'IN') when = { type: 'IN', field: (w.field || '').trim(), values: (w.values || []).map((v) => String(v).trim()).filter(Boolean) }
-    else if (w.type === 'HAS') when = { type: 'HAS', field: (w.field || '').trim() }
-    else if (w.type === 'KEY_DATE_WITHIN') when = { type: 'KEY_DATE_WITHIN', field: (w.field || '').trim(), days: Number(w.days) }
-    return { key: (it.key || '').trim(), when, hint: (it.hint || '').trim() || null }
-  })
   const reduceRules = (cfg?.reduceRules || []).map((r) => {
     const p2 = r.params || {}
     let params = null
@@ -215,7 +142,7 @@ export function normalizeDossierForSubmit(cfg) {
     } else if (r.strategy === 'LIST') params = { normalize: p2.normalize !== false }
     return { key: (r.key || '').trim(), strategy: r.strategy, params, desc: (r.desc || '').trim() || null }
   })
-  return { policy, checklist, reduceRules }
+  return { policy, reduceRules }
 }
 
 /** 用于脏检查的稳定快照（与 normalizeDossierForSubmit 同口径，避免默认值差异误报脏）。 */

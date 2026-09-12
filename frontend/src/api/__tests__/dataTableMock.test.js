@@ -88,23 +88,23 @@ describe('dataTableMock · 工作档案（2026-09-02 岗位工作台补 mock）'
     expect(cfg.policy.confirmMode).toBe('LOW_ONLY')
     const saved = await saveDossierConfig(403, 9003, {
       policy: { ...cfg.policy, confirmMode: 'ALL' },
-      checklist: [{ key: '风险点', when: { type: 'ALWAYS' }, hint: null }],
       reduceRules: [{ key: '风险点', strategy: 'LIST', params: { normalize: true }, desc: null }]
     })
     expect(saved.policy.confirmMode).toBe('ALL')
     const back = await getDossierConfig(403, 9003)
-    expect(back.checklist).toHaveLength(1)
+    // 2026-09-12 负责人决策 6（审计 J13）：md §4.2.1 无应沉淀清单，dossier 不再带 checklist
+    expect(back.checklist).toBeUndefined()
     expect(back.reduceRules[0]).toMatchObject({ key: '风险点', strategy: 'LIST' })
   })
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F5）：dataTableMock 持久化零用例（mockPersist v1，6 个写点：
+ * 2026-09-12 测试审计补缺口（F5）：dataTableMock 持久化零用例（mockPersist v2，6 个写点：
  * createDataTable / updateDataTable / deleteDataTable / saveDataTableFields / saveDossierConfig / __reset）。
  * 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
  * 故与 positionMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，模拟「写入 → 刷新 → 重载」。
  */
-describe('dataTableMock · 持久化（mockPersist v1）', () => {
+describe('dataTableMock · 持久化（mockPersist v2）', () => {
   const KEY = 'iworker-demo-mock:dataTable'
   const makeStorage = () => {
     const map = new Map()
@@ -145,7 +145,7 @@ describe('dataTableMock · 持久化（mockPersist v1）', () => {
     await m.saveDataTableFields(404, created.id, [{ fieldCode: 'topic', label: '选题名', fieldType: 'TEXT' }], false)
     expect(writes()).toBe(base + 3)
     const cfg = await m.getDossierConfig(404, created.id)
-    await m.saveDossierConfig(404, created.id, { policy: cfg.policy, checklist: [], reduceRules: [] })
+    await m.saveDossierConfig(404, created.id, { policy: cfg.policy, reduceRules: [] })
     expect(writes()).toBe(base + 4)
     await m.deleteDataTable(404, created.id)
     expect(writes()).toBe(base + 5)
@@ -153,14 +153,14 @@ describe('dataTableMock · 持久化（mockPersist v1）', () => {
     expect(writes()).toBe(base + 6)
   })
 
-  it('建表落盘（v=1）→ 重新 import（模拟刷新）→ 404 岗位仍能读到新建的表，且 tableSeq 延续不撞号', async () => {
+  it('建表落盘（v=2）→ 重新 import（模拟刷新）→ 404 岗位仍能读到新建的表，且 tableSeq 延续不撞号', async () => {
     const first = await import('../dataTableMock')
     const created = await first.createDataTable(404, {
       label: '选题档案',
       fields: [{ fieldCode: 'topic', label: '选题', fieldType: 'TEXT' }]
     })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(1)
+    expect(snap.v).toBe(2)
     expect(snap.data.tablesByPosition['404'].map((t) => t.label)).toEqual(['选题档案'])
     vi.resetModules()
     const fresh = await import('../dataTableMock')
@@ -180,7 +180,7 @@ describe('dataTableMock · 持久化（mockPersist v1）', () => {
 
   it('存量快照形状不合法（缺 tablesByPosition）→ restore 抛错被兜底，回种子不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 1, data: { tableSeq: 1 } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { tableSeq: 1 } }))
     const m = await import('../dataTableMock')
     expect((await m.listDataTables(401)).total).toBe(1)
     expect(warn).toHaveBeenCalled()

@@ -94,14 +94,14 @@ export function saveDataTableFields(positionId, tableId, fields, confirm = false
 
 /* ============================ 工作档案配置（dossier）============================ */
 
-// 1.12 读工作档案配置：{ policy, checklist, reduceRules }；无行回默认
+// 1.12 读工作档案配置：{ policy, reduceRules }；无行回默认
 export function getDossierConfig(positionId, tableId) {
   if (USE_MOCK) return mock.getDossierConfig(positionId, tableId)
   return request.get(`${base(positionId)}/${tableId}/dossier`)
 }
 
 // 1.12 全量保存工作档案配置；响应回带归一化后的配置。
-//   校验错误：data.errorCode=DOSSIER_CONFIG_ILLEGAL，data.field 为点路径（如 checklist[2].when.value）
+//   校验错误：data.errorCode=DOSSIER_CONFIG_ILLEGAL，data.field 为点路径（如 reduceRules[2].params.n）
 export function saveDossierConfig(positionId, tableId, payload) {
   if (USE_MOCK) return mock.saveDossierConfig(positionId, tableId, payload)
   return request.put(`${base(positionId)}/${tableId}/dossier`, payload, W)

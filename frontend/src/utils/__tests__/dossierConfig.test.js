@@ -10,18 +10,23 @@ import {
 /**
  * 工作档案配置工具（utils/dossierConfig）：hydrate 补全 / 轻校验点路径 / 提交归一化去冗余 / 快照稳定。
  * 对齐 md 岗位 §4.2.3 档案详情（reduceRules：规则名 / 规则描述 / 归纳方式）；原头注引用的「契约 §1.12」已随后端退役废止。
- * 注（2026-09-12 测试审计 J13）：checklist / policy.askTier / pendingTtlDays 是 md §4 与现行 UI（PositionDataTableStage）
- * 都没有的遗留模型，用例仅守工具函数现状，去留待死码清理批一并裁决，本轮不删。
+ * 2026-09-12 负责人决策 6（审计 J13）：md §4.2.1 的配置控件只有抽取方式 / 置信度阈值 / 用户确认，
+ * checklist、policy.askTier、policy.pendingTtlDays 三套遗留模型已从工具与 mock 中清除，相关用例随之删除。
  */
 describe('hydrateDossierConfig', () => {
-  it('null → 全默认；缺键补默认', () => {
+  it('null → 全默认；缺键补默认（md §4.2.1 只剩三项配置 + reduceRules）', () => {
     const c = hydrateDossierConfig(null)
     expect(c).toEqual(defaultDossierConfig())
-    const c2 = hydrateDossierConfig({ policy: { autoExtract: false }, checklist: [{ key: '决策人' }], reduceRules: [{ key: '预算', strategy: 'CONFLICTS' }] })
+    const c2 = hydrateDossierConfig({ policy: { autoExtract: false }, reduceRules: [{ key: '预算', strategy: 'CONFLICTS' }] })
     expect(c2.policy.autoExtract).toBe(false)
     expect(c2.policy.writeTier).toBe('MID')
-    expect(c2.checklist[0].when).toEqual({ type: 'ALWAYS', field: '', value: '', values: [], days: 30 })
     expect(c2.reduceRules[0].params).toEqual({ n: 5, staleAfterDays: null, normalize: true })
+  })
+  it('已退役字段不再出现在结构里 → 无 checklist / askTier / pendingTtlDays（md §4.2.1）', () => {
+    const c = hydrateDossierConfig(null)
+    expect(c.checklist).toBeUndefined()
+    expect(c.policy.askTier).toBeUndefined()
+    expect(c.policy.pendingTtlDays).toBeUndefined()
   })
 })
 
@@ -29,34 +34,12 @@ describe('validateDossierConfig', () => {
   it('默认配置通过', () => {
     expect(validateDossierConfig(defaultDossierConfig()).ok).toBe(true)
   })
-  it('先问后写线高于入档线 → policy.askTier', () => {
+  it('置信度阈值非法 → policy.writeTier（md §4.2.1 置信度阈值）', () => {
     const c = defaultDossierConfig()
-    c.policy.askTier = 'HIGH'
+    c.policy.writeTier = 'SUPER'
     const r = validateDossierConfig(c)
     expect(r.ok).toBe(false)
-    expect(r.errors['policy.askTier']).toBeTruthy()
-  })
-  it('保留天数越界 → policy.pendingTtlDays', () => {
-    const c = defaultDossierConfig()
-    c.policy.pendingTtlDays = 0
-    expect(validateDossierConfig(c).errors['policy.pendingTtlDays']).toBeTruthy()
-  })
-  it('清单：空键 / 重复键 / 条件缺值 — 点路径与后端一致', () => {
-    const c = hydrateDossierConfig({
-      checklist: [
-        { key: ' ' },
-        { key: '报价', when: { type: 'EQUALS', field: '阶段标签' } },
-        { key: '报价', when: { type: 'IN', field: '阶段标签', values: [] } },
-        { key: '招标', when: { type: 'KEY_DATE_WITHIN', field: '', days: 0 } }
-      ]
-    })
-    const r = validateDossierConfig(c)
-    expect(r.errors['checklist[0].key']).toBeTruthy()
-    expect(r.errors['checklist[1].when.value']).toBeTruthy()
-    expect(r.errors['checklist[2].key']).toContain('重复')
-    expect(r.errors['checklist[2].when.values']).toBeTruthy()
-    expect(r.errors['checklist[3].when.field']).toBeTruthy()
-    expect(r.errors['checklist[3].when.days']).toBeTruthy()
+    expect(r.errors['policy.writeTier']).toBeTruthy()
   })
   it('规则：超过 8 条 → reduceRules；确认方式非法 → policy.confirmMode', () => {
     const c = hydrateDossierConfig({ reduceRules: Array.from({ length: 9 }, (_, i) => ({ key: 'k' + i, strategy: 'LATEST' })) })
@@ -84,7 +67,6 @@ describe('validateDossierConfig', () => {
 describe('normalizeDossierForSubmit / dossierSnapshot', () => {
   it('去掉与条件 / 方式无关的冗余参数；ALWAYS 只留 type', () => {
     const c = hydrateDossierConfig({
-      checklist: [{ key: ' 决策人 ', when: { type: 'ALWAYS', field: 'x', value: 'y' }, hint: ' ' }],
       reduceRules: [
         { key: '客户态度', strategy: 'LATEST', params: { n: 3, normalize: true } },
         { key: '态势', strategy: 'SUMMARY', params: { n: 7, normalize: false } },
@@ -92,7 +74,7 @@ describe('normalizeDossierForSubmit / dossierSnapshot', () => {
       ]
     })
     const p = normalizeDossierForSubmit(c)
-    expect(p.checklist[0]).toEqual({ key: '决策人', when: { type: 'ALWAYS' }, hint: null })
+    expect(p.checklist).toBeUndefined()
     expect(p.policy.confirmMode).toBe('LOW_ONLY')
     expect(p.reduceRules[0].params).toBeNull()
     expect(p.reduceRules[0].desc).toBeNull()
@@ -100,7 +82,7 @@ describe('normalizeDossierForSubmit / dossierSnapshot', () => {
     expect(p.reduceRules[2].params).toEqual({ normalize: true })
   })
   it('快照对默认值差异不敏感（hydrate 前后一致）', () => {
-    const raw = { policy: {}, checklist: [], reduceRules: [] }
+    const raw = { policy: {}, reduceRules: [] }
     expect(dossierSnapshot(hydrateDossierConfig(raw))).toBe(dossierSnapshot(defaultDossierConfig()))
   })
 })

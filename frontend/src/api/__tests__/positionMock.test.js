@@ -126,11 +126,11 @@ describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新�
     vi.resetModules()
   })
 
-  it('deletePosition 落盘（v=4）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+  it('deletePosition 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(4)
+    expect(snap.v).toBe(5) // 2026-09-12 决策 6 删 recommendedQuestions 时 bump
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')
