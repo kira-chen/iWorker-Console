@@ -38,7 +38,6 @@ import {
   listBizSystemSkills,
   createBizSystemOwnedSkill,
   deleteBizSystemOwnedSkill,
-  aiGenerateBizExampleQuestions
 } from '../bizSystemMock'
 
 const VALID = {
@@ -224,11 +223,6 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(createBizSystemOwnedSkill('biz_2102', { name: ' ' })).rejects.toMatchObject({ field: 'name' })
   })
 
-  it('示例问题 AI 生成：一次 3 条、每条 ≤60（零调用方，随死码清理一并删，审计 J13）', async () => {
-    const res = await aiGenerateBizExampleQuestions({ name: '客户管理系统', description: '管理客户资料' })
-    expect(res.questions).toHaveLength(3)
-    expect(res.questions.every((q) => q && q.length <= 60)).toBe(true)
-  })
 })
 
 /**

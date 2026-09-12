@@ -100,11 +100,6 @@ export function deleteBizSystem(id) {
   return request.delete(`/fde/connectors/biz-systems/${id}`, W)
 }
 // 示例问题 AI 生成（BQ4：一次生成 3 条；demo 本地模板随机填充）
-export function aiGenerateBizExampleQuestions(payload) {
-  if (BIZ_MOCK) return bizMock.aiGenerateBizExampleQuestions(payload)
-  return request.post('/fde/connectors/biz-systems/ai-example-questions', payload, W)
-}
-
 // ===== 业务系统连接器发布/审核/上下架（V93；双目标端 2026-08-11）=====
 // 发布态查询：返回两个目标（FDE_WORKBENCH/USER_END）各自的发布态数组，status=null 表示该目标未发布。
 export function getBizSystemPublication(id) {
