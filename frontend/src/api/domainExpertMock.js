@@ -166,8 +166,10 @@ let reviewSnapshots = {}
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持）；
 // 旧快照无该键 → 兜底 {} 并对种子在审专家补播，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('domainExpert', {
-  // v3（2026-09-09 发布前收口）：专家 203 由 draft/无在途 改为 published + pendingAction:'DELIST'
-  // 并补 v2.0.0 版本行——审核中心 id 6 与我的申请 510 引用它，原种子下审核快照缺失、点【查看】即空。
+  // v3（2026-09-09 发布前收口）：bump 以丢弃旧快照重播种子——种子本身未改（203 仍是全套唯一的草稿样本，
+  // 204 是唯一在审专家 · PUBLISH v1.2.0）；配套改动在 reviewsMock（审核中心种子 6 由 203 改指 204，
+  // 见其 version 5 注释），这里 bump 是为了让 seedReviewSnapshots 对 204 补播审核快照、点【查看】不再空。
+  // （2026-09-12 审计 K25：原注释描述的「203 改 published+DELIST 并补 v2.0.0」从未落地，改为与种子一致。）
   version: 3,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
@@ -336,10 +338,14 @@ export async function getExpertDeleteImpact(id) {
 }
 
 // 删除（解除技能引用，技能本体不受影响）。返回被解除的引用数。confirmName 兼容旧签名，不再校验。
+// 2026-09-12 对齐 md 专家 §二.3.7（审计 K27）：【删除】仅在「未发布且无审核中操作」时可用——
+// 已发布需先完成停用审核、审核中按钮隐藏；mock 侧同样守卫，UI 藏按钮之外不留后门。
 export async function deleteExpert(id) {
   await delay()
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
+  if (e.pendingAction) throw err('审核中的专家不可删除，请先撤回或等待审核完成', null, 409)
+  if (e.status !== 'draft') throw err('已发布的专家不可删除，需先完成停用审核', null, 409)
   const removed = e.skillIds.length
   experts = experts.filter((x) => x !== e)
   delete publications[e.id]

@@ -11,9 +11,6 @@ import {
   validateNewFilePath,
   validateRenamePath,
   diffRemovedTools,
-  isPublished,
-  didRequeueForReview,
-  isMdPath,
   joinPath,
   dirDepth,
   canCreateSubfolder,
@@ -172,48 +169,6 @@ describe('Q2 diffRemovedTools', () => {
   })
   it('after 新增工具不算移出', () => {
     expect(diffRemovedTools([{ code: 'a' }], [{ code: 'a' }, { code: 'b' }])).toEqual([])
-  })
-})
-
-describe('Q3 isPublished / didRequeueForReview（零调用方，随死码清理一并删，审计 J13）', () => {
-  it('isPublished：任一 target PUBLISHED 即已发布', () => {
-    expect(isPublished([{ target: 'USER_END', status: 'PUBLISHED' }])).toBe(true)
-    expect(isPublished([{ target: 'USER_END', status: 'PENDING_REVIEW' }])).toBe(false)
-    expect(isPublished([])).toBe(false)
-  })
-  it('didRequeueForReview：PUBLISHED→PENDING_REVIEW 才判定退回', () => {
-    const before = [{ target: 'USER_END', status: 'PUBLISHED' }]
-    const after = [{ target: 'USER_END', status: 'PENDING_REVIEW' }]
-    expect(didRequeueForReview(before, after)).toBe(true)
-  })
-  it('发布态未变（仍 PUBLISHED）→ 不判定退回', () => {
-    const pub = [{ target: 'USER_END', status: 'PUBLISHED' }]
-    expect(didRequeueForReview(pub, pub)).toBe(false)
-  })
-  it('操作前非 PUBLISHED（草稿/待审）→ 绝不判定退回', () => {
-    const before = [{ target: 'USER_END', status: 'PENDING_REVIEW' }]
-    const after = [{ target: 'USER_END', status: 'PENDING_REVIEW' }]
-    expect(didRequeueForReview(before, after)).toBe(false)
-  })
-  it('R1 didRequeueForReview：干净→置脏（reviewPending false→true）判定触发', () => {
-    const before = [{ target: 'USER_END', status: 'PUBLISHED' }]
-    const after = [{ target: 'USER_END', status: 'PUBLISHED', reviewPending: true, submitted: false }]
-    expect(didRequeueForReview(before, after)).toBe(true)
-  })
-  it('R1 didRequeueForReview：在途提交被作废（submitted true→false）判定触发', () => {
-    const before = [{ target: 'USER_END', status: 'PENDING_REVIEW', submitted: true }]
-    const after = [{ target: 'USER_END', status: 'PENDING_REVIEW', submitted: false }]
-    expect(didRequeueForReview(before, after)).toBe(true)
-  })
-  it('R1 didRequeueForReview：置脏态原样（已脏→仍脏）不重复判定', () => {
-    const dirty = [{ target: 'USER_END', status: 'PUBLISHED', reviewPending: true, submitted: false }]
-    expect(didRequeueForReview(dirty, dirty)).toBe(false)
-  })
-  it('isMdPath：仅 .md 触发重审判定', () => {
-    expect(isMdPath('references/a.md')).toBe(true)
-    expect(isMdPath('SKILL.md')).toBe(true)
-    expect(isMdPath('_meta.json')).toBe(false)
-    expect(isMdPath('notes.txt')).toBe(false)
   })
 })
 

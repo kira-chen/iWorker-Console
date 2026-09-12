@@ -127,7 +127,7 @@ vi.mock('@/components/position/SkillFocusEditor.vue', () => ({
   default: {
     name: 'SkillFocusEditor',
     props: [
-      'skill', 'backLabel', 'autosaveText', 'showClose', 'configDirty', 'configSaving',
+      'skill', 'backLabel', 'autosaveText', 'configDirty', 'configSaving',
       'skillSource', 'publications', 'hideMarketFields', 'activeFilePath', 'saveStatus', 'readonly'
     ],
     emits: ['update:skill', 'delete-skill', 'back', 'save-config', 'update:activeFileContent', 'select-file', 'tree-changed', 'file-deleted'],
@@ -146,7 +146,6 @@ vi.mock('@/components/position/SkillFocusEditor.vue', () => ({
           class: 'stub-focus',
           'data-back': props.backLabel,
           'data-autosave': props.autosaveText,
-          'data-showclose': String(props.showClose),
           'data-configdirty': String(props.configDirty),
           'data-readonly': String(props.readonly),
           'data-phase': props.saveStatus?.phase
@@ -435,15 +434,17 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       expect(el.querySelector('.tb-more')).toBeNull()
     })
 
-    it('返回文案一律「← 返回」+ showClose=false 透传进 SkillFocusEditor（md L139 顶部【← 返回】）', async () => {
+    it('返回文案一律「← 返回」透传进 SkillFocusEditor（md L139 顶部【← 返回】；showClose 开关已退役，2026-09-12 J14）', async () => {
       const el = mount()
       await vi.runOnlyPendingTimersAsync()
       const f = el.querySelector('.stub-focus')
       expect(f.getAttribute('data-back')).toBe('← 返回')
-      expect(f.getAttribute('data-showclose')).toBe('false') // 整页 = showClose=false
+      // J14：整页形态不再靠 show-close=false 表达，父级不应再传该 prop
+      expect(focus.props.showClose).toBeUndefined()
+      expect(el.querySelector('.stub-focus').getAttribute('show-close')).toBeNull()
     })
 
-    it('整页无删除入口：父级不接线 @delete-skill，即使被 emit 也不触发删除（删除收口到列表页，md §二.3.6）', async () => {
+    it('整页无删除入口：父级不接线 @delete-skill（该 emit 已随 J14 退役，此处模拟旧组件仍发出的兜底），不触发删除（删除收口到列表页，md §二.3.6）', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
       focus.deleteSkill()

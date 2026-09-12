@@ -76,9 +76,10 @@ const stubs = {
     template: '<div class="el-alert" :data-type="type">{{ title }}<span v-if="description"> {{ description }}</span></div>'
   },
   'el-button': {
-    props: ['loading', 'type'],
+    props: ['loading', 'type', 'disabled'],
     emits: ['click'],
-    template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>'
+    // disabled 透出：K23【⌁ 验证连通性】查看态置灰要能断言；禁用时不冒泡 click（与真 el-button 同）
+    template: '<button class="el-button" :disabled="disabled" @click="!disabled && $emit(\'click\')"><slot /></button>'
   }
 }
 
@@ -150,6 +151,10 @@ function verifyOnlyBtn() {
     (b) => b.textContent.trim() === '重新验证'
   )
 }
+/** K23：「连接与鉴权」卡头固定的【⌁ 验证连通性】 */
+function connVerifyBtn() {
+  return container.querySelector('.mc-verify-btn')
+}
 async function flush(times = 6) {
   for (let i = 0; i < times; i++) {
     await Promise.resolve()
@@ -158,10 +163,12 @@ async function flush(times = 6) {
 }
 
 beforeEach(() => vi.clearAllMocks())
-afterEach(() => {
+function unmount() {
   app?.unmount()
   container?.remove()
-})
+  app = null
+}
+afterEach(() => unmount())
 
 describe('ModelConfigEditDialog（V76/V77）', () => {
   it('模型标识为开放文本框（2026-07-13 需求）：非下拉、可直接输入', async () => {
@@ -495,8 +502,51 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' }, { readonly: true })
     expect(saveBtn()).toBeFalsy()
     expect(verifyOnlyBtn()).toBeFalsy()
-    const labels = [...container.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+    const labels = [...container.querySelectorAll('.mc-foot .el-button')].map((b) => b.textContent.trim())
     expect(labels).toEqual(['关闭'])
+  })
+
+  /* ===== 2026-09-12 审计 K23：「连接与鉴权」卡头固定【⌁ 验证连通性】（md §三.4.2 L284-285） ===== */
+
+  it('K23 三态均渲染【⌁ 验证连通性】：接入 / 编辑态可点，查看态置灰不可点且点击不发请求（md §三.4.2 L284）', async () => {
+    await mount(null)
+    expect(connVerifyBtn().disabled).toBe(false)
+    unmount()
+    await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' })
+    expect(connVerifyBtn().disabled).toBe(false)
+    unmount()
+    await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' }, { readonly: true })
+    expect(connVerifyBtn().disabled).toBe(true)
+    connVerifyBtn().click()
+    await flush()
+    expect(api.verifyModel).not.toHaveBeenCalled()
+  })
+
+  it('K23 编辑态点【⌁ 验证连通性】等同【重新验证】：用已保存配置调 verifyModel、不走 updateModel（md §三.4.2 L285-286）', async () => {
+    api.verifyModel.mockResolvedValue({ verifyStatus: 'SUCCESS', verifyLatencyMs: 88 })
+    await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' })
+    connVerifyBtn().click()
+    await flush()
+    expect(api.verifyModel).toHaveBeenCalledWith('md_1')
+    expect(api.updateModel).not.toHaveBeenCalled()
+    expect(container.querySelector('.el-alert[data-type="success"]').textContent).toContain('连通性验证成功（88 ms）')
+  })
+
+  it('K23 接入态点【⌁ 验证连通性】：尚无已保存配置 → info 提示先【接入】，不调 verifyModel / createModel（md §三.5 L311-312 保存后自动验证）', async () => {
+    await mount(null)
+    connVerifyBtn().click()
+    await flush()
+    expect(api.verifyModel).not.toHaveBeenCalled()
+    expect(api.createModel).not.toHaveBeenCalled()
+    expect(msg.info).toHaveBeenCalledWith('模型尚未接入，点击【接入】保存后将自动验证连通性')
+  })
+
+  it('K23 能力信息空态文案（真 ModelCapabilityTags）：已探测但无一支持 → 「未探测到已支持能力」；未探测 → 「验证连通性后自动检测」（md §三.4.1 L277-278）', async () => {
+    await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED', supportsStreaming: false, supportsTools: false, supportsJsonMode: false, isReasoning: false })
+    expect(container.querySelector('.mct-hint').textContent).toBe('未探测到已支持能力')
+    unmount()
+    await mount({ id: 'md_2', name: '未验证模型', status: 'DRAFT' })
+    expect(container.querySelector('.mct-hint').textContent).toBe('验证连通性后自动检测')
   })
 
   it('编辑态「重新验证」：直接调 verifyModel 不走保存；成功就地回显「连通性验证成功（120 ms）」+ toast + emit saved（md §三.4.2）', async () => {

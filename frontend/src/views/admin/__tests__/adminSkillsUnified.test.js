@@ -7,8 +7,17 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 「技能」页（三类合一）单测。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §一 / §二.1 L47 / §二.2 L54 / §二.3.1 L61-65 / §四；
  * 文末两个 describe（操作列行渲染 + 右钉列守卫 / 版本管理适配器 + 排序切换）为审计 T49①/T54 新增，
- * 行数据直接注入 rows、适配器为纯函数——不依赖本文件顶部的 stubEnv（J4 待裁）。
+ * 行数据直接注入 rows、适配器为纯函数。
  * 真实 ElementPlus 挂载冒烟见 adminSkillsUnifiedSmoke.test.js。
+ *
+ * 【2026-09-12 审计 J4 闭环：去掉 stubEnv('VITE_SKILL_MOCK','0')】
+ * 此前 7 条「端点分支」用例断的是 demo 永远不走的真实端点（/fde/admin-skills、三套命名空间的 request 调用），
+ * 页面层对 mock 路径零用例。现在数据一律走真 unifiedSkillMock（demo 默认路径），用例改断**用户可见结果**：
+ * 删除后行消失 + toast、停用后状态列「审核中」、撤回后恢复、类型切换只剩该类型且回第 1 页、深链只出未被引用的
+ * 岗位私有行、翻页切片…；@/api/request 仍换成桩，只用来断言「真实端点零调用」。
+ * unifiedSkillMock 是模块级共享内存：破坏性用例一律自建技能行；动到种子（sk_302 / sk_303 / sk_308）的用例
+ * 在 afterEach 用 _reset 复位，避免随机顺序下互相污染。
+ * mock 各写点内置 delay(60~120ms)，用 settle() 真等再冲刷渲染队列。
  *
  * 2026-09-01 PRD 对齐改造取代旧口径（页面按交互原型 v2 最终覆写态重构，本文件整体重写）：
  * - 类型词表：岗位私有 / 市场技能 / 通用技能；三类统一三态（未发布/审核中/已发布）；
@@ -18,56 +27,31 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - 分类筛选固定 8 类（fieldDict 同源）对全部类型开放，类型切换不再清分类（只清引用筛选）；
  * - 查看/编辑同标签路由跳转（router.push；查看 = 编辑路由 + ?view=1），不再 window.open 新标签；
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
- *
- * 覆盖重点（沿用「绝不串前缀」范式）：读只走聚合端点；写操作分流矩阵三类各自命名空间零串台。
  */
 
-const listUnifiedSpy = vi.fn(() => Promise.resolve({ list: [], total: 0 }))
+// 真实端点桩：demo 路径下一次都不该被调到（每条用例末尾靠 vi.clearAllMocks 归零）
+const realGet = vi.fn(() => Promise.resolve({ list: [], total: 0 }))
+const realPost = vi.fn(() => Promise.resolve({}))
+const realDelete = vi.fn(() => Promise.resolve({}))
 vi.mock('@/api/request', () => ({
-  default: { get: (...a) => listUnifiedSpy(...a) },
-  ApiError: class ApiError extends Error {}
-}))
-
-// 三套命名空间各自打点：断言写操作绝不串台。
-const positionRemove = vi.fn(() => Promise.resolve())
-const positionSetStatus = vi.fn(() => Promise.resolve())
-const positionCreate = vi.fn(() => Promise.resolve({ skillId: 'sk_new_p' }))
-vi.mock('@/api/position', () => ({
-  listSkills: vi.fn(),
-  createStandaloneSkill: (...a) => positionCreate(...a),
-  updateSkill: vi.fn(),
-  deleteSkill: (...a) => positionRemove(...a),
-  setSkillStatus: (...a) => positionSetStatus(...a),
-  // 效果测试入口用（feature flag 关闭中，仅供页面 import 解构）
-  getSkill: vi.fn(() => Promise.resolve(null))
-}))
-
-const platformRemove = vi.fn(() => Promise.resolve())
-const platformDelist = vi.fn(() => Promise.resolve())
-const platformWithdraw = vi.fn(() => Promise.resolve())
-const platformCreate = vi.fn(() => Promise.resolve({ skillId: 'sk_new_m' }))
-const systemRemove = vi.fn(() => Promise.resolve())
-const systemDelist = vi.fn(() => Promise.resolve())
-const systemWithdraw = vi.fn(() => Promise.resolve())
-const systemCreate = vi.fn(() => Promise.resolve({ skillId: 'sk_new_s' }))
-vi.mock('@/api/platformSkill', () => ({
-  platformSkillApi: {
-    list: vi.fn(),
-    create: (...a) => platformCreate(...a),
-    remove: (...a) => platformRemove(...a),
-    delist: (...a) => platformDelist(...a),
-    withdrawPublish: (...a) => platformWithdraw(...a),
-    relist: vi.fn()
-  },
-  systemSkillApi: {
-    list: vi.fn(),
-    create: (...a) => systemCreate(...a),
-    remove: (...a) => systemRemove(...a),
-    delist: (...a) => systemDelist(...a),
-    withdrawPublish: (...a) => systemWithdraw(...a),
-    relist: vi.fn()
+  default: { get: (...a) => realGet(...a), post: (...a) => realPost(...a), put: vi.fn(), delete: (...a) => realDelete(...a) },
+  // unifiedSkillMock 用 new ApiError({ code, message }) 抛错：桩必须接同一形状，否则 e.message 变 [object Object]
+  ApiError: class ApiError extends Error {
+    constructor({ code, message } = {}) {
+      super(message)
+      this.code = code
+    }
   }
 }))
+
+// 真 unifiedSkillMock，仅把 listUnifiedSkills 包一层 vi.fn 以便断请求次数 / 下发参数（行为不变）
+const listSpy = vi.fn()
+vi.mock('@/api/unifiedSkillMock', async (importOriginal) => {
+  const actual = await importOriginal()
+  listSpy.mockImplementation(actual.listUnifiedSkills)
+  return { ...actual, listUnifiedSkills: (...a) => listSpy(...a) }
+})
+const skillMock = await import('@/api/unifiedSkillMock')
 
 // 2026-09-01：分类选项改走 fieldDict 同源字典（固定 8 类）；skillCategory.js 列表接口不再被本页调用。
 const listSkillCategoriesSpy = vi.fn(() => Promise.resolve([]))
@@ -108,10 +92,6 @@ vi.mock('@/components/skill/SkillCreateDialog.vue', () => ({
     template: '<div class="create-dialog-stub" />'
   }
 }))
-
-// 2026-09-01 PRD 对齐改造取代旧口径：技能页数据层已加 demo mock 分流（VITE_SKILL_MOCK），
-// 测试环境 DEV=true 会短路真实端点与写分流。本文件验证的正是真实端点与分流矩阵，故显式关掉 mock。
-vi.stubEnv('VITE_SKILL_MOCK', '0')
 
 const Page = (await import('@/views/admin/AdminSkillsUnified.vue')).default
 
@@ -163,7 +143,29 @@ afterEach(() => {
   mountedHost?.remove()
   mountedApp = null
   mountedHost = null
+  // 动过种子的用例复位（随机顺序下不互相污染）：303 已发布无在途；302 已发布 + 新版在审；308 首发在审
+  skillMock._reset('sk_303', { pendingAction: null, pendingVersion: '', pendingReleaseNotes: '' })
+  skillMock._reset('sk_302', { pendingAction: 'publish', pendingVersion: 'v1.5.0', pendingReleaseNotes: '补充经营异常归因说明' })
+  skillMock._reset('sk_308', { pendingAction: 'publish', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首次发布' })
 })
+
+/** 真等 mock 的 delay（≤120ms）落库，再冲刷渲染队列。 */
+async function settle(ms = 160) {
+  await new Promise((r) => setTimeout(r, ms))
+  for (let i = 0; i < 4; i++) await nextTick()
+}
+/** 挂载 + 等首屏列表从 mock 回来。 */
+async function mountLoaded() {
+  const vm = await mountPage()
+  await settle()
+  return vm
+}
+/** 自建一行技能（破坏性用例专用，不动种子）。 */
+async function mkSkill(name, type) {
+  const { skillId } = await skillMock.createSkill({ name, type, categoryName: '办公效率' })
+  return skillId
+}
+const rowById = (vm, id) => vm.rows.find((r) => r.id === id)
 
 const rowPosition = { id: 'sk_p', type: 'POSITION', name: '岗位技能A', status: 'draft', refCount: 0, refNames: [], publications: [], toolCount: 1 }
 const rowPlatform = { id: 'sk_m', type: 'PLATFORM', name: '平台技能B', status: 'draft', refCount: 0, refNames: [], publications: [], toolCount: 2 }
@@ -172,95 +174,120 @@ const rowSystem = { id: 'sk_s', type: 'SYSTEM_DEFAULT', name: '内置技能C', s
 beforeEach(() => {
   vi.clearAllMocks()
   routeQuery = {}
-  listUnifiedSpy.mockResolvedValue({ list: [], total: 0 })
   listFieldDictSpy.mockResolvedValue({ skillCategory: [{ name: '办公效率' }] })
   confirmSpy.mockResolvedValue()
   window.open = openSpy
 })
 
-describe('读：只走聚合端点', () => {
-  it('挂载即调 /fde/admin-skills，不碰三个原列表端点', async () => {
-    await mountPage()
-    expect(listUnifiedSpy).toHaveBeenCalledWith('/fde/admin-skills', expect.anything())
-    const position = await import('@/api/position')
-    const platform = await import('@/api/platformSkill')
-    expect(position.listSkills).not.toHaveBeenCalled()
-    expect(platform.platformSkillApi.list).not.toHaveBeenCalled()
-    expect(platform.systemSkillApi.list).not.toHaveBeenCalled()
+describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端点零调用', () => {
+  it('挂载即从 mock 取回种子行（默认按最近更新时间由近到远、切到动态每页条数），/fde/admin-skills 等真实端点零调用（md §二.1 L47）', async () => {
+    const vm = await mountLoaded()
+    expect(realGet).not.toHaveBeenCalled()
+    expect(vm.total).toBeGreaterThanOrEqual(9) // 9 条种子（其它用例可能自建行，只断下限）
+    expect(vm.rows.length).toBe(Math.min(vm.total, vm.pageSize))
+    expect(vm.rows.map((r) => r.name)).toEqual(expect.arrayContaining(['行业研究助手', '合同风险检查']))
+    const times = vm.rows.map((r) => r.updatedAt)
+    expect([...times].sort().reverse()).toEqual(times) // desc
   })
 
   // 分类固定 8 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；被清的是「引用状态」筛选。
-  it('类型切换 → 带 type 重拉且回第 1 页；分类保留、引用筛选被清', async () => {
-    const vm = await mountPage()
+  it('类型切换 → 列表只剩该类型行且回第 1 页；分类保留（并生效）、引用筛选被清', async () => {
+    const vm = await mountLoaded()
     vm.query.type = 'POSITION'
-    await nextTick()
+    await settle()
     vm.page = 3
     vm.query.categoryId = '办公效率'
     vm.query.referenced = 'yes'
     vm.query.type = 'SYSTEM_DEFAULT'
-    await nextTick()
-    await nextTick()
+    await settle()
     expect(vm.query.categoryId).toBe('办公效率') // 分类词表三类通用，不清
     expect(vm.query.referenced).toBe('')        // 引用筛选只对岗位私有有意义 → 被清
     expect(vm.page).toBe(1)
-    const lastCall = listUnifiedSpy.mock.calls.at(-1)
-    expect(lastCall[1].params.type).toBe('SYSTEM_DEFAULT')
-    expect(lastCall[1].params.categoryId).toBe('办公效率')
+    expect(vm.rows.length).toBeGreaterThan(0)
+    expect(vm.rows.every((r) => r.type === 'SYSTEM_DEFAULT' && r.displayCategoryId === '办公效率')).toBe(true)
+    expect(vm.rows.map((r) => r.name)).toContain('会议纪要整理') // 种子 303：通用技能 · 办公效率
+    expect(realGet).not.toHaveBeenCalled()
   })
 })
 
-describe('写：分流矩阵（绝不串命名空间）', () => {
-  it('岗位私有行删除 → 只调 position 端点', async () => {
-    const vm = await mountPage()
-    await vm.remove(rowPosition)
-    expect(positionRemove).toHaveBeenCalledWith('sk_p')
-    expect(platformRemove).not.toHaveBeenCalled()
-    expect(systemRemove).not.toHaveBeenCalled()
+describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户可见结果），真实端点零调用', () => {
+  it('三类行删除 → 确认文案统一「删除后「X」将不可用，确认删除？」→ 行从列表消失 + toast「技能已删除」+ mock 里查不到', async () => {
+    const ids = {
+      POSITION: await mkSkill('J4删除·岗位私有', 'POSITION'),
+      PLATFORM: await mkSkill('J4删除·市场技能', 'PLATFORM'),
+      SYSTEM_DEFAULT: await mkSkill('J4删除·通用技能', 'SYSTEM_DEFAULT')
+    }
+    const vm = await mountLoaded()
+    const { ElMessage } = await import('element-plus')
+    for (const [type, id] of Object.entries(ids)) {
+      const row = rowById(vm, id)
+      expect(row?.type).toBe(type)
+      await vm.remove(row)
+      await settle()
+      expect(confirmSpy.mock.calls.at(-1)[0]).toBe(`删除后「${row.name}」将不可用，确认删除？`)
+      expect(ElMessage.success).toHaveBeenLastCalledWith('技能已删除')
+      expect(rowById(vm, id)).toBeUndefined()
+      await expect(skillMock.getSkillDetail(id)).rejects.toThrow('技能不存在')
+    }
+    expect(realDelete).not.toHaveBeenCalled()
+    expect(realPost).not.toHaveBeenCalled()
   })
 
-  it('市场技能行删除 → 只调 platform 端点', async () => {
-    const vm = await mountPage()
-    await vm.remove(rowPlatform)
-    expect(platformRemove).toHaveBeenCalledWith('sk_m')
-    expect(positionRemove).not.toHaveBeenCalled()
-    expect(systemRemove).not.toHaveBeenCalled()
+  it('停用（提交停用审核）：确认文案对齐原型 → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.2 L119 / §二.3.5）', async () => {
+    const vm = await mountLoaded()
+    const row = rowById(vm, 'sk_303') // 种子 303：通用技能 · 已发布 · 无引用
+    expect(vm.displayStateLabel(row)).toBe('已发布')
+    await vm.stopSkill(row)
+    await settle()
+    expect(confirmSpy.mock.calls.at(-1)[0]).toBe('停用「会议纪要整理」需提交停用审核。审核通过前客户端仍可使用。')
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.success).toHaveBeenLastCalledWith('已提交停用审核')
+    expect(vm.displayStateLabel(rowById(vm, 'sk_303'))).toBe('审核中')
+    expect(skillMock._getRaw('sk_303').pendingAction).toBe('stop')
+
+    await vm.withdraw(rowById(vm, 'sk_303'))
+    await settle()
+    expect(confirmSpy.mock.calls.at(-1)[0]).toBe('撤回本次提交后将回到修改前状态。确认撤回？')
+    expect(ElMessage.success).toHaveBeenLastCalledWith('已撤回')
+    expect(vm.displayStateLabel(rowById(vm, 'sk_303'))).toBe('已发布')
+    expect(realPost).not.toHaveBeenCalled()
+    expect(realDelete).not.toHaveBeenCalled()
   })
 
-  it('通用技能行删除 → 只调 system 端点（不落平台前缀，否则后端 404）', async () => {
-    const vm = await mountPage()
-    await vm.remove(rowSystem)
-    expect(systemRemove).toHaveBeenCalledWith('sk_s')
-    expect(platformRemove).not.toHaveBeenCalled()
-    expect(positionRemove).not.toHaveBeenCalled()
-  })
+  it('撤回在审提交按 version 空/非空恢复：首发在审的岗位私有 308 → 「未发布」；新版在审的市场技能 302 → 「已发布」（md §二.2 L119）', async () => {
+    const vm = await mountLoaded()
+    expect(vm.displayStateLabel(rowById(vm, 'sk_308'))).toBe('审核中')
+    await vm.withdraw(rowById(vm, 'sk_308'))
+    await settle()
+    expect(vm.displayStateLabel(rowById(vm, 'sk_308'))).toBe('未发布')
 
-  // 本体状态开关（toggleStatus）已随统一审核状态机废弃：停用统一走 stopSkill 提交停用审核。
-  it('停用（提交停用审核）按行类型打各自前缀，绝不落本体状态开关', async () => {
-    const vm = await mountPage()
-    await vm.stopSkill({ ...rowSystem, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] })
-    expect(systemDelist).toHaveBeenCalledWith('sk_s')
-    expect(platformDelist).not.toHaveBeenCalled()
-    expect(positionSetStatus).not.toHaveBeenCalled()
-
-    await vm.stopSkill({ ...rowPlatform, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] })
-    expect(platformDelist).toHaveBeenCalledWith('sk_m')
+    expect(vm.displayStateLabel(rowById(vm, 'sk_302'))).toBe('审核中')
+    await vm.withdraw(rowById(vm, 'sk_302'))
+    await settle()
+    expect(vm.displayStateLabel(rowById(vm, 'sk_302'))).toBe('已发布')
+    expect(vm.latestVersion(rowById(vm, 'sk_302'))).toBe('v1.4.0') // 线上版本不受撤回影响
+    expect(realDelete).not.toHaveBeenCalled()
   })
 })
 
 // 删除确认文案统一（不再按类型措辞）；被引用行改为拦截 alert（携引用主体、数量与清单），删除请求根本不发。
 describe('文案：删除确认统一、被引用拦截按主体措辞', () => {
-  it('删除确认文案统一「删除后「X」将不可用，确认删除？」，成功 toast「技能已删除」', async () => {
-    const vm = await mountPage()
-    await vm.remove(rowSystem)
-    expect(confirmSpy.mock.calls.at(-1)[0]).toBe('删除后「内置技能C」将不可用，确认删除？')
-    const { ElMessage } = await import('element-plus')
-    expect(ElMessage.success).toHaveBeenCalledWith('技能已删除')
+  it('删除失败（mock 拒绝：被引用的种子 307）→ alert「无法删除」携 mock 文案，技能仍在', async () => {
+    const vm = await mountLoaded()
+    // 种子 307（市场技能，被 1 个专家引用）：页面前置拦截看的是行上的 refCount 字段，这里模拟列表字段缺失
+    // 绕过前置门，由真 mock 的引用保护兜底拒绝（307 更新时间最早、不在首页，直接构造行）
+    const row = { id: 'sk_307', type: 'PLATFORM', name: '竞品信息汇总', refCount: 0, refNames: [], publications: [] }
+    await vm.remove(row)
+    await settle()
+    expect(alertSpy.mock.calls.at(-1)[1]).toBe('无法删除')
+    expect(alertSpy.mock.calls.at(-1)[0]).toContain('引用')
+    expect((await skillMock.getSkillDetail('sk_307')).name).toBe('竞品信息汇总')
   })
 
   it('岗位私有被引用 → 拦截 alert 提示岗位数与清单，不发删除请求', async () => {
     const vm = await mountPage()
     await vm.remove({ ...rowPosition, refCount: 8, refNames: ['销售顾问岗位'] })
-    expect(positionRemove).not.toHaveBeenCalled()
+    expect(realDelete).not.toHaveBeenCalled()
     const msg = alertSpy.mock.calls.at(-1)[0]
     expect(msg).toContain('8 个岗位引用')
     expect(msg).toContain('销售顾问岗位')
@@ -271,7 +298,7 @@ describe('文案：删除确认统一、被引用拦截按主体措辞', () => {
   it('市场技能被专家引用 → 拦截 alert 提示专家数，不发删除请求', async () => {
     const vm = await mountPage()
     await vm.remove({ ...rowPlatform, refCount: 2, refNames: [] })
-    expect(platformRemove).not.toHaveBeenCalled()
+    expect(realDelete).not.toHaveBeenCalled()
     expect(alertSpy.mock.calls.at(-1)[0]).toContain('2 个专家引用')
   })
 })
@@ -447,22 +474,25 @@ describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最�
     expect(vm.verMgrVisible).toBe(false)
   })
 
-  it('撤回：确认后按行类型分流 withdrawPublish，toast「已撤回」', async () => {
-    const vm = await mountPage()
-    await vm.withdraw({ ...rowPlatform, publications: [{ target: 'USER_END', status: 'PENDING_REVIEW' }] })
-    expect(confirmSpy.mock.calls.at(-1)[0]).toBe('撤回本次提交后将回到修改前状态。确认撤回？')
-    expect(platformWithdraw).toHaveBeenCalledWith('sk_m')
-    expect(systemWithdraw).not.toHaveBeenCalled()
+  it('撤回 / 停用取消确认 → 不落任何写操作、状态不变', async () => {
+    const vm = await mountLoaded()
+    confirmSpy.mockRejectedValue(new Error('cancel'))
+    await vm.withdraw(rowById(vm, 'sk_302'))
+    await vm.stopSkill(rowById(vm, 'sk_303'))
+    await settle()
+    expect(vm.displayStateLabel(rowById(vm, 'sk_302'))).toBe('审核中')
+    expect(vm.displayStateLabel(rowById(vm, 'sk_303'))).toBe('已发布')
     const { ElMessage } = await import('element-plus')
-    expect(ElMessage.success).toHaveBeenCalledWith('已撤回')
+    expect(ElMessage.success).not.toHaveBeenCalled()
   })
 
-  it('停用确认文案对齐原型，成功 toast「已提交停用审核」', async () => {
-    const vm = await mountPage()
-    await vm.stopSkill({ ...rowPlatform, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] })
-    expect(confirmSpy.mock.calls.at(-1)[0]).toBe('停用「平台技能B」需提交停用审核。审核通过前客户端仍可使用。')
-    const { ElMessage } = await import('element-plus')
-    expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
+  it('停用后 mock 已被引用的行（种子 309 停用在审）不再出「停用」；停用被引用行走前置 alert 不发请求', async () => {
+    const vm = await mountLoaded()
+    expect(vm.isReviewing(rowById(vm, 'sk_309'))).toBe(true)
+    const before = skillMock._getRaw('sk_302').pendingAction
+    await vm.stopSkill(rowById(vm, 'sk_302')) // 302 被 3 个专家引用 → 前置拦截
+    expect(alertSpy.mock.calls.at(-1)[0]).toContain('3 个专家引用')
+    expect(skillMock._getRaw('sk_302').pendingAction).toBe(before)
   })
 
   it('停用被引用 → 拦截 alert（含引用清单），不发请求', async () => {
@@ -473,7 +503,7 @@ describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最�
       refNames: ['经营分析专家', '法务合规专家'],
       publications: [{ target: 'USER_END', status: 'PUBLISHED' }]
     })
-    expect(platformDelist).not.toHaveBeenCalled()
+    expect(realPost).not.toHaveBeenCalled()
     const msg = alertSpy.mock.calls.at(-1)[0]
     expect(msg).toContain('2 个专家引用')
     expect(msg).toContain('经营分析专家、法务合规专家')
@@ -501,31 +531,32 @@ describe('最新版本列：展示当前已发布的版本号', () => {
 })
 
 describe('P0-4：引用状态筛选 + ?referenced 深链（疑点7 保留）', () => {
-  it('深链 ?referenced=no → 自动落「岗位私有 + 未被引用」，参数正确下发', async () => {
+  it('深链 ?referenced=no → 自动落「岗位私有 + 未被引用」：列表只出无引用的岗位私有行（种子 308）', async () => {
     routeQuery = { referenced: 'no' }
-    const vm = await mountPage()
+    const vm = await mountLoaded()
     expect(vm.query.type).toBe('POSITION')
     expect(vm.query.referenced).toBe('no')
-    const params = listUnifiedSpy.mock.calls.at(-1)[1].params
-    expect(params.type).toBe('POSITION')
-    expect(params.referenced).toBe(false)   // 'no' → 布尔 false
+    expect(listSpy.mock.calls.at(-1)[0]).toMatchObject({ type: 'POSITION', referenced: false }) // 'no' → 布尔 false
+    expect(vm.rows.length).toBeGreaterThan(0)
+    expect(vm.rows.every((r) => r.type === 'POSITION' && vm.refCountOf(r) === 0)).toBe(true)
+    expect(vm.rows.map((r) => r.name)).toContain('报销单智能填报')
+    expect(vm.rows.map((r) => r.name)).not.toContain('日报周报生成') // 301 被两个岗位引用
   })
 
   it('深链只预置一次、不重复请求首屏', async () => {
     routeQuery = { referenced: 'no' }
-    await mountPage()
-    await nextTick()
-    await nextTick()
-    expect(listUnifiedSpy.mock.calls.length).toBe(1)
+    await mountLoaded()
+    expect(listSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('非岗位私有类型不下发 referenced（否则平台族会被整体判为未被引用）', async () => {
-    const vm = await mountPage()
+  it('非岗位私有类型不下发 referenced（否则平台族会被整体判为未被引用）：市场技能行照常出现', async () => {
+    const vm = await mountLoaded()
     vm.query.referenced = 'no'
     vm.query.type = 'PLATFORM'
-    await nextTick()
-    await nextTick()
-    expect(listUnifiedSpy.mock.calls.at(-1)[1].params.referenced).toBeUndefined()
+    await settle()
+    expect(listSpy.mock.calls.at(-1)[0].referenced).toBeUndefined()
+    expect(vm.rows.every((r) => r.type === 'PLATFORM')).toBe(true)
+    expect(vm.rows.map((r) => r.name)).toContain('经营数据分析') // 302 被 3 个专家引用，仍在列表
   })
 
   it('切离岗位私有时清空引用状态筛选值', async () => {
@@ -557,41 +588,49 @@ describe('分类选项 / 自动刷新 / 分页', () => {
     expect(vm.categoryOptions).toEqual([{ id: '办公效率', name: '办公效率' }])
   })
 
-  it('分类选项拉取失败 → 降级为空数组，不阻断列表', async () => {
+  it('分类选项拉取失败 → 降级为空数组，不阻断列表（种子行照常出来）', async () => {
     listFieldDictSpy.mockRejectedValueOnce(new Error('boom'))
-    const vm = await mountPage()
+    const vm = await mountLoaded()
     expect(vm.categoryOptions).toEqual([])
-    expect(listUnifiedSpy).toHaveBeenCalled()   // 列表照常
+    expect(vm.rows.length).toBeGreaterThan(0)   // 列表照常
   })
 
   it('纯 focus（未曾隐藏）不刷新；隐藏过再 focus → 刷新', async () => {
-    await mountPage()
-    const before = listUnifiedSpy.mock.calls.length
+    await mountLoaded()
+    const before = listSpy.mock.calls.length
 
     window.dispatchEvent(new Event('focus'))
     await nextTick()
-    expect(listUnifiedSpy.mock.calls.length).toBe(before)   // 未曾隐藏 → 不刷新
+    expect(listSpy.mock.calls.length).toBe(before)   // 未曾隐藏 → 不刷新
 
     Object.defineProperty(document, 'hidden', { value: true, configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
     Object.defineProperty(document, 'hidden', { value: false, configurable: true })
     window.dispatchEvent(new Event('focus'))
     await nextTick()
-    expect(listUnifiedSpy.mock.calls.length).toBe(before + 1)
+    expect(listSpy.mock.calls.length).toBe(before + 1)
   })
 
-  it('列表带 page/size；翻页与搜索各自重拉', async () => {
-    const vm = await mountPage()
-    expect(listUnifiedSpy.mock.calls.at(-1)[1].params).toMatchObject({ page: 1 })
+  it('分页：按每页条数切片；翻到第 2 页换一批行；搜索（reload）回第 1 页', async () => {
+    const vm = await mountLoaded()
+    vm.pageSize = 4
+    vm.fetchList()
+    await settle()
+    expect(vm.page).toBe(1)
+    expect(vm.rows.length).toBe(4)
+    const firstPageIds = vm.rows.map((r) => r.id)
 
     vm.page = 2
     vm.fetchList()
-    await nextTick()
-    expect(listUnifiedSpy.mock.calls.at(-1)[1].params.page).toBe(2)
+    await settle()
+    expect(listSpy.mock.calls.at(-1)[0]).toMatchObject({ page: 2, size: 4 })
+    expect(vm.rows.length).toBeGreaterThan(0)
+    expect(vm.rows.some((r) => firstPageIds.includes(r.id))).toBe(false) // 第 2 页是另一批
 
     vm.reload()   // 搜索回第 1 页
-    await nextTick()
-    expect(listUnifiedSpy.mock.calls.at(-1)[1].params.page).toBe(1)
+    await settle()
+    expect(vm.page).toBe(1)
+    expect(vm.rows.map((r) => r.id)).toEqual(firstPageIds)
   })
 })
 
@@ -610,14 +649,18 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(byType.POSITION.source).toBe('fde')
   })
 
-  it('三类各映射到各自的建空技能函数（新签名 { name, categoryName }）', async () => {
+  it('三类 createFn（新签名 { name, categoryName }）→ 真 mock 建出对应类型、带分类的空白技能（md §二.2 L152）', async () => {
     const vm = await mountPage()
     const byType = Object.fromEntries(vm.createTypeOptions.map((o) => [o.value, o]))
-    await byType.POSITION.createFn({ name: '技能X', categoryName: '办公效率' })
-    // mock 关闭（VITE_SKILL_MOCK=0）时走真实端点契约：仅传 name（分类由编辑页补）
-    expect(positionCreate).toHaveBeenCalledWith({ name: '技能X' })
-    expect(platformCreate).not.toHaveBeenCalled()
-    expect(systemCreate).not.toHaveBeenCalled()
+    for (const type of ['POSITION', 'PLATFORM', 'SYSTEM_DEFAULT']) {
+      const { skillId } = await byType[type].createFn({ name: `J4新建·${type}`, categoryName: '办公效率' })
+      const d = await skillMock.getSkillDetail(skillId)
+      expect(d.type).toBe(type)
+      expect(d.displayCategoryId).toBe('办公效率')
+      expect(d.publications).toEqual([]) // 初始未发布
+      await skillMock.removeSkill(skillId) // 收尾，不污染其它用例的列表
+    }
+    expect(realPost).not.toHaveBeenCalled()
   })
 
   it('不再有前置类型窗与二次确认：openCreate 直接开弹窗、不弹 confirm', async () => {
@@ -643,19 +686,19 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
   it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击"编辑"继续配置」+ 刷列表不跳编辑页', async () => {
     const vm = await mountPage()
     pushSpy.mockClear()
-    const before = listUnifiedSpy.mock.calls.length
+    const before = listSpy.mock.calls.length
     vm.onSkillsCreatedBatch({ skillIds: ['sk_a', 'sk_b'], skillType: 'PLATFORM' })
     await nextTick()
     const { ElMessage } = await import('element-plus')
     expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击"编辑"继续配置')
     expect(pushSpy).not.toHaveBeenCalled()
-    expect(listUnifiedSpy.mock.calls.length).toBe(before + 1)
+    expect(listSpy.mock.calls.length).toBe(before + 1)
   })
 })
 
 /* ====================================================================================== */
 // 2026-09-12 审计 T49①：操作列真正渲染出来的按钮 / 置灰 / title（md §二.3.1 L61-65），此前只断言 isReviewing 等谓词。
-// 行数据直接注入 rows（useAdminList 的 ref），不经列表端点，故与顶部 stubEnv 无关。
+// 行数据直接注入 rows（useAdminList 的 ref），不经列表数据源。
 describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+ 右钉列只有「操作」一列（fe11191 防回归）', () => {
   const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
   const rowStubs = {
@@ -733,6 +776,16 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
     expect(row.querySelector('.el-table-column[data-label="最新版本"]').textContent).toContain('v1.0.0')
   })
 
+  // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，写法照 adminMcp.test.js「列结构」用例
+  it('列序：状态为独立列且紧跟「技能名」列之后（09-11 拍板 · 审计 J1）', async () => {
+    const { host } = await mountRows([published])
+    const labels = [...host.querySelectorAll('.t-head')].map((h) => h.getAttribute('data-label'))
+    expect(labels).toContain('状态')
+    expect(labels.indexOf('状态')).toBe(labels.indexOf('技能名') + 1)
+    const row = [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes('已发布技能'))
+    expect(row.querySelector('.el-table-column[data-label="状态"]').textContent).toContain('已发布')
+  })
+
   it('右钉（fixed）列只有「操作」一列——最近更新时间等列不再右钉（fe11191「三列看不见」防回归）', async () => {
     const { host } = await mountRows([published])
     const fixedHeads = [...host.querySelectorAll('.t-head[data-fixed]')]
@@ -772,8 +825,8 @@ describe('版本管理适配器（md §四）+ 最近更新时间列头排序（
   it('市场技能未选分类 → submitGate 给出拦截提示（含 md L231「该技能还未选择「技能分类」，按规则不可提交发布」）；通用/岗位私有不设此门', async () => {
     const vm = await mountPage()
     vm.openVersionManage({ ...rowPlatform, displayCategoryId: null })
-    // 代码现状比 md L231 多一句「请到技能编辑页选择分类并保存后再来发布。」（审计 K 清单），此处只断 md 句
-    expect(vm.versionAdapter.submitGate()).toContain('该技能还未选择「技能分类」，按规则不可提交发布')
+    // 2026-09-12 审计 K18 闭环：逐字 md L231（原多出的「请到技能编辑页…」一句已删）
+    expect(vm.versionAdapter.submitGate()).toBe('该技能还未选择「技能分类」，按规则不可提交发布')
     vm.openVersionManage({ ...rowSystem, displayCategoryId: null })
     expect(vm.versionAdapter.submitGate()).toBe('')
     vm.openVersionManage({ ...rowPosition, displayCategoryId: null })

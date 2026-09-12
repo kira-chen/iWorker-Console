@@ -107,7 +107,8 @@ function verifyTip(row) {
   if (isVerifying(row)) {
     return `${verifyPhaseText(phaseOf(row))}（约需 40 秒，可先去忙别的）`
   }
-  if (!row.verifiedAt) return '点击验证连通性'
+  // 2026-09-12 对齐 md 模型 §二.3.4 L107「从未验证过…鼠标悬停提示“尚未验证过，点击发起验证”」（审计 K22）
+  if (!row.verifiedAt) return '尚未验证过，点击发起验证'
   // 「最近验证」而非「测试时间」：与 MCP 页统一措辞（2026-08-21 用户口径）。
   const at = `最近验证：${fmtTime(row.verifiedAt)}`
   if (row.verifyStatus === 'SUCCESS') {
@@ -124,7 +125,7 @@ function verifyTip(row) {
     const reason = e?.brief || e?.label || '未知原因'
     return `${at}\n错误原因：${reason}\n错误码：${errorCodeOf(row.verifyError)}`
   }
-  return '点击验证连通性'
+  return '尚未验证过，点击发起验证'
 }
 
 /** 从 verify_error 原文取技术分类前缀作「错误码」（形如 `AUTH_FAILED: …` → AUTH_FAILED）。 */
@@ -589,7 +590,7 @@ async function remove(row) {
                 <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标表达「正在重测」 -->
                 <HealthTag :status="verifyHealthStatus(row.verifyStatus)" />
 
-                <!-- 最近验证时间：验证中改为阶段文案，让用户知道正在做什么。
+                <!-- 最近验证时间：验证中改为「正在验证…」（md §二.3.4 L112，2026-09-12 审计 K22；阶段二括注检测能力）。
                      2026-09-01 PRD 对齐：相对时间改 MM-DD HH:mm 短格式（原型 verifyTime 形态），
                      悬浮提示仍保留完整时间。 -->
                 <span v-if="isVerifying(row)" class="md-vc-time">

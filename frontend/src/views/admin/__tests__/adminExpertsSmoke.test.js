@@ -9,8 +9,8 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  *
  * 与 adminExperts.test.js（全桩）互补：真 Element Plus + 真 ListStates / ListPagination / StatusTag /
  * ExpertEditor / VersionDrawer，只 mock api 层（domainExpert / knowledgeBase）。
- * 守：mount 不抛、种子行「经营分析专家」可见、textContent 无孤立「>」（守 K21：AdminExperts.vue:329 模板
- * el-table 起始标签后多出的 `>` 字符会被渲染成文本）、console.error 零调用。
+ * 守：mount 不抛、种子行「经营分析专家」可见、整页 textContent 无孤立「>」（守 K21：AdminExperts.vue 模板
+ * el-table 起始标签后曾多出一个 `>` 字符被渲染成文本，2026-09-12 已修）、console.error 零调用。
  */
 
 const api = {
@@ -89,12 +89,9 @@ describe('AdminExperts · 真实挂载冒烟（真 Element Plus，只 mock api�
     // 真 ListPagination
     expect(mounted.container.querySelector('.list-pager-info').textContent).toContain('共 3 ')
 
-    // K21 探针：AdminExperts.vue:329 el-table 起始标签后的孤立「>」实测被渲染成文本，落在 el-table 的
-    // `.hidden-columns`（visibility:hidden，用户看不见）。整页 textContent 断言当前会红（缺陷未修），
-    // 故先只守用户可见区域（表头 + 表体）没有孤立「>」；K21 修掉后把范围放大到整个 container。
-    const header = mounted.container.querySelector('.el-table__header')
-    const body = mounted.container.querySelector('.el-table__body')
-    expect(header.textContent + body.textContent).not.toMatch(/(^|\s)>(\s|$)/)
+    // K21 探针（2026-09-12 已闭环）：AdminExperts.vue el-table 起始标签后曾多出一个孤立「>」，被渲染成文本落在
+    // el-table 的 `.hidden-columns`。修掉后范围放大到整个 container——任何位置都不该再出现孤立「>」文本。
+    expect(mounted.container.textContent).not.toMatch(/(^|\s)>(\s|$)/)
 
     expect(errSpy).not.toHaveBeenCalled()
     expect(warnSpy.mock.calls.map((c) => String(c[0]))).toEqual([])

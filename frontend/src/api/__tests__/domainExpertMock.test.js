@@ -101,7 +101,6 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
 
   // 2026-09-12 测试审计 T55：md §二.3.7「【删除】仅在"未发布"且无审核中操作时展示」——
   // 原用例拿已发布的 201 删，等于把「已发布可删」锁进用例；改用唯一的草稿种子 203。
-  // （mock 侧尚无「已发布/审核中拒删」守卫，记代码缺陷，此处不写会红的用例。）
   it('删除未发布专家 203：返回解除的引用数并移除本体；delete-impact 接口保留可用（md §二.3.7）', async () => {
     const impact = await getExpertDeleteImpact(203)
     expect(impact).toMatchObject({ name: '法务审阅专家', skillRefCount: 1, published: false })
@@ -109,6 +108,15 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     const { list, total } = await listExperts()
     expect(total).toBe(3)
     expect(list.map((e) => e.name)).not.toContain('法务审阅专家')
+  })
+
+  // 2026-09-12 审计 K27 闭环：mock 侧补状态守卫，UI 藏按钮之外不留后门
+  it('删除已发布专家 201 / 审核中专家 204 → 409 拒绝，列表不变（md §二.3.7「已发布需先完成停用审核」「审核中按钮隐藏」）', async () => {
+    await expect(deleteExpert(201)).rejects.toMatchObject({ code: 409 })
+    await expect(deleteExpert(204)).rejects.toMatchObject({ code: 409 })
+    const { total, list } = await listExperts()
+    expect(total).toBe(4)
+    expect(list.map((e) => e.name)).toEqual(expect.arrayContaining(['经营分析专家', '研究报告专家']))
   })
 
   it('引用/解除/重排（接口保留）：add 幂等、remove 断关联不动本体、reorder 按数组顺序', async () => {

@@ -49,10 +49,7 @@ export const TERMS = {
 export const TOOL_WHITELIST_HINT =
   '你在内容里用到的工具会自动算进这个技能能用的工具，不用单独打勾。'
 
-// 触发词 tooltip（口语化，去「路由提示/强匹配」术语）。
-export function triggerHint(maxCount) {
-  return `最多 ${maxCount} 个。用户说到这些词时更可能用上这个技能（只是提示，不要求一字不差）。`
-}
+// 触发词 tooltip triggerHint 已于 2026-09-12 死码清理删除（审计 J13，零调用方）。
 
 // 描述输入框 tooltip：说明它也参与路由候选判断（P2-3）。
 export const DESCRIPTION_HINT =

@@ -69,8 +69,8 @@ const TIPS = FIELD_TIPS
 
 /* 厂商预设卡片区已删除（2026-09-09 PRD 复核轮 · G4/A9，Q224 负责人二轮决策「去掉预设卡片」，
    prd-模型.md 已删整节）。原 PRD_CARDS / presetKey / selectPreset 及 .mc-preset-* 样式一并移除；
-   utils/modelPresets.js 的 MODEL_PRESETS 常量本体保留（同文件另有 MODEL_PROVIDER_OPTIONS /
-   CONTEXT_WINDOW_OPTIONS 在用，且其单测独立覆盖），仅本编辑器不再消费。 */
+   utils/modelPresets.js 的 MODEL_PRESETS 常量与 FIELD_TIPS.preset 亦已于 2026-09-12 随死码清理删除
+   （审计 J13），该文件只剩 MODEL_PROVIDER_OPTIONS / CONTEXT_WINDOW_OPTIONS / 类别枚举 / FIELD_TIPS 在用。 */
 
 /** 无图标时的默认字形（原型 L1415 `d.icon||'▦'`）。 */
 const DEFAULT_MODEL_ICON = '▦'
@@ -322,6 +322,19 @@ async function save() {
 }
 
 /**
+ * 「连接与鉴权」卡头固定【⌁ 验证连通性】按钮（md §三.4.2 L284-285，2026-09-12 审计 K23）：
+ * 编辑态等同【重新验证】（用已保存配置验证，不保存页面里未提交的修改）；
+ * 接入态尚无已保存配置可验，只提示走【接入】——保存成功后列表会自动发起验证（md §三.5 L311-312）。
+ */
+function verifyConnectivity() {
+  if (!targetId.value) {
+    ElMessage.info('模型尚未接入，点击【接入】保存后将自动验证连通性')
+    return
+  }
+  return verifyOnly()
+}
+
+/**
  * 就地重测连通性（编辑态）。
  *
  * 保留本入口是因为：改完配置想立刻确认「这次对了没」，回列表再点一次是多余的往返。
@@ -477,9 +490,21 @@ async function verifyOnly() {
 
       <!-- 连接与鉴权（MQ4 指示：服务地址（Base URL）按原型放本区） -->
       <section class="section-card">
-        <div class="section-title">
-          连接与鉴权
-          <span class="section-sub">验证结果决定模型是否可发布</span>
+        <!-- 2026-09-12 对齐 md 模型 §三.4.2 L284（审计 K23）：卡头右侧固定【⌁ 验证连通性】按钮——
+             接入 / 编辑态可点，查看态置灰不可点；卡头两端对齐走 admin-shell.css 的 .section-head -->
+        <div class="section-head">
+          <span class="section-title">
+            连接与鉴权
+            <span class="section-sub">验证结果决定模型是否可发布</span>
+          </span>
+          <el-button
+            link
+            type="primary"
+            class="mc-verify-btn"
+            :disabled="props.readonly || saving"
+            :loading="verifying"
+            @click="verifyConnectivity"
+          >⌁ 验证连通性</el-button>
         </div>
         <!-- D5：两列栅格（原型 L245 form-grid）——Base URL 通栏 → 鉴权方式半栏 →
              API Key 通栏 / AppID·API Key·App Secret 三格按两列排 -->
@@ -563,10 +588,11 @@ async function verifyOnly() {
           </template>
           <!-- 新建态（M8）：还没有可探测的对象，给接入引导说明 -->
           <div v-if="!isEdit" class="mc-cap-notice">接入并验证后自动识别流式、工具、JSON 和推理能力。</div>
+          <!-- 空态文案逐字对齐 md §三.4.1 L277-278（2026-09-12 审计 K23） -->
           <ModelCapabilityTags
             v-else
             :source="model"
-            empty-text="尚未识别能力，请重新验证"
+            empty-text="未探测到已支持能力"
             unprobed-text="验证连通性后自动检测"
           />
         </el-form-item>
@@ -659,6 +685,11 @@ async function verifyOnly() {
 /* 通栏格（原型 `.field.full`）：Base URL 与单 API Key 横跨两列 */
 .mc-span2 {
   grid-column: 1 / -1;
+}
+/* 卡头右侧【⌁ 验证连通性】（K23）：link 按钮在灰底卡头里去掉默认外边距，靠 .section-head 两端对齐 */
+.mc-verify-btn {
+  margin: 0;
+  flex: none;
 }
 
 /* 厂商预设卡片网格样式已随卡片区一并删除（2026-09-09 · A9） */

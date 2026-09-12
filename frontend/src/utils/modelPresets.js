@@ -1,84 +1,23 @@
 /**
- * 模型接入·厂商预设模板（V77，团队评审结论：投入产出比最高的填错消灭手段）。
+ * 模型接入枚举与字段说明（提供商 / 上下文窗口档位 / 类别 / ? 悬浮文案）。
  *
- * 纯前端交互层：选中后预填表单（可改不锁死），不进契约、不进数据库。
- * 数值为编写时厂商公开文档的常见值，仅作起点——以厂商当期文档为准，表单内可直接修改。
+ * 原「厂商预设模板」MODEL_PRESETS 与 FIELD_TIPS.preset 已于 2026-09-12 死码清理删除（审计 J13）：
+ * 预设卡片区 2026-09-09 · A9 按 Q224 决策移除后常量零调用方。
  */
-export const MODEL_PRESETS = [
-  {
-    key: 'deepseek',
-    label: 'DeepSeek（官方）',
-    baseUrl: 'https://api.deepseek.com/v1',
-    authType: 'API_KEY',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    contextWindow: 65536,
-    maxOutputTokens: 8192,
-    defaultTemperature: 1.3
-  },
-  {
-    key: 'dashscope',
-    label: '通义千问（阿里云百炼）',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    authType: 'API_KEY',
-    models: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen-long'],
-    contextWindow: 131072,
-    maxOutputTokens: 8192,
-    defaultTemperature: 0.7
-  },
-  {
-    key: 'moonshot',
-    label: 'Kimi（月之暗面）',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    authType: 'API_KEY',
-    models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-    contextWindow: 131072,
-    maxOutputTokens: 4096,
-    defaultTemperature: 0.3
-  },
-  {
-    key: 'zhipu',
-    label: '智谱 GLM',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    authType: 'API_KEY',
-    models: ['glm-4-plus', 'glm-4-air', 'glm-4-flash'],
-    contextWindow: 131072,
-    maxOutputTokens: 4096,
-    defaultTemperature: 0.75
-  },
-  {
-    key: 'iflytek',
-    label: '讯飞 MaaS',
-    baseUrl: 'https://maas-api.cn-huabei-1.xf-yun.com/v2',
-    authType: 'APP_ID_SECRET',
-    models: ['xopdeepseekv4flash', 'xopqwen35v35b'],
-    contextWindow: 32768,
-    maxOutputTokens: 4096,
-    defaultTemperature: 0.5
-  },
-  {
-    key: 'custom',
-    label: '自定义（私有网关/其它平台）',
-    baseUrl: '',
-    authType: 'API_KEY',
-    models: [],
-    contextWindow: null,
-    maxOutputTokens: 4096,
-    defaultTemperature: null
-  }
-]
 
 /**
  * 模型提供商（V86）：编辑弹窗「模型提供商」下拉。展示中文厂商名（label），入库存 Provider Name（value）。
- * 与「厂商预设」(MODEL_PRESETS) 无关——那个是新建态预填 base_url/模型的便捷器，本枚举只做「厂商标识」持久化。
+ * 2026-09-12 对齐 md §三.2（审计 K24）：中英文之间加空格，与「智谱 GLM、月之暗面 Kimi、阿里 Qwen、小米 MiMo」逐字一致。
+ * 本枚举只做「厂商标识」持久化（label 与 md §三.2 逐字一致）。
  */
 export const MODEL_PROVIDER_OPTIONS = [
   { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'zai', label: '智谱GLM' },
-  { value: 'moonshot', label: '月之暗面Kimi' },
-  { value: 'qwen-oauth', label: '阿里Qwen' },
+  { value: 'zai', label: '智谱 GLM' },
+  { value: 'moonshot', label: '月之暗面 Kimi' },
+  { value: 'qwen-oauth', label: '阿里 Qwen' },
   { value: 'minimax', label: 'MiniMax' },
   { value: 'stepfun', label: '阶跃星辰' },
-  { value: 'xiaomi', label: '小米MiMo' },
+  { value: 'xiaomi', label: '小米 MiMo' },
   { value: 'other', label: '其他' }
 ]
 
@@ -120,8 +59,6 @@ export const MODEL_CATEGORY_LABELS = MODEL_CATEGORY_OPTIONS.reduce((acc, o) => {
  * 参数解释文案（小白版，? 悬浮显示）。集中维护便于统一口径。
  */
 export const FIELD_TIPS = {
-  preset:
-    '选择模型所属的平台，系统会自动帮你填好接口地址、常用模型等信息（填完仍可修改）。列表里没有的平台选「自定义」。',
   provider:
     '这个模型来自哪个提供商（厂商）。用于标识模型归属，从下拉里选择即可。',
   name: '给这个模型起个好认的名字，比如「DeepSeek V3」。员工在客户端选模型时看到的就是它。',

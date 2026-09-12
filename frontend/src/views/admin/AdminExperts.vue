@@ -326,7 +326,6 @@ async function stopExpert(row) {
           style="width: 100%"
           row-key="id"
         >
-        >
           <!-- 专家名：图标 avatar + 名称（2026-09-11 按《列表页UI.png》把状态标签拆回独立列，
                稿面「状态」紧跟名称列之后；此前是三态标签与名称同格）。
                2026-09-10 体验优化 E1：列级 show-overflow-tooltip 会连标签一起截成「…」，

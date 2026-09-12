@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  estimateTokens,
-  formatTokenEstimate,
-  routeDescHint,
-  routeTriggersHint,
-  ROUTE_DESC_SOFT_CHARS,
-  ROUTE_TRIGGERS_VISIBLE
-} from '@/utils/tokenEstimate'
+import { estimateTokens, formatTokenEstimate } from '@/utils/tokenEstimate'
 
 describe('estimateTokens（数量级粗估）', () => {
   it('空 → 0', () => {
@@ -46,25 +39,5 @@ describe('formatTokenEstimate', () => {
   it('千以上显示 k', () => {
     expect(formatTokenEstimate(1234)).toBe('约 1.2k tokens')
     expect(formatTokenEstimate(8000)).toBe('约 8.0k tokens')
-  })
-})
-
-describe('routeDescHint / routeTriggersHint（路由体量第二量纲）（零调用方，随死码清理一并删，审计 J13）', () => {
-  it('description 不超阈值 → 空', () => {
-    expect(routeDescHint('短描述')).toBe('')
-    expect(routeDescHint('x'.repeat(ROUTE_DESC_SOFT_CHARS))).toBe('')
-  })
-  it('description 超阈值 → 提示截断', () => {
-    const hint = routeDescHint('x'.repeat(ROUTE_DESC_SOFT_CHARS + 1))
-    expect(hint).toMatch(new RegExp(`${ROUTE_DESC_SOFT_CHARS}`))
-    expect(hint).toMatch(/前/)
-  })
-  it('triggers 不超阈值 → 空', () => {
-    expect(routeTriggersHint(['a', 'b'])).toBe('')
-    expect(routeTriggersHint(Array(ROUTE_TRIGGERS_VISIBLE).fill('t'))).toBe('')
-  })
-  it('triggers 超阈值 → 提示靠后看不到', () => {
-    const hint = routeTriggersHint(Array(ROUTE_TRIGGERS_VISIBLE + 1).fill('t'))
-    expect(hint).toMatch(new RegExp(`${ROUTE_TRIGGERS_VISIBLE}`))
   })
 })

@@ -10,7 +10,7 @@
  *   （流式/工具/JSON/推理），失败带分类原因（explainVerifyError 可解析的技术前缀）。
  * - 连接字段（baseUrl/model/authType/appId/新密钥/extraBody）变更 → 回未发布 + 清验证态。
  * - 排序：默认模型恒在前，两区内按最近更新时间排（默认由近到远）；
- *   重新验证 / 发布 / 撤回 / 停用 / 设默认均不改 updatedAt（只有保存改）。
+ *   重新验证 / 停用 / 设默认均不改 updatedAt（只有保存改；2026-09-12 审计 K25 头注纠偏：发布 / 撤回会刷新，见 submit/withdraw 实现）。
  * - 名称平台内唯一（≤64 字）；「设为默认」每类别唯一（同类别原默认自动取消）。
  * - 密钥掩码（2026-09-01 全站口径，见 utils/secretMask）：mock 内部存明文（demo 数据层，
  *   供生成掩码），出参只带 apiKeyMasked / appSecretMasked 掩码串、绝不带明文；编辑留空=保留。

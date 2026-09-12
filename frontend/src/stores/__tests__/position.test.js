@@ -8,11 +8,9 @@ vi.mock('@/api/position', () => ({
   createAgent: vi.fn(),
   updateAgent: vi.fn(),
   deleteAgent: vi.fn(),
-  createSkill: vi.fn(),
   updateSkill: vi.fn(),
   assignSkill: vi.fn(),
   getSkill: vi.fn(),
-  deleteSkill: vi.fn(),
   detachSkill: vi.fn()
 }))
 
@@ -81,15 +79,6 @@ describe('position store', () => {
     expect(res.orphanedSkillCount).toBe(2)
   })
 
-  it('addSkill 挂到目标 Agent', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.createSkill.mockResolvedValue({ skillId: 999, name: '新技能' })
-    const store = usePositionStore()
-    await store.load(5)
-    await store.addSkill(12, { name: '新技能' })
-    expect(store.agents.find((a) => a.agentId === 12).skills.map((s) => s.skillId)).toContain(999)
-  })
-
   it('patchSkill 原地更新（无迁移）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.updateSkill.mockResolvedValue({ skillId: 101, name: 's1-改' })
@@ -143,15 +132,6 @@ describe('position store', () => {
     await store.patchSkill(101, { name: 's1-改' })
     expect(api.updateSkill).toHaveBeenCalledWith(101, { name: 's1-改' })
     expect(store.agents[0].skills.find((s) => s.skillId === 101).name).toBe('s1-改')
-  })
-
-  it('removeSkill 从 Agent 泳道清除', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.deleteSkill.mockResolvedValue(undefined)
-    const store = usePositionStore()
-    await store.load(5)
-    await store.removeSkill(101)
-    expect(store.allSkills.map((x) => x.skill.skillId)).not.toContain(101)
   })
 
   it('detachSkillFromAgent 从指定 Agent 移除引用 → 该泳道消失（V84 可逆：技能本体留库，白板本地移除）', async () => {

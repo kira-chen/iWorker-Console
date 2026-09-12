@@ -357,11 +357,11 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     ss.zipItems = [zipItem()]
     await ss.confirmImportZip()
     expect(importSkillZip).not.toHaveBeenCalled()
-    // 拦截红字（代码现状为 zip 场景组合文案；md L153 统一为「请选择技能类型、技能分类并填写创建内容」，差异见审计 K 清单）
-    expect(ss.zipError).toContain('请选择技能类型、上传技能包，并为每个技能包选择分类')
+    // 拦截红字逐字 md L153（2026-09-12 审计 K17 闭环：zip / 手动两场景同一句）
+    expect(ss.zipError).toBe('请选择技能类型、技能分类并填写创建内容')
   })
 
-  it('未选类型时手动创建同样被拦截，三个 createFn 都不调', async () => {
+  it('未选类型时手动创建同样被拦截、红字同 md L153 一句，三个 createFn 都不调（审计 K17）', async () => {
     const ss = mountTyped()
     await nextTick()
     ss.createMode = 'manual'
@@ -370,6 +370,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     expect(positionCreate).not.toHaveBeenCalled()
     expect(platformCreate).not.toHaveBeenCalled()
     expect(systemCreate).not.toHaveBeenCalled()
+    expect(ss.manualError).toBe('请选择技能类型、技能分类并填写创建内容')
   })
 
   it('source 随所选类型切换，并连同每包分类透传给 importSkillZip', async () => {

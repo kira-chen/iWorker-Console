@@ -268,6 +268,18 @@ describe('AdminModels · 三态 + 发布/停用双向过审（md §二.3.1 三�
     expect(rowByName('被驳回').querySelector('.status-tag').textContent).toBe('未发布')
   })
 
+  // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，md §二.1 由文档组回写为
+  // 「状态作为独立列紧跟名称列之后展示」（模型保留【默认】标签句）；写法照 adminMcp.test.js「列结构」用例
+  it('列序：状态为独立列且紧跟「模型名称」列之后；【默认】标签仍在名称格内（09-11 拍板 · 审计 J1）', async () => {
+    await mount()
+    const labels = [...rowByName('在线模型丙默认').querySelectorAll('.t-cell')].map((c) => c.getAttribute('data-label'))
+    expect(labels).toContain('状态')
+    expect(labels.indexOf('状态')).toBe(labels.indexOf('模型名称') + 1)
+    const nameCell = rowByName('在线模型丙默认').querySelector('.t-cell[data-label="模型名称"]')
+    expect(nameCell.textContent).toContain('默认')
+    expect(rowByName('在线模型丙默认').querySelector('.t-cell[data-label="状态"] .status-tag').textContent).toBe('已发布')
+  })
+
   // 2026-09-12 T18/T55：审核中行此前 fixture 无 pendingAction，从未真正触发过这条分支
   it('发布审核中行 → 【查看】【编辑】（禁用，tooltip「审核中不可编辑，如需修改请先撤回提交」）【撤回】共 3 个（md §二.3.1 / §二.3.3）', async () => {
     await mount()
@@ -481,6 +493,12 @@ describe('AdminModels · 三态 + 发布/停用双向过审（md §二.3.1 三�
     expect(dlg.getAttribute('data-id')).toBe('md_online')
   })
 
+  it('验证列 · 从未验证过的行：刷新图标悬浮提示「尚未验证过，点击发起验证」（md §二.3.4 L107，审计 K22）', async () => {
+    await mount()
+    const icon = rowByName('新建未验证').querySelector('.md-vc-refresh')
+    expect(icon.closest('.el-tooltip').dataset.tip).toBe('尚未验证过，点击发起验证')
+  })
+
   it('验证列：点刷新图标即发起验证（全部就地，无弹窗/抽屉）', async () => {
     api.verifyModel.mockReturnValue(new Promise(() => {}))   // 挂住，停在验证中态
     await mount()
@@ -489,14 +507,14 @@ describe('AdminModels · 三态 + 发布/停用双向过审（md §二.3.1 三�
     expect(api.verifyModel).toHaveBeenCalledWith('md_new_unver', expect.any(Object))
   })
 
-  it('验证列 · 验证中：图标转圈表达进行中，并显阶段文案', async () => {
+  it('验证列 · 验证中：图标转圈表达进行中，时间位显「正在验证…」（md §二.3.4 L112，审计 K22）', async () => {
     api.verifyModel.mockReturnValue(new Promise(() => {}))
     await mount()
     const r = rowByName('新建未验证')
     r.querySelector('.md-vc-refresh').click()
     await nextTick()
     expect(r.querySelector('.md-vc-refresh').className).toContain('is-spinning')
-    expect(r.textContent).toContain('正在连接模型')
+    expect(r.textContent).toContain('正在验证…')
   })
 
   it('验证列 · 验证中再次点击图标：不重复发起', async () => {

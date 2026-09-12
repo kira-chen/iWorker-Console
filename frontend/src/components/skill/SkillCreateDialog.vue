@@ -148,15 +148,16 @@ function removeZipItem(key) {
   zipError.value = ''
 }
 
-const ZIP_GUARD_TEXT = '请选择技能类型、上传技能包，并为每个技能包选择分类'
-const MANUAL_GUARD_TEXT = '请选择技能类型、技能分类并填写技能名'
+// 2026-09-12 对齐 md 技能 §二.2 L153（审计 K17，Q207 裁 md）：zip / 手动两场景守卫文案统一为同一句——
+// 「未选择类型、分类或未填写创建内容时不可提交，提示"请选择技能类型、技能分类并填写创建内容"」
+const GUARD_TEXT = '请选择技能类型、技能分类并填写创建内容'
 
 async function confirmImportZip() {
-  // 拦截（疑点3 zip 场景文案）：类型未选 / 无包 / 任一包未选分类（分类校验仅技能页语境）
+  // 拦截（md L153 统一文案）：类型未选 / 无包 / 任一包未选分类（分类校验仅技能页语境）
   const pendingItems = zipItems.value.filter((i) => i.status !== 'done')
   const missingCategory = typeEnabled.value && pendingItems.some((i) => !i.categoryId)
   if (typeMissing.value || !zipItems.value.length || missingCategory) {
-    zipError.value = typeEnabled.value ? ZIP_GUARD_TEXT : '请先选择 .zip 技能包'
+    zipError.value = typeEnabled.value ? GUARD_TEXT : '请先选择 .zip 技能包'
     return
   }
   const single = zipItems.value.length === 1
@@ -211,9 +212,9 @@ async function confirmImportZip() {
 async function confirmCreate() {
   const name = createName.value.trim()
   if (typeEnabled.value) {
-    // 拦截（疑点3 手动场景文案）：类型 / 分类 / 技能名任一缺失
+    // 拦截（md L153 统一文案）：类型 / 分类 / 技能名任一缺失
     if (typeMissing.value || !createCategory.value || !name) {
-      manualError.value = MANUAL_GUARD_TEXT
+      manualError.value = GUARD_TEXT
       return
     }
   } else if (!name) {

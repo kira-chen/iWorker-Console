@@ -254,6 +254,41 @@ describe('文件层基础能力（编辑页可打开/可改/可存）', () => {
   })
 })
 
+describe('审核锁定写守卫（md §二.2 L120 / §三.1 L141，2026-09-12 审计 K20）', () => {
+  it('在审技能（publish / stop 两种 pendingAction）→ updateSkill / setSkillCategory / saveSkillFile / deleteSkillFile / renameSkillFile 一律 40900「技能审核中，已锁定不可修改」，撤回后放行', async () => {
+    const id = await mkSkill({ name: '锁定测试' })
+    await mock.saveSkillFile(id, { path: 'references/a.md', content: 'a' })
+    await mock.publishSkill(id, { bump: 'NONE', releaseNotes: '首发' })
+    const locked = { code: 40900, message: '技能审核中，已锁定不可修改' }
+    await expect(mock.updateSkill(id, { name: '改名' })).rejects.toMatchObject(locked)
+    await expect(mock.setSkillCategory(id, CAT)).rejects.toMatchObject(locked)
+    await expect(mock.saveSkillFile(id, { path: 'SKILL.md', content: '# 改' })).rejects.toMatchObject(locked)
+    await expect(mock.deleteSkillFile(id, 'references/a.md')).rejects.toMatchObject(locked)
+    await expect(mock.renameSkillFile(id, { fromPath: 'references/a.md', toPath: 'references/b.md' })).rejects.toMatchObject(locked)
+    expect((await mock.getSkillDetail(id)).name).toBe('锁定测试') // 未被改动
+    // 撤回 → 解锁
+    await mock.withdrawPublish(id)
+    expect((await mock.updateSkill(id, { name: '改名' })).name).toBe('改名')
+    // 停用审核中（pendingAction='stop'）同样锁定：用种子 309（停用在审）
+    await expect(mock.updateSkill('sk_309', { description: 'x' })).rejects.toMatchObject(locked)
+  })
+})
+
+describe('种子自洽（md §二.3.4 L226-229 在审版本号由线上版本自动递增，2026-09-12 审计 K19）', () => {
+  it('所有在审发布行：pendingVersion 必须等于 bumpVersion(version, NONE|MINOR|MAJOR) 之一（sk_302 v1.4.0 → v1.5.0）', async () => {
+    const reviewing = ['sk_301', 'sk_302', 'sk_303', 'sk_304', 'sk_305', 'sk_306', 'sk_307', 'sk_308', 'sk_309']
+      .map((id) => mock._getRaw(id))
+      .filter((r) => r && r.pendingAction === 'publish')
+    expect(reviewing.length).toBeGreaterThan(0)
+    for (const r of reviewing) {
+      const legal = ['NONE', 'MINOR', 'MAJOR'].map((b) => mock.bumpVersion(r.version, b))
+      expect(legal, `${r.id} 在审 ${r.pendingVersion} 应由线上 ${r.version || '(无)'} 递增得出`).toContain(r.pendingVersion)
+    }
+    const s302 = mock._getRaw('sk_302')
+    if (s302.pendingAction === 'publish') expect(s302.pendingVersion).toBe('v1.5.0')
+  })
+})
+
 describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () => {
   it('updateSkill：名称必填≤64 / 描述≤2000 / 示例问题≤60', async () => {
     const id = await mkSkill()
@@ -282,7 +317,7 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
   })
 })
 
-describe('unifiedSkillMock · 持久化读回（mockPersist v3；key iworker-demo-mock:unifiedSkill）', () => {
+describe('unifiedSkillMock · 持久化读回（mockPersist v4，2026-09-12 K19 bump；key iworker-demo-mock:unifiedSkill）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:unifiedSkill'
@@ -306,10 +341,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v3；key iworker-dem
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=3）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=4）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(3)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(4)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

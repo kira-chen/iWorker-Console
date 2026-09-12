@@ -8,7 +8,7 @@ import { fmtTime } from '@/utils/docMeta'
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md：
  * - §一（导航栏：搜索手动【查询】回第 1 页 L25 / 状态筛选切换即刷新回第 1 页 L26 / 空态文案 L33-34）；
- * - §二.1（列表字段：状态列 09-11 拍板拆独立列，与 md L45「不再设置独立状态列」冲突待裁见审计 J1；
+ * - §二.1（列表字段：状态列 09-11 拍板拆独立列，2026-09-12 审计 J1 闭环——拍板覆盖 md、md L45 由文档组回写；
  *   工具数为 0 悬浮 L47；引用情况 L48；最近更新时间排序 L49）；
  * - §二.2（验证列：三态文案 L57 / 未验证悬浮 L58 / 异常三段式 L61 / 验证中 L63 / 四种 toast L65-68）；
  * - §二.3（操作：三态按钮集合逐字 §二.3.1 L83-86；审核中【编辑】置灰提示 §二.3.3 L103；
@@ -167,6 +167,9 @@ const AGG_SEED = {
 // 每例复位的聚合态表：发布 / 撤回 / 停用桩会改写它，模拟 mock 层状态机（md §二.4），
 // 让「动作成功后状态列与按钮即时替换」（md §二.3.1 L87-92）可断言。
 let AGG = {}
+// 审核中的待审类型（PUBLISH / DELIST），与真 mock 的 pendingAction 同源：撤回确认按它分文案（md §3.5）
+const PENDING_SEED = { mc_pending: 'PUBLISH' }
+let PENDING = {}
 
 /** 冲刷若干轮微任务 + 渲染（列表取数 → 聚合态拉取 → 渲染 是三段异步） */
 async function flush(n = 4) {
@@ -180,15 +183,21 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     AGG = { ...AGG_SEED }
+    PENDING = { ...PENDING_SEED }
     // 页面会就地改写行对象（检活回写 displayStatus / lastCheckedAt），故每次调用都给夹具的浅拷贝，用例间不串
     adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
-      Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG[id] }] })
+      Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG[id], pendingAction: PENDING[id] || null }] })
     )
-    marketApi.publishMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; return { affected: 1, skipped: 0 } })
-    // 停用：md §二.3.6 L135「提交成功后……页面状态变为"审核中"」——market 层桩按 md 给 PENDING_REVIEW
-    marketApi.delistMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; return { affected: 1, skipped: 0 } })
-    marketApi.withdrawMcpService.mockImplementation(async (id) => { AGG[id] = 'NOT_PUBLISHED'; return { affected: 1, skipped: 0 } })
+    marketApi.publishMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; PENDING[id] = 'PUBLISH'; return { affected: 1, skipped: 0 } })
+    // 停用：md §二.3.6 L135「提交成功后……页面状态变为"审核中"」——market 层桩按 md 给 PENDING_REVIEW + 待审停用
+    marketApi.delistMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; PENDING[id] = 'DELIST'; return { affected: 1, skipped: 0 } })
+    // 撤回按待审类型恢复（md §3.5，与 API / 模型同口径）：待审发布 → 未发布；待审停用 → 保持已发布
+    marketApi.withdrawMcpService.mockImplementation(async (id) => {
+      AGG[id] = PENDING[id] === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
+      PENDING[id] = null
+      return { affected: 1, skipped: 0 }
+    })
     msgBox.confirm.mockResolvedValue('confirm')
   })
   afterEach(() => {
@@ -303,6 +312,25 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     expect(stateOf(rowByName('在审服务'))).toBe('未发布')
     expect(texts(rowByName('在审服务'))).toEqual(['查看', '编辑', '发布', '删除'])
     expect(btn(rowByName('在审服务'), '编辑').disabled).toBe(false)
+  })
+
+  it('撤回 · 待审停用：正文改说明「将保持已发布，继续对客户端提供服务」→ 撤回后状态回「已发布」，按钮换回【停用】（md §3.5 按待审类型恢复）', async () => {
+    await mount()
+    // 先把「已上线服务」提交停用，进入待审停用
+    btn(rowByName('已上线服务'), '停用').click()
+    await flush()
+    expect(stateOf(rowByName('已上线服务'))).toBe('审核中')
+    msgBox.confirm.mockClear()
+    // 再撤回：文案与恢复结果都应走停用分支，而不是发布分支的「回到未发布」
+    btn(rowByName('已上线服务'), '撤回').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '撤回后「已上线服务」将保持已发布，继续对客户端提供服务。确认撤回？',
+      '撤回审核',
+      expect.objectContaining({ confirmButtonText: '撤回' })
+    )
+    expect(stateOf(rowByName('已上线服务'))).toBe('已发布')
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
   })
 
   // ---- 停用（md §二.3.6 L131-135） ----

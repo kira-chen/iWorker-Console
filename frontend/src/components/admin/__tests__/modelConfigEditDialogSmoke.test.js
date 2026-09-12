@@ -10,13 +10,10 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  *
  * 与 modelConfigEditDialog.test.js（el-form 桩、validate 恒 true）互补：这里真装 Element Plus、真 el-drawer / el-form。
  *
- * 【为什么校验用例断言 rules 对象而不是 DOM 红字】当前 vitest 配置下 element-plus 走 Node 外置加载，
- * 其依赖 async-validator 是 CJS（exports.default），Node ESM 互操作拿到的 default 是整个 exports 对象，
- * ElFormItem 内 `new AsyncValidator()` 直接抛错 → 真 ElForm 在 jsdom 里永远校验不出红字
- * （实测把 vitest.config `server.deps.inline` 加上 element-plus + async-validator 即可跑通，属配置改动、非本轮范围）。
- * 同一原因下 ElForm.validate 会把「字段校验抛错」吞成 resolve(true)，所以「空表单点【接入】被拦」这类 DOM 用例
- * 在 jsdom 里也不可信（会假绿或假红），一律不写；该行为由 modelConfigEditDialog.test.js 的 D6 用例（validate 桩 reject）守。
- * 故按审计任务书退化方案：从真 el-form 实例的 props.rules 取到组件传入的规则，逐条调 pattern / validator 断言。
+ * 【校验用例断真 ElForm DOM 红字】2026-09-12 审计 J22 闭环：vitest.config `server.deps.inline` 已内联
+ * element-plus + async-validator（async-validator 是 CJS，被 Node 外置加载后 ElFormItem 内 `new AsyncValidator()`
+ * 抛错、ElForm.validate 吞成 resolve(true)），真 ElForm 在 jsdom 里的校验从此可信——
+ * 下面四条校验用例一律：真输入 / 真点【接入】→ 断 `.el-form-item__error` 红字文案 + createModel 未被调。
  */
 
 const api = { createModel: vi.fn(), updateModel: vi.fn(), verifyModel: vi.fn() }
@@ -34,10 +31,28 @@ afterEach(() => {
 
 const drawer = () => mounted.container.querySelector('.el-drawer')
 const footBtns = () => [...drawer().querySelectorAll('.el-drawer__footer .el-button')].map((b) => b.textContent.trim())
-/** 真 el-form 实例挂在 form.el-form 元素的 __vueParentComponent 上，props.rules 即组件传入的 :rules（computed 已解包） */
-const formRules = () => drawer().querySelector('form.el-form').__vueParentComponent.props.rules
-/** 跑一条自定义 validator，回吐错误文案或 null */
-const runValidator = (rule, value) => new Promise((resolve) => rule.validator({}, value, (e) => resolve(e ? e.message : null)))
+/** 真 el-form 实例挂在 form.el-form 元素的 __vueParentComponent 上，props.model 即组件的 reactive form（供无法用键盘输入的 el-select allow-create 项直接落值） */
+const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
+/** 页内所有就地红字（真 ElFormItem 渲染的 .el-form-item__error） */
+const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
+/** 某输入框所在表单项的红字（无则空串） */
+const errorOf = (el) => el.closest('.el-form-item').querySelector('.el-form-item__error')?.textContent.trim() ?? ''
+/** 真输入：改 value → input 事件（v-model）→ blur（触发 trigger:'blur' 校验） */
+function typeInto(el, value) {
+  el.value = value
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+  el.dispatchEvent(new Event('blur', { bubbles: true }))
+}
+const clickFoot = (label) => [...drawer().querySelectorAll('.el-drawer__footer .el-button')].find((b) => b.textContent.trim() === label).click()
+/**
+ * 等红字落到 DOM：ElFormItem 2.14 的 shouldShowError 读的是 refDebounced(validateState, 100) —— async-validator
+ * 异步出结论后、红字还要再等 100ms 防抖才渲染/消失，故这里真等 250ms 再冲刷渲染队列（不是 flaky 补丁，是组件设计；
+ * 实测 120ms 偶发赶不上「结论 + 防抖」两段）。
+ */
+async function settleErrors() {
+  await new Promise((r) => setTimeout(r, 250))
+  await flushAll(4)
+}
 
 describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form）', () => {
   it('接入态挂载不抛：标题「接入模型」+ 三分区卡 + footer【取消】【接入】；编辑态【取消】【重新验证】【保存】；查看态仅【关闭】（md §三.1 / §三.5）', async () => {
@@ -71,64 +86,110 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
     expect(errSpy).not.toHaveBeenCalled()
   })
 
-  it('校验规则 · base_url：必填「请输入服务地址（Base URL）」；ftp://x / 带空格 / 带 ? # 均不过 pattern，文案「服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #」（md §三.2 / §三.8）', async () => {
+  it('A12 · 空表单点【接入】：必填项全部就地红字（提供商/名称/类别/Base URL/标识/上下文窗口/api_key）+ toast「请先修正标红项」+ createModel 未被调（md §三.5 L309-310）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
-    const [required, pattern] = formRules().baseUrl
-    expect(required).toEqual(expect.objectContaining({ required: true, message: '请输入服务地址（Base URL）' }))
-    expect(pattern.message).toBe('服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #')
-    for (const bad of ['ftp://x', 'api.deepseek.com/v1', 'https://a b/v1', 'https://a/v1?x=1', 'https://a/v1#frag']) {
-      expect(pattern.pattern.test(bad), bad).toBe(false)
+    clickFoot('接入')
+    await settleErrors()
+    expect(api.createModel).not.toHaveBeenCalled()
+    expect(errorTexts()).toEqual(expect.arrayContaining([
+      '请选择模型提供商', '请输入模型名称', '请选择模型类别', '请输入服务地址（Base URL）',
+      '请输入模型标识（如 deepseek-chat）', '请选择或输入上下文窗口', '请输入 api_key'
+    ]))
+    expect(document.body.querySelector('.el-message')?.textContent).toContain('请先修正标红项')
+  })
+
+  it('A12 · base_url：输 ftp://x 失焦 → 红字「服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #」；改成 https://api.deepseek.com/v1 → 红字消失（md §三.2 / §三.8）', async () => {
+    mounted = mountReal(Dialog, { visible: true, model: null })
+    await flushAll(10)
+    const input = drawer().querySelector('input[placeholder="如 https://api.deepseek.com/v1"]')
+    for (const bad of ['ftp://x', 'https://a b/v1', 'https://a/v1?x=1']) {
+      typeInto(input, bad)
+      await settleErrors()
+      expect(errorOf(input), bad).toBe('服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #')
     }
-    expect(pattern.pattern.test('https://api.deepseek.com/v1')).toBe(true)
-    expect(pattern.pattern.test('http://model-gateway.intra/v1')).toBe(true)
+    typeInto(input, 'https://api.deepseek.com/v1')
+    await settleErrors()
+    expect(errorOf(input)).toBe('')
+    // 其它必填仍空 → 点【接入】依旧被拦，且 Base URL 这一项不再报错
+    clickFoot('接入')
+    await settleErrors()
+    expect(api.createModel).not.toHaveBeenCalled()
+    expect(errorOf(input)).toBe('')
   })
 
-  it('校验规则 · 上下文窗口：必填「请选择或输入上下文窗口」；512 / 1023 / "128K" 报「请输入 token 数字（≥1024），如 65536；不要带 K 等单位」，65536 / "1024" 放行（md §三.2 / §三.8）', async () => {
+  it('A12 · 上下文窗口：512 / "128K" → 红字「请输入 token 数字（≥1024），如 65536；不要带 K 等单位」；65536 → 该项无红字（md §三.2 / §三.8）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
-    const [required, custom] = formRules().contextWindow
-    expect(required).toEqual(expect.objectContaining({ required: true, message: '请选择或输入上下文窗口' }))
+    // el-select 2.14 的占位是 span 不是 input placeholder，按表单项 label 定位
+    const item = [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.includes('上下文窗口'))
     const msg = '请输入 token 数字（≥1024），如 65536；不要带 K 等单位'
-    await expect(runValidator(custom, 512)).resolves.toBe(msg)
-    await expect(runValidator(custom, 1023)).resolves.toBe(msg)
-    await expect(runValidator(custom, '128K')).resolves.toBe(msg)
-    await expect(runValidator(custom, 65536)).resolves.toBeNull()
-    await expect(runValidator(custom, '1024')).resolves.toBeNull()
+    for (const bad of [512, '128K']) {
+      formModel().contextWindow = bad // allow-create 手输值落到 form.contextWindow，change 触发校验
+      await settleErrors()
+      expect(item.querySelector('.el-form-item__error')?.textContent ?? '', String(bad)).toBe(msg)
+    }
+    formModel().contextWindow = 65536
+    await settleErrors()
+    expect(item.querySelector('.el-form-item__error')).toBeNull()
+    clickFoot('接入')
+    await settleErrors()
+    expect(api.createModel).not.toHaveBeenCalled() // 其它必填仍空
+    expect(item.querySelector('.el-form-item__error')).toBeNull()
   })
 
-  it('校验规则 · 额外参数："[1]"（数组）报「必须是 JSON 对象，如 {"enable_thinking": false}」；坏 JSON 报「不是合法的 JSON，请检查格式」；空 / 合法对象放行（md §三.4.1 / §三.8）', async () => {
+  it('A12 · 额外参数："[1]" → 红字「必须是 JSON 对象，如 {"enable_thinking": false}」；坏 JSON → 「不是合法的 JSON，请检查格式」；清空 → 红字消失（md §三.4.1 / §三.8）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
-    const [custom] = formRules().extraBody
-    await expect(runValidator(custom, '[1]')).resolves.toBe('必须是 JSON 对象，如 {"enable_thinking": false}')
-    await expect(runValidator(custom, 'null')).resolves.toBe('必须是 JSON 对象，如 {"enable_thinking": false}')
-    await expect(runValidator(custom, '{bad json')).resolves.toBe('不是合法的 JSON，请检查格式')
-    await expect(runValidator(custom, '')).resolves.toBeNull()
-    await expect(runValidator(custom, '{"enable_thinking": false}')).resolves.toBeNull()
+    const ta = drawer().querySelector('textarea')
+    typeInto(ta, '[1]')
+    await settleErrors()
+    expect(errorOf(ta)).toBe('必须是 JSON 对象，如 {"enable_thinking": false}')
+    typeInto(ta, '{bad json')
+    await settleErrors()
+    expect(errorOf(ta)).toBe('不是合法的 JSON，请检查格式')
+    typeInto(ta, '')
+    await settleErrors()
+    expect(errorOf(ta)).toBe('')
+    clickFoot('接入')
+    await settleErrors()
+    expect(api.createModel).not.toHaveBeenCalled()
+    expect(errorOf(ta)).toBe('')
   })
 
-  it('校验规则 · 鉴权：API Key 态只要 api_key；切到 AppID / AppSecret 后 app_id / app_secret 必填「请输入 app_id」「请输入 app_secret」；编辑态密钥留空不校验（md §三.3.1 / §三.3.2 / §三.8「鉴权信息不完整」）', async () => {
+  it('A12 · 鉴权：接入态 API Key 缺 → 红字「请输入 api_key」；切 AppID / AppSecret 后点【接入】→ 「请输入 app_id」「请输入 app_secret」；编辑态密钥留空点【保存】不报错、直接 updateModel（md §三.3.1 / §三.3.2 L261-262 / §三.8）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
-    expect(formRules().apiKey).toEqual([expect.objectContaining({ required: true, message: '请输入 api_key' })])
-    expect(formRules().appId).toEqual([])
-    expect(formRules().appSecret).toEqual([])
-    // 真 el-radio 切换鉴权方式 → 三元组字段出现 + 规则跟着变
+    clickFoot('接入')
+    await settleErrors()
+    expect(errorTexts()).toContain('请输入 api_key')
+    expect(errorTexts()).not.toContain('请输入 app_id')
+    // 真 el-radio 切换鉴权方式 → 三元组字段出现，再点【接入】三元组必填红字
     const radio = [...drawer().querySelectorAll('.el-radio')].find((r) => r.textContent.includes('AppID / AppSecret'))
     radio.querySelector('input[type="radio"]').click()
     await flushAll(4)
     expect(drawer().querySelector('input[placeholder="应用归属标识（不参与 HTTP 调用）"]')).toBeTruthy()
-    expect(drawer().querySelector('input[placeholder="平台分配的 APISecret"]')).toBeTruthy()
-    expect(formRules().appId).toEqual([expect.objectContaining({ required: true, message: '请输入 app_id' })])
-    expect(formRules().appSecret).toEqual([expect.objectContaining({ required: true, message: '请输入 app_secret' })])
+    clickFoot('接入')
+    await settleErrors()
+    expect(api.createModel).not.toHaveBeenCalled()
+    expect(errorTexts()).toEqual(expect.arrayContaining(['请输入 app_id', '请输入 app_secret']))
     mounted.unmount()
 
-    // 编辑态：api_key / app_secret 留空 = 保留原值，不再必填（md §三.3.2 L261-262）
-    mounted = mountReal(Dialog, { visible: true, model: { id: 'md_x', name: 'X', authType: 'APP_ID_SECRET', appId: 'iw', apiKeyMasked: 'a***b', hasAppSecret: true, status: 'DRAFT' } })
+    // 编辑态：api_key / app_secret 留空 = 保留原值，不再必填 → 全部必填齐备时点【保存】直接落 updateModel
+    api.updateModel.mockResolvedValue({})
+    mounted = mountReal(Dialog, {
+      visible: true,
+      model: {
+        id: 'md_x', name: 'X', providerName: 'deepseek', category: 'TEXT', icon: '▦',
+        baseUrl: 'https://a/v1', model: 'm', contextWindow: 65536,
+        authType: 'APP_ID_SECRET', appId: 'iw', apiKeyMasked: 'a***b', hasAppSecret: true, status: 'DRAFT'
+      }
+    })
     await flushAll(10)
-    expect(formRules().apiKey).toEqual([])
-    expect(formRules().appSecret).toEqual([])
-    expect(formRules().appId).toEqual([expect.objectContaining({ required: true })])
+    clickFoot('保存')
+    await settleErrors()
+    expect(errorTexts()).toEqual([])
+    expect(api.updateModel).toHaveBeenCalledTimes(1)
+    expect(api.updateModel.mock.calls[0][1]).toMatchObject({ apiKey: null, appSecret: null, appId: 'iw' })
   })
 })

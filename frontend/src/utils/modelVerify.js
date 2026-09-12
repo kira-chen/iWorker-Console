@@ -99,9 +99,13 @@ export function verifyPhaseOf(elapsedMs) {
   return elapsedMs >= PHASE_ONE_MS ? 2 : 1
 }
 
-/** 阶段文案（列表行内展示，克制单行）。 */
+/**
+ * 阶段文案（列表行内时间位展示，克制单行）。
+ * 2026-09-12 对齐 md 模型 §二.3.4 L112「验证过程中…时间位置显示“正在验证…”」（审计 K22）：
+ * 两个阶段都以「正在验证…」开头，阶段二只在括号里补「检测能力中」——时间位与 md 逐字，阶段信息不丢。
+ */
 export function verifyPhaseText(phase) {
-  return phase === 2 ? '正在检测能力…' : '正在连接模型…'
+  return phase === 2 ? '正在验证…（检测能力中）' : '正在验证…'
 }
 
 /**

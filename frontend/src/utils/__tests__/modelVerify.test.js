@@ -85,8 +85,9 @@ describe('verifyPhaseOf · 阶段推断', () => {
     expect(verifyPhaseOf(PHASE_ONE_MS + 15000)).toBe(2)
   })
 
-  it('阶段文案与阶段对应', () => {
-    expect(verifyPhaseText(1)).toContain('连接')
+  it('阶段文案：两阶段均以 md §二.3.4「正在验证…」开头，阶段二括注检测能力（审计 K22）', () => {
+    expect(verifyPhaseText(1)).toBe('正在验证…')
+    expect(verifyPhaseText(2)).toMatch(/^正在验证…/)
     expect(verifyPhaseText(2)).toContain('能力')
   })
 })

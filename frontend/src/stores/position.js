@@ -6,11 +6,9 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
-  createSkill,
   updateSkill,
   assignSkill,
   getSkill,
-  deleteSkill,
   detachSkill as detachSkillApi
 } from '@/api/position'
 
@@ -190,14 +188,9 @@ export const usePositionStore = defineStore('position', () => {
     return res
   }
 
-  /* ---------- 技能增删改 ---------- */
-  async function addSkill(agentId, payload) {
-    const skill = await createSkill(agentId, payload)
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === agentId ? { ...a, skills: [...(a.skills || []), skill] } : a
-    )
-    return skill
-  }
+  /* ---------- 技能增删改 ----------
+     2026-09-12 死码清理（审计 J13）：addSkill / removeSkill 零调用方已删——白板上技能的
+     创建走「技能」管理页（SkillCreateDialog），从 Agent 移除走 detachSkillFromAgent（引用模型，可逆）。 */
 
   // 编辑技能本体（name/triggers/skillMd/sortOrder 等，不含 Agent 归属变更）。返回 { skill, warnings }。
   // Agent 归属变更 / 重分配统一走 assignSkillToAgent（PUT /skills/{id}/assign），不再用此端点的 targetAgentId。
@@ -271,14 +264,6 @@ export const usePositionStore = defineStore('position', () => {
     )
   }
 
-  async function removeSkill(skillId) {
-    await deleteSkill(skillId)
-    detail.value.agents = agents.value.map((a) => ({
-      ...a,
-      skills: (a.skills || []).filter((s) => s.skillId !== skillId)
-    }))
-  }
-
   // 从指定 Agent 移除技能引用（V84 引用模型，可逆：调 detach 端点删引用行，技能本体留库可再引用）。
   // 白板本地把该技能从该 Agent 泳道移除；技能仍在「技能」管理页可见、可再拉入任意 Agent。
   async function detachSkillFromAgent(agentId, skillId) {
@@ -328,10 +313,8 @@ export const usePositionStore = defineStore('position', () => {
     addAgent,
     patchAgent,
     removeAgent,
-    addSkill,
     patchSkill,
     assignSkillToAgent,
-    removeSkill,
     detachSkillFromAgent,
     reorderSkillsLocal,
     fetchSkillDetail,

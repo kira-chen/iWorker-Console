@@ -15,7 +15,8 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理；
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
- * 注：状态标签 2026-09-11（38c3567）已拆独立列，md §二.1 仍写「不设独立状态列」——列序用例待裁决（审计 J1），本文件不写。
+ * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
+ * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
@@ -188,13 +189,24 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(rows[1].querySelector('.status-tag').textContent).toBe('未发布')
     expect(rows[2].querySelector('.status-tag').textContent).toBe('审核中')
     expect(container.textContent).not.toContain('草稿')
-    // 名称列内含头像 + 名称（状态标签所在列位置归审计 J1 裁决，此处不断言）
+    // 名称列内含头像 + 名称（状态列位置见下一条「列序」用例，审计 J1）
     expect(rows[0].querySelector('.ex-primary .ex-avatar')).toBeTruthy()
     expect(rows[0].textContent).toContain('投资') // 分类列
     expect(rows[1].textContent).toContain('—') // 无版本占位（E11 全站统一长横）
     // 审核中行不展示待审版本号 v1.2.0，只展示最新已发布版本（md §二.1「不展示待审核版本号」）
     expect(rows[2].textContent).toContain('v1.1.0')
     expect(rows[2].textContent).not.toContain('v1.2.0')
+  })
+
+  // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，写法照 adminMcp.test.js「列结构」用例
+  it('列序：状态为独立列且紧跟「专家名」列之后（09-11 拍板 · 审计 J1）', async () => {
+    await mount()
+    const labels = [...rowEls()[0].querySelectorAll('.el-table-column')].map((c) => c.getAttribute('data-label'))
+    expect(labels).toContain('状态')
+    expect(labels.indexOf('状态')).toBe(labels.indexOf('专家名') + 1)
+    expect(rowEls()[0].querySelector('.el-table-column[data-label="状态"] .status-tag').textContent).toBe('已发布')
+    // 名称格里只有头像 + 名称，不再夹带状态标签
+    expect(rowEls()[0].querySelector('.el-table-column[data-label="专家名"] .status-tag')).toBeNull()
   })
 
   /* ===== 2026-09-12 T55 补缺口：排序 / 组合筛选 / 分类 8 项 / 加载失败重试 ===== */

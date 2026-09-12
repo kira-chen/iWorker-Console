@@ -6,10 +6,7 @@ import {
   stateActions,
   skillOnlineState,
   isLocked,
-  userEndPublication,
-  targetActions,
-  TARGETS,
-  targetLabel
+  userEndPublication
 } from '@/utils/skillPublication'
 
 /**
@@ -122,23 +119,5 @@ describe('skillPublication 单轨展示态', () => {
     expect(isLocked(u('PUBLISHED'))).toBe(false)
     expect(isLocked(u('REJECTED'))).toBe(false)
     expect(isLocked(u('DELISTED'))).toBe(false)
-  })
-})
-
-describe('skillPublication 连接器旧口径（沿用不动）（零调用方，随死码清理一并删，审计 J13）', () => {
-  it('TARGETS / targetLabel：连接器与版本历史仍分端', () => {
-    expect(TARGETS).toEqual(['FDE_WORKBENCH', 'USER_END'])
-    expect(targetLabel('FDE_WORKBENCH')).toBe('FDE 工作台')
-    expect(targetLabel('USER_END')).toBe('用户端')
-    expect(targetLabel()).toBe('—')
-  })
-
-  it('targetActions：连接器 status→动作矩阵', () => {
-    expect(targetActions('NONE')).toEqual(['publish'])
-    expect(targetActions('REJECTED')).toEqual(['publish'])
-    expect(targetActions('PENDING_REVIEW')).toEqual(['withdraw'])
-    expect(targetActions('PUBLISHED')).toEqual(['delist'])
-    expect(targetActions('DELISTED')).toEqual(['relist'])
-    expect(targetActions('WEIRD')).toEqual(['publish'])
   })
 })
