@@ -271,8 +271,10 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     const commands = [...el.querySelectorAll('.el-dropdown-item')].map((n) =>
       n.getAttribute('data-command')
     )
-    expect(commands).not.toContain('front')
-    expect(commands).toContain('logout')
+    // 2026-09-12 审计 T46：由「含 logout / 不含 front」提升为整份菜单逐项相等——多一项少一项都红。
+    // （「修改密码」走 api/auth.js 真实 POST 无 mock、「退出登录」被守卫转回，demo 内均为死操作，
+    //  记审计 K 清单，不在此测其点击结果。）
+    expect(commands).toEqual(['changePassword', 'logout'])
     expect(el.querySelector('.theme-toggle')).toBeTruthy()
   })
 

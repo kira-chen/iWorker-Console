@@ -4,6 +4,8 @@ import { createApp, h, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 /**
+ * 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）（EChart 仅报表两页使用）
+ *
  * EChart 封装单测（设计 §6.3）：
  * - stub echarts.init：单测不在 jsdom 真渲染 canvas，只断言 init 被调一次 + setOption 收到组装好的 option。
  * - 双主题：buildOption 接到的 colors 由 colorKeys 经 getComputedStyle(--c-*) 解析；

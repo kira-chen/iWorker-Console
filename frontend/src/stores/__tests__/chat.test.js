@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // chat store 顶层 import：element-plus(ElMessage) / @/api/chat / @/api/memory。
 // 单测只验证 SSE handler 写入逻辑与 undoMemory 三态，故 mock 掉副作用依赖，
 // 并捕获 streamChat 注入的 handlers，直接喂事件做断言。

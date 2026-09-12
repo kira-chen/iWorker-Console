@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // session store 单测：切断真实 4 个会话 API 与兄弟 store（chat/position），
 // 只验证本 store 的分组逻辑、loadMore 去重、remove、openInChat 的消息映射编排。
 

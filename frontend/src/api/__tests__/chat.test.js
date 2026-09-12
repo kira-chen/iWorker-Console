@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // chat.js 顶层 import：@/api/request（含 element-plus/router/userStore 副作用）、@/stores/user、
 // @/utils/positionNotBound。本测聚焦 SSE（openSse/streamChat）的 1001 收口与正常事件分发，
 // 故 mock 掉 request（避免拉起 axios）、userStore（token）、handlePositionNotBound（断言被调），

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // downloadArtifact 用 document + URL.createObjectURL 触发隐藏 <a download>，故在 jsdom 环境。
 // 顶层依赖：@/api/request（副作用）、@/stores/user（token/logout）。mock 掉避免拉起 axios。
 

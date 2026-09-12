@@ -7,6 +7,8 @@ import {
   fmtDuration
 } from '@/utils/taskStatus'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
+
 describe('taskStatusMeta', () => {
   it('映射启用/停用/草稿', () => {
     expect(taskStatusMeta('ENABLED').label).toBe('启用')

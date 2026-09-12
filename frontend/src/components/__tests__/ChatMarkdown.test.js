@@ -5,6 +5,8 @@ import { setActivePinia, createPinia } from 'pinia'
 import ChatMarkdown from '@/components/ChatMarkdown.vue'
 
 /**
+ * 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
+ *
  * ChatMarkdown 渲染回归保护：
  * - 助手回答的 Markdown（加粗/列表/表格/行内代码/表情）必须渲染为对应 HTML，而非显示原文。
  * - md-editor-v3 默认 sanitize 为恒等，本组件全局注册 XSSPlugin 净化；XSS（script/iframe/javascript:）必须被挡。

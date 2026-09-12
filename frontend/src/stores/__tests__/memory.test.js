@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // store 依赖 @/api/memory 网络层；全部 mock 成可控 resolve/reject，
 // 只验证 store 的纯逻辑（筛选复位、类型字典、删除回退页、编辑冲突透传）。
 const listMemories = vi.fn(() => Promise.resolve({ list: [], total: 0 }))

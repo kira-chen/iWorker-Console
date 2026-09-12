@@ -74,7 +74,7 @@ describe('请求拦截器：注入 JWT', () => {
   })
 })
 
-describe('响应拦截器（成功分支 onFulfilled）', () => {
+describe('响应拦截器（成功分支 onFulfilled）（含 code 401/1001 用例：demo 不可触发——router 守卫 ensureDemoIdentity 恒有身份，随 J2 裁决）', () => {
   beforeEach(() => {
     elMessageError.mockClear()
     elMessageWarning.mockClear()
@@ -181,7 +181,7 @@ describe('响应拦截器（成功分支 onFulfilled）', () => {
   })
 })
 
-describe('响应拦截器（HTTP 错误分支 onRejected）', () => {
+describe('响应拦截器（HTTP 错误分支 onRejected）（含 HTTP 401 用例：demo 不可触发，随 J2 裁决）', () => {
   beforeEach(() => {
     elMessageError.mockClear()
     routerReplace.mockClear()

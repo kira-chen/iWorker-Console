@@ -155,6 +155,44 @@ describe('mockPersist', () => {
     ).not.toThrow()
   })
 
+  /**
+   * 2026-09-12 审计 T57 补：URL 带 ?resetMock=1 打开 → 模块首次 import 时清空全部 mock 存储回出厂态
+   * （mockPersist.js:88-100；文件头注「重置」段）。node 环境无 window，这里临时挂一个只带 location 的 window。
+   */
+  it('URL 带 ?resetMock=1 → 模块加载即清空本工具前缀的全部存量（站点其它 key 不动），并 console.info 提示', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))
+    globalThis.localStorage.setItem('iworker-demo-mock:b', JSON.stringify({ v: 1, data: {} }))
+    globalThis.localStorage.setItem('ai_theme', 'dark')
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    globalThis.window = { location: { search: '?foo=1&resetMock=1' } }
+    try {
+      const { attachPersist } = await importFresh()
+      expect(globalThis.localStorage.getItem('iworker-demo-mock:a')).toBeNull()
+      expect(globalThis.localStorage.getItem('iworker-demo-mock:b')).toBeNull()
+      expect(globalThis.localStorage.getItem('ai_theme')).toBe('dark')
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('resetMock=1'))
+      // 清空后 attach 走代码种子：restore 不被调用
+      const restore = vi.fn()
+      attachPersist('a', { version: 1, snapshot: () => ({}), restore })
+      expect(restore).not.toHaveBeenCalled()
+    } finally {
+      delete globalThis.window
+    }
+  })
+
+  it('URL 不带 resetMock（或值不是 1）→ 存量保留', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: { rows: ['本机改动'] } }))
+    globalThis.window = { location: { search: '?resetMock=0' } }
+    try {
+      const { attachPersist } = await importFresh()
+      let rows = ['seed']
+      attachPersist('a', { version: 1, snapshot: () => ({ rows }), restore: (d) => { rows = d.rows } })
+      expect(rows).toEqual(['本机改动'])
+    } finally {
+      delete globalThis.window
+    }
+  })
+
   it('clearAllMockState 只清本工具前缀的 key', async () => {
     const { clearAllMockState } = await importFresh()
     globalThis.localStorage.setItem('iworker-demo-mock:a', '1')

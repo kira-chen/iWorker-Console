@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // store 依赖 @/api/task 的网络层；本测试只关心轮询定时器的生命周期，
 // 故把 API 全部 mock 成可控的空 resolve，避免真实请求/拦截器介入。
 vi.mock('@/api/task', () => ({

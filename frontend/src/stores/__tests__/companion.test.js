@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useCompanionStore, DEFAULT_NICKNAME } from '@/stores/companion'
 
+// 2026-09-12 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2）
 // 搭子名称（buddyName）前端持久化 store。US-6 个性化页「搭子名称」编辑依赖它做就近缓存，
 // 保证对话头部即时刷新；键含 userId + positionId，做到各岗位搭子独立命名。
 
