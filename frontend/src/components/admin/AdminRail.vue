@@ -35,7 +35,7 @@ const userName = computed(() => userStore.userInfo?.name || '管理员')
 // 【显隐口径 V102】每项挂 page（页面权限 code，与后端 Module 枚举一一对应），优先按 userStore.hasPage 逐页判定；
 // 后端未下发 pages 时（旧 token / 旧响应）退回原口径：roles 派生的 canFde / canSysConfig / isAdmin + item.visible。
 // 禁止用单值 role 判权。详见下方 itemVisible。
-// 「报表」（FdeReports）本次改版隐藏（路由保留、菜单不列）。
+// 「报表」两页已于 2026-09-12 负责人决策 4 整体退役（页面 / 路由 / 数据层一并删除）。
 const allGroups = [
   {
     key: 'OVERVIEW',

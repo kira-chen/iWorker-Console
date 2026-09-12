@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
- * 端点契约测试（VITE_CONN_MOCK=0），demo 不可达，仅留档；去留待裁决（审计 J3）。
+ * 端点契约测试（VITE_CONN_MOCK=0）：2026-09-12 负责人决策 4（审计 J3）——真实接口分支作为「以后接后端」的
+ * 示例代码保留，本文件随之保留。与 market.test.js 不同，api/adminModel.js 的 12 个函数在 demo 里都有活
+ * 调用方（AdminModels / ModelConfigEditDialog / GovObjectDetail 经 mock 分支），这里验的是另一侧分支的
+ * method/path/body 契约。
  * 2026-09-12 测试审计：本文件断言的是 `/fde/models/*` 真实端点路径，纯前端 demo 默认走
  * adminModelMock（USE_MOCK 恒开），这条分支在 demo 里永远跑不到——留档供接回后端时对表。
  */

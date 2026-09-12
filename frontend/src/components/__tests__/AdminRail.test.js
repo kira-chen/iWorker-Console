@@ -22,7 +22,7 @@ import { useUserStore } from '@/stores/user'
  *   仅 FDE → 见 01 总览 + 02 岗位；仅 SYS_CONFIG → 见 01 总览 + 03 能力（无模型，无 04/05/06）；admin → 六段全见。
  * 高亮沿用 route.meta.activeMenu || route.name：工作台 / 技能编辑沉浸页归并到对应一级项。
  * 部分菜单仅文案改版、路由 name 不变（审核中心=UnifiedReview、访问审计=AdminLoginLogs、字段字典=SysConfigFieldManagement、角色与权限=AdminRoles）。
- * 「报表」（FdeReports）本次改版从菜单移除（路由保留、菜单不列）。
+ * 「报表」两页已于 2026-09-12 负责人决策 4 整体退役（页面 / 路由 / 数据层一并删除）。
  *
  * 不引 @vue/test-utils：createApp 挂 jsdom 容器，配真实 memory router 与最小 EP/图标存根。
  */
@@ -65,7 +65,6 @@ function makeRouter() {
         component: blank,
         meta: { activeMenu: 'AdminSkillsUnified' }
       },
-      { path: '/admin/reports/fde', name: 'FdeReports', component: blank },
       {
         path: '/admin/positions/:id/workbench',
         name: 'PositionWorkbench',

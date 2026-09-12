@@ -112,26 +112,8 @@ const adminChildren = [
     path: 'skill-reviews',
     redirect: { name: 'UnifiedReview' }
   },
-  // —— P2 双模块报表（真实数据 + ECharts），各落所属模块角色门（设计 §4.3/§6）——
-  {
-    path: 'reports/fde',
-    name: 'FdeReports',
-    component: () => import('@/views/admin/FdeReports.vue'),
-    meta: { title: '工作台报表', roles: ['FDE', 'ADMIN'], module: 'FDE' }
-  },
-  {
-    path: 'reports/sysconfig',
-    name: 'SysConfigReports',
-    component: () => import('@/views/admin/SysConfigReports.vue'),
-    meta: { title: '配置报表', roles: ['SYS_CONFIG', 'ADMIN'], module: 'SYSCONFIG' }
-  },
-  {
-    // 旧 reports 路由：重定向到 FDE 工作台报表（兼容书签，设计 §4.3/§6.2）。
-    // 仅 path（无 name），避免与下方 name:'reports' 兜底重复；name 保留在 redirect 节点。
-    path: 'reports',
-    name: 'reports',
-    redirect: { name: 'FdeReports' }
-  },
+  // 报表两页（FdeReports / SysConfigReports）已于 2026-09-12 负责人决策 4 整体退役：
+  // 菜单早已隐藏、无 PRD、数据层无 mock 打开即失败态，连同 api/report.js 与 EChart 一并删除。
   // —— P5 用户与权限（仅 ADMIN）：菜单 visible + 路由门 + 后端方法级三层叠加 ——
   {
     path: 'users',
