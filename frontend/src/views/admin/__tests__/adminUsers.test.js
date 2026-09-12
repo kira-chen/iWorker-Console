@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, render, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { COL, COL_NOWRAP } from '@/utils/tableLayout'
 
 /**
  * AdminUsers.vue（用户列表页）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/用户/prd-用户.md
@@ -193,6 +194,14 @@ describe('AdminUsers · 工具栏与表格形态（md §一.1 / §二.1）', () 
     sortBtn().click(); await flush()
     expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, sort: 'desc' }))
     expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↓')
+  })
+
+  it('最近登录时间列宽取共享 COL.TIME 并挂 col-nowrap（审计 K16：不再硬编码 165，与全站时间列同源同值）', async () => {
+    await mount()
+    const timeCol = container.querySelector('.el-head .time-sort').closest('.el-table-column')
+    expect(timeCol.dataset.width).toBe(String(COL.TIME))
+    expect(timeCol.getAttribute('class-name')).toBe(COL_NOWRAP)
+    expect(timeCol.getAttribute('label-class-name')).toBe(COL_NOWRAP)
   })
 })
 

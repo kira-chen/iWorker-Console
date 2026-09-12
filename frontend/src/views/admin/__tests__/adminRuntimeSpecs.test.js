@@ -10,7 +10,8 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  *
  * 真实挂载（真 Element Plus + 真 ListStates / ListPagination / StatusTag / RuntimeSpecEditor / RuntimeSpecUserDialog），
  * 只 mock api 层；ElMessage / ElMessageBox 用 spy 拦截（不桩组件）。
- * 只写代码已实现且与 md 一致的规则：K28（校验文案）、md §二.3【清空筛选】、§三.1「2 核 / 4 Gi」列格式等代码缺陷不写。
+ * 2026-09-12 审计 K30 ①②③ 闭环后补：§三.3.6 L222 默认规格【删除】置灰 + 悬停提示、§二.3 L110【清空筛选】、
+ *   §三.1 L123-127 列格式「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」「不限 / 24 小时」。
  */
 
 const api = { listRuntimeSpecs: vi.fn(), deleteRuntimeSpec: vi.fn(), getRuntimeSpec: vi.fn(), getRuntimeSpecLimits: vi.fn(), createRuntimeSpec: vi.fn(), updateRuntimeSpec: vi.fn(), listRuntimeSpecUsers: vi.fn(), assignRuntimeSpecUsers: vi.fn(), applyRuntimeSpecForUser: vi.fn(), unassignRuntimeSpecUser: vi.fn() }
@@ -81,12 +82,65 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     expect(consoleErr).not.toHaveBeenCalled()
   })
 
-  it('最大存活时长：0 → 「不限」，24 → 「24 h」（md §三.1「0 展示为不限」）', async () => {
+  it('最大存活时长：0 → 「不限」，24 → 「24 小时」（md §三.1 L127「0 展示为不限」；小时写法照 L125 分钟同款）', async () => {
     mounted = mountReal(AdminRuntimeSpecs)
     await flushAll(10)
     expect(rowByName('标准').textContent).toContain('不限')
-    expect(rowByName('重').textContent).toContain('24 h')
+    expect(rowByName('重').textContent).toContain('24 小时')
     expect(rowByName('重').textContent).not.toContain('不限')
+  })
+
+  it('列格式逐字 md §三.1 L123-126：「4 核 / 16 Gi」「100 Gi」「10 分钟」「20 分钟」；不再出现「4c / 16Gi」「min」（审计 K30③）', async () => {
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    const cells = [...rowByName('重').querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim())
+    expect(cells).toContain('4 核 / 16 Gi')
+    expect(cells).toContain('100 Gi')
+    expect(cells).toContain('10 分钟')
+    expect(cells).toContain('20 分钟')
+    expect(rowByName('重').textContent).not.toMatch(/\dc \//)
+    expect(rowByName('重').textContent).not.toMatch(/\d min/)
+    expect(rowByName('标准').textContent).toContain('2 核 / 4 Gi')
+  })
+
+  it('默认规格【删除】置灰且悬停提示「默认运行规格用于平台兜底，不能删除」；非默认规格无该提示（md §三.3.6 L222，审计 K30①）', async () => {
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    const defWrap = rowBtn(rowByName('标准'), '删除').closest('.rs-del-wrap')
+    expect(rowBtn(rowByName('标准'), '删除').disabled).toBe(true)
+    expect(defWrap.getAttribute('title')).toBe('默认运行规格用于平台兜底，不能删除')
+    const otherWrap = rowBtn(rowByName('高敏'), '删除').closest('.rs-del-wrap')
+    expect(otherWrap.hasAttribute('title')).toBe(false)
+  })
+
+  it('无查询结果 → 空态「没有符合条件的运行规格」+【清空筛选】；点击后关键词与使用状态清空并按默认条件重查、按钮消失（md §二.3 L110，审计 K30②）', async () => {
+    api.listRuntimeSpecs.mockImplementation((params = {}) => Promise.resolve(
+      params.keyword || params.usage
+        ? { list: [], total: 0, summary: SUMMARY }
+        : { list: LIST, total: LIST.length, summary: SUMMARY }
+    ))
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    expect(mounted.container.querySelector('.rs-empty-actions')).toBeNull() // 有数据不出
+    const input = mounted.container.querySelector('input[placeholder="搜索规格名称或能力边界说明"]')
+    input.value = '不存在的规格'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flushAll(8)
+    expect(mounted.container.querySelector('.ls-empty-text').textContent).toBe('没有符合条件的运行规格')
+    expect(input.value).toBe('不存在的规格') // 保留当前查询条件
+    const clearBtn = [...mounted.container.querySelectorAll('.rs-empty-actions .el-button')].find((b) => b.textContent.trim() === '清空筛选')
+    expect(clearBtn).toBeTruthy()
+    clearBtn.click()
+    await flushAll(10)
+    // useAdminList 会剔除空筛选项：重查参数里不再有 keyword / usage，且回第 1 页
+    const last = api.listRuntimeSpecs.mock.calls.at(-1)[0]
+    expect(last).toMatchObject({ page: 1 })
+    expect(last).not.toHaveProperty('keyword')
+    expect(last).not.toHaveProperty('usage')
+    expect(input.value).toBe('')
+    expect(rows()).toHaveLength(5)
+    expect(mounted.container.querySelector('.rs-empty-actions')).toBeNull()
   })
 
   it('操作列四个按钮；默认规格【删除】置灰、其它规格可点（md §三.3.1 L154/L158）', async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { defineComponent, h, ref, render } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
@@ -14,10 +14,12 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  * DrawerEditor 开了 append-to-body，抽屉 teleport 到 document.body，故从 body 取节点。
  * 组件的 visible watcher 非 immediate（列表页里抽屉常驻、总是 false→true 打开，现状无问题），
  * 故用一个持 ref 的宿主组件驱动 false→true，而不是静态 visible:true 挂载。
- * 不写：K28 校验文案（代码 ≠ md §四.10）、§四.8.2「运行配置变更」确认、§四.3 岗位切换提示、§四.1 放弃确认（代码未实现）。
+ * 2026-09-12 审计 K28 / K29 闭环后补：§四.10 校验文案逐字、§四.1 放弃确认、§四.3 岗位切换提示、
+ *   §四.8.2「运行配置变更」确认、§四.8.3 待审批阻断（末尾两个 describe）。确认窗经 useConfirm → ElMessageBox.confirm，用 spy 拦。
+ * 岗位占用关系取自 listRuntimeSpecs（编辑器打开时随上限一并加载），故 api 桩含 listRuntimeSpecs。
  */
 
-const api = { getRuntimeSpec: vi.fn(), getRuntimeSpecLimits: vi.fn(), createRuntimeSpec: vi.fn(), updateRuntimeSpec: vi.fn() }
+const api = { getRuntimeSpec: vi.fn(), getRuntimeSpecLimits: vi.fn(), createRuntimeSpec: vi.fn(), updateRuntimeSpec: vi.fn(), listRuntimeSpecs: vi.fn() }
 vi.mock('@/api/runtimeSpec', () => api)
 const listPositions = vi.fn()
 vi.mock('@/api/position', () => ({ listPositions: (...a) => listPositions(...a) }))
@@ -38,10 +40,15 @@ const HEAVY_SPEC = {
   pendingUsers: [{ username: 'hejing', name: '何静', approval: 'PENDING' }]
 }
 
-let mounted, savedSpy, visibleSpy, successSpy, errorSpy
+let mounted, savedSpy, visibleSpy, successSpy, errorSpy, confirmSpy
 beforeEach(() => {
   vi.clearAllMocks()
   api.getRuntimeSpecLimits.mockResolvedValue({ ...LIMITS })
+  // 岗位占用：401 属「重」(id 3)、402 属「轻」(id 1)
+  api.listRuntimeSpecs.mockResolvedValue({ list: [
+    { id: 1, name: '轻', positionIds: [402] }, { id: 2, name: '标准', positionIds: [] }, { id: 3, name: '重', positionIds: [401] }
+  ], total: 3 })
+  confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
   listPositions.mockResolvedValue({ list: [{ positionId: 401, name: '财务审核岗' }, { positionId: 402, name: '客户成功岗' }], total: 2 })
   savedSpy = vi.fn()
   visibleSpy = vi.fn()
@@ -81,6 +88,13 @@ const footBtn = (d, text) => [...d.querySelectorAll('.el-drawer__footer .el-butt
 const itemByLabel = (d, label) => [...d.querySelectorAll('.el-form-item')].find((fi) => fi.querySelector('.el-form-item__label')?.textContent.trim() === label)
 const numberValue = (d, label) => itemByLabel(d, label).querySelector('.el-input-number input').value
 const errorOf = (d, label) => itemByLabel(d, label)?.querySelector('.el-form-item__error')?.textContent.trim() || ''
+/** 取 RuntimeSpecEditor 实例的 form（root → Host → Editor 逐层下钻；直接改组件态更贴近「手工输入 / 接口提交超限」md L302） */
+function editorState() {
+  let inst = mounted.app._instance
+  while (inst && !inst.setupState?.form) inst = inst.subTree?.component
+  return inst.setupState
+}
+const setForm = (patch) => Object.assign(editorState().form, patch)
 async function typeInput(el, value) {
   el.value = value
   el.dispatchEvent(new Event('input', { bubbles: true }))
@@ -130,15 +144,33 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(visibleSpy).toHaveBeenCalledWith(false)
   })
 
-  it('名称 / 能力边界为空点【创建】→ 就地红字（代码现有文案），不发 createRuntimeSpec（md §四.7 L345；文案差异见 K28）', async () => {
+  it('名称 / 能力边界为空点【创建】→ 就地「规格名称不能为空」「请填写能力边界说明」，不发 createRuntimeSpec（md §四.7 L345 / §四.10 L384,L387；K28）', async () => {
     const d = await open({ specId: null })
     footBtn(d, '创建').click()
     await flushAll(4)
     await wait(150) // el-form-item 的错误态展示有 100ms 防抖
     expect(api.createRuntimeSpec).not.toHaveBeenCalled()
     expect(errorOf(d, '规格名称')).toBe('规格名称不能为空')
-    expect(errorOf(d, '能力边界说明')).not.toBe('')
+    expect(errorOf(d, '能力边界说明')).toBe('请填写能力边界说明')
     expect(title(d)).toBe('新建规格') // 不关抽屉
+  })
+
+  it('CPU 0.7 / 内存 1.5 / 能力边界 201 字 → 字段下方文案逐字 md §四.10 L388-390，不发接口（K28）', async () => {
+    const d = await open({ specId: null })
+    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '校验档')
+    await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '边'.repeat(201))
+    // el-input-number 会把非法值钉回 min/step，直接改组件态更贴近「手工输入 / 接口提交超限」（md L302）
+    setForm({ cpu: 0.7, memoryGi: 1.5 })
+    await flushAll(2)
+    footBtn(d, '创建').click()
+    await flushAll(4)
+    await wait(150)
+    expect(api.createRuntimeSpec).not.toHaveBeenCalled()
+    expect(errorOf(d, '能力边界说明')).toBe('能力边界说明不超过 200 个字符')
+    expect(errorOf(d, 'CPU（核）')).toBe('CPU须不小于 0.5 核，并按照 0.5 递增')
+    expect(errorOf(d, '内存（Gi）')).toBe('内存须为不小于 1 的整数')
+    // 超上限文案「不能超过平台单实例上限 {最大值}{单位}」（md §四.4 L302）：el-input-number 的 :max 会把超限值钉回上限
+    // （含上限下调时），页面层触不到该分支；接口侧再校验由 runtimeSpecMock.test「拒绝超限资源」守住（md L303）。
   })
 
   it('接口回 {field:name}「规格名称已存在，请换一个」→ 定位到规格名称就地红字，不 toast、不关抽屉（md §四.10 L386）', async () => {
@@ -235,5 +267,177 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     const d = await open({ specId: 3 })
     expect(d.querySelector('.rs-used-empty').textContent).toBe('暂无用户生效')
     expect(d.querySelector('.rs-pending')).toBeNull()
+  })
+})
+
+describe('RuntimeSpecEditor · 关闭放弃确认（md §四.1 L266，审计 K29）', () => {
+  it('新建态未改动点【取消】→ 直接关闭、不弹确认；改了名称再点【取消】→ 弹放弃确认，取消确认则抽屉保持、确认则关闭', async () => {
+    const d = await open({ specId: null })
+    footBtn(d, '取消').click()
+    await flushAll(4)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+    visibleSpy.mockClear()
+    mounted.unmount(); mounted = null; document.body.innerHTML = ''
+
+    const d2 = await open({ specId: null })
+    await typeInput(d2.querySelector('input[placeholder="如 标准、高敏"]'), '草稿')
+    confirmSpy.mockRejectedValueOnce('cancel')
+    footBtn(d2, '取消').click()
+    await flushAll(4)
+    expect(confirmSpy).toHaveBeenCalledWith(
+      '有未保存的修改，关闭后将丢失。确认放弃本次修改？', '放弃修改',
+      expect.objectContaining({ confirmButtonText: '放弃修改', cancelButtonText: '继续编辑' })
+    )
+    expect(visibleSpy).not.toHaveBeenCalledWith(false)
+    confirmSpy.mockResolvedValueOnce('confirm')
+    footBtn(d2, '取消').click()
+    await flushAll(4)
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+  })
+
+  it('抽屉 X / ESC 走 el-drawer before-close 钩子：有改动且取消确认 → done(true) 保持打开；确认 → done() 关闭且随后回报不再二次询问', async () => {
+    const d = await open({ specId: null })
+    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '草稿')
+    const { onBeforeClose } = editorState()
+    // 钩子已透传到真 el-drawer（DrawerEditor 单根）：X 按钮存在且点击后触发确认
+    confirmSpy.mockRejectedValueOnce('cancel')
+    d.querySelector('.el-drawer__close-btn').click()
+    await flushAll(4)
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(visibleSpy).not.toHaveBeenCalledWith(false)
+    expect(document.body.querySelector('.el-drawer')).toBeTruthy()
+    // 直接调钩子：取消 → done(true)；确认 → done()，且回报一次 update:visible=false 不再询问
+    let done = vi.fn()
+    confirmSpy.mockRejectedValueOnce('cancel')
+    await onBeforeClose(done)
+    expect(done).toHaveBeenCalledWith(true)
+    done = vi.fn()
+    confirmSpy.mockResolvedValueOnce('confirm')
+    await onBeforeClose(done)
+    expect(done).toHaveBeenCalledWith()
+    confirmSpy.mockClear()
+    await editorState().onVisibleChange(false)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+  })
+
+  it('查看态 / 编辑态无改动 → 关闭不弹确认', async () => {
+    api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    const d = await open({ specId: 3, readonly: true })
+    footBtn(d, '关闭').click()
+    await flushAll(4)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+    mounted.unmount(); mounted = null; document.body.innerHTML = ''; visibleSpy.mockClear()
+    const d2 = await open({ specId: 3 })
+    footBtn(d2, '取消').click()
+    await flushAll(4)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(visibleSpy).toHaveBeenCalledWith(false)
+  })
+})
+
+describe('RuntimeSpecEditor · 保存前配置影响（md §四.3 L286 / §四.8.2 / §四.8.3，审计 K29）', () => {
+  /** 把 confirmDialog 收到的正文（字符串或 VNode）渲染成纯文本，断言用户可见文案 */
+  const confirmText = (call) => {
+    const msg = call[0]
+    if (typeof msg === 'string') return msg
+    const host = document.createElement('div')
+    render(msg, host)
+    return host.textContent
+  }
+
+  it('新建时选中被「重」占用的岗位 401 → 保存前确认「岗位规格切换」列出「财务审核岗：重 → 新档」并提示切换；取消不发接口、确认后发 createRuntimeSpec（md §四.3 L286 / §四.10 L397）', async () => {
+    api.createRuntimeSpec.mockResolvedValue({ id: 11 })
+    const d = await open({ specId: null })
+    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '新档')
+    await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '说明')
+    setForm({ positionIds: [401] })
+    await flushAll(2)
+    confirmSpy.mockRejectedValueOnce('cancel')
+    footBtn(d, '创建').click()
+    await flushAll(8)
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy.mock.calls[0][1]).toBe('岗位规格切换')
+    const text = confirmText(confirmSpy.mock.calls[0])
+    expect(text).toContain('保存后该岗位将从原规格切换到当前规格')
+    expect(text).toContain('财务审核岗：重 → 新档')
+    expect(api.createRuntimeSpec).not.toHaveBeenCalled()
+    confirmSpy.mockResolvedValueOnce('confirm')
+    footBtn(d, '创建').click()
+    await flushAll(8)
+    expect(api.createRuntimeSpec).toHaveBeenCalledWith(expect.objectContaining({ positionIds: [401] }))
+    expect(successSpy).toHaveBeenCalledWith('规格已创建')
+  })
+
+  it('编辑「重」（有 2 个生效用户）改 CPU 4→8 点【保存】→ 「运行配置变更」确认列变更前后与三条影响说明；取消不保存、确认后 updateRuntimeSpec（md §四.8.2 L361-366）', async () => {
+    api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    api.updateRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC, cpu: 8 })
+    const d = await open({ specId: 3 })
+    setForm({ cpu: 8 })
+    await flushAll(2)
+    confirmSpy.mockRejectedValueOnce('cancel')
+    footBtn(d, '保存').click()
+    await flushAll(8)
+    expect(confirmSpy).toHaveBeenCalledTimes(1) // 本规格自身占用的 401 不算「被其他规格占用」，不弹岗位切换
+    expect(confirmSpy.mock.calls[0][1]).toBe('运行配置变更')
+    const text = confirmText(confirmSpy.mock.calls[0])
+    expect(text).toContain('2 个生效用户')
+    expect(text).toContain('CPU：4 核 → 8 核')
+    expect(text).toContain('已运行 Pod 不会被立即修改或重启')
+    expect(text).toContain('新配置在用户 Pod 下一次创建或管理员主动重建时生效')
+    expect(text).toContain('规格待生效')
+    expect(api.updateRuntimeSpec).not.toHaveBeenCalled()
+    expect(title(d)).toBe('编辑规格')
+    confirmSpy.mockResolvedValueOnce('confirm')
+    footBtn(d, '保存').click()
+    await flushAll(8)
+    expect(api.updateRuntimeSpec).toHaveBeenCalledWith(3, expect.objectContaining({ cpu: 8 }))
+    expect(successSpy).toHaveBeenCalledWith('规格已保存')
+  })
+
+  it('只改名称 / 无生效用户时改资源 → 不弹「运行配置变更」，直接保存（md §四.8.1 L355 / §四.8.2 L361「存在生效用户」前提）', async () => {
+    api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    api.updateRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    const d = await open({ specId: 3 })
+    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '重·改名')
+    footBtn(d, '保存').click()
+    await flushAll(8)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(api.updateRuntimeSpec).toHaveBeenCalledTimes(1)
+    mounted.unmount(); mounted = null; document.body.innerHTML = ''
+    api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC, effectiveUsers: [], pendingUsers: [] })
+    const d2 = await open({ specId: 3 })
+    setForm({ memoryGi: 32 })
+    await flushAll(2)
+    footBtn(d2, '保存').click()
+    await flushAll(8)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(api.updateRuntimeSpec).toHaveBeenCalledTimes(2)
+  })
+
+  it('「重」有 1 个待审批申请：关闭「允许用户申请」点【保存】→ 阻止保存，开关下方提示先处理或撤回；开关重新打开后提示消失并可保存（md §四.8.3 L372 / §四.10 L398）', async () => {
+    api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    api.updateRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
+    const d = await open({ specId: 3 })
+    const sw = d.querySelector('.el-switch')
+    sw.click()
+    await flushAll(3)
+    expect(sw.classList.contains('is-checked')).toBe(false)
+    footBtn(d, '保存').click()
+    await flushAll(6)
+    await wait(150)
+    expect(api.updateRuntimeSpec).not.toHaveBeenCalled()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(errorOf(d, '允许用户申请')).toBe('存在 1 个待审批申请，请先处理或撤回相关申请后再关闭申请入口')
+    expect(title(d)).toBe('编辑规格')
+    sw.click()
+    await flushAll(3)
+    await wait(150)
+    expect(errorOf(d, '允许用户申请')).toBe('')
+    footBtn(d, '保存').click()
+    await flushAll(8)
+    expect(api.updateRuntimeSpec).toHaveBeenCalledWith(3, expect.objectContaining({ allowUserApply: true }))
   })
 })

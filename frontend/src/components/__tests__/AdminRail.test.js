@@ -266,15 +266,17 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(active.textContent.trim()).toBe('审核中心')
   })
 
-  it('头像二级菜单：无「返回前台」，保留退出登录 + 外观切换', async () => {
+  it('头像二级菜单：只剩用户名 + 外观切换，不含「修改密码」「退出登录」（审计 J11/K42，Q183「登录暂不考虑」）', async () => {
     const el = await mount({ name: 'AdminPositions' }, ['ADMIN'])
     const commands = [...el.querySelectorAll('.el-dropdown-item')].map((n) =>
       n.getAttribute('data-command')
     )
-    // 2026-09-12 审计 T46：由「含 logout / 不含 front」提升为整份菜单逐项相等——多一项少一项都红。
-    // （「修改密码」走 api/auth.js 真实 POST 无 mock、「退出登录」被守卫转回，demo 内均为死操作，
-    //  记审计 K 清单，不在此测其点击结果。）
-    expect(commands).toEqual(['changePassword', 'logout'])
+    // 2026-09-12 审计 T46 提升为整份菜单逐项相等；同日 J11/K42 闭环：两项账号类死操作
+    // （改密走 api/auth.js 真实 POST 无 mock、退出后被守卫转回）按 Q183 隐藏——菜单不再有任何 command 项。
+    expect(commands).toEqual([])
+    expect(el.textContent).not.toContain('修改密码')
+    expect(el.textContent).not.toContain('退出登录')
+    expect(el.querySelector('.rail-user-name')).toBeTruthy()
     expect(el.querySelector('.theme-toggle')).toBeTruthy()
   })
 

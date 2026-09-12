@@ -15,7 +15,8 @@
  *  - 新建态「初始角色」为两列 check-card 卡片复选（RoleCheckCards，与设置角色窗共用），未选错误内联在区块下；
  *    打开时默认勾中「普通用户」（md §三.2）；
  *  - 确认键：新建态「新建」/ 编辑态「保存」（md §三.1）；toast「用户已新建」/「用户信息已保存」（md §三.6）；
- *  - 占位 / 校验文案照 md §三.2–3：「3–32 个字符」「用于展示的姓名」「name@example.com」「请输入 3–32 个字符」「请输入有效邮箱」。
+ *  - 占位 / 校验文案照 md §三.2–3：「3–32 个字符」「用于展示的姓名」「name@example.com」「请输入 3–32 个字符」「请输入有效邮箱」；
+ *  - 2026-09-12 对齐 md §三.2 L149（审计 K14）：新建态「初始角色」区补提示文字「选择一个或多个角色」。
  *
  * 写接口 skipGlobalError：护栏错误（用户名重复等）按 message 就地 toast。
  */
@@ -163,6 +164,8 @@ async function onSubmit() {
       <!-- 新建：初始角色卡片复选 + 初始密码提示 -->
       <template v-if="!isEdit">
         <el-form-item label="初始角色" class="ue-full ue-roles" :class="{ 'is-error': roleError }">
+          <!-- 2026-09-12 对齐 md 用户 §三.2 L149（审计 K14；Q439 裁按 md）：初始角色提示文字「选择一个或多个角色」，只在新建态出现 -->
+          <div class="ue-role-hint">选择一个或多个角色</div>
           <RoleCheckCards v-model="form.roleCodes" :options="roleOptionList" :error="roleError" />
           <div class="ue-tip">初始密码为 wemate123，用户首次登录后可修改。</div>
         </el-form-item>
@@ -225,6 +228,14 @@ async function onSubmit() {
 .ue-tip {
   width: 100%;
   margin-top: 5px;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--c-text-faint);
+}
+/* 初始角色提示（md §三.2 L149，K14）：与占位文字同档弱色，置于卡片区上方 */
+.ue-role-hint {
+  width: 100%;
+  margin-bottom: 6px;
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--c-text-faint);

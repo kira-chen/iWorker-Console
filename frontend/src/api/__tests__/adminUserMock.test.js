@@ -41,13 +41,15 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     expect((await listUsers({ status: 'disabled' })).total).toBe(2)
   })
 
-  it('新建用户：初始 active + 从未登录；用户名长度/重名校验按 field 报错', async () => {
+  it('新建用户：初始 active + 从未登录；用户名过短 →「请输入 3–32 个字符」（md §三.3 L157，K15）/ 重名 →「用户名已存在」，均按 field 报错', async () => {
     const u = await createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
     expect(u).toMatchObject({ status: 'active', lastLogin: null })
     await expect(createUser({ username: 'ab', displayName: 'x', roleCodes: ['普通用户'] }))
-      .rejects.toMatchObject({ field: 'username' })
+      .rejects.toMatchObject({ field: 'username', message: '请输入 3–32 个字符' })
+    await expect(createUser({ username: 'a'.repeat(33), displayName: 'x', roleCodes: ['普通用户'] }))
+      .rejects.toMatchObject({ field: 'username', message: '请输入 3–32 个字符' })
     await expect(createUser({ username: 'zhangwei', displayName: 'x', roleCodes: ['普通用户'] }))
-      .rejects.toMatchObject({ field: 'username' })
+      .rejects.toMatchObject({ field: 'username', message: '用户名已存在' })
   })
 
   it('编辑/设置角色/重置密码：状态启停、roleCodes 全量替换、重置走成功链路', async () => {

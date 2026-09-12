@@ -12,7 +12,7 @@ import { createApp, h, nextTick } from 'vue'
  * - §三 编辑弹窗「编辑字段名」：顶部字段说明、每行 序号+输入框+删除、【＋ 添加选项】新增并聚焦、
  *   选项 ≤30 字、【完成】统一保存 → 「字段选项已保存」、【取消】放弃未保存修改；
  * - §五 空值「选项值不能为空」/ 重复「选项值不能重复」阻止保存、保存失败弹窗保持打开并展示原因。
- * 不测：删除草稿行的确认弹窗（代码超出 md §三 L48，审计 K32 / J19 待裁决）。
+ * - §三 L48 点删除仅从当前编辑草稿中移除、不弹确认（2026-09-12 审计 J19/K32 闭环：原 ElMessageBox 删除确认已撤）。
  * ListStates / PageHeader 真挂载；EP 控件桩（el-dialog / el-input / el-button / el-icon）。
  */
 
@@ -183,6 +183,21 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(inputs[8].value).toBe('')
     expect(document.activeElement).toBe(inputs[8])
     expect([...dialog().querySelectorAll('.fm-opt-idx')].at(-1).textContent).toBe('9')
+  })
+
+  it('点某行删除钮 → 草稿行 −1、序号重排、不弹 confirm、不调保存（md §三 L48：仅从当前编辑草稿中移除；审计 J19/K32）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    expect(draftInputs()).toHaveLength(8)
+    dialog().querySelectorAll('.fm-opt-row .fm-opt-del')[1].click() // 删第 2 行「法律」
+    await flush()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(draftInputs()).toHaveLength(7)
+    expect(draftInputs().map((i) => i.value)).toEqual(EXPERT.filter((n) => n !== '法律'))
+    expect([...dialog().querySelectorAll('.fm-opt-idx')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+    expect(saveFieldOptions).not.toHaveBeenCalled()
+    expect(dialog()).toBeTruthy()
   })
 
   it('选项为空 → 【完成】被拦：弹窗内提示「选项值不能为空」、不调保存、弹窗不关（md §五 L66）；改输入后提示消失', async () => {

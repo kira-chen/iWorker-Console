@@ -15,7 +15,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - API 分发契约：新建只调 createRole（不传 code）；编辑改名 / 改权限按需分别下发、都没改不发写请求、集合比对与顺序无关。
  *
  * el-form 桩内置只认 required 的迷你校验器：读组件真实 rules 校验 model，错误文案渲染成 .form-err。
- * 末尾「toast『请先补齐必填项』」用例属审计 J9 待裁决（md §三.4 无此 toast），本轮不动。
+ * 审计 J9 已按 Q325 闭环（2026-09-12）：md §三.5 L133-134 只有就地提示，无 toast「请先补齐必填项」——
+ * 末尾用例改断校验失败时 ElMessage.warning 不被调用。
  */
 
 const createRole = vi.fn(() => Promise.resolve({}))
@@ -475,7 +476,7 @@ describe('RoleEditor · 重开与保存失败（md §三.1 L104 / §三.4 L128-1
   })
 })
 
-describe('RoleEditor · 分区卡片与校验态（历史出处：2026-09-08 原型复刻批次 2A G#11 分区卡片 / G#12 校验 toast）', () => {
+describe('RoleEditor · 分区卡片与校验态（历史出处：2026-09-08 原型复刻批次 2A G#11 分区卡片；G#12 校验 toast 已按 Q325 撤）', () => {
   it('抽屉体为两张 section-card：「角色信息」（名称字段 + hint）与「页面权限」（section-sub + 权限树 + 汇总）；编辑态 danger-hint 在卡外', async () => {
     const el = mount({ role: { id: 7, name: '系统配置员', modules: ['驾驶舱'], userCount: 3 } })
     await open()
@@ -493,15 +494,18 @@ describe('RoleEditor · 分区卡片与校验态（历史出处：2026-09-08 原
     expect(hint.closest('section.section-card')).toBeNull()
   })
 
-  it('校验失败（权限为 0）→ 就地红字 + toast「请先补齐必填项」，权限卡加 is-invalid，不打接口', async () => {
+  it('校验失败（权限为 0）→ 只就地红字、不弹 toast「请先补齐必填项」（md §三.5 L134 / Q325，审计 J9），权限卡与范围卡加 is-invalid，不打接口', async () => {
     const el = mount({ role: null })
     await open()
     inst().setupState.form.name = '自定义'
     submitBtn(el).click()
     await nextTick()
-    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+    expect(ElMessage).not.toHaveBeenCalled()
     expect(el.querySelector('.re-perm-err').textContent).toBe('请至少开通 1 个页面')
     expect([...el.querySelectorAll('section.section-card')][1].className).toContain('is-invalid')
+    // K43：红框靠 .re-perm-area.is-invalid .re-scope 的 border-color 生效，class 必须挂在权限区上
+    expect(el.querySelector('.re-perm-area').className).toContain('is-invalid')
     expect(createRole).not.toHaveBeenCalled()
   })
 })

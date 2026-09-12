@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { COL, COL_NOWRAP } from '@/utils/tableLayout'
 
 /**
  * AdminRoles.vue（角色与权限列表）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/角色/prd.角色.md
@@ -119,7 +120,10 @@ describe('AdminRoles · 列表展示（md §二.1 L39-43）', () => {
     expect(cols[0].dataset.width).toBe('185')
     expect(cols[1].dataset.width).toBe('110')
     expect(cols[2].dataset.width).toBe('360')
-    // 时间列：宽度硬编码 165 属代码缺陷（审计 K16，全站 COL.TIME=168），修后再补断言；此处只守表头排序按钮
+    // 时间列：2026-09-12 审计 K16 闭环——宽度取共享 COL.TIME（不再硬编码 165）并挂 col-nowrap
+    expect(cols[3].dataset.width).toBe(String(COL.TIME))
+    expect(cols[3].getAttribute('class-name')).toBe(COL_NOWRAP)
+    expect(cols[3].getAttribute('label-class-name')).toBe(COL_NOWRAP)
     expect(cols[3].querySelector('.time-sort').textContent.replace(/\s+/g, '')).toBe('最近更新时间↓')
     expect(cols[4].dataset.fixed).toBe('right')
     expect(container.querySelector('.el-row .rl-name').textContent).toBe('系统管理员')

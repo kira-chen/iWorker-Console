@@ -3,7 +3,10 @@
  * 后台共享侧边导航栏（204px 固定宽，2026-09-08 原型复刻批次 1 · A1/A2 按原型 L651 最终覆写层对齐）。
  *
  * 顶部管理后台名称（iWorker · 管理端）+ 导航项（图标在左、文案在右，左对齐、完整展示）
- * + 底部用户区（头像+名称，点击向上弹出 el-dropdown 二级菜单：用户名 / 外观 / 修改密码 / 退出登录）。
+ * + 底部用户区（头像+名称，点击向上弹出 el-dropdown 二级菜单：用户名 / 外观；「修改密码」「退出登录」
+ *   两项 2026-09-12 起隐藏——审计 J11/K42：Q183 决议「管理端登录暂不考虑」，且两者在纯前端 demo 里是死操作
+ *   （改密走 api/auth.js 真实 POST 无 mock、退出后被守卫立即转回）。入口只隐藏不删：ChangePasswordDialog / api/auth
+ *   随员工端封存（J2）一并裁决，`ACCOUNT_ACTIONS_ENABLED` 置 true 即恢复）。
  * 分组标题（岗位管理 / 平台配置 / 平台管理）仍用弱视觉呈现（小字、弱色、左对齐）仅作模块归属提示。
  * AdminLayout 与 PositionWorkbench 共用本组件，从根上保证两处导航视觉/结构一致。
  *
@@ -21,7 +24,10 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-// 修改密码弹窗（用户菜单入口，普通改密态）
+// 账号类菜单项（修改密码 / 退出登录）开关：2026-09-12 审计 J11/K42 按 Q183「登录暂不考虑」隐藏（见头注）。
+const ACCOUNT_ACTIONS_ENABLED = false
+
+// 修改密码弹窗（用户菜单入口，普通改密态；入口随 ACCOUNT_ACTIONS_ENABLED 隐藏）
 const pwdDialogVisible = ref(false)
 
 const userName = computed(() => userStore.userInfo?.name || '管理员')
@@ -216,7 +222,7 @@ async function onUserCommand(command) {
       </div>
     </nav>
 
-    <!-- 底部用户区（参考样例）：头像+名称一行，点击向上弹出用户菜单（外观/修改密码/退出登录） -->
+    <!-- 底部用户区（参考样例）：头像+名称一行，点击向上弹出用户菜单（外观；修改密码/退出登录随 ACCOUNT_ACTIONS_ENABLED 隐藏） -->
     <div class="rail-foot">
       <el-dropdown
         trigger="click"
@@ -236,19 +242,22 @@ async function onUserCommand(command) {
               <span class="rail-theme-label">外观</span>
               <ThemeToggle />
             </div>
-            <el-dropdown-item command="changePassword" divided>
-              <el-icon><Lock /></el-icon> 修改密码
-            </el-dropdown-item>
-            <el-dropdown-item command="logout">
-              <el-icon><SwitchButton /></el-icon> 退出登录
-            </el-dropdown-item>
+            <!-- 2026-09-12 审计 J11/K42（Q183）：demo 内隐藏账号类死操作，模板与处理函数保留待登录方案定型 -->
+            <template v-if="ACCOUNT_ACTIONS_ENABLED">
+              <el-dropdown-item command="changePassword" divided>
+                <el-icon><Lock /></el-icon> 修改密码
+              </el-dropdown-item>
+              <el-dropdown-item command="logout">
+                <el-icon><SwitchButton /></el-icon> 退出登录
+              </el-dropdown-item>
+            </template>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
     </div>
 
-    <!-- 修改密码弹窗（普通改密态，可关闭）：入口在底部用户二级菜单 -->
-    <ChangePasswordDialog v-model:visible="pwdDialogVisible" />
+    <!-- 修改密码弹窗（普通改密态，可关闭）：入口在底部用户二级菜单，随 ACCOUNT_ACTIONS_ENABLED 一并不挂载 -->
+    <ChangePasswordDialog v-if="ACCOUNT_ACTIONS_ENABLED" v-model:visible="pwdDialogVisible" />
   </aside>
 </template>
 

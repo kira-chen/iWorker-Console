@@ -16,7 +16,7 @@ import { createApp, h, nextTick, ref } from 'vue'
  *
  * el-form 桩内置一个只认 required / min / max / type:'email' 的迷你校验器：读组件真实 rules 校验 model，
  * 把错误文案渲染成 .form-err——校验断言落在用户可见文案与「是否打接口」上，而不是断 rules 对象。
- * K14（新建态「初始角色」缺 md 提示「选择一个或多个角色」）为代码缺陷，本文件不写对应用例。
+ * K14 已于 2026-09-12 闭环：新建态「初始角色」区渲染 md §三.2 L149 提示「选择一个或多个角色」，编辑态不出现（见对应用例）。
  */
 const createUser = vi.fn(() => Promise.resolve({}))
 const updateUser = vi.fn(() => Promise.resolve({}))
@@ -155,6 +155,21 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
     expect(placeholders).toEqual(['3–32 个字符', '用于展示的姓名', 'name@example.com'])
     expect([...el.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).toEqual(['用户名', '显示名', '邮箱（选填）', '初始角色'])
     expect(el.textContent).toContain('初始密码为 wemate123，用户首次登录后可修改。')
+  })
+
+  it('新建态「初始角色」区带提示文字「选择一个或多个角色」，位于卡片之前；编辑态无此提示（md §三.2 L149；审计 K14）', async () => {
+    let el = mount({ user: null })
+    await open()
+    const hint = el.querySelector('.ue-roles .ue-role-hint')
+    expect(hint.textContent.trim()).toBe('选择一个或多个角色')
+    // 提示在卡片之前（Node.DOCUMENT_POSITION_FOLLOWING = 4）
+    expect(hint.compareDocumentPosition(el.querySelector('.check-card')) & 4).toBeTruthy()
+    app.unmount(); container.remove()
+
+    el = mount({ user: { id: 9, username: 'zhangsan', displayName: '张三', email: '', status: 'active', roleCodes: ['USER'] } })
+    await open()
+    expect(el.querySelector('.ue-role-hint')).toBeNull()
+    expect(el.textContent).not.toContain('选择一个或多个角色')
   })
 
   it('取消全部角色后点【新建】→ 内联「请至少选择一个角色」，不打接口、窗口保持打开；勾回后错误消失（§三.3 L160）', async () => {

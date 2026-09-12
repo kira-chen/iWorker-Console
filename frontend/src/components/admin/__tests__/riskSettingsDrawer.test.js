@@ -6,7 +6,8 @@ import { createApp, h, nextTick } from 'vue'
  * RiskSettingsDrawer.vue 单测（2026-09-08 PRD-20260908 对齐 · md §七「风险设置」抽屉）。
  *
  * 验：标题「风险设置」；卡 1「当前审查尺度」单选 通用 / 严格 / 宽松 默认通用、选择即时生效（setCurrentScale）；
- * 卡 2 说明文 + Tab 宽松 / 通用 / 严格 默认通用 + 表格三列、四检测项（展示名）各自可选等级集合与默认值；
+ * 卡 2 说明文 + Tab 宽松 / 通用 / 严格 默认通用 + Tab 下方当前尺度适用说明（md §7.2 L156-160 三句随切换，2026-09-12 K31）
+ * + 表格三列、四检测项（展示名）各自可选等级集合与默认值；
  * 【恢复默认】当前 Tab 回默认值 + toast「已恢复默认设置」；【取消】不保存；【保存设置】只存当前 Tab → toast「「尺度」审核尺度设置已保存」并关闭。
  */
 
@@ -127,6 +128,22 @@ describe('RiskSettingsDrawer（2026-09-08 PRD-20260908 对齐）', () => {
     expect(container.querySelector('.rsd-desc').textContent).toBe('维护三套审核尺度模板，管控技能上传的安全检测策略。')
     // 原型 SCALE_DESC 旧模型文案不搬
     expect(container.textContent).not.toContain('阻断')
+  })
+
+  it('Tab 下方展示当前尺度的适用说明，三句逐字 md §7.2 L156-160 且随 Tab 切换（审计 K31）', async () => {
+    await mount()
+    const note = () => container.querySelector('.rsd-scale-note').textContent.replace(/\s+/g, '')
+    expect(note()).toBe('通用：默认策略，敏感信息达到严重风险、其余三项达到高风险时进入人工审核。')
+    tab('宽松').click()
+    await flush()
+    expect(note()).toBe('宽松：四项检测均不进入人工审核，检测结果仅作记录，适合内部可信来源的技能。')
+    tab('严格').click()
+    await flush()
+    expect(note()).toBe('严格：在通用基础上收紧，对外动作、权限范围和危险操作降到中风险即进入人工审核，适合对外发布场景。')
+    // 说明位于 Tab 之后、表格之前
+    const el = container.querySelector('.rsd-scale-note')
+    expect(el.previousElementSibling.classList.contains('rsd-tabs')).toBe(true)
+    expect(el.nextElementSibling.classList.contains('rsd-table')).toBe(true)
   })
 
   // 2026-09-09 负责人拍板「保存设置才视为生效，取消则清空当前未保存的内容」——覆盖

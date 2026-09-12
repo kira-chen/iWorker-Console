@@ -346,7 +346,7 @@ export async function getRiskConfig() {
   return cloneConfig()
 }
 
-/** 当前审查尺度（md §7.1：选择即时生效）。 */
+/** 当前审查尺度：选择先暂存为未保存改动，由【保存设置】调用后生效（md §7.1；2026-09-12 审计 K33 更正原「选择即时生效」过期注释）。 */
 export async function setCurrentScale(scale) {
   await delay(120)
   if (!AUDIT_SCALES.includes(scale)) throw err('审核尺度不合法')

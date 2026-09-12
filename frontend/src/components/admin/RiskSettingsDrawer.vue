@@ -8,6 +8,7 @@
  *      （默认打开通用）+ 表格 检测项 | 说明 | 触发审核的最低风险等级（第三列纵向单选，选项集合按检测项 md §7.2 表一）
  * 底部：【恢复默认】（当前 Tab 草稿回默认值表 + toast「已恢复默认设置」）｜【取消】（不保存，关闭）｜
  *      【保存设置】（保存当前 Tab → toast「「尺度名」审核尺度设置已保存」并关闭）。
+ *      Tab 下方展示当前尺度的适用说明（md §7.2 L156-160 三句逐字；2026-09-12 审计 K31 补，Q416 09-08 裁决补进 md）。
  * 【与原型/旧 md 的差别】原型 SCALE_DESC 段描述"阻断/告警/放行"旧模型且与默认值表自相矛盾，不搬。
  * 【2026-09-09 负责人拍板】「保存设置才视为生效，取消则清空当前未保存的内容」——覆盖 md §七 L150/L184
  * 「即时生效、取消不回滚」的旧口径：模板配置与当前审查尺度**全部走草稿**，点【保存设置】才一并落库，
@@ -49,6 +50,12 @@ const drafts = reactive({})
 
 const scaleTabs = AUDIT_SCALES
 const currentScaleOptions = CURRENT_SCALE_OPTIONS
+/** 各尺度适用说明（md §7.2 L156-160 逐字；随 Tab 切换只显当前一句，审计 K31） */
+const SCALE_NOTES = {
+  宽松: '四项检测均不进入人工审核，检测结果仅作记录，适合内部可信来源的技能。',
+  通用: '默认策略，敏感信息达到严重风险、其余三项达到高风险时进入人工审核。',
+  严格: '在通用基础上收紧，对外动作、权限范围和危险操作降到中风险即进入人工审核，适合对外发布场景。'
+}
 const items = DETECTION_ITEMS.map((item) => ({ item, label: detectionItemLabel(item), desc: ITEM_DESC[item], options: ITEM_RISK_OPTIONS[item] }))
 
 async function load() {
@@ -143,6 +150,8 @@ async function save() {
           @click="activeTab = s"
         >{{ s }}</button>
       </div>
+      <!-- 当前尺度适用说明（md §7.2 L154-160，K31） -->
+      <p class="rsd-scale-note"><strong>{{ activeTab }}</strong>：{{ SCALE_NOTES[activeTab] }}</p>
       <table v-if="drafts[activeTab]" class="rsd-table">
         <colgroup>
           <col style="width: 130px" />
@@ -213,6 +222,17 @@ async function save() {
   color: var(--c-text-strong);
   border-bottom-color: var(--c-accent);
   font-weight: 600;
+}
+/* Tab 下方适用说明（md §7.2）：与说明文同档弱色，紧贴表格 */
+.rsd-scale-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--c-text-muted);
+}
+.rsd-scale-note strong {
+  font-weight: var(--fw-medium);
+  color: var(--c-text-strong);
 }
 /* 表格（原型 .table：th 48px 灰底 / td 分隔线） */
 .rsd-table {
