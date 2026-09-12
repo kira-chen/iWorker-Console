@@ -1,3 +1,4 @@
+// 历史后端契约（stubEnv VITE_SKILL_MOCK=0 / fde 前缀），demo 不可达，仅留档；去留待裁决（审计 J3）
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // mock request（其链路含 router 需 window）。仅验证 method/path/body + source 前缀分支 + skipGlobalError。

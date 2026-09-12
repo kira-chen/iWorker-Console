@@ -4,8 +4,12 @@ import { createApp, h, ref, nextTick } from 'vue'
 
 /**
  * SkillCreateDialog（技能页 / 岗位白板共用新建对话框）行为测试。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.2 新建技能弹窗 L150-165：
+ * 技能类型必选单选（L152）、每包独立选分类（L152）、未选类型/分类/内容不可提交（L153）、
+ * 每次打开弹窗清空上次选择（L152/L165）、zip 导入返回列表 / 手动创建进编辑页（L157/L161）。
  * 原 AdminSkills #4 对话框断言（zip 主 + 手动次入口、F5c 就地回显）随本体迁到这里，
  * 并补两侧差异点：agentId/source 透传 importSkillZip、手动创建走 createFn。
+ * 2026-09-12 审计 T33：原 components/__tests__/skillCreateDialog.test.js（类型选择两窗合一，9 条）并入本文件末尾 describe。
  */
 
 vi.mock('@/api/skillFiles', () => ({ importSkillZip: vi.fn() }))
@@ -293,5 +297,160 @@ describe('SkillCreateDialog · 多包批量上传（2026-08-17）', () => {
     expect(ss.zipError).toContain('已导入 1 个')
     expect(emitted.createdBatch).toEqual([expect.objectContaining({ skillIds: ['s1'], mode: 'zip' })]) // 已成功的先行通知父级刷列表
     expect(emitted.visible).not.toContain(false) // 弹窗不关，失败项可重试
+  })
+})
+
+/**
+ * 类型选择两窗合一（2026-08-24；自 components/__tests__/skillCreateDialog.test.js 并入，审计 T33）。
+ * 背景：原交互是「点新建 → 选类型窗 → 下一步 → 二次确认『建后不可更改』→ 上传窗」；
+ * 现改为类型单选内置于上传窗顶部，一步到位。锁住合一后的关键不变式：
+ *   1) 传 typeOptions 才启用内置类型选择；不传时行为与改造前一致（岗位白板调用方不受影响）。
+ *   2) 类型不预选，未选前提交被兜底拦截（类型建后不可改，绝不能落空；md L152）。
+ *   3) source / createFn / hint 全部随所选类型切换。
+ *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 8 类（md L152）。
+ *   5) created-batch 回传 skillType，父级据此刷新列表。
+ */
+describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）', () => {
+  const platformCreate = vi.fn(async () => ({ skillId: 'sk_platform' }))
+  const systemCreate = vi.fn(async () => ({ skillId: 'sk_system' }))
+  const positionCreate = vi.fn(async () => ({ skillId: 'sk_position' }))
+  // 词表照 md L12/L152：岗位私有 / 市场技能 / 通用技能
+  const TYPE_OPTIONS = [
+    { value: 'SYSTEM_DEFAULT', label: '通用技能', source: 'system', createFn: systemCreate, hint: '通用技能提示' },
+    { value: 'POSITION', label: '岗位私有', source: 'fde', createFn: positionCreate, hint: '岗位私有提示' },
+    { value: 'PLATFORM', label: '市场技能', source: 'platform', createFn: platformCreate, hint: '市场技能提示' }
+  ]
+  /** 一个待导入 zip 项（结构对齐组件内部 zipItems 元素）。 */
+  const zipItem = (over = {}) => ({ key: 1, name: 'a.zip', raw: {}, categoryId: null, status: 'pending', error: '', skillId: null, ...over })
+  const mountTyped = (props = {}) => {
+    mount({ typeOptions: TYPE_OPTIONS, ...props })
+    return app._instance.setupState
+  }
+  beforeEach(async () => {
+    const { importSkillZip } = await import('@/api/skillFiles')
+    importSkillZip.mockResolvedValue({ skillId: 'sk_zip' })
+  })
+
+  it('传 typeOptions 才渲染类型区与「建成后不可更改」警示（md L152）', async () => {
+    mountTyped()
+    await nextTick()
+    expect(container.textContent).toContain('技能类型')
+    expect(container.textContent).toContain('建成后不可更改')
+  })
+
+  it('不传 typeOptions 时保持改造前形态（岗位白板调用方不受影响）', async () => {
+    mount({ typeOptions: [], source: 'fde' })
+    const ss = app._instance.setupState
+    await nextTick()
+    expect(container.textContent).not.toContain('技能类型')
+    expect(ss.typeMissing).toBe(false) // 未启用内置选择 → 不拦截
+    expect(ss.effectiveSource).toBe('fde')
+  })
+
+  it('类型不预选；未选时 zip 导入被兜底拦截、不发请求、红字提示补齐（md L153）', async () => {
+    const { importSkillZip } = await import('@/api/skillFiles')
+    const ss = mountTyped()
+    await nextTick()
+    expect(ss.pickedType).toBe(null)
+    expect(ss.typeMissing).toBe(true)
+    // 绕过禁用按钮直接调提交函数也必须拦住（纵深防御）
+    ss.zipItems = [zipItem()]
+    await ss.confirmImportZip()
+    expect(importSkillZip).not.toHaveBeenCalled()
+    // 拦截红字（代码现状为 zip 场景组合文案；md L153 统一为「请选择技能类型、技能分类并填写创建内容」，差异见审计 K 清单）
+    expect(ss.zipError).toContain('请选择技能类型、上传技能包，并为每个技能包选择分类')
+  })
+
+  it('未选类型时手动创建同样被拦截，三个 createFn 都不调', async () => {
+    const ss = mountTyped()
+    await nextTick()
+    ss.createMode = 'manual'
+    ss.createName = '技能X'
+    await ss.confirmCreate()
+    expect(positionCreate).not.toHaveBeenCalled()
+    expect(platformCreate).not.toHaveBeenCalled()
+    expect(systemCreate).not.toHaveBeenCalled()
+  })
+
+  it('source 随所选类型切换，并连同每包分类透传给 importSkillZip', async () => {
+    const { importSkillZip } = await import('@/api/skillFiles')
+    const ss = mountTyped()
+    ss.pickedType = 'SYSTEM_DEFAULT'
+    await nextTick()
+    expect(ss.effectiveSource).toBe('system')
+    // 每个技能包独立必选分类，未选分类会被拦截
+    ss.zipItems = [zipItem({ categoryId: '效率' })]
+    await ss.confirmImportZip()
+    expect(importSkillZip).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ source: 'system', displayCategoryId: '效率' })
+    )
+  })
+
+  it('createFn 随所选类型切换（签名 createFn({ name, categoryName })），技能页语境 hint 恒空', async () => {
+    const ss = mountTyped()
+    ss.pickedType = 'POSITION'
+    await nextTick()
+    expect(ss.effectiveHint).toBe('')
+    ss.createMode = 'manual'
+    ss.createName = '技能X'
+    ss.createCategory = '效率'
+    await ss.confirmCreate()
+    expect(positionCreate).toHaveBeenCalledWith({ name: '技能X', categoryName: '效率' })
+    expect(platformCreate).not.toHaveBeenCalled()
+    expect(systemCreate).not.toHaveBeenCalled()
+  })
+
+  it('分类选择器在技能页语境对三类均出现，选项来自 fieldDict 固定分类（md L152）', async () => {
+    const ss = mountTyped()
+    ss.pickedType = 'PLATFORM'
+    await nextTick()
+    expect(ss.showCategorySelect).toBe(true)
+    ss.pickedType = 'SYSTEM_DEFAULT'
+    await nextTick()
+    expect(ss.showCategorySelect).toBe(true)
+    await ss.loadCategoryOptions()
+    expect(ss.categoryOptions).toEqual([{ id: '工作', name: '工作' }, { id: '效率', name: '效率' }])
+  })
+
+  it('zip 导入完成 emit created-batch 并回传 skillType（父级据此刷新列表，不自动进编辑页；md L152/L157）', async () => {
+    const ss = mountTyped()
+    ss.pickedType = 'SYSTEM_DEFAULT'
+    await nextTick()
+    ss.zipItems = [zipItem({ categoryId: '效率' })]
+    await ss.confirmImportZip()
+    expect(emitted.createdBatch.at(-1)).toMatchObject({ skillIds: ['sk_zip'], skillType: 'SYSTEM_DEFAULT' })
+    expect(emitted.created.length).toBe(0)
+    expect(emitted.visible.at(-1)).toBe(false)
+  })
+
+  it('重新打开弹窗 → 类型重选、技能包 / 分类 / 手动名清空、回到 zip 初始上传态（md L152/L165 每次打开清空上次选择）', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    const visible = ref(true)
+    app = createApp({
+      setup() {
+        return () => h(SkillCreateDialog, { modelValue: visible.value, typeOptions: TYPE_OPTIONS, 'onUpdate:modelValue': (v) => (visible.value = v) })
+      }
+    })
+    for (const t of EP_TAGS) app.component(t, passthrough(t))
+    app.mount(container)
+    const ss = app._container._vnode.component.subTree.component.setupState
+    // 模拟上次用到一半：选了类型、切到手动、填了名与分类、还挂着一个包
+    ss.pickedType = 'PLATFORM'
+    ss.createMode = 'manual'
+    ss.createName = '上次没提交的名字'
+    ss.createCategory = '效率'
+    ss.zipItems = [zipItem({ categoryId: '效率' })]
+    await nextTick()
+    visible.value = false
+    await nextTick()
+    visible.value = true
+    await nextTick()
+    expect(ss.pickedType).toBe(null)
+    expect(ss.zipItems).toEqual([])
+    expect(ss.createCategory).toBe('')
+    expect(ss.createName).toBe('')
+    expect(ss.createMode).toBe('zip')
   })
 })

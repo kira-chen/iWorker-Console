@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
+import { makeElTableStubs } from './helpers/elTableStub'
 
 /**
  * 「技能」页（三类合一）单测。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §一 / §二.1 L47 / §二.2 L54 / §二.3.1 L61-65 / §四；
+ * 文末两个 describe（操作列行渲染 + 右钉列守卫 / 版本管理适配器 + 排序切换）为审计 T49①/T54 新增，
+ * 行数据直接注入 rows、适配器为纯函数——不依赖本文件顶部的 stubEnv（J4 待裁）。
+ * 真实 ElementPlus 挂载冒烟见 adminSkillsUnifiedSmoke.test.js。
  *
  * 2026-09-01 PRD 对齐改造取代旧口径（页面按交互原型 v2 最终覆写态重构，本文件整体重写）：
  * - 类型词表：岗位私有 / 市场技能 / 通用技能；三类统一三态（未发布/审核中/已发布）；
@@ -645,5 +650,177 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击"编辑"继续配置')
     expect(pushSpy).not.toHaveBeenCalled()
     expect(listUnifiedSpy.mock.calls.length).toBe(before + 1)
+  })
+})
+
+/* ====================================================================================== */
+// 2026-09-12 审计 T49①：操作列真正渲染出来的按钮 / 置灰 / title（md §二.3.1 L61-65），此前只断言 isReviewing 等谓词。
+// 行数据直接注入 rows（useAdminList 的 ref），不经列表端点，故与顶部 stubEnv 无关。
+describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+ 右钉列只有「操作」一列（fe11191 防回归）', () => {
+  const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
+  const rowStubs = {
+    ...stubs,
+    'el-table': tableStub,
+    'el-table-column': tableColStub,
+    // 透传 disabled / title（HTML 属性透传到根 button，便于断言置灰与悬停提示）
+    'el-button': { name: 'el-button', props: ['disabled', 'loading'], template: '<button :disabled="disabled"><slot /></button>' }
+  }
+  async function mountRows(rowsData) {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp(Page)
+    Object.entries(rowStubs).forEach(([k, v]) => app.component(k, v))
+    app.mount(host)
+    mountedApp = app
+    mountedHost = host
+    await nextTick()
+    await nextTick()
+    const vm = app._instance.setupState
+    vm.rows = rowsData
+    await nextTick()
+    await nextTick()
+    return { vm, host }
+  }
+  const ready = { displayCategoryId: '办公效率', icon: '▤', description: 'd', exampleQuestion: 'q', hasSkillMd: true }
+  const unpublishedReady = { ...rowPlatform, ...ready, id: 'r_unpub', name: '未发布就绪' }
+  const unpublishedMissing = { ...rowPlatform, id: 'r_miss', name: '', displayCategoryId: null, icon: '', description: '', exampleQuestion: '', hasSkillMd: false }
+  const reviewing = { ...rowPlatform, ...ready, id: 'r_rev', name: '审核中技能', publications: [{ target: 'USER_END', status: 'PENDING_REVIEW' }] }
+  const published = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+  const opsCellOf = (host, id) => {
+    const row = [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(id))
+    return row.querySelector('.el-table-column[data-label="操作"]')
+  }
+  const btnTexts = (cell) => [...cell.querySelectorAll('button')].map((b) => b.textContent.trim())
+  const btn = (cell, t) => [...cell.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
+
+  it('未发布 → 查看 / 编辑 / 发布 / 删除 4 个按钮；【删除】title「删除前需二次确认」；就绪时【发布】可点且 title 为发布说明（md L63）', async () => {
+    const { host } = await mountRows([unpublishedReady])
+    const cell = opsCellOf(host, '未发布就绪')
+    expect(btnTexts(cell)).toEqual(['查看', '编辑', '发布', '删除'])
+    expect(btn(cell, '编辑').disabled).toBe(false)
+    expect(btn(cell, '发布').disabled).toBe(false)
+    expect(btn(cell, '发布').getAttribute('title')).toBe('发布将提交审核，审核通过后生成版本快照并上线')
+    expect(btn(cell, '删除').getAttribute('title')).toBe('删除前需二次确认')
+  })
+
+  it('未发布缺必填项 → 【发布】置灰，title「请先补齐必填项：…」列出缺项（md L59/L138）', async () => {
+    const { host } = await mountRows([unpublishedMissing])
+    const cell = opsCellOf(host, '—') // 名称空，用占位符行定位
+    const pub = btn(cell, '发布')
+    expect(pub.disabled).toBe(true)
+    expect(pub.getAttribute('title')).toContain('请先补齐必填项：')
+    expect(pub.getAttribute('title')).toContain('技能名称')
+    expect(pub.getAttribute('title')).toContain('SKILL.md')
+  })
+
+  it('审核中 → 查看 / 编辑（置灰，title「审核中不可编辑」）/ 撤回 共 3 个；不出发布/删除/停用/版本管理（md L61/L64/L68）', async () => {
+    const { host } = await mountRows([reviewing])
+    const cell = opsCellOf(host, '审核中技能')
+    expect(btnTexts(cell)).toEqual(['查看', '编辑', '撤回'])
+    const edit = btn(cell, '编辑')
+    expect(edit.disabled).toBe(true)
+    expect(edit.getAttribute('title')).toBe('审核中不可编辑')
+  })
+
+  it('已发布 → 查看 / 编辑 / 停用 / 版本管理 4 个；【编辑】可点、无 title（md L65）', async () => {
+    const { host } = await mountRows([published])
+    const cell = opsCellOf(host, '已发布技能')
+    expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '版本管理'])
+    expect(btn(cell, '编辑').disabled).toBe(false)
+    expect(btn(cell, '编辑').getAttribute('title') || '').toBe('')
+    // 最新版本列展示当前已发布版本号（md L46）
+    const row = [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes('已发布技能'))
+    expect(row.querySelector('.el-table-column[data-label="最新版本"]').textContent).toContain('v1.0.0')
+  })
+
+  it('右钉（fixed）列只有「操作」一列——最近更新时间等列不再右钉（fe11191「三列看不见」防回归）', async () => {
+    const { host } = await mountRows([published])
+    const fixedHeads = [...host.querySelectorAll('.t-head[data-fixed]')]
+    expect(fixedHeads.length).toBe(1)
+    expect(fixedHeads.map((h) => h.getAttribute('data-label'))).toEqual(['操作'])
+    expect(fixedHeads[0].getAttribute('data-fixed')).toBe('right')
+    // 「工具数 / 引用情况 / 最新版本」三列表头仍在
+    const labels = [...host.querySelectorAll('.t-head')].map((h) => h.getAttribute('data-label'))
+    expect(labels).toEqual(expect.arrayContaining(['工具数', '引用情况', '最新版本']))
+  })
+})
+
+/* ====================================================================================== */
+// 2026-09-12 审计 T54：版本管理适配器（VersionDrawer 在本文件为桩，此前 versionAdapter 零用例）+ 「最近更新时间」列头排序切换。
+describe('版本管理适配器（md §四）+ 最近更新时间列头排序（md L47/L54）', () => {
+  it('打开版本管理 → 适配器 title「版本管理」、用词 禁用/启用/已启用、最后启用版守卫 tip 逐字（md §四.3 L253-254）', async () => {
+    const vm = await mountPage()
+    const row = { ...rowPlatform, displayCategoryId: '办公效率', publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+    vm.openVersionManage(row)
+    expect(vm.verMgrVisible).toBe(true)
+    const a = vm.versionAdapter
+    expect(a.title).toBe('版本管理')
+    expect(a.entityLabel).toBe('技能')
+    expect(a.name).toBe('平台技能B')
+    expect(a.delistTerm).toBe('禁用')
+    expect(a.relistTerm).toBe('启用')
+    expect(a.activeLabel).toBe('已启用')
+    expect(a.guardLastActive).toBe(true)
+    expect(a.lastActiveTip).toBe('当前版本是该技能最后一个启用版本。如需停止对外提供，请先整体下架技能')
+    expect(a.exclusiveActive).toBe(true)
+    // 顶部状态标签收拢为三态：已发布 → 可提交新版
+    expect(a.deriveView()).toMatchObject({ label: '已发布', actions: ['submit'] })
+    // 分类已选 → 无前置门
+    expect(a.submitGate()).toBe('')
+  })
+
+  it('市场技能未选分类 → submitGate 给出拦截提示（含 md L231「该技能还未选择「技能分类」，按规则不可提交发布」）；通用/岗位私有不设此门', async () => {
+    const vm = await mountPage()
+    vm.openVersionManage({ ...rowPlatform, displayCategoryId: null })
+    // 代码现状比 md L231 多一句「请到技能编辑页选择分类并保存后再来发布。」（审计 K 清单），此处只断 md 句
+    expect(vm.versionAdapter.submitGate()).toContain('该技能还未选择「技能分类」，按规则不可提交发布')
+    vm.openVersionManage({ ...rowSystem, displayCategoryId: null })
+    expect(vm.versionAdapter.submitGate()).toBe('')
+    vm.openVersionManage({ ...rowPosition, displayCategoryId: null })
+    expect(vm.versionAdapter.submitGate()).toBe('')
+  })
+
+  it('审核中行 → deriveView 显「审核中」且动作仅撤回；撤回确认文案按首发/新版分场景', async () => {
+    const vm = await mountPage()
+    vm.openVersionManage({ ...rowPlatform, publications: [{ target: 'USER_END', status: 'PENDING_REVIEW' }] })
+    const a = vm.versionAdapter
+    expect(a.deriveView()).toMatchObject({ state: 'REVIEWING', label: '审核中', actions: ['withdraw'] })
+    expect(a.withdrawText('REVIEWING')).toBe('撤回发布申请后将回到未发布态。确认撤回？')
+    expect(a.withdrawText('PUBLISHED_REVIEWING')).toBe('撤回在审新版后，改动回到「未提交」状态，线上版本不受影响。确认撤回？')
+  })
+
+  it('未打开版本管理 → 适配器为 null', async () => {
+    const vm = await mountPage()
+    expect(vm.verMgrSkill).toBe(null)
+    expect(vm.versionAdapter).toBe(null)
+  })
+
+  it('默认按最近更新时间由近到远（sort=desc、箭头 ↓）；点列头 toggleSort → asc、箭头 ↑；再点回 desc（md L54）', async () => {
+    const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp(Page)
+    Object.entries({ ...stubs, 'el-table': tableStub, 'el-table-column': tableColStub }).forEach(([k, v]) => app.component(k, v))
+    app.mount(host)
+    mountedApp = app
+    mountedHost = host
+    await nextTick()
+    await nextTick()
+    const vm = app._instance.setupState
+    vm.rows = [rowPlatform] // 空列表时 ListStates 显空态不渲染表格，先注入一行让表头出来
+    await nextTick()
+    await nextTick()
+    expect(vm.query.sort).toBe('desc')
+    expect(vm.sortArrow).toBe('↓')
+    const headBtn = host.querySelector('.time-sort')
+    expect(headBtn.textContent.replace(/\s+/g, ' ').trim()).toBe('最近更新时间 ↓')
+    headBtn.click()
+    await nextTick()
+    expect(vm.query.sort).toBe('asc')
+    expect(vm.sortArrow).toBe('↑')
+    expect(host.querySelector('.time-sort').textContent.replace(/\s+/g, ' ').trim()).toBe('最近更新时间 ↑')
+    headBtn.click()
+    await nextTick()
+    expect(vm.query.sort).toBe('desc')
   })
 })

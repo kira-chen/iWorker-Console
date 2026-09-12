@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { reactive } from 'vue'
 
 /**
- * aiLiveGenerate.js 单测（2026-09-04 PRD-20260903 对齐新增：统一 AI 实况生成机制，
- * 基准=新交互原型最终覆写态 unified-ai-live-generation-module）。
- * 覆盖：文本工具截断口径、三个本地模板生成器（模板句照原型逐字）、
+ * aiLiveGenerate.js 单测（2026-09-04 新增：统一 AI 实况生成机制）。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/各模块必填选填字段一览表.md L328-330
+ * （按钮常规字重、静态「AI 生成」/ 生成中「生成中…」、耗时统一 500ms、取数源为空置灰并悬停「请先填写<对应描述字段>」）
+ * + AI生成按钮Prompt规范.md L16（来源字段为空时置灰，悬停提示「请先填写{来源字段名}」）。
+ * 覆盖：文本工具截断口径、三个本地模板生成器（模板句为前端 demo 固定模板）、
  * useAiLiveGenerate 四件套（空源禁用+title / 生成中… 约 500ms / 点击时刻取源 / 完成 toast）。
  */
 
@@ -31,7 +33,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('文本工具（原型 shortText / limit 同口径）', () => {
+describe('文本工具（shortText / limitLen 截断口径）', () => {
   it('shortText：压空白；超长截断加省略号', () => {
     expect(shortText('  汇总  经营\n数据  ', 18)).toBe('汇总 经营 数据')
     expect(shortText('一二三四五', 3)).toBe('一二三…')
@@ -44,7 +46,7 @@ describe('文本工具（原型 shortText / limit 同口径）', () => {
   })
 })
 
-describe('本地模板生成器（模板句照原型 questionSet 逐字）', () => {
+describe('本地模板生成器（demo 固定模板句逐字）', () => {
   it('expertQuestionSet：3 条『请围绕"…"给出专业分析』式，主语 18 字收束，每条 ≤60', () => {
     const src = '汇总经营数据，识别异常并形成管理建议，输出可追溯的分析结论'
     const subject = shortText(src, 18)
@@ -182,7 +184,7 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     expect(AI_LIVE_DONE_TOAST).toBe('AI 内容已生成，请确认后保存')
   })
 
-  it('源文本取点击那刻的值（原型 liveValue：点击后再改输入不影响本次生成）', () => {
+  it('源文本取点击那刻的值（点击后再改输入不影响本次生成）', () => {
     const source = { text: '旧描述' }
     const { api, generate } = setup(source)
     api.run()

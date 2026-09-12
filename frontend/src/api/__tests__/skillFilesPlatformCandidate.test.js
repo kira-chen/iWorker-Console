@@ -1,4 +1,5 @@
 // @vitest-environment node
+// 历史后端契约（stubEnv VITE_SKILL_MOCK=0 / fde 前缀），demo 不可达，仅留档；去留待裁决（审计 J3）
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**

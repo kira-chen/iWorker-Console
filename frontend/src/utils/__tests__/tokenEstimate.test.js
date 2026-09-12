@@ -49,7 +49,7 @@ describe('formatTokenEstimate', () => {
   })
 })
 
-describe('routeDescHint / routeTriggersHint（路由体量第二量纲）', () => {
+describe('routeDescHint / routeTriggersHint（路由体量第二量纲）（零调用方，随死码清理一并删，审计 J13）', () => {
   it('description 不超阈值 → 空', () => {
     expect(routeDescHint('短描述')).toBe('')
     expect(routeDescHint('x'.repeat(ROUTE_DESC_SOFT_CHARS))).toBe('')

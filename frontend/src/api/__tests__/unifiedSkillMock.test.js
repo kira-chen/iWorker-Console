@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 // （unifiedSkillMock → request.js → router 链路触达 window，故用 jsdom，同 fieldDictMock.test.js）
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 /**
  * 技能模块内存 mock（unifiedSkillMock.js）单测——2026-09-01 PRD 对齐改造新增。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §二.1/§二.2/§二.3/§四.3、
+ * 一览表 §三 L58-62（保存门）/ L328-330（AI 生成）。
  *
  * 覆盖：三态+pendingAction 状态机（提交发布→审核中·停在审核中；撤回按 version 空/非空恢复；
  * 停用→停用审核）、引用拦截（删除/停用）、列表筛选（类型/三态/分类/关键词）、
@@ -153,6 +155,21 @@ describe('列表：筛选 + 三态 + 默认按最近更新时间由近到远', (
     expect(typeof seed.hasSkillMd).toBe('boolean')
   })
 
+  it('sort=asc → 全量按最近更新时间由远到近再切页（md §二.2 L54 点击列头切换升降序）', async () => {
+    const asc = await mock.listUnifiedSkills({ sort: 'asc', size: 100 })
+    const times = asc.list.map((r) => r.updatedAt)
+    expect([...times].sort()).toEqual(times)
+    expect(times.length).toBeGreaterThan(1)
+    // asc 与 desc 是同一全量集合、方向相反（同分钟并列行不保证稳定序，故比时间序列与 id 集合）
+    const desc = await mock.listUnifiedSkills({ sort: 'desc', size: 100 })
+    expect(desc.list.map((r) => r.updatedAt).reverse()).toEqual(times)
+    expect(new Set(desc.list.map((r) => r.id))).toEqual(new Set(asc.list.map((r) => r.id)))
+    // 排序作用于全量再切页：asc 第 1 页首行 = 全量最早更新的那一行（不是 desc 第 1 页内再倒序）
+    const ascPage1 = await mock.listUnifiedSkills({ sort: 'asc', size: 2, page: 1 })
+    expect(ascPage1.list[0].updatedAt).toBe(times[0])
+    expect(ascPage1.list[0].updatedAt <= desc.list[0].updatedAt).toBe(true)
+  })
+
   it('referenced 布尔筛选（岗位私有深链口径）', async () => {
     const yes = await mock.listUnifiedSkills({ type: 'POSITION', referenced: true, size: 100 })
     expect(yes.list.every((r) => r.refCount > 0)).toBe(true)
@@ -169,7 +186,7 @@ describe('版本历史：最后启用版守卫 + 启用互斥', () => {
     )
   })
 
-  it('启用历史版本 = 互斥启用（其余启用版本自动禁用，对齐原型 toggleHistory）', async () => {
+  it('启用历史版本 = 互斥启用（其余启用版本自动禁用；md §四.3 L252-255 同一技能同一时间最多一个已启用）', async () => {
     // 种子 301：v1.2.0 ACTIVE + v1.1.0 DELISTED
     await mock.relistSnapshot('sk_301', 'v1.1.0')
     const rows = await mock.listSnapshots('sk_301')
@@ -178,6 +195,31 @@ describe('版本历史：最后启用版守卫 + 启用互斥', () => {
     expect(rows.find((r) => r.version === 'v1.2.0').status).toBe('DELISTED')
     // 复原（恢复种子态，防跨用例串扰）
     await mock.relistSnapshot('sk_301', 'v1.2.0')
+  })
+
+  it('listSnapshots 归一化：种子旧字段 size/publisher/notes/disabledAt → sizeBytes/publishedBy/releaseNotes/delistedAt（md L250；09-09 P1 防回归）', async () => {
+    // 种子 301：v1.2.0 ACTIVE '18.6 KB' + v1.1.0 DELISTED 禁用于 2026-08-23 10:15
+    // （上一条互斥启用用例会改 disabledAt，这里按种子原样钉回，保证独立可跑）
+    mock._reset('sk_301', {
+      snapshots: [
+        { version: 'v1.2.0', status: 'ACTIVE', size: '18.6 KB', publisher: '管理员', publishedAt: '2026-08-23 18:10', disabledAt: '', notes: '当前线上版本' },
+        { version: 'v1.1.0', status: 'DELISTED', size: '17.9 KB', publisher: '管理员', publishedAt: '2026-08-20 16:30', disabledAt: '2026-08-23 10:15', notes: '历史稳定版本' }
+      ]
+    })
+    const rows = await mock.listSnapshots('sk_301')
+    const v120 = rows.find((r) => r.version === 'v1.2.0')
+    const v110 = rows.find((r) => r.version === 'v1.1.0')
+    // 文件大小：'18.6 KB' 展示串还原为字节数，供 VersionHistoryList fmtSize
+    expect(v120.sizeBytes).toBe(Math.round(18.6 * 1024))
+    expect(v120.publishedBy).toBe('管理员')
+    expect(v120.releaseNotes).toBe('当前线上版本')
+    expect(v120.delistedAt).toBe('')
+    expect(v110.delistedAt).toBe('2026-08-23 10:15')
+    expect(v110.releaseNotes).toBe('历史稳定版本')
+    // 版本号双名（versionLabel/verLabel）与旧名 size 一并保留，其它消费点不被动改
+    expect(v120.versionLabel).toBe('v1.2.0')
+    expect(v120.verLabel).toBe('v1.2.0')
+    expect(v120.size).toBe('18.6 KB')
   })
 })
 
@@ -237,5 +279,54 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
     expect(biz.some((t) => t.bizName === '人事系统')).toBe(true)
     const kw = await mock.toolPicker({ type: 'API', keyword: '客户' })
     expect(kw.map((t) => t.bizName)).toEqual(['客户数据 API'])
+  })
+})
+
+describe('unifiedSkillMock · 持久化读回（mockPersist v3；key iworker-demo-mock:unifiedSkill）', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
+  const KEY = 'iworker-demo-mock:unifiedSkill'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    globalThis.localStorage = makeStorage()
+    vi.resetModules()
+  })
+  afterEach(() => {
+    delete globalThis.localStorage
+    vi.resetModules()
+  })
+
+  it('createSkill 落盘（v=3）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+    const first = await import('@/api/unifiedSkillMock')
+    const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(3)
+    vi.resetModules()
+    const fresh = await import('@/api/unifiedSkillMock')
+    const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })
+    expect(list.map((r) => r.id)).toContain(skillId)
+    expect((await fresh.getSkillDetail(skillId)).name).toBe('读回验证技能')
+  })
+
+  it('存量 version≠3 快照 → 启动时丢弃、回代码种子（sk_301 在、伪造行不在），旧 key 被清掉', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 2, data: { idSeq: 9999, skills: [{ id: 'sk_fake', name: '伪造行', type: 'PLATFORM' }], exampleCursor: {}, reviewSnapshots: {} } })
+    )
+    const fresh = await import('@/api/unifiedSkillMock')
+    const { list } = await fresh.listUnifiedSkills({ size: 100 })
+    expect(list.some((r) => r.id === 'sk_301')).toBe(true)
+    expect(list.some((r) => r.id === 'sk_fake')).toBe(false)
+    // mockPersist 版本不符即 removeItem；之后尚无写点，key 应为空
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 })
