@@ -7,7 +7,7 @@ import {
 } from '@/utils/schema'
 
 describe('FIELD_TYPES', () => {
-  it('暴露类型白名单 string/number/integer/boolean/object/array（2026-09-01 增 integer）', () => {
+  it('暴露类型白名单 string/number/integer/boolean/object/array（md §三.5 L162 列五类；integer 为代码超集，审计 J15 待补 md）', () => {
     expect(FIELD_TYPES.map((t) => t.value)).toEqual([
       'string',
       'number',
@@ -225,7 +225,7 @@ describe('validateRows', () => {
     expect(validateRows(null)).toBeNull()
   })
 
-  it('空名行报错（PRD §7：新增字段行后字段名不能为空）', () => {
+  it('空名行报错（md prd-API.md §三.7 L187：新增字段行后字段名不能为空）', () => {
     expect(validateRows([{ name: '   ' }, { name: 'ok' }])).toContain('字段名不能为空')
     expect(validateRows([{ name: '' }])).toContain('字段名不能为空')
   })
@@ -420,7 +420,7 @@ describe('多级往返一致性 rows → schema → rows', () => {
   })
 })
 
-describe('数组类型（PRD-20260828 §三.5：数组可套子字段）', () => {
+describe('数组类型（md prd-API.md §三.5 L163：类型选「数组」可继续添加下级字段）', () => {
   it('array 字段带子字段 → items 为 object schema（子级 required 进 items.required）', () => {
     const schema = rowsToSchema([
       {

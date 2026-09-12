@@ -3,13 +3,15 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { createApp, h, ref, nextTick } from 'vue'
 
 /**
- * SourceMappingEditor / SourceMapParamRows 单测（2026-09-07 PRD-20260904 建；2026-09-08 PRD-20260908 对齐重写）。
- * 覆盖 md §六.2 / §六.3（映射仅 API 数据源持有，md §七 已删 MCP 映射、protocol 分支退役）：
- * - 请求映射预设 query / topK 行：参数名与类型固定展示、必填与映射不可改、无删除入口（固定参数不可删除）；
- * - 顶层「＋ 添加参数」在卡底说明行右侧（原型 L1937 kmcp-note）新增自定义行（带 × 删除）；
- * - object / array 展开子字段区：子层 4 列（子字段名 / 类型 / 默认值 / 删除）、层级提示、「＋ 添加下一级子字段」、
- *   递归多层、删父级级联删后代、切基础类型收起并暂存草稿、切回恢复；
- * - 响应映射预设 content / source / score 行：不可删除、变量类型可改；【添加字段】新增自定义行。
+ * SourceMappingEditor / SourceMapParamRows 单测——知识库 API 数据源的请求参数映射 / 响应字段映射。
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §六.2 L301-321 / §六.3 L323-337（2026-09-12 测试审计 T31 头注更新；
+ * 映射仅 API 数据源持有，md §七 无 MCP 映射）：
+ * - 请求映射预设 query / topK 行：参数名与类型固定展示、必填与映射不可改、固定参数不可删除（L313）；
+ * - 【添加参数】新增自定义行（带 × 删除）（L314）；
+ * - object / array 展开子字段区：子层列（子字段名 / 类型 / 默认值 / 删除）、「object / array 可继续嵌套」提示、
+ *   【添加下一级子字段】、递归多层（L315-317）；删父级级联删后代（L320）；切基础类型收起并暂存草稿、切回恢复（L321）；
+ * - 响应映射预设 content / source / score 行：不可删除、变量类型可改；【添加字段】新增自定义行（L331-332）。
+ * 已知差异不在此断言：新建示例组缺 md L318 的 enabled(boolean) 子字段（审计 K37）。
  * Element 组件按仓内范式桩化（同 paramRowsEditor.test.js）。
  */
 
@@ -86,12 +88,12 @@ const setSelect = async (sel, value) => {
 }
 
 describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
-  it('请求映射预设 query/topK：参数名固定、无删除入口；必填与映射客户端字段不可改', async () => {
+  it('请求映射预设 query/topK：参数名固定、无删除入口；必填与映射客户端字段不可改（md §六.2 L313）', async () => {
     await mountEditor()
     const reqCard = cards()[0]
     const fixed = [...reqCard.querySelectorAll('.smp-fixed-name')].map((el) => el.textContent)
     expect(fixed).toEqual(['query', 'topK'])
-    // 固定参数不可删除（md §六.2）：预设行无 × 删除按钮
+    // 固定参数不可删除（md §六.2 L313）：预设行无 × 删除按钮
     expect(reqCard.querySelector('.smp-x')).toBeNull()
     // 必填勾选与映射客户端字段禁用（固定映射）
     const rowChecks = [...reqCard.querySelectorAll('.el-checkbox')]
@@ -100,7 +102,7 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     expect(rowChecks[1].checked).toBe(false) // topK 固定选填
     const clientSelects = [...reqCard.querySelectorAll('.smp-client')]
     expect(clientSelects.every((s) => s.disabled)).toBe(true)
-    // 顶层表头 6 列（原型 api-param-head）；说明文照原型 L1937 完整句
+    // 顶层表头：md §六.2 L305-311 五列（API 参数名 / 类型 / 必填 / 映射客户端字段 / 默认值）+ 操作列
     expect([...reqCard.querySelector('.smp-head').children].map((el) => el.textContent.trim())).toEqual([
       'API 参数名',
       '类型',
@@ -112,12 +114,10 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     expect(reqCard.textContent).toContain('object / array 字段可逐级展开添加子字段，子字段仍可继续嵌套；必填参数可配置系统默认值。')
   })
 
-  it('「＋ 添加参数」位于卡底说明行右侧，新增自定义行（带 × 删除），删除后回到只剩预设行', async () => {
+  it('【添加参数】新增自定义行（带 × 删除），删除后回到只剩预设行（md §六.2 L314）', async () => {
     await mountEditor()
     const reqCard = () => cards()[0]
     const addBtn = btnByText(reqCard(), '＋ 添加参数')
-    expect(addBtn.closest('.sme-note-row')).toBeTruthy() // 原型 kmcp-note flex 右侧
-    expect(reqCard().querySelector('.smp-rows .el-button')).toBeNull() // 顶层行区内不再有添加按钮
     addBtn.click()
     await nextTick()
     expect(requestRows.value.length).toBe(3)

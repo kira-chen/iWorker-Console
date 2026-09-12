@@ -3,30 +3,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * ToolDock「业务系统」Tab 回归保护（biz__undefined 修复）。
+ * ToolDock「业务系统」Tab 回归保护（biz__undefined 修复；2026-09-12 测试审计 T4/T31 清理）。
  *
- * 背景：列表 VO 去 code（契约 §4.5.3）后，ToolDock 原 BIZ_SYSTEM 分支特殊调 listBizSystems
- * + bizSystemsToTools(读 b.code) → 产生 biz__undefined。修复：四类 Tab 统一走 listToolPicker
- * （后端 ToolPickerService 返回带正确 biz__<code> 的工具项）。
+ * 背景：业务系统列表行早已不带 code，ToolDock 曾在 BIZ_SYSTEM 分支特殊调 listBizSystems 再拼 biz__<code>，
+ * 产生 biz__undefined。修复后四类 Tab 统一走 api/position.listToolPicker（数据层返回带正确 biz__<code> 的工具项）；
+ * ToolDock 已不 import @/api/admin，原「不调 listBizSystems」桩与断言是幽灵，已删。
  *
  * 本测试断言：
- * 1) 切到 BIZ_SYSTEM Tab 时，ToolDock 调用的是 listToolPicker({type:'BIZ_SYSTEM'})，
- *    且不再调用 listBizSystems（旧特殊分支已删）。
- * 2) 渲染出的工具 code 为后端真实 biz__<code>（biz__crm_probe），绝非 biz__undefined。
+ * 1) 切到 BIZ_SYSTEM Tab 时，ToolDock 调用的是 listToolPicker({type:'BIZ_SYSTEM'})；
+ * 2) 渲染出的工具 code 为数据层真实 biz__<code>（biz__crm_probe），绝非 biz__undefined；
  * 3) 点击「插入」emit('insert', 'biz__crm_probe', ...)，回传真实 code。
  *
  * 不引 @vue/test-utils：createApp 挂 jsdom + 存根 el 图标 / v-loading 指令。
  */
 
-// 模拟 tool-picker：BIZ_SYSTEM 返回后端真实形态（code=biz__crm_probe）
+// 模拟 tool-picker：BIZ_SYSTEM 返回数据层真实形态（code=biz__crm_probe）
 const listToolPickerMock = vi.fn()
-const listBizSystemsMock = vi.fn()
 
 vi.mock('@/api/position', () => ({
   listToolPicker: (...a) => listToolPickerMock(...a)
-}))
-vi.mock('@/api/admin', () => ({
-  listBizSystems: (...a) => listBizSystemsMock(...a)
 }))
 vi.mock('@/api/dataTable', () => ({
   listDataTables: vi.fn(),
@@ -73,7 +68,6 @@ function mount(props = {}) {
 describe('ToolDock 业务系统 Tab —— biz__undefined 回归保护', () => {
   beforeEach(() => {
     listToolPickerMock.mockReset()
-    listBizSystemsMock.mockReset()
     // 默认：MCP（初始 tab）返回空；BIZ_SYSTEM 返回真实形态
     listToolPickerMock.mockImplementation(async (params) => {
       if (params?.type === 'BIZ_SYSTEM') {
@@ -95,7 +89,7 @@ describe('ToolDock 业务系统 Tab —— biz__undefined 回归保护', () => {
     container?.remove()
   })
 
-  it('切到业务系统 Tab：走 listToolPicker(type=BIZ_SYSTEM)，不调 listBizSystems', async () => {
+  it('切到业务系统 Tab：走 listToolPicker(type=BIZ_SYSTEM)', async () => {
     const el = mount()
     await nextTick()
     // 找到「业务系统」Tab 并点击
@@ -106,10 +100,9 @@ describe('ToolDock 业务系统 Tab —— biz__undefined 回归保护', () => {
     await nextTick()
     await nextTick()
 
-    // 断言：tool-picker 被以 BIZ_SYSTEM 调过；listBizSystems 从未被调
+    // 断言：tool-picker 被以 BIZ_SYSTEM 调过
     const calledBiz = listToolPickerMock.mock.calls.some((c) => c[0]?.type === 'BIZ_SYSTEM')
     expect(calledBiz).toBe(true)
-    expect(listBizSystemsMock).not.toHaveBeenCalled()
   })
 
   it('渲染真实 biz__<code>，不是 biz__undefined', async () => {
