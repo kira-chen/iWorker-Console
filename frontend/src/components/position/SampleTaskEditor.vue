@@ -377,8 +377,8 @@ function validate() {
   if (!name) {
     errors.name = '请填写任务名称'
     ok = false
-  } else if (name.length > 60) {
-    errors.name = '任务名称不超过 60 字'
+  } else if (name.length > 64) {
+    errors.name = '任务名称不超过 64 个字符'
     ok = false
   }
 
@@ -619,7 +619,7 @@ onMounted(async () => {
           <!-- 占位逐字照 md §7.2 L385（2026-09-12 审计 J6 无关部分）；maxlength 60 待负责人裁 J6 -->
           <el-input
             v-model="form.name"
-            maxlength="60"
+            maxlength="64"
             placeholder="如：每日经营分析报告"
             :class="{ 'is-err': errors.name }"
             @input="markDirty(); clearError('name')"
@@ -641,12 +641,12 @@ onMounted(async () => {
           <p v-if="errors.prompt" class="te-err">{{ errors.prompt }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 200</span></label>
+          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 500</span></label>
           <el-input
             v-model="form.remark"
             type="textarea"
             :rows="4"
-            maxlength="200"
+            maxlength="500"
             placeholder="补充任务背景或注意事项"
             @input="markDirty"
           />

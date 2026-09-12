@@ -6,7 +6,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  * VersionDrawer.vue 单测 —— 技能 / 专家 / 岗位统一的版本管理抽屉。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §四 版本管理弹窗 L225-258
  * （撤回提示「已撤回提交」L243；提交失败弹窗保持打开、保留填写内容并提示原因 L234）。
- * 提交发布成功 toast 文案不在此断言：md L79「已提交发布审核」与 L232「已提交发布 vX.Y.Z，进入审核」自相矛盾（审计 J8 待裁）。
+ * 提交发布成功 toast 文案：md L79 与 L232 曾自相矛盾（审计 J8②），2026-09-12 负责人决策 2 统一取带版本号的
+ * 「已提交发布 vX.Y.Z，进入审核」，md L79 已回写，故此处逐字断言。
  *
  * 本文件承接合并前三个弹窗各自测试的覆盖点，避免合并造成覆盖回退：
  *  · 来自 PlatformSkillVersionDialog.test：首发 v1.0.0 / 非首发 bump 进位 / 审核中撤回 /
@@ -148,6 +149,8 @@ describe('VersionDrawer · 发布语义', () => {
     await flush(2)
     btn('提交发布').click(); await flush()
     expect(a.publish).toHaveBeenCalledWith('sk_1', { bump: 'NONE', releaseNotes: '首版' })
+    // md §二.3 L80 / §四.2 L233 同一句（负责人决策 2）
+    expect(ElMessage.success).toHaveBeenCalledWith('已提交发布 v1.0.0，进入审核')
   })
 
   it('非首发：默认取建议号；选「功能更新」→ minor 进位并按该 bump 提交', async () => {

@@ -478,11 +478,13 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(ElMessage.success).toHaveBeenLastCalledWith('样例任务已创建')
   })
 
-  it('J6 基本信息三处占位逐字照 md §7.2 L385-387（maxlength 60 / 200 待裁 J6 不动）', async () => {
+  it('基本信息三处占位逐字照 md §7.2 L385-387；字数上限 = 名称 64 / 说明 500（2026-09-12 负责人决策 1：名称按一览表通用规则 64，说明取 md 的 500）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: null })
     await flush()
-    const phs = [...container.querySelectorAll('.te-card-body .stub-el-input')].slice(0, 3).map((i) => i.placeholder)
-    expect(phs).toEqual(['如：每日经营分析报告', '描述任务目标，如：分析昨日核心指标并生成周报', '补充任务背景或注意事项'])
+    const inputs = [...container.querySelectorAll('.te-card-body .stub-el-input')].slice(0, 3)
+    expect(inputs.map((i) => i.placeholder)).toEqual(['如：每日经营分析报告', '描述任务目标，如：分析昨日核心指标并生成周报', '补充任务背景或注意事项'])
+    expect(inputs[0].getAttribute('maxlength')).toBe('64')
+    expect(inputs[2].getAttribute('maxlength')).toBe('500')
   })
 
   /* ---- K1 / K2：空闲时段提前准备（md §7.3 L398-400） ---- */

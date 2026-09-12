@@ -346,7 +346,7 @@ function normalizeUpsert(payload = {}) {
 
 function assertUpsert(data) {
   if (!data.name) throw err('请填写任务名称', 'name')
-  if (data.name.length > 60) throw err('任务名称不超过 60 字', 'name')
+  if (data.name.length > 64) throw err('任务名称不超过 64 个字符', 'name')
   if (data.prompt.length > 2000) throw err('一句话指令不超过 2000 字', 'prompt')
   // 提示词非必填（md §7.7 必填只有名称 + 一句话指令；2026-09-12 审计 J7），仅守 §7.4 8000 字上限（K7）
   if (data.sopDoc.length > 8000) throw err('提示词不超过 8000 字', 'sopDoc')
