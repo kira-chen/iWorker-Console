@@ -504,6 +504,58 @@ export async function unpublishExpert(id) {
   return {}
 }
 
+/* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
+ * 由 reviewsMock.applyReviewResult 分发到此；审核中心不直接改本模块内部数组。
+ *
+ * md 依据（`prd.专家.md`）：
+ * - §L86「审核通过后状态变为"已发布"并生成 v1.0.0 版本快照；被拒绝或撤回后回到"未发布"」；
+ * - §L102「审核通过后专家变为"未发布"……被拒绝或撤回后恢复"已发布"」；
+ * - §L229「审核通过时才生成不可变专家配置快照、写入版本历史、更新最新版本号，并将新版本设为
+ *   唯一启用版本；原启用版本自动禁用」。
+ */
+export function applyExpertReviewResult(refId, requestAction, approved) {
+  const e = findExpert(refId)
+  if (!e || !e.pendingAction) return false
+  const isDelist = (requestAction || e.pendingAction) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      e.status = 'draft' // 停用通过 → 未发布（md L102）；版本历史保留
+    } else {
+      const label = e.pendingVersion || 'v1.0.0'
+      const rows = publications[e.id] || (publications[e.id] = [])
+      rows.forEach((r) => {
+        if (r.status === 'ACTIVE') {
+          r.status = 'DELISTED'
+          r.delistedAt = nowIso()
+        }
+      })
+      rows.unshift({
+        id: (rows[0]?.id || 800) + 1,
+        version: (rows[0]?.version || 0) + 1,
+        versionLabel: label,
+        status: 'ACTIVE',
+        sizeBytes: 8602,
+        publishedBy: '管理员',
+        publishedAt: nowIso(),
+        delistedAt: null,
+        releaseNotes: e.pendingReleaseNotes || ''
+      })
+      e.status = 'published'
+      e.latestVersionLabel = label
+    }
+  } else {
+    // 驳回口径与撤回同向（md L86 / L102）
+    e.status = isDelist ? 'published' : 'draft'
+  }
+  e.pendingAction = null
+  delete e.pendingVersion
+  delete e.pendingReleaseNotes
+  e.updatedAt = nowIso()
+  delete reviewSnapshots[String(e.id)]
+  persist()
+  return true
+}
+
 /* ============================ 版本历史 + 禁用/启用（互斥） ============================ */
 
 export async function listExpertPublications(id) {

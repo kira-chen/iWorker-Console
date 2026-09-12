@@ -582,6 +582,61 @@ export async function delistSkill(id) {
   return { skillId: s.id, publications: publicationsOf(s) }
 }
 
+/* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
+ * 由 reviewsMock.applyReviewResult 分发到此；审核中心不直接改本模块内部数组。
+ *
+ * md 依据（`prd.技能.md`）：
+ * - §L81「审核通过后状态变为"已发布"，自动生成 v1.0.0 版本快照并上线；审核被拒绝后回到"未发布"」；
+ * - §L97「审核通过后技能变为"未发布"，客户端停止提供；被拒绝或撤回后恢复"已发布"」；
+ * - §L120「审核通过后新版本自动启用、原启用版本自动禁用」；
+ * - §L237「被拒绝或撤回时不生成版本快照，技能恢复提交审核前的状态」。
+ */
+export function applySkillReviewResult(refId, requestAction, approved) {
+  const s = skills.find((x) => String(x.id) === String(refId))
+  if (!s || !s.pendingAction) return false
+  const isDelist = (requestAction || (s.pendingAction === 'stop' ? 'DELIST' : '')) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      // 停用通过 → 未发布（md L97）；版本快照保留（md §六「停用通过不删除历史版本」）
+      s.delisted = true
+      s.status = 'draft'
+    } else {
+      const label = s.pendingVersion || 'v1.0.0'
+      // 新版本自动启用、原启用版本自动禁用（md L120 / L253）
+      s.snapshots.forEach((x) => {
+        if (x.status === 'ACTIVE') {
+          x.status = 'DELISTED'
+          x.disabledAt = nowText()
+          x.delistedAt = x.disabledAt
+        }
+      })
+      s.snapshots.unshift({
+        version: label,
+        status: 'ACTIVE',
+        size: '18.6 KB',
+        publisher: '管理员',
+        publishedAt: nowText(),
+        disabledAt: '',
+        notes: s.pendingReleaseNotes || ''
+      })
+      s.version = label
+      s.status = 'published'
+      s.delisted = false
+      s.publishedAt = nowText()
+    }
+  } else {
+    // 驳回：不生成快照，恢复提交前状态（md L237）——曾发布过的回已发布，首发回未发布
+    s.status = s.version && !s.delisted ? 'published' : 'draft'
+  }
+  s.pendingAction = null
+  s.pendingVersion = ''
+  s.pendingReleaseNotes = ''
+  s.updatedAt = nowText()
+  delete reviewSnapshots[String(s.id)]
+  persist()
+  return true
+}
+
 /** 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。 */
 export async function relistSkill(id) {
   await delay()

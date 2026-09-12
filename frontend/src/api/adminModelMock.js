@@ -458,6 +458,32 @@ export async function rejectModel(id) {
   return toRow(m)
 }
 
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
+ * 状态口径与上方 approveModel / rejectModel 完全一致（同一套 pendingAction 状态机，不另起规则）；
+ * 差别只在：没有待审事项时静默跳过（返回 false）而不是抛错——审核中心分发不该被单个对象打断。
+ * md `prd-模型.md` §八 L186-L189（发布/停用审核通过与驳回的落态）、L155（停用默认模型通过后再取消默认标记）。
+ */
+export function applyModelReviewResult(refId, requestAction, approved) {
+  const m = findModel(refId)
+  if (!m || !m.pendingAction) return false
+  const isDelist = (requestAction || m.pendingAction) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      m.status = 'DRAFT'
+      m.isDefault = false // 停用生效同时摘掉默认标记（md L155）
+    } else {
+      m.status = 'PUBLISHED'
+      m.publishedAt = nowIso()
+    }
+  } else {
+    m.status = isDelist ? 'PUBLISHED' : 'DRAFT'
+  }
+  m.pendingAction = null
+  persist()
+  return true
+}
+
 export async function setDefaultModel(id) {
   await delay(250)
   const m = findModel(id)

@@ -377,6 +377,21 @@ export async function transition(id, action) {
   return vo(r)
 }
 
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
+ * md `prd.知识库.md` §三.4 L129「提交发布：……审核通过变为已发布」/ L130「提交停用：……审核通过变为未发布」；
+ * 驳回与撤回同向（L372 撤回即恢复提交前状态，status 未曾变 → 只需清 pendingAction）。
+ */
+export function applyKnowledgeBaseReviewResult(refId, requestAction, approved) {
+  const r = rows.find((x) => x.id === refId)
+  if (!r || !r.pendingAction) return false
+  const isDelist = (requestAction || r.pendingAction) === 'DELIST'
+  if (approved) r.status = isDelist ? 'DRAFT' : 'PUBLISHED'
+  r.pendingAction = null
+  persist()
+  return true
+}
+
 /** 提交端接线：一次提交同时落审核中心行与我的申请行（申请类型按 md 三项口径推导）。 */
 function enrollReview(r, pendingAction) {
   // 首次发布 vs 新版本发布：知识库无版本号概念（md 无版本字段），已发布过（曾进入 PUBLISHED）即算新版本发布

@@ -630,7 +630,34 @@ export async function relistMcpService(id) {
   return setAgg(id, 'PUBLISHED')
 }
 /**
- * 审核结果落态（demo 测试 / market.js 直连口径；审核中心 mock 的通过 / 驳回尚未联动到此，见 J12）：
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
+ * 复用下方 reviewMcpService 的状态机，只把 delay 与「按 market.js 契约」的出参剥掉，并在
+ * 没有待审事项时静默跳过（返回 false）——审核中心分发不该被单个对象打断。
+ *
+ * md `prd-连接器-MCP.md` §八 L158「审核通过后变为"已发布"」/ L161「停用审核通过后变为"未发布"」。
+ * 停用通过落 NOT_PUBLISHED（md 原文为"未发布"），不用 reviewMcpService 的 DELISTED
+ * ——后者是 market.js 旧后端契约口径，MCP 列表把 DELISTED 也显示为「未发布」，但审核中心
+ * 联动按 md 文字落态更直白；驳回则退回提交前状态（发布 → 未发布 / 停用 → 已发布）。
+ */
+export function applyMcpReviewResult(refId, requestAction, approved) {
+  const m = findMcp(refId)
+  if (!m || pubAgg[m.id] !== 'PENDING_REVIEW') return false
+  const isDelist = (requestAction || m.pendingAction) === 'DELIST'
+  m.pendingAction = null
+  if (approved && !isDelist) {
+    m.publishedAt = nowIso()
+    pubAgg[m.id] = 'PUBLISHED'
+  } else if (approved) {
+    pubAgg[m.id] = 'NOT_PUBLISHED'
+  } else {
+    pubAgg[m.id] = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
+  }
+  persist()
+  return true
+}
+
+/**
+ * 审核结果落态（demo 测试 / market.js 直连口径；审核中心 mock 的联动见上方 applyMcpReviewResult）：
  * approve：发布审核 → PUBLISHED（刷新 publishedAt）/ 停用审核 → DELISTED；
  * reject：发布审核 → REJECTED / 停用审核 → 回 PUBLISHED（不刷新 publishedAt）。
  */

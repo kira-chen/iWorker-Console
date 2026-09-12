@@ -762,6 +762,33 @@ export async function deactivateApi(id) {
   return toRow(a)
 }
 
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此，
+ * 审核中心不直接改本模块内部数组。口径与 bizSystemMock.approve/rejectBizSystem 同型（md 明写「逻辑同」）。
+ *
+ * md `prd-API.md` §L65「提交后状态变为"审核中"，审核通过后变为"已发布"」；
+ * §L70「确认后提交停用审核，状态变为"审核中"，审核通过后变为"未发布"，被拒绝或撤回后恢复"已发布"」。
+ */
+export function applyApiReviewResult(refId, requestAction, approved) {
+  const a = findApi(refId)
+  if (!a || a.status !== 'PENDING_REVIEW') return false
+  const isDelist = (requestAction || (a.pendingAction === 'DEACTIVATE' ? 'DELIST' : '')) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      a.status = 'NOT_PUBLISHED'
+    } else {
+      a.status = 'PUBLISHED'
+      a.publishedAt = nowIso()
+    }
+  } else {
+    // 驳回与撤回同向：待审停用被拒 → 保持已发布；待审发布被拒 → 未发布
+    a.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
+  }
+  a.pendingAction = null
+  persist()
+  return true
+}
+
 /* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */
 const QUESTION_TEMPLATES = [
   (n, d) => `帮我用「${n}」${d ? d.replace(/[。.]$/, '') : '查一下相关信息'}`,
