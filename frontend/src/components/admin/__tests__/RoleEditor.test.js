@@ -3,16 +3,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 
 /**
- * RoleEditor（角色编辑器，ADMIN 专属）行为契约。
- * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于 el-tree 命令式 API + Module code 权限项），
- * 本文件按新契约重写：
- * - 权限区弃 el-tree，按原型 permission-tree 结构：用户端整组勾选（不展开子页面）、
- *   管理端分组卡片式复选 + 组头「N/M」计数、底部实时「已选择 N 个页面」；权限项=页面名；
- * - 标题：新建「新建角色」/ 编辑「编辑角色与权限」；footer：新建【创建角色】/ 编辑【保存】；
- * - 勾选为 0 提交 → 就地「请至少开通 1 个页面」不提交；
- * - 编辑态底部提示「该角色当前绑定 N 个用户。…」；
- * - 保留既有 API 分发契约：新建只调 createRole（不传 code）；编辑改名/改权限按需分别下发、
- *   都没改不发写请求、集合比对与顺序无关。
+ * RoleEditor（角色编辑器，ADMIN 专属）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/角色/prd.角色.md §三（角色编辑页）
+ * + 各模块必填选填字段一览表.md §八（历史出处：2026-09-01 PRD 对齐改造 + 2026-09-08 原型复刻批次 2A G#11/#12）。
+ *
+ * 覆盖：
+ *  - §三.1 两态：新建「新建角色」+【取消】【创建角色】/ 编辑「编辑角色与权限」+【取消】【保存】；每次打开重新加载并清除上次校验提示；
+ *  - §三.2 角色名称：占位「如 内容运营」、maxlength 64、hint「角色名称用于用户分配，系统标识自动生成」、为空「请填写角色名称」不保存；
+ *  - §三.3 页面权限：用户端整组勾选（不展开子页面）、管理端分组 + 组头「N/M」、范围 / 分组联动勾选与部分选中态、
+ *    底部实时「已选择 N 个页面」、为 0 →「请至少开通 1 个页面」；编辑态回填 + 底部「该角色当前绑定 N 个用户。…」；
+ *  - §三.4 / §三.5 成功 toast「角色已创建」/「角色与权限已保存」；失败显具体原因或「保存失败，请重试」并保持打开；权限树加载失败态；
+ *  - API 分发契约：新建只调 createRole（不传 code）；编辑改名 / 改权限按需分别下发、都没改不发写请求、集合比对与顺序无关。
+ *
+ * el-form 桩内置只认 required 的迷你校验器：读组件真实 rules 校验 model，错误文案渲染成 .form-err。
+ * 末尾「toast『请先补齐必填项』」用例属审计 J9 待裁决（md §三.4 无此 toast），本轮不动。
  */
 
 const createRole = vi.fn(() => Promise.resolve({}))
@@ -36,22 +39,39 @@ const stubs = {
     template: '<div class="el-drawer"><div class="dr-title"><slot name="header">{{ title }}</slot></div><slot /><div class="dr-footer"><slot name="footer" /></div></div>'
   },
   'el-form': {
-    template: '<form><slot /></form>',
+    props: ['model', 'rules'],
+    data: () => ({ errors: {} }),
+    template: '<form><slot /><div v-for="(m, k) in errors" :key="k" class="form-err" :data-prop="k">{{ m }}</div></form>',
     methods: {
+      // 迷你校验器：按组件传入的 rules 检查 model 的 required 项，不过即记该项文案
       validate(cb) {
-        return cb ? cb(true) : Promise.resolve(true)
+        const errors = {}
+        for (const [prop, list] of Object.entries(this.rules || {})) {
+          const s = String(this.model?.[prop] ?? '')
+          const hit = list.find((r) => r.required && !s.trim())
+          if (hit) errors[prop] = hit.message
+        }
+        this.errors = errors
+        const ok = !Object.keys(errors).length
+        return cb ? cb(ok) : Promise.resolve(ok)
       },
-      clearValidate() {}
+      clearValidate() {
+        this.errors = {}
+      }
     }
   },
   'el-form-item': { props: ['label'], template: '<div class="el-form-item"><label><slot name="label">{{ label }}</slot></label><slot /></div>' },
-  'el-input': { props: ['modelValue', 'disabled'], template: '<input :disabled="disabled" :value="modelValue" />' },
+  'el-input': {
+    props: ['modelValue', 'disabled', 'placeholder', 'maxlength'],
+    emits: ['update:modelValue'],
+    template: '<input :disabled="disabled" :placeholder="placeholder" :maxlength="maxlength" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  },
   'el-checkbox': {
     props: { modelValue: Boolean, indeterminate: Boolean },
     emits: ['change'],
     template: '<input type="checkbox" class="el-checkbox" :checked="modelValue" :data-ind="indeterminate" @change="$emit(\'change\', $event.target.checked)" />'
   },
-  'el-button': { props: ['disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>' },
+  'el-button': { props: ['disabled', 'loading'], emits: ['click'], template: '<button :disabled="disabled" :data-loading="loading ? \'1\' : null" @click="$emit(\'click\')"><slot /></button>' },
   'el-empty': { props: ['description'], template: '<div class="el-empty">{{ description }}</div>' },
   'el-skeleton': { template: '<div class="el-skeleton" />' }
 }
@@ -128,7 +148,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('RoleEditor · 权限区形态（2026-09-01 原型对齐）', () => {
+describe('RoleEditor · 权限区形态（md §三.3；历史出处：2026-09-01 原型对齐）', () => {
   it('用户端整组勾选不展开子页面；管理端出分组卡片 + 组头 N/M 计数', async () => {
     const el = mount({ role: null })
     await open()
@@ -171,7 +191,7 @@ describe('RoleEditor · 权限区形态（2026-09-01 原型对齐）', () => {
       .toBe('该角色当前绑定 3 个用户。权限调整保存后将对这些用户生效。')
   })
 
-  it('名称 hint 照原型：「角色名称用于用户分配，系统标识自动生成」', async () => {
+  it('名称 hint「角色名称用于用户分配，系统标识自动生成」（md §三.2 L109）', async () => {
     const el = mount({ role: null })
     await open()
     expect(el.querySelector('.re-hint').textContent).toBe('角色名称用于用户分配，系统标识自动生成')
@@ -273,7 +293,189 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
   })
 })
 
-describe('RoleEditor · 2026-09-08 原型复刻批次 2A（G#11 分区卡片 / G#12 校验 toast）', () => {
+describe('RoleEditor · 角色名称（md §三.2 L108-110 / 一览表 §八）', () => {
+  it('占位「如 内容运营」、maxlength 64（超长不能继续输入）', async () => {
+    const el = mount({ role: null })
+    await open()
+    const input = el.querySelector('.re-name-item input')
+    expect(input.placeholder).toBe('如 内容运营')
+    expect(input.getAttribute('maxlength')).toBe('64')
+  })
+
+  it('角色名称为空提交 →「请填写角色名称」，不打接口、抽屉保持打开；勾了权限也不保存', async () => {
+    const el = mount({ role: null })
+    await open()
+    await toggle(pageBox(el, '驾驶舱'))
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    expect(el.querySelector('.form-err[data-prop="name"]').textContent).toBe('请填写角色名称')
+    expect(el.querySelector('.re-perm-err')).toBeNull()
+    expect(createRole).not.toHaveBeenCalled()
+    expect(savedSpy).not.toHaveBeenCalled()
+  })
+
+  it('名称空 + 权限 0 同时提交 → 两处提示并行亮起（§三.5 L133-134）', async () => {
+    const el = mount({ role: null })
+    await open()
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    expect(el.querySelector('.form-err[data-prop="name"]').textContent).toBe('请填写角色名称')
+    expect(el.querySelector('.re-perm-err').textContent).toBe('请至少开通 1 个页面')
+    expect(createRole).not.toHaveBeenCalled()
+  })
+})
+
+describe('RoleEditor · 权限联动与部分选中（md §三.3 L116-119）', () => {
+  it('勾管理端范围头 → 其下全部页面入选、组头计数 3/3；取消 → 全部取消', async () => {
+    const el = mount({ role: null })
+    await open()
+    await toggle(scopeHeads(el)[1])
+    expect(el.querySelector('.re-scope-count').textContent.trim()).toBe('3/3')
+    expect(['驾驶舱', '岗位', '岗位管理'].map((p) => pageBox(el, p).checked)).toEqual([true, true, true])
+    expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 3 个页面')
+    await toggle(scopeHeads(el)[1], false)
+    expect(['驾驶舱', '岗位', '岗位管理'].map((p) => pageBox(el, p).checked)).toEqual([false, false, false])
+    expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 0 个页面')
+  })
+
+  it('勾分组「02 岗位」→ 组内两页入选、分组勾中；范围头显部分选中（data-ind）', async () => {
+    const el = mount({ role: null })
+    await open()
+    const groupBoxes = [...el.querySelectorAll('.re-group-title input')]
+    await toggle(groupBoxes[1])
+    expect(pageBox(el, '岗位').checked).toBe(true)
+    expect(pageBox(el, '岗位管理').checked).toBe(true)
+    expect(pageBox(el, '驾驶舱').checked).toBe(false)
+    expect(groupBoxes[1].checked).toBe(true)
+    expect(groupBoxes[1].dataset.ind).toBe('false')
+    // 范围头：3 页选了 2 → 未全选但部分选中
+    expect(scopeHeads(el)[1].checked).toBe(false)
+    expect(scopeHeads(el)[1].dataset.ind).toBe('true')
+    expect(el.querySelector('.re-scope-count').textContent.trim()).toBe('2/3')
+  })
+
+  it('只勾分组内一页 → 分组与范围头都显部分选中；补齐组内页面 → 分组变勾中', async () => {
+    const el = mount({ role: null })
+    await open()
+    const groupBoxes = [...el.querySelectorAll('.re-group-title input')]
+    await toggle(pageBox(el, '岗位'))
+    expect(groupBoxes[1].checked).toBe(false)
+    expect(groupBoxes[1].dataset.ind).toBe('true')
+    expect(scopeHeads(el)[1].dataset.ind).toBe('true')
+    await toggle(pageBox(el, '岗位管理'))
+    expect(groupBoxes[1].checked).toBe(true)
+    expect(groupBoxes[1].dataset.ind).toBe('false')
+    expect(scopeHeads(el)[1].dataset.ind).toBe('true')
+    await toggle(pageBox(el, '驾驶舱'))
+    expect(scopeHeads(el)[1].checked).toBe(true)
+    expect(scopeHeads(el)[1].dataset.ind).toBe('false')
+  })
+
+  it('用户端整组：勾中即 4 页全开、不显部分选中；取消即全关', async () => {
+    const el = mount({ role: null })
+    await open()
+    await toggle(scopeHeads(el)[0])
+    expect(scopeHeads(el)[0].checked).toBe(true)
+    expect(scopeHeads(el)[0].dataset.ind).toBe('false')
+    await toggle(scopeHeads(el)[0], false)
+    expect(scopeHeads(el)[0].checked).toBe(false)
+    expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 0 个页面')
+  })
+})
+
+describe('RoleEditor · 重开与保存失败（md §三.1 L104 / §三.4 L128-129 / §三.5 L136-137）', () => {
+  async function close() {
+    setVisible(false)
+    await nextTick()
+    await nextTick()
+  }
+
+  it('新建态关闭后重开 → 名称回空、勾选清空、上次校验提示（名称 / 权限）清除', async () => {
+    const el = mount({ role: null })
+    await open()
+    const input = el.querySelector('.re-name-item input')
+    input.value = '草稿'
+    input.dispatchEvent(new Event('input'))
+    await toggle(pageBox(el, '驾驶舱'))
+    await toggle(pageBox(el, '驾驶舱'), false)
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    expect(el.querySelector('.re-perm-err')).toBeTruthy()
+    await toggle(pageBox(el, '岗位'))
+    await close()
+    await open()
+    expect(el.querySelector('.re-name-item input').value).toBe('')
+    expect(pageBox(el, '岗位').checked).toBe(false)
+    expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 0 个页面')
+    expect(el.querySelector('.re-perm-err')).toBeNull()
+    expect(el.querySelector('.form-err')).toBeNull()
+  })
+
+  it('编辑态关闭后重开 → 重新回填该角色已保存的名称与权限，未保存改动不保留', async () => {
+    const el = mount({ role: { id: 7, name: '系统配置员', modules: ['驾驶舱'], userCount: 3 } })
+    await open()
+    const input = el.querySelector('.re-name-item input')
+    input.value = '改过的名'
+    input.dispatchEvent(new Event('input'))
+    await toggle(pageBox(el, '岗位'))
+    await toggle(pageBox(el, '驾驶舱'), false)
+    await close()
+    await open()
+    expect(el.querySelector('.re-name-item input').value).toBe('系统配置员')
+    expect(pageBox(el, '驾驶舱').checked).toBe(true)
+    expect(pageBox(el, '岗位').checked).toBe(false)
+    expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 1 个页面')
+  })
+
+  it('保存失败：有具体原因显原因、无原因显「保存失败，请重试」；抽屉保持打开、内容保留、不 emit saved', async () => {
+    const el = mount({ role: null })
+    await open()
+    const input = el.querySelector('.re-name-item input')
+    input.value = '内容运营'
+    input.dispatchEvent(new Event('input'))
+    await toggle(pageBox(el, '驾驶舱'))
+    createRole.mockRejectedValueOnce(new Error('角色名称已存在'))
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    await nextTick()
+    expect(ElMessage.error).toHaveBeenLastCalledWith('角色名称已存在')
+    createRole.mockRejectedValueOnce({})
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    await nextTick()
+    expect(ElMessage.error).toHaveBeenLastCalledWith('保存失败，请重试')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(savedSpy).not.toHaveBeenCalled()
+    expect(el.querySelector('.re-name-item input').value).toBe('内容运营')
+    expect(pageBox(el, '驾驶舱').checked).toBe(true)
+  })
+
+  it('保存期间按钮显进行中（loading），完成后恢复（§三.4 L128）', async () => {
+    let finish
+    createRole.mockReturnValue(new Promise((r) => { finish = r }))
+    const el = mount({ role: null })
+    await open()
+    inst().setupState.form.name = '内容运营'
+    await toggle(pageBox(el, '驾驶舱'))
+    submitBtn(el).click()
+    await nextTick()
+    await nextTick()
+    expect(submitBtn(el).dataset.loading).toBe('1')
+    finish({})
+    await nextTick()
+    await nextTick()
+    await nextTick()
+    expect(submitBtn(el).dataset.loading).toBeUndefined()
+    expect(savedSpy).toHaveBeenCalled()
+  })
+})
+
+describe('RoleEditor · 分区卡片与校验态（历史出处：2026-09-08 原型复刻批次 2A G#11 分区卡片 / G#12 校验 toast）', () => {
   it('抽屉体为两张 section-card：「角色信息」（名称字段 + hint）与「页面权限」（section-sub + 权限树 + 汇总）；编辑态 danger-hint 在卡外', async () => {
     const el = mount({ role: { id: 7, name: '系统配置员', modules: ['驾驶舱'], userCount: 3 } })
     await open()

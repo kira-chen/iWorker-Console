@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 
 /**
- * UserRoleDialog（设置角色窗）—— 2026-09-08 原型复刻批次 2A（G#8）行为契约：
+ * UserRoleDialog（设置角色窗）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/用户/prd-用户.md §二.2.3（设置角色）
+ * （历史出处：2026-09-08 原型复刻批次 2A G#8）：
  *  - 520px admin-dialog 壳；首段「为 <strong>显示名</strong>（用户名）设置角色。保存后将全量替换当前角色。」，显示名空时用用户名；
  *  - 角色为 RoleCheckCards 卡片复选，打开时按当前角色预勾；
  *  - 未选 → 内联「请至少选择一个角色」、窗口保持打开、不打接口；

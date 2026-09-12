@@ -3,7 +3,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 
 /**
- * RoleCheckCards（角色卡片复选，2026-09-08 原型复刻批次 2A · G#6/#8）行为契约：
+ * RoleCheckCards（角色卡片复选）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/用户/prd-用户.md
+ * §二.2.3（设置角色：可选择一个或多个角色）/ §三.2（新建：初始角色多选）（历史出处：2026-09-08 原型复刻批次 2A G#6/#8）：
  *  - 两列 .check-list 内每个角色一张 .check-card（原生 checkbox + 角色名 + 「授予对应平台权限」副文案）；
  *  - 勾选 / 取消 emit update:modelValue，输出按选项顺序稳定；
  *  - error 非空 → 区块加 is-invalid 并在下方内联 .error-text。
