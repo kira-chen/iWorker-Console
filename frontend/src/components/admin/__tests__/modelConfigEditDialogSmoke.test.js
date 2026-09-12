@@ -49,8 +49,25 @@ const clickFoot = (label) => [...drawer().querySelectorAll('.el-drawer__footer .
  * 异步出结论后、红字还要再等 100ms 防抖才渲染/消失，故这里真等 250ms 再冲刷渲染队列（不是 flaky 补丁，是组件设计；
  * 实测 120ms 偶发赶不上「结论 + 防抖」两段）。
  */
+/**
+ * 等 ElFormItem 的红字稳定下来。
+ * element-plus 2.14 的 ElFormItem.shouldShowError 读 refDebounced(validateState, 100)，
+ * 校验结果要过 100ms 防抖才反映到 DOM。本用例既断「红字出现」也断「红字消失」，不能按条数轮询；
+ * 固定 sleep 又在全量并发下偶发不够（2026-09-13 实测：单跑绿、全量偶红）。
+ * 故改为「轮询到红字集合连续两轮不变即认为已稳定」，最长兜底 3s——与机器快慢解耦。
+ */
 async function settleErrors() {
-  await new Promise((r) => setTimeout(r, 250))
+  let prev = null
+  let stable = 0
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 50))
+    await flushAll(2)
+    const cur = errorTexts().join('|')
+    stable = cur === prev ? stable + 1 : 0
+    prev = cur
+    // 至少等过一次防抖窗（100ms）再认稳定，避免校验还没开始就"稳定"了
+    if (stable >= 2 && i >= 3) return
+  }
   await flushAll(4)
 }
 
