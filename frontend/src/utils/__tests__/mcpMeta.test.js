@@ -1,3 +1,17 @@
+/**
+ * mcpMeta 纯函数守卫。
+ *
+ * 2026-09-12 头注更新（审计 D8）：原各 describe 引用的「契约 §1.3 / §4.1 / §5.1 / 展示规格 §3.1.1」
+ * 均为已退役的前后端接口契约（发布单元 2026-09-01 一并退役）；现口径 = md
+ * `docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md` §二.2 L57（连接状态三态
+ * 「连接正常 / 连接异常 / 未探测」）+ mcpMeta.js 自身注释。四态 displayStatus（含 DISABLED）
+ * 由 api/mcpConnectorMock 下发，MCP 列表侧把 DISABLED 折回 UNKNOWN（AdminMcp.mcpConnStatus）。
+ *
+ * isRedDot / countUnhealthy / fmtCount / fmtDuration / fmtPercent / hasUsage 六个导出在
+ * 当前代码里无调用方（页头红点角标 2026-08-22 已删、使用统计列未落地）——用例保留但单列标注（J13）。
+ * 原「McpEditor 失败回显不引用 form.endpoint」源码正则用例已迁至
+ * components/admin/__tests__/mcpEditor.test.js（审计 D9 / T37）。
+ */
 import { describe, it, expect } from 'vitest'
 import {
   connMeta,
@@ -11,7 +25,7 @@ import {
   hasUsage
 } from '@/utils/mcpMeta'
 
-describe('connMeta — 三态连接标签（契约 §1.3）', () => {
+describe('connMeta — 三态连接标签（md MCP §二.2 L57 三态文案）', () => {
   it('ok → success/连接正常', () => {
     expect(connMeta('ok')).toEqual({ tag: 'success', label: '连接正常' })
   })
@@ -28,7 +42,7 @@ describe('connMeta — 三态连接标签（契约 §1.3）', () => {
   })
 })
 
-describe('resolveDisplayStatus — 检活四态归一（切片3a，契约 §4.1/§5.1）', () => {
+describe('resolveDisplayStatus — 检活四态归一（mock 下发 displayStatus 优先，缺省按 status/connStatus 派生）', () => {
   it('优先取后端 displayStatus 四态', () => {
     expect(resolveDisplayStatus({ displayStatus: 'HEALTHY' })).toBe('HEALTHY')
     expect(resolveDisplayStatus({ displayStatus: 'UNHEALTHY' })).toBe('UNHEALTHY')
@@ -54,7 +68,7 @@ describe('resolveDisplayStatus — 检活四态归一（切片3a，契约 §4.1/
   })
 })
 
-describe('isRedDot / countUnhealthy — 红点提示（契约 §4.1）', () => {
+describe('isRedDot / countUnhealthy — 红点提示（零调用方，随死码清理一并删，审计 J13）', () => {
   it('优先取后端 redDot 布尔', () => {
     expect(isRedDot({ redDot: true, displayStatus: 'HEALTHY' })).toBe(true)
     expect(isRedDot({ redDot: false, displayStatus: 'UNHEALTHY' })).toBe(false)
@@ -147,7 +161,7 @@ describe('mergeFetchedTools — 拉取刷新（工具清单只读化：server �
   })
 })
 
-describe('使用统计格式化（展示规格 §3.1.1 D/E）— 不外泄 NaN/null/Infinity', () => {
+describe('使用统计格式化 fmtCount / fmtDuration / fmtPercent / hasUsage（零调用方，随死码清理一并删，审计 J13）', () => {
   describe('fmtCount — 千分位，无效值归 0', () => {
     it('正常千分位分组', () => {
       expect(fmtCount(0)).toBe('0')
@@ -221,31 +235,5 @@ describe('使用统计格式化（展示规格 §3.1.1 D/E）— 不外泄 NaN/n
       expect(hasUsage(null)).toBe(false)
       expect(hasUsage(undefined)).toBe(false)
     })
-  })
-})
-
-describe('失败提示脱敏（契约 §6）— 渲染层不应拼出 endpoint', () => {
-  // McpEditor 直接展示后端已脱敏的 failReason/message，前端不再二次拼接 endpoint。
-  // 此处以静态源码断言守住：失败回显中不得引用 form.endpoint。
-  //
-  // 2026-09-09 原型复刻批次 3A · M6：结果回显由双 el-alert 改为原型 `.result` 单行提示框，
-  // 文案在 script 侧的 testResultText computed 里拼。断言随之改为盯这个 computed 的函数体。
-  it('McpEditor 失败回显不引用 form.endpoint', async () => {
-    const fs = await import('node:fs')
-    const path = await import('node:path')
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../../components/admin/McpEditor.vue'),
-      'utf-8'
-    )
-    // 结果文案 computed 整体不得插值 endpoint（成功/失败两分支都在其中）
-    const start = src.indexOf('const testResultText = computed(')
-    expect(start).toBeGreaterThan(-1)
-    const body = src.slice(start, src.indexOf('\n})', start))
-    // 失败分支用的是后端已脱敏的 failReason（computed 里 r = testResult.value）
-    expect(body).toContain('failReason')
-    expect(body).not.toMatch(/form\.endpoint/)
-    // 模板侧的结果框也只吐 computed 结果，不拼 endpoint
-    const resultBlock = src.slice(src.indexOf('class="md-conn-result"'))
-    expect(resultBlock.slice(0, resultBlock.indexOf('</div>'))).not.toMatch(/form\.endpoint/)
   })
 })

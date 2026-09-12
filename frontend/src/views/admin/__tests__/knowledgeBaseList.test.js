@@ -3,12 +3,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * KnowledgeBaseList.vue（知识库管理子页）列表契约。
- * 2026-09-04 按 PRD-20260903《prd.知识库.md》§三 对齐重写：
- * - 列口径：数据源「上传 ×N / API ×N / MCP ×N」/ 文档数仅上传引用 / 可见范围派生 / 三态 pendingAction 优先；
- * - 操作矩阵：查看·编辑固定；审核中+撤回；未发布+发布·删除；已发布+停用·检索测试；
- * - 四类确认弹窗与 toast 文案逐字照 md §三.4.3；
- * - 跨模块 query（md §三.8）：positionId 进入即筛岗位类型并向编辑器传岗位锁。
+ * KnowledgeBaseList.vue（知识库管理子页，AdminKnowledgeBase 容器 ?tab=kb）列表契约。
+ * 2026-09-12 审计改名：原文件名 adminKnowledgeBase.test.js 与被测组件不符（容器页 AdminKnowledgeBase.vue
+ * 的用例另见 adminKnowledgeBaseShell.test.js）。
+ *
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
+ * - §三.2 列表字段：知识库名称（图标 + 名称并排；点名称进入编辑或查看）/ 类型 / 数据源「上传 ×N / API ×N / MCP ×N」/
+ *   文档数仅上传引用 / 可见范围派生 / 状态三态（pendingAction 优先「审核中」）/ 操作矩阵；
+ * - §三.4.3 四类确认弹窗与 toast 逐字；
+ * - §三.8 跨模块 query：positionId 进入即筛岗位类型并向编辑器传岗位锁，action / kbId 一次性消费；
+ * - §二.2 L42-43 刷新保留：查询条件与分页位置落 URL query（kw / kbType / st / p；28ee4b0），与数据源子页键互清。
+ *
+ * 全局桩 el-*（表格桩按行渲染 default 插槽）；StatusTag / ListToolbar / ListStates / ListPagination 为组件局部
+ * import 的真组件（全局同名桩对其无效）。
  */
 const api = {
   listKnowledgeBases: vi.fn(),
@@ -40,7 +47,6 @@ vi.mock('@/components/admin/KnowledgeSearchDialog.vue', () => ({
 }))
 
 const stubs = {
-  StatusTag: { props: ['type'], template: '<span class="status-tag" :data-type="type"><slot /></span>' },
   'el-icon': { template: '<i><slot /></i>' },
   'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   'el-select': { props: ['modelValue'], emits: ['update:modelValue', 'change'], template: '<select @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\')"><slot /></select>' },
@@ -85,8 +91,8 @@ const clickOp = async (rowEl, text) => {
 }
 
 const LIST = [
-  { id: 'kb_1', name: '产品库', kbType: 'ENTERPRISE', description: '全线产品资料', status: 'PUBLISHED', pendingAction: null, docCount: 1284, sources: [{ sourceType: 'MCP', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }] },
-  { id: 'kb_2', name: '法规库', kbType: 'ENTERPRISE', description: '', status: 'DRAFT', pendingAction: 'PUBLISH', docCount: 0, sources: [{ sourceType: 'API', status: 'ENABLED' }] },
+  { id: 'kb_1', name: '产品库', icon: '📦', kbType: 'ENTERPRISE', description: '全线产品资料', status: 'PUBLISHED', pendingAction: null, docCount: 1284, sources: [{ sourceType: 'MCP', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_2', name: '法规库', icon: '/api/public/icons/law.png', kbType: 'ENTERPRISE', description: '', status: 'DRAFT', pendingAction: 'PUBLISH', docCount: 0, sources: [{ sourceType: 'API', status: 'ENABLED' }] },
   { id: 'kb_3', name: '话术库', kbType: 'POSITION', scopeRefName: '销售顾问', description: '', status: 'PUBLISHED', pendingAction: 'DELIST', docCount: 3, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'DISABLED' }] },
   { id: 'kb_4', name: '空库', kbType: 'EXPERT', scopeRefName: '', description: '', status: 'DRAFT', pendingAction: null, docCount: 0, sources: [] }
 ]
@@ -106,7 +112,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('KnowledgeBaseList 列表契约（2026-09-04 PRD-20260903 对齐）', () => {
+describe('KnowledgeBaseList 列表契约（md §三.2 / §三.4.3 / §三.8）', () => {
   it('数据源列按已启用类型汇总「上传 ×N / API ×N / MCP ×N」；无引用显示 —', async () => {
     await mount()
     expect(cell(rowByName('产品库'), '数据源')).toBe('上传 ×1 / MCP ×1')
@@ -263,5 +269,92 @@ describe('KnowledgeBaseList 列表契约（2026-09-04 PRD-20260903 对齐）', (
     const dlg = container.querySelector('.stub-search')
     expect(dlg.dataset.visible).toBe('true')
     expect(dlg.dataset.id).toBe('kb_1')
+  })
+
+  /**
+   * 2026-09-12 测试审计补缺口 E2：图标列（aee4775）+ 点名称进入编辑或查看（md §三.2 L64）。
+   * 真 StatusTag 渲染 .status-tag（局部 import，全局桩无效，原桩已删）。
+   */
+  describe('E2 图标列与名称点击（md §三.2 L64）', () => {
+    it('emoji 图标按文本渲染；图片 URL 渲染 <img src>；无图标占位带 .is-empty', async () => {
+      await mount()
+      const icon = (n) => rowByName(n).querySelector('.kb-cell-icon')
+      expect(icon('产品库').textContent.trim()).toBe('📦')
+      expect(icon('产品库').classList.contains('is-empty')).toBe(false)
+      expect(icon('法规库').querySelector('img').getAttribute('src')).toBe('/api/public/icons/law.png')
+      expect(icon('空库').classList.contains('is-empty')).toBe(true)
+      expect(icon('空库').textContent.trim()).toBe('')
+    })
+
+    it('点名称：审核中的库以只读 view 打开；未发布 / 已发布以 edit 打开', async () => {
+      await mount()
+      rowByName('法规库').querySelector('.kb-name').click()
+      await flush()
+      let editor = container.querySelector('.stub-editor')
+      expect(editor.dataset).toMatchObject({ visible: 'true', id: 'kb_2', mode: 'view' })
+      rowByName('空库').querySelector('.kb-name').click()
+      await flush()
+      editor = container.querySelector('.stub-editor')
+      expect(editor.dataset).toMatchObject({ id: 'kb_4', mode: 'edit' })
+      rowByName('产品库').querySelector('.kb-name').click()
+      await flush()
+      expect(container.querySelector('.stub-editor').dataset).toMatchObject({ id: 'kb_1', mode: 'edit' })
+    })
+  })
+
+  /**
+   * 2026-09-12 测试审计补缺口 E1：查询条件与分页位置的刷新保持（md §二.2 L42-43「刷新页面后保留当前页签」
+   * 「尽量保留用户已输入的查询条件和分页位置」；实现 28ee4b0：落 URL query kw / kbType / st / p）。
+   */
+  describe('E1 URL query 状态保持（md §二.2 L42-43）', () => {
+    it('带 kw / st / p 的地址刷新进入 → 首拉即按 {keyword, status, page:2} 取数，输入框回显关键词', async () => {
+      api.listKnowledgeBases.mockResolvedValue({ list: LIST, total: 20 }) // 20 条 → 有第 2 页
+      routeMock.query = { tab: 'kb', kw: '产品', st: 'PUBLISHED', p: '2' }
+      await mount()
+      const first = api.listKnowledgeBases.mock.calls[0][0]
+      expect(first).toEqual(expect.objectContaining({ keyword: '产品', status: 'PUBLISHED', page: 2 }))
+      expect(first).not.toHaveProperty('kbType')
+      expect(container.querySelector('input').value).toBe('产品')
+      expect(container.querySelector('.list-pager .page-btn.active')?.textContent.trim()).toBe('2')
+    })
+
+    it('kbType 键还原类型筛选；positionId 场景类型锁 POSITION 不被 query 覆盖', async () => {
+      routeMock.query = { tab: 'kb', kbType: 'EXPERT' }
+      await mount()
+      expect(api.listKnowledgeBases.mock.calls[0][0]).toEqual(expect.objectContaining({ kbType: 'EXPERT' }))
+      app.unmount(); container.remove()
+      vi.clearAllMocks()
+      api.listKnowledgeBases.mockResolvedValue({ list: LIST, total: LIST.length })
+      routeMock.query = { tab: 'kb', kbType: 'EXPERT', positionId: 'ps_1' }
+      await mount()
+      expect(api.listKnowledgeBases.mock.calls[0][0]).toEqual(expect.objectContaining({ kbType: 'POSITION' }))
+    })
+
+    it('输入关键词 → 地址栏回写 kw，且顺手清掉数据源子页的 srcKw / srcType / srcSt / srcP；tab 与 positionId 保留', async () => {
+      routeMock.query = { tab: 'kb', positionId: 'ps_1', srcKw: '接口', srcType: 'API', srcSt: 'ENABLED', srcP: '3' }
+      await mount()
+      routerMock.replace.mockClear()
+      const input = container.querySelector('input')
+      input.value = '产品'
+      input.dispatchEvent(new Event('input'))
+      await flush()
+      const q = routerMock.replace.mock.calls.at(-1)[0].query
+      expect(q).toEqual({ tab: 'kb', positionId: 'ps_1', kw: '产品', kbType: 'POSITION' })
+      for (const k of ['srcKw', 'srcType', 'srcSt', 'srcP']) expect(q).not.toHaveProperty(k)
+    })
+
+    it('翻到第 2 页 → 地址栏回写 p=2 且取数 page=2；回第 1 页 → p 键清除', async () => {
+      api.listKnowledgeBases.mockResolvedValue({ list: LIST, total: 20 })
+      routeMock.query = { tab: 'kb' }
+      await mount()
+      routerMock.replace.mockClear()
+      container.querySelector('.list-pager [aria-label="下一页"]').click()
+      await flush()
+      expect(api.listKnowledgeBases.mock.calls.at(-1)[0]).toEqual(expect.objectContaining({ page: 2 }))
+      expect(routerMock.replace.mock.calls.at(-1)[0].query).toEqual({ tab: 'kb', p: '2' })
+      container.querySelector('.list-pager [aria-label="上一页"]').click()
+      await flush()
+      expect(routerMock.replace.mock.calls.at(-1)[0].query).toEqual({ tab: 'kb' })
+    })
   })
 })

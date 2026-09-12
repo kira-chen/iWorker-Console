@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { fmtTime } from '@/utils/docMeta'
 
 /**
- * AdminMcp.vue 单测（2026-08-20 改造：表格形态 + 服务级三态发布）。
+ * AdminMcp.vue（MCP 列表页）单测。
  *
- * 覆盖：
- * - 三态状态列：未发布 / 审核中 / 已发布（六态聚合归三态，PARTIAL 兜底归「未发布」）；
- * - 操作区按状态显隐：未发布→发布+删除并存；审核中→撤回、编辑锁定、不可删；
- *   已发布→停用、不可删；已停用→重新走发布过审；
- * - 发布/停用/撤回走服务级端点（不传 targets——单目标端，后端归一 USER_END）；
- * - 无工具的服务不允许发布（拦在前端，避免必然失败的请求）。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md：
+ * - §一（导航栏：搜索手动【查询】回第 1 页 L25 / 状态筛选切换即刷新回第 1 页 L26 / 空态文案 L33-34）；
+ * - §二.1（列表字段：状态列 09-11 拍板拆独立列，与 md L45「不再设置独立状态列」冲突待裁见审计 J1；
+ *   工具数为 0 悬浮 L47；引用情况 L48；最近更新时间排序 L49）；
+ * - §二.2（验证列：三态文案 L57 / 未验证悬浮 L58 / 异常三段式 L61 / 验证中 L63 / 四种 toast L65-68）；
+ * - §二.3（操作：三态按钮集合逐字 §二.3.1 L83-86；审核中【编辑】置灰提示 §二.3.3 L103；
+ *   发布 / 撤回 / 停用 / 删除的确认窗标题·正文·按钮·toast §二.3.4-§二.3.7；状态变化即时替换按钮 L87-92）；
+ * - §二.4（状态规则：DELISTED / REJECTED / PARTIAL 归「未发布」）。
  *
- * 切断 api/admin、api/market 与 element-plus；EP 组件用轻量存根（el-table 存根按行渲染 default 插槽）。
+ * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
+ * StatusTag / HealthTag / ListToolbar / ListStates / ListPagination 为组件局部 import 的**真组件**
+ * （全局同名桩对其无效），断言直接读它们渲染出的文案 / 类名。
+ * 已知不写的用例（审计 K34 待代码修）：mock 层停用直落 DELISTED——本文件 market api 全桩，与之无关。
  */
 
 const adminApi = {
@@ -26,13 +32,12 @@ const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
   publishMcpService: vi.fn(),
   delistMcpService: vi.fn(),
-  relistMcpService: vi.fn(),
   withdrawMcpService: vi.fn()
 }
 vi.mock('@/api/market', () => marketApi)
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
-const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
+const msgBox = { confirm: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
 
 vi.mock('@/components/admin/McpEditor.vue', () => ({
@@ -45,21 +50,26 @@ vi.mock('@/components/admin/McpEditor.vue', () => ({
 }))
 
 const stubs = {
-  StatusTag: { props: ['type'], template: '<span class="status-tag" :data-type="type"><slot /></span>' },
-  HealthTag: { props: ['status'], template: '<span class="health-tag" :data-status="status" />' },
   'el-icon': { template: '<i><slot /></i>' },
-  'el-empty': { template: '<div class="el-empty"><slot /></div>' },
-  'el-card': { template: '<div class="el-card"><slot /></div>' },
+  // ListStates（真组件）的失败态用 el-empty；AdminMcp 模板本身已无 el-empty / el-card / el-pagination
+  'el-empty': { props: ['description'], template: '<div class="el-empty" :data-desc="description"><slot /></div>' },
   'el-input': {
     props: ['modelValue'],
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
-  'el-select': { props: ['modelValue'], template: '<select><slot /></select>' },
-  'el-option': { template: '<option />' },
+  'el-select': {
+    props: ['modelValue'],
+    emits: ['update:modelValue', 'change'],
+    template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
+  },
+  'el-option': { props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' },
   'el-tag': { template: '<span class="el-tag"><slot /></span>' },
   'el-tooltip': { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' },
-  'el-pagination': { props: ['total'], template: '<div class="el-pagination" />' },
+  'el-dialog': {
+    props: ['modelValue', 'title'],
+    template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><slot name="footer" /></div>'
+  },
   'el-button': {
     props: ['disabled', 'loading', 'type', 'link'],
     emits: ['click'],
@@ -90,6 +100,7 @@ async function mount() {
     props: ['data'],
     template: `
       <div class="el-table">
+        <div class="t-head"><slot /></div>
         <RowScope v-for="(row, i) in (data || [])" :key="i" :row="row">
           <slot :row="row" />
         </RowScope>
@@ -103,10 +114,12 @@ async function mount() {
         return this.tableRow ? this.tableRow() : null
       }
     },
-    template: '<div class="t-cell" :data-label="label"><slot v-if="row" :row="row" /></div>'
+    // 表头阶段（无行）渲染 header 插槽（最近更新时间列的排序按钮在此）；行内渲染 default 插槽
+    template: '<div class="t-cell" :data-label="label"><slot v-if="row" :row="row" /><slot v-else name="header" /></div>'
   })
   app.component('Search', { template: '<span/>' })
   app.component('Plus', { template: '<span/>' })
+  app.component('Refresh', { template: '<span/>' })
   app.directive('loading', vLoading)
   app.mount(container)
   await nextTick()
@@ -124,11 +137,12 @@ function rowEls() {
 function rowByName(name) {
   return rowEls().find((el) => el.textContent.includes(name))
 }
+/** 操作列按钮（.tbl-ops 内；引用情况列的「N 个技能引用」也是 el-button，不算操作） */
 function btn(rowEl, text) {
-  return [...rowEl.querySelectorAll('.el-button')].find((b) => b.textContent.trim().startsWith(text))
+  return [...rowEl.querySelectorAll('.tbl-ops .el-button')].find((b) => b.textContent.trim().startsWith(text))
 }
 function texts(rowEl) {
-  return [...rowEl.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+  return [...rowEl.querySelectorAll('.tbl-ops .el-button')].map((b) => b.textContent.trim())
 }
 function stateOf(rowEl) {
   return rowEl.querySelector('.status-tag')?.textContent.trim()
@@ -143,25 +157,38 @@ const LIST = [
   { id: 'mc_empty', name: '空工具服务', transport: 'stdio', toolCount: 0, referencedBySkillCount: 0, status: 'active', displayStatus: 'HEALTHY' }
 ]
 
-const AGG = {
+const AGG_SEED = {
   mc_none: 'NOT_PUBLISHED',
   mc_pending: 'PENDING_REVIEW',
   mc_pub: 'PUBLISHED',
   mc_delisted: 'DELISTED',
   mc_empty: 'NOT_PUBLISHED'
 }
+// 每例复位的聚合态表：发布 / 撤回 / 停用桩会改写它，模拟 mock 层状态机（md §二.4），
+// 让「动作成功后状态列与按钮即时替换」（md §二.3.1 L87-92）可断言。
+let AGG = {}
 
-describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
+/** 冲刷若干轮微任务 + 渲染（列表取数 → 聚合态拉取 → 渲染 是三段异步） */
+async function flush(n = 4) {
+  for (let i = 0; i < n; i++) {
+    await nextTick()
+    await Promise.resolve()
+  }
+}
+
+describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    adminApi.listMcp.mockResolvedValue({ list: LIST, total: LIST.length })
+    AGG = { ...AGG_SEED }
+    // 页面会就地改写行对象（检活回写 displayStatus / lastCheckedAt），故每次调用都给夹具的浅拷贝，用例间不串
+    adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
       Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG[id] }] })
     )
-    marketApi.publishMcpService.mockResolvedValue({ affected: 1, skipped: 0 })
-    marketApi.delistMcpService.mockResolvedValue({ affected: 1, skipped: 0 })
-    marketApi.relistMcpService.mockResolvedValue({ affected: 1, skipped: 0 })
-    marketApi.withdrawMcpService.mockResolvedValue({ affected: 1, skipped: 0 })
+    marketApi.publishMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; return { affected: 1, skipped: 0 } })
+    // 停用：md §二.3.6 L135「提交成功后……页面状态变为"审核中"」——market 层桩按 md 给 PENDING_REVIEW
+    marketApi.delistMcpService.mockImplementation(async (id) => { AGG[id] = 'PENDING_REVIEW'; return { affected: 1, skipped: 0 } })
+    marketApi.withdrawMcpService.mockImplementation(async (id) => { AGG[id] = 'NOT_PUBLISHED'; return { affected: 1, skipped: 0 } })
     msgBox.confirm.mockResolvedValue('confirm')
   })
   afterEach(() => {
@@ -178,86 +205,210 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     expect(stateOf(rowByName('已下架服务'))).toBe('未发布')
   })
 
-  it('操作区：未发布态「发布」与「删除」并存', async () => {
+  // md §二.3.1 L83-86 各状态按钮组合（精确集合，顺序即操作列顺序）
+  it('操作区 · 未发布：【查看】【编辑】【发布】【删除】共 4 个（md §二.3.1 L83）', async () => {
     await mount()
-    const t = texts(rowByName('未发布服务'))
-    expect(t).toContain('发布')
-    expect(t).toContain('删除')
-    expect(t).not.toContain('停用')
-    expect(t).not.toContain('撤回')
+    expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
-  it('操作区：已发布态出「停用」，且不可删除', async () => {
+  it('操作区 · 已发布：【查看】【编辑】【停用】共 3 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
     await mount()
-    const t = texts(rowByName('已上线服务'))
-    expect(t).toContain('停用')
-    expect(t).not.toContain('删除')
-    expect(t).not.toContain('发布')
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
   })
 
-  it('操作区：审核中出「撤回」，编辑锁定且不可删除', async () => {
+  it('操作区 · 审核中：【查看】【编辑】【撤回】共 3 个，【编辑】置灰并提示「审核中不可编辑，如需修改请先撤回」（md §二.3.1 L85 / §二.3.3 L103）', async () => {
     await mount()
     const row = rowByName('在审服务')
-    const t = texts(row)
-    expect(t).toContain('撤回')
-    expect(t).not.toContain('删除')
-    // 编辑按钮存在但被禁用（审核中改了会让审核对象与提交内容不一致）
+    expect(texts(row)).toEqual(['查看', '编辑', '撤回'])
     expect(btn(row, '编辑').disabled).toBe(true)
+    expect(btn(row, '查看').disabled).toBe(false)
+    const tip = btn(row, '编辑').closest('[data-tip]')
+    expect(tip?.getAttribute('data-tip')).toBe('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('操作区：已停用走「发布」重新过审（V99 起无「重新上架」免重审通道）', async () => {
+  it('操作区 · 已停用（DELISTED）归未发布，操作位出【发布】（md §二.3.4 L108）', async () => {
     await mount()
-    const t = texts(rowByName('已下架服务'))
-    // 与模型页一致：已停用的要恢复必须重新提交过审，不再有免重审的快捷恢复
-    expect(t).not.toContain('重新上架')
-    expect(t).toContain('发布')
+    expect(stateOf(rowByName('已下架服务'))).toBe('未发布')
+    expect(texts(rowByName('已下架服务'))).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
-  it('发布：确认后调服务级端点，且不传 targets（单目标端，后端归一 USER_END）', async () => {
+  it('操作区 · 未发布但连接未验证成功：4 个按钮仍在，仅【发布】不可点（md §二.3.1 L84）', async () => {
+    adminApi.listMcp.mockResolvedValue({ list: [{ ...LIST[0], displayStatus: 'UNKNOWN' }], total: 1 })
+    await mount()
+    const row = rowByName('未发布服务')
+    expect(texts(row)).toEqual(['查看', '编辑', '发布', '删除'])
+    expect(btn(row, '发布').disabled).toBe(true)
+    expect(btn(row, '删除').disabled).toBe(false)
+  })
+
+  // ---- 发布（md §二.3.4 L111-114） ----
+  it('发布：确认窗标题「发布 MCP 服务」/ 正文说明整体提交审核 / 按钮【提交审核】→ 调服务级端点不传 targets → toast「已提交发布审核」→ 状态列即变「审核中」、按钮换成【撤回】', async () => {
     await mount()
     btn(rowByName('未发布服务'), '发布').click()
-    await nextTick()
-    await Promise.resolve()
-    await nextTick()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '将把「未发布服务」下全部 2 个工具作为一个整体提交审核，审核通过后才对平台各项服务开放。',
+      '发布 MCP 服务',
+      expect.objectContaining({ confirmButtonText: '提交审核' })
+    )
     expect(marketApi.publishMcpService).toHaveBeenCalledWith('mc_none', {})
+    expect(msg.success).toHaveBeenCalledWith('已提交发布审核')
+    // md §二.3.1 L88「提交发布后，【发布】和【删除】替换为【撤回】」（能红验证：删 runAction 里的 loadPubSummary）
+    expect(stateOf(rowByName('未发布服务'))).toBe('审核中')
+    expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '撤回'])
   })
 
-  it('发布：取消确认则不提交', async () => {
+  it('发布：取消确认则不提交、状态不变', async () => {
     msgBox.confirm.mockRejectedValueOnce('cancel')
     await mount()
     btn(rowByName('未发布服务'), '发布').click()
-    await nextTick()
-    await Promise.resolve()
+    await flush()
     expect(marketApi.publishMcpService).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(stateOf(rowByName('未发布服务'))).toBe('未发布')
   })
 
-  it('发布：无工具的服务直接拦下，不发请求', async () => {
+  it('发布：连接正常但工具数为 0 → 提示「该 MCP 服务下暂无可发布的工具，请先在编辑器内「拉取工具」」，不弹确认不发请求（md §二.3.4 L110）', async () => {
     await mount()
     btn(rowByName('空工具服务'), '发布').click()
-    await nextTick()
-    await Promise.resolve()
+    await flush()
+    expect(msg.warning).toHaveBeenCalledWith('该 MCP 服务下暂无可发布的工具，请先在编辑器内「拉取工具」')
+    expect(msgBox.confirm).not.toHaveBeenCalled()
     expect(marketApi.publishMcpService).not.toHaveBeenCalled()
-    expect(msg.warning).toHaveBeenCalled()
   })
 
-  it('停用 / 撤回 / 发布：各自调对应服务级端点', async () => {
+  it('发布失败：端点抛错 → error(其 message)，状态与按钮不变', async () => {
+    marketApi.publishMcpService.mockRejectedValueOnce(new Error('服务端拒绝'))
+    await mount()
+    btn(rowByName('未发布服务'), '发布').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('服务端拒绝')
+    expect(stateOf(rowByName('未发布服务'))).toBe('未发布')
+    expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '发布', '删除'])
+  })
+
+  // ---- 撤回（md §二.3.5 L121-124） ----
+  it('撤回：确认窗「撤回审核」/ 正文说明回到未发布需重新发布并再次审核 / 按钮【撤回】→ toast「已撤回」→ 状态变「未发布」，按钮换回【发布】【删除】', async () => {
+    await mount()
+    btn(rowByName('在审服务'), '撤回').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '撤回后「在审服务」将回到未发布状态，需重新发布并再次审核。确认撤回？',
+      '撤回审核',
+      expect.objectContaining({ confirmButtonText: '撤回' })
+    )
+    expect(marketApi.withdrawMcpService).toHaveBeenCalledWith('mc_pending', {})
+    expect(msg.success).toHaveBeenCalledWith('已撤回')
+    // md §二.3.1 L90「撤回审核后，【撤回】替换为【发布】和【删除】」
+    expect(stateOf(rowByName('在审服务'))).toBe('未发布')
+    expect(texts(rowByName('在审服务'))).toEqual(['查看', '编辑', '发布', '删除'])
+    expect(btn(rowByName('在审服务'), '编辑').disabled).toBe(false)
+  })
+
+  // ---- 停用（md §二.3.6 L131-135） ----
+  it('停用：确认窗「停用 MCP 服务」/ 正文「停用后技能仍可执行，但运行效果可能受限或出现报错」/ 按钮【继续停用】→ toast「已提交停用审核」→ 状态「审核中」，【停用】替换为【撤回】', async () => {
     await mount()
     btn(rowByName('已上线服务'), '停用').click()
-    await nextTick()
-    await Promise.resolve()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线服务」？',
+      '停用 MCP 服务',
+      expect.objectContaining({ confirmButtonText: '继续停用' })
+    )
     expect(marketApi.delistMcpService).toHaveBeenCalledWith('mc_pub', {})
+    expect(msg.success).toHaveBeenCalledWith('已提交停用审核')
+    // md §二.3.1 L91「提交停用后，【停用】替换为【撤回】」
+    expect(stateOf(rowByName('已上线服务'))).toBe('审核中')
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '撤回'])
+  })
 
-    btn(rowByName('在审服务'), '撤回').click()
-    await nextTick()
-    await Promise.resolve()
-    expect(marketApi.withdrawMcpService).toHaveBeenCalledWith('mc_pending', {})
-
-    // 已下架 → 走「发布」重新过审（不再有 relist 端点调用）
+  it('已停用（DELISTED）行点【发布】→ 走发布确认与发布端点重新过审（md §二.3.4 L108，无免审「重新上架」通道）', async () => {
+    await mount()
     btn(rowByName('已下架服务'), '发布').click()
-    await nextTick()
-    await Promise.resolve()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenLastCalledWith(expect.any(String), '发布 MCP 服务', expect.objectContaining({ confirmButtonText: '提交审核' }))
     expect(marketApi.publishMcpService).toHaveBeenCalledWith('mc_delisted', {})
-    expect(marketApi.relistMcpService).not.toHaveBeenCalled()
+    expect(stateOf(rowByName('已下架服务'))).toBe('审核中')
+  })
+
+  // ---- 删除（md §二.3.7 L139-146；审计 A4 补：此前 deleteMcp 桩从未被断言） ----
+  describe('删除（md §二.3.7）', () => {
+    it('确认窗「删除 MCP」/ 正文「删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「X」？」/ 按钮【继续删除】→ deleteMcp → toast「已删除」→ 重拉列表', async () => {
+      await mount()
+      const calls = adminApi.listMcp.mock.calls.length
+      btn(rowByName('未发布服务'), '删除').click()
+      await flush()
+      expect(msgBox.confirm).toHaveBeenCalledWith(
+        '删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「未发布服务」？',
+        '删除 MCP',
+        expect.objectContaining({ confirmButtonText: '继续删除' })
+      )
+      expect(adminApi.deleteMcp).toHaveBeenCalledWith('mc_none')
+      expect(msg.success).toHaveBeenCalledWith('已删除')
+      expect(adminApi.listMcp.mock.calls.length).toBe(calls + 1)
+    })
+
+    it('被 2 个技能引用：正文改为「该 MCP 被 2 个技能引用，停用或删除后技能仍可执行……」，确认后仍可删（软引用，md L142）', async () => {
+      adminApi.listMcp.mockResolvedValue({ list: [{ ...LIST[0], referencedBySkillCount: 2 }], total: 1 })
+      await mount()
+      btn(rowByName('未发布服务'), '删除').click()
+      await flush()
+      expect(msgBox.confirm).toHaveBeenCalledWith(
+        '该 MCP 被 2 个技能引用，停用或删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「未发布服务」？',
+        '删除 MCP',
+        expect.objectContaining({ confirmButtonText: '继续删除' })
+      )
+      expect(adminApi.deleteMcp).toHaveBeenCalledWith('mc_none')
+      expect(msg.success).toHaveBeenCalledWith('已删除')
+    })
+
+    it('取消确认 → 不调 deleteMcp、行仍在（md L143）', async () => {
+      msgBox.confirm.mockRejectedValueOnce('cancel')
+      await mount()
+      btn(rowByName('未发布服务'), '删除').click()
+      await flush()
+      expect(adminApi.deleteMcp).not.toHaveBeenCalled()
+      expect(rowByName('未发布服务')).toBeTruthy()
+    })
+
+    it('删掉第 2 页仅剩的 1 条且不在第 1 页 → 自动回到第 1 页重拉（md L145）', async () => {
+      // 第 1 页按 size 铺满、第 2 页只剩「末页服务」一条
+      adminApi.listMcp.mockImplementation(async ({ page, size }) => {
+        if (page === 2) return { list: [{ ...LIST[0], id: 'mc_last', name: '末页服务' }], total: size + 1 }
+        return {
+          list: Array.from({ length: size }, (_, i) => ({ ...LIST[0], id: `mc_p1_${i}`, name: `首页服务${i}` })),
+          total: size + 1
+        }
+      })
+      await mount()
+      container.querySelector('.list-pager [aria-label="下一页"]').click()
+      await flush()
+      expect(rowByName('末页服务')).toBeTruthy()
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('2')
+      btn(rowByName('末页服务'), '删除').click()
+      await flush(8)
+      expect(adminApi.deleteMcp).toHaveBeenCalledWith('mc_last')
+      expect(adminApi.listMcp.mock.calls.at(-1)[0].page).toBe(1)
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('1')
+      expect(rowByName('首页服务0')).toBeTruthy()
+    })
+
+    it('删除失败：有 message 提示其原因；无 message 提示「删除失败」；行保留不重拉（md L146）', async () => {
+      adminApi.deleteMcp.mockRejectedValueOnce(new Error('后端拒绝：仍在被调用'))
+      await mount()
+      const calls = adminApi.listMcp.mock.calls.length
+      btn(rowByName('未发布服务'), '删除').click()
+      await flush()
+      expect(msg.error).toHaveBeenCalledWith('后端拒绝：仍在被调用')
+      expect(rowByName('未发布服务')).toBeTruthy()
+      expect(adminApi.listMcp.mock.calls.length).toBe(calls)
+
+      adminApi.deleteMcp.mockRejectedValueOnce(new Error(''))
+      btn(rowByName('未发布服务'), '删除').click()
+      await flush()
+      expect(msg.error).toHaveBeenLastCalledWith('删除失败')
+      expect(msg.success).not.toHaveBeenCalled()
+    })
   })
 
   it('验证列：结果标签 + 相对时间 + 刷新入口（外观对齐模型页）', async () => {
@@ -327,15 +478,81 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     expect(tip).toContain('错误码：UNKNOWN')
   })
 
-  it('验证列：点刷新图标发起验证（复用既有检活端点）', async () => {
-    adminApi.healthCheckTool.mockResolvedValue({ displayStatus: 'HEALTHY', checkedAt: '2026-08-21T10:00:00Z' })
-    await mount()
-    rowByName('未发布服务').querySelector('.mc-vc-refresh').dispatchEvent(
-      new window.MouseEvent('click', { bubbles: true })
-    )
-    await nextTick()
-    await Promise.resolve()
-    expect(adminApi.healthCheckTool).toHaveBeenCalledWith('MCP', 'mc_none')
+  // ---- 验证列（md §二.2 L62-68；审计 A5 提升：此前只断端点被调） ----
+  describe('验证列 · 点刷新发起验证（md §二.2）', () => {
+    const clickRefresh = async (name) => {
+      rowByName(name).querySelector('.mc-vc-refresh').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await flush()
+    }
+    const tagOf = (name) => rowByName(name).querySelector('.health-tag').textContent.trim()
+    const timeOf = (name) => rowByName(name).querySelector('.mc-vc-time')?.textContent.trim()
+
+    it('连接正常：调 healthCheckTool("MCP", id) → toast「检活完成 · 连接正常」+ 行内标签「连接正常」+ 最近验证时间 MM-DD HH:mm 即时更新（L64-65）', async () => {
+      adminApi.healthCheckTool.mockResolvedValue({ displayStatus: 'HEALTHY', checkedAt: '2026-08-21T10:00:00Z' })
+      adminApi.listMcp.mockResolvedValue({ list: [{ ...LIST[0], displayStatus: 'UNKNOWN' }], total: 1 })
+      await mount()
+      expect(tagOf('未发布服务')).toBe('未探测')
+      expect(timeOf('未发布服务')).toBeUndefined() // 从未验证不展示时间（L58）
+      await clickRefresh('未发布服务')
+      expect(adminApi.healthCheckTool).toHaveBeenCalledWith('MCP', 'mc_none')
+      expect(msg.success).toHaveBeenCalledWith('检活完成 · 连接正常')
+      expect(tagOf('未发布服务')).toBe('连接正常')
+      // 格式 MM-DD HH:mm（L59）；具体时分随本地时区，故与 fmtTime 同源换算
+      expect(timeOf('未发布服务')).toMatch(/^\d{2}-\d{2} \d{2}:\d{2}$/)
+      expect(timeOf('未发布服务')).toBe(fmtTime('2026-08-21T10:00:00Z').slice(5))
+    })
+
+    it('连接异常：toast warning「检活完成 · 连接异常」+ 标签「连接异常」（L66）', async () => {
+      adminApi.healthCheckTool.mockResolvedValue({ displayStatus: 'UNHEALTHY', checkedAt: '2026-08-21T10:00:00Z' })
+      await mount()
+      await clickRefresh('未发布服务')
+      expect(msg.warning).toHaveBeenCalledWith('检活完成 · 连接异常')
+      expect(tagOf('未发布服务')).toBe('连接异常')
+    })
+
+    it('未获得明确结果（UNKNOWN）：toast info「检活完成」+ 标签「未探测」（L67）', async () => {
+      adminApi.healthCheckTool.mockResolvedValue({ displayStatus: 'UNKNOWN', checkedAt: '2026-08-21T10:00:00Z' })
+      await mount()
+      await clickRefresh('未发布服务')
+      expect(msg.info).toHaveBeenCalledWith('检活完成')
+      expect(tagOf('未发布服务')).toBe('未探测')
+    })
+
+    it('验证失败：有原因提示原因；无原因提示「检活失败，请稍后重试」；标签保留上一次结果（L68）', async () => {
+      adminApi.healthCheckTool.mockRejectedValueOnce(new Error('网络不可达'))
+      await mount()
+      await clickRefresh('未发布服务')
+      expect(msg.error).toHaveBeenCalledWith('网络不可达')
+      expect(tagOf('未发布服务')).toBe('连接正常')
+      adminApi.healthCheckTool.mockRejectedValueOnce(new Error(''))
+      await clickRefresh('未发布服务')
+      expect(msg.error).toHaveBeenLastCalledWith('检活失败，请稍后重试')
+    })
+
+    it('验证过程中：保留上一次标签，时间位显「正在验证…」，图标旋转且再点不重复发起（L63）', async () => {
+      let resolve
+      adminApi.healthCheckTool.mockReturnValue(new Promise((r) => { resolve = r }))
+      await mount()
+      await clickRefresh('未发布服务')
+      expect(tagOf('未发布服务')).toBe('连接正常')
+      expect(timeOf('未发布服务')).toBe('正在验证…')
+      const icon = rowByName('未发布服务').querySelector('.mc-vc-refresh')
+      expect(icon.classList.contains('is-spinning')).toBe(true)
+      expect(icon.getAttribute('aria-label')).toBe('正在验证')
+      await clickRefresh('未发布服务')
+      expect(adminApi.healthCheckTool).toHaveBeenCalledTimes(1)
+      resolve({ displayStatus: 'HEALTHY', checkedAt: '2026-08-21T10:00:00Z' })
+      await flush()
+      expect(icon.classList.contains('is-spinning')).toBe(false)
+      expect(timeOf('未发布服务')).not.toBe('正在验证…')
+    })
+
+    it('从未验证过：悬浮提示「尚未验证过，点击发起验证」（L58）', async () => {
+      adminApi.listMcp.mockResolvedValue({ list: [{ ...LIST[0], displayStatus: 'UNKNOWN', lastCheckAt: null, lastCheckedAt: null }], total: 1 })
+      await mount()
+      const tips = [...rowByName('未发布服务').querySelectorAll('[data-tip]')].map((e) => e.getAttribute('data-tip'))
+      expect(tips).toContain('尚未验证过，点击发起验证')
+    })
   })
 
   it('列结构：服务合并列 + 独立状态列 + 引用情况 + 最近更新时间', async () => {
@@ -378,28 +595,8 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     await mount()
     const b = btn(rowByName('未发布服务'), '发布')
     expect(b.disabled).toBe(true)
-    // 禁用原因走悬浮说明，不让用户对着一个灰按钮猜
-    expect(
-      [...rowByName('未发布服务').querySelectorAll('[data-tip]')].some((e) =>
-        (e.getAttribute('data-tip') || '').includes('验证通过')
-      )
-    ).toBe(true)
-  })
-
-  it('页头不再有「N 个已发布服务连通异常」角标；异常信息仍在行内可见', async () => {
-    // 2026-08-22 负责人口径：顶部提示与每行「验证」列重复，去掉顶部、保留行内。
-    adminApi.listMcp.mockResolvedValue({
-      list: [
-        { ...LIST[0], displayStatus: 'UNHEALTHY' },
-        { ...LIST[2], displayStatus: 'UNHEALTHY' }
-      ],
-      total: 2
-    })
-    await mount()
-    expect(container.querySelector('.ph-reddot')).toBeNull()
-    expect(container.textContent).not.toContain('个已发布服务连通异常')
-    // 信息没丢：行内仍显「异常」
-    expect(container.textContent).toContain('异常')
+    // 禁用原因走悬浮说明（md §二.3.4 L109 逐字）
+    expect(b.closest('[data-tip]')?.getAttribute('data-tip')).toBe('连通性验证通过后才可提交发布（改过连接配置需重新验证）')
   })
 
   it('聚合态拉取失败的行按「未发布」兜底展示，不阻断整表', async () => {
@@ -438,13 +635,18 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
     it('输入关键词不自动刷新（防抖 watch 已删）', async () => {
       await mount()
       const callsBefore = adminApi.listMcp.mock.calls.length
-      const input = searchInput()
-      input.value = '报销'
-      input.dispatchEvent(new Event('input'))
-      await nextTick()
-      // 等到超过原 300ms 防抖窗口，仍不该有新请求
-      await new Promise((r) => setTimeout(r, 400))
-      expect(adminApi.listMcp.mock.calls.length).toBe(callsBefore)
+      // 假时钟推过原 300ms 防抖窗口（审计 D1：原来真等 400ms）
+      vi.useFakeTimers()
+      try {
+        const input = searchInput()
+        input.value = '报销'
+        input.dispatchEvent(new Event('input'))
+        await nextTick()
+        await vi.advanceTimersByTimeAsync(400)
+        expect(adminApi.listMcp.mock.calls.length).toBe(callsBefore)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('点【查询】才把关键词下发，并回到第 1 页', async () => {
@@ -513,6 +715,92 @@ describe('AdminMcp · 服务级三态发布（2026-08-20）', () => {
       })
       await mount()
       expect(btn(rowByName('未发布服务'), '发布').disabled).toBe(true)
+    })
+  })
+
+  /**
+   * 2026-09-12 测试审计补缺口 A6：状态筛选 / 空态两种文案 / 空工具悬浮 / 引用情况弹窗 / 时间列排序。
+   */
+  describe('A6 导航栏与列字段（md §一.2 L26 / §一.3 L33-34 / §二.1 L47-49）', () => {
+    const toolbarBtn = (text) => [...container.querySelectorAll('.el-button')].find((b) => !b.closest('.t-row') && b.textContent.trim() === text)
+
+    it('切换状态筛选 → 立即按 state 刷新并回到第 1 页（md §一.2 L26）；清空 → 不再下发 state', async () => {
+      await mount()
+      const select = container.querySelector('select')
+      select.value = 'PUBLISHED'
+      select.dispatchEvent(new Event('change'))
+      await flush()
+      let last = adminApi.listMcp.mock.calls.at(-1)[0]
+      expect(last).toEqual(expect.objectContaining({ state: 'PUBLISHED', page: 1 }))
+      select.value = ''
+      select.dispatchEvent(new Event('change'))
+      await flush()
+      last = adminApi.listMcp.mock.calls.at(-1)[0]
+      expect(last).not.toHaveProperty('state')
+      expect(last.page).toBe(1)
+    })
+
+    it('首次暂无数据：空态「还没有 MCP 服务 · 点「新建 MCP」登记第一个」（md §一.3 L33）', async () => {
+      adminApi.listMcp.mockResolvedValue({ list: [], total: 0 })
+      await mount()
+      expect(container.querySelector('[data-testid="list-empty"]').textContent.trim()).toBe('还没有 MCP 服务 · 点「新建 MCP」登记第一个')
+      expect(container.querySelector('.list-pager')).toBeNull() // 空态不出分页条
+    })
+
+    it('无查询结果：空态改显「没有符合条件的 MCP 服务」，搜索框保留关键词（md §一.3 L34；文案 md 无字面，照代码）', async () => {
+      adminApi.listMcp.mockImplementation(async ({ keyword }) => (keyword ? { list: [], total: 0 } : { list: LIST, total: LIST.length }))
+      await mount()
+      const input = container.querySelector('.lt-search')
+      input.value = '不存在'
+      input.dispatchEvent(new Event('input'))
+      await nextTick()
+      toolbarBtn('查询').click()
+      await flush()
+      expect(container.querySelector('[data-testid="list-empty"]').textContent.trim()).toBe('没有符合条件的 MCP 服务')
+      expect(container.querySelector('.lt-search').value).toBe('不存在')
+    })
+
+    it('工具数为 0：显「—」并悬浮「尚未拉取到工具，请在编辑器内「拉取工具」」（md §二.1 L47）', async () => {
+      await mount()
+      const cellEl = rowByName('空工具服务').querySelector('.t-cell[data-label="工具数"]')
+      expect(cellEl.textContent.trim()).toBe('—')
+      expect(cellEl.querySelector('[data-tip]').getAttribute('data-tip')).toBe('尚未拉取到工具，请在编辑器内「拉取工具」')
+      expect(rowByName('已上线服务').querySelector('.t-cell[data-label="工具数"]').textContent.trim()).toBe('4')
+    })
+
+    it('引用情况：无引用显「暂无引用」；「2 个技能引用」点击弹「被技能引用」清单列出技能名（md §二.1 L48）', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [
+          LIST[0],
+          { ...LIST[2], referencedBySkills: [{ skillId: 'sk_1', skillName: '销售方案生成' }, { skillId: 'sk_2', skillName: '客户问题解答' }] }
+        ],
+        total: 2
+      })
+      await mount()
+      expect(rowByName('未发布服务').querySelector('.t-cell[data-label="引用情况"]').textContent.trim()).toBe('暂无引用')
+      const refBtn = rowByName('已上线服务').querySelector('.mc-refs')
+      expect(refBtn.textContent.trim()).toBe('2 个技能引用')
+      expect(refBtn.getAttribute('title')).toBe('销售方案生成、客户问题解答')
+      expect(container.querySelector('.el-dialog')).toBeNull()
+      refBtn.click()
+      await flush()
+      const dlg = container.querySelector('.el-dialog')
+      expect(dlg.getAttribute('data-title')).toBe('被技能引用')
+      expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['销售方案生成', '客户问题解答'])
+      ;[...dlg.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '关闭').click()
+      await flush()
+      expect(container.querySelector('.el-dialog')).toBeNull()
+    })
+
+    it('最近更新时间列头：默认由近到远（↓ / sort=desc）；点一下 → sort=asc 重拉、箭头 ↑（md §二.1 L49）', async () => {
+      await mount()
+      expect(adminApi.listMcp.mock.calls[0][0].sort).toBe('desc')
+      const sortBtn = container.querySelector('.time-sort')
+      expect(sortBtn.textContent).toContain('↓')
+      sortBtn.click()
+      await flush()
+      expect(adminApi.listMcp.mock.calls.at(-1)[0].sort).toBe('asc')
+      expect(container.querySelector('.time-sort').textContent).toContain('↑')
     })
   })
 })

@@ -3,19 +3,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * KnowledgeSourceList.vue（数据源管理子页）列表契约。
- * 2026-09-04 按 PRD-20260903《prd.知识库.md》§四 对齐重写：
- * - 概要列口径（上传=文档数 / API·MCP=连通性，失败警示）；
- * - 状态筛选（启用 / 停用，新原型后置精修层）；
- * - 操作矩阵：查看·编辑固定；上传类+文档管理；被引用时删除置灰并提示
- *   「正被知识库引用，请先解除引用」（逐字照 md）；
- * - 删除二次确认「删除后配置无法恢复，确认删除？」与 toast「数据源已删除」。
+ * KnowledgeSourceList.vue（数据源管理子页，AdminKnowledgeBase 容器 ?tab=source）列表契约。
+ *
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
+ * - §四.2 列表字段：概要（上传=文档数 / API·MCP=未验证·已连通·连接失败，md §八.1 L417）/ 状态（启用·停用）/ 被引用；
+ * - §四.2 操作矩阵：查看·编辑固定；上传类+文档管理；被引用时删除置灰并提示「正被知识库引用，请先解除引用」（逐字）；
+ *   删除二次确认「删除后配置无法恢复，确认删除？」与 toast「数据源已删除」；
+ * - §四.1 状态筛选（启用 / 停用）随查询下发；
+ * - §二.2 L42-43 刷新保留：查询条件与分页位置落 URL query（srcKw / srcType / srcSt / srcP；547d3e5），与知识库子页键互清。
+ *
+ * vue-router 以 mock 注入（routeMock.query 可按用例改写）；StatusTag / ListToolbar / ListStates / ListPagination
+ * 为组件局部 import 的真组件（全局同名桩无效）。
  */
 const api = { listKnowledgeSources: vi.fn(), deleteKnowledgeSource: vi.fn() }
 vi.mock('@/api/knowledgeBase', () => api)
 const msg = { success: vi.fn(), error: vi.fn() }
 const msgBox = { confirm: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
+// vue-router：query 可按用例改写（2026-09-12 审计 E1 补：此前不 mock，组件走 route?. 空值旁路，状态保持零覆盖）
+const routeMock = { query: {} }
+const routerMock = { replace: vi.fn() }
+vi.mock('vue-router', () => ({ useRoute: () => routeMock, useRouter: () => routerMock }))
 vi.mock('@/components/admin/KnowledgeSourceEditor.vue', () => ({
   default: {
     name: 'KnowledgeSourceEditor',
@@ -28,7 +36,6 @@ vi.mock('@/components/admin/KnowledgeSourceDocsDrawer.vue', () => ({
 }))
 
 const stubs = {
-  StatusTag: { props: ['type'], template: '<span class="status-tag" :data-type="type"><slot /></span>' },
   'el-icon': { template: '<i><slot /></i>' },
   'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   'el-select': { props: ['modelValue'], emits: ['update:modelValue', 'change'], template: '<select @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\')"><slot /></select>' },
@@ -83,6 +90,7 @@ const LIST = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeMock.query = { tab: 'source' }
   api.listKnowledgeSources.mockResolvedValue({ list: LIST, total: LIST.length })
   api.deleteKnowledgeSource.mockResolvedValue(null)
   msgBox.confirm.mockResolvedValue('confirm')
@@ -92,7 +100,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('KnowledgeSourceList 列表契约（2026-09-04 PRD-20260903 对齐）', () => {
+describe('KnowledgeSourceList 列表契约（md §四.1-§四.2 / §八.1）', () => {
   it('概要列：上传=文档数（千分位），API=已连通，MCP 失败=连接失败', async () => {
     await mount()
     expect(cell(rowByName('产品资料'), '概要')).toBe('1,284 篇文档')
@@ -177,5 +185,53 @@ describe('KnowledgeSourceList 列表契约（2026-09-04 PRD-20260903 对齐）',
     await flush()
     const last = api.listKnowledgeSources.mock.calls.at(-1)[0]
     expect(last).toEqual(expect.objectContaining({ status: 'DISABLED', page: 1 }))
+  })
+
+  /**
+   * 2026-09-12 测试审计补缺口 E1：查询条件与分页位置的刷新保持（md §二.2 L42-43；实现 547d3e5：
+   * 键名加 src 前缀 srcKw / srcType / srcSt / srcP，与知识库子页 kw / kbType / st / p 互清）。
+   */
+  describe('E1 URL query 状态保持（md §二.2 L42-43）', () => {
+    it('带 srcKw / srcType / srcSt / srcP 的地址刷新进入 → 首拉即按 {keyword, sourceType, status, page:2} 取数并回显', async () => {
+      api.listKnowledgeSources.mockResolvedValue({ list: LIST, total: 20 }) // 20 条 → 有第 2 页
+      routeMock.query = { tab: 'source', srcKw: '接口', srcType: 'API', srcSt: 'ENABLED', srcP: '2' }
+      await mount()
+      expect(api.listKnowledgeSources.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ keyword: '接口', sourceType: 'API', status: 'ENABLED', page: 2 })
+      )
+      expect(container.querySelector('input').value).toBe('接口')
+      expect(container.querySelector('.list-pager .page-btn.active')?.textContent.trim()).toBe('2')
+    })
+
+    it('输入关键词 → 地址栏回写 srcKw，且清掉知识库子页的 kw / kbType / st / p；tab 保留', async () => {
+      routeMock.query = { tab: 'source', kw: '产品', kbType: 'EXPERT', st: 'PUBLISHED', p: '3' }
+      await mount()
+      routerMock.replace.mockClear()
+      const input = container.querySelector('input')
+      input.value = '接口'
+      input.dispatchEvent(new Event('input'))
+      await flush()
+      const q = routerMock.replace.mock.calls.at(-1)[0].query
+      expect(q).toEqual({ tab: 'source', srcKw: '接口' })
+      for (const k of ['kw', 'kbType', 'st', 'p']) expect(q).not.toHaveProperty(k)
+    })
+
+    it('切状态筛选 → 回写 srcSt；翻到第 2 页 → 回写 srcP=2 并取数 page=2；回第 1 页 → srcP 清除', async () => {
+      api.listKnowledgeSources.mockResolvedValue({ list: LIST, total: 20 })
+      await mount()
+      routerMock.replace.mockClear()
+      const statusSelect = [...container.querySelectorAll('select')][1]
+      statusSelect.value = 'DISABLED'
+      statusSelect.dispatchEvent(new Event('change'))
+      await flush()
+      expect(routerMock.replace.mock.calls.at(-1)[0].query).toEqual({ tab: 'source', srcSt: 'DISABLED' })
+      container.querySelector('.list-pager [aria-label="下一页"]').click()
+      await flush()
+      expect(api.listKnowledgeSources.mock.calls.at(-1)[0]).toEqual(expect.objectContaining({ status: 'DISABLED', page: 2 }))
+      expect(routerMock.replace.mock.calls.at(-1)[0].query).toEqual({ tab: 'source', srcSt: 'DISABLED', srcP: '2' })
+      container.querySelector('.list-pager [aria-label="上一页"]').click()
+      await flush()
+      expect(routerMock.replace.mock.calls.at(-1)[0].query).toEqual({ tab: 'source', srcSt: 'DISABLED' })
+    })
   })
 })

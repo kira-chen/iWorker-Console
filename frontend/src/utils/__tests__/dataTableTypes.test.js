@@ -34,7 +34,9 @@ describe('唯一 ID（主键）', () => {
 })
 
 describe('字段类型常量', () => {
-  it('7 类：6 基础类 + ENUM（工作档案「标签」卡位取值范围），不含 DATETIME', () => {
+  // 2026-09-12 审计改名：md 岗位 §4.2.2 字段类型只列六项（日期/长文本/短文本/整数/小数/是否）；
+  // ENUM 已退役为存量兼容项（仅回显 mock 种子里的「经营阶段」「风险等级」，下拉不再提供，Q25①）。
+  it('md §4.2.2 六项 + ENUM 存量兼容（仅回显），不含 DATETIME', () => {
     const vals = DATA_FIELD_TYPES.map((t) => t.value)
     expect(vals).toEqual(['TEXT', 'LONGTEXT', 'INTEGER', 'DECIMAL', 'BOOLEAN', 'DATE', 'ENUM'])
     expect(vals).not.toContain('DATETIME')
@@ -159,6 +161,42 @@ describe('validateFields 整表字段校验', () => {
     // 系统字段即使没 label 也不报错（其本身 isSystem 跳过），只要有 1 个业务字段
     const r = validateFields([{ ...sys, label: '' }, good])
     expect(r.ok).toBe(true)
+  })
+
+  // 2026-09-12 测试审计补缺口（F6）：slotRole 三条报错文案零用例（dataTableTypes.js:206-217）。
+  describe('slotRole 用途标记（工作档案卡位，设计 §13）', () => {
+    it('未登记的 role 值 → 该行 slotRole 报「用途标记非法」', () => {
+      const r = validateFields([{ ...good, slotRole: 'NOT_A_ROLE' }])
+      expect(r.ok).toBe(false)
+      expect(r.errors.rows[0].slotRole).toBe('用途标记非法')
+    })
+    it('两行都标「对象名」→ 第二行报「「对象名」只能有一个卡位」，第一行不报', () => {
+      const r = validateFields([
+        { ...good, fieldCode: 'name_a', slotRole: 'IDENTITY' },
+        { ...good, fieldCode: 'name_b', slotRole: 'IDENTITY' }
+      ])
+      expect(r.ok).toBe(false)
+      expect(r.errors.rows[0]?.slotRole).toBeUndefined()
+      expect(r.errors.rows[1].slotRole).toBe('「对象名」只能有一个卡位')
+    })
+    it('role 与字段类型不相容（短文本标「关键日期」）→ 报「「关键日期」用途只适用于：日期」', () => {
+      const r = validateFields([{ ...good, fieldType: 'TEXT', slotRole: 'KEY_DATE' }])
+      expect(r.errors.rows[0].slotRole).toBe('「关键日期」用途只适用于：日期')
+      // 多类型的用途把可选类型用「 / 」连起来（统计数值：整数 / 小数）
+      const r2 = validateFields([{ ...good, fieldType: 'TEXT', slotRole: 'AMOUNT' }])
+      expect(r2.errors.rows[0].slotRole).toBe('「统计数值」用途只适用于：整数 / 小数')
+    })
+    it('相容的 role（日期字段标「关键日期」、单个「对象名」）→ 通过，不报 slotRole', () => {
+      const r = validateFields([
+        { ...good, fieldCode: 'n', slotRole: 'IDENTITY' },
+        { ...good, fieldCode: 'd', fieldType: 'DATE', slotRole: 'KEY_DATE' }
+      ])
+      expect(r.ok).toBe(true)
+    })
+    it('提交归一：slotRole 空串 → null，非空原样保留', () => {
+      expect(normalizeFieldForSubmit({ ...good, slotRole: '' }).slotRole).toBeNull()
+      expect(normalizeFieldForSubmit({ ...good, slotRole: 'OWNER' }).slotRole).toBe('OWNER')
+    })
   })
 })
 

@@ -105,7 +105,9 @@ describe('parseMcpConfig — 兼容形态与边界', () => {
   })
 })
 
-describe('suggestCodeFromKey — 别名规整为候选 code', () => {
+// 审计 J13（2026-09-12）：suggestCodeFromKey 无调用方（McpEditor 粘贴导入不再按别名建议 code，
+// 且与 md MCP §三.2 L225 相悖）。用例不删、不改，等死码清理一并处置。
+describe('suggestCodeFromKey — 别名规整为候选 code（零调用方，随死码清理一并删，审计 J13）', () => {
   it('连字符转下划线', () => {
     expect(suggestCodeFromKey('amap-maps')).toBe('amap_maps')
   })

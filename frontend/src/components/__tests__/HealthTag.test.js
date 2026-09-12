@@ -33,12 +33,23 @@ afterEach(() => {
 })
 
 describe('HealthTag · 四态展示口径（单一真相）', () => {
-  it.each(STATUSES)('%s → 文案与类名与 positionModel 工具函数一致', (status) => {
+  // 2026-09-12 审计 C3：原只与 healthLabel() 同源比对（工具函数改文案用例也跟着绿），
+  // 现钉 md prd-连接器-MCP.md §二.2 L57「连接状态展示"连接正常、连接异常、未探测"」字面；
+  // DISABLED「已停用」为公共件四态之一（API 页 / 岗位页仍消费），MCP 列表侧已折回 UNKNOWN（AdminMcp.mcpConnStatus）。
+  it.each([
+    ['HEALTHY', '连接正常', 'ok'],
+    ['UNHEALTHY', '连接异常', 'bad'],
+    ['UNKNOWN', '未探测', 'unknown'],
+    ['DISABLED', '已停用', 'off']
+  ])('%s → 渲染文案「%s」（md MCP §二.2 L57）+ 类名 ht--%s', (status, text, cls) => {
     const el = mount(status)
     const tag = el.querySelector('.health-tag')
     expect(tag).toBeTruthy()
-    expect(tag.textContent.trim()).toBe(healthLabel(status))
-    expect(tag.classList.contains(`ht--${healthClass(status)}`)).toBe(true)
+    expect(tag.textContent.trim()).toBe(text)
+    expect(tag.classList.contains(`ht--${cls}`)).toBe(true)
+    // 仍与 positionModel 同源（组件不得私自另起映射）
+    expect(text).toBe(healthLabel(status))
+    expect(cls).toBe(healthClass(status))
   })
 
   it('四态在组件上渲染出两两不同的文案（同状态不可与他态混淆）', () => {

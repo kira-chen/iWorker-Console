@@ -3,17 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * ToolDock 平台技能数据源（V34 切片2 修补）回归保护。
+ * ToolDock 工具坞：按 skillSource 分流数据源（platform / system 走各自通道的 toolPicker，fde 走 listToolPicker）。
  *
- * 背景：平台技能编辑器复用 FDE 技能编辑器（SkillFocusEditor + ToolDock），但工具坞原写死调
- * GET /api/fde/skills/tool-picker（FDE_WORKBENCH 门）→ 系统配置员打该端点 403。
- * 修复：skillSource='platform' 时工具坞改调 listPlatformToolPicker（/fde/platform-skills/tool-picker，
- * SYS_CONFIG 门，只 MCP/API），且只渲染 MCP/API 两个 tab。
+ * 2026-09-12 头注更新：原头注引用的「GET /api/fde/skills/tool-picker 403 / FDE_WORKBENCH 门 / SYS_CONFIG 门」
+ * 属已退役的后端鉴权语境（发布单元 2026-09-01 一并退役），本仓为纯前端 demo，api 层由 mock 支撑；
+ * 现只守「分流正确」这一件事：platform → platformSkillApi.toolPicker，system → systemSkillApi.toolPicker，
+ * 两者绝不调 fde 的 listToolPicker（否则岗位无关的平台技能会带着 positionId 去查岗位工具）。
  *
- * 本测试断言（platform 模式）：
- * 1) 只渲染 MCP / API 两个 tab（无 数据表 / 业务系统）。
- * 2) 初始即调 listPlatformToolPicker（type=MCP），绝不调 listToolPicker（FDE 门）。
- * 3) 切到 API tab：调 listPlatformToolPicker(type=API)。
+ * 页签集：技能编辑器语境（SkillFocusEditor）恒传 props.tabs=ADMIN_TOOL_TABS（MCP / API / 业务系统），
+ * 组件内「不传 tabs 时按 skillSource 推导（平台族两页签 / FDE 四页签）」的默认分支运行时不可达——
+ * 相关 3 条用例已单列（见文末 J13 describe），随死码清理一并删。
  *
  * 不引 @vue/test-utils：createApp 挂 jsdom + 存根 el 图标 / v-loading 指令。
  */
@@ -69,7 +68,7 @@ function mount(props = {}) {
   return container
 }
 
-describe('ToolDock 平台技能数据源（403 修补回归保护）', () => {
+describe('ToolDock 平台族数据源分流（platform / system 各走自己的 toolPicker，不调 FDE 门）', () => {
   beforeEach(() => {
     listToolPickerMock.mockReset()
     listPlatformToolPickerMock.mockReset()
@@ -80,13 +79,6 @@ describe('ToolDock 平台技能数据源（403 修补回归保护）', () => {
   afterEach(() => {
     app?.unmount()
     container?.remove()
-  })
-
-  it('平台模式只渲染 MCP / API 两个 tab（无数据表 / 业务系统）', async () => {
-    const el = mount()
-    await nextTick()
-    const labels = [...el.querySelectorAll('.dock-tab')].map((t) => t.textContent.trim())
-    expect(labels).toEqual(['MCP', 'API'])
   })
 
   it('初始拉 listPlatformToolPicker(type=MCP)，绝不调 FDE 门 listToolPicker', async () => {
@@ -111,6 +103,31 @@ describe('ToolDock 平台技能数据源（403 修补回归保护）', () => {
     const calledApi = listPlatformToolPickerMock.mock.calls.some((c) => c[0]?.type === 'API')
     expect(calledApi).toBe(true)
     expect(listToolPickerMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * 审计 J13（2026-09-12）：下列 3 条守的是 ToolDock「不传 tabs 时按 skillSource 推导页签集」的默认分支；
+ * 技能编辑器恒传 ADMIN_TOOL_TABS，该分支运行时不可达。用例不删、不改，等死码清理一并处置。
+ */
+describe('ToolDock 默认页签分支（零调用方，随死码清理一并删，审计 J13）', () => {
+  beforeEach(() => {
+    listToolPickerMock.mockReset()
+    listPlatformToolPickerMock.mockReset()
+    listPlatformToolPickerMock.mockResolvedValue([])
+    listSystemToolPickerMock.mockReset()
+    listSystemToolPickerMock.mockResolvedValue([])
+  })
+  afterEach(() => {
+    app?.unmount()
+    container?.remove()
+  })
+
+  it('平台模式只渲染 MCP / API 两个 tab（无数据表 / 业务系统）', async () => {
+    const el = mount()
+    await nextTick()
+    const labels = [...el.querySelectorAll('.dock-tab')].map((t) => t.textContent.trim())
+    expect(labels).toEqual(['MCP', 'API'])
   })
 
   it('system 模式（V89 系统默认技能）同平台族：两 tab，tool-picker 走 systemSkillApi（系统前缀）', async () => {
