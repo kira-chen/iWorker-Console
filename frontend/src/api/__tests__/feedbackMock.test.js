@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { listFeedbacks, fetchFeedbackImageBlob, resetFeedbackMock } from '../feedbackMock'
 
 /**
- * 用户反馈 mock 层（2026-09-01 PRD 对齐改造）回归保护：
- * 种子 = 交互原型 v2 的 4 条反馈；createdAt 排序默认 desc；
- * keyword 过滤域 [username, content]；附图为内置 SVG 占位图 blob（与真实链路同签名）。
+ * 用户反馈 mock 层回归保护（2026-09-12 对齐 md `prd.用户反馈.md` §二 / §三 / §六）：
+ * 种子 4 条反馈；createdAt 排序默认 desc（md §三 L31「列表默认按反馈时间倒序」）；
+ * keyword 过滤域 [username, content]（md §二.1「支持用户名和反馈正文模糊搜索」）；
+ * 附图 0～N 张按附件顺序编号（md §六 L51），mock 下为内置 SVG 占位图 blob（与真实链路同签名）。
  */
 describe('feedbackMock · 用户反馈内存 mock', () => {
   beforeEach(() => resetFeedbackMock())
@@ -26,7 +27,7 @@ describe('feedbackMock · 用户反馈内存 mock', () => {
     expect(byContent.list.map((r) => r.id)).toEqual([2])
   })
 
-  it('附图形状：[{ seq, thumb_url, url }]，条数照原型（1 号反馈 2 张、2 号 0 张、4 号 3 张）', async () => {
+  it('附图形状：[{ seq, thumb_url, url }]，按附件顺序编号、0～N 张（md §六 L51；种子 1 号 2 张、2 号 0 张、4 号 3 张）', async () => {
     const { list } = await listFeedbacks()
     const byId = Object.fromEntries(list.map((r) => [r.id, r]))
     expect(byId[1].images).toHaveLength(2)

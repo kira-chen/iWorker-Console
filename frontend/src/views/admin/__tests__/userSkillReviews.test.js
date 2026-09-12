@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, provide, inject, nextTick } from 'vue'
+import { createApp, h, nextTick } from 'vue'
+import { makeElTableStubs } from './helpers/elTableStub'
 
 /**
  * UserSkillReviews.vue 列表页单测（2026-09-08 PRD-20260908 对齐整页重做）。
@@ -10,6 +11,9 @@ import { createApp, h, provide, inject, nextTick } from 'vue'
  * 提交时间列头切换正倒序（默认 desc ↓）；空态文案；通过弹窗文案 + toast「审核已通过」+ 记审核人；
  * 驳回经弹窗 confirm → toast「审核已驳回」；查看技能开抽屉（不再新标签整页）；深链 ?view=id 自动开抽屉。
  * 子组件（抽屉 / 驳回弹窗 / 风险设置）各有独立单测，这里只验「开没开、带的什么」。
+ * 2026-09-12 测试审计 T56（C1）：补尺度 / 状态下拉「选择后即时刷新列表」并回第 1 页（md §三 L52-53），
+ * 查询用例改断行内容随结果变化；T39：el-table 桩改用 helpers/elTableStub.js。
+ * ListToolbar / ListStates / ListPagination 为真实挂载（分页条真按钮用于把页码翻到第 2 页）。
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Search: {} }))
@@ -90,33 +94,18 @@ vi.mock('@/components/admin/RiskSettingsDrawer.vue', () => ({
 
 const UserSkillReviews = (await import('@/views/admin/UserSkillReviews.vue')).default
 
-const ROW_KEY = Symbol('row')
+// 2026-09-12 测试审计 T39：el-table-column / 行单元 桩改用共享 helper（表头阶段渲染 header 插槽以验「提交时间 ↓」）。
+// el-table 本地包一层：helper 的 tableStub 按下标 i 作 key，行集合变了（查询 / 筛选后）同下标的 RowCells 会被复用、
+// setup 里 provide 的仍是旧行对象 → 断不出「行内容变化」；这里改用 row.id 作 key（行换了就重建）。
+const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
 const tableStub = {
   name: 'el-table',
   props: { data: { type: Array, default: () => [] } },
   setup(props, { slots }) {
     return () =>
       h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-thead' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: i }))
-      ])
-  }
-}
-const RowCells = {
-  props: { row: { type: Object, required: true }, colSlot: { type: Function, required: true } },
-  setup(props) {
-    provide(ROW_KEY, props.row)
-    return () => h('div', { class: 'el-row' }, props.colSlot?.())
-  }
-}
-const tableColStub = {
-  name: 'el-table-column',
-  props: { label: { type: String, default: '' }, prop: { type: String, default: '' } },
-  setup(props, { slots }) {
-    const row = inject(ROW_KEY, null)
-    return () =>
-      h('div', { class: 'el-table-column', 'data-label': props.label }, [
-        row ? slots.default?.({ row }) : h('span', { class: 'th' }, slots.header ? slots.header() : props.label)
+        h('div', { class: 'el-head' }, slots.default?.()),
+        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
       ])
   }
 }
@@ -125,11 +114,14 @@ const elInput = {
   emits: ['update:modelValue', 'keyup', 'clear'],
   template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
 }
+// 下拉桩：用例经 CustomEvent('pick', { detail }) 模拟用户选中一项 → 同步 v-model 并触发 change（EP 行为）
 const elSelect = {
   props: ['modelValue', 'placeholder'],
   emits: ['update:modelValue', 'change'],
-  template: '<div class="el-select" :data-placeholder="placeholder"><slot /></div>'
+  template:
+    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
 }
+const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
 const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
 const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
@@ -219,8 +211,14 @@ describe('UserSkillReviews（2026-09-08 PRD-20260908 对齐）', () => {
     expect(container.querySelector('.risk-drawer')).toBeTruthy()
   })
 
-  it('【查询】/ Enter 触发查询（带 keyword）', async () => {
+  it('【查询】/ Enter 触发查询（带 keyword）→ 列表行随结果变化（3 行 → 只剩命中的 1 行）', async () => {
+    // 按 keyword 过滤的接口替身：让「查询后行内容变化」成为可见结果而非只看调用参数
+    listReviewApplications.mockImplementation((p = {}) => {
+      const list = p.keyword ? ROWS.filter((r) => r.skillName.includes(p.keyword)) : ROWS
+      return Promise.resolve({ list, total: list.length })
+    })
     await mount()
+    expect(rowEls()).toHaveLength(3)
     const input = container.querySelector('.el-input')
     input.value = '邮件'
     input.dispatchEvent(new Event('input'))
@@ -229,15 +227,62 @@ describe('UserSkillReviews（2026-09-08 PRD-20260908 对齐）', () => {
     toolbarBtn('查询').click()
     await flush()
     expect(listReviewApplications).toHaveBeenCalledWith(expect.objectContaining({ keyword: '邮件', page: 1 }))
+    const rows = rowEls()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('自动发送邮件')
+    expect(container.textContent).not.toContain('数据库批量清理')
     listReviewApplications.mockClear()
     input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }))
     await flush()
     expect(listReviewApplications).toHaveBeenCalledTimes(1)
   })
 
+  // md §三 L52「审核尺度……选择后即时刷新列表」/ L53「审核状态……选择后即时刷新列表」（UserSkillReviews.vue:162,165 @change=reload）
+  it('审核尺度下拉选中「严格」→ 不点【查询】即按 scale 重查并回第 1 页；列表只剩严格行（md §三 L52）', async () => {
+    // 先给 20 条总数把页码翻到第 2 页，才能证明「回第 1 页」不是空话
+    listReviewApplications.mockImplementation((p = {}) => {
+      if (p.scale) {
+        const list = ROWS.filter((r) => r.scale === p.scale)
+        return Promise.resolve({ list, total: list.length })
+      }
+      return Promise.resolve({ list: ROWS, total: 20 })
+    })
+    await mount()
+    const page2 = [...container.querySelectorAll('.list-pager .page-btn')].find((b) => b.textContent.trim() === '2')
+    expect(page2).toBeTruthy()
+    page2.click()
+    await flush()
+    expect(listReviewApplications).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    listReviewApplications.mockClear()
+    pick(container.querySelectorAll('.el-select')[0], '严格')
+    await flush()
+    expect(listReviewApplications).toHaveBeenCalledTimes(1)
+    expect(listReviewApplications).toHaveBeenCalledWith(expect.objectContaining({ scale: '严格', page: 1 }))
+    const rows = rowEls()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('数据库批量清理')
+  })
+
+  it('审核状态下拉选中「已通过」→ 即时按 status 重查回第 1 页；列表只剩已通过行（md §三 L53）', async () => {
+    listReviewApplications.mockImplementation((p = {}) => {
+      const list = p.status ? ROWS.filter((r) => r.status === p.status) : ROWS
+      return Promise.resolve({ list, total: list.length })
+    })
+    await mount()
+    listReviewApplications.mockClear()
+    pick(container.querySelectorAll('.el-select')[1], 'APPROVED')
+    await flush()
+    expect(listReviewApplications).toHaveBeenCalledTimes(1)
+    expect(listReviewApplications).toHaveBeenCalledWith(expect.objectContaining({ status: 'APPROVED', page: 1 }))
+    const rows = rowEls()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('Slack 通知推送')
+    expect(rows[0].querySelector('.usa-tag').textContent).toBe('已通过')
+  })
+
   it('七列表头（提交时间列头带 ↓）；状态 / 尺度标签词；操作列按状态', async () => {
     await mount()
-    const heads = [...container.querySelectorAll('.el-thead .el-table-column')].map((c) => c.textContent.replace(/\s+/g, ' ').trim())
+    const heads = [...container.querySelectorAll('.el-head .el-table-column')].map((c) => c.textContent.replace(/\s+/g, ' ').trim())
     expect(heads).toEqual(['技能名称', '描述', '提交人', '提交时间 ↓', '审核状态', '审核尺度', '操作'])
     const rows = rowEls()
     expect(rows).toHaveLength(3)

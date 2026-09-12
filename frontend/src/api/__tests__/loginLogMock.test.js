@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { listLoginLogs } from '../loginLogMock'
 
-describe('loginLogMock —— 访问审计（2026-09-01 PRD 对齐轮，原型多终端 11 条种子）', () => {
+// 2026-09-12 对齐 md `prd.访问审计.md` §三.1（默认登录时间倒序）/ §四（多终端多条记录、终端仅 Windows/Mac、
+// 按登出时间排序在线记录排末尾）；种子 11 条。
+describe('loginLogMock —— 访问审计（md §三 / §四；同一账号多终端 11 条种子）', () => {
   it('默认按登录时间倒序，总数 11，终端仅 Windows/Mac', async () => {
     const { list, total } = await listLoginLogs()
     expect(total).toBe(11)

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // （skillReviewMock → request.js → router 链路触达 window，故用 jsdom，同 domainExpertMock.test.js）
 // 用户技能审核 mock 单测（2026-09-08 PRD-20260908 对齐重写：新记录结构 + 通过/驳回两接口 + 风险设置）。
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listReviewApplications,
   getReviewApplication,
@@ -25,9 +25,10 @@ import {
 beforeEach(() => __resetSkillReviewMock())
 
 describe('skillReviewMock · 审核记录', () => {
-  it('种子 ≥7 条，覆盖三种状态 × 三种尺度；行含页面消费的关键字段', async () => {
+  // 2026-09-12 测试审计 T22：种子恒 7 条（与下方分页用例 total=7 一致），「≥7」放宽无意义，改精确值
+  it('种子恒 7 条，覆盖三种状态 × 三种尺度；行含页面消费的关键字段', async () => {
     const { list, total } = await listReviewApplications({ page: 1, size: 50 })
-    expect(total).toBeGreaterThanOrEqual(7)
+    expect(total).toBe(7)
     expect(new Set(list.map((r) => r.status))).toEqual(new Set(['PENDING', 'APPROVED', 'REJECTED']))
     expect(new Set(list.map((r) => r.scale))).toEqual(new Set(['宽松', '通用', '严格']))
     for (const k of ['id', 'skillName', 'description', 'submitter', 'submittedAt', 'status', 'scale', 'skillMd', 'risks', 'reviewer', 'reviewedAt', 'rejectReason']) {
@@ -124,7 +125,9 @@ describe('skillReviewMock · 风险设置', () => {
     expect(cfg.templates).toEqual(DEFAULT_RISK_TEMPLATES)
   })
 
-  it('setCurrentScale 即时生效并持久化；非法值被拒', async () => {
+  // 2026-09-12 测试审计 T29：09-09 起「当前审查尺度」改草稿制（md §7.1「点击【保存设置】后生效」），
+  // 本函数由抽屉【保存设置】调用，不再是「选择即时生效」；用例名随口径改，断言不变
+  it('setCurrentScale 写入后 getRiskConfig 读回新尺度（由【保存设置】调用，md §7.1）；非法值报「审核尺度不合法」', async () => {
     const cfg = await setCurrentScale('严格')
     expect(cfg.currentScale).toBe('严格')
     expect((await getRiskConfig()).currentScale).toBe('严格')
@@ -155,5 +158,42 @@ describe('skillReviewMock · 风险设置', () => {
     expect(needsManualAudit(results, DEFAULT_RISK_TEMPLATES['严格'])).toBe(true) // 对外动作阈值 中风险 ≤ 中风险
     const clean = fullDetectionResults([])
     expect(needsManualAudit(clean, DEFAULT_RISK_TEMPLATES['严格'])).toBe(false)
+  })
+})
+
+/* ---------------- F9：restore 形状守卫（skillReviewMock.js:253-255；mockPersist 兜底回种子；2026-09-12 测试审计） ---------------- */
+describe('skillReviewMock · 持久化 restore 形状守卫', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 与 positionMock.test 同款：注入内存版存储 + vi.resetModules + 动态 import 模拟「刷新后重新加载模块」。
+  const KEY = 'iworker-demo-mock:skillReview'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    globalThis.localStorage = makeStorage()
+    vi.resetModules()
+  })
+  afterEach(() => {
+    delete globalThis.localStorage
+    vi.resetModules()
+  })
+
+  it('存量快照版本对但 riskConfig 缺失 → 启动时抛「快照形状不合法」被兜底：回种子 7 条 + 当前尺度「通用」、坏 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { reviews: [], riskConfig: null } }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fresh = await import('../skillReviewMock')
+    expect((await fresh.listReviewApplications({ page: 1, size: 50 })).total).toBe(7)
+    expect((await fresh.getRiskConfig()).currentScale).toBe('通用')
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('skillReview 存量数据不可用'), expect.any(Error))
+    warn.mockRestore()
   })
 })

@@ -4,6 +4,11 @@ import { createApp, h, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 /**
+ * 【被测两页菜单已隐藏、api/report.js 无 mock，demo 不可达；去留待裁决（审计 J3）】
+ * 2026-09-12 测试审计：FdeReports / SysConfigReports 未挂在 AdminRail 菜单（AdminRail.vue:40 起），
+ * api/report.js 直连 /fde/reports 且无 xxxMock 旁路，纯前端 demo 下页面打不开也拉不到数据；
+ * 现行 md 无报表模块条款。本文件仅留档，L68-76 的 localStorage polyfill 在 jsdom 下为死代码。
+ *
  * 双模块报表页（FdeReports / SysConfigReports）单测（设计 §6 / P2）：
  * - stub EChart：单测不在 jsdom 真渲染 canvas，只断言图表组件被挂载（接到非空数据）。
  * - mock @/api/report：分别注入「有数据」「空数据」两种响应，断言指标卡渲染 + 空态。

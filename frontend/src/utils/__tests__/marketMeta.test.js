@@ -27,7 +27,7 @@ describe('marketMeta · statusMeta / writeClassMeta', () => {
   })
 })
 
-describe('marketMeta · publishActions（§5.4 状态→可见操作矩阵）', () => {
+describe('marketMeta · publishActions（§5.4 状态→可见操作矩阵）（零调用方，随死码清理一并删，审计 J13）', () => {
   it('PENDING_REVIEW → 仅 撤回 + 编辑（不放 下架/上架/重提）', () => {
     const a = publishActions('PENDING_REVIEW')
     expect(a).toEqual({ withdraw: true, edit: true })
@@ -50,7 +50,7 @@ describe('marketMeta · publishActions（§5.4 状态→可见操作矩阵）', 
   })
 })
 
-describe('marketMeta · 发布目标 target（V36）', () => {
+describe('marketMeta · 发布目标 target（V36）（零调用方，随死码清理一并删，审计 J13）', () => {
   it('TARGETS = 两个发布目标枚举（与 skill_publication 同域）', () => {
     expect(TARGETS).toEqual(['FDE_WORKBENCH', 'USER_END'])
   })
@@ -67,7 +67,7 @@ describe('marketMeta · 发布目标 target（V36）', () => {
   })
 })
 
-describe('marketMeta · 逐 target 发布结果 outcome（§6.1）', () => {
+describe('marketMeta · 逐 target 发布结果 outcome（§6.1）（零调用方，随死码清理一并删，审计 J13）', () => {
   it('publishOutcomeLabel：三态文案，未知兜底原值', () => {
     expect(publishOutcomeLabel('CREATED')).toBe('已提交')
     expect(publishOutcomeLabel('RESUBMITTED')).toBe('已重新提交')

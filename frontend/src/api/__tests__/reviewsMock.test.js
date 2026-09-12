@@ -1,17 +1,20 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listReviews,
   getReview,
   approveReview,
   rejectReview,
+  submitReviewRow,
+  cancelReviewRow,
   resetReviewsMock
 } from '../reviewsMock'
 
 /**
- * 审核中心 mock 层（2026-09-01 PRD 对齐改造）回归保护：
- * 种子 = 8 条原型待审记录 + 1 条知识库待审记录（2026-09-09 PRD 复核·G3G6 · A6）；列表只出待审核；
- * 业务类型八项筛选（含知识库；MCP/API 由 TOOL+subType 拆分）；申请类型筛选；
- * submittedAt 排序默认 desc；通过（含停用申请）/驳回后移出待审列表。
+ * 审核中心 mock 层回归保护（2026-09-12 对齐 md `prd.审核中心.md` §二 / §3.1 / §5.1 / §5.2 / §六）：
+ * 种子 = 8 条待审记录 + 1 条知识库待审记录（2026-09-09 PRD 复核·G3G6 · A6）；列表只出待审核（md §六 L88）；
+ * 业务类型八项筛选（md §二.2，含知识库；MCP/API 由 TOOL+subType 拆分）；申请类型筛选（md §二.3）；
+ * submittedAt 排序默认 desc（md §3.1）；通过（含停用申请 → 已下架，md §5.2 L80）/ 驳回后记录离开待审列表（md §5.1 L71 / §5.2 L82）。
+ * 2026-09-12 测试审计 T56：补提交端接线（submitReviewRow 覆盖在审行、新 id 避开种子 / cancelReviewRow 静默，md §六 L92）；F9 补 restore 形状守卫。
  */
 describe('reviewsMock · 审核中心内存 mock', () => {
   beforeEach(() => resetReviewsMock())
@@ -76,7 +79,7 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(total).toBe(8)
   })
 
-  it('通过停用申请 → DELISTED（原型：DELIST 通过即停用）', async () => {
+  it('通过停用申请 → DELISTED（md §5.2 L80「停用申请通过后，对象变为未发布 / 已下架」）', async () => {
     const row = await approveReview(3)
     expect(row.status).toBe('DELISTED')
   })
@@ -108,5 +111,96 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(row.name).toBe('财务审核岗')
     expect(row.refId).toBe(403)
     await expect(getReview(999)).rejects.toMatchObject({ code: 404 })
+  })
+
+  /* ---------------- 提交端接线（2026-09-12 测试审计 T56 补缺口；reviewsMock.js:114-140） ---------------- */
+
+  it('submitReviewRow：同一对象已在审（同 type+refId）→ 覆盖原行不新建（md §六 L92「同一对象同一时间只允许存在一条待审核申请」）', async () => {
+    // 种子 id 8 = TOOL/MCP knowledge_hub 在审
+    const written = submitReviewRow({
+      type: 'TOOL',
+      subType: 'MCP',
+      refId: 'knowledge_hub',
+      name: '企业知识库 MCP',
+      description: '重新提交后的描述',
+      requestAction: 'VERSION_PUBLISH',
+      version: 'v3.5.0',
+      submittedAt: '2026-08-29 09:00'
+    })
+    expect(written.id).toBe(8) // 沿用原行 id
+    const { list, total } = await listReviews()
+    expect(total).toBe(9) // 不多出一行
+    const row = list.find((r) => r.id === 8)
+    expect(row.description).toBe('重新提交后的描述')
+    expect(row.version).toBe('v3.5.0')
+    expect(row.status).toBe('PENDING_REVIEW')
+  })
+
+  it('submitReviewRow：新对象 → 新建行，id 避开种子 1..9（取现有最大 id + 1），带默认提交人与「—」版本', async () => {
+    const written = submitReviewRow({
+      type: 'EXPERT',
+      refId: 205,
+      name: '合规审阅专家',
+      requestAction: 'FIRST_PUBLISH',
+      submittedAt: '2026-08-29 09:00'
+    })
+    expect(written.id).toBe(10)
+    expect(written).toMatchObject({ status: 'PENDING_REVIEW', submitterName: 'config.admin', version: '—' })
+    const { list, total } = await listReviews()
+    expect(total).toBe(10)
+    expect(list[0].name).toBe('合规审阅专家') // 08-29 比种子最新的 08-28 11:02 更晚，倒序排第一
+  })
+
+  it('cancelReviewRow：命中在审行即摘掉（撤回后离开待审列表）；无匹配对象静默、列表不变', async () => {
+    cancelReviewRow('TOOL', 'api_1103') // 种子 id 1
+    expect((await listReviews()).list.some((r) => r.id === 1)).toBe(false)
+    expect((await listReviews()).total).toBe(8)
+    expect(() => cancelReviewRow('EXPERT', 99999)).not.toThrow()
+    expect((await listReviews()).total).toBe(8)
+  })
+})
+
+/* ---------------- F9：restore 形状守卫（reviewsMock.js:155-157；mockPersist 兜底回种子） ---------------- */
+describe('reviewsMock · 持久化 restore 形状守卫', () => {
+  // 本仓 node/jsdom 环境均无可用 localStorage（mockPersist 探测后走纯内存模式），
+  // 与 positionMock.test / mockPersist.test 同款：注入内存版存储 + vi.resetModules + 动态 import 模拟「刷新后重新加载模块」。
+  const KEY = 'iworker-demo-mock:reviews'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    globalThis.localStorage = makeStorage()
+    vi.resetModules()
+  })
+  afterEach(() => {
+    delete globalThis.localStorage
+    vi.resetModules()
+  })
+
+  it('存量快照版本对但 reviews 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 9 条、坏 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { reviews: 'oops' } }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fresh = await import('../reviewsMock')
+    expect((await fresh.listReviews()).total).toBe(9)
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('reviews 存量数据不可用'), expect.any(Error))
+    warn.mockRestore()
+  })
+
+  it('对照：形状合法的存量快照（v=5）会被读回——列表按快照而非种子', async () => {
+    const seedOnly = [{ id: 42, name: '快照里的唯一行', type: 'MODEL', refId: 'md_104', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-09-01 10:00', status: 'PENDING_REVIEW' }]
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { reviews: seedOnly } }))
+    const fresh = await import('../reviewsMock')
+    const { list, total } = await fresh.listReviews()
+    expect(total).toBe(1)
+    expect(list[0].name).toBe('快照里的唯一行')
   })
 })
