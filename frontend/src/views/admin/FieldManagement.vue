@@ -12,11 +12,11 @@
  * 2026-09-08 原型复刻批次 2B（D-1 / D-2 / D-3）：编辑弹窗选项行照原型 .fm5-option-row（描边 + 浅底 + 7px 圆角 +
  *   9px 11px 内距，序号 / 34px 输入框 / × 图标钮），列表限高 310 滚动；「＋ 添加选项」改 plain 描边按钮、纳入
  *   列表容器末尾、上加 1px 分隔线（.fm5-option-add）；弹窗点遮罩可关（md §三「关闭弹窗，放弃本次未保存修改」）。
- * 2026-09-12 对齐 md §三 L48（审计 J19/K32）：删除按钮「仅从当前编辑草稿中移除」，无确认弹窗——
- *   原 2B 批次保留的 ElMessageBox 删除确认属代码超出 md，已撤（真正生效在【完成】统一保存时，误删可直接【取消】放弃）。
+ * 2026-09-12 删除确认的两次反复（以 md 为准）：审计 J19/K32 曾按当时 md「仅从当前编辑草稿中移除」撤掉确认弹窗；
+ *   同日 PRD 方 ad4abbe 把 md §三 L48 改为「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除」，故按新 md 恢复。
  */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListStates from '@/components/admin/ListStates.vue'
@@ -113,7 +113,22 @@ async function addOption() {
 }
 
 // 删除仅从当前编辑草稿中移除、不弹确认（2026-09-12 对齐 md §三 L48，审计 J19/K32）；保存在【完成】时统一发生
-function removeOption(idx) {
+async function removeOption(idx) {
+  const name = draft.value[idx]?.name?.trim() || '该选项'
+  const impact =
+    dialogField.value?.key === 'skillCategory'
+      ? '删除后，已使用该分类的技能将显示为未分类。'
+      : '删除后，已有记录中的该值不会被自动替换。'
+  try {
+    await ElMessageBox.confirm(`确认删除"${name}"？${impact}`, '删除选项', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'el-button--danger'
+    })
+  } catch {
+    return
+  }
   draft.value.splice(idx, 1)
   dialogError.value = ''
 }

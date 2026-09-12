@@ -185,19 +185,34 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect([...dialog().querySelectorAll('.fm-opt-idx')].at(-1).textContent).toBe('9')
   })
 
-  it('点某行删除钮 → 草稿行 −1、序号重排、不弹 confirm、不调保存（md §三 L48：仅从当前编辑草稿中移除；审计 J19/K32）', async () => {
+  it('点某行删除钮 → 弹确认「确认删除"法律"？…」，确认后草稿行 −1、序号重排、不调保存（md §三 L48，2026-09-12 ad4abbe 改为需确认）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
     expect(draftInputs()).toHaveLength(8)
     dialog().querySelectorAll('.fm-opt-row .fm-opt-del')[1].click() // 删第 2 行「法律」
     await flush()
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('确认删除"法律"？'),
+      '删除选项',
+      expect.objectContaining({ confirmButtonText: '删除' })
+    )
     expect(draftInputs()).toHaveLength(7)
     expect(draftInputs().map((i) => i.value)).toEqual(EXPERT.filter((n) => n !== '法律'))
     expect([...dialog().querySelectorAll('.fm-opt-idx')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
     expect(saveFieldOptions).not.toHaveBeenCalled()
     expect(dialog()).toBeTruthy()
+  })
+
+  it('删除确认点【取消】→ 草稿不变（md §三 L48）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    ElMessageBox.confirm.mockRejectedValueOnce(new Error('cancel'))
+    dialog().querySelectorAll('.fm-opt-row .fm-opt-del')[1].click()
+    await flush()
+    expect(draftInputs()).toHaveLength(8)
+    expect(draftInputs().map((i) => i.value)).toEqual(EXPERT)
   })
 
   it('选项为空 → 【完成】被拦：弹窗内提示「选项值不能为空」、不调保存、弹窗不关（md §五 L66）；改输入后提示消失', async () => {
