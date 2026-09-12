@@ -1,15 +1,21 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, provide, inject, nextTick } from 'vue'
+import { createApp, h, nextTick } from 'vue'
+import { makeElTableStubs } from './helpers/elTableStub'
 
 /**
  * AdminExperts.vue 单测。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md
+ *   §一.1 导航栏（分类 8 项同源字段字典 / 状态三态）/ §一.3 加载失败【重试】/ §二.1 列表展示 / §二.2 排序 /
+ *   §二.3.1 三态按钮 / §二.3.2 查看编辑 / §二.3.3 发布 / §二.3.4 撤回 / §二.3.5 停用 / §二.3.7 删除。
+ * el-table 用共享桩（helpers/elTableStub，T39）；真实挂载冒烟见 adminExpertsSmoke.test.js。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：二态状态列 / 「版本发布」单入口 /
  * 查影响面+回填名强确认删除 / 「平台技能」措辞），本文件按新契约重写：
- * - 三态展示映射（未发布/审核中/已发布）并入专家名列；分类列 / 最新版本「-」占位；
+ * - 三态展示映射（未发布/审核中/已发布）；分类列 / 最新版本「—」占位；
  * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理；
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
+ * 注：状态标签 2026-09-11（38c3567）已拆独立列，md §二.1 仍写「不设独立状态列」——列序用例待裁决（审计 J1），本文件不写。
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
@@ -86,31 +92,11 @@ vi.mock('@/components/StatusTag.vue', () => ({
 }))
 
 const AdminExperts = (await import('@/views/admin/AdminExperts.vue')).default
+// 字段字典（真 mock 数据层，不桩）：静态 import 会先于上方 vi.mock 变量初始化触达 request.js，故动态取
+const { getFieldOptionNames } = await import('@/api/fieldDictMock')
 
-const ROW_KEY = Symbol('row')
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: i })))
-  }
-}
-const RowCells = {
-  props: { row: { type: Object, required: true }, colSlot: { type: Function, required: true } },
-  setup(props) {
-    provide(ROW_KEY, props.row)
-    return () => h('div', { class: 'el-row' }, props.colSlot?.())
-  }
-}
-const tableColStub = {
-  name: 'el-table-column',
-  props: { label: { type: String, default: '' }, prop: { type: String, default: '' } },
-  setup(props, { slots }) {
-    const row = inject(ROW_KEY, null)
-    return () => h('div', { class: 'el-table-column' }, [row ? slots.default?.({ row }) : slots.header?.()])
-  }
-}
+// 共享 el-table 桩（renderHeader：时间列自定义表头的排序按钮要能点到）
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elButton = {
@@ -119,15 +105,25 @@ const elButton = {
   template:
     '<button class="el-button" :disabled="disabled" :title="title" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
+// 筛选下拉：原生 select 桩，option 渲染 label（供分类 8 项 / 组合筛选断言）
+const elSelect = {
+  props: { modelValue: { default: '' }, placeholder: String },
+  emits: ['update:modelValue', 'change'],
+  template:
+    '<select class="el-select" :data-placeholder="placeholder" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
+}
+const elOption = { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' }
 
 let app, container
 async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminExperts)
-  for (const t of ['el-input', 'el-select', 'el-option', 'el-pagination', 'el-icon']) {
+  for (const t of ['el-input', 'el-pagination', 'el-icon']) {
     app.component(t, passthrough(t))
   }
+  app.component('el-select', elSelect)
+  app.component('el-option', elOption)
   app.component('el-table', tableStub)
   app.component('el-table-column', tableColStub)
   app.component('el-empty', elEmpty)
@@ -183,7 +179,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
   })
 
   // 2026-09-10 E11：版本空值占位由「-」统一为全站长横「—」（utils/tableLayout.NA），断言随行为更新
-  it('行渲染：状态标签并入专家名列（三态映射）；分类列；最新版本无版本显「—」', async () => {
+  it('行渲染：三态状态标签（未发布/审核中/已发布）；分类列；最新版本无版本显「—」（md §二.1 / §二.4）', async () => {
     await mount()
     const rows = rowEls()
     expect(rows).toHaveLength(3)
@@ -192,10 +188,63 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(rows[1].querySelector('.status-tag').textContent).toBe('未发布')
     expect(rows[2].querySelector('.status-tag').textContent).toBe('审核中')
     expect(container.textContent).not.toContain('草稿')
-    // 名称列内含头像 + 名称 + 标签同格
+    // 名称列内含头像 + 名称（状态标签所在列位置归审计 J1 裁决，此处不断言）
     expect(rows[0].querySelector('.ex-primary .ex-avatar')).toBeTruthy()
     expect(rows[0].textContent).toContain('投资') // 分类列
     expect(rows[1].textContent).toContain('—') // 无版本占位（E11 全站统一长横）
+    // 审核中行不展示待审版本号 v1.2.0，只展示最新已发布版本（md §二.1「不展示待审核版本号」）
+    expect(rows[2].textContent).toContain('v1.1.0')
+    expect(rows[2].textContent).not.toContain('v1.2.0')
+  })
+
+  /* ===== 2026-09-12 T55 补缺口：排序 / 组合筛选 / 分类 8 项 / 加载失败重试 ===== */
+
+  it('点「最近更新时间」列头 → 切升序：listExperts 带 sort:asc，箭头翻成 ↑（md §二.2）', async () => {
+    await mount()
+    expect(container.querySelector('.time-sort-arrow').textContent).toBe('↓')
+    container.querySelector('.time-sort').click()
+    await flush()
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'asc' }))
+    expect(container.querySelector('.time-sort-arrow').textContent).toBe('↑')
+  })
+
+  it('分类选「法律」+ 状态选「未发布」→ 组合条件透传 listExperts {category:法律, status:draft}（md §一.1 / §一.2）', async () => {
+    await mount()
+    const [category, status] = [...container.querySelectorAll('select.el-select')]
+    category.value = '法律'
+    category.dispatchEvent(new Event('change'))
+    await flush()
+    status.value = 'draft'
+    status.dispatchEvent(new Event('change'))
+    await flush()
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ category: '法律', status: 'draft' }))
+    // 切换即刷新：初始 1 次 + 两次筛选各 1 次
+    expect(listExperts).toHaveBeenCalledTimes(3)
+  })
+
+  it('分类下拉 8 项 = 字段字典 expertCategory，且与 md §一.1 列举逐一相等', async () => {
+    await mount()
+    const [category, status] = [...container.querySelectorAll('select.el-select')]
+    const labels = [...category.querySelectorAll('option')].map((o) => o.textContent)
+    expect(labels).toEqual(getFieldOptionNames('expertCategory'))
+    expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
+    expect([...status.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['未发布', '审核中', '已发布'])
+    expect(category.dataset.placeholder).toBe('全部专家分类')
+    expect(status.dataset.placeholder).toBe('全部状态')
+  })
+
+  it('加载失败 → 「加载失败」+【重试】；点重试按当前条件重拉并渲染出行（md §一.3）', async () => {
+    listExperts.mockRejectedValueOnce(new Error('x'))
+    await mount()
+    const empty = container.querySelector('.el-empty')
+    expect(empty.textContent).toContain('加载失败')
+    const retry = [...empty.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
+    expect(retry).toBeTruthy()
+    retry.click()
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('.el-empty')).toBeNull()
+    expect(rowEls()).toHaveLength(3)
   })
 
   it('头像按行「背景色」着色（2026-09-04 PRD-20260903）；行无背景色 → 不写内联背景（回落令牌底色）', async () => {
@@ -333,7 +382,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
   })
 
-  it('列表撤回：确认文案照原型 → withdrawExpert → 「审核申请已撤回」+ 重拉', async () => {
+  it('列表撤回：确认文案对齐 md §二.3.4 → withdrawExpert → 「审核申请已撤回」+ 重拉', async () => {
     ElMessageBox.confirm.mockResolvedValueOnce()
     withdrawExpert.mockResolvedValueOnce({})
     await mount()

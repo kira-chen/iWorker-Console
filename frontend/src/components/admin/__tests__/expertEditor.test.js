@@ -4,6 +4,9 @@ import { createApp, h, nextTick } from 'vue'
 
 /**
  * ExpertEditor.vue 单测。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md
+ *   §三.1 三态抽屉 / §三.2 基本信息 / §三.3 示例问题 / §三.4 市场技能引用 / §三.5 知识库 / §三.6 时间信息 / §三.7 保存与关闭。
+ * 本文件 el-drawer/el-form 为桩；真实挂载冒烟见 expertEditorSmoke.test.js。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：先建后挂的 add/removeExpertSkill 弹窗选择器 /
  * 无分类无示例问题 / 编辑态才校验技能），本文件按新契约重写：
  * - 基本信息补「分类」必选；「专家帮你做」固定 3 条 + 【AI 生成】；
@@ -269,7 +272,7 @@ describe('ExpertEditor — 新建', () => {
     expect(getExpert).not.toHaveBeenCalled()
   })
 
-  it('必填项为空 → 各字段就地报错（含分类/图标/示例问题/技能），不打接口', async () => {
+  it('必填项为空 → 各字段就地报错（含分类/图标/示例问题/技能），不打接口（md §三.7）', async () => {
     await mount({ expertId: null })
     btn('创建专家').click()
     await flush()
@@ -282,6 +285,44 @@ describe('ExpertEditor — 新建', () => {
     expect(errs).toContain('请填写职责描述')
     expect(errs).toContain('请填写 3 条"专家帮你做"示例问题')
     expect(errs).toContain('请至少添加 1 个技能')
+  })
+
+  // 2026-09-12 T43 · md §三.7「其余未通过时对应区域标红并提示"请先补齐必填项"」——
+  // 示例问题已填满时走通用 toast（示例问题缺则走专用 toast，见「示例问题校验收紧」组）
+  it('示例问题已填满、仅专家名缺 → toast「请先补齐必填项」+ 专家名就地红字，不打接口（md §三.7）', async () => {
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    await type(inputs()[0], '') // 清空专家名
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).not.toHaveBeenCalled()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+    expect(ElMessage.warning).not.toHaveBeenCalledWith('请填写 3 条"专家帮你做"示例问题')
+    expect(errTexts()).toContain('请填写专家名')
+  })
+
+  // 2026-09-12 T55 · md §三.2「职责描述：必填，最多 2000 字符」（ExpertEditor.vue:375-377 软上限拦截）
+  it('职责描述 2001 字 → 就地红字「职责描述不超过 2000 字」+ toast，不发 createExpert（md §三.2）', async () => {
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    const mde = container.querySelector('.soul-mde')
+    mde.value = '字'.repeat(2001)
+    mde.dispatchEvent(new Event('input'))
+    await flush(2)
+    expect(container.querySelector('.ee-soul-count').textContent.replace(/\s/g, '')).toBe('2001/2000')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).not.toHaveBeenCalled()
+    expect(errTexts()).toContain('职责描述不超过 2000 字，当前 2001 字')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+    // 恰好 2000 字放行
+    mde.value = '字'.repeat(2000)
+    mde.dispatchEvent(new Event('input'))
+    await flush(2)
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 206, name: '新专家' })
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ roleDesc: '字'.repeat(2000) }))
   })
 
   it('填满创建 → createExpert 带分类/背景色/示例问题/skillIds → 「专家已创建」+ emit saved + 收抽屉', async () => {
@@ -339,10 +380,10 @@ describe('ExpertEditor — 新建', () => {
   })
 })
 
-describe('ExpertEditor — 背景色（2026-09-04 新增必填字段）', () => {
+describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () => {
   const swatches = () => [...container.querySelectorAll('input[name="expertBackgroundColor"]')]
 
-  it('固定 7 色板单选，默认选中 #DCF5E4；hint 照原型；字段顺序 图标→背景色→简介', async () => {
+  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（md §三.2）', async () => {
     await mount({ expertId: null })
     const radios = swatches()
     expect(radios.map((r) => r.value)).toEqual([
@@ -350,7 +391,7 @@ describe('ExpertEditor — 背景色（2026-09-04 新增必填字段）', () => 
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 字段顺序（原型 finalizeExpertLayout）：专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述
+    // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
     expect(labels).toEqual(['专家名', '分类', '图标', '背景色', '简介', '职责描述'])
   })
@@ -377,7 +418,7 @@ describe('ExpertEditor — 背景色（2026-09-04 新增必填字段）', () => 
   })
 })
 
-describe('ExpertEditor — 原型复刻批次 3C（2026-09-09）· E1/E2 抽屉内部形态', () => {
+describe('ExpertEditor — 抽屉内部形态（md §三.1/§三.2：分区卡片 + 图标行；2026-09-09 批次 3C 落地）', () => {
   it('E1：四个分区平铺改为 .section-card 分区卡，且「专家帮你做」并入基本信息卡内作子分区（不再是独立卡）', async () => {
     await mount({ expertId: 201 })
     // 编辑态卡：基本信息 / 市场技能引用 / 知识库（「专家帮你做」已并入第一张卡）
@@ -408,7 +449,7 @@ describe('ExpertEditor — 原型复刻批次 3C（2026-09-09）· E1/E2 抽屉�
     expect(labels).toEqual(['从图标库选择', '上传图标'])
   })
 
-  it('E2③：职责描述编辑器高度 282px（原型 L675 工具栏 52 + 文本域 min-height 230）', async () => {
+  it('E2③：职责描述编辑器高度 282px（无 md 条款，视觉守卫：工具栏 52 + 文本域 min-height 230）', async () => {
     await mount({ expertId: 201 })
     expect(container.querySelector('.soul-mde').dataset.height).toBe('282px')
   })
@@ -445,7 +486,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
   const kbRows = () => [...container.querySelectorAll('.ee-kb-row')]
   const kbBtn = (text) => [...kbSec().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
-  it('技能引用区后渲染；副标题/表头照原型；编辑态按可见范围过滤（企业级 + 本专家专属，岗位级不可见）；默认露 2 行 + 展开更多（N）', async () => {
+  it('技能引用区后渲染；副标题/表头五列（md §三.5）；编辑态按可见范围过滤（企业级 + 本专家专属，岗位级不可见）；默认露 2 行 + 展开更多（N）', async () => {
     await mount({ expertId: 201 })
     const sec = kbSec()
     expect(sec).toBeTruthy()
@@ -487,7 +528,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbSec().textContent).toContain('没有匹配的知识库')
   })
 
-  it('「查看」/「检索测试」→ 收抽屉并跳知识库路由带参（action/kbId 与消费端 KnowledgeBaseList 同键；2026-09-08 原型复刻批次 1 · C-H2 对齐）', async () => {
+  it('「查看」→ 收抽屉并跳知识库路由带参（md §三.5；action/kbId 与消费端 KnowledgeBaseList 同键）', async () => {
     await mount({ expertId: 201 })
     const firstRow = kbRows()[0]
     const [view, test] = [...firstRow.querySelectorAll('.el-button')]
@@ -502,7 +543,7 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     })
   })
 
-  it('E4：「检索测试」不收抽屉、不跳路由——就地在专家抽屉上层打开检索测试弹窗（2026-09-09 原型复刻批次 3C，原型 L4175 openSearch 不 closeDrawer）', async () => {
+  it('「检索测试」不收抽屉、不跳路由——就地在专家抽屉之上叠加检索测试弹窗（md §三.5）', async () => {
     await mount({ expertId: 201 })
     expect(container.querySelector('.stub-kb-search').dataset.visible).toBe('false')
     const [, test] = [...kbRows()[0].querySelectorAll('.el-button')]
@@ -641,7 +682,7 @@ describe('ExpertEditor — 编辑', () => {
   })
 })
 
-describe('ExpertEditor — 只读查看（原型 openExpertViewer）', () => {
+describe('ExpertEditor — 只读查看（md §三.1「查看」：标题「查看专家」、全部只读、底部仅【关闭】）', () => {
   it('标题「查看专家」：展示状态/分类、示例问题、技能引用、时间条；footer 仅【关闭】，所有字段禁用', async () => {
     await mount({ expertId: 201, readonly: true })
     expect(container.querySelector('.dr-title').textContent).toContain('查看专家')

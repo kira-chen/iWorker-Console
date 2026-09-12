@@ -550,5 +550,8 @@ export function __resetExpertMock() {
   expertSeq = 205
   experts = seedExperts()
   publications = seedPublications()
+  // 审核快照表一并回种子（2026-09-12 测试审计 T23）：此前不清，前一用例提交/撤回留下的快照会跨用例残留
+  reviewSnapshots = {}
+  seedReviewSnapshots()
   persist()
 }

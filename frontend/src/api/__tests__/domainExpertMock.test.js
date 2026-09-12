@@ -23,9 +23,11 @@ import {
   __resetExpertMock
 } from '../domainExpertMock'
 
-// vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖
+// vitest 用例随机顺序执行：每例前重置种子（含审核快照表，2026-09-12 T23），杜绝状态顺序依赖
 beforeEach(() => __resetExpertMock())
 
+// 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §二.2 排序 / §二.3.3 发布 /
+// §二.3.4 撤回 / §二.3.5 停用 / §二.3.7 删除 / §四.3 版本历史；提交快照的写销见 reviewSnapshot.test.js
 describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮）', () => {
   it('种子 4 条照原型：默认按最近更新时间降序，含分类/技能数/最新版本；法务审阅专家无版本', async () => {
     const { list, total } = await listExperts()
@@ -97,11 +99,16 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await expect(updateExpert(204, { intro: 'x' })).rejects.toMatchObject({ code: 409 })
   })
 
-  it('删除：返回解除的引用数并移除本体；delete-impact 接口保留可用', async () => {
-    const impact = await getExpertDeleteImpact(201)
-    expect(impact).toMatchObject({ name: '经营分析专家', skillRefCount: 2, published: true })
-    expect(await deleteExpert(201)).toBe(2)
-    expect((await listExperts()).total).toBe(3)
+  // 2026-09-12 测试审计 T55：md §二.3.7「【删除】仅在"未发布"且无审核中操作时展示」——
+  // 原用例拿已发布的 201 删，等于把「已发布可删」锁进用例；改用唯一的草稿种子 203。
+  // （mock 侧尚无「已发布/审核中拒删」守卫，记代码缺陷，此处不写会红的用例。）
+  it('删除未发布专家 203：返回解除的引用数并移除本体；delete-impact 接口保留可用（md §二.3.7）', async () => {
+    const impact = await getExpertDeleteImpact(203)
+    expect(impact).toMatchObject({ name: '法务审阅专家', skillRefCount: 1, published: false })
+    expect(await deleteExpert(203)).toBe(1)
+    const { list, total } = await listExperts()
+    expect(total).toBe(3)
+    expect(list.map((e) => e.name)).not.toContain('法务审阅专家')
   })
 
   it('引用/解除/重排（接口保留）：add 幂等、remove 断关联不动本体、reorder 按数组顺序', async () => {
@@ -126,6 +133,20 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await withdrawExpert(203)
     row = (await listExperts({ status: 'draft' })).list.find((e) => e.id === 203)
     expect(row).toMatchObject({ pendingAction: null, pendingVersion: null })
+  })
+
+  // 2026-09-12 测试审计 T55 · md §二.3.4「新版本审核撤回后线上仍为当前已发布版本」+
+  // 「撤回时统一清理 pendingAction、pendingVersion 和 pendingReleaseNotes」
+  it('已发布专家 204 撤回新版审核 → 仍是已发布、pendingVersion 清空、最新版本仍为 v1.1.0（md §二.3.4）', async () => {
+    const before = (await listExperts()).list.find((e) => e.id === 204)
+    expect(before).toMatchObject({ status: 'published', pendingAction: 'PUBLISH', pendingVersion: 'v1.2.0' })
+    await withdrawExpert(204)
+    const row = (await listExperts({ status: 'published' })).list.find((e) => e.id === 204)
+    expect(row).toMatchObject({ status: 'published', pendingAction: null, pendingVersion: null, latestVersionLabel: 'v1.1.0' })
+    // 三态展示口径：不再命中「审核中」筛选
+    expect((await listExperts({ status: 'review' })).list.map((e) => e.id)).not.toContain(204)
+    // 版本历史不因撤回生成新快照
+    expect((await listExpertPublications(204)).map((r) => r.versionLabel)).toEqual(['v1.1.0', 'v1.0.0'])
   })
 
   it('已发布迭代：next-label = 最新版 patch+1；bump 决定版本号', async () => {

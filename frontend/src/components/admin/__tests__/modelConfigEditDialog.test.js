@@ -3,16 +3,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 
 /**
- * ModelConfigEditDialog.vue 单测（V76）：
+ * ModelConfigEditDialog.vue 单测。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md
+ *   §三.1 三态标题 / §三.2 基本信息 / §三.3 鉴权 / §三.4 能力信息与重新验证 / §三.5 保存与关闭 / §三.6 配置变更影响。
  * - authType 切换字段组（API_KEY ↔ APP_ID_SECRET）
- * - 保存成功后自动触发 verifyModel（「保存即验证」）并 emit saved
- * - 编辑已发布模型且连接字段变更 → 先弹 ElMessageBox.confirm（回草稿重审确认）
+ * - 保存即返回：toast「已保存，正在验证连通性…」+ emit saved 带 verifyId，验证交列表行内跑
+ * - 编辑已发布模型且连接字段变更 → 先弹「连接信息变更」确认；默认模型改类别 → 先弹「类别变更」确认
+ * 本文件 el-form 为桩（validate 恒 true）；真 ElForm 校验 + 真实挂载冒烟见 modelConfigEditDialogSmoke.test.js。
  */
 
 const api = { createModel: vi.fn(), updateModel: vi.fn(), verifyModel: vi.fn() }
 vi.mock('@/api/adminModel', () => api)
 
-const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
+const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
 
@@ -338,7 +341,7 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     expect(container.querySelectorAll('.cred-mask').length).toBe(0)
   })
 
-  it('V96 保存即返回：不在弹窗内验证，emit saved 带 verifyId 交列表行内跑', async () => {
+  it('保存即返回：toast「已保存，正在验证连通性…」、不在弹窗内验证，emit saved 带 verifyId 交列表行内跑（md §三.5 L311-312）', async () => {
     // 旧实现在此 await 验证，用户点「保存」却被扣住约 40 秒——他要的是保存，不是等验证。
     await mount()
     setInput('name', 'DeepSeek')
@@ -350,7 +353,29 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     await flush()
     expect(api.createModel).toHaveBeenCalled()
     expect(api.verifyModel).not.toHaveBeenCalled()          // 弹窗内不再发起验证
+    expect(msg.success).toHaveBeenCalledWith('已保存，正在验证连通性…')
     expect(savedSpy).toHaveBeenCalledWith({ verifyId: 'md_new' })
+    expect(visibleRef.value).toBe(false)                    // 关闭抽屉
+  })
+
+  // 2026-09-12 T55 · E16：watcher 为 immediate（5303c7c 09-09 收口 P1）——治理侧条件挂载时组件创建即 visible=true，
+  // 无 false→true 跃迁，表单仍须回填；此处以 visible:true 初始化直接挂载防回归
+  it('以 visible=true 初始化挂载（无跃迁）→ 表单已回填 name / baseUrl（watch immediate 防回归）', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    savedSpy = vi.fn()
+    visibleRef = ref(true)
+    modelRef = ref({ id: 'md_imm', name: '直挂模型', baseUrl: 'https://imm.example/v1', model: 'imm', authType: 'API_KEY', status: 'DRAFT' })
+    app = createApp({
+      setup() {
+        return () => h(Dialog, { visible: visibleRef.value, model: modelRef.value, 'onUpdate:visible': (v) => (visibleRef.value = v), onSaved: savedSpy })
+      }
+    })
+    for (const [name, comp] of Object.entries(stubs)) app.component(name, comp)
+    app.mount(container)
+    await nextTick()
+    expect(inputByProp('name').value).toBe('直挂模型')
+    expect(inputByProp('baseUrl').value).toBe('https://imm.example/v1')
   })
 
   it('新建保存成功后再次保存：走 update 而非二次 create（CR 修复项）', async () => {
@@ -392,7 +417,14 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     msgBox.confirm.mockRejectedValue('cancel')
     saveBtn().click()
     await flush()
-    expect(msgBox.confirm).toHaveBeenCalled()
+    // md §三.6 L325-326：标题「连接信息变更」，说明客户端将无法获取该模型的调用配置、保存后需重新验证并重新发布
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('客户端将无法再获取它的调用配置'),
+      '连接信息变更',
+      expect.objectContaining({ type: 'warning' })
+    )
+    expect(msgBox.confirm.mock.calls[0][0]).toContain('重新验证')
+    expect(msgBox.confirm.mock.calls[0][0]).toContain('重新发布')
     expect(api.updateModel).not.toHaveBeenCalled()
 
     // 确认后正常走保存；验证不在弹窗内发起（改由列表行内跑）
@@ -422,7 +454,13 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     msgBox.confirm.mockRejectedValue('cancel')
     saveBtn().click()
     await flush()
-    expect(msgBox.confirm).toHaveBeenCalled()
+    // md §三.6 L333-334：标题「类别变更」，说明修改类别后模型将不再是原类别的默认模型
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('修改类别后它将不再是默认模型'),
+      '类别变更',
+      expect.objectContaining({ confirmButtonText: '确认修改' })
+    )
+    expect(msgBox.confirm.mock.calls[0][0]).toContain('「文本生成」类别的默认模型')
     expect(api.updateModel).not.toHaveBeenCalled()
 
     // 确认后正常保存（category=VISION 透传）
@@ -453,19 +491,38 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     expect(api.updateModel).toHaveBeenCalled()
   })
 
-  it('V95 只读查看态：不渲染保存与重新验证按钮', async () => {
+  it('只读查看态：底部仅【关闭】，不渲染保存与重新验证按钮（md §三.5 L307）', async () => {
     await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' }, { readonly: true })
     expect(saveBtn()).toBeFalsy()
     expect(verifyOnlyBtn()).toBeFalsy()
+    const labels = [...container.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+    expect(labels).toEqual(['关闭'])
   })
 
-  it('V95「重新验证」：直接调 verifyModel，不走保存', async () => {
+  it('编辑态「重新验证」：直接调 verifyModel 不走保存；成功就地回显「连通性验证成功（120 ms）」+ toast + emit saved（md §三.4.2）', async () => {
     api.verifyModel.mockResolvedValue({ verifyStatus: 'SUCCESS', verifyLatencyMs: 120 })
     await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' })
     verifyOnlyBtn().click()
     await flush()
     expect(api.verifyModel).toHaveBeenCalledWith('md_1')
     expect(api.updateModel).not.toHaveBeenCalled()
+    const alert = container.querySelector('.el-alert[data-type="success"]')
+    expect(alert.textContent).toContain('连通性验证成功（120 ms）')
+    expect(msg.success).toHaveBeenCalledWith('检活完成 · 连接正常')
+    expect(savedSpy).toHaveBeenCalled() // 列表同步刷新本次验证结果
+    expect(visibleRef.value).toBe(true) // 抽屉保持打开
+  })
+
+  it('编辑态「重新验证」失败：回显「连通性验证失败：<原因>」，抽屉保持打开可再次验证（md §三.4.2 L297-301）', async () => {
+    api.verifyModel.mockResolvedValue({ verifyStatus: 'FAILED', verifyError: 'AUTH_FAILED: 鉴权失败（HTTP 401）' })
+    await mount({ id: 'md_1', name: '老模型', status: 'PUBLISHED' })
+    verifyOnlyBtn().click()
+    await flush()
+    const alert = container.querySelector('.el-alert[data-type="error"]')
+    expect(alert.textContent).toContain('连通性验证失败：AUTH_FAILED: 鉴权失败（HTTP 401）')
+    expect(msg.warning).toHaveBeenCalledWith('检活完成 · 连接异常')
+    expect(visibleRef.value).toBe(true)
+    expect(verifyOnlyBtn()).toBeTruthy()
   })
 
   /* ===== 2026-09-09 原型复刻批次 3A（D3 / D5 / D6） ===== */

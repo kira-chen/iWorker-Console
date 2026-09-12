@@ -11,6 +11,8 @@ import {
 
 /**
  * modelPresets（模型接入·厂商预设与枚举）一致性守卫（批量补测，2026-08-08）。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md §三.2 基本信息
+ * （提供商 8 项、上下文窗口 10 档、类别 4 项）；MODEL_PRESETS 三条归 J13 死码清理批。
  *
  * 这些枚举同时被表单下拉、列表回填标签、后端契约三处消费，改一处漏一处即产生
  * 「下拉能选但列表显示空白」「选了后端拒收」这类问题。纯数据模块，用结构断言守：
@@ -62,34 +64,60 @@ describe('modelPresets · 枚举一致性', () => {
     }
   })
 
-  it('预设模板：key 唯一、authType 合法、数值字段为正或空', () => {
-    expect(uniq(MODEL_PRESETS.map((p) => p.key))).toBe(true)
-    for (const p of MODEL_PRESETS) {
-      expect(String(p.label || '').trim(), `${p.key} 需有展示名`).not.toBe('')
-      expect(['API_KEY', 'APP_ID_SECRET']).toContain(p.authType)
-      expect(Array.isArray(p.models)).toBe(true)
-      for (const field of ['contextWindow', 'maxOutputTokens']) {
-        const v = p[field]
-        if (v != null) expect(v, `${p.key}.${field} 应为正数`).toBeGreaterThan(0)
-      }
-      if (p.defaultTemperature != null) {
-        expect(p.defaultTemperature).toBeGreaterThanOrEqual(0)
-      }
-    }
+  // 2026-09-12 测试审计 T43：md §三.2「可选择 8K、16K、32K、64K、128K、192K、198K、200K、256K、1M」逐一相等
+  it('上下文窗口档位 label 与 md §三.2 十档逐一相等（8K…1M）', () => {
+    expect(CONTEXT_WINDOW_OPTIONS.map((o) => o.label)).toEqual(
+      ['8K', '16K', '32K', '64K', '128K', '192K', '198K', '200K', '256K', '1M']
+    )
+    // 档位值 = label 换算（K=1024）；1M = 1048576
+    expect(CONTEXT_WINDOW_OPTIONS.find((o) => o.label === '64K').value).toBe(65536)
+    expect(CONTEXT_WINDOW_OPTIONS.find((o) => o.label === '1M').value).toBe(1048576)
   })
 
-  it('预设模板：非自定义项须给出 https 接口地址与至少 1 个模型代号', () => {
-    for (const p of MODEL_PRESETS.filter((x) => x.key !== 'custom')) {
-      expect(p.baseUrl, `${p.key} 应有 baseUrl`).toMatch(/^https:\/\//)
-      expect(p.models.length, `${p.key} 应预填模型代号`).toBeGreaterThan(0)
-    }
+  // md §三.2「模型提供商：可选择 DeepSeek、智谱 GLM、月之暗面 Kimi、阿里 Qwen、MiniMax、阶跃星辰、小米 MiMo、其他」
+  // 代码 label 少了中英文间空格（「智谱GLM」vs「智谱 GLM」）——记代码缺陷 K-24，本条按去空格比对顺序与项数
+  it('提供商下拉 8 项、顺序与 md §三.2 一致（label 空格差异见 K-24，去空格比对）', () => {
+    const noSpace = (s) => String(s).replace(/\s+/g, '')
+    expect(MODEL_PROVIDER_OPTIONS.map((o) => noSpace(o.label))).toEqual(
+      ['DeepSeek', '智谱 GLM', '月之暗面 Kimi', '阿里 Qwen', 'MiniMax', '阶跃星辰', '小米 MiMo', '其他'].map(noSpace)
+    )
+    expect(MODEL_PROVIDER_OPTIONS).toHaveLength(8)
   })
 
-  it('custom 预设：留空模板（不预填地址/模型），供私有网关自填', () => {
-    const custom = MODEL_PRESETS.find((p) => p.key === 'custom')
-    expect(custom).toBeTruthy()
-    expect(custom.baseUrl).toBe('')
-    expect(custom.models).toEqual([])
+  it('类别下拉四项 label 与 md §三.2「文本生成、图像理解、多模态、文生图」逐一相等', () => {
+    expect(MODEL_CATEGORY_OPTIONS.map((o) => o.label)).toEqual(['文本生成', '图像理解', '多模态', '文生图'])
+  })
+
+  describe('MODEL_PRESETS（零调用方，随死码清理一并删，审计 J13）', () => {
+    it('预设模板：key 唯一、authType 合法、数值字段为正或空', () => {
+      expect(uniq(MODEL_PRESETS.map((p) => p.key))).toBe(true)
+      for (const p of MODEL_PRESETS) {
+        expect(String(p.label || '').trim(), `${p.key} 需有展示名`).not.toBe('')
+        expect(['API_KEY', 'APP_ID_SECRET']).toContain(p.authType)
+        expect(Array.isArray(p.models)).toBe(true)
+        for (const field of ['contextWindow', 'maxOutputTokens']) {
+          const v = p[field]
+          if (v != null) expect(v, `${p.key}.${field} 应为正数`).toBeGreaterThan(0)
+        }
+        if (p.defaultTemperature != null) {
+          expect(p.defaultTemperature).toBeGreaterThanOrEqual(0)
+        }
+      }
+    })
+
+    it('预设模板：非自定义项须给出 https 接口地址与至少 1 个模型代号', () => {
+      for (const p of MODEL_PRESETS.filter((x) => x.key !== 'custom')) {
+        expect(p.baseUrl, `${p.key} 应有 baseUrl`).toMatch(/^https:\/\//)
+        expect(p.models.length, `${p.key} 应预填模型代号`).toBeGreaterThan(0)
+      }
+    })
+
+    it('custom 预设：留空模板（不预填地址/模型），供私有网关自填', () => {
+      const custom = MODEL_PRESETS.find((p) => p.key === 'custom')
+      expect(custom).toBeTruthy()
+      expect(custom.baseUrl).toBe('')
+      expect(custom.models).toEqual([])
+    })
   })
 
   it('FIELD_TIPS 覆盖全部表单字段（缺 tip = 界面 ? 悬浮空白）', () => {

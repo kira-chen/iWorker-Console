@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+/**
+ * 端点契约测试（VITE_CONN_MOCK=0），demo 不可达，仅留档；去留待裁决（审计 J3）。
+ * 2026-09-12 测试审计：本文件断言的是 `/fde/models/*` 真实端点路径，纯前端 demo 默认走
+ * adminModelMock（USE_MOCK 恒开），这条分支在 demo 里永远跑不到——留档供接回后端时对表。
+ */
+
 // adminModel.js 依赖 ./request（其链路含 router 需 window）。mock 掉 axios 实例，
 // 仅验证各 API 的 method/path/body 与 /api/fde/models 端点契约一致 + 写接口带 skipGlobalError。
 vi.mock('@/api/request', () => ({
@@ -66,7 +72,7 @@ describe('adminModel API · /fde/models（V76）', () => {
     expect(request.post).toHaveBeenCalledWith('/fde/models/md_x/verify', {}, W)
   })
 
-  it('publishModel / delistModel → POST /{id}/publish|delist（V96：模型只有上架/下架）', () => {
+  it('publishModel / delistModel → POST /{id}/publish|delist（提交发布 / 提交停用审核，md §二.3.5 / §二.3.7）', () => {
     publishModel('md_x')
     delistModel('md_x')
     expect(request.post).toHaveBeenCalledWith('/fde/models/md_x/publish', {}, W)

@@ -8,16 +8,26 @@ import {
   getModel,
   createModel,
   updateModel,
+  deleteModel,
   verifyModel,
   publishModel,
   delistModel,
   withdrawModel,
   approveModel,
+  rejectModel,
   setDefaultModel
 } from '../adminModelMock'
 
-// 新建一条可用行（名称唯一）；返回行 VO
-async function mk(name) {
+/**
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md
+ *   §二.2 排序（updatedAt 口径）/ §二.3.4 验证 / §二.3.5 发布 / §二.3.6 撤回 / §二.3.7 停用 /
+ *   §二.3.8 设为默认 / §二.3.9 删除 / §二.4 状态规则 / §三.2 基本信息校验 / §三.8 编辑页异常。
+ * 本文件无 reset：每条用例各自 mk() 专属行自洽驱动，种子断言只读从不被改写的行（md_101/md_102）；
+ * 唯一改写种子的是「Kimi K2 重验」用例（md_104），其它用例不引用该行。
+ */
+
+// 新建一条可用行（名称唯一）；返回行 VO。over 可覆盖类别等字段
+async function mk(name, over = {}) {
   return createModel({
     name,
     providerName: 'deepseek',
@@ -25,12 +35,13 @@ async function mk(name) {
     baseUrl: 'https://api.example.com/v1',
     model: 'demo-chat',
     contextWindow: 65536,
-    apiKey: 'sk-test-abcdefgh12345678'
+    apiKey: 'sk-test-abcdefgh12345678',
+    ...over
   })
 }
 
 describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-01 PRD 对齐轮）', () => {
-  it('种子照原型 modelRows：默认模型在前，出参只带掩码不带明文', async () => {
+  it('种子 5 行：默认模型恒首位，出参只带掩码不带明文（md §二.2 / §三.3.3）', async () => {
     const { list } = await listModels({})
     expect(list.length).toBeGreaterThanOrEqual(4)
     // 默认模型（DeepSeek R1）恒在首位
@@ -51,9 +62,25 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
     expect(m.apiKeyMasked).not.toContain('demo-dashscope') // 中段不外泄
   })
 
-  it('名称平台内唯一 + ≤64（M10）', async () => {
+  it('名称平台内唯一 + ≤64 → 按 name 字段级报错（md §三.2「最多 64 字符」/ §三.8「模型名称重复」）', async () => {
     await expect(mk('DeepSeek R1')).rejects.toMatchObject({ field: 'name' })
     await expect(mk('x'.repeat(65))).rejects.toMatchObject({ field: 'name' })
+  })
+
+  // 2026-09-12 测试审计 T55：md §三.2 base_url「必须以 http:// 或 https:// 开头」/ 模型标识必填 /
+  // 上下文窗口「不小于 1024 的整数」——mock 侧兜底校验按字段定位（adminModelMock.js:272-277）
+  it('createModel 缺 baseUrl / model / contextWindow 各自 rejects 并带对应 field（md §三.2 / §三.8）', async () => {
+    const stamp = Date.now()
+    await expect(mk(`校验-url-${stamp}`, { baseUrl: 'ftp://x' })).rejects.toMatchObject({
+      field: 'baseUrl', message: expect.stringContaining('http:// 或 https://')
+    })
+    await expect(mk(`校验-model-${stamp}`, { model: '' })).rejects.toMatchObject({ field: 'model' })
+    await expect(mk(`校验-cw-${stamp}`, { contextWindow: 512 })).rejects.toMatchObject({
+      field: 'contextWindow', message: expect.stringContaining('1024')
+    })
+    // 三条都没落库
+    const { list } = await listModels({ keyword: `校验-` })
+    expect(list.filter((m) => m.name.endsWith(String(stamp)))).toHaveLength(0)
   })
 
   it('状态机：验证过→发布过审→撤回回未发布→审核通过→停用过审→撤回回已发布', async () => {
@@ -155,5 +182,73 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
     // 同类别（TEXT）唯一默认：原默认 DeepSeek R1 被摘掉
     const other = await getModel('md_101')
     expect(other.isDefault).toBe(false)
+  })
+
+  /* ===== 2026-09-12 测试审计 T55 补缺口：驳回 / 默认模型停用过审 / 删除守卫 / 种子 Kimi K2 重验 ===== */
+
+  it('驳回待审发布 → 回未发布；驳回待审停用 → 仍已发布（md §二.4「驳回或撤回后变为未发布 / 保持已发布」）', async () => {
+    const row = await mk(`驳回模型-${Date.now()}`)
+    await verifyModel(row.id)
+    await publishModel(row.id)
+    const r1 = await rejectModel(row.id)
+    expect(r1.status).toBe('DRAFT')
+    expect(r1.pendingAction).toBeNull()
+    // 再发布并过审 → 已发布；提交停用后驳回 → 保持已发布、pendingAction 清空
+    await publishModel(row.id)
+    await approveModel(row.id)
+    await delistModel(row.id)
+    const r2 = await rejectModel(row.id)
+    expect(r2.status).toBe('PUBLISHED')
+    expect(r2.pendingAction).toBeNull()
+    // 没有待审事项时驳回拒绝
+    await expect(rejectModel(row.id)).rejects.toThrow('没有待审事项')
+  })
+
+  it('默认模型停用：审核期间保留默认标记，审核通过后 isDefault=false（md §二.3.7 L153-154）', async () => {
+    // 用 MULTIMODAL 类别：种子里该类别无默认模型，不会摘掉 DeepSeek R1 的默认位影响其它用例
+    const row = await mk(`默认停用模型-${Date.now()}`, { category: 'MULTIMODAL' })
+    await verifyModel(row.id)
+    await publishModel(row.id)
+    await approveModel(row.id)
+    await setDefaultModel(row.id)
+    const pending = await delistModel(row.id)
+    expect(pending.isDefault).toBe(true) // 审核期间继续保留默认标记
+    expect(pending.pendingAction).toBe('DELIST')
+    const done = await approveModel(row.id)
+    expect(done.status).toBe('DRAFT')
+    expect(done.isDefault).toBe(false) // 停用生效同时取消默认标记
+  })
+
+  it('审核中 / 已发布模型 deleteModel 拒绝「仅未发布状态可删除」；未发布可删（md §二.3.9）', async () => {
+    const row = await mk(`删除守卫模型-${Date.now()}`)
+    await verifyModel(row.id)
+    await publishModel(row.id) // 审核中
+    await expect(deleteModel(row.id)).rejects.toThrow('仅未发布状态可删除')
+    await approveModel(row.id) // 已发布
+    await expect(deleteModel(row.id)).rejects.toThrow('仅未发布状态可删除')
+    await delistModel(row.id) // 待审停用（展示态审核中）
+    await expect(deleteModel(row.id)).rejects.toThrow('仅未发布状态可删除')
+    await approveModel(row.id) // 停用通过 → 未发布
+    await expect(deleteModel(row.id)).resolves.toEqual({})
+    await expect(getModel(row.id)).rejects.toThrow('模型不存在')
+  })
+
+  it('种子 Kimi K2（md_104）：重验仍 FAILED 且错误码 AUTH_FAILED；改 baseUrl 后重验 SUCCESS（md §二.5 鉴权失败 / §三.6 连接变更）', async () => {
+    const before = await getModel('md_104')
+    expect(before.verifyStatus).toBe('FAILED')
+    const again = await verifyModel('md_104')
+    expect(again.verifyStatus).toBe('FAILED')
+    expect(again.verifyError.startsWith('AUTH_FAILED')).toBe(true)
+    expect(again.verifyLatencyMs).toBeNull()
+    // 改连接配置（模拟换对了密钥的地址）→ 回未发布 + 清验证态，再验即通过并回填能力
+    const upd = await updateModel('md_104', {
+      name: before.name, providerName: before.providerName, category: before.category,
+      baseUrl: 'https://api.moonshot.cn/v2', model: before.model, contextWindow: before.contextWindow
+    })
+    expect(upd.verifyStatus).toBe('UNVERIFIED')
+    const ok = await verifyModel('md_104')
+    expect(ok.verifyStatus).toBe('SUCCESS')
+    expect(ok.verifyError).toBeNull()
+    expect(ok.supportsStreaming).toBe(true)
   })
 })

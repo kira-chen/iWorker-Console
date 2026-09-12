@@ -15,6 +15,9 @@ import {
   listRuntimeSpecUsers, assignRuntimeSpecUsers, applyRuntimeSpecForUser, unassignRuntimeSpecUser, __resetRuntimeSpecMock
 } from '../runtimeSpecMock'
 
+// 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/04运行/运行规格/prd.运行规格.md §一.4 核心规则 /
+// §二.1 搜索 / §三.2 排序 / §三.3.4 配置范围 / §三.3.6 删除 / §四.3 适用范围 / §四.4 资源上限。
+// 注：L89/L100 断言的是代码现有校验文案（与 md §四.10 不一致，记 K28），修后随改。
 describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', () => {
   beforeEach(() => __resetRuntimeSpecMock())
 
@@ -111,6 +114,59 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     expect(runtimePersist.options.version).toBe(2)
     expect(runtimePersist.persist).toHaveBeenCalledTimes(1)
     expect(runtimePersist.options.snapshot().specs.some((spec) => spec.name === '持久化测试档')).toBe(true)
+  })
+
+  // 2026-09-12 测试审计 T43：持久化只验了 create；其余五个写点表驱动补齐（漏 persist = 刷新即丢）
+  const BASE = {
+    name: '写点档', boundaryDesc: '表驱动持久化', cpu: 1, memoryGi: 2, diskGi: 5,
+    readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0, positionIds: [], allowUserApply: true
+  }
+  it.each([
+    ['updateRuntimeSpec', async () => { const s = await createRuntimeSpec(BASE); return () => updateRuntimeSpec(s.id, { ...s, maxLifetimeHours: 3 }) }],
+    ['deleteRuntimeSpec', async () => { const s = await createRuntimeSpec(BASE); return () => deleteRuntimeSpec(s.id) }],
+    ['assignRuntimeSpecUsers', async () => { const s = await createRuntimeSpec(BASE); return () => assignRuntimeSpecUsers(s.id, ['chenyu']) }],
+    ['applyRuntimeSpecForUser', async () => { const s = await createRuntimeSpec(BASE); return () => applyRuntimeSpecForUser(s.id, 'chenyu') }],
+    ['unassignRuntimeSpecUser', async () => { const s = await createRuntimeSpec(BASE); await assignRuntimeSpecUsers(s.id, ['chenyu']); return () => unassignRuntimeSpecUser(s.id, 'chenyu') }]
+  ])('%s 写点各自调用 persist ≥ 1 次（刷新后仍保留）', async (_name, prepare) => {
+    const run = await prepare()
+    const runtimePersist = persistHarness.modules.get('runtimeSpec')
+    runtimePersist.persist.mockClear()
+    await run()
+    expect(runtimePersist.persist.mock.calls.length).toBeGreaterThanOrEqual(1)
+  })
+
+  /* ===== 2026-09-12 测试审计 T55 补缺口（md §一.4 / §三.3.4 / §四.3 / §二.1） ===== */
+
+  it('同一岗位同一时刻恰属 1 个规格：新规格接管岗位 402 后，全表只有它含 402（md §一.4「一个岗位最多配置一个运行规格」）', async () => {
+    const created = await createRuntimeSpec({ ...BASE, name: '接管岗位档', positionIds: [402] })
+    const { list } = await listRuntimeSpecs()
+    const owners = list.filter((s) => s.positionIds.includes(402)).map((s) => s.id)
+    expect(owners).toEqual([created.id])
+    // 不变量对全部岗位成立：任一岗位 id 出现次数 ≤ 1
+    const seen = new Map()
+    list.forEach((s) => s.positionIds.forEach((pid) => seen.set(pid, (seen.get(pid) || 0) + 1)))
+    expect([...seen.values()].every((n) => n === 1)).toBe(true)
+  })
+
+  it('停用用户不能被管理员配置个人例外：assign rejects「已停用，不能配置规格」（md §三.3.4「停用用户不可新增个人配置」）', async () => {
+    await expect(assignRuntimeSpecUsers(3, ['wujie'])).rejects.toThrow('已停用，不能配置规格')
+    // 整批不落库：同批的正常用户也未写入
+    await expect(assignRuntimeSpecUsers(3, ['chenyu', 'wujie'])).rejects.toThrow('已停用，不能配置规格')
+    const rows = await listRuntimeSpecUsers(3)
+    expect(rows.list.find((u) => u.username === 'chenyu').isCurrent).toBe(false)
+  })
+
+  it('关闭申请入口的规格（标准，allowUserApply=false）：用户申请 rejects「该规格当前不开放用户申请」（md §四.3）', async () => {
+    await expect(applyRuntimeSpecForUser(2, 'chenyu')).rejects.toThrow('该规格当前不开放用户申请')
+    const rows = await listRuntimeSpecUsers(2)
+    expect(rows.list.find((u) => u.username === 'chenyu').isPending).toBe(false)
+  })
+
+  it('搜索支持匹配适用岗位名：keyword「客户成功岗」命中规格「轻」（md §二.1 搜索框）', async () => {
+    const { list } = await listRuntimeSpecs({ keyword: '客户成功岗' })
+    expect(list.map((s) => s.name)).toEqual(['轻'])
+    // 前后空格忽略（md §二.2）
+    expect((await listRuntimeSpecs({ keyword: '  客户成功岗 ' })).list.map((s) => s.name)).toEqual(['轻'])
   })
 
   it('默认按最近更新时间倒序，新建规格置顶，并支持切换升序', async () => {
