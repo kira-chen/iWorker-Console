@@ -310,7 +310,8 @@ function formatTime(time) {
 
 .pd-list-sub {
   font-size: var(--fs-sm);
-  font-weight: var(--fw-normal);
+  /* 2026-09-12 审计 K43：原 --fw-normal 未定义（副标题继承成粗体），令牌名为 --fw-regular */
+  font-weight: var(--fw-regular);
   color: var(--c-text-muted);
 }
 

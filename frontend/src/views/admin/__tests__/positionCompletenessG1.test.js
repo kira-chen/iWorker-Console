@@ -205,7 +205,7 @@ describe('A1 · 【发布岗位】按 md §9.1 六项硬阻断', () => {
     await clickTop('发布岗位')
     expect(container.querySelector('.publish-check-dialog')).toBeNull()
     expect(lastWarn()).toBe('请先填写：自动化任务')
-    expect(activeTab()).toBe('sampleTasks')
+    expect(activeTab()).toBe('tasks')
   })
 
   it('多项缺失 → toast 按 md 列举顺序全列，定位到第一个缺失项所在页签', async () => {

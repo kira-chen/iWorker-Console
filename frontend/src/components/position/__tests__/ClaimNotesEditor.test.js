@@ -9,7 +9,7 @@ import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
  * 2026-09-04 卡片化返工同步更新：新增入口移宿主卡片头（defineExpose startAdd / editing / atLimit），
  * 列表行改行内输入框就地编辑并实时回吐，空态/hint 文案照原型排版）。
  * 覆盖：空态文案 / 行内编辑回吐 / 新增-保存-取消流转 / 保存 toast / 删除回吐 /
- * 6 条上限 atLimit / 只读态无操作入口。
+ * 6 条上限 atLimit（2026-09-12 审计 J18：不藏按钮、点击 toast）/ 只读态无操作入口。
  */
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
@@ -120,13 +120,15 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     expect(ElMessage.success).toHaveBeenCalledWith('领用页文案已删除')
   })
 
-  it('满 6 条 atLimit=true 且 startAdd 不展开；只读态无输入框/删除入口且 startAdd 不生效', async () => {
+  it('满 6 条 atLimit=true，startAdd 不展开草稿行、toast「领用页文案最多 6 条」（md §2.3 L188；J18）；只读态无输入框/删除入口且 startAdd 不生效、不 toast', async () => {
     const full = mount(['1', '2', '3', '4', '5', '6'])
     expect(full.editorRef.value.atLimit).toBe(true)
     full.editorRef.value.startAdd()
     await nextTick()
     expect(full.editorRef.value.editing).toBe(false)
     expect(full.container.querySelector('.cn-form')).toBeNull()
+    expect(ElMessage.warning).toHaveBeenCalledWith('领用页文案最多 6 条')
+    ElMessage.warning.mockClear()
     app.unmount(); container.remove()
     const ro = mount(['一条'], true)
     expect(ro.container.querySelector('.cn-item .stub-input')).toBeNull()
@@ -135,5 +137,6 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     ro.editorRef.value.startAdd()
     await nextTick()
     expect(ro.container.querySelector('.cn-form')).toBeNull()
+    expect(ElMessage.warning).not.toHaveBeenCalled()
   })
 })

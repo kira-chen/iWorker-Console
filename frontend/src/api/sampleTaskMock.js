@@ -51,6 +51,13 @@ export function summarizeSchedule(schedule = {}) {
   }
 }
 
+// 每间隔模式的步进（md §7.3 L394：小时 / 天 / 周）——按墙钟步进，保持起始时刻的时分不变
+const INTERVAL_STEP = {
+  INTERVAL_HOUR: (d, n) => d.setHours(d.getHours() + n),
+  INTERVAL_DAY: (d, n) => d.setDate(d.getDate() + n),
+  INTERVAL_WEEK: (d, n) => d.setDate(d.getDate() + 7 * n)
+}
+
 /** 从当前时刻起算的未来 count 个触发时间（人话字符串数组，供预览面板）。 */
 export function computeNextRunTimes(schedule = {}, count = 3) {
   if (schedule.scheduleType === 'ONCE') {
@@ -61,6 +68,24 @@ export function computeNextRunTimes(schedule = {}, count = 3) {
   const times = (schedule.times || []).filter(Boolean)
   const start = schedule.startDate ? new Date(`${schedule.startDate}T00:00:00`) : null
   const end = schedule.endDate ? new Date(`${schedule.endDate}T23:59:59`) : null
+
+  // 每间隔（2026-09-12 对齐 md §7.3 L394/L396/L401，审计 K5）：以「起始日期（缺省今天）+ 起始时刻 times[0]」
+  // 为锚点，按 intervalCount × 单位固定步进；锚点已过则步进到第一个未来时刻再往后数 count 次。
+  const step = INTERVAL_STEP[schedule.scheduleType]
+  if (step) {
+    const n = Math.max(1, Number(schedule.intervalCount) || 1)
+    const [h, m] = String(times[0] || '09:00').split(':').map(Number)
+    const base = start && start > now ? start : now
+    const dt = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h || 0, m || 0)
+    while (dt <= now) step(dt, n)
+    for (let i = 0; i < 400 && out.length < count; i++) {
+      if (end && dt > end) break
+      out.push(fmtDt(dt))
+      step(dt, n)
+    }
+    return out
+  }
+
   for (let i = 0; i < 400 && out.length < count; i++) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
     if (start && day < start) continue
@@ -257,7 +282,8 @@ let samplesByPosition = buildSeed()
 const persist = attachPersist('sampleTask', {
   // v2（2026-09-09）：404 市场研究岗补 1 条自动化任务（种子结构变更须 bump，否则存量快照会
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
-  version: 4,
+  // v5（2026-09-12 审计 K1）：preKick 缺省由 false 改 true（md §7.3 L398「默认开启」），VO 形状变更 bump
+  version: 5,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {
@@ -281,7 +307,8 @@ function findSample(positionId, sampleId) {
 function toVO(s, warnings) {
   const vo = {
     ...s,
-    preKick: s.preKick ?? false,
+    // 空闲时段提前准备缺省开启（md §7.3 L398；2026-09-12 审计 K1）
+    preKick: s.preKick ?? true,
     schedule: JSON.parse(JSON.stringify(s.schedule)),
     toolRefs: (s.toolRefs || []).map((t) => ({ ...t })),
     skillRefs: (s.skillRefs || []).map((r) => ({ ...r })),
@@ -311,7 +338,7 @@ function normalizeUpsert(payload = {}) {
       endDate: payload.schedule?.endDate || ''
     },
     sopDoc: String(payload.sopDoc || ''),
-    preKick: payload.preKick ?? false,
+    preKick: payload.preKick ?? true,
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' }))
   }
@@ -321,7 +348,8 @@ function assertUpsert(data) {
   if (!data.name) throw err('请填写任务名称', 'name')
   if (data.name.length > 60) throw err('任务名称不超过 60 字', 'name')
   if (data.prompt.length > 2000) throw err('一句话指令不超过 2000 字', 'prompt')
-  if (!String(data.sopDoc || '').trim()) throw err('请填写详细说明', 'sopDoc')
+  // 提示词非必填（md §7.7 必填只有名称 + 一句话指令；2026-09-12 审计 J7），仅守 §7.4 8000 字上限（K7）
+  if (data.sopDoc.length > 8000) throw err('提示词不超过 8000 字', 'sopDoc')
 }
 
 /* ============================ 查 ============================ */

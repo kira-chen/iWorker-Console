@@ -7,13 +7,13 @@
  * - 编辑态：每条 = 序号圆点 + 行内无边框输入框（就地改，实时回吐）+ 右侧【删除】（toast「领用页文案已删除」）；
  * - 只读态：序号圆点 + 文本，无操作入口；
  * - 空态：「暂无领用页文案，点击"新增一条"添加」；
- * - 新增：入口按钮在宿主卡片头（照原型「＋ 新增一条」在卡头右侧，满 6 条隐藏），经 defineExpose 的
- *   startAdd 触发；展开草稿行（输入框 +【取消】【保存】），空条目 toast「请输入领用页文案」、
- *   达上限 toast「领用页文案最多 6 条」、入列 toast「领用页文案已保存」；
+ * - 新增：入口按钮在宿主卡片头「＋ 新增一条」，经 defineExpose 的 startAdd 触发；满 6 条按钮不隐藏、
+ *   点击 toast「领用页文案最多 6 条」（md §2.3 L188；2026-09-12 审计 J18）；展开草稿行（输入框 +
+ *   【取消】【保存】），空条目 toast「请输入领用页文案」、入列 toast「领用页文案已保存」；
  * - 底部 hint「每条最多 100 个字符」照原型置于卡片体底部（本组件内）。
  *
  * 数据流：v-model 纯字符串数组；新增/删除时整组回吐，行内改动实时回吐（父级手动保存范式，
- * 脏检查由页面级快照承担）。暴露 editing / atLimit 供宿主控制卡头按钮显隐。
+ * 脏检查由页面级快照承担）。暴露 editing（宿主据此在草稿行展开时收起卡头按钮）/ atLimit。
  */
 import { ref, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -36,7 +36,12 @@ const draftInvalid = ref(false)
 const inputRef = ref(null)
 
 function startAdd() {
-  if (props.readonly || atLimit.value) return
+  if (props.readonly) return
+  // 满 6 条：按钮不隐藏，点击提示（md §2.3 L188「达到 6 条上限后提示」；2026-09-12 审计 J18）
+  if (atLimit.value) {
+    ElMessage.warning(`领用页文案最多 ${CLAIM_NOTE_MAX} 条`)
+    return
+  }
   editing.value = true
   draft.value = ''
   draftInvalid.value = false

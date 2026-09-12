@@ -7,7 +7,8 @@ import { createApp, h, nextTick, reactive } from 'vue'
  *  - 岗位描述为空 → 两处【AI 生成】disabled + title「请先填写岗位描述」；填了描述恢复可用；
  *  - 点【AI 生成】→ 按钮变「生成中…」，500ms 后示例问题 3 条填入 / SOP 填入，toast「已生成示例问题」「已生成岗位 SOP」；
  *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 60；
- *  - 只读态不出【AI 生成】。
+ *  - 只读态不出【AI 生成】；
+ *  - 2026-09-12 审计 J18：领用页文案满 6 条【＋ 新增一条】不隐藏，点击直调 ClaimNotesEditor.startAdd。
  * 数据走 usePositionStore（reactive 桩），三个重子组件（IconField / ClaimNotesEditor / SkillMilkdownEditor）桩掉。
  */
 
@@ -20,7 +21,17 @@ vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() })
 }))
 vi.mock('@/components/common/IconField.vue', () => ({ default: { name: 'IconField', setup: () => () => h('div', { class: 'stub-icon' }) } }))
-vi.mock('@/components/position/ClaimNotesEditor.vue', () => ({ default: { name: 'ClaimNotesEditor', setup: () => () => h('div', { class: 'stub-claim' }) } }))
+// ClaimNotesEditor 桩：暴露与真组件同名的 startAdd / editing / atLimit（J18 用例通过 claimStub 调 atLimit 与断言 startAdd）
+const claimStub = { startAdd: vi.fn(), atLimit: false, editing: false }
+vi.mock('@/components/position/ClaimNotesEditor.vue', () => ({
+  default: {
+    name: 'ClaimNotesEditor',
+    setup: (_, { expose }) => {
+      expose({ startAdd: (...a) => claimStub.startAdd(...a), get atLimit() { return claimStub.atLimit }, get editing() { return claimStub.editing } })
+      return () => h('div', { class: 'stub-claim' })
+    }
+  }
+}))
 vi.mock('@/components/position/SkillMilkdownEditor.vue', () => ({ default: { name: 'SkillMilkdownEditor', setup: () => () => h('div', { class: 'stub-md' }) } }))
 
 const PositionPersonaTab = (await import('@/components/position/PositionPersonaTab.vue')).default
@@ -59,6 +70,8 @@ const cardByTitle = (title) => [...container.querySelectorAll('.pd-card')].find(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  claimStub.atLimit = false
+  claimStub.editing = false
   store.basic = { positionId: 5, name: '经营分析岗', description: '', icon: '▤', claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', persona: '' }
 })
 afterEach(() => {
@@ -143,6 +156,30 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5�
     vi.advanceTimersByTime(500)
     await flush()
     expect(ElMessage.success).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3 L188；2026-09-12 审计 J18）', () => {
+  const claimCard = () => cardByTitle('领用页文案')
+  const addBtn = () => [...claimCard().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 新增一条')
+
+  it('满 6 条（atLimit）→ 卡头【＋ 新增一条】仍展示不隐藏，点击直调 ClaimNotesEditor.startAdd（由其 toast「领用页文案最多 6 条」）', async () => {
+    claimStub.atLimit = true
+    await mount()
+    expect(addBtn()).not.toBeUndefined()
+    addBtn().click()
+    await flush()
+    expect(claimStub.startAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('草稿行展开中（editing）→ 卡头按钮收起；只读态 → 无按钮', async () => {
+    claimStub.editing = true
+    await mount()
+    expect(addBtn()).toBeUndefined()
+    app.unmount(); container.remove()
+    claimStub.editing = false
+    await mount({ isReadonly: true })
+    expect(addBtn()).toBeUndefined()
   })
 })
 

@@ -165,7 +165,7 @@ describe('computeCompletenessMissing（md §9.1 六项完整性校验 · 保存�
   it('全空 → 六项按 md 列举顺序全部返回，且各带所在页签', () => {
     const miss = computeCompletenessMissing({})
     expect(miss.map((i) => i.label)).toEqual(['岗位名称', '岗位描述', '3 条示例问题', '岗位 SOP', 'Agent 与技能', '自动化任务'])
-    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'agents', 'sampleTasks'])
+    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'agents', 'tasks'])
   })
   it('逐项缺失只报该项', () => {
     expect(computeCompletenessMissing({ ...FULL, name: '  ' }).map((i) => i.key)).toEqual(['name'])

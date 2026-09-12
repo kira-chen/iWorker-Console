@@ -208,7 +208,7 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
   })
 
   it('②c 发布门（A1）：缺项 → toast「请先填写：…」+ 跳详情页第一个缺失项所在页签，不开侧栏', async () => {
-    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（sampleTasks 页签）
+    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（tasks 页签，md §1.3 L160）
     getPosition.mockResolvedValue({ ...FULL_DETAIL, positionSop: '', agents: [{ name: 'A1', skills: [] }] })
     listSampleTasks.mockResolvedValue({ list: [] })
     await mount()

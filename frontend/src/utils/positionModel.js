@@ -525,7 +525,8 @@ export const COMPLETENESS_ITEMS = [
   { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
   { key: 'positionSop', label: '岗位 SOP', tab: 'persona' },
   { key: 'agents', label: 'Agent 与技能', tab: 'agents' },
-  { key: 'sampleTasks', label: '自动化任务', tab: 'sampleTasks' }
+  // tab 标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③；key 为完整性内部键不随之改）
+  { key: 'sampleTasks', label: '自动化任务', tab: 'tasks' }
 ]
 
 export function computeCompletenessMissing(detail) {

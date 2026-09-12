@@ -556,7 +556,7 @@ function backToList() {
         </div>
         <div v-else-if="store.loading" class="board-state"></div>
 
-        <el-tabs v-else-if="store.basic" v-model="activeTab" :class="['pd-tabs', { 'tab-flush': ['sampleTasks', 'dataTable', 'effectTest'].includes(activeTab) }]">
+        <el-tabs v-else-if="store.basic" v-model="activeTab" :class="['pd-tabs', { 'tab-flush': ['tasks', 'dataTable', 'effectTest'].includes(activeTab) }]">
           <!-- ① 人格（md §2 六区块；卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片
                （头：标题+必填星+弱色说明，体：内容+底部 hint），区块顺序 图标→描述→领用页文案→示例问题→SOP→人格） -->
           <el-tab-pane label="人格" name="persona">
@@ -600,14 +600,15 @@ function backToList() {
             <PositionAgentSkillTab :is-readonly="isReadonly" />
           </el-tab-pane>
 
-          <!-- ⑥ 自动化任务（样例定时任务承载；只读态 pointer-events 冻结兜底） -->
-          <el-tab-pane label="自动化任务" name="sampleTasks">
+          <!-- ⑥ 自动化任务（样例定时任务承载；只读态 pointer-events 冻结兜底）
+               页签标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③，原 `sampleTasks`；深链 ?tab= 旧值不兼容）；
+               PositionSampleTaskStage 的 embedded 开关已退役（审计 J5），只剩页签内联形态。 -->
+          <el-tab-pane label="自动化任务" name="tasks">
             <div class="pd-pane pd-pane--flush" :class="{ 'pd-ro-freeze': isReadonly }">
               <PositionSampleTaskStage
                 v-if="store.positionId != null"
                 :position-id="store.positionId"
                 :position-name="store.basic.name || '岗位'"
-                embedded
                 @update:sample-count="sampleTaskCount = $event"
               />
               <div v-else class="pd-empty">保存岗位后即可配置自动化任务。</div>
@@ -886,7 +887,8 @@ function backToList() {
   font-weight: 700;
   line-height: 16px;
   text-align: center;
-  color: var(--c-bg);
+  /* 2026-09-12 审计 K43：原 --c-bg 未定义 → 图标与圆底同色看不见；改用强调底上的文字反色令牌 */
+  color: var(--c-text-on-accent);
   background: var(--c-warning);
 }
 .pd-cb-text {
