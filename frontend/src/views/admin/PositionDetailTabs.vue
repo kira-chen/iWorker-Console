@@ -60,8 +60,6 @@ import {
   normalizeIntakeForSubmit,
   validateIntakeRows,
   normalizePublishWarnings,
-  normalizeRecommendedQuestions,
-  recommendedQuestionsComplete,
   normalizeExampleQuestions
 } from '@/utils/positionModel'
 import { KIND, deriveTriView, isLocked } from '@/utils/publishState'
@@ -249,10 +247,6 @@ function buildBasicPayload() {
     persona: b.persona,
     intakeSchema: normalizeIntakeForSubmit(b.intakeSchema)
   }
-  // N4 推荐问题（部分更新语义）：仅当 4 格全部填好才随保存下发（后端要求非 null 时恰好 4 个且非空）；
-  // 未填满时不上送该字段（=不改），避免 debounce 静默自动保存因半填被后端校验拦下。
-  const rq = normalizeRecommendedQuestions(b.recommendedQuestions)
-  if (recommendedQuestionsComplete(rq)) payload.recommendedQuestions = rq.map((q) => q.trim())
   return payload
 }
 

@@ -141,7 +141,6 @@ function buildWorkbenchSeed() {
         { label: '负责业务线', key: 'biz_line', type: 'text', required: true, options: [] },
         { label: '关注指标', key: 'focus_metric', type: 'single_select', required: false, options: ['营收', '毛利', '回款'] }
       ],
-      recommendedQuestions: ['汇总昨天的经营数据', '本月营收有什么异常', '生成上周的经营周报', '对比近两个月的毛利趋势'],
       agents: [
         { agentId: 501, name: '数据汇总', description: '按日/周/月拉取经营数据并汇总成表', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] },
         { agentId: 502, name: '异常识别', description: '识别经营指标异常并解释原因', sortOrder: 1, skills: [] },
@@ -159,7 +158,6 @@ function buildWorkbenchSeed() {
       businessSystemIds: ['biz_2101'],
       persona: '热情、周到。拜访前主动准备资料，拜访后提醒记录跟进事项。',
       intakeSchema: [{ label: '负责客户区域', key: 'region', type: 'text', required: true, options: [] }],
-      recommendedQuestions: ['帮我准备明天拜访的客户资料', '整理本周的客户跟进记录', '生成客户拜访提纲', '哪些客户超过两周没有跟进'],
       agents: [
         { agentId: 504, name: '拜访准备', description: '汇总客户资料并生成拜访提纲', sortOrder: 0, skills: [{ skillId: 'sk_305', sortOrder: 0 }] },
         { agentId: 505, name: '跟进记录', description: '整理拜访记录并沉淀服务过程', sortOrder: 1, skills: [] }
@@ -175,7 +173,6 @@ function buildWorkbenchSeed() {
       businessSystemIds: [],
       persona: '严谨、克制。逐项核验，结论给出依据与风险等级。',
       intakeSchema: [],
-      recommendedQuestions: ['核验这张报销单', '本月报销有哪些风险点', '检查这批发票的合规性', '汇总本周审核情况'],
       agents: [
         { agentId: 506, name: '单据核验', description: '核验报销材料与财务单据，输出风险提示', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] }
       ]
@@ -194,7 +191,6 @@ function buildWorkbenchSeed() {
       businessSystemIds: [],
       persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
       intakeSchema: [],
-      recommendedQuestions: ['整理这个行业的最新政策变化', '汇总主要竞品上季度的动作', '生成一份行业研究摘要', '这个赛道近半年有哪些新玩家'],
       agents: [
         { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_303', sortOrder: 0 }] }
       ]
@@ -216,7 +212,6 @@ function emptyWorkbench(payload = {}) {
     businessSystemIds: Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : [],
     persona: String(payload.persona || ''),
     intakeSchema: Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : [],
-    recommendedQuestions: Array.isArray(payload.recommendedQuestions) && payload.recommendedQuestions.length ? [...payload.recommendedQuestions] : ['', '', '', ''],
     agents: []
   }
 }
@@ -461,6 +456,61 @@ export async function unpublishPosition(id) {
   return {}
 }
 
+/* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
+ * 审核中心 mock 点【通过】/【驳回】后由 reviewsMock.applyReviewResult 分发到此，业务对象随之改态；
+ * 审核中心不直接改本模块的内部数组（模块边界）。
+ *
+ * md 依据（`prd.岗位.md`）：
+ * - §3.3 L78「审核通过后状态变为"已发布"，自动生成版本号并上线；审核被拒绝后回到"未发布"」；
+ * - §3.5 L92「审核通过后岗位变为"未发布"……被拒绝或撤回后恢复"已发布"」；
+ * - §八 L117「已发布岗位提交新版本：……审核通过后新版本自动启用」；
+ * - §二.1 L44「最新版本：展示最近一次审核通过并正式发布的版本号」——通过时才推进 latestVersion。
+ * 驳回口径与 withdrawPosition 同向（md §3.4 L84「撤回后恢复提交审核前的状态」，驳回同理）。
+ */
+export function applyPositionReviewResult(refId, requestAction, approved) {
+  const p = findPos(refId)
+  if (!p || !p.pendingAction) return false
+  const isDelist = (requestAction || p.pendingAction) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      p.status = 'draft' // 停用通过 → 未发布（md §3.5 L92）；版本历史不删（审核中心 md §六 L91）
+    } else {
+      const label = p.pendingVersion || 'v1.0.0'
+      const rows = publications[p.positionId] || (publications[p.positionId] = [])
+      // 新版本自动成为唯一启用版本，原启用版本自动禁用（md §八 L117）
+      rows.forEach((r) => {
+        if (r.status === 'ACTIVE') {
+          r.status = 'DELISTED'
+          r.delistedAt = nowIso()
+        }
+      })
+      rows.unshift({
+        version: (rows[0]?.version || 0) + 1,
+        versionLabel: label,
+        status: 'ACTIVE',
+        sizeBytes: 7782,
+        publishedBy: '管理员',
+        publishedAt: nowIso(),
+        delistedAt: null,
+        releaseNotes: p.pendingReleaseNotes || ''
+      })
+      p.status = 'published'
+      p.latestVersion = label
+    }
+  } else {
+    // 驳回：待审发布 → 未发布；待审停用 → 已发布（md §3.3 L78 / §3.5 L92）
+    p.status = isDelist ? 'published' : 'draft'
+    if (!isDelist) p.latestVersion = publications[p.positionId]?.[0]?.versionLabel || ''
+  }
+  p.pendingAction = null
+  delete p.pendingVersion
+  delete p.pendingReleaseNotes
+  p.updatedAt = nowIso()
+  delete reviewSnapshots[String(p.positionId)] // 审核已结论，本次提交快照使命结束
+  persist()
+  return true
+}
+
 /* ============================ 版本历史 + 禁用/启用（互斥） ============================ */
 
 export async function listPositionPublications(positionId) {
@@ -579,7 +629,6 @@ function detailVO(p) {
     businessSystemIds: [...(wb.businessSystemIds || [])],
     persona: wb.persona || '',
     intakeSchema: (wb.intakeSchema || []).map((r) => ({ ...r, options: [...(r.options || [])] })),
-    recommendedQuestions: [...(wb.recommendedQuestions || ['', '', '', ''])],
     status: p.status,
     pendingAction: p.pendingAction,
     latestVersion: p.latestVersion || '',
@@ -682,10 +731,6 @@ export async function updatePosition(id, payload = {}) {
   if ('persona' in payload) wb.persona = String(payload.persona || '')
   if ('intakeSchema' in payload) {
     wb.intakeSchema = Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : []
-  }
-  // 推荐问题部分更新语义：payload 未含该字段 = 不改（半填不上送，见工作台 buildBasicPayload）
-  if ('recommendedQuestions' in payload && Array.isArray(payload.recommendedQuestions)) {
-    wb.recommendedQuestions = [0, 1, 2, 3].map((i) => String(payload.recommendedQuestions[i] ?? ''))
   }
   p.updatedAt = nowIso()
   persist()
@@ -848,7 +893,9 @@ const persist = attachPersist('position', {
   // v3（2026-09-09 发布前收口）：财务审核岗种子 latestVersion 由 'v1.0.0' 改空——首版在审不应
   // 展示待审版本号（md §二.1）。种子结构变更须 bump，否则存量快照会把旧值带回来。
   // v4（2026-09-09 负责人要求）：市场研究岗（404）由全空补全为「未发布 + 六项齐备」样本。
-  version: 4,
+  // v5（2026-09-12 负责人决策 6）：删除 recommendedQuestions（「推荐问题固定 4 格」）——该字段只存在于
+  // 已退役的交互原型，md 全文无此功能，界面早已无入口，仅在数据层静默透传。存量快照带该键 → 丢弃回种子。
+  version: 5,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

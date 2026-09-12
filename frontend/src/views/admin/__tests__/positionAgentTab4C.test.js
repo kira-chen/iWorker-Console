@@ -31,7 +31,7 @@ const store = {
   positionId: 5,
   loading: false,
   error: '',
-  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [], recommendedQuestions: ['', '', '', ''] },
+  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] },
   agents: defaultAgents(),
   allSkills: [],
   isPublished: false,
@@ -80,9 +80,9 @@ vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
-// 2026-09-10：featureFlags 新增 FRONT_RUNTIME_ENABLED（yuepu 删「运行/效果测试」页签那批），
-// mock 未同步补上会让引用它的组件加载即报错，故此处与真实模块的导出保持一致。
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
+// featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
+// 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',

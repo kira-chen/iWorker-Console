@@ -10,10 +10,6 @@ import {
   hasExampleQuestion,
   exampleQuestionSoftHint,
   EXAMPLE_QUESTION_SOFT_LEN,
-  normalizeRecommendedQuestions,
-  recommendedQuestionsComplete,
-  validateRecommendedQuestions,
-  RECOMMENDED_Q_MAX_LEN,
   DESCRIPTION_MAX_LEN,
   CLAIM_NOTE_MAX,
   CLAIM_NOTE_LEN,
@@ -71,29 +67,6 @@ describe('N2 技能示例问题（1 个必填 + 20 字软提示）', () => {
     expect(exampleQuestionSoftHint('x'.repeat(EXAMPLE_QUESTION_SOFT_LEN))).toBe('')
     expect(exampleQuestionSoftHint('短问题')).toBe('')
     expect(exampleQuestionSoftHint('')).toBe('')
-  })
-})
-
-describe('N4 推荐问题（固定 4 格）', () => {
-  it('归一为恒 4 格：不足补空、超出截断、null→空串', () => {
-    expect(normalizeRecommendedQuestions(['a'])).toEqual(['a', '', '', ''])
-    expect(normalizeRecommendedQuestions(['a', 'b', 'c', 'd', 'e'])).toEqual(['a', 'b', 'c', 'd'])
-    expect(normalizeRecommendedQuestions([null, undefined, 1, 'x'])).toEqual(['', '', '1', 'x'])
-    expect(normalizeRecommendedQuestions(null)).toEqual(['', '', '', ''])
-  })
-  it('全填才算完整（必填）', () => {
-    expect(recommendedQuestionsComplete(['a', 'b', 'c', 'd'])).toBe(true)
-    expect(recommendedQuestionsComplete(['a', 'b', 'c', '  '])).toBe(false) // 纯空白视为未填
-    expect(recommendedQuestionsComplete(['a', 'b', 'c'])).toBe(false) // 少 1 格
-  })
-  it('校验逐格标记未填格', () => {
-    const r = validateRecommendedQuestions(['a', '', 'c', ' '])
-    expect(r.ok).toBe(false)
-    expect(r.errors).toEqual([false, true, false, true])
-    expect(validateRecommendedQuestions(['a', 'b', 'c', 'd']).ok).toBe(true)
-  })
-  it('单格硬上限 30 字（输入框 maxlength 用）', () => {
-    expect(RECOMMENDED_Q_MAX_LEN).toBe(30)
   })
 })
 
