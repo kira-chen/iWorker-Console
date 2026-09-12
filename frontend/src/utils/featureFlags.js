@@ -12,17 +12,8 @@
  */
 export const EFFECT_TEST_ENABLED = false
 
-/**
- * FRONT_RUNTIME_ENABLED —— 员工端「运行时功能页」总开关（对话/定时任务/个人空间/个人记忆）。
- * 主版本运行时剥离后（2026-07-17 校准处置），本仓后端不含 /api/chat、/api/tasks、
- * /api/personal-space、/api/memory 端点，相关页面无对端可用，先统一封存；
- * 执行链路就绪后改回 true 即恢复：
- *   - router：Chat / Tasks / TaskNew / TaskEdit / TaskDetail / Space / MemoryManage
- *     六组路由的组件换回原页面（路由 name 恒保留，封存期挂 FrontRuntimePlaceholder）
- *   - FrontLayout 侧栏：「新对话」「历史对话」区 + 「定时任务/个人空间」入口
- *   - Settings：「个人记忆」入口卡片
- */
-export const FRONT_RUNTIME_ENABLED = false
+// 注：原 FRONT_RUNTIME_ENABLED（员工端运行时页封存开关）已于 2026-09-12 随
+// 负责人决策 3（审计 J2）「员工端整体退役」一并删除——页面本身都没了，开关无从谈起。
 
 /**
  * MCP_AUTH_CONFIG_ENABLED —— MCP 连接器「鉴权配置」录入区开关（McpEditor 连接/鉴权区）。

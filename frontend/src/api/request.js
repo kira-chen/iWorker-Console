@@ -1,8 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import router from '@/router'
 import { useUserStore } from '@/stores/user'
-import { handlePositionNotBound } from '@/utils/positionNotBound'
 
 // 统一 axios 实例：baseURL 走 /api，由 Vite dev proxy 转发到后端
 const service = axios.create({
@@ -34,18 +32,13 @@ export class ApiError extends Error {
   }
 }
 
-// 登录失效统一处理：清登录态 + 跳登录页（401 即便 admin 写接口 skip 也统一收口）
-// 注：后端鉴权失败返回 HTTP200 + ResultVO.code=401（见 Sprint2 契约 §0.3），故此处按 code 分流，
-// 不能只依赖 HTTP status；HTTP 层 401 的分支保留作兜底。
-function handleUnauthorized() {
-  const userStore = useUserStore()
-  userStore.logout()
-  ElMessage.error('登录已失效，请重新登录')
-  router.replace({ name: 'Login' })
-}
-
-// 未绑定专家统一处理（后端 code=1001 EXPERT_NOT_BOUND）已抽到 @/utils/positionNotBound，
-// 供 axios 拦截器与 SSE（api/chat.js）两处共用同口径处理（清无绑定态 + 跳 BindPosition，幂等防循环）。
+// 2026-09-12 负责人决策 3（审计 J2）：登录页与「未绑定专家」引导页（BindPosition）随员工端
+// 整体退役，故原先两条会话级收口分支一并删除——
+//  - code/HTTP 401「登录失效 → 清登录态 + 跳 Login」：demo 无登录、身份由 utils/demoIdentity
+//    每次导航前兜底注入，跳转目标已不存在；401 现按普通业务错误走下方通用分支（toast / ApiError）。
+//  - code 1001「未绑定专家 → 跳 BindPosition」：同理，配套的 utils/positionNotBound.js 已删。
+// 注（R-EC1）：1001 曾是「未绑定专家」唯一语义，岗位内唯一性冲突已让位到 1005，
+// 走 skipGlobalError 分支带 field 抛 ApiError 供红框回显，不受本次改动影响。
 
 service.interceptors.response.use(
   (response) => {
@@ -57,23 +50,6 @@ service.interceptors.response.use(
     }
     if (res.code === 0) {
       return res.data
-    }
-    // 后端鉴权失败为 HTTP200 + code=401（契约 §0.3）：按 code 分流统一登出，避免静默失败
-    if (res.code === 401) {
-      handleUnauthorized()
-      return Promise.reject(
-        new ApiError({ code: 401, message: res.message, field: null, data: res.data })
-      )
-    }
-    // 未绑定专家（HTTP200 + code=1001 EXPERT_NOT_BOUND）：清无绑定态 + 导到强制选专家页，
-    // 不走默认红错 toast（handlePositionNotBound 内已克制提示一句），按 code 收口统一处理。
-    // 注（R-EC1）：1001 现为「未绑定专家」唯一语义。岗位内唯一性冲突已让位到 1005，
-    // 不再走此跳转分支——会落到下方 skipGlobalError 分支带 field 抛 ApiError 供红框回显。
-    if (res.code === 1001) {
-      handlePositionNotBound()
-      return Promise.reject(
-        new ApiError({ code: 1001, message: res.message, field: null, data: res.data })
-      )
     }
     // skipGlobalError：admin 写接口自处理——不弹全局 toast，抛 ApiError 带 field 供红框回显
     if (skip) {
@@ -96,10 +72,9 @@ service.interceptors.response.use(
     }
     const status = error.response?.status
     const skip = error.config?.skipGlobalError
-    if (status === 401) {
-      // 兜底：HTTP 层 401（理论上后端走 HTTP200+code，但网关/代理可能产出真 401）
-      handleUnauthorized()
-    } else if (skip) {
+    // 2026-09-12 负责人决策 3（审计 J2）：原「HTTP 401 → 登出跳 Login」兜底分支随登录退役删除，
+    // HTTP 401 现与其它 HTTP 错误同路（skip 转 ApiError 用 status 兜底 code，否则弹 toast）。
+    if (skip) {
       // admin 写接口：把 HTTP 层错误也转成 ApiError，交由调用方处理，不弹全局 toast
       const body = error.response?.data
       return Promise.reject(

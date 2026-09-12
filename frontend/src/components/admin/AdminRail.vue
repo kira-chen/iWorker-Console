@@ -3,10 +3,11 @@
  * 后台共享侧边导航栏（204px 固定宽，2026-09-08 原型复刻批次 1 · A1/A2 按原型 L651 最终覆写层对齐）。
  *
  * 顶部管理后台名称（iWorker · 管理端）+ 导航项（图标在左、文案在右，左对齐、完整展示）
- * + 底部用户区（头像+名称，点击向上弹出 el-dropdown 二级菜单：用户名 / 外观；「修改密码」「退出登录」
- *   两项 2026-09-12 起隐藏——审计 J11/K42：Q183 决议「管理端登录暂不考虑」，且两者在纯前端 demo 里是死操作
- *   （改密走 api/auth.js 真实 POST 无 mock、退出后被守卫立即转回）。入口只隐藏不删：ChangePasswordDialog / api/auth
- *   随员工端封存（J2）一并裁决，`ACCOUNT_ACTIONS_ENABLED` 置 true 即恢复）。
+ * + 底部用户区（头像+名称，点击向上弹出 el-dropdown 二级菜单：用户名 / 外观）。
+ *   注：原「修改密码」「退出登录」两项 2026-09-12 先按审计 J11/K42（Q183「管理端登录暂不考虑」）
+ *   用 ACCOUNT_ACTIONS_ENABLED 隐藏；2026-09-12 负责人决策 3（审计 J2）员工端整体退役后，
+ *   两者的实现（ChangePasswordDialog / api/auth.js / Login 路由）均已删除，故开关与残留模板、
+ *   处理函数一并清理——菜单现只剩用户名 + 外观两项。
  * 分组标题（岗位管理 / 平台配置 / 平台管理）仍用弱视觉呈现（小字、弱色、左对齐）仅作模块归属提示。
  * AdminLayout 与 PositionWorkbench 共用本组件，从根上保证两处导航视觉/结构一致。
  *
@@ -14,21 +15,12 @@
  */
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { ref } from 'vue'
 import { useUserStore } from '@/stores/user'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import ChangePasswordDialog from '@/components/admin/ChangePasswordDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-
-// 账号类菜单项（修改密码 / 退出登录）开关：2026-09-12 审计 J11/K42 按 Q183「登录暂不考虑」隐藏（见头注）。
-const ACCOUNT_ACTIONS_ENABLED = false
-
-// 修改密码弹窗（用户菜单入口，普通改密态；入口随 ACCOUNT_ACTIONS_ENABLED 隐藏）
-const pwdDialogVisible = ref(false)
 
 const userName = computed(() => userStore.userInfo?.name || '管理员')
 
@@ -167,24 +159,9 @@ function go(name) {
   if (name !== route.name) router.push({ name })
 }
 
-// 头像二级菜单：按 command 分发（当前仅退出登录）。
-// 外观切换不走 command（ThemeToggle 自带点击），单独包 stop 容器。
-async function onUserCommand(command) {
-  if (command === 'changePassword') {
-    pwdDialogVisible.value = true
-    return
-  }
-  if (command === 'logout') {
-    try {
-      await ElMessageBox.confirm('确认退出登录？', '提示', { type: 'warning' })
-      // logout() 内部已集中清 token+用户信息+重置 position/chat store
-      userStore.logout()
-      router.replace({ name: 'Login' })
-    } catch (e) {
-      /* 取消 */
-    }
-  }
-}
+// 注：原 onUserCommand（头像二级菜单 command 分发：修改密码 / 退出登录）已随
+// 2026-09-12 负责人决策 3（审计 J2）删除——两个菜单项的实现均已退役（见头注）。
+// 菜单现无 command 项：外观切换不走 command（ThemeToggle 自带点击），单独包 stop 容器。
 </script>
 
 <template>
@@ -222,14 +199,9 @@ async function onUserCommand(command) {
       </div>
     </nav>
 
-    <!-- 底部用户区（参考样例）：头像+名称一行，点击向上弹出用户菜单（外观；修改密码/退出登录随 ACCOUNT_ACTIONS_ENABLED 隐藏） -->
+    <!-- 底部用户区（参考样例）：头像+名称一行，点击向上弹出用户菜单（用户名 + 外观两项，见头注） -->
     <div class="rail-foot">
-      <el-dropdown
-        trigger="click"
-        placement="top-start"
-        popper-class="rail-user-popper"
-        @command="onUserCommand"
-      >
+      <el-dropdown trigger="click" placement="top-start" popper-class="rail-user-popper">
         <button type="button" class="rail-user" :title="userName">
           <el-avatar :size="28" class="rail-avatar">{{ userName[0] }}</el-avatar>
           <span class="rail-user-label">{{ userName }}</span>
@@ -242,22 +214,12 @@ async function onUserCommand(command) {
               <span class="rail-theme-label">外观</span>
               <ThemeToggle />
             </div>
-            <!-- 2026-09-12 审计 J11/K42（Q183）：demo 内隐藏账号类死操作，模板与处理函数保留待登录方案定型 -->
-            <template v-if="ACCOUNT_ACTIONS_ENABLED">
-              <el-dropdown-item command="changePassword" divided>
-                <el-icon><Lock /></el-icon> 修改密码
-              </el-dropdown-item>
-              <el-dropdown-item command="logout">
-                <el-icon><SwitchButton /></el-icon> 退出登录
-              </el-dropdown-item>
-            </template>
+            <!-- 2026-09-12 负责人决策 3（审计 J2，承 J11/K42）：「修改密码」「退出登录」两项
+                 及其实现（ChangePasswordDialog / api/auth.js / Login 路由）已整体删除 -->
           </el-dropdown-menu>
         </template>
       </el-dropdown>
     </div>
-
-    <!-- 修改密码弹窗（普通改密态，可关闭）：入口在底部用户二级菜单，随 ACCOUNT_ACTIONS_ENABLED 一并不挂载 -->
-    <ChangePasswordDialog v-if="ACCOUNT_ACTIONS_ENABLED" v-model:visible="pwdDialogVisible" />
   </aside>
 </template>
 

@@ -266,13 +266,14 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(active.textContent.trim()).toBe('审核中心')
   })
 
-  it('头像二级菜单：只剩用户名 + 外观切换，不含「修改密码」「退出登录」（审计 J11/K42，Q183「登录暂不考虑」）', async () => {
+  it('头像二级菜单：只剩用户名 + 外观切换，不含「修改密码」「退出登录」（审计 J2/J11/K42，Q183「登录暂不考虑」）', async () => {
     const el = await mount({ name: 'AdminPositions' }, ['ADMIN'])
     const commands = [...el.querySelectorAll('.el-dropdown-item')].map((n) =>
       n.getAttribute('data-command')
     )
-    // 2026-09-12 审计 T46 提升为整份菜单逐项相等；同日 J11/K42 闭环：两项账号类死操作
-    // （改密走 api/auth.js 真实 POST 无 mock、退出后被守卫转回）按 Q183 隐藏——菜单不再有任何 command 项。
+    // 2026-09-12 审计 T46 提升为整份菜单逐项相等；同日 J11/K42 先按 Q183 用开关隐藏两项账号类死操作，
+    // 继而负责人决策 3（审计 J2）员工端整体退役——ChangePasswordDialog / api/auth.js / Login 路由
+    // 连同 ACCOUNT_ACTIONS_ENABLED 开关与 onUserCommand 处理函数一并删除，菜单已无任何 command 项。
     expect(commands).toEqual([])
     expect(el.textContent).not.toContain('修改密码')
     expect(el.textContent).not.toContain('退出登录')

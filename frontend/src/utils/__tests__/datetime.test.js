@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { fmtMinute, nowMinuteText, nowIsoLocal } from '@/utils/datetime'
 import { fmtTime } from '@/utils/docMeta'
-import { fmtDateTime } from '@/utils/taskStatus'
 
 /**
  * utils/datetime 单测（2026-09-09 代码冗余治理·第二批 批 2-1 新增）。
  * 钉死收编时拍板的三个边界（空值 / 非法值 / 合法 ISO），外加两条护栏：
- *  - fmtMinute 与旧 taskStatus.fmtDateTime 对合法 ISO 串输出等价（旧实现非法值走 String(iso)，
- *    合法值路径逐字同构，收编后共用正本，此条防回归）；
- *  - docMeta.fmtTime / taskStatus.fmtDateTime 的 re-export 与正本同一函数（13+ 消费组件零改动的前提）。
+ *  - fmtMinute 输出与收编前旧算法（本地墙钟 + padStart(2,"0")）逐字等价，防回归；
+ *  - docMeta.fmtTime 的 re-export 与正本同一函数（13+ 消费组件零改动的前提）。
+ *
+ * 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役后 utils/taskStatus.js 已删除，
+ * 原先两条护栏里对 taskStatus.fmtDateTime 的引用改为不依赖该模块——
+ * 「与旧实现等价」改为直接逐字推演旧算法（断言强度不变），re-export 一条只留 docMeta。
  */
 describe('fmtMinute（正本语义钉死）', () => {
   it('空值 → 空串', () => {
@@ -36,21 +38,20 @@ describe('fmtMinute（正本语义钉死）', () => {
 })
 
 describe('护栏：与旧实现等价 / re-export 同一', () => {
-  it('fmtMinute 与旧 taskStatus.fmtDateTime 对合法 ISO 串输出等价', () => {
-    // 旧 fmtDateTime 合法值路径的期望值（旧算法逐字推演：本地墙钟 + padStart(2,"0")）
+  it('合法 ISO 串 → fmtMinute 输出与收编前旧算法（本地墙钟 + padStart）逐字等价', () => {
+    // 旧实现合法值路径的期望值逐字推演（旧 taskStatus.fmtDateTime 已随员工端退役删除，
+    // 但其算法即此处 oldOut，等价护栏照常有效）
     const legal = ['2026-09-09T18:30:00', '2026-01-02T03:04:05', '2025-12-31T23:59:59+08:00']
     for (const iso of legal) {
       const d = new Date(iso)
       const pad = (n) => String(n).padStart(2, '0')
       const oldOut = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-      expect(fmtDateTime(iso)).toBe(oldOut)
       expect(fmtMinute(iso)).toBe(oldOut)
     }
   })
 
-  it('docMeta.fmtTime / taskStatus.fmtDateTime 即 fmtMinute（一行 re-export，消费方零改动）', () => {
+  it('docMeta.fmtTime 即 fmtMinute（一行 re-export，消费方零改动）', () => {
     expect(fmtTime).toBe(fmtMinute)
-    expect(fmtDateTime).toBe(fmtMinute)
   })
 })
 

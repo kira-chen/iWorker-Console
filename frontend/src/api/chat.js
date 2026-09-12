@@ -1,6 +1,5 @@
 import request from './request'
 import { useUserStore } from '@/stores/user'
-import { handlePositionNotBound } from '@/utils/positionNotBound'
 
 // 发送一条消息给专家（非流式回退接口）
 // 契约：POST /api/chat -> ResultVO<ChatResponse>
@@ -86,16 +85,10 @@ async function openSse(url, body, rawHandlers = {}, signal) {
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' }
   if (userStore.token) headers.Authorization = `Bearer ${userStore.token}`
 
-  // SSE 不经 axios 响应拦截器，故在此对未绑定专家（code=1001 EXPERT_NOT_BOUND）做同口径收口：
-  // 包一层 onError——任何错误路径（error 事件 / 非 ok / 连接中断）携带 code=1001 时，
-  // 复用 handlePositionNotBound（清无绑定态 + 跳 BindPosition，幂等防循环），再照常下发给业务 onError。
-  const handlers = {
-    ...rawHandlers,
-    onError(data) {
-      if (data?.code === 1001) handlePositionNotBound()
-      rawHandlers.onError?.(data)
-    }
-  }
+  // 2026-09-12 负责人决策 3（审计 J2）：原「SSE error 事件带 code=1001 → handlePositionNotBound
+  // （清无绑定态 + 跳 BindPosition）」收口随员工端整体退役删除——BindPosition 路由与
+  // utils/positionNotBound.js 都已不在，错误一律原样下发给业务 onError。
+  const handlers = { ...rawHandlers }
 
   let resp
   try {
