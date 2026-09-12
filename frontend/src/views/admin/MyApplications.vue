@@ -241,24 +241,24 @@ async function resubmit(row, key = 'resubmit') {
               <div v-if="row.description" class="ma-desc" :title="row.description">{{ row.description }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="业务类型" :width="COL.TAG">
+          <el-table-column label="业务类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="myAppBizTypeTagType(row.businessType)">
                 {{ myAppBizTypeLabel(row.businessType) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请类型" :width="COL.TAG">
+          <el-table-column label="申请类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="requestActionTagType(row.applicationType)">
                 {{ requestActionLabel(row.applicationType) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="申请版本" :width="COL.TAG">
+          <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.version || '—' }}</template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <!-- 原型 L1562：列头为文字按钮「申请时间 ↓ / ↑」，点击切换正倒序 -->
             <template #header>
               <button type="button" class="ma-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
@@ -267,7 +267,7 @@ async function resubmit(row, key = 'resubmit') {
             </template>
             <template #default="{ row }">{{ row.submittedAt ? fmtTime(row.submittedAt) : '—' }}</template>
           </el-table-column>
-          <el-table-column label="审核结果" :width="COL.TAG">
+          <el-table-column label="审核结果" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <!-- 已驳回且有原因：悬停气泡展示驳回原因 -->
               <el-tooltip
@@ -297,11 +297,14 @@ async function resubmit(row, key = 'resubmit') {
                   </span>
                 </el-tooltip>
                 <el-button v-else link type="primary" class="ma-op" @click="openDetail(row)">查看</el-button>
-                <!-- 原型 L1562：列表【撤回】为普通 link（与查看 / 重新提交同档），仅详情底栏「撤回申请」为 danger -->
+                <!-- 【撤回】走 warning 档（2026-09-11 负责人拍板「与全局色值保持一致」）：
+                     全站状态类操作（停用/下架/撤回）统一橙色，专家页与技能页的【撤回】即为此档。
+                     原写 primary 系照原型 L1562「与查看/重新提交同档」，原型已退场（2026-09-09/10），
+                     该依据随之失效，故改为跟随全站口径。详情底栏「撤回申请」仍是 danger，不受影响。 -->
                 <el-button
                   v-if="row.result === 'PENDING'"
                   link
-                  type="primary"
+                  type="warning"
                   class="ma-op"
                   :loading="busyRowId === row.id && busyKey === 'withdraw'"
                   :disabled="busyRowId === row.id"
@@ -323,15 +326,15 @@ async function resubmit(row, key = 'resubmit') {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          :page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 业务原生详情（SKILL 走整页路由、未知类型走 toast，均不进此组件） -->
     <GovObjectDetail

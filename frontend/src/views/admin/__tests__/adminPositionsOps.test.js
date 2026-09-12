@@ -418,13 +418,17 @@ describe('AdminPositions · 原型复刻批次 2A', () => {
     expect(inst().setupState.versionAdapter.closeOnSubmit).toBe(true)
   })
 
-  it('B6/B7 名称格：32px 图标框 .pos-icon + 名称 .pos-name + 状态 pill 同格；描述 / 时间带单行类', async () => {
+  it('B6/B7 名称格：图标框 .pos-icon + 名称 .pos-name；状态 pill 已拆为独立列；描述 / 时间带单行类', async () => {
     await mount2A()
     const row = rowByName('销售')
     const primary = row.querySelector('.pos-primary')
     expect(primary.querySelector('.pos-icon')).toBeTruthy()
     expect(primary.querySelector('.pos-name-line .pos-name').textContent).toBe('销售')
-    expect(primary.querySelector('.pos-name-line .status-tag')).toBeTruthy()
+    // 状态 pill 不再与名称同格（2026-09-11 负责人指示「按照设计图拆出来」，依据《列表页UI.png》
+    // ——稿面「状态」是独立一列；此前「状态并入名称格」的口径作废）。
+    expect(primary.querySelector('.status-tag')).toBeNull()
+    // 但状态本身仍在行内，只是搬到了自己的列
+    expect(row.querySelector('.status-tag')).toBeTruthy()
     expect(row.querySelector('.pos-desc').textContent).toBe('卖货')
     expect(row.querySelector('.pos-time')).toBeTruthy()
   })

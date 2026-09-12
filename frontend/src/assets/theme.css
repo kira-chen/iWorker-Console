@@ -121,10 +121,10 @@
    * ---------------------------------------------------------------------- */
   /* 2026-08-22 按实测重分配（与 utils/tableLayout.js 同源同值，改一处必须改两处） */
   --col-status: 84px;      /* 状态徽标列 */
-  --col-time: 152px;       /* 时间戳列（等宽数字，定宽对齐） */
+  --col-time: 168px;       /* 时间戳列（等宽数字，定宽对齐）；2026-09-11 152→168 随 tableLayout.js */
   --col-user: 132px;       /* 用户名 / 提交人 / 上传用户 */
   --col-count: 80px;       /* 纯数字列（工具数 / 被引用 / 上下文），居中 */
-  --col-tag: 104px;        /* 单标签列（类别 / 传输 / 来源 / 用途） */
+  --col-tag: 136px;        /* 单标签列（类别 / 传输 / 来源 / 用途）；2026-09-11 104→136 随 tableLayout.js */
   --col-name-min: 180px;   /* 名称主列最小宽（不定宽，吃剩余空间） */
   --col-desc-min: 240px;   /* 描述列最小宽（配 show-overflow-tooltip） */
 }
@@ -290,8 +290,57 @@
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
-/* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实 */
-[data-theme] .tbl-ops .el-button.is-link.is-disabled {
+/* 操作链接配色（2026-09-11《列表页UI.png》对齐）：稿面里操作列是「蓝 / 橙 / 红」三档，
+   不再跟随品牌绿。只改 .tbl-ops 内的链接按钮，不动 --c-accent——品牌绿仍用于标签、
+   选中态、聚焦环，全站主色不受影响（详见 tokens.css 的 --c-admin-link 注释）。
+   按 EP 的 type 分档：primary=查看/编辑/版本管理，success=发布/上架，
+   warning=停用/下架/撤回，danger=删除/驳回。稿面中 primary 与 success 同为蓝。 */
+/* 【作用域按"在不在后台表格里"，不按 .tbl-ops】（2026-09-11 修）
+   最初只写 .tbl-ops，结果 8 个页面漏改——它们的操作区各用各的容器
+   （.rev-ops / .ma-ops / .usr-ops / .rs-actions），技能页与岗位管理页甚至直接
+   裸挂在 .cell 下，压根没有容器类。按容器类名收作用域必然漏网，
+   改用「后台表格内的链接按钮」这个不变量，一条规则覆盖所有列表页。
+   同时覆盖表格内的 <a>（专家名、引用情况等行内链接原是 EP 蓝 / 品牌绿）。 */
+/* 抽屉内的手写 <table>（非 el-table）也算表格操作列：专家抽屉的知识库表
+   （.ee-kb-ops）用的是原生 table，够不着上面的 .el-table 选择器，
+   不带上会出现「列表页蓝、点开抽屉又变绿」的割裂。 */
+body.admin-scope .el-table .el-button.is-link.el-button--primary,
+body.admin-scope .el-table .el-button.is-link.el-button--success,
+body.admin-scope .ee-kb-ops .el-button.is-link.el-button--primary,
+body.admin-scope .ee-kb-ops .el-button.is-link.el-button--success {
+  color: var(--c-admin-link);
+}
+body.admin-scope .el-table .el-button.is-link.el-button--warning {
+  color: var(--c-admin-link-warn);
+}
+body.admin-scope .el-table .el-button.is-link.el-button--danger {
+  color: var(--c-admin-link-danger);
+}
+/* 表格内的行内链接（专家名 .ex-name、技能名、「N 个专家引用」等）：
+   这些是 <a> 不是 el-button，原先各页各写色值——专家名写死 EP 蓝 #409eff
+   （`var(--c-primary)` 在本站并不存在，恒回落到这个硬编码值）、引用情况走品牌绿。
+   统一收到操作链接蓝，与同表的操作链接一致。 */
+body.admin-scope .el-table .cell a[class],
+body.admin-scope .el-table .cell .el-link {
+  color: var(--c-admin-link);
+}
+/* hover 加深而非换色：稿面未给 hover 态，沿用「同色加深」的站内既有做法 */
+body.admin-scope .el-table .el-button.is-link:not(.is-disabled):hover,
+body.admin-scope .el-table .cell a[class]:hover {
+  opacity: 0.75;
+}
+/* 禁用态：EP 禁用后仍保留主色，看起来像可点；压到 faint 更诚实。
+   放在配色规则之后，确保禁用态不被上面的 type 选择器覆盖。 */
+/* 抽屉/弹窗内的禁用链接按钮同样压灰：原先只限定 .el-table，
+   抽屉里的禁用链接（如 MCP 抽屉「拉取工具」）会落回 EP 默认的浅绿，看着像可点。 */
+[data-theme] .tbl-ops .el-button.is-link.is-disabled,
+body.admin-scope .el-drawer .el-button.is-link.is-disabled,
+body.admin-scope .el-dialog .el-button.is-link.is-disabled,
+body.admin-scope .el-table .el-button.is-link.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--primary.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--success.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--warning.is-disabled,
+body.admin-scope .el-table .el-button.is-link.el-button--danger.is-disabled {
   color: var(--c-text-faint);
 }
 /* 主操作 ↔ 状态/危险操作 的分隔线：细、弱、不抢眼，仅作分组暗示 */

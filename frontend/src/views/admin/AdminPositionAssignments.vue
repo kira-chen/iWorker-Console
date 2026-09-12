@@ -347,7 +347,7 @@ onMounted(() => {
             <el-table-column prop="displayName" label="显示名" min-width="130" show-overflow-tooltip>
               <template #default="{ row }">{{ row.displayName || '—' }}</template>
             </el-table-column>
-            <el-table-column label="状态" :width="COL.STATUS">
+            <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <StatusTag :type="row.status === 'active' ? 'success' : 'info'">
                   {{ row.status === 'active' ? '启用' : '停用' }}
@@ -366,17 +366,17 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-
-          <!-- 统一分页条（原型 fm5-pager「共 N 条 · 每页 X 条 ‹ 页码 ›」恒显；2026-09-08 原型复刻批次 1 · C2：
-               本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
-          <ListPagination
-            v-model:page="page"
-            :page-size="pageSize"
-            :total="total"
-            @change="onPageChange"
-          />
         </ListStates>
       </div>
+
+      <!-- 统一分页条（原型 fm5-pager「共 N 条 · 每页 X 条 ‹ 页码 ›」恒显；2026-09-08 原型复刻批次 1 · C2：
+           本页自拼的 pa-foot-info 已删，总条数 / 每页条数由 ListPagination 统一给） -->
+      <ListPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        @change="onPageChange"
+      />
     </div>
 
     <!-- ============ 页签二：岗位申请审批（PRD-20260903 §四） ============ -->
@@ -423,7 +423,7 @@ onMounted(() => {
               <template #default="{ row }">{{ row.displayName || '—' }}</template>
             </el-table-column>
             <!-- 状态：取该用户在分配列表中的启用/停用状态（md §4.2） -->
-            <el-table-column label="状态" :width="COL.STATUS">
+            <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <StatusTag :type="row.status === 'active' ? 'success' : 'info'">
                   {{ row.status === 'active' ? '启用' : '停用' }}
@@ -442,7 +442,7 @@ onMounted(() => {
                 <span class="pa-username">{{ row.requestedPositionName || '—' }}</span>
               </template>
             </el-table-column>
-            <el-table-column :width="COL.TIME">
+            <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #header>
                 <button type="button" class="time-sort" @click="toggleAppSort">
                   提交时间 <span class="time-sort-arrow">{{ appSortArrow }}</span>
@@ -472,7 +472,7 @@ onMounted(() => {
               </template>
             </el-table-column>
             <!-- 处理时间 / 处理人：待审核记录显示「—」（md §4.2） -->
-            <el-table-column label="处理时间" :width="COL.TIME">
+            <el-table-column label="处理时间" :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
               <template #default="{ row }">
                 <span class="pa-time">{{ row.processedAt || '—' }}</span>
               </template>
@@ -493,15 +493,15 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-
-          <ListPagination
-            v-model:page="appList.page.value"
-            :page-size="appList.pageSize.value"
-            :total="appList.total.value"
-            @change="appList.reload"
-          />
         </ListStates>
       </div>
+
+      <ListPagination
+        v-model:page="appList.page.value"
+        v-model:page-size="appList.pageSize.value"
+        :total="appList.total.value"
+        @change="appList.reload"
+      />
     </div>
 
     <!-- 修改绑定弹窗：分配页签与审批页签【重新绑定】共用（md §4.3.3 与 §3.3 一致）；

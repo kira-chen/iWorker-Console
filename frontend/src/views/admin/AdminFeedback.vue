@@ -174,14 +174,14 @@ onBeforeUnmount(() => {
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
-          <el-table-column label="终端" :width="COL.TAG">
+          <el-table-column label="终端" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="terminalTagType(row.terminal)">
                 {{ terminalLabel(row.terminal) }}
               </StatusTag>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <!-- 原型 L1566：列头为文字按钮「反馈时间 ↓ / ↑」，点击切换正倒序 -->
             <template #header>
               <button type="button" class="fb-sort" :title="sortArrow === '↓' ? '倒序' : '正序'" @click="toggleSort">
@@ -219,15 +219,15 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          :page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <!-- 全文弹窗（原型 feedback-detail L1671：520px；明细项 label 上 / 值下 + 完整内容纯文本 + 底部【关闭】） -->
     <el-dialog v-model="detailVisible" title="反馈详情" width="520px" class="fb-detail-dialog">

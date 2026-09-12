@@ -293,13 +293,18 @@ async function remove(row) {
               <div class="biz-cell-text">
                 <div class="biz-cell-name-line">
                   <span class="biz-cell-name" :title="row.name">{{ row.name }}</span>
-                  <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                 </div>
                 <div class="biz-cell-desc" :title="row.description || ''">
                   {{ row.description || '—' }}
                 </div>
               </div>
             </div>
+          </template>
+        </el-table-column>
+        <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
           </template>
         </el-table-column>
 
@@ -326,7 +331,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
-        <el-table-column :width="COL.TIME + 24">
+        <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
@@ -400,7 +405,7 @@ async function remove(row) {
     </ListStates>
     </div>
     <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
-    <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <BizSystemEditor
       v-model:visible="editorVisible"

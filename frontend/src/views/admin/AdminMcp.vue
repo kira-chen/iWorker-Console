@@ -485,7 +485,6 @@ async function remove(row) {
                   <span v-else>{{ row.icon }}</span>
                 </span>
                 <span class="mc-name">{{ row.name }}</span>
-                <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
               </div>
               <div class="mc-service-desc" :class="{ 'is-indent': row.icon }" :title="row.description || ''">
                 {{ row.description || '—' }}
@@ -493,15 +492,21 @@ async function remove(row) {
             </div>
           </template>
         </el-table-column>
+        <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+          </template>
+        </el-table-column>
 
         <!-- 传输方式：展示完整枚举值（stdio / streamable-http），无内容显示 — -->
-        <el-table-column label="传输方式" :width="COL.TAG + 24">
+        <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <el-tag size="small" type="info" effect="plain">{{ row.transport || '—' }}</el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="工具数" :width="COL.COUNT" align="center">
+        <el-table-column label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <span v-if="row.toolCount">{{ row.toolCount }}</span>
             <el-tooltip v-else content="尚未拉取到工具，请在编辑器内「拉取工具」" placement="top" effect="dark">
@@ -527,7 +532,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间（PRD §二.1）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远 -->
-        <el-table-column label="最近更新时间" :width="COL.TIME + 24">
+        <el-table-column label="最近更新时间" :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
@@ -551,7 +556,7 @@ async function remove(row) {
           时间用相对值（「27 天前」）：「正常」是关于现在的断言、数据却是关于过去的记录，
           不显示新旧，一个 30 天前的绿标签会被读成「现在没问题」。
         -->
-        <el-table-column label="验证" :min-width="168">
+        <el-table-column label="验证" :min-width="200">
           <template #default="{ row }">
             <div class="mc-vc">
               <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标旋转表达「正在重测」 -->
@@ -672,7 +677,7 @@ async function remove(row) {
     <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
     <ListPagination
       v-model:page="page"
-      :page-size="pageSize"
+      v-model:page-size="pageSize"
       :total="total"
       @change="fetchList"
     />

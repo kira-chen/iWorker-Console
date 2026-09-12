@@ -573,8 +573,13 @@ onBeforeUnmount(() => {
           :data="rows"
           row-key="id"
         >
-          <!-- 技能名：图标 + 名称（超长换行完整展示）+ 三态状态标签；首列宽照原型 L1275（290px，批次 2C · E-A2） -->
-          <el-table-column label="技能名" :min-width="290">
+          <!-- 技能名：图标 + 名称（超长换行完整展示）。
+               2026-09-11 按《列表页UI.png》把三态状态标签拆回独立列（稿面「状态」紧跟名称列之后）。
+               min-width 290→200：290px 是标签与名称同格时代定的（原型 L1275，批次 2C · E-A2），
+               标签搬走后名称行不再与它抢位；本表列多，收回 90px 让「工具数/引用情况/最新版本」
+               三列回到视口内——此前整表 1519px 而视口 1166px，这三列被挤到横向滚动区里，
+               肉眼看像「表头字段没了」（负责人 09-11 即以此报障）。 -->
+          <el-table-column label="技能名" :min-width="200">
             <template #default="{ row }">
               <div class="sk-title">
                 <span v-if="row.icon" class="sk-icon">
@@ -582,32 +587,36 @@ onBeforeUnmount(() => {
                   <span v-else>{{ row.icon }}</span>
                 </span>
                 <span class="sk-name">{{ row.name }}</span>
-                <StatusTag :type="displayStateTag(row)">{{ displayStateLabel(row) }}</StatusTag>
               </div>
             </template>
           </el-table-column>
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <StatusTag :type="displayStateTag(row)">{{ displayStateLabel(row) }}</StatusTag>
+            </template>
+          </el-table-column>
           <!-- 技能描述：独立列，单行缩略悬停全文；无描述占位符 -->
-          <el-table-column label="技能描述" :min-width="205" show-overflow-tooltip>
+          <el-table-column label="技能描述" :min-width="160" show-overflow-tooltip>
             <template #default="{ row }">
               <span v-if="row.description">{{ row.description }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
           <!-- 技能类型：普通文本（原型 skill-type-text，不再用徽标） -->
-          <el-table-column label="技能类型" :width="96">
+          <el-table-column label="技能类型" :width="90">
             <template #default="{ row }">
               <span class="sk-type-text">{{ SKILL_TYPE_LABEL[row.type] }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能分类" :width="112">
+          <el-table-column label="技能分类" :width="104">
             <template #default="{ row }">
               <span v-if="row.displayCategoryName">{{ row.displayCategoryName }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="toolCount" label="工具数" :width="COL.COUNT" align="center" />
+          <el-table-column prop="toolCount" label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap" />
           <!-- 引用情况：可点击弹引用清单弹窗；通用技能不参与引用（占位符） -->
-          <el-table-column label="引用情况" :width="140">
+          <el-table-column label="引用情况" :width="116">
             <template #default="{ row }">
               <el-button
                 v-if="refCountOf(row) > 0"
@@ -623,7 +632,7 @@ onBeforeUnmount(() => {
               <span v-else class="cell-na">暂无引用</span>
             </template>
           </el-table-column>
-          <el-table-column label="最新版本" :width="100">
+          <el-table-column label="最新版本" :width="84" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="latestVersion(row)" class="ver-num">{{ latestVersion(row) }}</span>
               <span v-else class="cell-na">{{ NA }}</span>
@@ -632,7 +641,11 @@ onBeforeUnmount(() => {
           <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远；
                E5（2026-09-10）：随操作列一起右侧固定——1440 宽下表格总宽超出容器时
                本列此前被固定操作列遮住、要横向拖才能看到；列宽/列序照原型不动，仅加固定 -->
-          <el-table-column :width="COL.TIME" fixed="right">
+          <!-- 2026-09-11 取消 fixed="right"：本表列多，「最近更新时间 + 操作」两列同时右钉，
+               合计 412px 恒占 1166px 视口的三分之一，把中间的「工具数 / 引用情况 / 最新版本」
+               挤进横向滚动区——肉眼看就像这几列「没了」（负责人即以此报障）。
+               操作列保持右钉（随时可点是刚需），时间列跟随表格横滚即可。 -->
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
@@ -711,9 +724,10 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
         </el-table>
-        <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
+
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <!-- 引用清单弹窗：标题按引用主体切换，正文名称顿号连接 -->
     <el-dialog v-model="refsVisible" :title="refsTitle" width="420px" append-to-body>
@@ -753,7 +767,9 @@ onBeforeUnmount(() => {
 /* 技能名单元格：图标 + 名称（换行完整展示）+ 状态标签（原型 time-sort-and-full-skill-name-lock） */
 .sk-title {
   display: flex;
-  align-items: flex-start;
+  /* 2026-09-11：flex-start → center。行高收到 28px 后，图标 28px 而技能名 20px、
+     状态标签 19px，顶对齐会让文字与标签贴着图标上沿、看起来整列没纵向居中。 */
+  align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
 }

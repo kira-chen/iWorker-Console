@@ -253,7 +253,7 @@ onActivated(reload)
             </template>
           </el-table-column>
 
-          <el-table-column label="类型" :width="COL.TAG">
+          <el-table-column label="类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <el-tag size="small" type="info" effect="plain">{{ KB_TYPE_LABELS[row.kbType] || row.kbType }}</el-tag>
             </template>
@@ -268,7 +268,7 @@ onActivated(reload)
           </el-table-column>
 
           <!-- 文档数：仅引用上传数据源时展示；其余 —（md §三.2） -->
-          <el-table-column label="文档数" :width="COL.COUNT" align="center">
+          <el-table-column label="文档数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <span v-if="hasUploadSource(row)" class="kb-num">{{ fmtCount(row.docCount) }}</span>
               <span v-else class="cell-na">—</span>
@@ -279,7 +279,7 @@ onActivated(reload)
             <template #default="{ row }">{{ scopeText(row) }}</template>
           </el-table-column>
 
-          <el-table-column label="状态" :width="COL.STATUS">
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
             </template>
@@ -309,7 +309,7 @@ onActivated(reload)
       </ListStates>
     </div>
 
-    <ListPagination :total="total" v-model:page="page" :page-size="pageSize" @change="reload" />
+    <ListPagination :total="total" v-model:page="page" v-model:page-size="pageSize" @change="reload" />
 
     <KnowledgeBaseEditor
       v-model:visible="editorVisible"

@@ -511,7 +511,9 @@ async function removeApi(row) {
               row-key="id"
             >
               <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
-              <el-table-column label="API" :min-width="220">
+              <!-- min-width 220→174（2026-09-11）：状态标签拆出独立列后，名称行不再与标签抢位，
+                   收回 46px 让本表回到视口内（拆列前 1166px 不溢出，拆后 1212px 溢出 46px）。 -->
+              <el-table-column label="API" :min-width="174">
                 <template #default="{ row }">
                   <div class="api-cell">
                     <span class="api-cell-icon" :class="{ 'is-empty': !row.icon }">
@@ -522,7 +524,6 @@ async function removeApi(row) {
                     <div class="api-cell-text">
                       <div class="api-cell-name-line">
                         <span class="api-cell-name">{{ row.name }}</span>
-                        <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
                       </div>
                       <el-tooltip
                         :content="row.description"
@@ -535,16 +536,23 @@ async function removeApi(row) {
                   </div>
                 </template>
               </el-table-column>
+              <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后
+                   （与下方「性质」列是两回事：性质=读/写，状态=发布态） -->
+              <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+                </template>
+              </el-table-column>
 
               <!-- 请求方式：GET/POST/PUT/DELETE/PATCH -->
-              <el-table-column label="请求方式" :width="COL.TAG - 4">
+              <el-table-column label="请求方式" :width="COL.TAG - 4" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
                   <el-tag size="small" type="info" effect="plain">{{ row.method || '—' }}</el-tag>
                 </template>
               </el-table-column>
 
               <!-- 性质：读/写 -->
-              <el-table-column label="性质" :width="COL.COUNT" align="center">
+              <el-table-column label="性质" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
                   <StatusTag :type="natureMeta(row).type">{{ natureMeta(row).label }}</StatusTag>
                 </template>
@@ -564,7 +572,7 @@ async function removeApi(row) {
               </el-table-column>
 
               <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
-              <el-table-column :width="COL.TIME + 24">
+              <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #header>
                   <button type="button" class="time-sort" @click="toggleGroupSort(g.ps.id)">
                     最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.ps.id) }}</span>
@@ -577,7 +585,7 @@ async function removeApi(row) {
               </el-table-column>
 
               <!-- 验证：结果标签 + 最近验证时间 + 重新验证入口，悬浮承载排障信息 -->
-              <el-table-column label="验证" :min-width="150">
+              <el-table-column label="验证" :min-width="200">
                 <template #default="{ row }">
                   <div class="mc-vc">
                     <HealthTag :status="resolveDisplayStatus(row)" />
@@ -677,17 +685,17 @@ async function removeApi(row) {
             </div>
           </div>
         </div>
-
-        <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
-             单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
-        <ListPagination
-          :total="groups.length"
-          v-model:page="psPage"
-          :page-size="psPageSize"
-          unit="个"
-        />
       </ListStates>
     </div>
+
+    <!-- 按服务提供系统分页（负责人 2026-09-09 裁决：按业务系统分页、不按 API 分页）；
+         单位「个」而非「条」，与其余列表页的「共 N 条」区分，避免读成 API 总数 -->
+    <ListPagination
+      :total="groups.length"
+      v-model:page="psPage"
+      v-model:page-size="psPageSize"
+      unit="个"
+    />
 
     <ApiEditor
       v-model:visible="editorVisible"

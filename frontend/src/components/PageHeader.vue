@@ -56,8 +56,15 @@ defineProps({
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
+/* 标题与副文案【左右并排】（2026-09-10 负责人指示，全站统一）：
+   原为上下堆叠，改为同一行内「标题 + 副文案」，副文案基线与标题对齐。
+   窄屏（副文案挤不下）时自动折回下一行，不硬挤成两列。 */
 .page-header-text {
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 .page-header-title {
   margin: 0;
@@ -75,7 +82,8 @@ defineProps({
   line-height: 1;
 }
 .page-header-sub {
-  margin: var(--space-1) 0 0;
+  /* 左右并排后不再需要与标题拉开纵向间距（横向间距由 .page-header-text 的 gap 给） */
+  margin: 0;
   font-size: var(--fs-sm);
   line-height: var(--lh-base);
   color: var(--c-text-muted);

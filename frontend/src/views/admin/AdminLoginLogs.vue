@@ -104,13 +104,15 @@ function isOnline(row) {
           <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
             <template #default="{ row }">{{ row.username || '—' }}</template>
           </el-table-column>
-          <el-table-column label="终端" :width="COL.STATUS">
+          <!-- 终端列用 TAG 档而非 STATUS 档（2026-09-11）：值是「Windows」标签而非状态词，
+               STATUS(84px) 减去内距后放不下，加 nowrap 后会截成「Window…」。 -->
+          <el-table-column label="终端" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag type="accent">{{ row.terminal }}</StatusTag>
             </template>
           </el-table-column>
           <!-- 原型 L1820：登录 / 登出时间列头均为文字按钮「登录时间 ↓」（auditArrow） -->
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="ll-sort" @click="toggleSort('loginAt')">
                 登录时间 <span class="ll-sort-arrow">{{ sortArrow('loginAt') }}</span>
@@ -120,7 +122,7 @@ function isOnline(row) {
               <span class="ll-muted">{{ row.loginAt || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="ll-sort" @click="toggleSort('logoutAt')">
                 登出时间 <span class="ll-sort-arrow">{{ sortArrow('logoutAt') }}</span>
@@ -130,7 +132,7 @@ function isOnline(row) {
               <span class="ll-muted">{{ row.logoutAt || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" :width="COL.STATUS">
+          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="isOnline(row) ? 'success' : 'info'">
                 {{ isOnline(row) ? '在线' : '离线' }}
@@ -143,15 +145,15 @@ function isOnline(row) {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          :page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
   </div>
 </template>
 

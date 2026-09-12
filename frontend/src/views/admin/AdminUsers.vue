@@ -300,7 +300,10 @@ const emptyText = computed(() =>
           </el-table-column>
           <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
             <template #default="{ row }">
-              <div class="users-actions">
+              <!-- 同时挂 tbl-ops：本页操作列因「更多」下拉而自定义布局，但配色/定高须与
+                   全站操作列一致（2026-09-11 UI 稿对齐后，tbl-ops 才带蓝/橙/红三档色）。
+                   users-actions 只保留本页特有的 gap 与下拉按钮微调。 -->
+              <div class="users-actions tbl-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button link type="primary" @click="openRoleDialog(row)">设置角色</el-button>
               <!-- 重操作（重置密码/删除）收进「更多」下拉，避免常显平铺误触 -->
@@ -338,15 +341,15 @@ const emptyText = computed(() =>
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination
-          v-model:page="page"
-          :page-size="pageSize"
-          :total="total"
-          @change="fetchList"
-        />
       </ListStates>
     </div>
+
+    <ListPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      @change="fetchList"
+    />
 
     <UserEditor
       v-model:visible="editorVisible"

@@ -217,8 +217,10 @@ function onClaimed() {
       <div class="ob-body">
         <!-- 步骤1：选搭子 -->
         <section v-if="step === 1">
-          <h2 class="ob-title">挑选你的搭子</h2>
-          <p class="ob-sub">从公司发布的搭子中挑选一位，系统会把对应技能装配成你的专属搭子。</p>
+          <div class="ob-head">
+            <h2 class="ob-title">挑选你的搭子</h2>
+            <p class="ob-sub">从公司发布的搭子中挑选一位，系统会把对应技能装配成你的专属搭子。</p>
+          </div>
 
           <el-alert
             v-if="loadError"
@@ -262,10 +264,12 @@ function onClaimed() {
 
         <!-- 步骤2：认识搭子 + 起名 -->
         <section v-else-if="step === 2">
-          <h2 class="ob-title">认识一下，你的搭子</h2>
-          <p class="ob-sub">
-            系统为「{{ selectedPosition?.jobTag || selectedPosition?.name }}」装配的专属搭子，给 TA 起个名字吧。
-          </p>
+          <div class="ob-head">
+            <h2 class="ob-title">认识一下，你的搭子</h2>
+            <p class="ob-sub">
+              系统为「{{ selectedPosition?.jobTag || selectedPosition?.name }}」装配的专属搭子，给 TA 起个名字吧。
+            </p>
+          </div>
 
           <div class="ob-name-row np-card">
             <el-avatar :size="48" :src="selectedPosition?.avatar" class="ob-name-avatar">
@@ -293,8 +297,10 @@ function onClaimed() {
 
         <!-- 步骤3：完善信息 -->
         <section v-else>
-          <h2 class="ob-title">再花一分钟，让 TA 更懂你</h2>
-          <p class="ob-sub">这些信息会自动带入每次对话，你不用反复交代背景。</p>
+          <div class="ob-head">
+            <h2 class="ob-title">再花一分钟，让 TA 更懂你</h2>
+            <p class="ob-sub">这些信息会自动带入每次对话，你不用反复交代背景。</p>
+          </div>
 
           <el-form label-position="top" class="ob-form">
             <el-form-item required>
@@ -420,16 +426,26 @@ function onClaimed() {
   padding: var(--space-8);
   min-height: 360px;
 }
+/* 标题与副文案左右并排（2026-09-11 负责人指示，全站统一，口径同 PageHeader.vue）。
+   本页三个步骤各手写一套页头（没走共享 PageHeader），故在此单独对齐：
+   标题与副文案同行、基线对齐，窄屏自动折回下一行。 */
 .ob-title {
   font-size: var(--fs-xl);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
-  margin-bottom: var(--space-1);
+  margin: 0;
 }
 .ob-sub {
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
-  margin: 0 0 var(--space-5);
+  margin: 0;
+}
+.ob-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 .ob-alert {
   margin-bottom: var(--space-4);

@@ -195,7 +195,7 @@ onMounted(() => {
               <span class="usr-submitter">{{ row.submitter || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column :width="COL.TIME">
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <span class="usr-sort-head" role="button" tabindex="0" @click="toggleSort" @keyup.enter="toggleSort">
                 提交时间 <span class="usr-sort-icon">{{ sortIcon }}</span>
@@ -205,7 +205,7 @@ onMounted(() => {
               <span class="usr-time">{{ row.submittedAt ? fmtTime(row.submittedAt) : '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="审核状态" :width="USR_COL.STATUS">
+          <el-table-column label="审核状态" :width="USR_COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <UserSkillAuditTag kind="status" :value="row.status" />
             </template>
@@ -241,10 +241,10 @@ onMounted(() => {
             </template>
           </el-table-column>
         </el-table>
-
-        <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
       </ListStates>
     </div>
+
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <!-- 查看技能抽屉（审核动作回到本页统一处理） -->
     <UserSkillAuditDrawer

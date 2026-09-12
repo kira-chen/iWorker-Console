@@ -17,6 +17,8 @@ import RuntimeSpecEditor from '@/components/admin/RuntimeSpecEditor.vue'
 import RuntimeSpecUserDialog from '@/components/admin/RuntimeSpecUserDialog.vue'
 import { listRuntimeSpecs, deleteRuntimeSpec } from '@/api/runtimeSpec'
 import { useAdminList } from '@/composables/useAdminList'
+// 列宽单一真相源：时间列改用共享 COL.TIME（本页原为硬编码 132px，放不下完整时间戳）
+import { COL } from '@/utils/tableLayout'
 import '@/assets/connector.css'
 
 const query = reactive({ keyword: '', usage: '', sortOrder: 'descending' })
@@ -235,7 +237,10 @@ function usedTip(row) {
               </span>
             </template>
           </el-table-column>
-          <el-table-column width="132">
+          <!-- 2026-09-11 补 col-nowrap + 宽度 132→COL.TIME(168)：本列用自定义表头（无 label）、
+               宽度也是页内硬编码，09-11 那轮按 COL.* 常量扫「定类型字段」时整列漏掉，
+               导致时间值在 132px 里折成「2026-08-30 / 14:12」两行——时间断行即读不出分钟。 -->
+          <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSortOrder">
                 最近更新 <span class="time-sort-arrow">{{ sortArrow }}</span>
@@ -255,16 +260,19 @@ function usedTip(row) {
           </el-table-column>
         </el-table>
 
-        <!-- 底部：左汇总「N 个规格 · M 个用户已配置」+ 标准分页 -->
-        <div class="rs-foot">
-          <span v-if="summary" class="rs-foot-sum">
+        <!-- 底部：汇总行单独一行 + 标准分页（2026-09-11 拆开）。
+             原为「汇总 + 弹簧 + 分页」同一行 flex，会把分页条挤到右半边（实测左边界 1010px，
+             其余页 239px），与全站「左总数 / 中页码 / 右工具」三段式不一致——
+             即负责人报的「各列表页翻页区位置不统一」。汇总信息本身保留，仅换行摆放。 -->
+        <div v-if="summary" class="rs-foot">
+          <span class="rs-foot-sum">
             {{ summary.specCount }} 个规格 · {{ summary.positionCount }} 个岗位已配置 · {{ summary.userCount }} 个用户有生效规格
           </span>
-          <span class="rs-foot-sp"></span>
-          <ListPagination v-model:page="page" :page-size="pageSize" :total="total" @change="fetchList" />
         </div>
       </ListStates>
     </div>
+    <!-- 分页条置于卡片之外（2026-09-11 全站统一，见 ListPagination 注释） -->
+    <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
 
     <RuntimeSpecEditor
       v-model:visible="editorVisible"
@@ -362,6 +370,7 @@ function usedTip(row) {
   white-space: nowrap;
   word-break: keep-all;
 }
+/* 汇总行（2026-09-11 起不再与分页条同行，见模板注释） */
 .rs-foot {
   display: flex;
   align-items: center;
