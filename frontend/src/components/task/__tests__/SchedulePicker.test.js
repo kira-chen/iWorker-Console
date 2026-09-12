@@ -4,8 +4,11 @@ import { createApp, h, ref } from 'vue'
 import SchedulePicker from '@/components/task/SchedulePicker.vue'
 
 /**
- * S6：定时任务周期选择器「每月」日期去掉「月末 LAST」选项——后端发布门已拒月末，前端只提供具体日期。
+ * S6：定时任务周期选择器「每月」日期去掉「月末 LAST」选项——mock 层发布门拒月末，前端只提供具体日期。
  * 断言：MONTHLY 型下渲染的日期选项恰为 1..31，无「月末」/无 value=LAST。
+ * 注（2026-09-12 测试审计 J5）：本用例走 prototype 缺省（false）分支；该分支唯一消费方 views/TaskEditor.vue 已被
+ * FrontRuntimePlaceholder 占位页替换（FRONT_RUNTIME_ENABLED=false），管理端只走 prototype=true 三模式（md 岗位 §7.3）。
+ * 开关退役与本护栏去留待裁决，本轮不动用例。
  */
 
 // 轻量 EP 存根：只保留结构 + 把 el-option 的 label/value 落到 data 属性供断言。

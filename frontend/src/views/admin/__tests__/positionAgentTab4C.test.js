@@ -15,18 +15,24 @@ import { createApp, h, nextTick } from 'vue'
  *      技能上限 LIMITS.SKILL_MAX（Q378 决议 100），达上限未勾选项置灰 + 计数「已勾选：N/100」；
  *  #15 技能行【编辑】= 同页路由跳转（不开新标签），并带来源岗位/页签 query；
  *      字段上限按 md §6.2：名称 64、职责描述必填 ≤500（Q25④⑤）。
+ *
+ * 2026-09-12 测试审计（T24 / T53）对齐 md 岗位 §6.1-§6.4：
+ *  - SKILL_MAX 钉字面 100 + 文案「每个 Agent 最多引用 100 个技能」（md §6.4 L354；09-08 裁决），不再只对常量断言；
+ *  - AGENT_MAX 20「已达 20 个上限」置灰（§6.1）、删除确认 + 「Agent 已删除」（§6.3）、
+ *    「Agent 已保存」（§6.2）、移除确认「仅解除技能与当前 Agent 的关联，不删除技能本身。确认移除？」（§6.4）。
  */
 
 import { LIMITS } from '@/utils/positionModel'
 
+const defaultAgents = () => [
+  { agentId: 'ag_1', name: '经营分析 Agent', description: '汇总经营指标并识别异常', skills: [{ skillId: 302, name: '客户画像分析', category: 'QUERY', referencedTools: [] }] }
+]
 const store = {
   positionId: 5,
   loading: false,
   error: '',
   basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [], recommendedQuestions: ['', '', '', ''] },
-  agents: [
-    { agentId: 'ag_1', name: '经营分析 Agent', description: '汇总经营指标并识别异常', skills: [{ skillId: 302, name: '客户画像分析', category: 'QUERY', referencedTools: [] }] }
-  ],
+  agents: defaultAgents(),
   allSkills: [],
   isPublished: false,
   detail: { positionId: 5, status: 'draft', pendingAction: null },
@@ -117,7 +123,8 @@ async function mount() {
   for (const t of ['el-skeleton', 'el-empty', 'el-form', 'el-form-item', 'el-select', 'el-option',
     'el-switch', 'el-tag', 'el-icon', 'el-dialog', 'el-tooltip']) app.component(t, passthrough(t))
   app.component('el-button', {
-    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'],
+    // 声明 emits：否则父层 @click 既被 $emit 触发又经 attrs 透传到根 <button> 原生 click，处理函数会跑两次
+    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'], emits: ['click'],
     template: '<button class="el-button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
   })
   app.component('el-input', {
@@ -201,6 +208,8 @@ beforeEach(() => {
   store.saveBasic.mockResolvedValue({ warnings: [] })
   routeMock.query = {}
   store.detail.pendingAction = null
+  store.agents = defaultAgents()
+  store.removeAgent.mockResolvedValue({})
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
@@ -249,6 +258,13 @@ describe('Agent 抽屉 · 新建/编辑同一抽屉 + 引用技能勾选（4C #1
     expect(drawer.textContent).toContain('引用技能')
     expect(drawer.textContent).toContain(`已勾选：0/${LIMITS.SKILL_MAX}`)
     expect(listSkillsSpy).toHaveBeenCalled()
+  })
+
+  it('技能上限字面为 100（md §6.4 L354；09-08 裁决由 20 改 100）：常量 + 抽屉计数「已勾选：0/100」', async () => {
+    expect(LIMITS.SKILL_MAX).toBe(100)
+    await mount()
+    await clickNewAgent()
+    expect(container.querySelector('.drawer').textContent).toContain('已勾选：0/100')
   })
 
   it('编辑 Agent：抽屉回填名称/职责，并预勾该 Agent 已引用的技能', async () => {
@@ -320,10 +336,76 @@ describe('Agent 抽屉 · 新建/编辑同一抽屉 + 引用技能勾选（4C #1
     // 兜底闸：绕过 disabled 再勾一条不进 draft，给 md §6.4 文案
     await toggleBox(LIMITS.SKILL_MAX)
     expect(checkedStates().filter(Boolean).length).toBe(LIMITS.SKILL_MAX)
-    expect(ElMessage.warning).toHaveBeenCalledWith(`每个 Agent 最多引用 ${LIMITS.SKILL_MAX} 个技能`)
+    // 文案钉字面（md §6.4 L354），常量改回 20 这里必须红
+    expect(ElMessage.warning).toHaveBeenCalledWith('每个 Agent 最多引用 100 个技能')
     // 取消不受上限影响
     await toggleBox(0)
     expect(checkedStates().filter(Boolean).length).toBe(LIMITS.SKILL_MAX - 1)
+  })
+})
+
+describe('Agent 增删改文案与上限（md 岗位 §6.1-§6.4；2026-09-12 审计 T53）', () => {
+  it('Agent 已满 20 个 → 卡头按钮置灰且文案「已达 20 个上限」（md §6.1）', async () => {
+    expect(LIMITS.AGENT_MAX).toBe(20)
+    store.agents = Array.from({ length: 20 }, (_, i) => ({ agentId: `ag_${i}`, name: `Agent${i}`, description: `职责${i}`, skills: [] }))
+    await mount()
+    const btn = [...agentPane().querySelectorAll('.pd-card-head .el-button')].find((b) => b.textContent.includes('已达 20 个上限'))
+    expect(btn).toBeTruthy()
+    expect(btn.disabled).toBe(true)
+    expect(agentPane().querySelector('.pd-card-head').textContent).not.toContain('＋ 新增 Agent')
+  })
+
+  it('Agent 19 个 → 仍出【＋ 新增 Agent】可点（上限 20 为硬上限，未达即可建）', async () => {
+    store.agents = Array.from({ length: 19 }, (_, i) => ({ agentId: `ag_${i}`, name: `Agent${i}`, description: `职责${i}`, skills: [] }))
+    await mount()
+    const btn = [...agentPane().querySelectorAll('.pd-card-head .el-button')].find((b) => b.textContent.includes('＋ 新增 Agent'))
+    expect(btn).toBeTruthy()
+    expect(btn.disabled).toBe(false)
+  })
+
+  it('Agent 行【删除】→ 确认框逐字「删除该 Agent 后会解除其技能关联，技能本身不会被删除。确认删除？」+ 【确认删除】→ 删除后 toast「Agent 已删除」（md §6.3）', async () => {
+    const { ElMessage, ElMessageBox } = await import('element-plus')
+    await mount()
+    await clickAgentRowOp(0, '删除')
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '删除该 Agent 后会解除其技能关联，技能本身不会被删除。确认删除？',
+      '删除 Agent',
+      expect.objectContaining({ confirmButtonText: '确认删除' })
+    )
+    expect(store.removeAgent).toHaveBeenCalledWith('ag_1')
+    expect(ElMessage.success).toHaveBeenCalledWith('Agent 已删除')
+  })
+
+  it('Agent 行【删除】在确认框点取消 → 不删、无 toast', async () => {
+    const { ElMessage, ElMessageBox } = await import('element-plus')
+    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+    await mount()
+    await clickAgentRowOp(0, '删除')
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(store.removeAgent).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('抽屉【保存】成功 → toast「Agent 已保存」且抽屉关闭（md §6.2）', async () => {
+    const { ElMessage } = await import('element-plus')
+    await mount()
+    await clickAgentRowOp(0, '编辑')
+    await clickDrawerFoot('保存')
+    expect(ElMessage.success).toHaveBeenCalledWith('Agent 已保存')
+    expect(container.querySelector('.drawer')).toBeNull()
+  })
+
+  it('技能行【移除】→ 确认框逐字「仅解除技能与当前 Agent 的关联，不删除技能本身。确认移除？」+ 【移除】→ detach 后 toast「已移除」（md §6.4）', async () => {
+    const { ElMessage, ElMessageBox } = await import('element-plus')
+    await mount()
+    await clickSkillRowOp(1, '移除')
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '仅解除技能与当前 Agent 的关联，不删除技能本身。确认移除？',
+      '移除技能',
+      expect.objectContaining({ confirmButtonText: '移除' })
+    )
+    expect(store.detachSkillFromAgent).toHaveBeenCalledWith('ag_1', 302)
+    expect(ElMessage.success).toHaveBeenCalledWith('已移除')
   })
 })
 

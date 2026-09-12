@@ -8,7 +8,10 @@ import {
 } from '@/utils/dossierConfig'
 
 /**
- * 工作档案配置工具（§1.12）：hydrate 补全 / 轻校验点路径与后端一致 / 提交归一化去冗余 / 快照稳定。
+ * 工作档案配置工具（utils/dossierConfig）：hydrate 补全 / 轻校验点路径 / 提交归一化去冗余 / 快照稳定。
+ * 对齐 md 岗位 §4.2.3 档案详情（reduceRules：规则名 / 规则描述 / 归纳方式）；原头注引用的「契约 §1.12」已随后端退役废止。
+ * 注（2026-09-12 测试审计 J13）：checklist / policy.askTier / pendingTtlDays 是 md §4 与现行 UI（PositionDataTableStage）
+ * 都没有的遗留模型，用例仅守工具函数现状，去留待死码清理批一并裁决，本轮不删。
  */
 describe('hydrateDossierConfig', () => {
   it('null → 全默认；缺键补默认', () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listSampleTasks,
   getSampleTask,
@@ -27,7 +27,7 @@ const validPayload = (over = {}) => ({
   ...over
 })
 
-describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 mock）', () => {
+describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock；c40c606 三模式+preKick，persist v4；md 岗位 §7）', () => {
   // 2026-09-09：404 市场研究岗补全为「未发布 + 六项齐备」样本后不再是空态，空态样本改用 403。
   it('种子与岗位同源：401 八条 / 404 一条（含 scheduleSummary/toolRefs/skillRefs），403 空态', async () => {
     const p401 = await listSampleTasks(401)
@@ -91,5 +91,49 @@ describe('sampleTaskMock · 样例定时任务（2026-09-02 岗位工作台补 m
     expect(r.success).toBe(true)
     expect(r.steps.some((s) => s.simulated)).toBe(true)
     expect(r.resultSummary).toContain('模拟执行')
+  })
+})
+
+describe('sampleTaskMock · 持久化读回（mockPersist v4；c40c606 三模式+preKick 种子结构变更后 bump）', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 故与 mockPersist.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
+  const KEY = 'iworker-demo-mock:sampleTask'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    globalThis.localStorage = makeStorage()
+    vi.resetModules()
+  })
+  afterEach(() => {
+    delete globalThis.localStorage
+    vi.resetModules()
+  })
+
+  it('createSampleTask 落盘（v=4）→ 重新 import 模块（模拟刷新）→ 404 列表含新建任务', async () => {
+    const first = await import('../sampleTaskMock')
+    await first.createSampleTask(404, validPayload({ name: '读回验证任务' }))
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(4)
+    vi.resetModules()
+    const fresh = await import('../sampleTaskMock')
+    const { list, total } = await fresh.listSampleTasks(404)
+    expect(total).toBe(2)
+    expect(list.map((s) => s.name)).toContain('读回验证任务')
+  })
+
+  it('存量 v3 快照（旧种子结构）→ 启动时丢弃、回代码种子（401 八条），旧 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { sampleSeq: 9999, samplesByPosition: { 401: [] } } }))
+    const fresh = await import('../sampleTaskMock')
+    expect((await fresh.listSampleTasks(401)).total).toBe(8)
+    // mockPersist 版本不符即 removeItem；之后尚无写点，key 应为空
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 })

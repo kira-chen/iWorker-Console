@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, provide, inject, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { makeElTableStubs } from './helpers/elTableStub'
 
 /**
  * AdminPositionAssignments.vue 单测（2026-09-04 PRD-20260903 对齐：「岗位分配」页升级「岗位管理」双页签）。
@@ -13,7 +14,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
  * 审核状态筛选下发、空态「暂无岗位申请」↔「没有匹配的岗位申请」双分支；
  * 【驳回】弹窗（标题「驳回岗位申请」）确认上抛、【重新绑定】复用修改绑定弹窗（forceSave）
  * →保存后标记已重新绑定+回分配页签清筛选置顶（focusUserId 下发）。
- * el-table 用逐行注入 row 的存根（复用 adminSkillsUnreferenced 范式）；弹窗/api 存根化。
+ * el-table 用逐行注入 row 的存根（2026-09-12 审计 T39 改用 helpers/elTableStub，renderHeader 开）；弹窗/api 存根化。
+ * 2026-09-12 审计 T53 补：审批页签列头「提交时间」toggleAppSort → sortDir=asc 且 page=1，再点回 desc（md 岗位管理 §4.1 L78；90ee54e）。
  */
 
 const listPositionAssignments = vi.fn()
@@ -67,31 +69,8 @@ vi.mock('@/components/admin/ReviewRejectDialog.vue', () => ({
 
 const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssignments.vue')).default
 
-// —— el-table 逐行注入 row 存根 ——
-const ROW_KEY = Symbol('row')
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: i })))
-  }
-}
-const RowCells = {
-  props: { row: { type: Object, required: true }, colSlot: { type: Function, required: true } },
-  setup(props) {
-    provide(ROW_KEY, props.row)
-    return () => h('div', { class: 'el-row' }, props.colSlot?.())
-  }
-}
-const tableColStub = {
-  name: 'el-table-column',
-  props: { label: { type: String, default: '' }, prop: { type: String, default: '' } },
-  setup(props, { slots }) {
-    const row = inject(ROW_KEY, null)
-    return () => h('div', { class: 'el-table-column' }, [row ? slots.default?.({ row }) : slots.header?.()])
-  }
-}
+// —— el-table 逐行注入 row 存根（共用 helper；renderHeader 开 → 表头阶段渲染 header 插槽，供排序按钮断言）——
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 // —— el-tabs / el-tab-pane 存根：pane 渲染为可点按钮（label 属性或 #label 插槽），点击回写 v-model ——
 const TAB_SET = Symbol('tabset')
 const tabsStub = {
@@ -481,4 +460,23 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(listPositionApplications).toHaveBeenCalledTimes(2)
     expect(countPendingApplications).toHaveBeenCalledTimes(2)
   })
+  it('审批页签列头「提交时间」默认 ↓；点一下 → listPositionApplications sortDir=asc 且 page=1 + ↑；再点 → desc + ↓（md §4.1 L78；90ee54e）', async () => {
+    await mount()
+    container.querySelector('.el-tab-btn[data-name="applications"]').click()
+    await nextTick()
+    const sortBtn = () => paneApps().querySelector('.el-head .time-sort')
+    expect(sortBtn().textContent).toContain('提交时间')
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↓')
+    expect(listPositionApplications).toHaveBeenLastCalledWith(expect.objectContaining({ sortDir: 'desc' }))
+    sortBtn().click()
+    await flush()
+    expect(listPositionApplications).toHaveBeenLastCalledWith(expect.objectContaining({ sortDir: 'asc', page: 1 }))
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↑')
+    sortBtn().click()
+    await flush()
+    expect(listPositionApplications).toHaveBeenLastCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↓')
+    expect(listPositionApplications).toHaveBeenCalledTimes(3)
+  })
+
 })

@@ -1,3 +1,4 @@
+// 员工端封存中（FRONT_RUNTIME_ENABLED=false，api 无 mock 分流），用例仅作代码考古，不代表 demo 行为；去留待裁决（审计 J2，2026-09-12）
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // useRebindFlow：验证 start(拦截/拉preview) → confirm(rebind+成功提示) → 错误自处理。

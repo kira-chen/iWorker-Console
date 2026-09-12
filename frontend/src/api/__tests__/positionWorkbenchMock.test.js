@@ -101,8 +101,9 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(61), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
-    // createPosition 同口径校验描述 2000
-    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
+    // createPosition 同口径校验描述 500（md 岗位 §2.1 L175；positionMock.js createPosition 500 线）：500 放行 / 501 拦
+    await expect(createPosition({ name: '描述恰 500 岗', description: 'x'.repeat(500) })).resolves.toMatchObject({ name: '描述恰 500 岗' })
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
   })
 })
 

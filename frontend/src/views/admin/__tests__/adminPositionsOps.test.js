@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, provide, inject, nextTick } from 'vue'
+import { createApp, nextTick } from 'vue'
+import { makeElTableStubs } from './helpers/elTableStub'
 
 /**
  * AdminPositions.vue 操作列回归 —— 2026-09-01 PRD 对齐改造取代旧口径（原「以技能为标准」五项操作断言）。
  *
- * 新口径（照交互原型 v2 positionActions，约 L1170）：
+ * 新口径（对齐 md 岗位管理 §二.3 操作列；历史出处：交互原型 v2 positionActions 约 L1170）：
  * - 编辑恒显，审核中 disabled + title「审核中不可编辑」；
  * - 审核中 → 【撤回】（确认说明撤回后恢复提交审核前状态，toast「已撤回」）；
  * - 未发布 → 【发布】（先跑 md §9.1 六项完整性校验，Q3 不弹确认窗，通过则直接开版本管理侧栏）
@@ -14,6 +15,9 @@ import { createApp, h, provide, inject, nextTick } from 'vue'
  * - 【查看】固定恒显 → 岗位详情页只读态（query.view=1）。
  *
  * 2026-09-04 PRD-20260903 对齐：停用/删除/撤回文案、领用护栏与【查看】断言按新口径重写。
+ * 2026-09-12 测试审计：T39 el-table 桩改用 helpers/elTableStub（renderHeader 开，供列头排序按钮断言）；
+ *   T53 补「最近更新时间」toggleSort（md §二.2 L53）、草稿【删除】title「删除前需二次确认」（md §二.3.1 L62）；
+ *   T48 真实 ListPagination/ListStates 挂载 + 「加载失败 + 重试」在单独文件 adminPositionsSmoke.test.js（vi.mock 文件级）。
  */
 
 const push = vi.fn()
@@ -70,30 +74,8 @@ vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTI
 
 const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).default
 
-const ROW_KEY = Symbol('row')
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: i })))
-  }
-}
-const RowCells = {
-  props: { row: { type: Object, required: true }, colSlot: { type: Function, required: true } },
-  setup(props) {
-    provide(ROW_KEY, props.row)
-    return () => h('div', { class: 'el-row' }, props.colSlot?.())
-  }
-}
-const tableColStub = {
-  name: 'el-table-column',
-  props: { label: { type: String, default: '' }, prop: { type: String, default: '' } },
-  setup(props, { slots }) {
-    const row = inject(ROW_KEY, null)
-    return () => h('div', { class: 'el-table-column' }, [row ? slots.default?.({ row }) : slots.header?.()])
-  }
-}
+// 共用 el-table 桩（T39）：renderHeader 开 → 表头阶段渲染 header 插槽，供「最近更新时间」排序按钮断言
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 // 编辑按钮审核中 disabled + title 断言需要真实透传 disabled/title
 const elButton = {
@@ -343,6 +325,29 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(rowByName('销售').querySelector('.status-tag').textContent).toBe('已发布')
     expect(rowByName('草稿岗').querySelector('.status-tag').textContent).toBe('未发布')
     expect(rowByName('停用中岗').querySelector('.status-tag').textContent).toBe('审核中')
+  })
+
+  it('⑦ 列头「最近更新时间」默认 ↓（降序）；点一下 → listPositions sort=asc + ↑；再点 → desc + ↓（md §二.2 L53）', async () => {
+    await mount()
+    const sortBtn = () => container.querySelector('.el-head .time-sort')
+    expect(sortBtn().textContent).toContain('最近更新时间')
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↓')
+    expect(listPositions).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'desc' }))
+    sortBtn().click()
+    await flush()
+    expect(listPositions).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'asc' }))
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↑')
+    sortBtn().click()
+    await flush()
+    expect(listPositions).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'desc' }))
+    expect(sortBtn().querySelector('.time-sort-arrow').textContent).toBe('↓')
+    expect(listPositions).toHaveBeenCalledTimes(3)
+  })
+
+  it('⑧ 草稿行【删除】带悬停提示 title「删除前需二次确认」（md §二.3.1 L62）', async () => {
+    await mount()
+    expect(btn(rowByName('草稿岗'), '删除').getAttribute('title')).toBe('删除前需二次确认')
+    expect(btn(rowByName('可发布草稿岗'), '删除').getAttribute('title')).toBe('删除前需二次确认')
   })
 })
 

@@ -1,18 +1,22 @@
 // @vitest-environment jsdom
 /**
- * 2026-09-09 原型复刻批次 4B —— 岗位详情「自动化任务」页签复刻回归。
+ * 岗位详情「自动化任务」页签 —— 对齐 md 岗位 §7（2026-09-12 ed839c3：三模式调度 / 提示词 / 空闲时段提前准备）。
+ * 历史出处：2026-09-09 原型复刻批次 4B（#16–#22），编号沿用便于回溯；
+ * 2026-09-12 测试审计 T26 修头注（「#20 详细说明」已改名「提示词」、「执行星期按钮条」已删）、T53 补 Stage 组 5 条。
  *
- * 覆盖分路明细 B-岗位详情页 #16–#22 的可断言点：
- * - #16 主从容器：embedded 态去卡片外壳（无 zoomIn 动画类壳）、右栏内容限宽居中容器在位；
- * - #17 列表项操作精简为「删除」（在名称行内），不再有「编辑」按钮；启停移出列表项；
- * - #18 分区卡头（.te-card-title）承担绿条 + 灰底头条，卡体独立 .te-card-body；
- * - #19 SchedulePicker prototype 态：周期分段按钮 / 执行星期按钮条 / 绿底执行预览（药丸去 T 与时区）；
- * - #20 详细说明脚部字数计数；
- * - #21 引用工具卡：搜索框 + 已引用工具平铺行（已验证 tag）+ 卡底「+ 添加工具」；
+ * 覆盖：
+ * - #16 主从容器（md §7.1 双栏）：embedded 态去卡片外壳、右栏内容限宽居中容器在位；
+ * - #17 列表项操作精简为「删除」（md §7.1 行内操作），不再有「编辑」按钮；启停移入右侧「基本信息」卡头（md §7.2）；
+ * - Stage 组（md §7.1 L371-388）：缺指令红标 / 软上限 20 / 默认选中第一条（09-10 S2）/ 脏检查 confirm / 启停 toast；
+ * - #18 分区卡头（.te-card-title）承担绿条 + 灰底头条，卡体独立 .te-card-body（md §7.1 末条）；
+ * - #19 SchedulePicker prototype 态：三模式 Tab / 按周期预设 / 每间隔 / 单次 / 绿底执行预览（md §7.3）；
+ * - #20 提示词卡脚部字数计数（现行代码「字数: N」，与 md §7.4「已输入 N / 8000 字」的差异记代码缺陷 K7，用例钉现状）；
+ * - #21 引用工具卡：搜索框 + 已引用工具平铺行（已验证 tag）+ 卡底「+ 添加工具」（占位文案差异记 K8）；
  * - #22 引用平台技能卡：已选 chips + 搜索 + 卡底「+ 添加技能」（候选默认收起）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
+import { listSampleTasks, setSampleTaskStatus } from '@/api/sampleTask'
 
 async function flush(n = 8) {
   for (let i = 0; i < n; i++) {
@@ -192,6 +196,135 @@ describe('自动化任务 · 主从容器与列表项（4B #16 / #17）', () => 
   })
 })
 
+/* ============================ Stage 组：md §7.1 左侧列表规则（2026-09-12 审计 T53） ============================ */
+describe('自动化任务 · 左侧列表规则（md 岗位 §7.1 L371-388）', () => {
+  let PositionSampleTaskStage
+  beforeEach(async () => {
+    PositionSampleTaskStage = (await import('@/components/position/PositionSampleTaskStage.vue')).default
+  })
+  const task = (id, over = {}) => ({
+    id,
+    name: `任务${id}`,
+    prompt: `指令${id}`,
+    status: 'ENABLED',
+    scheduleSummary: '每天 09:00',
+    schedule: { scheduleType: 'DAILY', times: ['09:00'] },
+    sopDoc: 'sop',
+    toolRefs: [],
+    skillRefs: [],
+    ...over
+  })
+  const nameInput = () => container.querySelector('.stub-el-input[placeholder="给样例起个名字，如「每日工单汇总」"]')
+
+  it('缺「一句话指令」的条目 → 名称旁出红色「缺指令」标签；已填的不出（md §7.1 L371）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1, { prompt: '' }), task(2)] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    const items = [...container.querySelectorAll('.st-item')]
+    expect(items[0].querySelector('.st-flag')?.textContent.trim()).toBe('缺指令')
+    expect(items[1].querySelector('.st-flag')).toBeNull()
+  })
+
+  it('已有 20 条 → 新增按钮置灰、文案「已达 20 条任务上限」，点击不进新建态（md §7.1 L374 软上限）', async () => {
+    const { ElMessage } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, i) => task(i + 1)) })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    const btn = container.querySelector('.st-new')
+    expect(btn.classList.contains('disabled')).toBe(true)
+    expect(btn.textContent.trim()).toBe('已达 20 条任务上限')
+    btn.click()
+    await flush()
+    expect(container.querySelector('.st-creating')).toBeNull()
+    expect(ElMessage.warning).toHaveBeenCalledWith('自动化任务建议不超过 20 条，把最推荐的放前面')
+  })
+
+  it('19 条 → 新增按钮可点、文案「＋ 新增自动化任务」，点击后左栏出「新增中…」行（md §7.1 L373）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 19 }, (_, i) => task(i + 1)) })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    const btn = container.querySelector('.st-new')
+    expect(btn.classList.contains('disabled')).toBe(false)
+    expect(btn.textContent.trim()).toBe('＋ 新增自动化任务')
+    btn.click()
+    await flush()
+    expect(container.querySelector('.st-creating')?.textContent).toContain('新增中…')
+  })
+
+  it('列表非空 → 进入页签默认选中第一条，右侧直接是编辑器而非占位（md §7.1 L376；09-10 S2）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    const items = [...container.querySelectorAll('.st-item')]
+    expect(items[0].classList.contains('on')).toBe(true)
+    expect(items[1].classList.contains('on')).toBe(false)
+    expect(container.querySelector('.st-placeholder')).toBeNull()
+    expect(nameInput()?.value).toBe('任务1')
+  })
+
+  it('列表为空 → 右侧占位「还没有自动化任务」（md §7.1 L375）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: [] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    expect(container.querySelector('.st-placeholder .ph-title')?.textContent.trim()).toBe('还没有自动化任务')
+  })
+
+  it('编辑器有未保存修改时切换条目 → confirm「有未保存的修改，切换将丢弃。继续？」；取消则停留原条目（md §7.1 L380）', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    // 改名 → 编辑器上报 dirty
+    const input = nameInput()
+    input.value = '任务1-改'
+    input.dispatchEvent(new Event('input'))
+    await flush()
+    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+    const items = [...container.querySelectorAll('.st-item')]
+    items[1].click()
+    await flush()
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '有未保存的修改，切换将丢弃。继续？',
+      '切换样例',
+      expect.objectContaining({ confirmButtonText: '丢弃并切换', cancelButtonText: '继续编辑' })
+    )
+    expect(items[0].classList.contains('on')).toBe(true)
+    expect(items[1].classList.contains('on')).toBe(false)
+    // 确认丢弃 → 切到第二条
+    items[1].click()
+    await flush()
+    expect(container.querySelector('.st-item.on .st-name-text').textContent.trim()).toBe('任务2')
+  })
+
+  it('无未保存修改时切换条目 → 不弹确认直接切换', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    ;[...container.querySelectorAll('.st-item')][1].click()
+    await flush()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(container.querySelector('.st-item.on .st-name-text').textContent.trim()).toBe('任务2')
+  })
+
+  it('「基本信息」卡头开关停用 → setSampleTaskStatus(DISABLED) + toast「任务已停用」；再点 → ENABLED + 「任务已启用」（md §7.1 L388 / §7.2）', async () => {
+    const { ElMessage } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1)] })
+    mountComp(PositionSampleTaskStage, { positionId: 1, embedded: true })
+    await flush()
+    const sw = container.querySelector('.te-card-actions .stub-switch')
+    sw.click()
+    await flush()
+    expect(setSampleTaskStatus).toHaveBeenCalledWith(1, 1, 'DISABLED')
+    expect(ElMessage.success).toHaveBeenCalledWith('任务已停用')
+    expect(container.querySelector('.te-card-action-label').textContent.trim()).toBe('已停用')
+    sw.click()
+    await flush()
+    expect(setSampleTaskStatus).toHaveBeenLastCalledWith(1, 1, 'ENABLED')
+    expect(ElMessage.success).toHaveBeenLastCalledWith('任务已启用')
+  })
+})
+
 /* ============================ #18 / #20 / #21 / #22 分区卡 ============================ */
 describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () => {
   let SampleTaskEditor
@@ -199,7 +332,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     SampleTaskEditor = (await import('@/components/position/SampleTaskEditor.vue')).default
   })
 
-  it('#18 五个分区卡头 + 独立卡体；卡头文案逐字对齐原型', async () => {
+  it('#18 五个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 引用平台技能」', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE, embedded: true })
     await flush()
     const heads = [...container.querySelectorAll('.te-card-title')].map((n) => n.textContent.trim())
@@ -241,7 +374,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(container.querySelector('.te-card-actions')).toBeNull()
   })
 
-  it('#20 详细说明卡脚部展示字数计数（折叠空白后长度）', async () => {
+  it('#20 提示词卡（md §7.4）脚部展示字数计数（折叠空白后长度；现行「字数: N」口径，K7 修后改「已输入 N / 8000 字」）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE, embedded: true })
     await flush()
     const counter = container.querySelector('.te-editor-counter')
@@ -418,7 +551,7 @@ describe('自动化任务 · 调度计划原型态（4B #19）', () => {
     expect(container.querySelector('.sp-preview')).toBeNull()
   })
 
-  it('prototype 缺省（用户端 TaskEditor 口径）：仍走 el-radio-button / el-time-picker / .sp-preview（零回归）', async () => {
+  it('prototype 缺省（用户端 TaskEditor 口径，FRONT_RUNTIME_ENABLED=false 下无消费方，去留随审计 J5）：仍走 el-radio-button / el-time-picker / .sp-preview（零回归）', async () => {
     mountSched({ previewSummary: '每周 09:00', previewTimes: ['2026-09-07T09:00:00+08:00'] })
     await flush()
     expect(container.querySelector('.sp-seg-preset')).toBeNull()

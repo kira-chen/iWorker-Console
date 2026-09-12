@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （positionAssignmentMock → request.js → router 链路触达 window，故用 jsdom）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listPositionAssignments,
   setUserPosition,
@@ -15,7 +15,7 @@ beforeEach(() => {
 })
 
 describe('positionAssignmentMock —— 岗位分配 mock（2026-09-01 PRD 对齐轮）', () => {
-  it('种子 6 用户照原型：2 人未绑定、zhouming 停用；岗位名与岗位模块种子联动（Q10）', async () => {
+  it('种子 6 用户（历史出处：原型分配区）：2 人未绑定、zhouming 停用；岗位名与岗位模块种子联动（Q10，md 岗位管理 §3.1）', async () => {
     const { list, total } = await listPositionAssignments()
     expect(total).toBe(6)
     expect(list.map((r) => r.username)).toEqual(['zhangwei', 'li.na', 'chenyu', 'wangfang', 'zhouming', 'sun.xin'])
@@ -54,5 +54,42 @@ describe('positionAssignmentMock —— 岗位分配 mock（2026-09-01 PRD 对�
     const { list } = await listPositionAssignments({ focusUserId: 4 })
     expect(list[0].username).toBe('wangfang')
     expect(list.map((r) => r.username)).toEqual(['wangfang', 'zhangwei', 'li.na', 'chenyu', 'zhouming', 'sun.xin'])
+  })
+})
+
+describe('positionAssignmentMock · 持久化读回（mockPersist v1；写点 setUserPosition → 刷新后仍在）', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 故与 mockPersist.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
+  const KEY = 'iworker-demo-mock:positionAssignment'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    globalThis.localStorage = makeStorage()
+    vi.resetModules()
+  })
+  afterEach(() => {
+    delete globalThis.localStorage
+    vi.resetModules()
+  })
+
+  it('setUserPosition(3, 402) 落盘（v=1）→ 重新 import 模块 → chenyu 仍绑在客户成功岗', async () => {
+    const first = await import('../positionAssignmentMock')
+    await first.setUserPosition(3, 402)
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.v).toBe(1)
+    expect(snap.data.assignments.find((r) => r.userId === 3).positionId).toBe(402)
+    vi.resetModules()
+    const fresh = await import('../positionAssignmentMock')
+    const { list } = await fresh.listPositionAssignments()
+    expect(list.find((r) => r.userId === 3)).toMatchObject({ positionId: 402, positionName: '客户成功岗' })
   })
 })

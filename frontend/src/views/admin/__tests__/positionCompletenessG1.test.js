@@ -265,7 +265,7 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
   })
 })
 
-describe('A19 · 知识页签【检索测试】原地弹窗（md §5.3 / Q455）', () => {
+describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）', () => {
   // 知识页签为懒加载（首次切到该页签才拉列表），故用例先把 activeTab 切过去。
   const kbOpBtn = (text) => {
     const pane = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'knowledge')
@@ -291,7 +291,7 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.3 / Q455）
     expect(routerPushSpy).not.toHaveBeenCalled()
   })
 
-  it('【查看】仍按 md §5.3 跳知识库模块', async () => {
+  it('【查看】跳知识库模块（md §11 L519 跳转；与 §5.2 L315「抽屉」口径相互矛盾，记待裁决，本条钉现状）', async () => {
     await mountOnKnowledge()
     kbOpBtn('查看').click()
     await flush()
