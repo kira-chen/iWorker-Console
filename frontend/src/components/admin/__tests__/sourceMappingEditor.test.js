@@ -166,12 +166,14 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     expect(btnsByText(reqCard(), '＋ 添加下一级子字段').length).toBe(3)
   })
 
-  it('新建示例组 filters→rules→field/value 渲染三级；删父级级联删后代；切基础类型收起并暂存、切回恢复', async () => {
+  it('新建示例组 filters→rules→field/value 渲染三级，filters 下与 rules 同级另有 enabled(boolean)（md §六.2 L316，K37）；删父级级联删后代；切基础类型收起并暂存、切回恢复', async () => {
     await mountEditor({}, [...mkRequestMapRows(), ...mkRequestMapExampleRows()])
     const reqCard = () => cards()[0]
     const names = [...reqCard().querySelectorAll('.smp-name')].map((el) => el.value)
-    expect(names).toEqual(['filters', 'rules', 'field', 'value'])
+    expect(names).toEqual(['filters', 'rules', 'field', 'value', 'enabled'])
     expect(reqCard().querySelectorAll('.smp-sub').length).toBe(2) // filters 子区 + rules 子区
+    // enabled 与 rules 同级（都是 filters 的直接子字段）、类型 boolean、无子区
+    expect(requestRows.value[2].children.map((c) => [c.name, c.type])).toEqual([['rules', 'array'], ['enabled', 'boolean']])
     // 示例组非预设、可删（md：示例字段不属于平台强制参数）
     expect(requestRows.value[2].preset).toBe(false)
     // filters 切 string → 子区收起但 children 草稿保留
@@ -179,11 +181,11 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     await setSelect(filtersType, 'string')
     expect(reqCard().querySelector('.smp-sub')).toBeNull()
     expect(reqCard().querySelector('.smp-type.is-expanded')).toBeNull()
-    expect(requestRows.value[2].children.length).toBe(1)
+    expect(requestRows.value[2].children.length).toBe(2)
     // 切回 object → 恢复
     await setSelect(reqCard().querySelector('.smp-type'), 'object')
     expect(reqCard().querySelectorAll('.smp-sub').length).toBe(2)
-    expect([...reqCard().querySelectorAll('.smp-name')].map((el) => el.value)).toEqual(['filters', 'rules', 'field', 'value'])
+    expect([...reqCard().querySelectorAll('.smp-name')].map((el) => el.value)).toEqual(['filters', 'rules', 'field', 'value', 'enabled'])
     // 删 filters → 后代一并消失，只剩预设行
     reqCard().querySelector('.smp-x').click()
     await nextTick()

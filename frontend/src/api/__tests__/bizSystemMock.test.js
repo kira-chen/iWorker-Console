@@ -137,6 +137,19 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     })
     expect(updated.description).toBe('改过的描述')
     expect(updated.bizPagesCount).toBe(1)
+    // K41（2026-09-12 md §三.3 L108）：整行空白的业务页 mock 侧同样丢弃，仅空格 / 全空行不落库；非空行照存
+    const withBlank = await updateBizSystem(row.id, {
+      ...VALID,
+      name: row.name,
+      bizPages: [
+        { url: '', name: '', description: '' },
+        { url: 'https://demo.example.com/ws', name: '工作台', description: '' },
+        { url: '  ', name: ' ', description: '' },
+        { url: '', name: '', description: '只填了说明' }
+      ]
+    })
+    expect(withBlank.bizPagesCount).toBe(2)
+    expect(withBlank.bizPages.map((p) => [p.name, p.description])).toEqual([['工作台', ''], ['', '只填了说明']])
     expect(updated.updatedAt >= before).toBe(true)
     await expect(updateBizSystem(row.id, { ...VALID, name: other.name })).rejects.toMatchObject({ field: 'name' })
     await expect(updateBizSystem('biz_nope', { ...VALID, name: 'x' })).rejects.toThrow('业务系统不存在')

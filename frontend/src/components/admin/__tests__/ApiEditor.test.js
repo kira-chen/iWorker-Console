@@ -11,6 +11,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *   §三.4 请求配置（请求方式默认 GET；启用 / 停用默认启用）
  *   §三.7 保存校验（一次性标红 / 「请先修正标红项」/ URL 合法 / 成功「API 已创建」「API 已保存」并关抽屉 / 失败保留输入）
  *   + 数据层 field 级错误回显（readWrite 等）、watcher immediate 防回归（5303c7c）。
+ *   2026-09-12 闭环：K36（§三.2 L120 API ID 编辑 / 查看态只读展示、新建不展示；名称上限 64 · 一览表 §6.2）、
+ *   K38（§三.5 L170 查看态 SchemaFieldEditor 隐藏新增 / 删除 / 子字段入口，经 readonly 透传）。
  *
  * 桩：api/apiConnector、element-plus（ElMessage）、IconField（露【选图标】按钮 emit pick）、EP 控件最小桩
  *（el-radio 点击即回写 v-model，el-select 走原生 select）。SchemaFieldEditor / ParamRowsEditor / DrawerEditor 为真组件。
@@ -355,6 +357,58 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
     expect(valueInput.placeholder).toContain('fin***1d8')
     expect(el.querySelector('.ad-eq-ai')).toBeNull()
     expect([...el.querySelectorAll('.footer .el-button')].map((b) => b.textContent.trim())).toEqual(['关闭'])
+  })
+
+  it('查看态：请求参数 / 响应字段完整展示层级，但无【＋ 添加字段】【＋子字段】与删除入口（md §三.5 L170，K38）', async () => {
+    conn.getApi.mockResolvedValue({
+      ...DETAIL,
+      requestSchema: { type: 'object', properties: { user: { type: 'object', properties: { id: { type: 'string' } } } } },
+      responseSchema: { type: 'object', properties: { code: { type: 'number' } } }
+    })
+    const el = await mountEditor('api_1', { readonly: true })
+    const sfes = el.querySelectorAll('.sfe')
+    expect(sfes.length).toBe(2)
+    expect(sfes[0].querySelectorAll('.sfe-row').length).toBe(2) // user + 缩进子行 id
+    expect(sfes[0].querySelector('.sfe-row.is-child')).toBeTruthy()
+    for (const sfe of sfes) {
+      expect(findBtn(sfe, '＋ 添加字段')).toBeUndefined()
+      expect(findBtn(sfe, '＋子字段')).toBeUndefined()
+      expect(sfe.querySelector('.el-popconfirm')).toBeNull()
+    }
+    // 编辑态对照：入口都在
+    app.unmount(); container.remove()
+    const rw = await mountEditor('api_1')
+    expect(findBtn(rw.querySelectorAll('.sfe')[0], '＋ 添加字段')).toBeTruthy()
+  })
+
+  it('编辑 / 查看态只读展示 API ID（系统生成，如 api_1）；新建态不展示（md §三.2 L120，K36 / Q113）', async () => {
+    let el = await mountEditor('api_1')
+    expect(itemByLabel(el, 'API ID')).toBeTruthy()
+    expect(el.querySelector('.ad-api-id').textContent.trim()).toBe('api_1')
+    expect(itemByLabel(el, 'API ID').querySelector('input')).toBeNull() // 只读文本，非输入框
+    app.unmount(); container.remove()
+    el = await mountEditor('api_1', { readonly: true })
+    expect(el.querySelector('.ad-api-id').textContent.trim()).toBe('api_1')
+    app.unmount(); container.remove()
+    el = await mountEditor(null)
+    expect(itemByLabel(el, 'API ID')).toBeUndefined()
+    expect(el.querySelector('.ad-api-id')).toBeNull()
+  })
+
+  it('名称超过 64 字 → 名称项标红「名称最多 64 个字符」、不调 createApi；恰 64 字通过（一览表 §6.2，K36）', async () => {
+    const el = await mountEditor(null)
+    await fillValidNew(el)
+    setInput(inputOf(el, '名称'), 'A'.repeat(65))
+    findBtn(el, '保存').click()
+    await flush()
+    expect(itemByLabel(el, '名称').dataset.error).toBe('名称最多 64 个字符')
+    expect(msg.warning).toHaveBeenCalledWith('请先修正标红项')
+    expect(conn.createApi).not.toHaveBeenCalled()
+    setInput(inputOf(el, '名称'), 'A'.repeat(64))
+    findBtn(el, '保存').click()
+    await flush()
+    expect(conn.createApi).toHaveBeenCalledTimes(1)
+    expect(conn.createApi.mock.calls[0][0].name).toBe('A'.repeat(64))
   })
 
   it('编辑态：详情回填（名称 / 地址 / 示例问题）+ 时间行 + 被技能引用「暂无技能引用」（md §三.6）', async () => {

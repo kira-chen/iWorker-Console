@@ -28,7 +28,7 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(list[0].name).toBe('法规与标准库') // 2026-08-28 11:02 最新（A6 知识库行）
   })
 
-  it('申请类型补丁：id 3/6=停用 v2.0.0，id 1/4/8=首次发布 —，其余=新版本发布 v1.2.0', async () => {
+  it('申请类型补丁：id 3/6=停用 v2.0.0，id 1/4/8=首次发布 —，其余=新版本发布（id 2 取技能 sk_302 在审号 v1.5.0，余 v1.2.0）', async () => {
     const { list } = await listReviews()
     const byId = Object.fromEntries(list.map((r) => [r.id, r]))
     expect(byId[3].requestAction).toBe('DELIST')
@@ -36,7 +36,10 @@ describe('reviewsMock · 审核中心内存 mock', () => {
     expect(byId[1].requestAction).toBe('FIRST_PUBLISH')
     expect(byId[1].version).toBe('—')
     expect(byId[2].requestAction).toBe('VERSION_PUBLISH')
-    expect(byId[2].version).toBe('v1.2.0')
+    // 2026-09-12 审计 K19：id 2 指向 sk_302，其在审版本已改 v1.5.0（由线上 v1.4.0 递增），
+    // 审核中心列表要与技能详情/审核快照同号，故这里也是 v1.5.0；其余新版本发布行仍 v1.2.0。
+    expect(byId[2].version).toBe('v1.5.0')
+    expect(byId[5].version).toBe('v1.2.0')
   })
 
   it('业务类型筛选：CONNECTOR_MCP / CONNECTOR_API 由 TOOL+subType 拆分', async () => {

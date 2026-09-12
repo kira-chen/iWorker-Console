@@ -8,8 +8,9 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - 【＋ 添加字段】新增一级字段（L161）；类型选「对象 / 数组」出【＋子字段】、切回非对象/数组清空子字段（L163）；
  *  - 子字段是同表缩进行（父行后紧跟），删除按 path 定位不串位；行 key 走稳定 _uid；
  *  - 未配置时「暂无字段，可不配置（留空表示不约束）」（L157）；删除前二次确认、删父字段连带全部子字段（L169）；
- *  - request 形态多「请求方法」「默认值」两列，字段类型默认「文本」（L162 / L165 / L167）；response 形态同样有「必填」列（L166）。
- * 已知差异不在此断言：列头文案「参数名 / 描述 / 变量类型」vs md「字段名 / 字段类型 / 字段说明」（审计 J15）；查看态编辑入口置灰非隐藏（K38）。
+ *  - request 形态多「请求方法」「默认值」两列，字段类型默认「文本」（L162 / L165 / L167）；response 形态同样有「必填」列（L166）；
+ *  - 列头 / 列序逐字照 L161「字段名、字段类型、请求方法、是否必填、默认值、字段说明」（2026-09-12 J15-4）；
+ *  - 查看态（readonly）隐藏【＋ 添加字段】【＋子字段】与删除入口，字段层级仍完整展示（L170，2026-09-12 K38）。
  */
 
 // EP 存根：把类型下拉暴露成可直接设值的 select，按钮按文案可点。
@@ -248,14 +249,40 @@ describe('SchemaFieldEditor · 多级嵌套（md §三.5 L161-164）', () => {
       expect(getRows()[0].required).toBe(true)
     })
 
-    it('response 形态仍不出「请求方法」「默认值」两列（那两列是 request 专属）', async () => {
+    it('response 形态列头 / 列序「字段名、字段类型、是否必填、字段说明」（md L161 去掉 request 专属的「请求方法」「默认值」两列；J15-4）', async () => {
       const { container } = await mountEditor([
         { name: 'code', type: 'string', required: false, description: '' }
       ])
-      const head = container.querySelector('.sfe-head').textContent
-      expect(head).not.toContain('请求方法')
-      expect(head).not.toContain('默认值')
-      expect(head).toContain('变量类型')
+      const heads = [...container.querySelector('.sfe-head').children].map((c) => c.textContent.trim()).filter(Boolean)
+      expect(heads).toEqual(['字段名', '字段类型', '是否必填', '字段说明'])
+      // 行内控件顺序与列头一致：字段名输入 → 类型下拉 → 必填框 → 字段说明输入
+      const row = container.querySelector('.sfe-row')
+      expect([...row.children].map((c) => c.className.split(' ')[0])).toEqual(['el-input', 'el-select', 'el-checkbox', 'el-input', 'sfe-row-actions'])
+      expect(row.querySelectorAll('input.el-input')[1].placeholder).toBe('字段说明')
+    })
+  })
+
+  describe('查看态（md §三.5 L170，K38 2026-09-12）', () => {
+    it('readonly：字段层级完整展示（父行 + 缩进子行），但不出【＋ 添加字段】【＋子字段】与删除按钮；表头无操作列', async () => {
+      const { container } = await mountEditor(
+        [{ name: 'user', type: 'object', required: true, description: '用户', children: [{ name: 'id', type: 'string', required: false, description: '' }] }],
+        { readonly: true }
+      )
+      const rows = container.querySelectorAll('.sfe-row')
+      expect(rows.length).toBe(2)
+      expect(rows[1].classList.contains('is-child')).toBe(true)
+      expect(findBtn(container, '＋ 添加字段')).toBeFalsy()
+      expect(findBtn(container, '＋子字段')).toBeFalsy()
+      expect(container.querySelector('.el-popconfirm')).toBeNull()
+      expect(container.querySelector('.sfe-row-actions')).toBeNull()
+      expect(container.querySelector('.sfe-head .col-op')).toBeNull()
+      expect(container.querySelector('.sfe-head').classList.contains('is-readonly')).toBe(true)
+      // 非只读对照：入口都在
+      app.unmount(); container.remove()
+      const rw = await mountEditor([{ name: 'user', type: 'object', required: true, description: '', children: [] }])
+      expect(findBtn(rw.container, '＋ 添加字段')).toBeTruthy()
+      expect(findBtn(rw.container, '＋子字段')).toBeTruthy()
+      expect(rw.container.querySelector('.el-popconfirm')).toBeTruthy()
     })
   })
   /* ===== 2026-09-12 测试审计 T58（A28）：空态 / 删父级联确认 / request 形态列 ===== */
@@ -301,13 +328,12 @@ describe('SchemaFieldEditor · 多级嵌套（md §三.5 L161-164）', () => {
   })
 
   describe('request 形态（md §三.5 L162 / L165 / L167）', () => {
-    it('表头多「请求方法」「默认值」两列；新增行类型默认「文本」、请求方法默认 Query、默认值为空', async () => {
+    it('表头列序「字段名、字段类型、请求方法、是否必填、默认值、字段说明」（md L161 逐字，J15-4）；新增行类型默认「文本」、请求方法默认 Query、默认值为空', async () => {
       const { container, getRows } = await mountEditor([], { variant: 'request' })
       findBtn(container, '＋ 添加字段').click()
       await nextTick()
-      const head = container.querySelector('.sfe-head').textContent
-      expect(head).toContain('请求方法')
-      expect(head).toContain('默认值')
+      const heads = [...container.querySelector('.sfe-head').children].map((c) => c.textContent.trim()).filter(Boolean)
+      expect(heads).toEqual(['字段名', '字段类型', '请求方法', '是否必填', '默认值', '字段说明'])
       const row = getRows()[0]
       expect(row.type).toBe('string')
       expect(row.in).toBe('QUERY')

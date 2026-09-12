@@ -38,7 +38,7 @@ import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, UPLOAD_DE
  *   §七.2 MCP 传输方式（endpoint / 鉴权 Header 名 / stdio Command 枚举与 envVars）、§七.3 工具 ≥1、§七.4 超时 1000～120000、
  *   §七.5 改工具重置、§八.1 列表概要（未验证 / 已连通 / 连接失败）、§五.3 文档解析流转。
  * - 持久化（mockPersist v7，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
- * 已知不写的用例（审计 K40 待代码修）：mock 允许引用已停用数据源；UPLOAD 源 config 零校验。
+ * K40（2026-09-12 闭环）：引用已停用数据源被数据层拒绝（md §三.3.2 L94）；UPLOAD 源三必填 + 文档类型校验（md §五.1）。
  */
 
 const uniq = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`
@@ -182,6 +182,35 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(off.status).toBe('DISABLED')
   })
 
+  it('知识库引用已停用数据源 → 拒「已停用，不可被引用」并带 field=sourceIds；改回启用后可引用（md §三.3.2 L94，K40）', async () => {
+    const off = await createSource({ sourceType: 'API', name: uniq('停用接口'), config: apiConfig() })
+    await updateSource(off.id, { sourceType: 'API', name: off.name, status: 'DISABLED', config: apiConfig() })
+    await expect(create({ name: uniq('引停用源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [off.id] })).rejects.toMatchObject({
+      field: 'sourceIds',
+      message: expect.stringContaining('已停用，不可被引用')
+    })
+    // 重新启用后可引用
+    await updateSource(off.id, { sourceType: 'API', name: off.name, status: 'ENABLED', config: apiConfig() })
+    const kb = await create({ name: uniq('引启用源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [off.id] })
+    expect(kb.sources.map((x) => x.id)).toEqual([off.id])
+    // 编辑已有库时同样拦（种子 ks_old 为停用源）
+    await expect(update(kb.id, { name: kb.name, description: '测试用', sourceIds: ['ks_old'] })).rejects.toMatchObject({ field: 'sourceIds' })
+  })
+
+  it('UPLOAD 源保存校验（md §五.1 三必填）：缺向量模型 / 检索策略非法 / Top-K 越界或非整数 / 文档类型非法 各回 field；默认值 + 向量模型即可创建', async () => {
+    const base = { ...UPLOAD_DEFAULTS, embeddingModelId: 'md_emb_1' }
+    const mk = (over) => createSource({ sourceType: 'UPLOAD', name: uniq('上传源'), config: { ...base, ...over } })
+    await expect(mk({ embeddingModelId: '' })).rejects.toMatchObject({ field: 'embeddingModelId', message: '请选择向量模型' })
+    await expect(mk({ retrieval: 'FUZZY' })).rejects.toMatchObject({ field: 'retrieval', message: '请选择检索策略' })
+    await expect(mk({ topK: 0 })).rejects.toMatchObject({ field: 'topK', message: 'Top-K 需为 1～20 的整数' })
+    await expect(mk({ topK: 21 })).rejects.toMatchObject({ field: 'topK' })
+    await expect(mk({ topK: 2.5 })).rejects.toMatchObject({ field: 'topK' })
+    await expect(mk({ docKind: 'VIDEO' })).rejects.toMatchObject({ field: 'docKind', message: '请选择文档类型' })
+    await expect(createSource({ sourceType: 'UPLOAD', name: uniq('零配置'), config: {} })).rejects.toMatchObject({ field: 'docKind' })
+    const ok = await mk({ topK: 20, retrieval: 'KEYWORD', docKind: 'FAQ' })
+    expect(ok.config).toMatchObject({ embeddingModelId: 'md_emb_1', retrieval: 'KEYWORD', topK: 20, docKind: 'FAQ' })
+  })
+
   it('API 保存校验（md §六.1）：地址必填合法 / 方法枚举 / 超时范围', async () => {
     await expect(createSource({ sourceType: 'API', name: uniq('无地址'), config: apiConfig({ url: '' }) })).rejects.toMatchObject({ field: 'url' })
     await expect(createSource({ sourceType: 'API', name: uniq('坏地址'), config: apiConfig({ url: 'ftp://x' }) })).rejects.toMatchObject({ field: 'url' })
@@ -284,6 +313,8 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(filters.type).toBe('object')
     expect(filters.children[0].name).toBe('rules')
     expect(filters.children[0].children.map((c) => c.name)).toEqual(['field', 'value'])
+    // K37（2026-09-12 md §六.2 L316）：filters 下与 rules 同级的 enabled(boolean) 子字段一并落库
+    expect(filters.children[1]).toMatchObject({ name: 'enabled', type: 'boolean' })
   })
 
   it('修改请求地址 / 映射后保存 → 验证状态重置未验证；仅改名称不重置（md §六.4）', async () => {

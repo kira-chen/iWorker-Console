@@ -15,7 +15,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  * - E6 防回归（5303c7c）：visible/mcpId watcher 为 immediate——组件创建时 visible 已是 true 也要拉详情。
  *
  * 切断 api/admin、element-plus；el-* 轻桩（select / input / textarea 支持 v-model）；DrawerEditor / ParamRowsEditor 真组件。
- * 已知不写的用例：J17（测试失败文案单行 vs md 标题/正文两段）、K39（stdio Command / Bearer 占位文案）。
+ * 2026-09-12 闭环：J17（测试失败红卡「标题 + 正文」两段，md §三.5 L295）、K39（Command 占位「npx」/ Bearer 占位 /
+ * 切「无鉴权」清空本次凭证，md §三.4.1-4.2 L266/L272/L276）、K44（登记态抽屉标题「登记 MCP」，md §三.1 L199）。
  */
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: { confirm: vi.fn() } }))
@@ -210,8 +211,12 @@ describe('E6 visible 初值 true 时也拉详情（watcher immediate，5303c7c �
     expect(selectOf('传输方式').value).toBe('streamable-http')
     expect(selectOf('鉴权方式').value).toBe('none')
     expect(inputOf('超时时间').value).toBe('10000')
-    // 抽屉标题：md §三.1 L199 写「登记 MCP」，代码经 DrawerEditor 拼成「新建MCP」（记为代码缺陷，见报告；此处不钉标题）
+    // 抽屉标题「登记 MCP」（md §三.1 L199；K44 经 DrawerEditor create-title，2026-09-12）
+    expect(container.querySelector('.de-head-title').textContent.trim()).toBe('登记 MCP')
     expect([...container.querySelectorAll('.drawer-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '登记'])
+    // K39：stdio Command 下拉默认占位「npx」（md §三.4.2 L276）
+    await setSelect(selectOf('传输方式'), 'stdio')
+    expect(selectOf('Command').dataset.placeholder).toBe('npx')
   })
 
   it('查看态：标题「查看 MCP」，底部仅【关闭】，【测试连接】【拉取工具】不可点，无粘贴导入区（md §三.1 L201 / §三.2 L216 / §三.5 L291 / §三.6 L307）', async () => {
@@ -255,6 +260,26 @@ describe('传输方式切换清空对侧内容（md §三.3.1 L248-250）', () =
     await setSelect(selectOf('传输方式'), 'streamable-http')
     expect(inputOf('MCP 服务地址').value).toBe('')
     expect(selectOf('鉴权方式').value).toBe('none')
+  })
+})
+
+/* ================= §三.4.1 鉴权方式切换（K39，2026-09-12） ================= */
+describe('鉴权方式切换（md §三.4.1 L266 / L272）', () => {
+  it('Bearer Token 占位「粘贴 Bearer Token（不含 Bearer 前缀）」；填了 Token / Header 名后切「无鉴权」→ 本次填写的凭证清空，再切回为空', async () => {
+    await mount()
+    await setSelect(selectOf('鉴权方式'), 'bearer')
+    const token = inputOf('Token')
+    expect(token.placeholder).toBe('粘贴 Bearer Token（不含 Bearer 前缀）')
+    await setInput(token, 'sk-live-abc')
+    expect(inputOf('Token').value).toBe('sk-live-abc')
+    await setSelect(selectOf('鉴权方式'), 'header')
+    await setInput(inputOf('Header 名'), 'X-Api-Key')
+    await setSelect(selectOf('鉴权方式'), 'none')
+    expect(item('Token')).toBeUndefined()
+    expect(item('Header 名')).toBeUndefined()
+    await setSelect(selectOf('鉴权方式'), 'header')
+    expect(inputOf('Header 名').value).toBe('')
+    expect(inputOf('访问凭证').value).toBe('')
   })
 })
 
@@ -562,15 +587,16 @@ describe('连接与鉴权：超时范围、Command 五项、测试连接', () =>
     expect(container.querySelectorAll('.md-tool')).toHaveLength(0)
   })
 
-  it('测试连接失败 → 红卡（is-error）并带回失败原因；再次点击先清上一次结果（md §三.5 L293 / L295；文案分段属 J17 待裁，此处只断颜色与原因透出）', async () => {
-    adminApi.testMcpConn.mockResolvedValueOnce({ ok: false, failReason: 'CONN_REFUSED: 连接被拒绝' })
+  it('测试连接失败 → 红卡（is-error）两段：标题 = 具体失败原因、正文「握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试」；再次点击先清上一次结果（md §三.5 L293 / L295，J17）', async () => {
+    adminApi.testMcpConn.mockResolvedValueOnce({ ok: false, failReason: '连接超时' })
     await mount()
     await setInput(inputOf('MCP 服务地址'), 'https://t.example.com/mcp')
     btnByText('测试连接').click()
     await flush()
     const card = container.querySelector('.md-conn-result')
     expect(card.classList.contains('is-error')).toBe(true)
-    expect(card.textContent).toContain('CONN_REFUSED: 连接被拒绝')
+    expect(card.querySelector('.md-conn-result-title').textContent.trim()).toBe('连接超时')
+    expect(card.querySelector('.md-conn-result-body').textContent.trim()).toBe('握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试')
     // 第二次点击：进行中阶段上一次结果已清
     let resolve
     adminApi.testMcpConn.mockReturnValueOnce(new Promise((r) => { resolve = r }))
@@ -583,6 +609,18 @@ describe('连接与鉴权：超时范围、Command 五项、测试连接', () =>
     await flush()
     expect(container.querySelector('.md-conn-result').textContent.trim()).toBe('握手成功')
   })
+
+  it('测试连接失败且无 failReason → 标题回落「连接失败」，正文仍为固定提示（md §三.5 L295「具体失败原因或“连接失败”」）', async () => {
+    adminApi.testMcpConn.mockResolvedValueOnce({ ok: false })
+    await mount()
+    await setInput(inputOf('MCP 服务地址'), 'https://t.example.com/mcp')
+    btnByText('测试连接').click()
+    await flush()
+    const card = container.querySelector('.md-conn-result')
+    expect(card.classList.contains('is-error')).toBe(true)
+    expect(card.querySelector('.md-conn-result-title').textContent.trim()).toBe('连接失败')
+    expect(card.querySelector('.md-conn-result-body').textContent.trim()).toBe('握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试')
+  })
 })
 
 /* ================= D9 迁入：失败回显不拼 endpoint（源码正则守卫） ================= */
@@ -590,19 +628,24 @@ describe('失败提示脱敏 — 渲染层不应拼出 endpoint（D9 自 mcpMeta
   // McpEditor 直接展示后端已脱敏的 failReason/message，前端不再二次拼接 endpoint。
   // 此处以静态源码断言守住：失败回显中不得引用 form.endpoint。
   //
-  // 2026-09-09 原型复刻批次 3A · M6：结果回显由双 el-alert 改为原型 `.result` 单行提示框，
-  // 文案在 script 侧的 testResultText computed 里拼。断言随之改为盯这个 computed 的函数体。
+  // 2026-09-09 原型复刻批次 3A · M6：结果回显由双 el-alert 改为原型 `.result` 单行提示框。
+  // 2026-09-12 J17：失败侧拆成 testFailTitle computed（标题 = failReason || '连接失败'）+ 固定正文常量，
+  // 锚点随之改为盯 testFailTitle 的函数体（成功侧 testResultText 不再含 failReason）。
   it('McpEditor 失败回显不引用 form.endpoint', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
     const src = fs.readFileSync(path.resolve(__dirname, '../McpEditor.vue'), 'utf-8')
-    // 结果文案 computed 整体不得插值 endpoint（成功/失败两分支都在其中）
-    const start = src.indexOf('const testResultText = computed(')
+    // 失败标题 computed 不得插值 endpoint
+    const start = src.indexOf('const testFailTitle = computed(')
     expect(start).toBeGreaterThan(-1)
     const body = src.slice(start, src.indexOf('\n})', start))
-    // 失败分支用的是后端已脱敏的 failReason（computed 里 r = testResult.value）
+    // 失败标题用的是 mock 已脱敏的 failReason（computed 里 r = testResult.value）
     expect(body).toContain('failReason')
     expect(body).not.toMatch(/form\.endpoint/)
+    // 成功侧 computed 同样不拼 endpoint
+    const okStart = src.indexOf('const testResultText = computed(')
+    expect(okStart).toBeGreaterThan(-1)
+    expect(src.slice(okStart, src.indexOf('\n})', okStart))).not.toMatch(/form\.endpoint/)
     // 模板侧的结果框也只吐 computed 结果，不拼 endpoint
     const resultBlock = src.slice(src.indexOf('class="md-conn-result"'))
     expect(resultBlock.slice(0, resultBlock.indexOf('</div>'))).not.toMatch(/form\.endpoint/)

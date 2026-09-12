@@ -46,7 +46,10 @@ function seedRows() {
       r.version = '—'
     } else {
       r.requestAction = 'VERSION_PUBLISH'
-      r.version = 'v1.2.0'
+      // 2026-09-12 审计 K19：行 2 指向 sk_302，其在审版本已按「在审号必须由线上 v1.4.0 递增得出」
+      // 改为 v1.5.0（unifiedSkillMock persist v4）；这里跟着取同一个号，否则列表显 v1.2.0、
+      // 详情与审核快照显 v1.5.0，三方不自洽。其余行仍是 v1.2.0。
+      r.version = r.id === 2 ? 'v1.5.0' : 'v1.2.0'
     }
   })
   // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体：

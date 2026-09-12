@@ -5,10 +5,10 @@
 //   §二.1（列表字段）/ §二.2（验证规则）/ §二.3.4-§二.3.7（发布 / 撤回 / 停用 / 删除）/ §二.4（状态规则）/
 //   §三.4（鉴权与 Env 留空=保留）/ §三.5（测试连接只在抽屉内展示）/ §三.6（拉取工具）/ §三.9（最近发布时间）。
 // 覆盖：工具种子 title 双层标题、示例问题落库+回显、args 回显、publishedAt；探测失败分支；
-//   出参脱敏；authConfig / env 留空保留；listMcp 排序/搜索/筛选/分页；新建初值；删除/撤回/驳回；持久化 v5。
+//   出参脱敏；authConfig / env 留空保留；listMcp 排序/搜索/筛选/分页；新建初值；删除/撤回/驳回；持久化 v6。
 // 注意：本模块无 __reset 复位函数 + vitest 随机顺序执行——第一组用例只读 spark_bridge_mcp / 自建专属行；
 //   第二组起（A19 / F8）每例 vi.resetModules() 动态 import 拿全新种子，互不串扰。
-// 已知不写的用例（审计 K34 待代码修）：delistMcpService 直落 DELISTED（md §二.3.6 L135 要求进「审核中」）。
+// K34（2026-09-12 闭环）：停用 = 提交停用审核（进审核中 + pendingAction=DELIST），撤回按待审类型恢复，见「⑨ 停用状态机」。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   getMcp,
@@ -21,6 +21,7 @@ import {
   publishMcpService,
   reviewMcpService
 } from '../mcpConnectorMock'
+import { explainMcpError } from '@/utils/mcpVerify'
 
 // 新建一条合法 stdio MCP（code 唯一，避免用例间撞行）
 function mkStdio(code) {
@@ -106,7 +107,9 @@ describe('mcpConnectorMock —— 工具双层标题 / 示例问题 / args / pub
     it('种子 health=bad 的行：测试连接返回 ok=false + 失败原因', async () => {
       const r = await testMcpConn({ id: 'expense_mcp' })
       expect(r.ok).toBe(false)
-      expect(r.failReason).toContain('CONN_REFUSED')
+      // 2026-09-12 J16：失败原因须是 mcpVerify 目录 key（md §二.2 L61 悬浮显真实错误码）
+      expect(r.failReason).toBe('连接失败')
+      expect(explainMcpError(r.failReason).code).not.toBe('UNKNOWN')
     })
 
     it('种子 health=ok 的行：测试连接照常成功', async () => {
@@ -135,14 +138,16 @@ describe('mcpConnectorMock —— 工具双层标题 / 示例问题 / args / pub
       // 1) 检活：异常 + 错误摘要
       const bad = await healthCheckMcpTool('assets')
       expect(bad.displayStatus).toBe('UNHEALTHY')
-      expect(bad.errorBrief).toContain('CONN_REFUSED')
+      expect(bad.errorBrief).toBe('连接失败')
+      expect(explainMcpError(bad.errorBrief).code).not.toBe('UNKNOWN')
 
       // 2) 拉取工具：抛错（不假装拉到空清单），行落「连接异常」
       await expect(fetchMcpTools('assets')).rejects.toThrow(/拉取工具失败/)
       const m = await getMcp('assets')
       expect(m.displayStatus).toBe('UNHEALTHY')
       expect(m.connStatus).toBe('failed')
-      expect(m.lastCheckError).toContain('CONN_REFUSED')
+      expect(m.lastCheckError).toBe('连接失败')
+      expect(explainMcpError(m.lastCheckError).code).not.toBe('UNKNOWN')
 
       // 3) 改 endpoint（属连接配置）→ demo 失败标记清除
       await updateMcp('assets', { endpoint: 'https://assets-fixed.intra/mcp' })
@@ -356,8 +361,9 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     expect(pending.list.map((r) => r.code).sort()).toEqual(['crm', 'local_files'])
     const np0 = await m.listMcp({ state: 'NOT_PUBLISHED' })
     expect(np0.total).toBe(5)
-    // 已发布 calendar 停用 → 归未发布；审核中 crm 驳回 → 归未发布
+    // 已发布 calendar 停用审核通过 → 归未发布（K34：停用先进审核中，通过后才落 DELISTED）；审核中 crm 驳回 → 归未发布
     await m.delistMcpService('calendar')
+    await m.reviewMcpService('calendar', { approve: true })
     await m.reviewMcpService('crm', { approve: false })
     const np1 = await m.listMcp({ state: 'NOT_PUBLISHED' })
     expect(np1.total).toBe(7)
@@ -383,7 +389,8 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     })
     expect(created.createdAt).toBeTruthy()
     const st = await m.getMcpServicePublishStatus(created.id)
-    expect(st.targets).toEqual([{ target: 'USER_END', aggregateStatus: 'NOT_PUBLISHED' }])
+    // pendingAction 随聚合态出参（审计 K34）：新建未发布行没有待审，为 null
+    expect(st.targets).toEqual([{ target: 'USER_END', aggregateStatus: 'NOT_PUBLISHED', pendingAction: null }])
     expect(st.toolTotal).toBe(0)
     // code 重复被拦（field=code）
     await expect(m.createMcp(mkStdioIn('mcp_fresh'))).rejects.toMatchObject({ field: 'code' })
@@ -421,6 +428,63 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     await expect(m.publishMcpService('no_such_mcp')).rejects.toThrow('MCP 不存在')
   })
 
+  /* ===== K34（2026-09-12 对齐 md §二.3.6 L135 / §二.3.5）：停用 = 提交停用审核，照 adminModelMock pendingAction 范式 ===== */
+  it('⑨ 已发布行点停用 → 聚合态进「审核中」（PENDING_REVIEW）+ pendingAction=DELIST，列表 state=PENDING_REVIEW 可筛到、publishedAt 不变（md §二.3.6 L135）', async () => {
+    const agg = async (id) => (await m.getMcpServicePublishStatus(id)).targets[0].aggregateStatus
+    const before = await m.getMcp('calendar')
+    expect(await agg('calendar')).toBe('PUBLISHED')
+    await m.delistMcpService('calendar')
+    expect(await agg('calendar')).toBe('PENDING_REVIEW')
+    const row = await m.getMcp('calendar')
+    expect(row.pendingAction).toBe('DELIST')
+    expect(row.publishedAt).toBe(before.publishedAt)
+    const pending = await m.listMcp({ state: 'PENDING_REVIEW', keyword: '日历' })
+    expect(pending.list.map((r) => r.code)).toEqual(['calendar'])
+    // 未发布 / 审核中的行不能提交停用
+    await expect(m.delistMcpService('project_hub')).rejects.toThrow('仅已发布状态可提交停用')
+    await expect(m.delistMcpService('calendar')).rejects.toThrow('仅已发布状态可提交停用')
+  })
+
+  it('⑨ 撤回按待审类型恢复：待审停用撤回 → 回「已发布」且 publishedAt 不刷新；待审发布撤回 → 未发布；非审核中不可撤回', async () => {
+    const agg = async (id) => (await m.getMcpServicePublishStatus(id)).targets[0].aggregateStatus
+    const before = await m.getMcp('calendar')
+    await m.delistMcpService('calendar')
+    await m.withdrawMcpService('calendar')
+    expect(await agg('calendar')).toBe('PUBLISHED')
+    const row = await m.getMcp('calendar')
+    expect(row.pendingAction).toBeNull()
+    expect(row.publishedAt).toBe(before.publishedAt)
+    // 种子审核中行 local_files 为发布审核 → 撤回回未发布
+    expect((await m.getMcp('local_files')).pendingAction).toBe('PUBLISH')
+    await m.withdrawMcpService('local_files')
+    expect(await agg('local_files')).toBe('NOT_PUBLISHED')
+    await expect(m.withdrawMcpService('local_files')).rejects.toThrow('仅审核中状态可撤回')
+  })
+
+  it('⑨ 停用审核结果：通过 → DELISTED（列表归未发布、操作位回【发布】）；驳回 → 回已发布', async () => {
+    const agg = async (id) => (await m.getMcpServicePublishStatus(id)).targets[0].aggregateStatus
+    await m.delistMcpService('calendar')
+    await m.reviewMcpService('calendar', { approve: false })
+    expect(await agg('calendar')).toBe('PUBLISHED')
+    expect((await m.getMcp('calendar')).pendingAction).toBeNull()
+    await m.delistMcpService('calendar')
+    await m.reviewMcpService('calendar', { approve: true })
+    expect(await agg('calendar')).toBe('DELISTED')
+    const np = await m.listMcp({ state: 'NOT_PUBLISHED', keyword: '日历' })
+    expect(np.list.map((r) => r.code)).toEqual(['calendar'])
+  })
+
+  it('⑨ 提交停用 → 审核中心出现该 MCP 的 DELIST 行（TOOL/MCP，只接提交端）；撤回 → 行摘掉', async () => {
+    const reviews = await import('../reviewsMock')
+    const rowOf = async () => (await reviews.listReviews({ type: 'CONNECTOR_MCP', requestAction: 'DELIST' })).list.find((r) => r.refId === 'calendar')
+    expect(await rowOf()).toBeUndefined()
+    await m.delistMcpService('calendar')
+    const r = await rowOf()
+    expect(r).toMatchObject({ type: 'TOOL', subType: 'MCP', name: '日历 MCP', requestAction: 'DELIST', status: 'PENDING_REVIEW' })
+    await m.withdrawMcpService('calendar')
+    expect(await rowOf()).toBeUndefined()
+  })
+
   it('⑧ 拉取工具成功：工具全集覆盖为 SPARK_TOOLS（3 个）+ 行落 HEALTHY + 写最近验证时间（md §三.6）', async () => {
     const created = await m.createMcp(mkStdioIn('mcp_fetch'))
     const r = await m.fetchMcpTools(created.id)
@@ -434,11 +498,11 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v5；7 个业务写点：
+ * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v6；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import。
  */
-describe('mcpConnectorMock · 持久化（mockPersist v5）', () => {
+describe('mcpConnectorMock · 持久化（mockPersist v6）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
   const makeStorage = () => {
     const map = new Map()
@@ -487,12 +551,12 @@ describe('mcpConnectorMock · 持久化（mockPersist v5）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=5）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=6）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx' })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(5)
+    expect(snap.v).toBe(6)
     expect(snap.data.mcps.map((x) => x.code)).toContain('mcp_reload')
     expect(snap.data.pubAgg.mcp_reload).toBe('PENDING_REVIEW')
     vi.resetModules()
@@ -505,8 +569,8 @@ describe('mcpConnectorMock · 持久化（mockPersist v5）', () => {
     expect(auto.code).toBe(`mcp_${snap.data.mcpSeq}`)
   })
 
-  it('旧版本快照（v=4）→ 丢弃并回种子 11 条（不带入旧行）', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 4, data: { mcpSeq: 99, mcps: [{ id: 'old', code: 'old', name: '旧', tools: [], env: [] }], pubAgg: {} } }))
+  it('旧版本快照（v=5）→ 丢弃并回种子 11 条（不带入旧行）', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { mcpSeq: 99, mcps: [{ id: 'old', code: 'old', name: '旧', tools: [], env: [] }], pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     const { list, total } = await m.listMcp()
     expect(total).toBe(11)
@@ -515,7 +579,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v5）', () => {
 
   it('坏形状快照（mcps 不是数组）→ restore 抛「mcpConnector 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 6, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     expect((await m.listMcp()).total).toBe(11)
     expect(warn).toHaveBeenCalled()

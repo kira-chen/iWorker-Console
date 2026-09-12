@@ -7,14 +7,20 @@ import {
 } from '@/utils/schema'
 
 describe('FIELD_TYPES', () => {
-  it('暴露类型白名单 string/number/integer/boolean/object/array（md §三.5 L162 列五类；integer 为代码超集，审计 J15 待补 md）', () => {
+  it('暴露类型白名单 string/number/boolean/object/array 五类（md §三.5 L162；integer 于 2026-09-12 J15-3 移除）', () => {
     expect(FIELD_TYPES.map((t) => t.value)).toEqual([
       'string',
       'number',
-      'integer',
       'boolean',
       'object',
       'array'
+    ])
+    expect(FIELD_TYPES.map((t) => t.label)).toEqual([
+      '文本 string',
+      '数字 number',
+      '布尔 boolean',
+      '对象 object（可套子字段）',
+      '数组 array（可套子字段）'
     ])
   })
 })
@@ -66,19 +72,19 @@ describe('rowsToSchema', () => {
     expect(Object.keys(schema.properties)).toEqual(['name'])
   })
 
-  it('非法/未知 type 兜底为 string（含历史 date 类型）；合法 type（含 integer）原样保留', () => {
+  it('非法/未知 type 兜底为 string（含历史 date 类型）；历史 integer 兜底为 number（md §三.5 L162 五类，J15-3）', () => {
     const schema = rowsToSchema([
       { name: 'a', type: 'float' }, // 非白名单
       { name: 'b', type: undefined },
       { name: 'c', type: 'boolean' },
       { name: 'd', type: 'date' }, // 历史日期类型已从白名单移除，归一为 string
-      { name: 'e', type: 'integer' } // 2026-09-01 转正
+      { name: 'e', type: 'integer' } // 2026-09-12 移出白名单，归一为 number
     ])
     expect(schema.properties.a.type).toBe('string')
     expect(schema.properties.b.type).toBe('string')
     expect(schema.properties.c.type).toBe('boolean')
     expect(schema.properties.d.type).toBe('string')
-    expect(schema.properties.e.type).toBe('integer')
+    expect(schema.properties.e.type).toBe('number')
   })
 
   it('请求参数扩展键（2026-09-01）：in / defaultValue 按需写入，缺省不带键', () => {
@@ -133,7 +139,7 @@ describe('schemaToRows', () => {
     expect(rows[0].required).toBe(false)
   })
 
-  it('prop 缺 type / 非白名单 type → 兜底 string；integer 合法保留', () => {
+  it('prop 缺 type / 非白名单 type → 兜底 string；历史 integer 回显归一为 number（J15-3）', () => {
     const rows = schemaToRows({
       type: 'object',
       properties: {
@@ -146,7 +152,7 @@ describe('schemaToRows', () => {
     expect(rows.find((r) => r.name === 'a').type).toBe('string')
     expect(rows.find((r) => r.name === 'b').type).toBe('string')
     expect(rows.find((r) => r.name === 'c').type).toBe('boolean')
-    expect(rows.find((r) => r.name === 'd').type).toBe('integer')
+    expect(rows.find((r) => r.name === 'd').type).toBe('number')
   })
 
   it('请求参数扩展键回显：in / default 存在才加键', () => {

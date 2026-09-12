@@ -7,7 +7,7 @@ import { createApp, h, nextTick, reactive } from 'vue'
  * 三处消费方：知识库数据源（默认形态，无位置列）/ MCP stdio Env（M5 形态：表头恒显 + 行卡片 + 三步式）/
  * API KEY 鉴权（showIn 带位置列 + 密码态）。本文件验行渲染、增删行事件、客户端填写互斥联动、
  * 占位提示、行级提示与 clientFillHint 展示（对齐 MCP md §三.4.2 L278-286、API md §三.3 L128-138）。
- * inDisabled prop 零调用方（随死码清理一并删，审计 J13），本文件不测。
+ * inDisabled prop 已于 2026-09-12 随死码清理删除（审计 J13）。
  * Element 组件按仓内范式桩化（同 drawerEditor.test.js）。
  */
 

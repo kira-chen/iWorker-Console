@@ -5,15 +5,20 @@
  * - 列表 / 详情 / 新建 / 编辑 / 删除；
  * - 测试连接（仅 initialize 握手回显版本与延迟）与拉取工具（tools/list 全集回填，writeClass 启发式）；
  * - 工具检活（healthCheckTool type=MCP）；
- * - 服务级发布状态机（market.js /fde/market/mcp-services/*）：
- *   NOT_PUBLISHED --publish--> PENDING_REVIEW --review(approve)--> PUBLISHED --delist--> DELISTED --relist--> PUBLISHED；
- *   PENDING_REVIEW --withdraw--> NOT_PUBLISHED；review(reject) --> REJECTED。
+ * - 服务级发布状态机（market.js /fde/market/mcp-services/*；2026-09-12 对齐 md §二.3.6 L135 · 审计 K34，
+ *   照 adminModelMock 的 pendingAction 范式）：
+ *   NOT_PUBLISHED --publish--> PENDING_REVIEW(pendingAction=PUBLISH) --review(approve)--> PUBLISHED；
+ *   PUBLISHED --delist（提交停用审核）--> PENDING_REVIEW(pendingAction=DELIST) --review(approve)--> DELISTED；
+ *   PENDING_REVIEW --withdraw--> 按 pendingAction 恢复：PUBLISH → NOT_PUBLISHED，DELIST → PUBLISHED；
+ *   review(reject)：PUBLISH → REJECTED，DELIST → PUBLISHED。DELISTED --relist--> PUBLISHED。
+ *   提交停用同时向 reviewsMock 写 DELIST 审核行（只接提交端；审核中心通过后回落 DELISTED 的联动留 J12）。
  * - 密钥展示统一首尾掩码（2026-09-01 拍板推广模型页口径，见 utils/secretMask）：
  *   凭证/Env 平台值 mock 内部存明文（authSecret / env[].value），出参经 toRow 脱敏为
  *   authInfo.valueMasked / env[].valueMasked 掩码串，明文绝不出 mock；编辑留空=保留。
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { submitReviewRow, cancelReviewRow } from './reviewsMock'
 import { maskSecret } from '@/utils/secretMask'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -96,6 +101,11 @@ const mkMcp = (over) => ({
   // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉示例问题区，固定 3 条）
   exampleQuestions: ['', '', ''],
   referencedBySkills: [],
+  /**
+   * 待审类型（2026-09-12 对齐 md §二.3.6 L135 · 审计 K34）：null / 'PUBLISH'（发布审核）/ 'DELIST'（停用审核）。
+   * 聚合态 pubAgg 为 PENDING_REVIEW 时据此区分「审核中」是哪一种，撤回 / 驳回按其恢复原状。
+   */
+  pendingAction: null,
   // 连接元信息 + 使用统计。注意双口径：connStatus 供编辑器 connMeta（旧三态 ok/failed/unknown），
   // displayStatus 供列表 resolveDisplayStatus（四态 HEALTHY/UNHEALTHY/UNKNOWN/DISABLED）。
   connStatus: 'ok',
@@ -194,6 +204,8 @@ function seedToMcp(s) {
     // 失败分支 mock 标记（B 组）：health='bad' 的两行（报销系统 / 资产管理）探测恒失败，
     // 改过连接配置后恢复正常——让红色失败结果卡与「检活完成 · 连接异常」在 demo 里真的能走到。
     _mockUnhealthy: s.health === 'bad',
+    // 种子里审核中的行均为发布审核（K34：停用审核由列表【停用】动作产生）
+    pendingAction: s.agg === 'PENDING_REVIEW' ? 'PUBLISH' : null,
     createdAt: updatedAt,
     updatedAt,
     publishedAt: s.agg === 'PUBLISHED' ? updatedAt : null
@@ -255,7 +267,9 @@ const persist = attachPersist('mcpConnector', {
   // v3（2026-09-08 原型复刻批次 2C）：种子由 1 条补齐到 11 条（原型 rows），旧快照丢弃重播种
   // v4（2026-09-09 PRD 复核轮 · G4 · B 组）：种子新增 `_mockUnhealthy`（探测失败分支标记），
   //    旧快照里的行没有该字段会让「报销系统 / 资产管理」两行永远探测成功 → 丢弃重播种
-  version: 5,
+  // v6（2026-09-12 审计 K34 / J16）：行新增 `pendingAction`（审核中区分发布 / 停用审核，撤回按其恢复），
+  //    MOCK_FAIL_REASON 改为 mcpVerify 目录 key「连接失败」（旧快照落过 'CONN_REFUSED: …'）→ 丢弃重播种
+  version: 6,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -459,8 +473,13 @@ export async function deleteMcp(id) {
 function mockProbeFails(m) {
   return !!(m && m._mockUnhealthy)
 }
-/** demo 失败原因（md §三.5 L300 的红色结果卡标题「具体失败原因」）。 */
-const MOCK_FAIL_REASON = 'CONN_REFUSED: 连接被拒绝（目标服务未响应）'
+/**
+ * demo 失败原因（md §三.5 L295 的红色结果卡标题「具体失败原因或『连接失败』」）。
+ * 2026-09-12 对齐 md §二.2 L61（审计 J16）：值必须是 utils/mcpVerify `MCP_ERROR_CATALOG` 的目录 key，
+ * 列表「验证」列悬浮才能经 explainMcpError 解出真实错误码（CONN_FAILED）与原因，
+ * 原 'CONN_REFUSED: …' 不在目录内会退成「错误码：UNKNOWN」。
+ */
+const MOCK_FAIL_REASON = '连接失败'
 
 /**
  * 测试连接（md §三.5）：仅握手。
@@ -541,7 +560,9 @@ export async function getMcpServicePublishStatus(id) {
     mcpId: id,
     mcpCode: m?.code || id,
     toolTotal: (m?.tools || []).length,
-    targets: [{ target: 'USER_END', aggregateStatus: pubAgg[id] || 'NOT_PUBLISHED' }]
+    // pendingAction 随聚合态一并出参（2026-09-12 审计 K34）：审核中分「待审发布 / 待审停用」，
+    // 列表页撤回确认要按它说明恢复结果（md §3.5，与 API / 模型同口径）。
+    targets: [{ target: 'USER_END', aggregateStatus: pubAgg[id] || 'NOT_PUBLISHED', pendingAction: m?.pendingAction || null }]
   }
 }
 
@@ -560,22 +581,69 @@ export async function publishMcpService(id) {
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
   pubAgg[id] = 'PENDING_REVIEW'
+  m.pendingAction = 'PUBLISH'
   persist()
   return { mcpId: id, mcpCode: m.code, toolTotal: m.tools.length, results: [] }
 }
+/**
+ * 撤回（md §二.3.5）：仅审核中可撤回；按待审类型恢复——待审发布 → 未发布，待审停用 → 已发布
+ * （2026-09-12 对齐 md §二.3.6 · 审计 K34；不经 setAgg，撤回停用审核不得刷新最近发布时间）。
+ */
 export async function withdrawMcpService(id) {
   await delay(250)
-  return setAgg(id, 'NOT_PUBLISHED')
+  const m = findMcp(id)
+  if (!m) throw err('MCP 不存在')
+  if (pubAgg[id] !== 'PENDING_REVIEW') throw err('仅审核中状态可撤回')
+  pubAgg[id] = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
+  m.pendingAction = null
+  cancelReviewRow('TOOL', m.id)
+  persist()
+  return { affected: (m.tools || []).length, skipped: 0 }
 }
+/**
+ * 停用 = 提交停用审核（2026-09-12 对齐 md §二.3.6 L135「提交成功后……页面状态变为“审核中”」· 审计 K34）：
+ * 仅已发布可提交；聚合态进 PENDING_REVIEW + pendingAction='DELIST'（审核期间客户端仍可用），
+ * 同时向审核中心写一行 DELIST 申请（接法同 knowledgeBaseMock.enrollReview，只接提交端）。
+ * 原实现直落 DELISTED（列表显「未发布」）与 AdminMcp 的 toast「已提交停用审核」自相矛盾。
+ */
 export async function delistMcpService(id) {
   await delay(250)
-  return setAgg(id, 'DELISTED')
+  const m = findMcp(id)
+  if (!m) throw err('MCP 不存在')
+  if (pubAgg[id] !== 'PUBLISHED' && pubAgg[id] !== 'PARTIAL') throw err('仅已发布状态可提交停用')
+  pubAgg[id] = 'PENDING_REVIEW'
+  m.pendingAction = 'DELIST'
+  submitReviewRow({
+    type: 'TOOL',
+    subType: 'MCP',
+    refId: m.id,
+    name: m.name,
+    description: m.description || '',
+    requestAction: 'DELIST',
+    version: '—'
+  })
+  persist()
+  return { affected: (m.tools || []).length, skipped: 0 }
 }
 export async function relistMcpService(id) {
   await delay(250)
   return setAgg(id, 'PUBLISHED')
 }
+/**
+ * 审核结果落态（demo 测试 / market.js 直连口径；审核中心 mock 的通过 / 驳回尚未联动到此，见 J12）：
+ * approve：发布审核 → PUBLISHED（刷新 publishedAt）/ 停用审核 → DELISTED；
+ * reject：发布审核 → REJECTED / 停用审核 → 回 PUBLISHED（不刷新 publishedAt）。
+ */
 export async function reviewMcpService(id, payload = {}) {
   await delay(250)
-  return setAgg(id, payload.approve ? 'PUBLISHED' : 'REJECTED')
+  const m = findMcp(id)
+  if (!m) throw err('MCP 不存在')
+  const wasDelist = m.pendingAction === 'DELIST'
+  m.pendingAction = null
+  if (wasDelist && !payload.approve) {
+    pubAgg[id] = 'PUBLISHED'
+    persist()
+    return { affected: (m.tools || []).length, skipped: 0 }
+  }
+  return setAgg(id, payload.approve ? (wasDelist ? 'DELISTED' : 'PUBLISHED') : 'REJECTED')
 }

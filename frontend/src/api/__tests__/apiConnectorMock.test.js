@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { explainMcpError } from '@/utils/mcpVerify'
 
 /**
  * apiConnectorMock.js 数据层单测（2026-09-12 测试审计 T58 新建；768 行 v2 此前零测试）。
@@ -114,7 +115,9 @@ describe('① 连接配置变更 → 原验证结果失效（md §二.3 L60）',
     // api_1104 种子带 _mockUnhealthy：不改地址直接检活恒异常
     const bad = await run(m.healthCheckApi('api_1104'))
     expect(bad.displayStatus).toBe('UNHEALTHY')
-    expect(bad.error).toContain('连接被拒绝')
+    // 2026-09-12 J16：失败原因须是 mcpVerify 目录 key，列表悬浮才能解出真实错误码（md MCP §二.2 L61）
+    expect(bad.error).toBe('连接失败')
+    expect(explainMcpError(bad.error).code).not.toBe('UNKNOWN')
     await run(
       m.updateApi('api_1104', {
         ...NEW_API,
@@ -269,8 +272,10 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     expect(none.authConfig).toBeNull()
   })
 
-  it('新建校验：名称空 / 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field', async () => {
+  it('新建校验：名称空 / 名称 65 字（一览表 §6.2 上限 64，K36）/ 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field；名称恰 64 字通过', async () => {
     await expect(run(m.createApi({ ...NEW_API, name: '' }))).rejects.toMatchObject({ field: 'name' })
+    await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(65) }))).rejects.toMatchObject({ field: 'name', message: '名称最多 64 个字符' })
+    await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(64) }))).resolves.toMatchObject({ name: 'n'.repeat(64) })
     await expect(run(m.createApi({ ...NEW_API, providerSystemId: 'pv_999' }))).rejects.toMatchObject({ field: 'providerSystemId' })
     await expect(run(m.createApi({ ...NEW_API, url: 'ftp://x' }))).rejects.toMatchObject({ field: 'url' })
     await expect(run(m.createApi({ ...NEW_API, authType: 'API_KEY', authConfig: { params: [{ name: ' ' }] } }))).rejects.toMatchObject({
@@ -301,7 +306,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(2)
+    expect(harness.options.version).toBe(3) // v3：2026-09-12 J16 种子 lastCheckError 改目录 key
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1102')).toBe(false)

@@ -8,7 +8,9 @@
  *   → 基本信息（原型最终态：名称|图标 → 所属服务提供系统 → 描述[必填,通栏] → 状态[启用/停用]|操作性质；
  *     图标 2026-09-02 B-5 拍板加回——原型后置补丁层 addConnectorIconField 实为 API 抽屉注入图标，
  *     推翻 2026-09-01 N4-① 旧结论；启用/停用状态单选按原型加回仅作示意；
- *     API id 行随后拍板不展示（code 字段保留于状态供内部用））
+ *     API ID 行：2026-09-12 起编辑 / 查看态只读展示（md §三.2 L120 · K36 / Q113），新建态不展示）
+ *   抽屉顶部提示行「1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。」三态常显
+ *   （2026-09-12 md §三.1 L102 · K35 / Q114，推翻 2026-09-01「原顶部提示行删除」）
  *   → 请求配置（请求方式|API 地址 同行，方式下拉收窄；健康检查路径已删——连通性验证保留，
  *     探测语义为 API 地址可达性）
  *   → 鉴权配置（不鉴权 / API_KEY 多参数行[ParamRowsEditor] / Bearer Token；提示文案从简，
@@ -88,6 +90,8 @@ const form = reactive({
 })
 // 示例问题每条上限（与 MCP/业务系统连接器同口径 60 字；AI 生成器同上限截断）
 const QUESTION_MAX = 60
+// 名称上限 64（2026-09-12 对齐《各模块必填选填字段一览表》§6.2「最多 64 字符」· 审计 K36；原 128）
+const API_NAME_MAX = 64
 /** 示例问题 AI 生成（统一 AI 实况生成机制）：源=API 描述（空则按钮禁用 + title 引导），
  * 生成器 connectorQuestionSet 一次 3 条；真实 prompt 待浦月提供，demo 用本地模板。 */
 const {
@@ -309,6 +313,8 @@ function validate() {
   clearErrors()
   const errors = {}
   if (!form.name.trim()) errors.name = '名称不能为空'
+  // 名称上限 64（2026-09-12 对齐《各模块必填选填字段一览表》§6.2 · 审计 K36）
+  else if (form.name.trim().length > API_NAME_MAX) errors.name = `名称最多 ${API_NAME_MAX} 个字符`
   if (!form.icon) errors.icon = '请选择或上传图标'
   if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
   if (!form.description.trim()) errors.description = 'API 描述必填'
@@ -425,8 +431,9 @@ async function save() {
     @retry="load"
     @save="save"
   >
-      <!-- 首行元信息（拍板：原顶部提示行删除，创建/更新/发布时间上移至此弱色展示）。
-           A6 核对：md §三.1 要求的顶部提示行原型无——按 md 保留现状（此处不加），差异已记 Q114 -->
+      <!-- 抽屉顶部提示（2026-09-12 对齐 md §三.1 L102 · 审计 K35 / Q114 裁「按 md」）：三态均展示，逐字照 md -->
+      <div class="ad-editor-note">1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。</div>
+      <!-- 首行元信息（拍板：创建/更新/发布时间上移至此弱色展示） -->
       <div v-if="isEdit" class="page-time ad-meta-row">
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
         <span>最近更新：{{ times.updatedAt ? fmtTime(times.updatedAt) : '—' }}</span>
@@ -439,7 +446,7 @@ async function save() {
           <!-- A3：照原型最终态首行「名称 ｜ 所属服务提供系统」同行 -->
           <div class="ad-row2">
             <el-form-item label="名称" :error="fieldErrors.name" required>
-              <el-input v-model="form.name" maxlength="128" placeholder="如 报销查询 API" />
+              <el-input v-model="form.name" :maxlength="API_NAME_MAX" placeholder="如 报销查询 API" />
             </el-form-item>
             <el-form-item label="所属服务提供系统" :error="fieldErrors.providerSystemId" required>
               <el-select
@@ -501,6 +508,11 @@ async function save() {
               <el-radio :value="false">停用</el-radio>
             </el-radio-group>
             <div class="ad-rw-hint">停用后技能不再可引用该 API；已引用的技能运行效果可能受限。</div>
+          </el-form-item>
+          <!-- API ID（2026-09-12 对齐 md §三.2 L120「系统生成，编辑和查看态只读展示（如 api_1101）」· 审计 K36 / Q113）：
+               新建态尚未生成不展示；编辑 / 查看态只读文本，不给输入框 -->
+          <el-form-item v-if="isEdit" label="API ID">
+            <code class="ad-api-id">{{ form.code || '—' }}</code>
           </el-form-item>
           <el-form-item label="API 描述" :error="fieldErrors.description" required>
             <el-input
@@ -652,7 +664,8 @@ async function save() {
           <span class="section-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
         </div>
         <el-form :disabled="readonly">
-          <SchemaFieldEditor v-model:rows="requestRows" variant="request" :error="fieldErrors.requestSchema" />
+          <!-- 查看态隐藏新增 / 删除 / 添加子字段入口（md §三.5 L170 · 审计 K38，2026-09-12） -->
+          <SchemaFieldEditor v-model:rows="requestRows" variant="request" :readonly="readonly" :error="fieldErrors.requestSchema" />
         </el-form>
       </section>
 
@@ -663,7 +676,7 @@ async function save() {
           <span class="section-sub">（可选；类型选「对象」或「数组」可套子字段，支持任意层级嵌套）</span>
         </div>
         <el-form :disabled="readonly">
-          <SchemaFieldEditor v-model:rows="responseRows" variant="response" :error="fieldErrors.responseSchema" />
+          <SchemaFieldEditor v-model:rows="responseRows" variant="response" :readonly="readonly" :error="fieldErrors.responseSchema" />
         </el-form>
       </section>
 
@@ -698,6 +711,19 @@ async function save() {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
+}
+/* 抽屉顶部提示（md §三.1 L102，K35）：弱色一行，置于首行元信息之上 */
+.ad-editor-note {
+  margin: 0 2px 10px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: 1.6;
+}
+/* API ID 只读展示（md §三.2 L120，K36）：等宽弱色文本 */
+.ad-api-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
 }
 /* 示例问题作基本信息卡内子分区（A3/md §三.2 L118，原型 L1126-1127 `.connector-basic-subsection`）：
    上边线分隔 margin-top 26 / padding-top 24，标题 17px/700 */

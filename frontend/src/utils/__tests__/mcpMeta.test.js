@@ -7,23 +7,13 @@
  * 「连接正常 / 连接异常 / 未探测」）+ mcpMeta.js 自身注释。四态 displayStatus（含 DISABLED）
  * 由 api/mcpConnectorMock 下发，MCP 列表侧把 DISABLED 折回 UNKNOWN（AdminMcp.mcpConnStatus）。
  *
- * isRedDot / countUnhealthy / fmtCount / fmtDuration / fmtPercent / hasUsage 六个导出在
- * 当前代码里无调用方（页头红点角标 2026-08-22 已删、使用统计列未落地）——用例保留但单列标注（J13）。
+ * isRedDot / countUnhealthy / fmtCount / fmtDuration / fmtPercent / hasUsage 六个零调用方导出
+ * 已于 2026-09-12 随死码清理删除（审计 J13），对应 19 条用例一并删。
  * 原「McpEditor 失败回显不引用 form.endpoint」源码正则用例已迁至
  * components/admin/__tests__/mcpEditor.test.js（审计 D9 / T37）。
  */
 import { describe, it, expect } from 'vitest'
-import {
-  connMeta,
-  mergeFetchedTools,
-  resolveDisplayStatus,
-  isRedDot,
-  countUnhealthy,
-  fmtCount,
-  fmtDuration,
-  fmtPercent,
-  hasUsage
-} from '@/utils/mcpMeta'
+import { connMeta, mergeFetchedTools, resolveDisplayStatus } from '@/utils/mcpMeta'
 
 describe('connMeta — 三态连接标签（md MCP §二.2 L57 三态文案）', () => {
   it('ok → success/连接正常', () => {
@@ -65,31 +55,6 @@ describe('resolveDisplayStatus — 检活四态归一（mock 下发 displayStatu
     expect(resolveDisplayStatus({})).toBe('UNKNOWN')
     expect(resolveDisplayStatus(null)).toBe('UNKNOWN')
     expect(resolveDisplayStatus(undefined)).toBe('UNKNOWN')
-  })
-})
-
-describe('isRedDot / countUnhealthy — 红点提示（零调用方，随死码清理一并删，审计 J13）', () => {
-  it('优先取后端 redDot 布尔', () => {
-    expect(isRedDot({ redDot: true, displayStatus: 'HEALTHY' })).toBe(true)
-    expect(isRedDot({ redDot: false, displayStatus: 'UNHEALTHY' })).toBe(false)
-  })
-  it('无 redDot 时由四态推导（仅 UNHEALTHY 红点）', () => {
-    expect(isRedDot({ displayStatus: 'UNHEALTHY' })).toBe(true)
-    expect(isRedDot({ displayStatus: 'HEALTHY' })).toBe(false)
-    expect(isRedDot({ displayStatus: 'DISABLED' })).toBe(false)
-    expect(isRedDot({ displayStatus: 'UNKNOWN' })).toBe(false)
-    expect(isRedDot({ status: 'active', connStatus: 'failed' })).toBe(true)
-  })
-  it('countUnhealthy 统计列表红点数', () => {
-    const rows = [
-      { displayStatus: 'HEALTHY' },
-      { displayStatus: 'UNHEALTHY' },
-      { connStatus: 'failed', status: 'active' },
-      { displayStatus: 'DISABLED' }
-    ]
-    expect(countUnhealthy(rows)).toBe(2)
-    expect(countUnhealthy([])).toBe(0)
-    expect(countUnhealthy()).toBe(0)
   })
 })
 
@@ -158,82 +123,5 @@ describe('mergeFetchedTools — 拉取刷新（工具清单只读化：server �
   it('忽略无 name 的脏数据，空入参安全返回 []', () => {
     expect(mergeFetchedTools()).toEqual([])
     expect(mergeFetchedTools([], [{ description: '没有name' }, { name: '' }, null])).toEqual([])
-  })
-})
-
-describe('使用统计格式化 fmtCount / fmtDuration / fmtPercent / hasUsage（零调用方，随死码清理一并删，审计 J13）', () => {
-  describe('fmtCount — 千分位，无效值归 0', () => {
-    it('正常千分位分组', () => {
-      expect(fmtCount(0)).toBe('0')
-      expect(fmtCount(1280)).toBe('1,280')
-      expect(fmtCount(1000000)).toBe('1,000,000')
-    })
-    it('小数截断为整数', () => {
-      expect(fmtCount(1280.9)).toBe('1,280')
-    })
-    it('null/undefined/NaN/Infinity/非数 → 0', () => {
-      expect(fmtCount(null)).toBe('0')
-      expect(fmtCount(undefined)).toBe('0')
-      expect(fmtCount(NaN)).toBe('0')
-      expect(fmtCount(Infinity)).toBe('0')
-      expect(fmtCount('123')).toBe('0')
-    })
-  })
-
-  describe('fmtDuration — ms<1000 显 ms，≥1000 换 s 保留1位；空值 —', () => {
-    it('<1000ms 显整数 ms', () => {
-      expect(fmtDuration(820)).toBe('820 ms')
-      expect(fmtDuration(0)).toBe('0 ms')
-      expect(fmtDuration(999.6)).toBe('1000 ms') // 四舍五入仍 <1000 分支边界
-    })
-    it('≥1000ms 换算 s 保留 1 位', () => {
-      expect(fmtDuration(1000)).toBe('1.0 s')
-      expect(fmtDuration(1400)).toBe('1.4 s')
-      expect(fmtDuration(1820)).toBe('1.8 s')
-    })
-    it('null/undefined/NaN/Infinity/负数 → —', () => {
-      expect(fmtDuration(null)).toBe('—')
-      expect(fmtDuration(undefined)).toBe('—')
-      expect(fmtDuration(NaN)).toBe('—')
-      expect(fmtDuration(Infinity)).toBe('—')
-      expect(fmtDuration(-5)).toBe('—')
-    })
-  })
-
-  describe('fmtPercent — 0~1→%，整百显 100%，否则 1 位；空值 —', () => {
-    it('整百不补 .0', () => {
-      expect(fmtPercent(1)).toBe('100%')
-      expect(fmtPercent(0)).toBe('0%')
-      expect(fmtPercent(0.5)).toBe('50%')
-    })
-    it('非整百保留 1 位', () => {
-      expect(fmtPercent(0.992)).toBe('99.2%')
-      expect(fmtPercent(0.3334)).toBe('33.3%')
-    })
-    it('越界裁剪到 0~100，不外泄异常', () => {
-      expect(fmtPercent(1.5)).toBe('100%')
-      expect(fmtPercent(-0.2)).toBe('0%')
-    })
-    it('null/undefined/NaN/Infinity → —', () => {
-      expect(fmtPercent(null)).toBe('—')
-      expect(fmtPercent(undefined)).toBe('—')
-      expect(fmtPercent(NaN)).toBe('—')
-      expect(fmtPercent(Infinity)).toBe('—')
-    })
-  })
-
-  describe('hasUsage — callCount>0 才有调用记录', () => {
-    it('callCount>0 → true', () => {
-      expect(hasUsage({ callCount: 1 })).toBe(true)
-      expect(hasUsage({ callCount: 1280 })).toBe(true)
-    })
-    it('0/缺省/null/NaN/无 row → false', () => {
-      expect(hasUsage({ callCount: 0 })).toBe(false)
-      expect(hasUsage({})).toBe(false)
-      expect(hasUsage({ callCount: null })).toBe(false)
-      expect(hasUsage({ callCount: NaN })).toBe(false)
-      expect(hasUsage(null)).toBe(false)
-      expect(hasUsage(undefined)).toBe(false)
-    })
   })
 })

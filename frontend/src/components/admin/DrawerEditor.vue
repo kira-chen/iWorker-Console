@@ -40,6 +40,12 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
   /** 完全自定义标题（传了则忽略 entity/isEdit/readonly 的拼装）。 */
   title: { type: String, default: '' },
+  /**
+   * 新建态专用标题（2026-09-12 对齐 md MCP §三.1 L199「登记 MCP」· 审计 K44）：
+   * 仅在「非只读 + 非编辑」时生效，编辑 / 查看态仍走 entity 拼装；不传则默认行为不变（「新建」+ entity）。
+   * 与 createText 配套：动词不叫「新建」的实体（登记 / 创建）标题也应同名。
+   */
+  createTitle: { type: String, default: '' },
 
   /* ---- 四态 ---- */
   loading: { type: Boolean, default: false },
@@ -70,6 +76,7 @@ const emit = defineEmits(['update:visible', 'retry', 'save'])
 
 const headerText = computed(() => {
   if (props.title) return props.title
+  if (!props.readonly && !props.isEdit && props.createTitle) return props.createTitle
   const verb = props.readonly ? '查看' : props.isEdit ? '编辑' : '新建'
   return `${verb}${props.entity}`
 })

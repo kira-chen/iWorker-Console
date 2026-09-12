@@ -254,7 +254,8 @@ async function load() {
     times.updatedAt = d.updatedAt || null
     times.publishedAt = d.publishedAt || null
     // N8：并行拉取该系统的专属技能（失败置错误态，不阻断主表编辑）。
-    loadOwnedSkills()
+    // 查看态不拉（2026-09-12 审计 K45）：专属技能区仅编辑态展示（md §三.4 L120），只读态多一次无用请求。
+    if (!props.readonly) loadOwnedSkills()
   } catch (e) {
     loadError.value = true
   } finally {
@@ -611,8 +612,9 @@ async function save() {
               暂无业务页，可不配置（留空表示不约束）
             </div>
             <div v-if="!readonly" class="bpe-foot">
+              <!-- 按钮名逐字照 md §三.3 L107【＋ 添加业务页】（全角＋，2026-09-12 审计 K41） -->
               <el-button link type="primary" :disabled="pagesAtMax" @click="addPage">
-                + 添加业务页
+                ＋ 添加业务页
               </el-button>
               <span v-if="pagesAtMax" class="bpe-hint">已达上限 {{ PAGES_MAX }} 条</span>
             </div>
@@ -630,8 +632,9 @@ async function save() {
 
         <!-- 新建入口：从零建一条空白专属技能，再进编辑器填内容 -->
         <div class="ad-bind-row">
+          <!-- 按钮名逐字照 md §三.4 L124【＋ 新建专属技能】（全角＋，2026-09-12 审计 K41） -->
           <el-button type="primary" :loading="creating" @click="openCreate">
-            + 新建专属技能
+            ＋ 新建专属技能
           </el-button>
           <span class="ad-owned-hint">从零新建本业务系统专用技能</span>
         </div>

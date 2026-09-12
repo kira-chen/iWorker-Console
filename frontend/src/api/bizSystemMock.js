@@ -17,6 +17,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { isBlankBizPage } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const nowIso = () => new Date().toISOString()
@@ -190,11 +191,16 @@ function applyBizPayload(b, payload) {
   b.description = (payload.description || '').trim()
   b.loginUrl = (payload.loginUrl || '').trim()
   b.connType = 'login_session' // 连接方式只读（本期仅登录态托管一种）
-  b.bizPages = (Array.isArray(payload.bizPages) ? payload.bizPages : []).map((p) => ({
-    url: (p?.url || '').trim(),
-    name: (p?.name || '').trim(),
-    description: (p?.description || '').trim()
-  }))
+  // 整行空白的业务页丢弃（2026-09-12 对齐 md 业务系统 §三.3 L108「自动丢弃空行」· 审计 K41）：
+  // 与编辑器 buildPayload / validateBizSystemForm 共用 defValidate.isBlankBizPage，编辑器丢、mock 也丢，
+  // 绕过 UI 直调 mock 时不会落进一条空行。
+  b.bizPages = (Array.isArray(payload.bizPages) ? payload.bizPages : [])
+    .filter((p) => !isBlankBizPage(p))
+    .map((p) => ({
+      url: (p?.url || '').trim(),
+      name: (p?.name || '').trim(),
+      description: (p?.description || '').trim()
+    }))
   b.exampleQuestions = [0, 1, 2].map((i) => (payload.exampleQuestions?.[i] || '').trim())
 }
 

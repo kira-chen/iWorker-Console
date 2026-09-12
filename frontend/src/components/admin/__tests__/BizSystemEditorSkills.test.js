@@ -5,7 +5,8 @@ import { createApp, h, nextTick, ref } from 'vue'
 /**
  * BizSystemEditor.vue 单测（2026-09-12 测试审计 T58 扩写；对齐
  * docs/PRD/数字员工管理端PRD/03能力/连接器/业务系统/prd-业务系统.md）：
- *  - §三.4 业务系统专属技能：仅编辑态展示；打开时拉取列表；【＋ 新建专属技能】弹窗取名 → 创建 → 重拉 + 新标签开编辑器；
+ *  - §三.4 业务系统专属技能：仅编辑态展示（查看态不拉列表，K45 2026-09-12）；打开时拉取列表；
+ *    【＋ 新建专属技能】（全角＋ 逐字照 md L124，K41 2026-09-12）弹窗取名 → 创建 → 重拉 + 新标签开编辑器；
  *    技能名空 warning「请输入技能名」；【删除】二次确认后行消失 + 「已删除」；读失败「专属技能加载失败」+【点此重试】；
  *  - §三.3 业务页：【展开业务页（N）】计数、20 条上限置灰「已达上限 20 条」、删除确认「删除这条业务页？」、
  *    空态「暂无业务页，可不配置（留空表示不约束）」、整行空白行保存时丢弃；
@@ -219,7 +220,7 @@ describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => 
     const el = await mountEditor('biz_1')
     admin.listBizSystemSkills.mockClear()
     // 点【新建专属技能】打开取名弹窗
-    findBtn(el, '+ 新建专属技能').click()
+    findBtn(el, '＋ 新建专属技能').click()
     await nextTick()
     expect(el.querySelector('.el-dialog')).toBeTruthy()
     // 填技能名 → 点「创建」
@@ -244,7 +245,7 @@ describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => 
 
   it('新建时点「取消」→ 关窗、不建、不开编辑器', async () => {
     const el = await mountEditor('biz_1')
-    findBtn(el, '+ 新建专属技能').click()
+    findBtn(el, '＋ 新建专属技能').click()
     await nextTick()
     expect(el.querySelector('.el-dialog')).toBeTruthy()
     findDialogBtn(el, '取消').click()
@@ -256,7 +257,7 @@ describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => 
 
   it('新建时技能名为空点「创建」→ warning「请输入技能名」、不建', async () => {
     const el = await mountEditor('biz_1')
-    findBtn(el, '+ 新建专属技能').click()
+    findBtn(el, '＋ 新建专属技能').click()
     await nextTick()
     // 不填名直接点「创建」
     findDialogBtn(el, '创建').click()
@@ -302,6 +303,8 @@ describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => 
     el = await mountEditor('biz_1', { readonly: true })
     expect(el.textContent).not.toContain('业务系统专属技能')
     expect(el.textContent).not.toContain('客户记录')
+    // K45（2026-09-12）：查看态区块不展示，也不再发 listBizSystemSkills 请求
+    expect(admin.listBizSystemSkills).not.toHaveBeenCalled()
   })
 
   it('读失败 → 显示「专属技能加载失败」错误态（与「暂无」空态区分），不静默降级为空（md §三.4 L125）', async () => {
@@ -341,7 +344,8 @@ describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => 
 
 const pagesToggle = (el) => el.querySelector('.ad-pages-toggle')
 const toggleText = (el) => pagesToggle(el).textContent.replace(/\s+/g, '').replace('▶', '')
-const addPageBtn = (el) => [...el.querySelectorAll('.el-button')].find((b) => b.textContent.includes('添加业务页'))
+// 按钮名逐字照 md §三.3 L107【＋ 添加业务页】（全角＋，K41）
+const addPageBtn = (el) => [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 添加业务页')
 const inputOf = (el, label) => [...el.querySelectorAll('.el-form-item')].find((it) => it.dataset.label === label).querySelector('input.el-input')
 const setInput = (input, value) => {
   input.value = value
@@ -361,7 +365,7 @@ describe('业务页（md §三.3 L105-111）', () => {
     expect(el.querySelector('.bpe-head')).toBeNull()
   })
 
-  it('已配置 2 条：【展开业务页（2）】；点【添加业务页】自动展开并多一行、计数变 3（L105-106）', async () => {
+  it('已配置 2 条：【展开业务页（2）】；点【＋ 添加业务页】（全角＋，md L107 逐字，K41）自动展开并多一行、计数变 3（L105-106）', async () => {
     admin.getBizSystem.mockResolvedValue({ ...DETAIL, bizPages: [mkPage(1), mkPage(2)] })
     const el = await mountEditor('biz_1')
     expect(toggleText(el)).toBe('展开业务页（2）')

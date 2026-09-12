@@ -10,9 +10,9 @@ import { createApp, h, nextTick } from 'vue'
  * 现只守「分流正确」这一件事：platform → platformSkillApi.toolPicker，system → systemSkillApi.toolPicker，
  * 两者绝不调 fde 的 listToolPicker（否则岗位无关的平台技能会带着 positionId 去查岗位工具）。
  *
- * 页签集：技能编辑器语境（SkillFocusEditor）恒传 props.tabs=ADMIN_TOOL_TABS（MCP / API / 业务系统），
- * 组件内「不传 tabs 时按 skillSource 推导（平台族两页签 / FDE 四页签）」的默认分支运行时不可达——
- * 相关 3 条用例已单列（见文末 J13 describe），随死码清理一并删。
+ * 页签集：平台 / 系统技能编辑器恒传 props.tabs=ADMIN_TOOL_TABS（MCP / API / 业务系统），组件内「平台族只留两页签」
+ * 的默认分支运行时不可达，已于 2026-09-12 随死码清理删除（审计 J13，2 条用例同删）；不传 tabs 时的默认四页签仍活
+ * （业务系统技能 admin-context=false 走它），文末保留其零回归对照用例。
  *
  * 不引 @vue/test-utils：createApp 挂 jsdom + 存根 el 图标 / v-loading 指令。
  */
@@ -107,10 +107,10 @@ describe('ToolDock 平台族数据源分流（platform / system 各走自己的 
 })
 
 /**
- * 审计 J13（2026-09-12）：下列 3 条守的是 ToolDock「不传 tabs 时按 skillSource 推导页签集」的默认分支；
- * 技能编辑器恒传 ADMIN_TOOL_TABS，该分支运行时不可达。用例不删、不改，等死码清理一并处置。
+ * 默认页签（不传 tabs）：恒为 FDE 四页签，与 skillSource 无关（J13 2026-09-12 删平台族两页签分支后的现状）。
+ * 业务系统技能编辑器（AdminSkillEditPage admin-context=false → tabs=null）走这里，须保持四页签零回归。
  */
-describe('ToolDock 默认页签分支（零调用方，随死码清理一并删，审计 J13）', () => {
+describe('ToolDock 默认页签（不传 tabs 恒四页签，skillSource 只决定数据源）', () => {
   beforeEach(() => {
     listToolPickerMock.mockReset()
     listPlatformToolPickerMock.mockReset()
@@ -123,26 +123,17 @@ describe('ToolDock 默认页签分支（零调用方，随死码清理一并删�
     container?.remove()
   })
 
-  it('平台模式只渲染 MCP / API 两个 tab（无数据表 / 业务系统）', async () => {
-    const el = mount()
-    await nextTick()
-    const labels = [...el.querySelectorAll('.dock-tab')].map((t) => t.textContent.trim())
-    expect(labels).toEqual(['MCP', 'API'])
-  })
-
-  it('system 模式（V89 系统默认技能）同平台族：两 tab，tool-picker 走 systemSkillApi（系统前缀）', async () => {
-    const el = mount({ skillSource: 'system' })
+  it('system 模式（V89 系统默认技能）：tool-picker 走 systemSkillApi（系统前缀），不调 platform / FDE 门', async () => {
+    mount({ skillSource: 'system' })
     await nextTick()
     await nextTick()
-    const labels = [...el.querySelectorAll('.dock-tab')].map((t) => t.textContent.trim())
-    expect(labels).toEqual(['MCP', 'API'])
     expect(listSystemToolPickerMock).toHaveBeenCalled()
     expect(listSystemToolPickerMock.mock.calls[0][0]).toMatchObject({ type: 'MCP' })
     expect(listPlatformToolPickerMock).not.toHaveBeenCalled()
     expect(listToolPickerMock).not.toHaveBeenCalled()
   })
 
-  it('FDE 模式（默认 skillSource）仍渲染四 tab 且走 FDE listToolPicker（零回归对照）', async () => {
+  it('FDE 模式（默认 skillSource）渲染四 tab 且走 FDE listToolPicker（业务系统技能零回归对照）', async () => {
     listToolPickerMock.mockResolvedValue([])
     const el = mount({ skillSource: 'fde', positionId: 5 })
     await nextTick()

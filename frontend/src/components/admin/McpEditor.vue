@@ -147,23 +147,31 @@ const testResult = ref(null)
 // 连接态三态标签（契约 §1.3）
 const connTag = computed(() => connMeta(conn.connStatus))
 /**
- * 测试连接结果单行文案（M6，原型 L194 `.result`）：
- *   成功「握手成功 · 协议 2025-03-26 · Server 1.4.2 · 延迟 86 ms」——缺项自动省略该段；
- *   失败「连接失败 · 请检查接入方式、地址或鉴权配置」——后端有脱敏 failReason 时接在其后。
+ * 测试连接成功结果单行文案（M6，原型 L194 `.result`；md §三.5 L294）：
+ *   「握手成功 · 协议 2025-03-26 · Server 1.4.2 · 延迟 86 ms」——缺项自动省略该段。
+ * 失败侧不在此拼（见下方 testFailTitle / testFailBody 两段）。
  */
 const testResultText = computed(() => {
   const r = testResult.value
-  if (!r) return ''
-  if (r.ok) {
-    const parts = ['握手成功']
-    if (r.protocolVersion) parts.push(`协议 ${r.protocolVersion}`)
-    if (r.serverVersion) parts.push(`Server ${r.serverVersion}`)
-    if (r.latencyMs != null) parts.push(`延迟 ${r.latencyMs} ms`)
-    return parts.join(' · ')
-  }
-  const base = '连接失败 · 请检查接入方式、地址或鉴权配置'
-  return r.failReason ? `${base}（${r.failReason}）` : base
+  if (!r || !r.ok) return ''
+  const parts = ['握手成功']
+  if (r.protocolVersion) parts.push(`协议 ${r.protocolVersion}`)
+  if (r.serverVersion) parts.push(`Server ${r.serverVersion}`)
+  if (r.latencyMs != null) parts.push(`延迟 ${r.latencyMs} ms`)
+  return parts.join(' · ')
 })
+/**
+ * 测试连接失败结果卡两段（2026-09-12 对齐 md §三.5 L295 · 审计 J17 / Q135）：
+ *   标题 = 具体失败原因（mock 已脱敏的 failReason）或「连接失败」；
+ *   正文 = 固定提示「握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试」。
+ * 标题只透出 failReason，不拼 form.endpoint（D9 脱敏守卫，见 mcpEditor.test.js）。
+ */
+const testFailTitle = computed(() => {
+  const r = testResult.value
+  if (!r || r.ok) return ''
+  return (typeof r.failReason === 'string' && r.failReason.trim()) || '连接失败'
+})
+const TEST_FAIL_BODY = '握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试'
 
 function clearErrors() {
   Object.keys(fieldErrors).forEach((k) => delete fieldErrors[k])
@@ -336,6 +344,18 @@ watch(
       delete fieldErrors.endpoint
       // stdio 鉴权走 Environment 注入，清掉 http 鉴权录入（后端 stdio 亦置空 auth_config）
       form.authType = 'none'
+      form.authHeaderName = ''
+      form.authValue = ''
+      delete fieldErrors.authConfig
+    }
+  }
+)
+// 切换鉴权方式为「无鉴权」→ 清空本次填写的访问凭证（2026-09-12 对齐 md §三.4.1 L272 · 审计 K39）。
+// 只清本次录入（authValue / Header 名），不动 authInfoLoaded（已配置掩码由保存时 type=none 显式清空）。
+watch(
+  () => form.authType,
+  (t) => {
+    if (t === 'none') {
       form.authHeaderName = ''
       form.authValue = ''
       delete fieldErrors.authConfig
@@ -629,11 +649,13 @@ async function save() {
     :error="loadError"
     :saving="saving"
     create-text="登记"
+    create-title="登记 MCP"
     @update:visible="emit('update:visible', $event)"
     @retry="load"
     @save="save"
   >
-      <!-- 首行元信息（2026-09-01 拍板：与 API 弹窗同款，时间行上移首行；覆盖 PRD §三.9 底部位置） -->
+      <!-- 首行元信息（2026-09-01 拍板：与 API 弹窗同款，时间行上移首行；覆盖 PRD §三.9 底部位置）
+           抽屉标题：登记态「登记 MCP」（2026-09-12 对齐 md §三.1 L199 · 审计 K44，经 DrawerEditor create-title） -->
       <div v-if="isEdit" class="page-time md-times">
         <!-- 2026-09-04 PRD-20260903 对齐：标签照新原型 page-time 全称（含「最近发布时间」，未发布显「—」） -->
         <span>创建时间：{{ times.createdAt ? fmtTime(times.createdAt) : '—' }}</span>
@@ -784,8 +806,9 @@ async function save() {
                 <span>Command <em class="req">*</em></span>
                 <span class="lbl-hint">（仅命令本身，参数填下方 args）</span>
               </template>
-              <!-- 纯下拉（拍板）：仅 npx/uvx/node/python3/docker 五项，不支持自由输入 -->
-              <el-select v-model="form.command" class="md-w" placeholder="选择启动命令">
+              <!-- 纯下拉（拍板）：仅 npx/uvx/node/python3/docker 五项，不支持自由输入；
+                   默认占位「npx」（2026-09-12 对齐 md §三.4.2 L276 · 审计 K39） -->
+              <el-select v-model="form.command" class="md-w" placeholder="npx">
                 <el-option v-for="c in commandOptions" :key="c" :value="c" :label="c" />
               </el-select>
             </el-form-item>
@@ -885,7 +908,7 @@ async function save() {
                   show-password
                   autocomplete="new-password"
                   :class="{ 'md-bearer-input': form.authType === 'bearer' }"
-                  :placeholder="form.authType === 'bearer' ? '请输入 Token' : '粘贴 API Key'"
+                  :placeholder="form.authType === 'bearer' ? '粘贴 Bearer Token（不含 Bearer 前缀）' : '粘贴 API Key'"
                 >
                   <template v-if="form.authType === 'bearer'" #prepend>Authorization: Bearer</template>
                 </el-input>
@@ -915,16 +938,20 @@ async function save() {
           </el-button>
           <span class="md-conn-hint">仅验证「连得上、能握手」，数秒内返回</span>
         </div>
-        <!-- 测试连接结果回显（M6：照原型 `.result` 单行提示框，成功绿 / 失败红；
-             文案照原型 L194「握手成功 · 协议 … · Server … · 延迟 … ms」/「连接失败 · 请检查接入方式、地址或鉴权配置」。
-             失败时后端脱敏 failReason 更具体，有则接在原型文案之后，不丢诊断信息） -->
+        <!-- 测试连接结果回显（成功绿 / 失败红）：
+             成功单行「握手成功 · 协议 … · Server … · 延迟 … ms」（md §三.5 L294）；
+             失败两段：标题 = 具体失败原因或「连接失败」，正文 = 固定提示（2026-09-12 对齐 md §三.5 L295 · 审计 J17） -->
         <div
           v-if="testResult"
           class="md-conn-result"
           :class="testResult.ok ? 'is-success' : 'is-error'"
           role="status"
         >
-          {{ testResultText }}
+          <template v-if="testResult.ok">{{ testResultText }}</template>
+          <template v-else>
+            <div class="md-conn-result-title">{{ testFailTitle }}</div>
+            <div class="md-conn-result-body">{{ TEST_FAIL_BODY }}</div>
+          </template>
         </div>
         <!-- 超时（PRD §三.4：本区块最后一项，必填，默认 10000，1000～120000 步长 1000） -->
         <el-form label-position="top" :disabled="props.readonly" class="md-timeout-form">
@@ -1199,7 +1226,7 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
 }
-/* 测试连接结果（M6，原型 `.result` 单行提示框）：成功绿 / 失败红，一行说完 */
+/* 测试连接结果（M6，原型 `.result` 提示框）：成功绿一行说完；失败红「标题 + 正文」两行（md §三.5 L295，J17） */
 .md-conn-result {
   margin-top: var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -1217,6 +1244,12 @@ async function save() {
   border-color: var(--c-danger);
   background: var(--bg-danger-soft, var(--bg-sunken));
   color: var(--c-danger);
+}
+.md-conn-result-title {
+  font-weight: var(--fw-semibold);
+}
+.md-conn-result-body {
+  font-size: var(--fs-xs);
 }
 /* Env 标题行（M5，原型 `.mcp-env-title`）：左 label + hint / 右【＋ 添加变量】 */
 .md-env-title {

@@ -13,7 +13,7 @@ import { createApp, h, nextTick, ref } from 'vue'
  *
  * 只盯静态布局与控件名称 / 文案；逻辑与校验各自的单测已覆盖（mcpEditor.test.js / ApiEditor.test.js / BizSystemEditorSkills.test.js）。
  * 纯原型视觉断言（is-card / caret ▶ / .pr-add 位置 / 「同行」包装类）已于 T6/T7 删除，jsdom 不验布局。
- * 已知代码缺陷不在此反转：K35（ApiEditor 抽屉顶部提示行 md §三.1 L102 要求存在，代码无）——A6 用例原样保留待修。
+ * K35（2026-09-12 闭环）：ApiEditor 抽屉顶部提示行按 md §三.1 L102 三态常显，A6 用例已反转为「三态均含」。
  */
 
 /* ---------------- 共用桩 ---------------- */
@@ -272,7 +272,7 @@ describe('McpEditor · 抽屉骨架（md MCP §三.3 / §三.4.2 / §三.5）', 
     expect(result.textContent.trim()).toBe('握手成功 · 协议 2025-03-26 · Server 1.4.2 · 延迟 86 ms')
   })
 
-  it('测试连接失败：红色结果「连接失败 · 请检查接入方式、地址或鉴权配置」，后端 failReason 附在其后（代码现状；md §三.5 L295 两段式见审计 J17）', async () => {
+  it('测试连接失败：红色结果卡两段——标题 = 具体失败原因（failReason），正文「握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试」（md §三.5 L295，J17 2026-09-12）', async () => {
     adminApi.testMcpConn.mockResolvedValue({ ok: false, failReason: '502 Bad Gateway' })
     const el = await mountEditor(MCP)
     const btn = [...el.querySelectorAll('.el-button')].find((b) => b.textContent.includes('测试连接'))
@@ -283,8 +283,9 @@ describe('McpEditor · 抽屉骨架（md MCP §三.3 / §三.4.2 / §三.5）', 
     }
     const result = el.querySelector('.md-conn-result')
     expect(result.classList.contains('is-error')).toBe(true)
-    expect(result.textContent.trim()).toBe(
-      '连接失败 · 请检查接入方式、地址或鉴权配置（502 Bad Gateway）'
+    expect(result.querySelector('.md-conn-result-title').textContent.trim()).toBe('502 Bad Gateway')
+    expect(result.querySelector('.md-conn-result-body').textContent.trim()).toBe(
+      '握手未通过，请检查接入方式 / 地址 / 鉴权配置后重试'
     )
   })
 })
@@ -323,9 +324,29 @@ describe('ApiEditor · 抽屉骨架（md API §三.2 ~ §三.5）', () => {
     expect(titlesOf(el).some((t) => t.startsWith('示例问题'))).toBe(false)
   })
 
-  it('A6 核对：顶部提示行按 md 保留现状（原型无、代码亦无——差异 Q114 待裁）', async () => {
-    const el = await mountEditor(API)
-    expect(el.textContent).not.toContain('1 个 API 对应 1 个可被技能引用的工具')
+  it('抽屉顶部提示行三态均含「1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。」（md §三.1 L102，K35 / Q114 裁 md）', async () => {
+    const NOTE = '1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。'
+    // getApi 是文件级 vi.fn()，各用例自行 mockResolvedValue；本例要自带回参，
+    // 否则编辑/查看态 load 拿到 undefined → DrawerEditor 停在错误态、插槽（含本提示行）整个不渲染。
+    // （2026-09-12 实测：单跑与 seed=5/13 下失败，只有前序用例恰好留下 mock 时才「碰巧」通过）
+    apiConnector.getApi.mockResolvedValue({
+      id: 'api_1', name: '订单查询', description: '按订单号查询订单详情',
+      providerSystemId: 'ps_1', method: 'GET', url: 'https://api.example.com/orders',
+      authType: 'NONE', requestSchema: [], responseSchema: []
+    })
+    const noteOf = (el) => {
+      const node = el.querySelector('.ad-editor-note')
+      expect(node).not.toBeNull()
+      return node.textContent.trim()
+    }
+    let el = await mountEditor(API)
+    expect(noteOf(el)).toBe(NOTE)
+    app.unmount(); container.remove()
+    el = await mountEditor(API, { apiId: 'api_1' })
+    expect(noteOf(el)).toBe(NOTE)
+    app.unmount(); container.remove()
+    el = await mountEditor(API, { apiId: 'api_1', readonly: true })
+    expect(noteOf(el)).toBe(NOTE)
   })
 
   it('鉴权类型三选一：不鉴权 / API KEY / Bearer Token（md §三.3 L124）', async () => {
