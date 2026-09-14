@@ -453,6 +453,9 @@ async function loadSkill(skillId) {
       category: data.category ?? null,
       // N3 展示分类引用 id（可空=未分类）。并入手动「保存配置」（2026-07-08：不再选即存）。
       displayCategoryId: data.displayCategoryId ?? null,
+      // 技能类型与所属岗位（岗位私有类型显示标签用）
+      type: data.type || pageSkillType.value,
+      positionId: data.positionId ?? null,
       // 只读元信息（2026-09-01 清单22：编辑区底部元信息条）
       createdAt: data.createdAt || '',
       updatedAt: data.updatedAt || '',

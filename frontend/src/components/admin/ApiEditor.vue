@@ -53,6 +53,7 @@ import SchemaFieldEditor from './SchemaFieldEditor.vue'
 import ParamRowsEditor from './ParamRowsEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -73,6 +74,8 @@ const form = reactive({
   code: '', // 系统生成；编辑/查看态只读展示（如 api_1101），新建为空
   name: '',
   description: '',
+  type: '',
+  positionId: null,
   providerSystemId: null,
   url: '',
   method: 'GET',
@@ -127,6 +130,19 @@ async function loadProviderSystems() {
     providerSystems.value = []
   } finally {
     psLoading.value = false
+  }
+}
+
+// 已发布岗位列表（用于岗位私有类型绑定）
+const publishedPositions = ref([])
+async function loadPublishedPositions() {
+  try {
+    const { default: { listPositions } } = await import('@/api/position')
+    const res = await listPositions({ status: 'PUBLISHED' })
+    publishedPositions.value = res.list || []
+  } catch (err) {
+    console.warn('加载已发布岗位失败:', err)
+    publishedPositions.value = []
   }
 }
 
@@ -205,6 +221,8 @@ function resetForm() {
   form.code = ''
   form.name = ''
   form.icon = ''
+  form.type = ''
+  form.positionId = null
   form.description = ''
   form.providerSystemId = props.defaultProviderSystemId != null ? props.defaultProviderSystemId : null
   form.url = ''
@@ -229,6 +247,7 @@ function resetForm() {
 
 async function load() {
   clearErrors()
+  loadPublishedPositions()
   if (!isEdit.value) {
     resetForm()
     return
@@ -240,6 +259,8 @@ async function load() {
     form.code = d.code || ''
     form.name = d.name || ''
     form.icon = d.icon || ''
+    form.type = d.type || ''
+    form.positionId = d.positionId || null
     form.description = d.description || ''
     form.url = d.url || ''
     form.method = d.method || 'GET'
@@ -310,6 +331,10 @@ function validate() {
   const errors = {}
   if (!form.name.trim()) errors.name = '名称不能为空'
   if (!form.icon) errors.icon = '请选择或上传图标'
+  if (!form.type) errors.type = '请选择连接器类型'
+  if (form.type === CONNECTOR_TYPE.POSITION && !form.positionId) {
+    errors.positionId = '岗位私有连接器必须绑定岗位'
+  }
   if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
   if (!form.description.trim()) errors.description = 'API 描述必填'
   // 示例问题（2026-09-06 Q1 拍板：需要填写，固定 3 条均非空）
@@ -340,6 +365,8 @@ function buildPayload() {
   const payload = {
     name: form.name.trim(),
     icon: form.icon,
+    type: form.type,
+    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     description: form.description.trim(),
     providerSystemId: form.providerSystemId,
     url: form.url.trim(),
@@ -460,6 +487,42 @@ async function save() {
               <div v-if="!psLoading && !providerSystems.length" class="ad-ps-empty">
                 当前没有任何服务提供系统，请先在 API 列表页新建服务提供系统后再新建 API。
               </div>
+            </el-form-item>
+          </div>
+          <!-- 类型和所属岗位同行 -->
+          <div class="ad-form-row">
+            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="ad-row-item">
+              <el-select
+                v-model="form.type"
+                placeholder="请选择连接器类型"
+                :disabled="isEdit"
+                style="width: 100%"
+              >
+                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <div v-if="isEdit" class="ad-type-hint">连接器类型创建后不可更改</div>
+            </el-form-item>
+            <el-form-item
+              v-if="form.type === CONNECTOR_TYPE.POSITION"
+              label="所属岗位"
+              :error="fieldErrors.positionId"
+              class="ad-row-item"
+            >
+              <el-select
+                v-model="form.positionId"
+                placeholder="选择已发布的岗位"
+                clearable
+                :disabled="isEdit"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="pos in publishedPositions"
+                  :key="pos.id"
+                  :label="pos.name"
+                  :value="pos.id"
+                />
+              </el-select>
+              <div v-if="isEdit" class="ad-type-hint">所属岗位创建后不可更改</div>
             </el-form-item>
           </div>
           <!-- 图标（md §三.2 L106「图标：必填」；原型最终层 L2181 把它删了属原型缺陷，
@@ -694,6 +757,15 @@ async function save() {
    样式统一在 assets/admin-shell.css（S1，批次 1 已提供），本文件不重复。
    首行元信息走 `.page-time`；照原型 L2159 移到抽屉首行后，去掉其上分隔线（悬空线）。
    admin-shell.css 的规则是 `body.admin-scope .page-time`（0,2,1），故叠一个类提到 (0,3,0)。 */
+
+/* 连接器类型提示文本 */
+.ad-type-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+  line-height: 18px;
+}
+
 .page-time.ad-meta-row {
   margin-top: 0;
   padding-top: 0;
@@ -739,6 +811,18 @@ async function save() {
   flex: 1;
   min-width: 0;
 }
+
+/* 类型和所属岗位同行布局 */
+.ad-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.ad-form-row .ad-row-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
 /* 零分组兜底提示：警示色，引导先建分组 */
 .ad-ps-empty {
   margin-top: var(--space-1);

@@ -47,6 +47,7 @@ import { MCP_AUTH_CONFIG_ENABLED } from '@/utils/featureFlags'
 import { schemaToRows } from '@/utils/schema'
 import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 
 const props = defineProps({
@@ -70,6 +71,8 @@ const saving = ref(false)
 const form = reactive({
   name: '', // 必填 ≤64（PRD §三.3）
   description: '', // 服务描述（必填 ≤2000，PRD §三.3）
+  type: '', // 连接器类型：岗位私有/市场连接器/通用连接器
+  positionId: null, // 所属岗位（仅岗位私有类型）
   icon: '', // 图标（必填，PRD §三.3）：emoji 字符 或 /api/public/icons/<文件名>
   timeoutMs: 10000, // 超时（必填，PRD §三.4）：默认 10000 ms，1000～120000
   transport: 'streamable-http',
@@ -99,6 +102,20 @@ const authConfigured = computed(
     !!authInfoLoaded.value?.valueMasked &&
     authInfoLoaded.value.type === form.authType
 )
+
+// 已发布岗位列表（用于岗位私有类型绑定）
+const publishedPositions = ref([])
+
+async function loadPublishedPositions() {
+  try {
+    const { default: { listPositions } } = await import('@/api/position')
+    const res = await listPositions({ status: 'PUBLISHED' })
+    publishedPositions.value = res.list || []
+  } catch (err) {
+    console.warn('加载已发布岗位失败:', err)
+    publishedPositions.value = []
+  }
+}
 // Env 声明式行（V110 弹窗改造 B 节）：[{ key, description, clientFill, value, configured }]。
 // 行列表 = 完整期望集（提交后端按 KEY merge，缺 KEY=删除）；value 永不回显（留空=保留旧密文）。
 // 行编辑交互收口在公共组件 ParamRowsEditor（API KEY 鉴权同款，B.3 抽象）。
@@ -178,6 +195,8 @@ function onIconPick(payload) {
 function resetForm() {
   form.name = ''
   form.description = ''
+  form.type = ''
+  form.positionId = null
   form.icon = ''
   form.timeoutMs = 10000
   form.transport = 'streamable-http'
@@ -249,6 +268,7 @@ async function doImport() {
 async function load() {
   clearErrors()
   testResult.value = null
+  loadPublishedPositions()
   if (!isEdit.value) {
     resetForm()
     return
@@ -259,6 +279,8 @@ async function load() {
     const d = await getMcp(props.mcpId)
     form.name = d.name || ''
     form.description = d.description || ''
+    form.type = d.type || ''
+    form.positionId = d.positionId || null
     form.icon = d.icon || ''
     form.timeoutMs = d.timeoutMs ?? 10000
     form.transport = d.transport || 'streamable-http'
@@ -701,6 +723,42 @@ async function save() {
               />
             </el-form-item>
           </div>
+          <!-- 类型和所属岗位同行 -->
+          <div class="md-form-row">
+            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="md-row-item">
+              <el-select
+                v-model="form.type"
+                placeholder="请选择连接器类型"
+                :disabled="isEdit"
+                style="width: 100%"
+              >
+                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
+            </el-form-item>
+            <el-form-item
+              v-if="form.type === CONNECTOR_TYPE.POSITION"
+              label="所属岗位"
+              :error="fieldErrors.positionId"
+              class="md-row-item"
+            >
+              <el-select
+                v-model="form.positionId"
+                placeholder="选择已发布的岗位"
+                clearable
+                :disabled="isEdit"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="pos in publishedPositions"
+                  :key="pos.id"
+                  :label="pos.name"
+                  :value="pos.id"
+                />
+              </el-select>
+              <div v-if="isEdit" class="md-type-hint">所属岗位创建后不可更改</div>
+            </el-form-item>
+          </div>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>
             <el-input
               v-model="form.description"
@@ -1041,6 +1099,15 @@ async function save() {
   color: var(--c-text-strong);
   margin-bottom: var(--space-2);
 }
+
+/* 连接器类型提示文本 */
+.md-type-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+  line-height: 18px;
+}
+
 /* 时间行照原型 L2206 移到抽屉首行：`.page-time` 的上分隔线在首行读作「悬空线」，就地去掉。
    admin-shell.css 的规则是 `body.admin-scope .page-time`（0,2,1），故这里叠一个类提到 (0,3,0)。 */
 .page-time.md-times {
@@ -1138,6 +1205,18 @@ async function save() {
   gap: var(--space-4);
   align-items: flex-start;
 }
+
+/* 类型和所属岗位同行布局 */
+.md-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.md-form-row .md-row-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
 .md-name-item {
   flex: 1;
   min-width: 0;

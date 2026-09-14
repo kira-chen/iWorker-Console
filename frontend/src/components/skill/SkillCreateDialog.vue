@@ -104,6 +104,20 @@ async function loadCategoryOptions() {
   }
 }
 
+/* ---------- 所属岗位（岗位私有类型需选择） ---------- */
+const publishedPositions = ref([])
+const pickedPosition = ref(null)
+const showPositionSelect = computed(() => typeEnabled.value && pickedType.value === 'POSITION')
+async function loadPublishedPositions() {
+  try {
+    const api = await import('@/api/position')
+    const list = await api.listPositions()
+    publishedPositions.value = list.filter((p) => p.status === 'published')
+  } catch {
+    publishedPositions.value = []
+  }
+}
+
 // 每次打开重置为初始态（zip 为主入口）。
 watch(
   () => props.modelValue,
@@ -114,11 +128,13 @@ watch(
       createCategory.value = ''
       manualError.value = ''
       pickedType.value = null // 每次打开都强制重选类型（建后不可更改，误继承代价高）
+      pickedPosition.value = null
       zipItems.value = []
       zipError.value = ''
       zipImporting.value = false
       creating.value = false
       loadCategoryOptions()
+      loadPublishedPositions()
       // el-upload 自持文件列表：打开时清掉上次残留（nextTick 兜 ref 未挂上的时序，清空幂等）。
       zipUploadRef.value?.clearFiles?.()
       nextTick(() => zipUploadRef.value?.clearFiles?.())
@@ -211,8 +227,8 @@ async function confirmImportZip() {
 async function confirmCreate() {
   const name = createName.value.trim()
   if (typeEnabled.value) {
-    // 拦截（疑点3 手动场景文案）：类型 / 分类 / 技能名任一缺失
-    if (typeMissing.value || !createCategory.value || !name) {
+    // 拦截（疑点3 手动场景文案）：类型 / 分类 / 技能名任一缺失，岗位私有还需所属岗位
+    if (typeMissing.value || !createCategory.value || !name || (showPositionSelect.value && !pickedPosition.value)) {
       manualError.value = MANUAL_GUARD_TEXT
       return
     }
@@ -223,9 +239,13 @@ async function confirmCreate() {
   manualError.value = ''
   creating.value = true
   try {
-    const data = typeEnabled.value
-      ? await effectiveCreateFn.value({ name, categoryName: createCategory.value })
-      : await effectiveCreateFn.value(name)
+    const payload = typeEnabled.value
+      ? { name, categoryName: createCategory.value }
+      : name
+    if (typeEnabled.value && showPositionSelect.value && pickedPosition.value) {
+      payload.positionId = pickedPosition.value
+    }
+    const data = await effectiveCreateFn.value(payload)
     close()
     emit('created', { skillId: data.skillId, mode: 'manual', skillType: pickedType.value })
   } catch (e) {
@@ -254,6 +274,25 @@ async function confirmCreate() {
         </el-radio>
       </el-radio-group>
       <div class="type-pick-warn">技能类型建成后不可更改，跨类型需导出后重新导入。</div>
+    </div>
+
+    <!-- 所属岗位选择（岗位私有类型时显示） -->
+    <div v-if="showPositionSelect" class="position-select-block">
+      <div class="position-select-label">所属岗位<span class="type-pick-req">*</span></div>
+      <el-select
+        v-model="pickedPosition"
+        class="position-select"
+        placeholder="请选择所属岗位"
+        :disabled="zipImporting || creating"
+        clearable
+      >
+        <el-option
+          v-for="pos in publishedPositions"
+          :key="pos.id"
+          :label="pos.name"
+          :value="pos.id"
+        />
+      </el-select>
     </div>
 
     <!-- 主交互：zip 大拖拽区（多包批量：multiple 可多选/多次追加；列表自管） -->
@@ -341,6 +380,23 @@ async function confirmCreate() {
             <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="showPositionSelect" required>
+          <template #label>所属岗位</template>
+          <el-select
+            v-model="pickedPosition"
+            placeholder="请选择所属岗位"
+            clearable
+            class="create-cat"
+            :disabled="creating"
+          >
+            <el-option
+              v-for="pos in publishedPositions"
+              :key="pos.id"
+              :label="pos.name"
+              :value="pos.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item :required="typeEnabled">
           <template #label>技能名</template>
           <el-input
@@ -415,6 +471,22 @@ async function confirmCreate() {
   color: var(--c-danger);
   line-height: 1.5;
 }
+
+/* 所属岗位选择区 */
+.position-select-block {
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.position-select-label {
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  margin-bottom: var(--space-2);
+}
+.position-select {
+  width: 100%;
+}
+
 .create-hint {
   margin: var(--space-1) 0 var(--space-2);
   font-size: var(--fs-xs);
