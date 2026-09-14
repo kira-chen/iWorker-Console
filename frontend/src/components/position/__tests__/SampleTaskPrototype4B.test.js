@@ -485,6 +485,11 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(inputs.map((i) => i.placeholder)).toEqual(['如：每日经营分析报告', '描述任务目标，如：分析昨日核心指标并生成周报', '补充任务背景或注意事项'])
     expect(inputs[0].getAttribute('maxlength')).toBe('64')
     expect(inputs[2].getAttribute('maxlength')).toBe('500')
+    // 标签行的字数计数器必须与 maxlength 同口径：2026-09-14 盘点发现计数器写死 /60 而实际拦 64，
+    // 用户输到 61 字看着"超了"却还能继续输——计数器与 maxlength 现共用 NAME_MAX，这里两侧都钉住。
+    const counts = [...container.querySelectorAll('.te-card-body .te-count')].map((n) => n.textContent.trim())
+    expect(counts[0]).toBe('0 / 64')
+    expect(counts[2]).toBe('0 / 500')
   })
 
   /* ---- K1 / K2：空闲时段提前准备（md §7.3 L398-400） ---- */

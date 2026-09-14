@@ -91,6 +91,8 @@ const form = reactive({
   skillRefs: [] // { platformSkillId, name }（引用平台技能）
 })
 
+// 任务名称上限：一览表「名称类统一规则 64」（2026-09-12 负责人决策 1）。计数器与 maxlength 共用它。
+const NAME_MAX = 64
 // 与后端 @Size(max=2000) 对齐（字数提示 + maxlength 双保险）
 const PROMPT_MAX = 2000
 // 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7）
@@ -615,11 +617,12 @@ onMounted(async () => {
         <div class="te-card-body">
         <div class="te-field">
           <!-- 2026-09-10 岗位详情原型对齐（L1）：字数计数照原型移到标签行右侧，不再用输入框内 word-limit -->
-          <label class="te-label">任务名称 <span class="req">*</span><span class="te-count">{{ (form.name || '').length }} / 60</span></label>
-          <!-- 占位逐字照 md §7.2 L385（2026-09-12 审计 J6 无关部分）；maxlength 60 待负责人裁 J6 -->
+          <label class="te-label">任务名称 <span class="req">*</span><span class="te-count">{{ (form.name || '').length }} / {{ NAME_MAX }}</span></label>
+          <!-- 占位逐字照 md §7.2 L385；上限 64 = 一览表名称类统一规则（2026-09-12 负责人决策 1 裁定，J6 已闭环）。
+               计数器与 maxlength 共用 NAME_MAX，避免两处分别维护再次写歪（2026-09-14 实测曾出现计数 /60、实拦 64） -->
           <el-input
             v-model="form.name"
-            maxlength="64"
+            :maxlength="NAME_MAX"
             placeholder="如：每日经营分析报告"
             :class="{ 'is-err': errors.name }"
             @input="markDirty(); clearError('name')"
