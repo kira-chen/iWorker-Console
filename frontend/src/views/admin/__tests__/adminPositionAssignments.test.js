@@ -19,8 +19,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const listPositionAssignments = vi.fn()
 const listPositionApplications = vi.fn()
 const countPendingApplications = vi.fn()
-const approveApi = vi.fn()
-const rejectApi = vi.fn()
 const reboundApi = vi.fn()
 const listPositions = vi.fn(() => Promise.resolve({ list: [], total: 0 }))
 
@@ -28,8 +26,6 @@ vi.mock('@/api/positionAssignment', () => ({
   listPositionAssignments: (...a) => listPositionAssignments(...a),
   listPositionApplications: (...a) => listPositionApplications(...a),
   countPendingApplications: (...a) => countPendingApplications(...a),
-  approvePositionApplication: (...a) => approveApi(...a),
-  rejectPositionApplication: (...a) => rejectApi(...a),
   markApplicationRebound: (...a) => reboundApi(...a)
 }))
 vi.mock('@/api/position', () => ({ listPositions: (...a) => listPositions(...a) }))
@@ -37,7 +33,6 @@ vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }),
   ElMessageBox: { confirm: vi.fn() }
 }))
-vi.mock('@/assets/connector.css', () => ({}))
 vi.mock('@/components/PageHeader.vue', () => ({
   default: { props: ['title', 'subtitle'], template: '<div class="page-header">{{ title }}|{{ subtitle }}</div>' }
 }))
@@ -54,16 +49,7 @@ vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
       '<button class="edit-save" @click="$emit(\'saved\')" /></div>'
   }
 }))
-vi.mock('@/components/admin/ReviewRejectDialog.vue', () => ({
-  default: {
-    name: 'ReviewRejectDialog',
-    props: ['modelValue', 'title', 'submitting'],
-    emits: ['update:modelValue', 'confirm'],
-    template:
-      '<div class="reject-dialog" :data-visible="String(modelValue)" :data-title="title">' +
-      '<button class="reject-confirm" @click="$emit(\'confirm\', \'岗位编制已满\')" /></div>'
-  }
-}))
+vi.mock('@/assets/connector.css', () => ({}))
 
 const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssignments.vue')).default
 
@@ -204,8 +190,6 @@ beforeEach(() => {
   listPositionAssignments.mockResolvedValue({ list: ROWS, total: 2 })
   listPositionApplications.mockResolvedValue({ list: APP_ROWS, total: APP_ROWS.length })
   countPendingApplications.mockResolvedValue({ count: 2 })
-  approveApi.mockResolvedValue({})
-  rejectApi.mockResolvedValue({})
   reboundApi.mockResolvedValue({})
   // 2026-09-08 PRD-20260908 对齐：绑定下拉 = 已发布及审核中（底层 status=published，含在审新版），
   // 未发布首发审核中不入选 → 种子三种形态各一条
@@ -281,10 +265,10 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(paneAssign().querySelector('.ls-empty')?.textContent).toContain('没有匹配的用户')
   })
 
-  it('点「修改绑定」→ 弹窗可见、传入该行副本、非 forceSave', async () => {
+  it('点「分配岗位」→ 弹窗可见、传入该行副本、非 forceSave', async () => {
     await mount()
     const rows = [...paneAssign().querySelectorAll('.el-row')]
-    const editBtn = [...rows[0].querySelectorAll('.el-button')].find((b) => b.textContent.includes('修改绑定'))
+    const editBtn = [...rows[0].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位'))
     editBtn.click()
     await nextTick()
     const dlg = container.querySelector('.edit-dialog')
@@ -337,7 +321,7 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     }
   })
 
-  it('切到审批页签：行渲染（用户名/现有绑定「未绑定」/申请岗位/提交时间/三枚操作）', async () => {
+  it('切到审批页签：行渲染（用户名/现有绑定「未绑定」/申请岗位/提交时间/操作按钮）', async () => {
     await mount()
     container.querySelector('.el-tab-btn[data-name="applications"]').click()
     await flush()
@@ -348,7 +332,7 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(rows[0].textContent).toContain('未绑定') // 现有绑定为空
     expect(rows[0].textContent).toContain('市场研究岗')
     expect(rows[0].textContent).toContain('2026-08-28 10:32')
-    for (const t of ['通过', '驳回', '重新绑定']) expect(appRowButton(0, t)).toBeTruthy()
+    expect(appRowButton(0, '分配岗位')).toBeTruthy()
     expect(rows[1].textContent).toContain('客户成功岗') // 李娜现有绑定
   })
 
@@ -369,14 +353,12 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(rows[2].textContent).toContain('admin')
   })
 
-  it('A8 操作列门控（md §4.3.4）：已处理行不展示【通过】【驳回】【重新绑定】', async () => {
+  it('A8 操作列门控（md §4.3.2）：已处理行不展示【分配岗位】', async () => {
     await mount()
     container.querySelector('.el-tab-btn[data-name="applications"]').click()
     await flush()
-    for (const t of ['通过', '驳回', '重新绑定']) {
-      expect(appRowButton(0, t)).toBeTruthy()   // 待审核行有
-      expect(appRowButton(2, t)).toBeUndefined() // 已处理行无
-    }
+    expect(appRowButton(0, '分配岗位')).toBeTruthy()   // 待审核行有
+    expect(appRowButton(2, '分配岗位')).toBeUndefined() // 已处理行无
   })
 
   it('A8 审核状态筛选（md §4.1）：切换即下发 reviewStatus 并回第 1 页', async () => {
@@ -411,55 +393,11 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     expect(empty.textContent).not.toContain('新的用户岗位申请会显示在这里')
   })
 
-  it('【通过】确认弹窗（标题/按钮文案照 md §4.3.1）→ 调用通过接口 + 成功 toast + 三处联动刷新', async () => {
-    await mount()
-    appRowButton(0, '通过').click()
-    await flush()
-    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      expect.anything(),
-      '确认通过岗位申请',
-      expect.objectContaining({ confirmButtonText: '确认通过' })
-    )
-    expect(approveApi).toHaveBeenCalledWith(701)
-    expect(ElMessage.success).toHaveBeenCalledWith('岗位申请已通过，绑定已更新')
-    // 联动刷新：申请列表 / 徽标计数 / 分配列表（绑定变了）各 +1 次
-    expect(listPositionApplications).toHaveBeenCalledTimes(2)
-    expect(countPendingApplications).toHaveBeenCalledTimes(2)
-    expect(listPositionAssignments).toHaveBeenCalledTimes(2)
-  })
-
-  it('【通过】取消确认 → 不调接口不刷新', async () => {
-    await mount()
-    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
-    appRowButton(0, '通过').click()
-    await flush()
-    expect(approveApi).not.toHaveBeenCalled()
-    expect(listPositionApplications).toHaveBeenCalledTimes(1)
-  })
-
-  it('【驳回】打开弹窗（标题「驳回岗位申请」）→ 确认上抛原因 → 调驳回接口 + toast + 关闭刷新', async () => {
-    await mount()
-    appRowButton(0, '驳回').click()
-    await nextTick()
-    const dlg = container.querySelector('.reject-dialog')
-    expect(dlg.getAttribute('data-visible')).toBe('true')
-    expect(dlg.getAttribute('data-title')).toBe('驳回岗位申请')
-    dlg.querySelector('.reject-confirm').click()
-    await flush()
-    expect(rejectApi).toHaveBeenCalledWith(701, '岗位编制已满')
-    expect(ElMessage.success).toHaveBeenCalledWith('岗位申请已驳回')
-    expect(dlg.getAttribute('data-visible')).toBe('false')
-    expect(listPositionApplications).toHaveBeenCalledTimes(2)
-    expect(countPendingApplications).toHaveBeenCalledTimes(2)
-    // 驳回不改变绑定 → 分配列表无须刷新
-    expect(listPositionAssignments).toHaveBeenCalledTimes(1)
-  })
-
-  it('【重新绑定】复用修改绑定弹窗（forceSave + 现有绑定回填）；保存后标记已重新绑定并回分配页签置顶', async () => {
+  it('【分配岗位】复用修改绑定弹窗（forceSave + 现有绑定回填）；保存后标记已重新绑定并回分配页签置顶', async () => {
     await mount()
     container.querySelector('.el-tab-btn[data-name="applications"]').click()
     await nextTick()
-    appRowButton(1, '重新绑定').click() // 李娜（702，现绑 402）
+    appRowButton(1, '分配岗位').click() // 李娜（702，现绑 402）
     await nextTick()
     const dlg = container.querySelector('.edit-dialog')
     expect(dlg.getAttribute('data-visible')).toBe('true')

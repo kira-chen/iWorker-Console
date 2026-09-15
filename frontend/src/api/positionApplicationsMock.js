@@ -112,8 +112,10 @@ function findPending(id) {
 }
 
 /**
- * 列表（md §4.1，2026-09-09 PRD 复核·G2 / A8 重定口径）：
+ * 列表（md §4.1，2026-09-09 PRD 复核·G2 / A8 重定口径；2026-09-15 变更）：
  * - **展示全部四态**（待审核 / 已通过 / 已驳回 / 已重新绑定），处理完成后仍保留在列表中；
+ * - **待审核过滤**（2026-09-15）：仅展示「当前绑定岗位 ≠ 申请岗位」或「用户无绑定岗位」的待审核申请，
+ *   已绑定岗位与申请岗位一致的待审核申请不在列表中展示；已处理申请不受此过滤影响；
  * - **排序**：待审核统一排在已处理之前；**两组内部各自**按提交时间由近到远。点列头切升降序时
  *   「待审核优先」的分组规则不变，**仅组内顺序反转**（故排序键先比分组、再比时间）；
  * - **审核状态筛选**：reviewStatus ∈ ''(全部) | PENDING | APPROVED | REJECTED | REBOUND。
@@ -128,6 +130,13 @@ export async function listPositionApplications(params = {}) {
   const rs = REVIEW_STATUSES.includes(params.reviewStatus) ? params.reviewStatus : ''
   const list = applications
     .filter((r) => !rs || r.status === rs)
+    // 待审核过滤：仅展示「当前绑定岗位与申请岗位不同」或「用户无绑定岗位」的申请单（md §4.1）
+    .filter((r) => {
+      if (r.status !== 'PENDING') return true
+      const assignment = getAssignmentByUserId(r.userId)
+      const currentPositionId = assignment ? assignment.positionId : null
+      return currentPositionId == null || currentPositionId !== r.requestedPositionId
+    })
     .slice()
     .sort((a, b) => {
       // 1) 分组：待审核恒在前（不随升降序反转）

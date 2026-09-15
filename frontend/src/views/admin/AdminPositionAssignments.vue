@@ -26,20 +26,17 @@
  * 骨架沿用列表页规范（2026-08-22 统一）：取数编排 useAdminList、失败/空态 ListStates、
  * 分页 ListPagination；数据走 positionAssignmentMock / positionApplicationsMock（api 层分流）。
  */
-import { h, ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { confirmDialog } from '@/composables/useConfirm'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import UserPositionEditDialog from '@/components/admin/UserPositionEditDialog.vue'
-import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
+
 import {
   listPositionAssignments,
   listPositionApplications,
   countPendingApplications,
-  approvePositionApplication,
-  rejectPositionApplication,
   markApplicationRebound
 } from '@/api/positionAssignment'
 import { listPositions } from '@/api/position'
@@ -49,7 +46,6 @@ import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
-
 /* ---------- 页签（原型 assignmentTabs：pm-tabs + pm-count 徽标） ---------- */
 const activeTab = ref('assignments') // 默认进「用户岗位管理」（md §二）
 const pendingCount = ref(0)
@@ -193,53 +189,7 @@ function refreshAfterAction(binding = false) {
   if (binding) fetchList()
 }
 
-// 【通过】：确认弹窗（文案照 md §4.3.1 逐字）→ 现有岗位绑定接口 → 申请置 APPROVED 离开列表
-async function onApprove(row) {
-  // 统一 440px 无图标确认框（2026-09-08 原型复刻批次 1 · A8）
-  const ok = await confirmDialog(
-    h('div', null, [
-      h('p', { class: 'pa-approve-text' }, ['确认通过 ', h('b', null, row.displayName || row.username), ' 的岗位申请？']),
-      h('p', { class: 'pa-approve-hint' }, `确认后将使用现有岗位绑定接口，把该用户设置为「${row.requestedPositionName || ''}」。`)
-    ]),
-    '确认通过岗位申请',
-    { confirmText: '确认通过' }
-  )
-  if (!ok) return // 取消 / 关闭 / 遮罩：放弃本次操作
-  try {
-    await approvePositionApplication(row.id)
-    ElMessage.success('岗位申请已通过，绑定已更新')
-    refreshAfterAction(true)
-  } catch (e) {
-    ElMessage.error(e?.message || '操作失败，请重试')
-    refreshAfterAction()
-  }
-}
-
-// 【驳回】：原因必填弹窗（ReviewRejectDialog 复用，标题按 md §4.3.2）；不改变现有绑定
-const rejectVisible = ref(false)
-const rejectSubmitting = ref(false)
-const rejectingRow = ref(null)
-
-function onReject(row) {
-  rejectingRow.value = row
-  rejectVisible.value = true
-}
-async function onRejectConfirm(reason) {
-  if (!rejectingRow.value) return
-  rejectSubmitting.value = true
-  try {
-    await rejectPositionApplication(rejectingRow.value.id, reason)
-    ElMessage.success('岗位申请已驳回')
-    rejectVisible.value = false
-    refreshAfterAction()
-  } catch (e) {
-    ElMessage.error(e?.message || '操作失败，请重试')
-  } finally {
-    rejectSubmitting.value = false
-  }
-}
-
-// 【重新绑定】：复用修改绑定弹窗（可选已发布及审核中岗位，不限于申请岗位，md §4.3.3）
+// 【分配岗位】：复用修改绑定弹窗（可选已发布及审核中岗位，不限于申请岗位，md §4.3.1）
 function onRebind(row) {
   editingApplication.value = row
   editingRow.value = {
@@ -362,7 +312,7 @@ onMounted(() => {
             </el-table-column>
             <el-table-column label="操作" :width="opsWidth(2)" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openEdit(row)">修改绑定</el-button>
+                <el-button link type="primary" @click="openEdit(row)">分配岗位</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -480,14 +430,11 @@ onMounted(() => {
             <el-table-column label="处理人" min-width="110" show-overflow-tooltip>
               <template #default="{ row }">{{ row.processedBy || '—' }}</template>
             </el-table-column>
-            <!-- 操作：仅待审核行给三按钮（通过=链接 / 驳回=危险链接 / 重新绑定=链接）；
-                 已处理记录不展示操作按钮（md §4.2 / §4.3.4 不可二次处理） -->
-            <el-table-column label="操作" :width="opsWidth(3)" fixed="right">
+            <!-- 操作：仅待审核行给【分配岗位】按钮；已处理记录不展示操作按钮（md §4.2 / §4.3.2） -->
+            <el-table-column label="操作" :width="opsWidth(1)" fixed="right">
               <template #default="{ row }">
                 <template v-if="isPendingApp(row)">
-                  <el-button link type="primary" @click="onApprove(row)">通过</el-button>
-                  <el-button link type="danger" @click="onReject(row)">驳回</el-button>
-                  <el-button link type="primary" @click="onRebind(row)">重新绑定</el-button>
+                  <el-button link type="primary" @click="onRebind(row)">分配岗位</el-button>
                 </template>
                 <span v-else class="pa-unbound">—</span>
               </template>
@@ -504,22 +451,14 @@ onMounted(() => {
       />
     </div>
 
-    <!-- 修改绑定弹窗：分配页签与审批页签【重新绑定】共用（md §4.3.3 与 §3.3 一致）；
-         重新绑定场景 force-save：不改选项直接【保存】也视为处理完成 -->
+    <!-- 分配岗位弹窗：分配页签与审批页签【分配岗位】共用（md §4.3.1 与 §3.3 一致）；
+         审批场景 force-save：不改选项直接【保存】也视为处理完成 -->
     <UserPositionEditDialog
       v-model:visible="editVisible"
       :row="editingRow"
       :position-options="positionOptions"
       :force-save="!!editingApplication"
       @saved="onSaved"
-    />
-
-    <!-- 驳回弹窗（标准件 ReviewRejectDialog，标题按 md §4.3.2） -->
-    <ReviewRejectDialog
-      v-model="rejectVisible"
-      title="驳回岗位申请"
-      :submitting="rejectSubmitting"
-      @confirm="onRejectConfirm"
     />
   </div>
 </template>
