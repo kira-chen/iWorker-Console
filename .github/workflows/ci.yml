@@ -10,19 +10,32 @@
 # （CLAUDE.md 早就写了「commit 前全量测试须绿」），而是规矩靠人自觉、漏跑了没人拦。
 # 装上这个之后，跑不跑测试不再取决于是否记得。
 #
-# 【它不做什么】
-# 只体检、不拦截、不改代码。红叉不会阻止推送，只是让问题在几分钟内被看见，
-# 而不是等别人 pull 下来踩坑才发现。
+# 【它拦不拦】
+# 这个文件本身只体检、不改代码；「红叉能不能拦住合并」取决于 GitHub 网页上的
+# 分支保护规则（Settings → Branches），不由本文件决定：
+#   - 未配保护规则时：红叉只是提示，代码照样进 main（2026-09-15 前的状态）；
+#   - 配了「Require status checks」后：PR 在 CI 绿之前无法合并，坏代码进不了主干。
+# 配置步骤与日常流程见 CLAUDE.md「Git 协作」一节。
 #
 # 【费用】私有仓库每月 2000 分钟免费额度；本项目单次约 3-5 分钟，用不完。
 name: CI
 
-# 触发时机：推到任何分支、以及针对 main 的 PR
+# 触发时机（2026-09-15 去重优化）：
+#   - push 只认 main：main 的直推仍然体检；
+#   - 其余分支一律走 pull_request 事件。
+# 为什么不再用 branches: ['**']：那样在 PR 分支上推一次会同时触发 push 与 pull_request 两轮，
+# 跑的是同一份东西，白烧一倍额度与等待时间。
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     branches: [main]
+
+# 同一分支上连着推几次时，前面那几轮结果已经没意义了 —— 新的一推自动掐掉还在跑的旧运行。
+# 效果：连推三次只会跑完最后一次。group 按「工作流 + 分支/PR」区分，不会误伤别人的分支。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
