@@ -3,23 +3,19 @@ import * as mock from './positionAssignmentMock'
 import * as appMock from './positionApplicationsMock'
 
 /**
- * 岗位分配 API 层（FDE 工作台，提案 20260721-2）——以用户为核心管理「用户 ↔ 绑定岗位」。
- * 2026-09-04（PRD-20260903）页面升级为「岗位管理」双页签，本文件同时承载
- * 「岗位申请审批」页签接口（mock 见 positionApplicationsMock.js）。
+ * 岗位分配 API 层（FDE 工作台）——以用户为核心管理「用户 ↔ 绑定岗位」。
  *
- * 【demo mock（2026-09-01 PRD 对齐改造）】纯前端 demo，本页数据默认走内存 mock
- * （positionAssignmentMock.js，与 positionMock.js 岗位种子联动；`VITE_POS_MOCK=0` 可关闭）。
+ * 2026-09-15 改版（页签合并）：移除 approve / reject / listApplications 接口；
+ * 新增 markApplicationAssigned（分配完成后标记申请已处理）。
  *
- * 错误处理约定（同 position.js）：
- * - 读接口（列表）走全局拦截器，失败弹 toast。
- * - 写接口加 skipGlobalError（W）→ 失败抛 ApiError，由弹窗就地提示。
- * 落 /api/fde/position-assignments（AdminRoleGuard 映射 FDE_WORKBENCH → FDE/ADMIN 可访问）。
+ * 【demo mock】纯前端 demo，本页数据默认走内存 mock（`VITE_POS_MOCK=0` 可关闭）。
  */
 const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_POS_MOCK !== '0'
 const W = { skipGlobalError: true }
 
-// 分配列表：分页 + keyword（用户名/显示名）+ status（active/disabled）过滤，走后端。
-// 返回 ListVO { list:[{userId,username,displayName,status,positionId,positionName}], total }（未绑定则 positionId/positionName 为 null）。
+// 分配列表：分页 + keyword / status / hasPendingRequest 过滤。
+// 返回 ListVO { list:[{userId,username,displayName,status,positionId,positionName,
+//   hasPendingRequest,pendingRequestId,pendingRequestAt}], total }
 export function listPositionAssignments(params = {}) {
   if (USE_MOCK) return mock.listPositionAssignments(params)
   return request.get('/fde/position-assignments', { params })
@@ -31,36 +27,14 @@ export function setUserPosition(userId, positionId) {
   return request.put(`/fde/position-assignments/${userId}`, { positionId: positionId || null }, W)
 }
 
-/* ============ 岗位申请审批页签（2026-09-04，PRD-20260903 §四） ============ */
-
-// 待审核申请列表：仅 PENDING，默认提交时间降序；params: { page, size, sortDir(desc|asc) }。
-// 返回 ListVO { list:[{id,userId,username,displayName,status,currentPositionId,currentPositionName,
-// requestedPositionId,requestedPositionName,submittedAt}], total }。
-export function listPositionApplications(params = {}) {
-  if (USE_MOCK) return appMock.listPositionApplications(params)
-  return request.get('/fde/position-applications', { params })
-}
-
-// 待审核数量（「岗位申请审批」页签徽标）；返回 { count }。
+// 待分配申请数量（工具栏筛选按钮徽标）；返回 { count }。
 export function countPendingApplications() {
   if (USE_MOCK) return appMock.countPendingApplications()
   return request.get('/fde/position-applications/pending-count')
 }
 
-// 通过：用现有岗位绑定接口把用户绑到申请岗位，申请置 APPROVED（md §4.3.1）。
-export function approvePositionApplication(id) {
-  if (USE_MOCK) return appMock.approvePositionApplication(id)
-  return request.post(`/fde/position-applications/${id}/approve`, {}, W)
-}
-
-// 驳回：原因必填 ≤500 字；不改变现有绑定（md §4.3.2）。
-export function rejectPositionApplication(id, reason) {
-  if (USE_MOCK) return appMock.rejectPositionApplication(id, reason)
-  return request.post(`/fde/position-applications/${id}/reject`, { reason }, W)
-}
-
-// 重新绑定完成回执：绑定已经由 setUserPosition 落库，申请标记 REBOUND（md §4.3.3）。
-export function markApplicationRebound(id) {
-  if (USE_MOCK) return appMock.markApplicationRebound(id)
-  return request.post(`/fde/position-applications/${id}/rebound`, {}, W)
+// 分配完成回执：绑定已由 setUserPosition 落库，申请标记 ASSIGNED 留痕。
+export function markApplicationAssigned(id) {
+  if (USE_MOCK) return appMock.markApplicationAssigned(id)
+  return request.post(`/fde/position-applications/${id}/assign`, {}, W)
 }

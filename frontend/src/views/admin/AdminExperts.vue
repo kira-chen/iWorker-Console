@@ -38,6 +38,7 @@ import {
   relistExpertPublication
 } from '@/api/domainExpert'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
+import { EXPERT_TYPE, EXPERT_TYPE_LABEL, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import '@/assets/connector.css'
 // 列宽单一真相源（11 个列表页统一）：不再本页自定数值，避免同语义列在页面间对不齐
 import { COL, opsWidth, NA } from '@/utils/tableLayout'
@@ -51,7 +52,7 @@ import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
 // sort：最近更新时间排序方向（原型 expertSort，默认降序）
-const query = reactive({ keyword: '', category: '', status: '', sort: 'desc' })
+const query = reactive({ keyword: '', type: '', category: '', status: '', sort: 'desc' })
 
 // 专家分类筛选选项：同源字段字典（fieldDictMock.expertCategory，8 类），不本页硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
@@ -285,7 +286,7 @@ async function stopExpert(row) {
   <div class="list-page">
     <PageHeader
       title="专家"
-      subtitle="把多个市场技能归类整合成一个可交付单元，只引用市场技能，与 FDE 技能互不影响"
+      subtitle="平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理"
     />
 
     <ListToolbar>
@@ -299,6 +300,10 @@ async function stopExpert(row) {
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <!-- 专家类型筛选：切换立即刷新 -->
+      <el-select v-model="query.type" placeholder="全部专家类型" clearable class="lt-filter" @change="reload">
+        <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+      </el-select>
       <!-- 专家分类筛选（8 类，同源字段字典）：切换立即刷新；clearable 清空 = 全部 -->
       <el-select v-model="query.category" placeholder="全部专家分类" clearable class="lt-filter" @change="reload">
         <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
@@ -350,6 +355,12 @@ async function stopExpert(row) {
               <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
             </template>
           </el-table-column>
+          <el-table-column label="专家类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <span v-if="row.type">{{ EXPERT_TYPE_LABEL[row.type] || row.type }}</span>
+              <span v-else class="cell-na">—</span>
+            </template>
+          </el-table-column>
           <el-table-column label="专家描述" :min-width="COL.DESC_MIN" show-overflow-tooltip>
             <template #default="{ row }">{{ row.intro || '—' }}</template>
           </el-table-column>
@@ -359,8 +370,20 @@ async function stopExpert(row) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
-            <template #default="{ row }">{{ row.skillCount }}</template>
+          <el-table-column label="引用情况" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">
+              <template v-if="row.type === EXPERT_TYPE.POSITION">
+                <span v-if="row.positionCount > 0">{{ row.positionCount }}个岗位引用</span>
+                <span v-else class="cell-na">暂无引用</span>
+              </template>
+              <template v-else-if="row.type === EXPERT_TYPE.PLATFORM">
+                <span v-if="row.skillCount > 0">{{ row.skillCount }}个应用引用</span>
+                <span v-else class="cell-na">暂无引用</span>
+              </template>
+              <template v-else>
+                <span class="cell-na">—</span>
+              </template>
+            </template>
           </el-table-column>
           <!-- 最新版本：无版本时占位「—」（E11 全站统一长横；原型两种横线混用，按站内 NA 口径取长横） -->
           <el-table-column label="最新版本" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">

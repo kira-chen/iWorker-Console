@@ -67,6 +67,13 @@ function openSkillFullPage(skillId) {
     query: { fromPosition: String(store.positionId), fromTab: 'agents' }
   })
 }
+function openSkillView(skillId) {
+  router.push({
+    name: 'AdminSkillEdit',
+    params: { id: skillId },
+    query: { fromPosition: String(store.positionId), fromTab: 'agents', view: '1' }
+  })
+}
 /* ---------- Agent 与技能:层级列表（2026-08-22 列表化，对齐截图） ---------- */
 // 扁平化为「Agent 行 + 其下技能行」，供 el-table 层级渲染（kind 区分）。
 const agentSkillRows = computed(() => {
@@ -94,13 +101,14 @@ const skillCategoryText = (c) => (c ? categoryLabel(c) : '—')
  * 技能引用在保存时按勾选结果与既有引用做差集，增量 assign / detach。 */
 const agentDrawerOpen = ref(false)
 const agentDrawerIsNew = ref(false)
+const agentDrawerReadonly = ref(false)
 const agentEditId = ref(null)
 const agentSaving = ref(false)
 const agentDraft = ref({ name: '', description: '', skillIds: [] })
 // 打开抽屉时的原始引用集合：保存时与 draft.skillIds 求差，决定 assign / detach 哪几条。
 const agentSkillIdsBefore = ref([])
 
-// 可引用技能候选（已发布 FDE 技能）——与 SkillPickerDialog 同源（listSkills status=published）。
+// 可引用技能候选（已发布岗位私有技能，listSkills 内部锁定 type=POSITION）。
 const agentSkillOptions = ref([])
 const agentSkillLoading = ref(false)
 const agentSkillKeyword = ref('')
@@ -141,8 +149,9 @@ function toggleAgentSkill(skillId) {
   list.push(skillId)
 }
 
-function openAgentDrawer(row, isNew) {
+function openAgentDrawer(row, isNew, readonly = false) {
   agentDrawerIsNew.value = isNew
+  agentDrawerReadonly.value = readonly
   agentEditId.value = isNew ? null : row.agentId
   const ids = isNew ? [] : (store.agents.find((a) => a.agentId === row.agentId)?.skills || []).map((s) => s.skillId)
   agentSkillIdsBefore.value = ids.slice()
@@ -161,6 +170,9 @@ async function openAgentCreate() {
 }
 function openAgentEdit(row) {
   openAgentDrawer(row, false)
+}
+function openAgentView(row) {
+  openAgentDrawer(row, false, true)
 }
 
 /** 把抽屉勾选结果同步到该 Agent 的技能引用：新增走 assign，取消走 detach。 */
@@ -301,7 +313,11 @@ async function onDeleteSkill({ agentId, skillId }) {
           </el-table-column>
           <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
-              <span v-if="isReadonly" class="pd-faint">只读</span>
+              <!-- 只读态（审核中/查看模式）：操作改为「查看」按钮 -->
+              <template v-if="isReadonly">
+                <el-button v-if="row.kind === 'agent'" link type="primary" @click="openAgentView(row)">查看</el-button>
+                <el-button v-else link type="primary" @click="openSkillView(row.skillId)">查看</el-button>
+              </template>
               <!-- #14：Agent 行不再有「＋技能」（原型 L4025 已删该按钮），技能改在抽屉内勾选 -->
               <template v-else-if="row.kind === 'agent'">
                 <el-button link type="primary" @click="openAgentEdit(row)">编辑</el-button>
@@ -320,7 +336,7 @@ async function onDeleteSkill({ agentId, skillId }) {
   </div>
 
   <!-- #14 新建 / 编辑 Agent 同一抽屉（680px，照原型 position-agent-drawer）：基本信息 + 引用技能勾选区 -->
-  <DrawerEditor v-model:visible="agentDrawerOpen" :title="agentDrawerIsNew ? '新建 Agent' : '编辑 Agent'" size="680px" append-to-body>
+  <DrawerEditor v-model:visible="agentDrawerOpen" :title="agentDrawerReadonly ? '查看 Agent' : agentDrawerIsNew ? '新建 Agent' : '编辑 Agent'" size="680px" append-to-body>
     <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：名称 / 职责描述包进「基本信息」分组卡
          （照原型抽屉分组形态，与下方「引用技能」卡同款 .pd-card 家族） -->
     <section class="pd-card">
@@ -328,7 +344,7 @@ async function onDeleteSkill({ agentId, skillId }) {
         <span class="pd-card-title">基本信息</span>
       </div>
       <div class="pd-card-body">
-        <el-form label-position="top" class="pd-drawer-form">
+        <el-form label-position="top" :disabled="agentDrawerReadonly" class="pd-drawer-form">
           <!-- 字段上限按 md §6.2：名称 64（Q25⑤ 全局名称类统一 64，原型 60 不跟进）、
                职责描述必填 ≤500（Q25④ 补充说明「取 500，尽量减少例外情况」） -->
           <el-form-item label="Agent 名称" required>
@@ -346,7 +362,7 @@ async function onDeleteSkill({ agentId, skillId }) {
     <section class="pd-card pd-agent-skills">
       <div class="pd-card-head">
         <span class="pd-card-title">引用技能</span>
-        <span class="pd-card-sub">直接在当前编辑页勾选，可引用已发布技能</span>
+        <span class="pd-card-sub">直接在当前编辑页勾选，可引用已发布的岗位私有技能</span>
         <span class="pd-card-spacer"></span>
         <span class="pd-agent-skill-count">已勾选：{{ agentDraft.skillIds.length }}/{{ LIMITS.SKILL_MAX }}</span>
       </div>
@@ -354,15 +370,15 @@ async function onDeleteSkill({ agentId, skillId }) {
         <el-input v-model="agentSkillKeyword" placeholder="搜索技能名称、描述或标识" clearable />
         <div v-loading="agentSkillLoading" class="pd-agent-skill-list">
           <div v-if="!agentSkillLoading && !agentSkillOptions.length" class="pd-agent-skill-empty">
-            暂无可引用的已发布技能
+            暂无可引用的岗位私有技能
           </div>
           <el-checkbox
             v-for="opt in agentSkillOptions"
             :key="opt.id"
             :model-value="agentDraft.skillIds.includes(opt.id)"
-            :disabled="agentSkillAtLimit && !agentDraft.skillIds.includes(opt.id)"
+            :disabled="agentDrawerReadonly || (agentSkillAtLimit && !agentDraft.skillIds.includes(opt.id))"
             class="pd-agent-skill-row"
-            @change="toggleAgentSkill(opt.id)"
+            @change="!agentDrawerReadonly && toggleAgentSkill(opt.id)"
           >
             <span class="pd-agent-skill-main">
               <strong>{{ opt.name }}</strong>
@@ -374,8 +390,8 @@ async function onDeleteSkill({ agentId, skillId }) {
     </section>
 
     <template #footer>
-      <el-button @click="agentDrawerOpen = false">取消</el-button>
-      <el-button type="primary" :loading="agentSaving" @click="saveAgentDraft">{{ agentDrawerIsNew ? '新建' : '保存' }}</el-button>
+      <el-button @click="agentDrawerOpen = false">{{ agentDrawerReadonly ? '关闭' : '取消' }}</el-button>
+      <el-button v-if="!agentDrawerReadonly" type="primary" :loading="agentSaving" @click="saveAgentDraft">{{ agentDrawerIsNew ? '新建' : '保存' }}</el-button>
     </template>
   </DrawerEditor>
 </template>
