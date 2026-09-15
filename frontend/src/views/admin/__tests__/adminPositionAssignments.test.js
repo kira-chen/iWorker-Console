@@ -1,37 +1,33 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, provide, inject, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 
 /**
- * AdminPositionAssignments.vue 单测（2026-09-04 PRD-20260903 对齐：「岗位分配」页升级「岗位管理」双页签）。
+ * AdminPositionAssignments.vue 单测（2026-09-15 合并改版：双页签→单页面）。
  *
- * 覆盖：页头标题/副标题；双页签 + 待审核徽标（0 不展示）、默认进分配页签；
- * 分配页签既有行为（行渲染/失败态/空态/修改绑定弹窗）；
- * 审批页签行渲染、空态双分支、【通过】确认→绑定接口+联动刷新、取消不动、
- * 2026-09-09 PRD 复核·G2（A8）补：审核结果/处理时间/处理人三列、已处理行操作列门控、
- * 审核状态筛选下发、空态「暂无岗位申请」↔「没有匹配的岗位申请」双分支；
- * 【驳回】弹窗（标题「驳回岗位申请」）确认上抛、【重新绑定】复用修改绑定弹窗（forceSave）
- * →保存后标记已重新绑定+回分配页签清筛选置顶（focusUserId 下发）。
- * el-table 用逐行注入 row 的存根（复用 adminSkillsUnreferenced 范式）；弹窗/api 存根化。
+ * 覆盖：页头标题/副标题；挂载即拉分配列表 + 岗位选项 + 待分配数量；
+ * 行渲染（显示名占位 / 有岗位 / 无岗位 / hasPendingRequest「待分配」标签）；
+ * 「待分配申请」筛选按钮切换（hasPendingRequest 参数下发）；
+ * 搜索停顿 / 状态切换不重置分页 / 【查询】回第 1 页；
+ * 【分配岗位】弹窗打开与关闭；
+ * 有待分配申请的用户分配后自动 markApplicationAssigned + 刷新计数 + 置顶高亮；
+ * 无待分配申请的普通用户分配后直接 reload（不调 markApplicationAssigned）。
  */
 
 const listPositionAssignments = vi.fn()
-const listPositionApplications = vi.fn()
 const countPendingApplications = vi.fn()
-const reboundApi = vi.fn()
+const markApplicationAssignedApi = vi.fn()
 const listPositions = vi.fn(() => Promise.resolve({ list: [], total: 0 }))
 
 vi.mock('@/api/positionAssignment', () => ({
   listPositionAssignments: (...a) => listPositionAssignments(...a),
-  listPositionApplications: (...a) => listPositionApplications(...a),
   countPendingApplications: (...a) => countPendingApplications(...a),
-  markApplicationRebound: (...a) => reboundApi(...a)
+  markApplicationAssigned: (...a) => markApplicationAssignedApi(...a)
 }))
 vi.mock('@/api/position', () => ({ listPositions: (...a) => listPositions(...a) }))
 vi.mock('element-plus', () => ({
-  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }),
-  ElMessageBox: { confirm: vi.fn() }
+  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 }))
 vi.mock('@/components/PageHeader.vue', () => ({
   default: { props: ['title', 'subtitle'], template: '<div class="page-header">{{ title }}|{{ subtitle }}</div>' }
@@ -42,10 +38,10 @@ vi.mock('@/components/StatusTag.vue', () => ({
 vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
   default: {
     name: 'UserPositionEditDialog',
-    props: ['visible', 'row', 'positionOptions', 'forceSave'],
+    props: ['visible', 'row', 'positionOptions'],
     emits: ['update:visible', 'saved'],
     template:
-      '<div class="edit-dialog" :data-visible="String(visible)" :data-user="row && row.username" :data-force="String(!!forceSave)" :data-options="(positionOptions || []).map((p) => p.name).join(\',\')">' +
+      '<div class="edit-dialog" :data-visible="String(visible)" :data-user="row && row.username" :data-has-pending="String(!!(row && row.pendingRequestId))">' +
       '<button class="edit-save" @click="$emit(\'saved\')" /></div>'
   }
 }))
@@ -78,34 +74,11 @@ const tableColStub = {
     return () => h('div', { class: 'el-table-column' }, [row ? slots.default?.({ row }) : slots.header?.()])
   }
 }
-// —— el-tabs / el-tab-pane 存根：pane 渲染为可点按钮（label 属性或 #label 插槽），点击回写 v-model ——
-const TAB_SET = Symbol('tabset')
-const tabsStub = {
-  name: 'el-tabs',
-  props: { modelValue: { type: String, default: '' } },
-  emits: ['update:modelValue'],
-  setup(props, { slots, emit }) {
-    provide(TAB_SET, (name) => emit('update:modelValue', name))
-    return () => h('div', { class: 'el-tabs', 'data-active': props.modelValue }, slots.default?.())
-  }
-}
-const tabPaneStub = {
-  name: 'el-tab-pane',
-  props: { name: { type: String, default: '' }, label: { type: String, default: '' } },
-  setup(props, { slots }) {
-    const set = inject(TAB_SET, () => {})
-    return () =>
-      h(
-        'button',
-        { class: 'el-tab-btn', 'data-name': props.name, onClick: () => set(props.name) },
-        [props.label, slots.label?.()]
-      )
-  }
-}
 const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
-const elButton = { emits: ['click'], template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>' }
-// el-input / el-select 带 v-model 的存根：查询区防抖 / 不重置分页用例需要真实回写
+const elButton = {
+  emits: ['click'],
+  template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>'
+}
 const elInput = {
   props: ['modelValue'],
   emits: ['update:modelValue'],
@@ -117,15 +90,18 @@ const elSelect = {
   template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
 }
 const elOption = { props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
+const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const pager = { name: 'el-pagination', template: '<div class="el-pagination" />' }
 
 let app, container
+
 async function flush() {
   await nextTick()
   await Promise.resolve()
   await Promise.resolve()
   await nextTick()
 }
+
 async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -136,184 +112,137 @@ async function mount() {
   app.component('el-option', elOption)
   app.component('el-table', tableStub)
   app.component('el-table-column', tableColStub)
-  app.component('el-tabs', tabsStub)
-  app.component('el-tab-pane', tabPaneStub)
-  app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
+  app.component('el-empty', elEmpty)
   app.component('el-pagination', pager)
   app.component('Search', { template: '<i />' })
   app.directive('loading', {})
   app.mount(container)
-  // 等 onMounted 的 fetchList/loadPositions/appList/徽标计数 promise 落地
   await flush()
   return container
 }
 
+// 两行种子：alice 已绑定、无申请；bob 未绑定、有待分配申请
 const ROWS = [
-  { userId: 11, username: 'alice', displayName: '爱丽丝', status: 'active', positionName: '销售', positionId: 'ps_1' },
-  { userId: 12, username: 'bob', displayName: '', status: 'disabled', positionName: '', positionId: null }
+  { userId: 11, username: 'alice', displayName: '爱丽丝', status: 'active',   positionId: 'ps_1', positionName: '销售', hasPendingRequest: false, pendingRequestId: null,  pendingRequestAt: null },
+  { userId: 12, username: 'bob',   displayName: '',      status: 'disabled', positionId: null,   positionName: null,   hasPendingRequest: true,  pendingRequestId: 801,   pendingRequestAt: '2026-09-10 09:00' }
 ]
-// 2026-09-09 PRD 复核·G2（A8）：申请行改为四态全展示，行结构新增
-// reviewStatus / processedAt / processedBy / rejectReason（md §4.2）。
-// 两条待审核 + 一条已驳回（已处理），供三列渲染、操作列门控与驳回原因悬停用例共用。
-const APP_ROWS = [
-  {
-    id: 701, userId: 3, username: 'chenyu', displayName: '陈宇', status: 'active',
-    currentPositionId: null, currentPositionName: null,
-    requestedPositionId: 404, requestedPositionName: '市场研究岗', submittedAt: '2026-08-28 10:32',
-    reviewStatus: 'PENDING', processedAt: '', processedBy: '', rejectReason: ''
-  },
-  {
-    id: 702, userId: 2, username: 'li.na', displayName: '李娜', status: 'active',
-    currentPositionId: 402, currentPositionName: '客户成功岗',
-    requestedPositionId: 401, requestedPositionName: '经营分析岗', submittedAt: '2026-08-28 09:46',
-    reviewStatus: 'PENDING', processedAt: '', processedBy: '', rejectReason: ''
-  },
-  {
-    id: 705, userId: 5, username: 'zhouming', displayName: '周明', status: 'disabled',
-    currentPositionId: 401, currentPositionName: '经营分析岗',
-    requestedPositionId: 403, requestedPositionName: '财务审核岗', submittedAt: '2026-08-19 11:40',
-    reviewStatus: 'REJECTED', processedAt: '2026-08-19 16:28', processedBy: 'admin',
-    rejectReason: '该岗位需先完成财务合规培训'
-  }
-]
-
-const paneApps = () => container.querySelector('.pm-pane-applications')
-const paneAssign = () => container.querySelector('.pm-pane-assignments')
-function appRowButton(rowIndex, text) {
-  const rows = [...paneApps().querySelectorAll('.el-row')]
-  return [...rows[rowIndex].querySelectorAll('.el-button')].find((b) => b.textContent.includes(text))
-}
 
 beforeEach(() => {
   vi.clearAllMocks()
   listPositionAssignments.mockResolvedValue({ list: ROWS, total: 2 })
-  listPositionApplications.mockResolvedValue({ list: APP_ROWS, total: APP_ROWS.length })
-  countPendingApplications.mockResolvedValue({ count: 2 })
-  reboundApi.mockResolvedValue({})
-  // 2026-09-08 PRD-20260908 对齐：绑定下拉 = 已发布及审核中（底层 status=published，含在审新版），
-  // 未发布首发审核中不入选 → 种子三种形态各一条
+  countPendingApplications.mockResolvedValue({ count: 1 })
+  markApplicationAssignedApi.mockResolvedValue({})
   listPositions.mockResolvedValue({
     list: [
       { positionId: 'ps_1', name: '销售', status: 'published', pendingAction: null },
-      { positionId: 'ps_2', name: '客服', status: 'published', pendingAction: 'PUBLISH' },
-      { positionId: 'ps_3', name: '草稿岗', status: 'draft', pendingAction: 'PUBLISH' }
+      { positionId: 'ps_2', name: '客服', status: 'published', pendingAction: 'PUBLISH' }
     ],
-    total: 3
+    total: 2
   })
-  ElMessageBox.confirm.mockResolvedValue()
 })
+
 afterEach(() => {
   app?.unmount()
   container?.remove()
 })
 
-describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD-20260903 对齐）', () => {
-  it('页头标题「岗位管理」+ 副标题照 md；默认进「用户岗位管理」页签（2026-09-08 PRD-20260908 对齐改名）', async () => {
+describe('AdminPositionAssignments —— 单页面（2026-09-15 合并改版）', () => {
+  it('页头标题 / 副标题正确', async () => {
     await mount()
     expect(container.querySelector('.page-header').textContent).toBe(
-      '岗位管理|管理用户岗位绑定，支持直接分配与处理用户岗位申请。'
+      '岗位管理|管理用户岗位绑定，分配岗位或处理待分配申请。'
     )
-    expect(container.querySelector('.el-tabs').getAttribute('data-active')).toBe('assignments')
-    expect(container.querySelector('.el-tab-btn[data-name="assignments"]').textContent).toBe('用户岗位管理')
-    expect(paneAssign().style.display).not.toBe('none')
-    expect(paneApps().style.display).toBe('none')
   })
 
-  it('挂载即拉分配列表、可绑定岗位选项（已发布及审核中，2026-09-08 PRD-20260908 md §五）、申请列表与徽标计数', async () => {
+  it('无页签元素（已合并为单页面）', async () => {
+    await mount()
+    expect(container.querySelector('.el-tabs')).toBeNull()
+  })
+
+  it('挂载即拉分配列表 + 可绑定岗位选项 + 待分配数量', async () => {
     await mount()
     expect(listPositionAssignments).toHaveBeenCalledTimes(1)
-    // 不再按展示态 status=published 下发（会漏掉「已发布且在审」岗位），改拉全量后按底层 status 过滤
     expect(listPositions).toHaveBeenCalledTimes(1)
-    expect(listPositions.mock.calls[0][0]).not.toHaveProperty('status')
-    expect(listPositionApplications).toHaveBeenCalledTimes(1)
     expect(countPendingApplications).toHaveBeenCalledTimes(1)
   })
 
-  it('审批页签徽标显示待审核数量；数量为 0 时不展示徽标', async () => {
+  it('行渲染：显示名占位「—」/ 有岗位 / 无岗位「未绑定」', async () => {
     await mount()
-    const tabBtn = container.querySelector('.el-tab-btn[data-name="applications"]')
-    expect(tabBtn.textContent).toContain('岗位申请审批')
-    expect(tabBtn.querySelector('.pm-count')?.textContent).toBe('2')
-    app.unmount()
-    container.remove()
-
-    countPendingApplications.mockResolvedValue({ count: 0 })
-    await mount()
-    expect(container.querySelector('.el-tab-btn[data-name="applications"] .pm-count')).toBeNull()
-  })
-
-  it('分配页签渲染行：显示名占位「—」、有岗位显示岗位名、无岗位显示「未绑定」', async () => {
-    await mount()
-    const rows = [...paneAssign().querySelectorAll('.el-row')]
+    const rows = [...container.querySelectorAll('.el-row')]
     expect(rows).toHaveLength(2)
     expect(rows[0].textContent).toContain('销售')
+    expect(rows[0].textContent).not.toContain('未绑定')
     expect(rows[1].textContent).toContain('未绑定')
-    expect(rows[1].textContent).toContain('—') // bob 显示名为空 → 占位
+    expect(rows[1].textContent).toContain('—') // bob 显示名为空
   })
 
-  it('分配列表加载失败 → 展示「加载失败」；无数据 → 「没有匹配的用户」', async () => {
-    listPositionAssignments.mockRejectedValueOnce(new Error('boom'))
+  it('hasPendingRequest=true 的行显示「待分配」标签；hasPendingRequest=false 的行不显示', async () => {
     await mount()
-    expect(paneAssign().querySelector('.el-empty')?.textContent).toContain('加载失败')
-    app.unmount()
-    container.remove()
-
-    listPositionAssignments.mockResolvedValueOnce({ list: [], total: 0 })
-    await mount()
-    // 2026-09-08 原型复刻批次 1 对齐：空态改纯文字（ListStates .ls-empty），失败态仍是 el-empty
-    expect(paneAssign().querySelector('.ls-empty')?.textContent).toContain('没有匹配的用户')
+    const rows = [...container.querySelectorAll('.el-row')]
+    expect(rows[0].textContent).not.toContain('待分配')  // alice 无申请
+    expect(rows[1].textContent).toContain('待分配')      // bob 有申请
   })
 
-  it('点「分配岗位」→ 弹窗可见、传入该行副本、非 forceSave', async () => {
+  it('工具栏「待分配申请」按钮显示计数徽标（count=1）；count=0 时不展示徽标', async () => {
     await mount()
-    const rows = [...paneAssign().querySelectorAll('.el-row')]
-    const editBtn = [...rows[0].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位'))
-    editBtn.click()
-    await nextTick()
-    const dlg = container.querySelector('.edit-dialog')
-    expect(dlg.getAttribute('data-visible')).toBe('true')
-    expect(dlg.getAttribute('data-user')).toBe('alice')
-    expect(dlg.getAttribute('data-force')).toBe('false')
-    // 2026-09-08 PRD-20260908 md §五：下拉含已发布（含在审新版）、不含未发布首发审核中
-    expect(dlg.getAttribute('data-options')).toBe('销售,客服')
+    const pendingBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('待分配申请'))
+    expect(pendingBtn).toBeTruthy()
+    expect(pendingBtn.querySelector('.pm-count')?.textContent).toBe('1')
+
+    app.unmount(); container.remove()
+    countPendingApplications.mockResolvedValue({ count: 0 })
+    await mount()
+    const btn2 = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('待分配申请'))
+    expect(btn2.querySelector('.pm-count')).toBeNull()
   })
 
-  it('搜索停顿 220ms / 状态切换 → 自动刷新且不重置页码；仅【查询】回第 1 页（2026-09-08 PRD-20260908 md §3.1）', async () => {
-    // 总数 60 → 多页；先翻到第 2 页再操作查询区
+  it('点「待分配申请」按钮 → 下发 hasPendingRequest:true；再点 → 还原不下发', async () => {
+    await mount()
+    const pendingBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('待分配申请'))
+    pendingBtn.click()
+    await flush()
+    expect(listPositionAssignments.mock.calls.at(-1)[0]).toMatchObject({ hasPendingRequest: true })
+
+    pendingBtn.click()
+    await flush()
+    const lastParams = listPositionAssignments.mock.calls.at(-1)[0]
+    expect(lastParams.hasPendingRequest).toBeFalsy()
+  })
+
+  it('搜索停顿 220ms / 状态切换 → 刷新不重置页码；【查询】回第 1 页', async () => {
     listPositionAssignments.mockResolvedValue({ list: ROWS, total: 60 })
     vi.useFakeTimers()
     try {
       await mount()
       const calls = () => listPositionAssignments.mock.calls.map((c) => c[0])
-      // ListPagination（真组件）：点「下一页」把 page 置 2 并重拉
-      paneAssign().querySelector('.list-pager button[aria-label="下一页"]').click()
+
+      // 翻到第 2 页
+      container.querySelector('.list-pager button[aria-label="下一页"]').click()
       await flush()
       expect(calls().at(-1).page).toBe(2)
 
-      // ① 搜索：输入后 219ms 不触发，220ms 触发且 page 仍为 2
-      const input = paneAssign().querySelector('input.el-input')
+      // ① 搜索：219ms 不触发，220ms 触发且 page 仍为 2
+      const input = container.querySelector('input.el-input')
       input.value = 'al'
       input.dispatchEvent(new Event('input'))
       await flush()
       const before = calls().length
-      vi.advanceTimersByTime(219)
-      await flush()
+      vi.advanceTimersByTime(219); await flush()
       expect(calls().length).toBe(before)
-      vi.advanceTimersByTime(1)
-      await flush()
+      vi.advanceTimersByTime(1); await flush()
       expect(calls().length).toBe(before + 1)
       expect(calls().at(-1)).toEqual(expect.objectContaining({ keyword: 'al', page: 2 }))
 
-      // ② 状态切换：立即刷新且 page 仍为 2
-      const select = paneAssign().querySelector('select.el-select')
+      // ② 状态切换：立即刷新，page 仍 2
+      const select = container.querySelector('select.el-select')
       select.value = 'disabled'
       select.dispatchEvent(new Event('change'))
       await flush()
       expect(calls().at(-1)).toEqual(expect.objectContaining({ status: 'disabled', page: 2 }))
 
       // ③ 【查询】：回第 1 页
-      ;[...paneAssign().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
+      ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
       await flush()
       expect(calls().at(-1)).toEqual(expect.objectContaining({ page: 1 }))
     } finally {
@@ -321,102 +250,69 @@ describe('AdminPositionAssignments —— 岗位管理双页签（2026-09-04 PRD
     }
   })
 
-  it('切到审批页签：行渲染（用户名/现有绑定「未绑定」/申请岗位/提交时间/操作按钮）', async () => {
+  it('点「分配岗位」→ 弹窗可见，传入该行副本', async () => {
     await mount()
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await flush()
-    expect(container.querySelector('.el-tabs').getAttribute('data-active')).toBe('applications')
-    const rows = [...paneApps().querySelectorAll('.el-row')]
-    expect(rows).toHaveLength(3)
-    expect(rows[0].textContent).toContain('chenyu')
-    expect(rows[0].textContent).toContain('未绑定') // 现有绑定为空
-    expect(rows[0].textContent).toContain('市场研究岗')
-    expect(rows[0].textContent).toContain('2026-08-28 10:32')
-    expect(appRowButton(0, '分配岗位')).toBeTruthy()
-    expect(rows[1].textContent).toContain('客户成功岗') // 李娜现有绑定
-  })
-
-  // ===== 2026-09-09 PRD 复核·G2 / A8（md §4.1 / §4.2 / §4.3.4）=====
-  it('A8 审核结果 / 处理时间 / 处理人三列：待审核行三者为「—」，已处理行展示实值', async () => {
-    await mount()
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await flush()
-    const rows = [...paneApps().querySelectorAll('.el-row')]
-    // 待审核行：黄色标签「待审核」，处理时间/处理人「—」
-    const pendingTags = [...rows[0].querySelectorAll('.status-tag')]
-    expect(pendingTags.some((t) => t.textContent.trim() === '待审核' && t.getAttribute('data-type') === 'warning')).toBe(true)
-    expect(rows[0].textContent).toContain('—')
-    // 已处理（已驳回）行：红色标签 + 处理时间 + 处理人
-    const rejTags = [...rows[2].querySelectorAll('.status-tag')]
-    expect(rejTags.some((t) => t.textContent.trim() === '已驳回' && t.getAttribute('data-type') === 'danger')).toBe(true)
-    expect(rows[2].textContent).toContain('2026-08-19 16:28')
-    expect(rows[2].textContent).toContain('admin')
-  })
-
-  it('A8 操作列门控（md §4.3.2）：已处理行不展示【分配岗位】', async () => {
-    await mount()
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await flush()
-    expect(appRowButton(0, '分配岗位')).toBeTruthy()   // 待审核行有
-    expect(appRowButton(2, '分配岗位')).toBeUndefined() // 已处理行无
-  })
-
-  it('A8 审核状态筛选（md §4.1）：切换即下发 reviewStatus 并回第 1 页', async () => {
-    await mount()
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await flush()
-    const select = paneApps().querySelector('select.el-select')
-    select.value = 'REJECTED'
-    select.dispatchEvent(new Event('change'))
-    await flush()
-    expect(listPositionApplications.mock.calls.at(-1)[0]).toEqual(
-      expect.objectContaining({ reviewStatus: 'REJECTED', page: 1 })
-    )
-  })
-
-  it('A8 空态双分支（md §4.1 / §六）：无任何申请 vs 筛选无结果', async () => {
-    listPositionApplications.mockResolvedValue({ list: [], total: 0 })
-    await mount()
-    // ① 未筛选：暂无岗位申请 + 副文案
-    let empty = paneApps().querySelector('.ls-empty') // 2026-09-08 原型复刻批次 1 对齐：纯文字空态
-    expect(empty.textContent).toContain('暂无岗位申请')
-    expect(empty.textContent).toContain('新的用户岗位申请会显示在这里')
-    // ② 有筛选：没有匹配的岗位申请（无副文案）
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await flush()
-    const select = paneApps().querySelector('select.el-select')
-    select.value = 'APPROVED'
-    select.dispatchEvent(new Event('change'))
-    await flush()
-    empty = paneApps().querySelector('.ls-empty')
-    expect(empty.textContent).toContain('没有匹配的岗位申请')
-    expect(empty.textContent).not.toContain('新的用户岗位申请会显示在这里')
-  })
-
-  it('【分配岗位】复用修改绑定弹窗（forceSave + 现有绑定回填）；保存后标记已重新绑定并回分配页签置顶', async () => {
-    await mount()
-    container.querySelector('.el-tab-btn[data-name="applications"]').click()
-    await nextTick()
-    appRowButton(1, '分配岗位').click() // 李娜（702，现绑 402）
+    const rows = [...container.querySelectorAll('.el-row')]
+    ;[...rows[0].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位')).click()
     await nextTick()
     const dlg = container.querySelector('.edit-dialog')
     expect(dlg.getAttribute('data-visible')).toBe('true')
-    expect(dlg.getAttribute('data-user')).toBe('li.na')
-    expect(dlg.getAttribute('data-force')).toBe('true')
+    expect(dlg.getAttribute('data-user')).toBe('alice')
+  })
 
-    dlg.querySelector('.edit-save').click()
+  it('有待分配申请的用户分配后自动 markApplicationAssigned + 刷新计数 + 置顶高亮', async () => {
+    await mount()
+    const rows = [...container.querySelectorAll('.el-row')]
+    ;[...rows[1].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位')).click()
+    await nextTick()
+    // 弹窗显示 bob（有 pendingRequestId）
+    expect(container.querySelector('.edit-dialog').getAttribute('data-has-pending')).toBe('true')
+
+    container.querySelector('.edit-save').click()
     await flush()
-    // 申请标记「已重新绑定」
-    expect(reboundApi).toHaveBeenCalledWith(702)
-    // 自动切回分配页签
-    expect(container.querySelector('.el-tabs').getAttribute('data-active')).toBe('assignments')
-    // 清筛选 + 该用户置顶（focusUserId 随查询下发）
-    const lastCall = listPositionAssignments.mock.calls.at(-1)[0]
-    expect(lastCall).toEqual(expect.objectContaining({ focusUserId: 2, page: 1 }))
-    expect(lastCall.keyword).toBeUndefined()
-    expect(lastCall.status).toBeUndefined()
-    // 申请列表与徽标同步刷新
-    expect(listPositionApplications).toHaveBeenCalledTimes(2)
+
+    // markApplicationAssigned 被调用，参数为 bob 的 pendingRequestId
+    expect(markApplicationAssignedApi).toHaveBeenCalledWith(801)
+    // 计数刷新
     expect(countPendingApplications).toHaveBeenCalledTimes(2)
+    // 列表重查，附 focusUserId 置顶
+    const lastCall = listPositionAssignments.mock.calls.at(-1)[0]
+    expect(lastCall).toEqual(expect.objectContaining({ focusUserId: 12, page: 1 }))
+    // 筛选已清空
+    expect(lastCall.hasPendingRequest).toBeFalsy()
+  })
+
+  it('无待分配申请的用户分配后直接 reload，不调 markApplicationAssigned', async () => {
+    await mount()
+    const rows = [...container.querySelectorAll('.el-row')]
+    ;[...rows[0].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位')).click()
+    await nextTick()
+    container.querySelector('.edit-save').click()
+    await flush()
+
+    expect(markApplicationAssignedApi).not.toHaveBeenCalled()
+    // 普通 reload（无 focusUserId）
+    const lastCall = listPositionAssignments.mock.calls.at(-1)[0]
+    expect(lastCall?.focusUserId).toBeUndefined()
+  })
+
+  it('加载失败 → 展示「加载失败」；无数据 → 「没有匹配的用户」', async () => {
+    listPositionAssignments.mockRejectedValueOnce(new Error('boom'))
+    await mount()
+    expect(container.querySelector('.el-empty')?.textContent).toContain('加载失败')
+
+    app.unmount(); container.remove()
+    listPositionAssignments.mockResolvedValueOnce({ list: [], total: 0 })
+    await mount()
+    expect(container.querySelector('.ls-empty')?.textContent).toContain('没有匹配的用户')
+  })
+
+  it('待分配筛选激活时空态文案改为「暂无待分配申请」', async () => {
+    listPositionAssignments.mockResolvedValue({ list: [], total: 0 })
+    await mount()
+    const pendingBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('待分配申请'))
+    pendingBtn.click()
+    await flush()
+    expect(container.querySelector('.ls-empty')?.textContent).toContain('暂无待分配申请')
   })
 })
