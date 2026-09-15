@@ -20,7 +20,7 @@ class MemoryStorage {
     this.map.clear()
   }
 }
-globalThis.localStorage = new MemoryStorage()
+Object.defineProperty(globalThis, 'localStorage', { value: new MemoryStorage(), writable: true, configurable: true })
 
 // 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役后，本 store 已不再 import
 // api/auth 与 userPosition / chat / session 三个兄弟 store（那四个模块都已删除），

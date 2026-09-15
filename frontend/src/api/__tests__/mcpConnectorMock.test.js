@@ -501,6 +501,11 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
  * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v6；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import。
+ * 注入内存版 localStorage 必须用 Object.defineProperty，不能直接赋值：
+ * 本机 Node 26 自带实验性 localStorage，在 globalThis 上留下 get/set 俱全的访问器，赋值恰好生效；
+ * 而 CI 的 Node 22 没有原生实现，jsdom 装的是**只有 getter、没有 setter**的访问器——直接赋值静默失效、
+ * delete 也删不掉，桩根本没装上，写入落到 jsdom 真实 Storage 并泄漏给后续 describe（attachPersist 在模块
+ * 加载时会 restore 存量，导致种子被放大：2026-09-15 CI#13 即因此红了 4 条，本机全绿）。
  */
 describe('mcpConnectorMock · 持久化（mockPersist v6）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
@@ -516,13 +521,13 @@ describe('mcpConnectorMock · 持久化（mockPersist v6）', () => {
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
     stubInstantTimers()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

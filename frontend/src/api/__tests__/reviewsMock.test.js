@@ -538,11 +538,11 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
   })
   afterEach(() => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

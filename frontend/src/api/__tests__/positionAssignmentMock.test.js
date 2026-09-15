@@ -73,11 +73,11 @@ describe('positionAssignmentMock · 持久化读回（mockPersist v1；写点 se
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
   })
   afterEach(() => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

@@ -166,11 +166,11 @@ describe('sampleTaskMock · 持久化读回（mockPersist v5；2026-09-12 审计
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
   })
   afterEach(() => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

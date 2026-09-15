@@ -152,11 +152,11 @@ describe('positionApplicationsMock · 持久化读回（mockPersist v2；写点 
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
   })
   afterEach(() => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

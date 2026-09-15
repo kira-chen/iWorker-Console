@@ -130,11 +130,11 @@ describe('adminUserMock · 持久化（mockPersist v2，key iworker-demo-mock:ad
   }
   const snap = () => JSON.parse(globalThis.localStorage.getItem(KEY))
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
   })
   afterEach(() => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
 

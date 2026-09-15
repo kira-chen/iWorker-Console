@@ -23,18 +23,18 @@ async function importFresh(overrides) {
 }
 
 afterEach(() => {
-  delete globalThis.localStorage
+  Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
   vi.doUnmock('../mockSeedOverrides.json')
   vi.restoreAllMocks()
 })
 
 describe('mockPersist', () => {
   beforeEach(() => {
-    globalThis.localStorage = makeStorageStub()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorageStub(), writable: true, configurable: true })
   })
 
   it('无 localStorage 环境：attachPersist 返回 no-op，不抛错', async () => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     const { attachPersist } = await importFresh()
     const persist = attachPersist('m1', { snapshot: () => ({}), restore: () => {} })
     expect(() => persist()).not.toThrow()
@@ -134,7 +134,7 @@ describe('mockPersist', () => {
   })
 
   it('出厂数据：无 localStorage 环境（纯内存模式）也应生效', async () => {
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     const { attachPersist } = await importFresh({ entries: { m1: { v: 1, data: { rows: ['出厂'] } } } })
     let rows = ['seed']
     attachPersist('m1', { version: 1, snapshot: () => ({ rows }), restore: (d) => { rows = d.rows } })

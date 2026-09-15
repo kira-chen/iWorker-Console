@@ -663,13 +663,13 @@ describe('knowledgeBaseMock · 持久化（mockPersist v7）', () => {
     }
   }
   beforeEach(() => {
-    globalThis.localStorage = makeStorage()
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
     vi.stubGlobal('setTimeout', (fn) => { queueMicrotask(fn); return 0 })
   })
   afterEach(() => {
     vi.unstubAllGlobals()
-    delete globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
     vi.resetModules()
   })
   const uplCfg = { ...UPLOAD_DEFAULTS, embeddingModelId: 'md_emb_1' }

@@ -26,12 +26,12 @@ function makeStorage() {
 }
 
 beforeEach(() => {
-  globalThis.localStorage = makeStorage()
+  Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
   document.documentElement.removeAttribute('data-theme')
   setActivePinia(createPinia())
 })
 afterEach(() => {
-  delete globalThis.localStorage
+  Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
   document.documentElement.removeAttribute('data-theme')
 })
 

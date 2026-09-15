@@ -136,12 +136,16 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     setActivePinia(pinia)
     if (!('localStorage' in globalThis) || typeof globalThis.localStorage?.getItem !== 'function') {
       const mem = new Map()
-      globalThis.localStorage = {
-        getItem: (k) => (mem.has(k) ? mem.get(k) : null),
-        setItem: (k, v) => mem.set(k, String(v)),
-        removeItem: (k) => mem.delete(k),
-        clear: () => mem.clear()
-      }
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: {
+          getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+          setItem: (k, v) => mem.set(k, String(v)),
+          removeItem: (k) => mem.delete(k),
+          clear: () => mem.clear()
+        },
+        writable: true,
+        configurable: true
+      })
     }
   })
   afterEach(() => {
