@@ -33,12 +33,15 @@ jobs:
 
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 准备 Node 环境
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          # 与本机开发环境同一大版本（本机 v26）
+          # 【刻意与本机不同】本机是 Node 26，这里钉 22：CI 当「低版本兵棋」用，
+          # 专门拦住那些只在新 Node 上恰好能跑的写法（2026-09-15 负责人裁定保留 22）。
+          # 已实证过一次：globalThis.localStorage = 桩 这种直接赋值在本机 26 生效、在 22 上静默失效，
+          # 本地全绿而 CI 红 4 条（CI#13）。代价是这类问题本地复现不了，得看 CI 日志。
           node-version: '22'
           # 缓存 npm 依赖，第二次以后快很多
           cache: npm
