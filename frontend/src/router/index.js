@@ -1,76 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ensureDemoIdentity } from '@/utils/demoIdentity'
-import { FRONT_RUNTIME_ENABLED } from '@/utils/featureFlags'
 
-// 员工端运行时页面封存（2026-07-17 校准处置）：执行链路不在本仓，路由 name 恒保留
-// （守卫 landing/具名跳转依赖），封存期仅把组件换成占位页；开关改回 true 即恢复。
-const runtimeView = (loader) =>
-  FRONT_RUNTIME_ENABLED ? loader : () => import('@/views/FrontRuntimePlaceholder.vue')
-
-// 前台布局下的页面（员工端）
-const frontChildren = [
-  {
-    path: 'chat',
-    name: 'Chat',
-    component: runtimeView(() => import('@/views/Chat.vue')),
-    meta: { title: '对话' }
-  },
-  {
-    path: 'tasks',
-    name: 'Tasks',
-    component: runtimeView(() => import('@/views/Tasks.vue')),
-    meta: { title: '定时任务' }
-  },
-  {
-    path: 'tasks/new',
-    name: 'TaskNew',
-    component: runtimeView(() => import('@/views/TaskEditor.vue')),
-    meta: { title: '新建任务', activeMenu: 'Tasks' }
-  },
-  {
-    path: 'tasks/:id/edit',
-    name: 'TaskEdit',
-    component: runtimeView(() => import('@/views/TaskEditor.vue')),
-    meta: { title: '编辑任务', activeMenu: 'Tasks' }
-  },
-  {
-    path: 'tasks/:id',
-    name: 'TaskDetail',
-    component: runtimeView(() => import('@/views/TaskDetail.vue')),
-    meta: { title: '任务详情', activeMenu: 'Tasks' }
-  },
-  {
-    path: 'space',
-    name: 'Space',
-    component: runtimeView(() => import('@/views/Space.vue')),
-    meta: { title: '个人空间' }
-  },
-  {
-    path: 'other-experts',
-    name: 'OtherPositions',
-    component: () => import('@/views/OtherPositions.vue'),
-    meta: { title: '搭子' }
-  },
-  {
-    path: 'settings',
-    name: 'Settings',
-    component: () => import('@/views/Settings.vue'),
-    meta: { title: '设置' }
-  },
-  {
-    path: 'memory',
-    name: 'MemoryManage',
-    component: runtimeView(() => import('@/views/MemoryManage.vue')),
-    meta: { title: '个人记忆', activeMenu: 'Settings' }
-  },
-  {
-    path: 'my-experts/:positionId',
-    name: 'Personalize',
-    component: () => import('@/views/Personalize.vue'),
-    meta: { title: '我的岗位' }
-  }
-]
+// 员工端整体退役（2026-09-12 负责人决策 3 / 审计 J2）：
+// 本仓已是「管理后台演示」纯前端 demo，员工端（对话 / 定时任务 / 个人空间 / 个人记忆 / 搭子 /
+// 设置 / 我的岗位 / 首登引导 / 绑定岗位）与登录、改密页整体删除，不再保留封存开关与占位页。
+// 随之退役的还有 FrontLayout、Login/ChangePassword、FRONT_RUNTIME_ENABLED 开关。
+// 需要考古时经 git 历史找回（本条提交之前的版本）。
 
 // 后台布局下的页面（管理员 + FDE）。
 // 连接器工具（MCP/API/业务系统）已收口为 AdminConnector 内的页内 Tab；
@@ -176,26 +112,8 @@ const adminChildren = [
     path: 'skill-reviews',
     redirect: { name: 'UnifiedReview' }
   },
-  // —— P2 双模块报表（真实数据 + ECharts），各落所属模块角色门（设计 §4.3/§6）——
-  {
-    path: 'reports/fde',
-    name: 'FdeReports',
-    component: () => import('@/views/admin/FdeReports.vue'),
-    meta: { title: '工作台报表', roles: ['FDE', 'ADMIN'], module: 'FDE' }
-  },
-  {
-    path: 'reports/sysconfig',
-    name: 'SysConfigReports',
-    component: () => import('@/views/admin/SysConfigReports.vue'),
-    meta: { title: '配置报表', roles: ['SYS_CONFIG', 'ADMIN'], module: 'SYSCONFIG' }
-  },
-  {
-    // 旧 reports 路由：重定向到 FDE 工作台报表（兼容书签，设计 §4.3/§6.2）。
-    // 仅 path（无 name），避免与下方 name:'reports' 兜底重复；name 保留在 redirect 节点。
-    path: 'reports',
-    name: 'reports',
-    redirect: { name: 'FdeReports' }
-  },
+  // 报表两页（FdeReports / SysConfigReports）已于 2026-09-12 负责人决策 4 整体退役：
+  // 菜单早已隐藏、无 PRD、数据层无 mock 打开即失败态，连同 api/report.js 与 EChart 一并删除。
   // —— P5 用户与权限（仅 ADMIN）：菜单 visible + 路由门 + 后端方法级三层叠加 ——
   {
     path: 'users',
@@ -282,40 +200,10 @@ const adminLegacyRedirects = [
 
 const routes = [
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { public: true, title: '登录' }
-  },
-  {
-    path: '/onboarding',
-    name: 'Onboarding',
-    component: () => import('@/views/Onboarding.vue'),
-    // 需登录、无 admin 角色限制；首登未绑定的非管理员由 guard 引导至此。
-    meta: { requiresAuth: true, title: '欢迎使用' }
-  },
-  {
-    path: '/bind-expert',
-    name: 'BindPosition',
-    component: () => import('@/views/BindPosition.vue'),
-    // 保留：供已绑定用户重新绑定 / 更换岗位
-    meta: { requiresAuth: true, title: '选择岗位' }
-  },
-  {
-    // 强制首改密码页（P5）：需登录、无角色限制、无绑定要求（守卫据 mustChangePassword 强跳至此，
-    // 优先级高于绑定/落地分流）。改密成功后由页面放行跳回目标/首页。
-    path: '/change-password',
-    name: 'ChangePassword',
-    component: () => import('@/views/ChangePassword.vue'),
-    meta: { requiresAuth: true, title: '修改密码' }
-  },
-  {
+    // 根路径：直落管理后台首页（2026-09-12 负责人决策 3 / 审计 J2——员工端整体退役后，
+    // '/' 不再挂 FrontLayout 与员工端子路由，只作纯 redirect）。
     path: '/',
-    component: () => import('@/layouts/FrontLayout.vue'),
-    meta: { requiresAuth: true },
-    // demo：根路径直接落管理后台（员工端页面仍可经具名路由/URL 直达）
-    redirect: { name: 'AdminPositions' },
-    children: frontChildren
+    redirect: { name: 'AdminPositions' }
   },
   {
     path: '/admin',
@@ -389,10 +277,9 @@ const routes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    // 员工端封存时（FRONT_RUNTIME_ENABLED=false）'Chat' 只会渲染功能封存占位页，敲错 URL 会被
-    // 扔出后台壳且无回路；与 '/'、'/admin'、登录守卫三处「都落 AdminPositions」的口径也矛盾。
-    // 故按 flag 决定去向：封存期回后台首页，解封后仍回员工端对话页。
-    redirect: () => ({ name: FRONT_RUNTIME_ENABLED ? 'Chat' : 'AdminPositions' })
+    // 敲错 URL 一律回管理后台首页（2026-09-12 负责人决策 3 / 审计 J2：员工端退役后
+    // 无第二落点，与 '/'、'/admin' 两处口径一致）。
+    redirect: { name: 'AdminPositions' }
   }
 ]
 
@@ -421,14 +308,12 @@ const router = createRouter({
 // 不再按路由前缀切主题（员工端/管理端共用同一 data-theme）。
 
 // 全局守卫（demo 口径，2026-09-01 取消登录与权限控制）：
-// 每次导航前兜底注入内置演示管理员身份（logout 等路径清了也立即补回），全路由放行；
-// 登录页不再可达，重定向进管理后台首页。原 resolveGuard 决策函数已随登录功能退役
-//（存于 docs/历史文档归档-20260901.zip 之 退役归档-20260901/frontend-dead-code/）。
-router.beforeEach((to) => {
+// 每次导航前兜底注入内置演示管理员身份，全路由放行——菜单显隐 / 页面内按角色分支全部据此放开，
+// 免登录直达管理后台就靠这一步（务必保留）。
+// 2026-09-12 负责人决策 3（审计 J2）：登录页随员工端一并退役，原「Login → AdminPositions」
+// 重定向分支已删（路由表里已无 Login 这个 name，守卫无需再拦）。
+router.beforeEach(() => {
   ensureDemoIdentity(useUserStore())
-  if (to.name === 'Login') {
-    return { name: 'AdminPositions' }
-  }
   return true
 })
 

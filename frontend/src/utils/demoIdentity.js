@@ -25,3 +25,28 @@ export function ensureDemoIdentity(userStore) {
     userStore.setUserInfo({ ...DEMO_ADMIN })
   }
 }
+
+// user store 的身份持久化键（stores/user.js USER_KEY，同一串）。mock 层不在 setup 上下文里，
+// 拿不到 pinia 实例，只能读 store 落在 localStorage 的那份；与页面侧
+// `userStore.userInfo?.name`（UserSkillReviews.vue:77）同源同口径。
+const USER_KEY = 'ai_assistant_user'
+
+/**
+ * 当前 demo 身份的展示名（2026-09-12 负责人决策 5（审计 J12）新增）。
+ *
+ * 用途：mock 层记「审核人」。取值序：user store 落盘身份的 name → username → 内置演示管理员的 name。
+ * 不硬编码任何人名——localStorage 不可用（node 环境测试）时也能回到 DEMO_ADMIN 单一真相。
+ */
+export function currentDemoUserName() {
+  try {
+    const raw = globalThis.localStorage?.getItem(USER_KEY)
+    if (raw) {
+      const info = JSON.parse(raw)
+      const name = String(info?.name || info?.username || '').trim()
+      if (name) return name
+    }
+  } catch (e) {
+    // 解析失败按「无身份」处理，落到内置演示管理员
+  }
+  return DEMO_ADMIN.name
+}

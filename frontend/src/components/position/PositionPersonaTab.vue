@@ -133,8 +133,10 @@ function aiGenSop() {
         <span class="pd-card-title">领用页文案</span>
         <span class="pd-card-sub">员工领用时看到的卖点，可多条，最多 6 条</span>
         <span class="pd-card-spacer"></span>
+        <!-- 满 6 条不隐藏按钮，点击由 ClaimNotesEditor.startAdd toast「领用页文案最多 6 条」
+             （md §2.3 L188；2026-09-12 审计 J18） -->
         <el-button
-          v-if="!isReadonly && !claimEditorRef?.editing && !claimEditorRef?.atLimit"
+          v-if="!isReadonly && !claimEditorRef?.editing"
           link
           type="primary"
           @click="claimEditorRef?.startAdd()"

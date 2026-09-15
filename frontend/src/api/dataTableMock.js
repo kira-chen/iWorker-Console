@@ -57,15 +57,15 @@ function bizField(row, sortOrder) {
   }
 }
 
+// 2026-09-12 负责人决策 6（审计 J13）：md 岗位 §4.2.1 的配置控件只有抽取方式 / 置信度阈值 / 用户确认，
+// 原种子里的 askTier / pendingTtlDays / checklist 只存在于已退役原型，随 utils/dossierConfig 一并清除。
 function defaultPolicy() {
   return {
     autoExtract: true,
     writeTier: 'MID',
-    askTier: 'LOW',
     dropIfQuoteMissing: true,
     confirmSlotChange: true,
     confirmNewKey: false,
-    pendingTtlDays: 7,
     confirmMode: 'LOW_ONLY'
   }
 }
@@ -93,10 +93,6 @@ function buildSeed() {
         ],
         dossier: {
           policy: defaultPolicy(),
-          checklist: [
-            { key: '异常指标', when: { type: 'ALWAYS' }, hint: '出现同比/环比异常时记录指标名与波动幅度' },
-            { key: '整改动作', when: { type: 'EQUALS', field: 'stage', value: '预警' }, hint: '预警业务线必须沉淀整改动作与责任人' }
-          ],
           reduceRules: [
             { key: '异常指标', desc: '只看最新一次异常结论', strategy: 'LATEST', params: { n: 5, staleAfterDays: null, normalize: true } },
             { key: '整改动作', desc: '累积形成整改清单', strategy: 'LIST', params: { n: 5, staleAfterDays: null, normalize: true } }
@@ -124,10 +120,6 @@ function buildSeed() {
         ],
         dossier: {
           policy: { ...defaultPolicy(), confirmMode: 'ALL' },
-          checklist: [
-            { key: '决策人', when: { type: 'ALWAYS' }, hint: '记录拜访中出现的决策人姓名与角色' },
-            { key: '竞争对手', when: { type: 'ALWAYS' }, hint: '客户提到的在谈竞品' }
-          ],
           reduceRules: [
             { key: '决策人', desc: '决策人只增不减', strategy: 'LIST', params: { n: 5, staleAfterDays: null, normalize: true } },
             { key: '预算口径', desc: '预算变化保留冲突并列', strategy: 'CONFLICTS', params: { n: 5, staleAfterDays: 90, normalize: true } }
@@ -151,7 +143,7 @@ function buildSeed() {
           bizField({ fieldCode: 'expense_no', label: '报销单号', fieldType: 'TEXT', required: true, slotRole: 'IDENTITY', isPrimary: true }, 1),
           bizField({ fieldCode: 'risk_level', label: '风险等级', fieldType: 'ENUM', required: false, options: ['低', '中', '高'], slotRole: 'LABEL' }, 2)
         ],
-        dossier: { policy: defaultPolicy(), checklist: [], reduceRules: [] }
+        dossier: { policy: defaultPolicy(), reduceRules: [] }
       }
     ],
     404: []
@@ -162,8 +154,11 @@ let tablesByPosition = buildSeed()
 
 // 【持久化 2026-09-02】状态镜像到 localStorage；写点=下方各 persist() 调用处（只读与删表预检不落盘）。
 // saveDataTableFields 里的 Map 是函数局部临时索引，不入快照。
+// version 2（2026-09-12 负责人决策 6 / 审计 J13）：dossier 结构去掉 policy.askTier、policy.pendingTtlDays
+// 与 checklist 三者——md 岗位 §4.2.1 的配置控件只有抽取方式 / 置信度阈值 / 用户确认，这三者只存在于
+// 已退役原型，UI 从未渲染。旧快照（v1）形状不再兼容，bump 后自动丢弃重建。
 const persist = attachPersist('dataTable', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ tableSeq, fieldSeq, tablesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.tableSeq) || !Number.isFinite(d.fieldSeq) || typeof d.tablesByPosition !== 'object' || d.tablesByPosition === null) {
@@ -204,7 +199,7 @@ function cloneFields(fields) {
 }
 
 function cloneDossier(d) {
-  return JSON.parse(JSON.stringify(d || { policy: defaultPolicy(), checklist: [], reduceRules: [] }))
+  return JSON.parse(JSON.stringify(d || { policy: defaultPolicy(), reduceRules: [] }))
 }
 
 /* ============================ 表（table） ============================ */
@@ -265,7 +260,7 @@ export async function createDataTable(positionId, payload = {}) {
       uidField(),
       ...biz.map((f, i) => bizField({ ...f, fieldCode: f.fieldCode || `field_${fieldSeq}` }, i + 1))
     ],
-    dossier: { policy: defaultPolicy(), checklist: [], reduceRules: [] }
+    dossier: { policy: defaultPolicy(), reduceRules: [] }
   }
   list.push(t)
   persist()
@@ -380,7 +375,6 @@ export async function saveDossierConfig(positionId, tableId, payload = {}) {
   if (!t) throw err('工作档案不存在或已被删除', { code: 404 })
   t.dossier = cloneDossier({
     policy: { ...defaultPolicy(), ...(payload.policy || {}) },
-    checklist: payload.checklist || [],
     reduceRules: payload.reduceRules || []
   })
   t.updatedAt = nowIso()

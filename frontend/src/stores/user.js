@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi } from '@/api/auth'
-import { useUserPositionStore } from './userPosition'
-import { useChatStore } from './chat'
-import { useSessionStore } from './session'
+
+// 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役，本 store 的兄弟 store
+// （userPosition / chat / session）与 api/auth.js 一并删除，故不再 import；
+// login() 与 logout() 里的相关调用同步移除（见下方各自注释）。
 
 const TOKEN_KEY = 'ai_assistant_token'
 const USER_KEY = 'ai_assistant_user'
@@ -29,9 +29,9 @@ export const useUserStore = defineStore('user', () => {
   // 后端返回 user.boundPositionId 表示已绑定岗位专家
   const hasBoundPosition = computed(() => !!userInfo.value?.boundPositionId)
 
-  // 强制首改标志（后端 /auth/login、/auth/me 返回 user.mustChangePassword 布尔）：
-  // 为 true 时路由守卫拦截——除强制改密页外一律跳转到改密页（与后端 403 硬拦截配合，前端做体验层强跳）。
-  // 兼容旧响应：无该字段时视为 false（不误拦），改密成功后由 clearMustChangePassword 清标志放行。
+  // 强制首改标志（原后端 /auth/login、/auth/me 返回 user.mustChangePassword 布尔）：
+  // 2026-09-12 负责人决策 3（审计 J2）——强制改密页与登录流程已随员工端整体退役，
+  // 该标志不再有守卫消费方；字段与 getter 暂留（demoIdentity 恒置 false），供日后登录方案定型时复用。
   const mustChangePassword = computed(() => !!userInfo.value?.mustChangePassword)
 
   // 角色（单值）：后端 /auth/login、/auth/me 返回 user.role（统一大写）。
@@ -97,13 +97,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 改密成功后清强制首改标志（体验层放行；本地 userInfo 同步置 false，避免守卫据旧值继续拦）
-  function clearMustChangePassword() {
-    if (userInfo.value) {
-      setUserInfo({ ...userInfo.value, mustChangePassword: false })
-    }
-  }
-
   // 标记已绑定专家（绑定成功后调用）
   function markBoundPosition(positionId) {
     if (userInfo.value) {
@@ -111,24 +104,16 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function login(credentials) {
-    const data = await loginApi(credentials)
-    setToken(data.token)
-    setUserInfo(data.user)
-    return data
-  }
-
   // 注：原 refreshProfile（启动拉 /auth/me 静默回填）已随取消登录退役——demo 身份由
   // utils/demoIdentity.js 在启动与每次导航前注入，无服务端用户态可刷新。
+  // 2026-09-12 负责人决策 3（审计 J2）：login()（走已删的 api/auth.js）与
+  // clearMustChangePassword()（配套已删的强制改密页）一并退役。
 
-  // 集中登出：清登录态 + 重置专家/会话 store，避免残留脏数据串入下一用户
-  // 注：store 仅在调用 useXStore() 时实例化，故顶层互相 import 不会触发循环依赖问题
+  // 集中登出：清登录态（2026-09-12 负责人决策 3 / 审计 J2——原先一并 reset 的
+  // userPosition / chat / session 三个员工端 store 已删除，故只剩清 token + 用户信息）
   function logout() {
     setToken('')
     setUserInfo(null)
-    useUserPositionStore().reset()
-    useChatStore().reset()
-    useSessionStore().reset()
   }
 
   return {
@@ -147,9 +132,7 @@ export const useUserStore = defineStore('user', () => {
     isBackstage,
     setToken,
     setUserInfo,
-    clearMustChangePassword,
     markBoundPosition,
-    login,
     logout
   }
 })

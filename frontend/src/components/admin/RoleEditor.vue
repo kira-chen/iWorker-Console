@@ -23,7 +23,8 @@
  *  - 抽屉体（DrawerEditor 780 灰底）内两张 `.section-card`（admin-shell.css 壳类）：①「角色信息」卡放角色名称字段
  *    （含 error-text + hint）；②「页面权限」卡头带 section-sub「勾中哪些页面…」，卡内 permission-tree → error-text → summary；
  *    编辑态 danger-hint 在卡外。
- *  - 校验失败（名称空 / 权限 0）除就地红字外追加 toast「请先补齐必填项」（原型 saveRole）。
+ *  - 校验失败（名称空 / 权限 0）只就地红字，不再追加 toast「请先补齐必填项」——2026-09-12 对齐 md §三.4/§三.5 L133-134
+ *    （审计 J9；Q325 裁「md 侧措辞为准」，原型 saveRole 的 toast 不再跟进）。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -126,12 +127,10 @@ const rules = {
 async function onSubmit() {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
-    // 页面权限必填：勾选为 0 → 就地提示（与名称校验并行亮起）；任一未过 → toast「请先补齐必填项」不提交（原型 saveRole）
+    // 页面权限必填：勾选为 0 → 就地提示（与名称校验并行亮起）；任一未过 → 不提交，只留就地红字
+    // （2026-09-12 对齐 md §三.5 L133-134，审计 J9：md 无「请先补齐必填项」toast，Q325 裁 md 措辞为准）
     if (!selected.value.length) permError.value = '请至少开通 1 个页面'
-    if (!valid || permError.value) {
-      ElMessage.warning('请先补齐必填项')
-      return
-    }
+    if (!valid || permError.value) return
     saving.value = true
     try {
       const modules = [...selected.value]
@@ -283,10 +282,12 @@ async function onSubmit() {
 .re-perm-area.is-invalid .re-scope {
   border-color: var(--c-danger);
 }
+/* 2026-09-12 审计 K43：原写 --c-border / --bg-base 均非 tokens.css 令牌（无 fallback → 边框整条失效，
+ * .is-invalid 的红框也就永远显示不出来）；改用现行令牌 --border-base / --bg-surface */
 .re-scope {
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--border-base);
   border-radius: var(--radius-md);
-  background: var(--bg-base);
+  background: var(--bg-surface);
   overflow: hidden;
 }
 .re-scope-head {

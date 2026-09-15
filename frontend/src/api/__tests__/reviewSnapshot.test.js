@@ -97,7 +97,7 @@ describe('审核版本快照 · A5', () => {
   })
 
   describe('技能', () => {
-    it('提交发布 → 存快照；改技能后快照不变；撤回 → 销毁', async () => {
+    it('提交发布 → 存快照；在审期间改技能被 mock 拒绝（K20）、快照不变；撤回 → 销毁', async () => {
       // sk_307（未发布草稿态种子）——用例内自洽驱动，先确保没有在途提交
       const id = 'sk_307'
       const before = getSkillReviewSnapshot(id)
@@ -110,7 +110,8 @@ describe('审核版本快照 · A5', () => {
       expect(snap.submittedAt).toBeTruthy()
       const nameAtSubmit = snap.detail.name
 
-      await updateSkill(id, { description: '提交之后才改的描述' })
+      // 2026-09-12 审计 K20：审核锁定期 mock 侧拒写（md 技能 §二.2 L120），快照自然不变
+      await expect(updateSkill(id, { description: '提交之后才改的描述' })).rejects.toThrow('技能审核中，已锁定不可修改')
       expect(getSkillReviewSnapshot(id).detail.name).toBe(nameAtSubmit)
       expect(getSkillReviewSnapshot(id).detail.description).not.toBe('提交之后才改的描述')
 

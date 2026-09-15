@@ -100,8 +100,10 @@ const skills = [
     refNames: ['经营分析专家', '企业知识助手', '研究报告专家'], // 与 domainExpertMock 实际引用同源
     // 审核中心种子 id 2（VERSION_PUBLISH）指向本技能，但本体原为 pendingAction 空 → 不会补播审核
     // 快照，审核人点【查看】只能撞「无法查看」。此处置为在审，与 sk_309（停用在审）同一范式。
+    // 2026-09-12 对齐 md 技能 §二.3.4 L226-229（审计 K19）：在审版本号必须由线上版本自动递增得出——
+    // 原 v1.2.0 < 线上 v1.4.0 不合法，改为功能更新 bumpVersion('v1.4.0','MINOR') = v1.5.0（persist v3→v4）。
     status: 'published', version: 'v1.4.0',
-    pendingAction: 'publish', pendingVersion: 'v1.2.0', pendingReleaseNotes: '补充经营异常归因说明',
+    pendingAction: 'publish', pendingVersion: 'v1.5.0', pendingReleaseNotes: '补充经营异常归因说明',
     createdAt: '2026-08-24 09:18', updatedAt: '2026-08-24 09:18', publishedAt: '2026-08-24 16:18',
     exampleQuestion: '帮我分析上个月的经营数据异常',
     toolRefs: ['mcp__zhishiku', 'api__customer', 'api__search', 'mcp__baoxiao', 'biz__renshi'],
@@ -208,6 +210,15 @@ function find(id) {
   const s = skills.find((x) => String(x.id) === String(id))
   if (!s) throw new ApiError({ code: 40400, message: '技能不存在' })
   return s
+}
+
+/**
+ * 写守卫（2026-09-12 对齐 md 技能 §二.2 L120「存在审核中操作时，编辑页锁定，仅允许查看和撤回」/
+ * §三.1 L141「审核锁定状态…只读」；审计 K20）：编辑页的锁只在 UI，mock 侧同样拒写，不留后门。
+ * 覆盖本体字段（updateSkill / setSkillCategory）与文件层（saveSkillFile / deleteSkillFile / renameSkillFile）。
+ */
+function assertNotReviewing(s) {
+  if (s.pendingAction) throw new ApiError({ code: 40900, message: '技能审核中，已锁定不可修改' })
 }
 
 /* ============================ publications 派生（喂 derivePlatformState） ============================ */
@@ -393,6 +404,7 @@ export async function importSkillZip({ fileName, type, categoryName }) {
 export async function updateSkill(id, payload = {}) {
   await delay()
   const s = find(id)
+  assertNotReviewing(s) // K20
   if ('name' in payload) {
     const n = String(payload.name || '').trim()
     if (!n) throw new ApiError({ code: 40001, message: '技能名称不能为空' })
@@ -426,6 +438,7 @@ export async function updateSkill(id, payload = {}) {
 export async function setSkillCategory(id, categoryId) {
   await delay()
   const s = find(id)
+  assertNotReviewing(s) // K20
   assertCategory(categoryId || '')
   s.category = categoryId || ''
   s.updatedAt = nowText()
@@ -567,6 +580,61 @@ export async function delistSkill(id) {
   writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
+}
+
+/* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
+ * 由 reviewsMock.applyReviewResult 分发到此；审核中心不直接改本模块内部数组。
+ *
+ * md 依据（`prd.技能.md`）：
+ * - §L81「审核通过后状态变为"已发布"，自动生成 v1.0.0 版本快照并上线；审核被拒绝后回到"未发布"」；
+ * - §L97「审核通过后技能变为"未发布"，客户端停止提供；被拒绝或撤回后恢复"已发布"」；
+ * - §L120「审核通过后新版本自动启用、原启用版本自动禁用」；
+ * - §L237「被拒绝或撤回时不生成版本快照，技能恢复提交审核前的状态」。
+ */
+export function applySkillReviewResult(refId, requestAction, approved) {
+  const s = skills.find((x) => String(x.id) === String(refId))
+  if (!s || !s.pendingAction) return false
+  const isDelist = (requestAction || (s.pendingAction === 'stop' ? 'DELIST' : '')) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      // 停用通过 → 未发布（md L97）；版本快照保留（md §六「停用通过不删除历史版本」）
+      s.delisted = true
+      s.status = 'draft'
+    } else {
+      const label = s.pendingVersion || 'v1.0.0'
+      // 新版本自动启用、原启用版本自动禁用（md L120 / L253）
+      s.snapshots.forEach((x) => {
+        if (x.status === 'ACTIVE') {
+          x.status = 'DELISTED'
+          x.disabledAt = nowText()
+          x.delistedAt = x.disabledAt
+        }
+      })
+      s.snapshots.unshift({
+        version: label,
+        status: 'ACTIVE',
+        size: '18.6 KB',
+        publisher: '管理员',
+        publishedAt: nowText(),
+        disabledAt: '',
+        notes: s.pendingReleaseNotes || ''
+      })
+      s.version = label
+      s.status = 'published'
+      s.delisted = false
+      s.publishedAt = nowText()
+    }
+  } else {
+    // 驳回：不生成快照，恢复提交前状态（md L237）——曾发布过的回已发布，首发回未发布
+    s.status = s.version && !s.delisted ? 'published' : 'draft'
+  }
+  s.pendingAction = null
+  s.pendingVersion = ''
+  s.pendingReleaseNotes = ''
+  s.updatedAt = nowText()
+  delete reviewSnapshots[String(s.id)]
+  persist()
+  return true
 }
 
 /** 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。 */
@@ -723,6 +791,7 @@ export async function getSkillFile(id, path) {
 export async function saveSkillFile(id, { path, content } = {}) {
   await delay(80)
   const s = find(id)
+  assertNotReviewing(s) // K20
   const files = ensureFiles(s)
   const isNew = !(path in files)
   files[path] = String(content ?? '')
@@ -734,6 +803,7 @@ export async function saveSkillFile(id, { path, content } = {}) {
 export async function deleteSkillFile(id, path) {
   await delay(80)
   const s = find(id)
+  assertNotReviewing(s) // K20
   if (path === 'SKILL.md') throw new ApiError({ code: 40001, message: '入口 SKILL.md 不可删除' })
   const files = ensureFiles(s)
   if (!(path in files)) throw new ApiError({ code: 40400, message: '文件不存在' })
@@ -746,6 +816,7 @@ export async function deleteSkillFile(id, path) {
 export async function renameSkillFile(id, { fromPath, toPath } = {}) {
   await delay(80)
   const s = find(id)
+  assertNotReviewing(s) // K20
   if (fromPath === 'SKILL.md' || toPath === 'SKILL.md') {
     throw new ApiError({ code: 40001, message: '入口 SKILL.md 不可改名' })
   }
@@ -814,8 +885,10 @@ let reviewSnapshots = {}
 // 种子在审技能补播，避免既有在审行「快照缺失」误拦。
 // version 3（2026-09-09 发布前收口）：sk_302 补 pendingAction:'publish' + pendingVersion v1.2.0——
 // 审核中心 id 2 引用它，原种子无在途标记 → 无审核快照，审核人点【查看】只能撞「无法查看」。
+// version 4（2026-09-12 审计 K19）：sk_302 在审版本 v1.2.0 → v1.5.0（md L226-229 在审号必须由线上 v1.4.0 递增得出），
+// bump 丢弃旧快照重播种子。
 const persist = attachPersist('unifiedSkill', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (

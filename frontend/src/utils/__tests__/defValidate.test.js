@@ -3,11 +3,22 @@ import {
   validateMcpForm,
   validateApiAuthParams,
   validateMcpEnv,
+  validateBizSystemForm,
+  isBlankBizPage,
+  BIZ_CONN_TYPES,
   API_BODY_METHODS,
   MCP_TRANSPORTS,
   MCP_COMMAND_OPTIONS,
   API_METHODS
 } from '@/utils/defValidate'
+
+/**
+ * utils/defValidate.js 单测——MCP / API / 业务系统三套表单前端校验。
+ * 对齐（2026-09-12 测试审计 T36/T58 整理）：
+ *  - MCP：docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §三.3 / §三.4.1 / §三.4.2 + 一览表 §5.1/§5.2；
+ *  - API 鉴权参数行：prd-API.md §三.3 + 一览表 §6.2；
+ *  - 业务系统：prd-业务系统.md §三.2 / §三.3 / §三.7 + 一览表 §七（原散在 bizSystemMeta.test.js，T36 搬入并去重）。
+ */
 
 describe('常量', () => {
   it('MCP transports', () => {
@@ -113,7 +124,7 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     it('stdio 合法表单通过', () => {
       expect(validateMcpForm(validStdio).ok).toBe(true)
     })
-    it('stdio 必填 command（2026-09-04 PRD-20260903 对齐：错误文案照新原型「请选择启动命令」）', () => {
+    it('stdio 必填 command（md 连接器-MCP §4.2 L276「Command：必填，下拉选择」；错误文案「请选择启动命令」为代码口径，md 未给逐字文案）', () => {
       expect(validateMcpForm({ ...validStdio, command: '' }).errors.command).toBe('请选择启动命令')
       expect(validateMcpForm({ ...validStdio, command: '   ' }).errors.command).toBe('请选择启动命令')
     })
@@ -128,6 +139,38 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     })
     it('stdio 不校验 endpoint（缺 endpoint 也通过）', () => {
       expect(validateMcpForm({ ...validStdio, endpoint: '' }).errors.endpoint).toBeUndefined()
+    })
+  })
+
+  // 2026-09-12 测试审计 T58（A18）：md §三.4.1 L266-271 + 一览表 §5.2 第 7-9 行。错误落 authConfig（对齐后端 data.field）。
+  describe('streamable-http 鉴权（md §三.4.1 L266-271）', () => {
+    const apiKey = { ...valid, authType: 'header', authHeaderName: 'X-Api-Key', authValue: 'sk-1' }
+
+    it('选 API Key：Header 名必填 → 「鉴权 Header 名必填」', () => {
+      expect(validateMcpForm({ ...apiKey, authHeaderName: '' }).errors.authConfig).toBe('鉴权 Header 名必填')
+      expect(validateMcpForm({ ...apiKey, authHeaderName: '   ' }).errors.authConfig).toBe('鉴权 Header 名必填')
+    })
+
+    it('Header 名 129 字或含下划线 → 「仅允许字母 / 数字 / 连字符（不超过 128 字符）」；恰 128 字通过', () => {
+      const tooLong = validateMcpForm({ ...apiKey, authHeaderName: 'a'.repeat(129) }).errors.authConfig
+      expect(tooLong).toBe('鉴权 Header 名仅允许字母 / 数字 / 连字符（不超过 128 字符）')
+      expect(validateMcpForm({ ...apiKey, authHeaderName: 'X_Api_Key' }).errors.authConfig).toContain('仅允许字母')
+      expect(validateMcpForm({ ...apiKey, authHeaderName: 'a'.repeat(128) }).errors.authConfig).toBeUndefined()
+      expect(validateMcpForm({ ...apiKey, authHeaderName: 'X-Api-Key-2' }).ok).toBe(true)
+    })
+
+    it('新配置密钥留空 → 「鉴权密钥必填（已配置同类型密钥时留空表示保留原值）」（Bearer 与 API Key 同）', () => {
+      const msg = '鉴权密钥必填（已配置同类型密钥时留空表示保留原值）'
+      expect(validateMcpForm({ ...valid, authType: 'bearer', authValue: '' }).errors.authConfig).toBe(msg)
+      expect(validateMcpForm({ ...apiKey, authValue: '  ' }).errors.authConfig).toBe(msg)
+    })
+
+    it('编辑态已配置（authConfigured）留空放行；填了新值也放行；无鉴权 / stdio 不校验密钥', () => {
+      expect(validateMcpForm({ ...valid, authType: 'bearer', authValue: '', authConfigured: true }).ok).toBe(true)
+      expect(validateMcpForm({ ...apiKey, authValue: '', authConfigured: true }).ok).toBe(true)
+      expect(validateMcpForm({ ...valid, authType: 'bearer', authValue: 'tok' }).ok).toBe(true)
+      expect(validateMcpForm({ ...valid, authType: 'none', authValue: '' }).ok).toBe(true)
+      expect(validateMcpForm({ ...validStdio, authType: 'bearer', authValue: '' }).errors.authConfig).toBeUndefined()
     })
   })
 })
@@ -222,3 +265,151 @@ describe('API_BODY_METHODS（BODY 位软提示的 method 口径）', () => {
   })
 })
 
+// 2026-09-12 测试审计 T36：原 bizSystemMeta.test.js:50-210 的 19 条全测本函数，搬入本文件；
+// 「url 必填且 http(s)」与「半填行仍照常校验」两条输入完全相同已合并（19→18）；
+// 「不再校验 code」空断言已删（T5：validateBizSystemForm 无任何 code 字样，永不红）。
+describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；一览表 §七）', () => {
+  const valid = {
+    name: '客户管理系统 CRM', // ≤64
+    icon: '◎',
+    description: '销售办事主系统，记录与查询客户',
+    loginUrl: 'https://crm.example.com/login',
+    connType: 'login_session',
+    bizPages: [{ url: 'https://crm.example.com/workspace', name: '工作台', description: '日常入口' }],
+    exampleQuestions: ['帮我发起一个明天下午的请假审批', '帮我打开客户管理工作台', '帮我查询一份员工档案']
+  }
+
+  it('连接方式仅登录态托管一种（md §三.2 L96）', () => {
+    expect(BIZ_CONN_TYPES.map((c) => c.value)).toEqual(['login_session'])
+  })
+
+  it('合法表单通过', () => {
+    expect(validateBizSystemForm(valid).ok).toBe(true)
+  })
+
+  it('系统名称必填 + ≤64（一览表 §七 第 1 行）', () => {
+    expect(validateBizSystemForm({ ...valid, name: '' }).errors.name).toBe('系统名称必填')
+    expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(65) }).errors.name).toBe('系统名称不超过 64 字')
+    expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(64) }).errors.name).toBeUndefined()
+  })
+
+  it('图标必填（md §三.2 L87）', () => {
+    expect(validateBizSystemForm({ ...valid, icon: '' }).errors.icon).toBe('请选择或上传图标')
+  })
+
+  it('系统描述必填 + ≤2000（md §三.2 L95）', () => {
+    expect(validateBizSystemForm({ ...valid, description: '' }).errors.description).toBe('系统描述必填')
+    expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2000) }).errors.description).toBeUndefined()
+    expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2001) }).errors.description).toBe('系统描述不超过 2000 字')
+  })
+
+  it('登录地址必填 + 合法 HTTP/HTTPS（md §三.2 L97 / §三.7 L144）', () => {
+    expect(validateBizSystemForm({ ...valid, loginUrl: '' }).errors.loginUrl).toBe('登录地址必填')
+    expect(validateBizSystemForm({ ...valid, loginUrl: 'ftp://x' }).errors.loginUrl).toBe('登录地址需以 http:// 或 https:// 开头')
+    expect(validateBizSystemForm({ ...valid, loginUrl: 'https://ok.example.com' }).errors.loginUrl).toBeUndefined()
+  })
+
+  it('示例问题固定 3 条均必填、每条 ≤60（md §三.2 L98）', () => {
+    expect(validateBizSystemForm({ ...valid, exampleQuestions: ['a', '', 'c'] }).errors.exampleQuestions).toBe(
+      '示例问题固定 3 条，须全部填写'
+    )
+    expect(validateBizSystemForm({ ...valid, exampleQuestions: undefined }).errors.exampleQuestions).toBeTruthy()
+    expect(
+      validateBizSystemForm({ ...valid, exampleQuestions: ['q'.repeat(61), 'b', 'c'] }).errors.exampleQuestions
+    ).toBe('示例问题每条不超过 60 字')
+    expect(validateBizSystemForm(valid).errors.exampleQuestions).toBeUndefined()
+  })
+
+  it('连接方式非法报错', () => {
+    expect(validateBizSystemForm({ ...valid, connType: 'weird' }).errors.connType).toBeTruthy()
+  })
+
+  it('业务页整体选填：0 条通过（md §三.3 L103）', () => {
+    expect(validateBizSystemForm({ ...valid, bizPages: [] }).ok).toBe(true)
+    expect(validateBizSystemForm({ ...valid, bizPages: undefined }).ok).toBe(true)
+  })
+
+  it('完全空白的业务页行自动丢弃：不报 url/name 必填（md §三.3 L108）', () => {
+    const r = validateBizSystemForm({
+      ...valid,
+      bizPages: [{ url: '', name: '', description: '' }]
+    })
+    expect(r.ok).toBe(true)
+    expect(r.errors['bizPages.0.url']).toBeUndefined()
+    expect(r.errors['bizPages.0.name']).toBeUndefined()
+  })
+
+  it('空白行不改变其余行的错误下标（错误键仍按原始位置）', () => {
+    const r = validateBizSystemForm({
+      ...valid,
+      bizPages: [
+        { url: '', name: '', description: '' }, // 空行：跳过
+        { url: 'not-a-url', name: '工作台' } // 第 2 行有错 → 键仍是 bizPages.1.url
+      ]
+    })
+    expect(r.errors['bizPages.1.url']).toBeTruthy()
+    expect(r.errors['bizPages.0.url']).toBeUndefined()
+  })
+
+  it('isBlankBizPage：三字段皆空（含纯空格）为空行，任一有内容即非空行', () => {
+    expect(isBlankBizPage({ url: '', name: '', description: '' })).toBe(true)
+    expect(isBlankBizPage({ url: '  ', name: ' ', description: '' })).toBe(true)
+    expect(isBlankBizPage({})).toBe(true)
+    expect(isBlankBizPage({ url: 'https://a.com' })).toBe(false)
+    expect(isBlankBizPage({ description: '只写了描述' })).toBe(false)
+  })
+
+  it('业务页逐项：任一字段已填时 URL 必填且 http(s)（md §三.3 L112 / §三.7 L145）', () => {
+    // 只填了名称没填 URL 属漏填，不是空行
+    expect(
+      validateBizSystemForm({ ...valid, bizPages: [{ url: '', name: '工作台' }] }).errors['bizPages.0.url']
+    ).toBe('业务页 URL 必填')
+    expect(
+      validateBizSystemForm({ ...valid, bizPages: [{ url: 'not-a-url', name: '工作台' }] }).errors['bizPages.0.url']
+    ).toBe('业务页 URL 需以 http:// 或 https:// 开头')
+  })
+
+  it('业务页逐项：名称必填且 ≤20（md §三.3 L107）', () => {
+    expect(
+      validateBizSystemForm({ ...valid, bizPages: [{ url: 'https://a.com', name: '' }] }).errors['bizPages.0.name']
+    ).toBe('业务页名称必填')
+    expect(
+      validateBizSystemForm({
+        ...valid,
+        bizPages: [{ url: 'https://a.com', name: 'n'.repeat(21) }]
+      }).errors['bizPages.0.name']
+    ).toBe('业务页名称不超过 20 字')
+  })
+
+  it('业务页逐项：description 选填 ≤100（md 未写上限，代码现状；审计 J15 待补 md）', () => {
+    expect(
+      validateBizSystemForm({
+        ...valid,
+        bizPages: [{ url: 'https://a.com', name: '工作台', description: 'd'.repeat(101) }]
+      }).errors['bizPages.0.description']
+    ).toBeTruthy()
+  })
+
+  it('业务页条目数 ≤20（md §三.3 L106）', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({
+      url: `https://a.com/${i}`,
+      name: `p${i}`
+    }))
+    expect(validateBizSystemForm({ ...valid, bizPages: many }).errors.bizPages).toBe('业务页最多 20 条')
+    const twenty = many.slice(0, 20)
+    expect(validateBizSystemForm({ ...valid, bizPages: twenty }).errors.bizPages).toBeUndefined()
+  })
+
+  it('多行错误索引隔离：第 1 行非法不污染第 0 行', () => {
+    const r = validateBizSystemForm({
+      ...valid,
+      bizPages: [
+        { url: 'https://ok.com', name: '工作台' },
+        { url: 'bad', name: '' }
+      ]
+    })
+    expect(r.errors['bizPages.0.url']).toBeUndefined()
+    expect(r.errors['bizPages.1.url']).toBeTruthy()
+    expect(r.errors['bizPages.1.name']).toBeTruthy()
+  })
+})

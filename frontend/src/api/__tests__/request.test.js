@@ -1,26 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// request.js 顶层 import：element-plus(ElMessage) / @/router / @/stores/user。
+// request.js 顶层 import：element-plus(ElMessage) / @/stores/user。
 // 单测只验证纯逻辑（ApiError 字段、响应拦截器分流），故全部 mock 掉副作用依赖，
 // 并捕获 axios.create 注册的拦截器回调，直接对回调做断言。
+// 2026-09-12 负责人决策 3（审计 J2）：401/1001 两条会话级收口随登录与员工端退役删除后，
+// request.js 已不再 import @/router，故原 @/router mock 与 logout/setUserInfo/
+// elMessageWarning/currentRoute 四个仅服务那两条分支的探针一并移除。
 
 const elMessageError = vi.fn()
-const elMessageWarning = vi.fn()
 vi.mock('element-plus', () => ({
-  ElMessage: { error: elMessageError, warning: elMessageWarning }
+  ElMessage: { error: elMessageError }
 }))
 
-const routerReplace = vi.fn()
-// currentRoute 用 ref 形态模拟 vue-router（.value.name 取当前路由名），默认非 BindPosition
-const currentRoute = { value: { name: 'Chat' } }
-vi.mock('@/router', () => ({
-  default: { replace: routerReplace, currentRoute }
-}))
-
-const logout = vi.fn()
-const setUserInfo = vi.fn()
-// userStore 模拟：含 userInfo（带 boundPositionId）与 setUserInfo，用于 1001 清无绑定态分支
-const userStore = { token: 'tk', logout, setUserInfo, userInfo: { boundPositionId: 7 } }
+// userStore 模拟：仅需 token（请求拦截器注入 Authorization 用）
+const userStore = { token: 'tk' }
 vi.mock('@/stores/user', () => ({
   useUserStore: () => userStore
 }))
@@ -77,12 +70,6 @@ describe('请求拦截器：注入 JWT', () => {
 describe('响应拦截器（成功分支 onFulfilled）', () => {
   beforeEach(() => {
     elMessageError.mockClear()
-    elMessageWarning.mockClear()
-    routerReplace.mockClear()
-    logout.mockClear()
-    setUserInfo.mockClear()
-    currentRoute.value = { name: 'Chat' }
-    userStore.userInfo = { boundPositionId: 7 }
   })
 
   it('code===0 → 解包返回 data', async () => {
@@ -98,52 +85,14 @@ describe('响应拦截器（成功分支 onFulfilled）', () => {
     expect(nul).toBeNull()
   })
 
-  it('code===401 → 登出 + 跳登录 + reject ApiError(401)', async () => {
-    await expect(
-      responseFulfilled({ data: { code: 401, message: '失效' }, config: {} })
-    ).rejects.toMatchObject({ code: 401 })
-    expect(logout).toHaveBeenCalledOnce()
-    expect(routerReplace).toHaveBeenCalledWith({ name: 'Login' })
-  })
+  // 2026-09-12 负责人决策 3（审计 J2）：员工端与登录整体退役后，拦截器已无 401 登出收口、
+  // 也无 1001「未绑定专家 → 跳 BindPosition」收口（Login / BindPosition 路由与
+  // utils/positionNotBound.js 均已删除），原先这两组共 4 条用例随之删除。
+  // 401 / 1001 现按普通业务码走下方 skip / toast 通用分支。
 
-  it('code===1001 → 清无绑定态 + 跳 BindPosition + 克制 warning + reject ApiError(1001)', async () => {
-    await expect(
-      responseFulfilled({ data: { code: 1001, message: '请先选择并绑定专家后再使用' }, config: {} })
-    ).rejects.toMatchObject({ code: 1001 })
-    // 置空 boundPositionId 使 guard 未绑定判定生效
-    expect(setUserInfo).toHaveBeenCalledWith({ boundPositionId: null })
-    expect(routerReplace).toHaveBeenCalledWith({ name: 'BindPosition' })
-    expect(elMessageWarning).toHaveBeenCalledWith('请先选择并绑定搭子后再使用')
-    // 不走默认红错 toast
-    expect(elMessageError).not.toHaveBeenCalled()
-    // 不触发登出
-    expect(logout).not.toHaveBeenCalled()
-  })
-
-  it('code===1001 但当前已在 BindPosition → 不重复 replace、不重复弹提示（防循环）', async () => {
-    currentRoute.value = { name: 'BindPosition' }
-    await expect(
-      responseFulfilled({ data: { code: 1001, message: '请先选择并绑定专家后再使用' }, config: {} })
-    ).rejects.toMatchObject({ code: 1001 })
-    expect(routerReplace).not.toHaveBeenCalled()
-    expect(elMessageWarning).not.toHaveBeenCalled()
-  })
-
-  it('code===1001（未绑定）即便 skipGlobalError → 仍优先收口跳 BindPosition（会话级，不被 skip 吞掉）', async () => {
-    // 1001 现为「未绑定专家」唯一语义（R-EC1）：无绑定态下任何接口都该导向选专家页，
-    // 不因写接口 skipGlobalError 而静默，故此分支保留。
-    await expect(
-      responseFulfilled({
-        data: { code: 1001, message: '请先选择并绑定专家后再使用' },
-        config: { skipGlobalError: true }
-      })
-    ).rejects.toMatchObject({ code: 1001 })
-    expect(routerReplace).toHaveBeenCalledWith({ name: 'BindPosition' })
-  })
-
-  it('code===1005（岗位内唯一冲突）+ skipGlobalError → 不跳转、不弹 toast、带 field 抛 ApiError', async () => {
-    // R-EC1：唯一冲突已从 1001 让位到 1005，绝不触发跳绑定页；
-    // 走 skip 分支携带 field（Agent 名 / 采集字段 code / 技能 code 重复）供组件红框回显。
+  it('code===1005（岗位内唯一冲突）+ skipGlobalError → 不弹 toast、带 field 抛 ApiError', async () => {
+    // R-EC1：唯一冲突已从 1001 让位到 1005，走 skip 分支携带 field
+    //（Agent 名 / 采集字段 code / 技能 code 重复）供组件红框回显。
     let caught
     await responseFulfilled({
       data: { code: 1005, message: '岗位内已存在同名 Agent', data: { field: 'name' } },
@@ -152,8 +101,6 @@ describe('响应拦截器（成功分支 onFulfilled）', () => {
     expect(caught).toBeInstanceOf(ApiError)
     expect(caught.code).toBe(1005)
     expect(caught.field).toBe('name')
-    expect(routerReplace).not.toHaveBeenCalled()
-    expect(setUserInfo).not.toHaveBeenCalled()
     expect(elMessageError).not.toHaveBeenCalled()
   })
 
@@ -184,15 +131,10 @@ describe('响应拦截器（成功分支 onFulfilled）', () => {
 describe('响应拦截器（HTTP 错误分支 onRejected）', () => {
   beforeEach(() => {
     elMessageError.mockClear()
-    routerReplace.mockClear()
-    logout.mockClear()
   })
 
-  it('HTTP 401 兜底 → 登出', async () => {
-    await responseRejected({ response: { status: 401 }, config: {} }).catch(() => {})
-    expect(logout).toHaveBeenCalledOnce()
-    expect(routerReplace).toHaveBeenCalledWith({ name: 'Login' })
-  })
+  // 2026-09-12 负责人决策 3（审计 J2）：登录随员工端退役，原「HTTP 401 → 登出跳 Login」
+  // 兜底分支已删（含 skipGlobalError 仍强收口那条），对应 2 条用例随之删除。
 
   it('skipGlobalError 的 HTTP 错误 → 转 ApiError，不弹 toast', async () => {
     let caught
@@ -234,17 +176,6 @@ describe('响应拦截器（HTTP 错误分支 onRejected）', () => {
     expect(caught).toBe(cancelErr) // 原样透传，供调用方按 isCancel 忽略
     expect(caught).not.toBeInstanceOf(ApiError)
     expect(elMessageError).not.toHaveBeenCalled()
-    expect(logout).not.toHaveBeenCalled()
-  })
-
-  it('HTTP 401 + skipGlobalError → 仍统一登出跳 Login（不被 skip 吞掉），reject 原 error', async () => {
-    const err = { response: { status: 401 }, config: { skipGlobalError: true } }
-    let caught
-    await responseRejected(err).catch((e) => (caught = e))
-    expect(logout).toHaveBeenCalledOnce()
-    expect(routerReplace).toHaveBeenCalledWith({ name: 'Login' })
-    // 401 分支不转 ApiError，reject 原 error
-    expect(caught).toBe(err)
   })
 
   it('非 skip 无 response 的网络异常 → toast 兜底文案「网络异常，请稍后重试」+ reject 原 error', async () => {

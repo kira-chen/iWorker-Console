@@ -95,7 +95,7 @@ function mount(setupState) {
         activeFilePath: this.activeFilePath,
         activeFileType: this.activeFileType,
         activeFileContent: this.activeFileContent,
-        // 透传可选 props（positionId/agents/currentAgentId/showClose/skillSource 等收口测试用）
+        // 透传可选 props（positionId/agents/currentAgentId/skillSource 等收口测试用；showClose 已退役 2026-09-12 J14）
         ...(this.extra || {})
       })
     }
@@ -417,7 +417,7 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     expect(el.querySelector('.eh-name')?.value).toBe('搭子')
   })
 
-  it('整页（showClose=false）：顶行含「← 返回」+ 技能名称 label；保存灯移入文件标签条（文件名右侧）；#4 无删除⋯', () => {
+  it('整页常态（showClose 开关已退役，2026-09-12 J14）：顶行含「← 返回」+ 技能名称 label；保存灯移入文件标签条（文件名右侧）；#4 无删除⋯、无「↩ 返回总览」、无岗位面包屑', () => {
     const onBack = vi.fn()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -429,7 +429,8 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
           activeFilePath: 'SKILL.md',
           activeFileType: 'md',
           activeFileContent: '',
-          showClose: false,
+          positionId: 9,
+          positionName: '客服岗',
           backLabel: '← 返回',
           // 组① 四态保存灯：传 saved 态（替代旧 autosaveText 字符串）。
           saveStatus: { phase: 'saved', savedAt: Date.now() },
@@ -451,11 +452,15 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     const filebar = container.querySelector('.ed-filebar')
     expect(filebar.querySelector('.save-ind')).toBeTruthy()
     expect(filebar.querySelector('.save-ind')?.textContent).toContain('已保存')
-    // #4：整页编辑器不要删除入口 → 无 ⋯
+    // #4：整页编辑器不要删除入口 → 无 ⋯；J14 后即使传了 positionId/positionName 也不再渲染岗位面包屑与「↩ 返回总览」
     expect(topline.querySelector('.crumb-more')).toBeNull()
+    expect(topline.querySelector('.ed-close')).toBeNull()
+    expect(topline.querySelector('.crumb-link')).toBeNull()
+    expect(topline.textContent).not.toContain('客服岗')
+    expect(container.querySelector('.focus-editor')).toBeTruthy()
   })
 
-  it('布局调整：描述为固定 3 行 textarea + 1000 字上限（右下角计数器，2026-08-14 上下全宽布局）', () => {
+  it('布局调整：描述为固定 3 行 textarea + 2000 字上限（一览表技能描述上限统一 2000，2026-09-12 J15-5；右下角计数器）', () => {
     const el = mount({
       skill: skillRef(),
       files: ref(FILES),
@@ -466,11 +471,11 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     })
     const descInput = el.querySelector('.ed-infobar .ib-desc .ib-input')
     expect(descInput).toBeTruthy()
-    // 描述用 textarea：固定 3 行不长高（无 autosize，2026-08-14 布局）+ maxlength 1000（2026-07-13 需求，原 200）
+    // 描述用 textarea：固定 3 行不长高（无 autosize，2026-08-14 布局）+ maxlength 2000（J15-5：不再按 adminContext 分 1000/2000）
     expect(descInput.getAttribute('data-type')).toBe('textarea')
     expect(descInput.getAttribute('data-autosize')).toBe('')
     expect(descInput.getAttribute('data-rows')).toBe('3')
-    expect(descInput.getAttribute('data-maxlength')).toBe('1000')
+    expect(descInput.getAttribute('data-maxlength')).toBe('2000')
   })
 
   it('布局调整 #2：信息条上下结构（2026-08-14）——描述 desc 区、示例问题 eq 区两区，触发词区已移除', () => {

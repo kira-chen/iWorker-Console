@@ -254,7 +254,8 @@ async function load() {
     times.updatedAt = d.updatedAt || null
     times.publishedAt = d.publishedAt || null
     // N8：并行拉取该系统的专属技能（失败置错误态，不阻断主表编辑）。
-    loadOwnedSkills()
+    // 查看态不拉（2026-09-12 审计 K45）：专属技能区仅编辑态展示（md §三.4 L120），只读态多一次无用请求。
+    if (!props.readonly) loadOwnedSkills()
   } catch (e) {
     loadError.value = true
   } finally {
@@ -319,7 +320,7 @@ function removePage(idx) {
 }
 
 /** 示例问题 AI 生成（2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制，取代旧
- * aiGenerateBizExampleQuestions 随机模板即填——该 api/mock 函数保留在 api 层不删）：
+ * aiGenerateBizExampleQuestions 随机模板即填，该函数已于 2026-09-12 负责人决策 6 连同 api 包装一并删除）：
  * 源=系统描述（空则按钮禁用 + title「请先填写系统描述」），点击进「生成中…」约 420ms，
  * 按描述本地模板生成 3 条连接器式问题，完成 toast「AI 内容已生成，请确认后保存」。 */
 const {
@@ -611,8 +612,9 @@ async function save() {
               暂无业务页，可不配置（留空表示不约束）
             </div>
             <div v-if="!readonly" class="bpe-foot">
+              <!-- 按钮名逐字照 md §三.3 L107【＋ 添加业务页】（全角＋，2026-09-12 审计 K41） -->
               <el-button link type="primary" :disabled="pagesAtMax" @click="addPage">
-                + 添加业务页
+                ＋ 添加业务页
               </el-button>
               <span v-if="pagesAtMax" class="bpe-hint">已达上限 {{ PAGES_MAX }} 条</span>
             </div>
@@ -630,8 +632,9 @@ async function save() {
 
         <!-- 新建入口：从零建一条空白专属技能，再进编辑器填内容 -->
         <div class="ad-bind-row">
+          <!-- 按钮名逐字照 md §三.4 L124【＋ 新建专属技能】（全角＋，2026-09-12 审计 K41） -->
           <el-button type="primary" :loading="creating" @click="openCreate">
-            + 新建专属技能
+            ＋ 新建专属技能
           </el-button>
           <span class="ad-owned-hint">从零新建本业务系统专用技能</span>
         </div>

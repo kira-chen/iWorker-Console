@@ -12,7 +12,7 @@ vi.mock('@/api/skillFiles', () => ({
   deleteSkillFile: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   renameSkillFile: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   exportSkillZip: vi.fn(() => Promise.resolve('skill-1.zip')),
-  // 目录结构能力端点 9~12（is_dir 持久化 + 原子文件夹/移动）。
+  // 目录结构能力：createSkillFolder / renameSkillFolder / deleteSkillFolder / moveSkillNode（mock 层，is_dir 持久化 + 原子文件夹/移动）。
   createSkillFolder: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   renameSkillFolder: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   deleteSkillFolder: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
@@ -429,7 +429,7 @@ describe('SkillFileTree 树操作 inputValidator（P0-1 / P1）', () => {
   })
 })
 
-describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点 9~12）', () => {
+describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子文件夹/移动，mock 层）', () => {
   const FOLDER_FILES = [
     { path: 'SKILL.md', name: 'SKILL.md', fileType: 'md', isEntry: true },
     { path: 'references/policy.md', name: 'policy.md', fileType: 'md', isEntry: false },
@@ -437,7 +437,7 @@ describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点
     { path: 'references/sub/note.md', name: 'note.md', fileType: 'md', isEntry: false }
   ]
 
-  it('新建文件夹 → 调后端端点9 createSkillFolder 落库（is_dir 持久化，不再客户端待定）', async () => {
+  it('新建文件夹 → 调 createSkillFolder（mock 层）落库（is_dir 持久化，不再客户端待定）', async () => {
     promptSpy.mockResolvedValue({ value: 'newdir' }) // 文件夹名
     const changed = []
     const el = mount({
@@ -453,7 +453,7 @@ describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点
     expect(el.querySelectorAll('.ft-pending').length).toBe(0)
   })
 
-  it('重命名文件夹 → 单次原子 renameSkillFolder(端点10)（不再逐文件 rename）', async () => {
+  it('重命名文件夹 → 单次原子 renameSkillFolder（mock 层）（不再逐文件 rename）', async () => {
     promptSpy.mockResolvedValue({ value: 'docs' }) // 新夹名
     const changed = []
     const el = mount({
@@ -471,7 +471,7 @@ describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点
     expect(meta.pathMap['references/sub/note.md']).toBe('docs/sub/note.md')
   })
 
-  it('删除非空文件夹 → confirm 列影响清单 + 单次原子 deleteSkillFolder(端点11)', async () => {
+  it('删除非空文件夹 → confirm 列影响清单 + 单次原子 deleteSkillFolder（mock 层）', async () => {
     let confirmMsg = ''
     confirmSpy.mockImplementation((msg) => {
       confirmMsg = msg
@@ -518,7 +518,7 @@ describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点
     const confirmBtn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('确认移动'))
     confirmBtn.click()
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
-    // 端点12 原子移动：payload 为 { fromPath, toParentDir, isDir }（toPath 由后端按叶子名拼）
+    // moveSkillNode（mock 层）原子移动：payload 为 { fromPath, toParentDir, isDir }（toPath 由 mock 层按叶子名拼）
     expect(moveSkillNode).toHaveBeenCalledWith(
       1,
       { fromPath: 'references/policy.md', toParentDir: 'references/sub', isDir: false },
@@ -531,7 +531,7 @@ describe('SkillFileTree 文件夹/移动操作（is_dir 持久化 + 原子端点
     expect(ElMessage.success).toHaveBeenCalled()
   })
 
-  it('删除非空文件夹取消 → 不调任何删除端点', async () => {
+  it('删除非空文件夹取消 → 不调 deleteSkillFolder（mock 层）', async () => {
     confirmSpy.mockRejectedValue('cancel')
     const el = mount({ skillId: 1, files: FOLDER_FILES, source: 'fde', activePath: 'SKILL.md' })
     const df = [...el.querySelectorAll('.dd-item[data-command="delete-folder"]')][0]

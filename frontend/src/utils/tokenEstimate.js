@@ -55,40 +55,5 @@ export function formatTokenEstimate(tokens) {
   return `约 ${t} tokens`
 }
 
-/* ============================ 路由候选体量第二量纲（description / triggers） ============================ */
-
-// 与后端 IntentClassifyProperties 默认值同量级（可配置，前端按「约」提示、不作硬阈值）。
-//
-// AI 注释（口径对齐）：后端有两条路由渲染路径——
-//  ① 两级路由（two-level，Agent 分桶）：description 截 skillSummaryMaxChars(默认 100)，triggers 取 maxTriggersPerSkill(默认 6)；
-//  ② 扁平单级（legacy 单 SkillCandidate）：description 截 LEGACY_SUMMARY_MAX=120，且不渲染触发词。
-// 前端取**较小值 100** 作保守预警（宁可早提醒），并以**两级路由口径**为准（含 triggers 维度，扁平路径无触发词不适用）。
-// 后端阈值均可配置 → 前端文案一律「约」，仅给数量级体感、非精确、非硬阈值。
-export const ROUTE_DESC_SOFT_CHARS = 100 // description 进路由 prompt 约被截到的字数（两级路由 skillSummaryMaxChars 默认；扁平路径为 120，取小者保守）
-export const ROUTE_TRIGGERS_VISIBLE = 6 // 路由 prompt 约渲染的触发词个数（两级路由 maxTriggersPerSkill 默认；扁平路径不渲染触发词）
-
-/**
- * description 进路由候选时的体量提示。超出约 100 字 → 提示会被截断。
- * @param {string} description
- * @returns {string} 空串 = 无需提示
- */
-export function routeDescHint(description) {
-  const len = String(description ?? '').trim().length
-  if (len > ROUTE_DESC_SOFT_CHARS) {
-    return `描述较长：路由判断时大约只看前 ${ROUTE_DESC_SOFT_CHARS} 字，建议把「什么时候用」写在开头。`
-  }
-  return ''
-}
-
-/**
- * triggers 进路由候选时的体量提示。超出约 6 个 → 第 7 个起路由时可能看不到。
- * @param {string[]} triggers
- * @returns {string} 空串 = 无需提示
- */
-export function routeTriggersHint(triggers) {
-  const n = Array.isArray(triggers) ? triggers.length : 0
-  if (n > ROUTE_TRIGGERS_VISIBLE) {
-    return `触发词较多：路由判断时大约只用前 ${ROUTE_TRIGGERS_VISIBLE} 个，靠后的可能用不上，建议把最关键的放前面。`
-  }
-  return ''
-}
+/* 「路由候选体量第二量纲」段（ROUTE_DESC_SOFT_CHARS / ROUTE_TRIGGERS_VISIBLE / routeDescHint / routeTriggersHint）
+   已于 2026-09-12 死码清理删除（审计 J13）：零调用方，描述/触发词输入框已不再挂路由体量提示。 */

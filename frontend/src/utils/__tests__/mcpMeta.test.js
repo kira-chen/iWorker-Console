@@ -1,17 +1,21 @@
+/**
+ * mcpMeta 纯函数守卫。
+ *
+ * 2026-09-12 头注更新（审计 D8）：原各 describe 引用的「契约 §1.3 / §4.1 / §5.1 / 展示规格 §3.1.1」
+ * 均为已退役的前后端接口契约（发布单元 2026-09-01 一并退役）；现口径 = md
+ * `docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md` §二.2 L57（连接状态三态
+ * 「连接正常 / 连接异常 / 未探测」）+ mcpMeta.js 自身注释。四态 displayStatus（含 DISABLED）
+ * 由 api/mcpConnectorMock 下发，MCP 列表侧把 DISABLED 折回 UNKNOWN（AdminMcp.mcpConnStatus）。
+ *
+ * isRedDot / countUnhealthy / fmtCount / fmtDuration / fmtPercent / hasUsage 六个零调用方导出
+ * 已于 2026-09-12 随死码清理删除（审计 J13），对应 19 条用例一并删。
+ * 原「McpEditor 失败回显不引用 form.endpoint」源码正则用例已迁至
+ * components/admin/__tests__/mcpEditor.test.js（审计 D9 / T37）。
+ */
 import { describe, it, expect } from 'vitest'
-import {
-  connMeta,
-  mergeFetchedTools,
-  resolveDisplayStatus,
-  isRedDot,
-  countUnhealthy,
-  fmtCount,
-  fmtDuration,
-  fmtPercent,
-  hasUsage
-} from '@/utils/mcpMeta'
+import { connMeta, mergeFetchedTools, resolveDisplayStatus } from '@/utils/mcpMeta'
 
-describe('connMeta — 三态连接标签（契约 §1.3）', () => {
+describe('connMeta — 三态连接标签（md MCP §二.2 L57 三态文案）', () => {
   it('ok → success/连接正常', () => {
     expect(connMeta('ok')).toEqual({ tag: 'success', label: '连接正常' })
   })
@@ -28,7 +32,7 @@ describe('connMeta — 三态连接标签（契约 §1.3）', () => {
   })
 })
 
-describe('resolveDisplayStatus — 检活四态归一（切片3a，契约 §4.1/§5.1）', () => {
+describe('resolveDisplayStatus — 检活四态归一（mock 下发 displayStatus 优先，缺省按 status/connStatus 派生）', () => {
   it('优先取后端 displayStatus 四态', () => {
     expect(resolveDisplayStatus({ displayStatus: 'HEALTHY' })).toBe('HEALTHY')
     expect(resolveDisplayStatus({ displayStatus: 'UNHEALTHY' })).toBe('UNHEALTHY')
@@ -51,31 +55,6 @@ describe('resolveDisplayStatus — 检活四态归一（切片3a，契约 §4.1/
     expect(resolveDisplayStatus({})).toBe('UNKNOWN')
     expect(resolveDisplayStatus(null)).toBe('UNKNOWN')
     expect(resolveDisplayStatus(undefined)).toBe('UNKNOWN')
-  })
-})
-
-describe('isRedDot / countUnhealthy — 红点提示（契约 §4.1）', () => {
-  it('优先取后端 redDot 布尔', () => {
-    expect(isRedDot({ redDot: true, displayStatus: 'HEALTHY' })).toBe(true)
-    expect(isRedDot({ redDot: false, displayStatus: 'UNHEALTHY' })).toBe(false)
-  })
-  it('无 redDot 时由四态推导（仅 UNHEALTHY 红点）', () => {
-    expect(isRedDot({ displayStatus: 'UNHEALTHY' })).toBe(true)
-    expect(isRedDot({ displayStatus: 'HEALTHY' })).toBe(false)
-    expect(isRedDot({ displayStatus: 'DISABLED' })).toBe(false)
-    expect(isRedDot({ displayStatus: 'UNKNOWN' })).toBe(false)
-    expect(isRedDot({ status: 'active', connStatus: 'failed' })).toBe(true)
-  })
-  it('countUnhealthy 统计列表红点数', () => {
-    const rows = [
-      { displayStatus: 'HEALTHY' },
-      { displayStatus: 'UNHEALTHY' },
-      { connStatus: 'failed', status: 'active' },
-      { displayStatus: 'DISABLED' }
-    ]
-    expect(countUnhealthy(rows)).toBe(2)
-    expect(countUnhealthy([])).toBe(0)
-    expect(countUnhealthy()).toBe(0)
   })
 })
 
@@ -144,108 +123,5 @@ describe('mergeFetchedTools — 拉取刷新（工具清单只读化：server �
   it('忽略无 name 的脏数据，空入参安全返回 []', () => {
     expect(mergeFetchedTools()).toEqual([])
     expect(mergeFetchedTools([], [{ description: '没有name' }, { name: '' }, null])).toEqual([])
-  })
-})
-
-describe('使用统计格式化（展示规格 §3.1.1 D/E）— 不外泄 NaN/null/Infinity', () => {
-  describe('fmtCount — 千分位，无效值归 0', () => {
-    it('正常千分位分组', () => {
-      expect(fmtCount(0)).toBe('0')
-      expect(fmtCount(1280)).toBe('1,280')
-      expect(fmtCount(1000000)).toBe('1,000,000')
-    })
-    it('小数截断为整数', () => {
-      expect(fmtCount(1280.9)).toBe('1,280')
-    })
-    it('null/undefined/NaN/Infinity/非数 → 0', () => {
-      expect(fmtCount(null)).toBe('0')
-      expect(fmtCount(undefined)).toBe('0')
-      expect(fmtCount(NaN)).toBe('0')
-      expect(fmtCount(Infinity)).toBe('0')
-      expect(fmtCount('123')).toBe('0')
-    })
-  })
-
-  describe('fmtDuration — ms<1000 显 ms，≥1000 换 s 保留1位；空值 —', () => {
-    it('<1000ms 显整数 ms', () => {
-      expect(fmtDuration(820)).toBe('820 ms')
-      expect(fmtDuration(0)).toBe('0 ms')
-      expect(fmtDuration(999.6)).toBe('1000 ms') // 四舍五入仍 <1000 分支边界
-    })
-    it('≥1000ms 换算 s 保留 1 位', () => {
-      expect(fmtDuration(1000)).toBe('1.0 s')
-      expect(fmtDuration(1400)).toBe('1.4 s')
-      expect(fmtDuration(1820)).toBe('1.8 s')
-    })
-    it('null/undefined/NaN/Infinity/负数 → —', () => {
-      expect(fmtDuration(null)).toBe('—')
-      expect(fmtDuration(undefined)).toBe('—')
-      expect(fmtDuration(NaN)).toBe('—')
-      expect(fmtDuration(Infinity)).toBe('—')
-      expect(fmtDuration(-5)).toBe('—')
-    })
-  })
-
-  describe('fmtPercent — 0~1→%，整百显 100%，否则 1 位；空值 —', () => {
-    it('整百不补 .0', () => {
-      expect(fmtPercent(1)).toBe('100%')
-      expect(fmtPercent(0)).toBe('0%')
-      expect(fmtPercent(0.5)).toBe('50%')
-    })
-    it('非整百保留 1 位', () => {
-      expect(fmtPercent(0.992)).toBe('99.2%')
-      expect(fmtPercent(0.3334)).toBe('33.3%')
-    })
-    it('越界裁剪到 0~100，不外泄异常', () => {
-      expect(fmtPercent(1.5)).toBe('100%')
-      expect(fmtPercent(-0.2)).toBe('0%')
-    })
-    it('null/undefined/NaN/Infinity → —', () => {
-      expect(fmtPercent(null)).toBe('—')
-      expect(fmtPercent(undefined)).toBe('—')
-      expect(fmtPercent(NaN)).toBe('—')
-      expect(fmtPercent(Infinity)).toBe('—')
-    })
-  })
-
-  describe('hasUsage — callCount>0 才有调用记录', () => {
-    it('callCount>0 → true', () => {
-      expect(hasUsage({ callCount: 1 })).toBe(true)
-      expect(hasUsage({ callCount: 1280 })).toBe(true)
-    })
-    it('0/缺省/null/NaN/无 row → false', () => {
-      expect(hasUsage({ callCount: 0 })).toBe(false)
-      expect(hasUsage({})).toBe(false)
-      expect(hasUsage({ callCount: null })).toBe(false)
-      expect(hasUsage({ callCount: NaN })).toBe(false)
-      expect(hasUsage(null)).toBe(false)
-      expect(hasUsage(undefined)).toBe(false)
-    })
-  })
-})
-
-describe('失败提示脱敏（契约 §6）— 渲染层不应拼出 endpoint', () => {
-  // McpEditor 直接展示后端已脱敏的 failReason/message，前端不再二次拼接 endpoint。
-  // 此处以静态源码断言守住：失败回显中不得引用 form.endpoint。
-  //
-  // 2026-09-09 原型复刻批次 3A · M6：结果回显由双 el-alert 改为原型 `.result` 单行提示框，
-  // 文案在 script 侧的 testResultText computed 里拼。断言随之改为盯这个 computed 的函数体。
-  it('McpEditor 失败回显不引用 form.endpoint', async () => {
-    const fs = await import('node:fs')
-    const path = await import('node:path')
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../../components/admin/McpEditor.vue'),
-      'utf-8'
-    )
-    // 结果文案 computed 整体不得插值 endpoint（成功/失败两分支都在其中）
-    const start = src.indexOf('const testResultText = computed(')
-    expect(start).toBeGreaterThan(-1)
-    const body = src.slice(start, src.indexOf('\n})', start))
-    // 失败分支用的是后端已脱敏的 failReason（computed 里 r = testResult.value）
-    expect(body).toContain('failReason')
-    expect(body).not.toMatch(/form\.endpoint/)
-    // 模板侧的结果框也只吐 computed 结果，不拼 endpoint
-    const resultBlock = src.slice(src.indexOf('class="md-conn-result"'))
-    expect(resultBlock.slice(0, resultBlock.indexOf('</div>'))).not.toMatch(/form\.endpoint/)
   })
 })

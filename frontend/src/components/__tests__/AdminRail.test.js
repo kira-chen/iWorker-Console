@@ -22,7 +22,7 @@ import { useUserStore } from '@/stores/user'
  *   仅 FDE → 见 01 总览 + 02 岗位；仅 SYS_CONFIG → 见 01 总览 + 03 能力（无模型，无 04/05/06）；admin → 六段全见。
  * 高亮沿用 route.meta.activeMenu || route.name：工作台 / 技能编辑沉浸页归并到对应一级项。
  * 部分菜单仅文案改版、路由 name 不变（审核中心=UnifiedReview、访问审计=AdminLoginLogs、字段字典=SysConfigFieldManagement、角色与权限=AdminRoles）。
- * 「报表」（FdeReports）本次改版从菜单移除（路由保留、菜单不列）。
+ * 「报表」两页已于 2026-09-12 负责人决策 4 整体退役（页面 / 路由 / 数据层一并删除）。
  *
  * 不引 @vue/test-utils：createApp 挂 jsdom 容器，配真实 memory router 与最小 EP/图标存根。
  */
@@ -65,7 +65,6 @@ function makeRouter() {
         component: blank,
         meta: { activeMenu: 'AdminSkillsUnified' }
       },
-      { path: '/admin/reports/fde', name: 'FdeReports', component: blank },
       {
         path: '/admin/positions/:id/workbench',
         name: 'PositionWorkbench',
@@ -137,12 +136,16 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     setActivePinia(pinia)
     if (!('localStorage' in globalThis) || typeof globalThis.localStorage?.getItem !== 'function') {
       const mem = new Map()
-      globalThis.localStorage = {
-        getItem: (k) => (mem.has(k) ? mem.get(k) : null),
-        setItem: (k, v) => mem.set(k, String(v)),
-        removeItem: (k) => mem.delete(k),
-        clear: () => mem.clear()
-      }
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: {
+          getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+          setItem: (k, v) => mem.set(k, String(v)),
+          removeItem: (k) => mem.delete(k),
+          clear: () => mem.clear()
+        },
+        writable: true,
+        configurable: true
+      })
     }
   })
   afterEach(() => {
@@ -266,13 +269,18 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(active.textContent.trim()).toBe('审核中心')
   })
 
-  it('头像二级菜单：无「返回前台」，保留退出登录 + 外观切换', async () => {
+  it('头像二级菜单：只剩用户名 + 外观切换，不含「修改密码」「退出登录」（审计 J2/J11/K42，Q183「登录暂不考虑」）', async () => {
     const el = await mount({ name: 'AdminPositions' }, ['ADMIN'])
     const commands = [...el.querySelectorAll('.el-dropdown-item')].map((n) =>
       n.getAttribute('data-command')
     )
-    expect(commands).not.toContain('front')
-    expect(commands).toContain('logout')
+    // 2026-09-12 审计 T46 提升为整份菜单逐项相等；同日 J11/K42 先按 Q183 用开关隐藏两项账号类死操作，
+    // 继而负责人决策 3（审计 J2）员工端整体退役——ChangePasswordDialog / api/auth.js / Login 路由
+    // 连同 ACCOUNT_ACTIONS_ENABLED 开关与 onUserCommand 处理函数一并删除，菜单已无任何 command 项。
+    expect(commands).toEqual([])
+    expect(el.textContent).not.toContain('修改密码')
+    expect(el.textContent).not.toContain('退出登录')
+    expect(el.querySelector('.rail-user-name')).toBeTruthy()
     expect(el.querySelector('.theme-toggle')).toBeTruthy()
   })
 

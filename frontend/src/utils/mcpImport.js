@@ -18,18 +18,8 @@
 
 const HTTP_TYPES = new Set(['http', 'streamable-http', 'streamablehttp', 'sse'])
 
-/**
- * 把服务别名规整成候选 MCP code（小写字母/数字/下划线；非法字符→下划线，去首尾下划线）。
- * 仅作「新建时 code 为空」的便捷预填，用户可再改；规整不出合法值则返回 ''。
- * @param {string} key 服务别名
- * @returns {string}
- */
-export function suggestCodeFromKey(key) {
-  return (key || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
+/* suggestCodeFromKey（服务别名 → 候选 code）已于 2026-09-12 删除（审计 J13）：零调用方，
+   且与 md §三.2 L225「server key 只用于解析，不作为可见或可编辑的 MCP code」相悖。 */
 
 /**
  * 解析粘贴的 MCP 配置文本。

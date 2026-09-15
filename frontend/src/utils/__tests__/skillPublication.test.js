@@ -6,16 +6,16 @@ import {
   stateActions,
   skillOnlineState,
   isLocked,
-  userEndPublication,
-  targetActions,
-  TARGETS,
-  targetLabel
+  userEndPublication
 } from '@/utils/skillPublication'
 
 /**
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §二.3.3-3.5 / §二.5 / §三.1：
  * 平台技能发布态口径（去分端·单轨）单一真相直接单测：
  * 守护展示态派生、文案、StatusTag 颜色、动作矩阵、锁定谓词不被静默改坏。
  * 列表版本号 tag / 发布对话框 / 编辑器锁定 均依赖本模块，故口径偏移会同时打穿多处。
+ * 第 8 态 PUBLISHED_DELISTING（已发布 + pendingAction:'DELIST'）= md L96「确认后提交停用审核，状态变为审核中」、
+ * L120「存在审核中操作时编辑页锁定，仅允许查看和撤回」、L131「审核中重复提交：版本发布弹窗仅提供【撤回提交】」。
  */
 
 const u = (status, extra = {}) => [{ target: 'USER_END', status, ...extra }]
@@ -33,7 +33,7 @@ describe('skillPublication 单轨展示态', () => {
     expect(userEndPublication(mixed).status).toBe('REJECTED')
   })
 
-  it('derivePlatformState：七态派生（含 reviewPending 分流）', () => {
+  it('derivePlatformState：八态派生（含 reviewPending 分流 + 停用审核中）', () => {
     expect(derivePlatformState([])).toBe('INITIAL')
     expect(derivePlatformState(null)).toBe('INITIAL')
     expect(derivePlatformState(u('PENDING_REVIEW'))).toBe('REVIEWING')
@@ -44,11 +44,22 @@ describe('skillPublication 单轨展示态', () => {
     expect(derivePlatformState(u('DELISTED', { reviewPending: true }))).toBe('DELISTED_REVIEWING')
   })
 
-  it('stateLabel：七态→中文，未知/空兜底', () => {
+  it('已发布 + pendingAction=DELIST → 第 8 态 PUBLISHED_DELISTING，文案「已发布 · 停用审核中」、色 warning（md L96）', () => {
+    // 提交停用审核后 status 仍 PUBLISHED（线上继续可用），靠 pendingAction 区分
+    expect(derivePlatformState(u('PUBLISHED', { pendingAction: 'DELIST' }))).toBe('PUBLISHED_DELISTING')
+    // 只有 PUBLISHED 行才认 DELIST 挂起；其它 status 不受 pendingAction 影响
+    expect(derivePlatformState(u('DELISTED', { pendingAction: 'DELIST' }))).toBe('DELISTED')
+    expect(derivePlatformState(u('PENDING_REVIEW', { pendingAction: 'DELIST' }))).toBe('REVIEWING')
+    expect(stateLabel('PUBLISHED_DELISTING')).toBe('已发布 · 停用审核中')
+    expect(stateTagType('PUBLISHED_DELISTING')).toBe('warning')
+  })
+
+  it('stateLabel：八态→中文，未知/空兜底', () => {
     expect(stateLabel('INITIAL')).toBe('初始创建')
     expect(stateLabel('REVIEWING')).toBe('审核中')
     expect(stateLabel('PUBLISHED')).toBe('已发布')
     expect(stateLabel('PUBLISHED_REVIEWING')).toBe('已发布 · 新版审核中')
+    expect(stateLabel('PUBLISHED_DELISTING')).toBe('已发布 · 停用审核中')
     expect(stateLabel('REJECTED')).toBe('已驳回')
     expect(stateLabel('DELISTED')).toBe('已下架')
     expect(stateLabel('DELISTED_REVIEWING')).toBe('已下架 · 新版审核中')
@@ -56,11 +67,12 @@ describe('skillPublication 单轨展示态', () => {
     expect(stateLabel()).toBe('—')
   })
 
-  it('stateTagType：七态→StatusTag 语义色，未知回落 info', () => {
+  it('stateTagType：八态→StatusTag 语义色，未知回落 info', () => {
     expect(stateTagType('INITIAL')).toBe('info')
     expect(stateTagType('REVIEWING')).toBe('warning')
     expect(stateTagType('PUBLISHED')).toBe('success')
     expect(stateTagType('PUBLISHED_REVIEWING')).toBe('warning')
+    expect(stateTagType('PUBLISHED_DELISTING')).toBe('warning')
     expect(stateTagType('REJECTED')).toBe('danger')
     expect(stateTagType('DELISTED')).toBe('info')
     expect(stateTagType('DELISTED_REVIEWING')).toBe('warning')
@@ -81,6 +93,14 @@ describe('skillPublication 单轨展示态', () => {
     expect(stateActions('WEIRD')).toEqual(['submit'])
   })
 
+  it('停用审核中 → 弹窗仅【撤回提交】、编辑锁定、操作列不再给「停用」（md L98/L120/L131）', () => {
+    const pubs = u('PUBLISHED', { pendingAction: 'DELIST' })
+    expect(stateActions('PUBLISHED_DELISTING')).toEqual(['withdraw'])
+    expect(isLocked(pubs)).toBe(true)
+    // 已提交停用审核 → 归 NONE，操作列不显「停用」（避免重复提交）
+    expect(skillOnlineState(pubs)).toBe('NONE')
+  })
+
   it('skillOnlineState：技能级上下架态（供操作列「下架/上架」）', () => {
     expect(skillOnlineState([])).toBe('NONE') // 无发布行
     expect(skillOnlineState(u('PENDING_REVIEW'))).toBe('NONE') // 首发在审，从未上线
@@ -99,23 +119,5 @@ describe('skillPublication 单轨展示态', () => {
     expect(isLocked(u('PUBLISHED'))).toBe(false)
     expect(isLocked(u('REJECTED'))).toBe(false)
     expect(isLocked(u('DELISTED'))).toBe(false)
-  })
-})
-
-describe('skillPublication 连接器旧口径（沿用不动）', () => {
-  it('TARGETS / targetLabel：连接器与版本历史仍分端', () => {
-    expect(TARGETS).toEqual(['FDE_WORKBENCH', 'USER_END'])
-    expect(targetLabel('FDE_WORKBENCH')).toBe('FDE 工作台')
-    expect(targetLabel('USER_END')).toBe('用户端')
-    expect(targetLabel()).toBe('—')
-  })
-
-  it('targetActions：连接器 status→动作矩阵', () => {
-    expect(targetActions('NONE')).toEqual(['publish'])
-    expect(targetActions('REJECTED')).toEqual(['publish'])
-    expect(targetActions('PENDING_REVIEW')).toEqual(['withdraw'])
-    expect(targetActions('PUBLISHED')).toEqual(['delist'])
-    expect(targetActions('DELISTED')).toEqual(['relist'])
-    expect(targetActions('WEIRD')).toEqual(['publish'])
   })
 })

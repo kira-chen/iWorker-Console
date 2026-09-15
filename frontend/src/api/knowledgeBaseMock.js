@@ -38,6 +38,8 @@ import {
   SOURCE_LABELS,
   publishBlockReason,
   API_METHOD_OPTIONS,
+  DOC_KIND_OPTIONS,
+  RETRIEVAL_OPTIONS,
   mkRequestMapRows,
   mkResponseMapRows,
   validateRequestMap,
@@ -297,7 +299,14 @@ function validate(payload, selfId) {
     const n = ids.filter((id) => sources.find((s) => s.id === id)?.sourceType === t).length
     if (n > MAX_SOURCES_PER_TYPE) throw new ApiError({ message: `${SOURCE_LABELS[t]} 数据源最多引用 ${MAX_SOURCES_PER_TYPE} 个`, code: 400 })
   }
-  for (const id of ids) findSource(id)
+  for (const id of ids) {
+    const src = findSource(id)
+    // 已停用的数据源不可被引用（2026-09-12 对齐 md §三.3.2 L94「已停用的数据源……不可被引用」09-09 拍板 · 审计 K40）：
+    // UI 候选列表已滤掉停用源，数据层同样拦住，避免绕过 UI 的调用把停用源引进来。
+    if (src.status === 'DISABLED') {
+      throw new ApiError({ message: `数据源「${src.name}」已停用，不可被引用`, code: 400, field: 'sourceIds' })
+    }
+  }
 }
 export async function create(payload) {
   await delay()
@@ -366,6 +375,21 @@ export async function transition(id, action) {
   }
   persist()
   return vo(r)
+}
+
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
+ * md `prd.知识库.md` §三.4 L129「提交发布：……审核通过变为已发布」/ L130「提交停用：……审核通过变为未发布」；
+ * 驳回与撤回同向（L372 撤回即恢复提交前状态，status 未曾变 → 只需清 pendingAction）。
+ */
+export function applyKnowledgeBaseReviewResult(refId, requestAction, approved) {
+  const r = rows.find((x) => x.id === refId)
+  if (!r || !r.pendingAction) return false
+  const isDelist = (requestAction || r.pendingAction) === 'DELIST'
+  if (approved) r.status = isDelist ? 'DRAFT' : 'PUBLISHED'
+  r.pendingAction = null
+  persist()
+  return true
 }
 
 /** 提交端接线：一次提交同时落审核中心行与我的申请行（申请类型按 md 三项口径推导）。 */
@@ -453,13 +477,20 @@ const bad = (message, field) => {
 const prevParamRow = (prevRows, r, withIn) =>
   (prevRows || []).find((p) => p.key === (r.key || '').trim() && (!withIn || (p.in || '') === (r.in || '')))
 /**
- * 数据源保存校验（md §六.1～§六.3 API / §七.2～§七.4 MCP；映射校验仅 API）。
- * prev = 编辑目标（判定「已配置密钥留空=保留」）；UPLOAD 不在此校验。
+ * 数据源保存校验（md §五.1 UPLOAD / §六.1～§六.3 API / §七.2～§七.4 MCP；映射校验仅 API）。
+ * prev = 编辑目标（判定「已配置密钥留空=保留」）。
+ * UPLOAD 三必填（2026-09-12 对齐 md §五.1 · 审计 K40）：Embedding 模型 / 检索策略 / Top-K（1～20），文档类型亦必填。
  */
 function validateSourceConfig(payload, prev) {
   const type = payload.sourceType || prev?.sourceType
   const cfg = payload.config || {}
-  if (type === 'API') {
+  if (type === 'UPLOAD') {
+    if (!DOC_KIND_OPTIONS.some((o) => o.value === cfg.docKind)) bad('请选择文档类型', 'docKind')
+    if (!String(cfg.embeddingModelId || '').trim()) bad('请选择向量模型', 'embeddingModelId')
+    if (!RETRIEVAL_OPTIONS.some((o) => o.value === cfg.retrieval)) bad('请选择检索策略', 'retrieval')
+    const k = Number(cfg.topK)
+    if (!Number.isInteger(k) || k < 1 || k > 20) bad('Top-K 需为 1～20 的整数', 'topK')
+  } else if (type === 'API') {
     const url = String(cfg.url || '').trim()
     if (!url) bad('请填写请求地址', 'url')
     if (url.length > 500) bad('请求地址最多 500 个字符', 'url')

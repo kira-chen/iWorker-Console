@@ -46,21 +46,33 @@ function findOr404(id) {
   if (!s) throw err('规格不存在', 40400)
   return s
 }
+/**
+ * 校验文案 2026-09-12 逐字对齐 md 运行规格 §四.10（审计 K28）；顺序照 §四.7 L344「必填 → 格式 → 数值范围 → 名称唯一」。
+ * 与 RuntimeSpecEditor.validate() 同一套文案：编辑器先拦一次，保存接口再拦一次（md §四.4 L303「保存接口必须再次校验上限」）。
+ */
+const isIntAtLeast1 = (v) => Number.isInteger(Number(v)) && Number(v) >= 1
 function validatePayload(p) {
   const name = String(p.name || '').trim()
   if (!name) throw err('规格名称不能为空', 40001, 'name')
-  if (name.length > 64) throw err('规格名称不超过 64 字符', 40001, 'name')
-  if (specs.some((s) => s.name === name && s.id !== p.id)) throw err('规格名称已存在，请换一个', 40001, 'name')
-  if (!String(p.boundaryDesc || '').trim()) throw err('能力边界说明必填', 40001, 'boundaryDesc')
-  for (const [key, label] of [['cpu', 'CPU'], ['memoryGi', '内存'], ['diskGi', '临时存储'], ['readinessTimeoutMin', '就绪等待超时'], ['idleRecycleMin', '空闲回收']]) {
-    if (!(Number(p[key]) > 0)) throw err(`${label}须为大于 0 的数值`, 40001, key)
-  }
-  if (!(Number(p.maxLifetimeHours) >= 0) || !Number.isInteger(Number(p.maxLifetimeHours))) throw err('最大存活时长须为非负整数', 40001, 'maxLifetimeHours')
-  for (const [key, label, unit] of [['cpu', 'CPU', '核'], ['memoryGi', '内存', 'Gi'], ['diskGi', '临时存储', 'Gi']]) {
+  if (name.length > 64) throw err('规格名称不超过 64 个字符', 40001, 'name')
+  const boundaryDesc = String(p.boundaryDesc || '').trim()
+  if (!boundaryDesc) throw err('请填写能力边界说明', 40001, 'boundaryDesc')
+  if (boundaryDesc.length > 200) throw err('能力边界说明不超过 200 个字符', 40001, 'boundaryDesc')
+  // CPU：≥0.5 且按 0.5 递增（乘 2 后须为整数，避免浮点比较）
+  const cpu = Number(p.cpu)
+  if (!(cpu >= 0.5) || !Number.isInteger(cpu * 2)) throw err('CPU须不小于 0.5 核，并按照 0.5 递增', 40001, 'cpu')
+  if (!isIntAtLeast1(p.memoryGi)) throw err('内存须为不小于 1 的整数', 40001, 'memoryGi')
+  if (!isIntAtLeast1(p.diskGi)) throw err('临时存储须为不小于 1 的整数', 40001, 'diskGi')
+  if (!isIntAtLeast1(p.readinessTimeoutMin)) throw err('就绪等待超时须为不小于 1 的整数分钟', 40001, 'readinessTimeoutMin')
+  if (!isIntAtLeast1(p.idleRecycleMin)) throw err('空闲回收须为不小于 1 的整数分钟', 40001, 'idleRecycleMin')
+  if (!(Number(p.maxLifetimeHours) >= 0) || !Number.isInteger(Number(p.maxLifetimeHours))) throw err('最大存活时长须为非负整数小时，0 表示不限', 40001, 'maxLifetimeHours')
+  // 超过平台单实例上限（md §四.4 L302 模板「不能超过平台单实例上限 {最大值}{单位}」）
+  for (const [key, unit] of [['cpu', '核'], ['memoryGi', 'Gi'], ['diskGi', 'Gi']]) {
     if (Number(p[key]) > resourceLimits[key]) {
-      throw err(`${label}超过当前平台单实例上限 ${resourceLimits[key]} ${unit}`, 40001, key)
+      throw err(`不能超过平台单实例上限 ${resourceLimits[key]}${unit}`, 40001, key)
     }
   }
+  if (specs.some((s) => s.name === name && s.id !== p.id)) throw err('规格名称已存在，请换一个', 40001, 'name')
 }
 async function getContext() {
   const [userData, positionData, assignmentData] = await Promise.all([
@@ -222,6 +234,11 @@ export async function updateRuntimeSpec(id, payload) {
   await delay()
   const s = findOr404(id)
   const next = payloadOf(s, payload)
+  // md §四.8.3 L372 / §四.10 L398（审计 K29）：存在待审批申请时关闭申请入口 → 阻止保存并提示先处理或撤回
+  const pendingCount = s.directUsers.filter((u) => u.approval === 'PENDING').length
+  if (s.allowUserApply && !next.allowUserApply && pendingCount > 0) {
+    throw err(`存在 ${pendingCount} 个待审批申请，请先处理或撤回相关申请后再关闭申请入口`, 40004, 'allowUserApply')
+  }
   occupyPositions(s.id, next.positionIds)
   Object.assign(s, next, { updatedAt: now() })
   persist()
@@ -230,7 +247,8 @@ export async function updateRuntimeSpec(id, payload) {
 export async function deleteRuntimeSpec(id) {
   await delay()
   const s = findOr404(id)
-  if (s.isDefault) throw err('默认运行规格用于兜底，不能删除', 40004)
+  // 2026-09-12 对齐 md §三.3.6 L222（审计 K28）
+  if (s.isDefault) throw err('默认运行规格用于平台兜底，不能删除', 40004)
   if (s.positionIds.length) throw err(`该规格已配置给 ${s.positionIds.length} 个岗位，请先解除岗位配置`, 40004)
   if (s.directUsers.length) throw err(`该规格存在 ${s.directUsers.length} 个个人配置或待审批申请，请先处理后再删除`, 40004)
   specs.splice(specs.indexOf(s), 1)

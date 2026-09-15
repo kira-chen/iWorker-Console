@@ -12,11 +12,53 @@ const {
   mimeIcon,
   fmtSize,
   fmtTime,
+  fmtRelative,
   friendlyType,
   friendlyError,
   SOURCE_LABEL,
   STATUS_META
 } = await import('@/utils/docMeta')
+
+/**
+ * 2026-09-12 测试审计补缺口（F7）：fmtRelative 边界零用例。
+ * 该函数被模型页「最近验证时间」与 SaveStatusIndicator 共用（全站单一实现），
+ * 阈值一旦漂移，「4 秒前」「1 分钟前」之类文案会同时改变，故逐个边界钉死。
+ */
+describe('fmtRelative（相对时间边界：刚刚 / 秒 / 分钟 / 小时 / 天）', () => {
+  const NOW = Date.parse('2026-09-12T10:00:00Z')
+  const ago = (sec) => new Date(NOW - sec * 1000).toISOString()
+
+  it('不足 5 秒 → 「刚刚」；满 5 秒 → 「5 秒前」', () => {
+    expect(fmtRelative(ago(0), NOW)).toBe('刚刚')
+    expect(fmtRelative(ago(4), NOW)).toBe('刚刚')
+    expect(fmtRelative(ago(5), NOW)).toBe('5 秒前')
+  })
+  it('59 秒 → 「59 秒前」；满 60 秒 → 「1 分钟前」', () => {
+    expect(fmtRelative(ago(59), NOW)).toBe('59 秒前')
+    expect(fmtRelative(ago(60), NOW)).toBe('1 分钟前')
+  })
+  it('3599 秒 → 「59 分钟前」；满 3600 秒 → 「1 小时前」', () => {
+    expect(fmtRelative(ago(3599), NOW)).toBe('59 分钟前')
+    expect(fmtRelative(ago(3600), NOW)).toBe('1 小时前')
+  })
+  it('86399 秒 → 「23 小时前」；满 86400 秒 → 「1 天前」', () => {
+    expect(fmtRelative(ago(86399), NOW)).toBe('23 小时前')
+    expect(fmtRelative(ago(86400), NOW)).toBe('1 天前')
+  })
+  it('空值 / 非法时间串 → 空串（不抛错、不显 NaN）', () => {
+    expect(fmtRelative('', NOW)).toBe('')
+    expect(fmtRelative(null, NOW)).toBe('')
+    expect(fmtRelative(undefined, NOW)).toBe('')
+    expect(fmtRelative('not-a-date', NOW)).toBe('')
+  })
+  it('未来时间（时钟漂移）→ 夹到 0 显「刚刚」，不出现负数', () => {
+    expect(fmtRelative(new Date(NOW + 60_000).toISOString(), NOW)).toBe('刚刚')
+  })
+  it('接受 Date 与时间戳入参（与 ISO 串同结果）', () => {
+    expect(fmtRelative(new Date(NOW - 120_000), NOW)).toBe('2 分钟前')
+    expect(fmtRelative(NOW - 120_000, NOW)).toBe('2 分钟前')
+  })
+})
 
 describe('isTerminal', () => {
   it('parsed / failed 为终态', () => {
@@ -132,7 +174,9 @@ describe('fmtTime', () => {
   })
 })
 
-describe('枚举映射口径（契约 §0.1）', () => {
+// 2026-09-12 头注更新：原「契约 §0.1」为已废止的前后端接口契约（发布单元 2026-09-01 一并退役），
+// 现枚举口径以 docMeta.js 自身为单一真相（source 大写 / parseStatus 小写），本组只守「口径不漂移」。
+describe('枚举映射口径（source 大写 / parseStatus 小写；原契约 §0.1 已废止，以 docMeta.js 为准）', () => {
   it('source 全大写', () => {
     expect(Object.keys(SOURCE_LABEL)).toEqual(['UPLOAD', 'CHAT_GENERATED'])
   })

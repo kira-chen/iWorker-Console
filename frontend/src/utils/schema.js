@@ -3,7 +3,8 @@
  *
  * 字段行：{ name, type, required, description, children? }
  *   type ∈ string | number | boolean | object | array（object/array 时可含 children 子字段行，任意层级）。
- *   —— 类型枚举对齐 PRD-20260828（文本/数字/布尔/对象/数组）；历史「日期 date」类型回显时归一为 string。
+ *   —— 类型枚举对齐 md prd-API.md §三.5 L162 五类（文本/数字/布尔/对象/数组）；历史「日期 date」类型回显时归一为 string；
+ *      历史「整数 integer」（2026-09-12 审计 J15-3 移除，md 无此类）回显时归一为 number。
  * JSON Schema（多级嵌套）：
  *   { type: 'object', properties: { <name>: { type, description?, properties?, required? } }, required: [<name>...] }
  *   —— type=object 的字段递归展开 properties/required；
@@ -16,7 +17,6 @@
 export const FIELD_TYPES = [
   { value: 'string', label: '文本 string' },
   { value: 'number', label: '数字 number' },
-  { value: 'integer', label: '整数 integer' },
   { value: 'boolean', label: '布尔 boolean' },
   { value: 'object', label: '对象 object（可套子字段）' },
   { value: 'array', label: '数组 array（可套子字段）' }
@@ -32,9 +32,11 @@ export const PARAM_IN_OPTIONS = [
 
 const ALLOWED_TYPES = FIELD_TYPES.map((t) => t.value)
 
-// 归一 type：命中白名单原样保留，否则兜底 string（含历史 date 类型）
+// 归一 type：命中白名单原样保留；历史 integer 兜底 number（J15-3，md 五类无整数）；其余（含历史 date）兜底 string
 function normType(type) {
-  return ALLOWED_TYPES.includes(type) ? type : 'string'
+  if (ALLOWED_TYPES.includes(type)) return type
+  if (type === 'integer') return 'number'
+  return 'string'
 }
 
 // 类型是否可挂子字段（对象 / 数组）

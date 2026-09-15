@@ -6,11 +6,9 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
-  createSkill,
   updateSkill,
   assignSkill,
   getSkill,
-  deleteSkill,
   detachSkill as detachSkillApi
 } from '@/api/position'
 
@@ -108,9 +106,7 @@ export const usePositionStore = defineStore('position', () => {
       positionSop: data.positionSop || '',
       businessSystemIds: Array.isArray(data.businessSystemIds) ? data.businessSystemIds : [],
       persona: data.persona || '',
-      intakeSchema: Array.isArray(data.intakeSchema) ? data.intakeSchema : [],
-      // N4 岗位推荐问题（客户端会谈 R2）：固定 4 格。存量未配置回填空 4 格，保证编辑器始终渲染 4 个输入框。
-      recommendedQuestions: normalizeRecommended(data.recommendedQuestions)
+      intakeSchema: Array.isArray(data.intakeSchema) ? data.intakeSchema : []
     }
   }
 
@@ -118,12 +114,6 @@ export const usePositionStore = defineStore('position', () => {
   function normalizeExample(list) {
     const arr = Array.isArray(list) ? list.map((q) => (q == null ? '' : String(q))) : []
     return [0, 1, 2].map((i) => arr[i] ?? '')
-  }
-
-  // N4：把后端返回的推荐问题归一为固定 4 格数组（不足补空、超出截断），供编辑器 4 个输入框稳定绑定。
-  function normalizeRecommended(list) {
-    const arr = Array.isArray(list) ? list.map((q) => (q == null ? '' : String(q))) : []
-    return [0, 1, 2, 3].map((i) => arr[i] ?? '')
   }
 
   // 新建态：未落库的空白岗位（id=null），保存后由调用方 hydrate 真实详情
@@ -141,8 +131,7 @@ export const usePositionStore = defineStore('position', () => {
       positionSop: '',
       businessSystemIds: [],
       persona: '',
-      intakeSchema: [],
-      recommendedQuestions: ['', '', '', ''] // N4 固定 4 格
+      intakeSchema: []
     }
   }
 
@@ -151,14 +140,8 @@ export const usePositionStore = defineStore('position', () => {
   async function saveBasic(payload) {
     saving.value = true
     try {
-      // 推荐问题部分更新语义：payload 未含 recommendedQuestions 即「不改」（半填时不上送，见工作台 buildBasicPayload）。
-      // 此时须保留本地正在编辑的半填内容——否则 hydrate 用服务端旧值/空回显整体重灌 basic，会把用户尚未填满的
-      // 输入清空（「编辑人格·推荐问题」输入几秒后被自动保存清空 bug 的根因）。
-      const keepRecommended =
-        payload.recommendedQuestions === undefined ? basic.value?.recommendedQuestions : null
       const data = await updatePosition(positionId.value, payload)
       hydrate(data)
-      if (keepRecommended) basic.value.recommendedQuestions = keepRecommended
       return { warnings: data?.warnings || [] }
     } finally {
       saving.value = false
@@ -190,14 +173,9 @@ export const usePositionStore = defineStore('position', () => {
     return res
   }
 
-  /* ---------- 技能增删改 ---------- */
-  async function addSkill(agentId, payload) {
-    const skill = await createSkill(agentId, payload)
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === agentId ? { ...a, skills: [...(a.skills || []), skill] } : a
-    )
-    return skill
-  }
+  /* ---------- 技能增删改 ----------
+     2026-09-12 死码清理（审计 J13）：addSkill / removeSkill 零调用方已删——白板上技能的
+     创建走「技能」管理页（SkillCreateDialog），从 Agent 移除走 detachSkillFromAgent（引用模型，可逆）。 */
 
   // 编辑技能本体（name/triggers/skillMd/sortOrder 等，不含 Agent 归属变更）。返回 { skill, warnings }。
   // Agent 归属变更 / 重分配统一走 assignSkillToAgent（PUT /skills/{id}/assign），不再用此端点的 targetAgentId。
@@ -271,14 +249,6 @@ export const usePositionStore = defineStore('position', () => {
     )
   }
 
-  async function removeSkill(skillId) {
-    await deleteSkill(skillId)
-    detail.value.agents = agents.value.map((a) => ({
-      ...a,
-      skills: (a.skills || []).filter((s) => s.skillId !== skillId)
-    }))
-  }
-
   // 从指定 Agent 移除技能引用（V84 引用模型，可逆：调 detach 端点删引用行，技能本体留库可再引用）。
   // 白板本地把该技能从该 Agent 泳道移除；技能仍在「技能」管理页可见、可再拉入任意 Agent。
   async function detachSkillFromAgent(agentId, skillId) {
@@ -328,10 +298,8 @@ export const usePositionStore = defineStore('position', () => {
     addAgent,
     patchAgent,
     removeAgent,
-    addSkill,
     patchSkill,
     assignSkillToAgent,
-    removeSkill,
     detachSkillFromAgent,
     reorderSkillsLocal,
     fetchSkillDetail,

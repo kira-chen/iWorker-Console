@@ -3,8 +3,9 @@
  * 技能聚焦大编辑区（交互规格 §1.4/§1.5/§4.2/§4.3/§5）。
  *
  * 职责：聚焦态占据画布主体的技能大编辑区。
- * - 顶部面包屑：岗位 / [Agent 下拉跳] / 当前技能（§1.4/§1.5 主推下拉跳，不退聚焦）；
- *   面包屑右侧 sib-switch（同 Agent 技能快速切换）+ 返回总览；
+ * - 极简顶行：「← 返回」（emit back，由 AdminSkillEditPage 执行）· 技能名 inline 可编辑 · 类别标签 · 保存态；
+ *   （2026-09-12 审计 J14：原「工作台 showClose=true」侧——岗位面包屑 / ↩ 返回总览 / 删除 ⋯ 下拉——已随开关退役，
+ *   唯一挂载点 AdminSkillEditPage 恒为整页形态，岗位白板早已不再聚焦挂本组件。）
  * - 左元信息（窄）：技能名 / 触发词 chip（≤10·≤20字）/ 已引用工具回显（健康点+code+写类⚠+移除）/ 删除此技能；
  * - 右宽 skill.md 编辑器（复用 admin/MarkdownEditor，fullscreen），字符软提示 ≤8000；
  * - 工具引用：右侧内嵌抽屉（ToolDock）「+ 插入」→ 插入回光标处 → 左栏徽标随正文解析联动（决议 6 / 打磨 §3；
@@ -32,7 +33,7 @@
  */
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, MoreFilled, Menu as MenuIcon, Document, DataLine, Memo, EditPen, InfoFilled, Download, Files } from '@element-plus/icons-vue'
+import { Menu as MenuIcon, Document, DataLine, Memo, EditPen, InfoFilled, Download, Files } from '@element-plus/icons-vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 import CodeTextEditor from '@/components/position/CodeTextEditor.vue'
 import SkillFileTree from '@/components/position/SkillFileTree.vue'
@@ -79,12 +80,8 @@ const props = defineProps({
   loadError: { type: Boolean, default: false },
   positionName: { type: String, default: '岗位' },
   positionId: { type: [Number, String], default: null },
-  // 关闭/返回入口文案（默认工作台「返回总览」；技能菜单整页可传「返回技能列表」）
-  closeLabel: { type: String, default: '↩ 返回总览' },
-  // 是否在面包屑右侧渲染「返回」按钮（默认 true）。
-  // 整页编辑（AdminSkillEditPage）已有 topbar 主返回入口，传 false 隐藏此处冗余返回；
-  // 工作台（PositionWorkbench）不传，照常显示「↩ 返回总览」，向后兼容。
-  showClose: { type: Boolean, default: true },
+  // showClose / closeLabel 已退役（2026-09-12 审计 J14）：唯一挂载点 AdminSkillEditPage 恒传 false，
+  // true 侧（岗位面包屑 / ↩ 返回总览 / 删除 ⋯）零可达；返回统一走 backLabel + emit('back')。
   // 数据源（V34 切片2 修补）：透传给 ToolDock 决定工具坞调 FDE 还是平台 tool-picker、显几个 tab。
   // 默认 'fde'：工作台/FDE 技能编辑器字节级不变；平台技能整页编辑器传 'platform'。
   skillSource: { type: String, default: 'fde' },
@@ -113,8 +110,7 @@ const props = defineProps({
   // 平台技能发布态（PlatformSkillDetailVO.publications）：用于「审核中锁定」判定（isLocked）。
   // 仅 skillSource==='platform' 有意义；FDE / 业务系统技能恒空 → 不锁定。
   publications: { type: Array, default: () => [] },
-  // 整页编辑器（showClose=false）下沉进顶行的「← 返回」文案与自动保存提示——单行融合，不再由 AdminSkillEditPage 单画一条 topbar。
-  // 工作台（showClose=true）不用这两项（左侧走岗位/Agent 导航、保存态由工作台容器自管）。
+  // 整页编辑器下沉进顶行的「← 返回」文案与自动保存提示——单行融合，不再由 AdminSkillEditPage 单画一条 topbar。
   backLabel: { type: String, default: '← 返回' },
   // 组① 四态保存灯：聚合保存态对象 { phase, dirtyCount?, savedAt?, flushing? }，由父级据 dirtyMap/在途保存/失败聚合。
   // 工作台/整页两种模式都渲染（常驻可见）。缺省 idle → 不渲染（向后兼容：未接入的父级零变化）。
@@ -154,9 +150,8 @@ const props = defineProps({
 const emit = defineEmits([
   'update:skill',
   'update:display-category', // N3：技能挂展示分类改动 (categoryId|null)，页面据此调 setSkillCategory
-  'close',
-  'back', // 整页顶行「← 返回」（由 AdminSkillEditPage 执行 window.close + 兜底路由）
-  'delete-skill', // (skillId)
+  // 'close' / 'delete-skill' 已随 showClose 退役（2026-09-12 审计 J14）：返回只剩 'back'；删除收口到列表页（md §二.3.6）
+  'back', // 整页顶行「← 返回」/ 加载失败态【返回】（由 AdminSkillEditPage 执行 window.close + 兜底路由）
   'retry',
   /* 技能包多文件（切片3） */
   'select-file', // (path) 切文件（组③查找命中跳转也复用此切文件，行定位在本组件内做）
@@ -477,20 +472,7 @@ defineExpose({ insertTool })
 // 布局调整 #6（2026-07-08）：取消拖拽插入（原决议 13 的 drop/dragover 链路已移除），
 // 工具只经 ToolDock「插入」按钮进入正文。
 
-/* ---------- 面包屑（反馈 5：去掉「所属 Agent ▾」下拉 + 「同组」切换；归属切换在白板做） ---------- */
-// 无岗位归属（技能未绑定岗位 / 游离技能整页编辑）时面包屑降级仅留「岗位（占位）/ 技能名」。
-const noPosition = computed(() => props.positionId == null)
-
-function onClose() {
-  emit('close')
-}
-function onDelete() {
-  // 二次确认逻辑沿用父级 onDeleteSkill（ElMessageBox.confirm）；此处仅触发，入口/视觉已降权（规格 §4）。
-  emit('delete-skill', props.skill?.skillId)
-}
-function onMoreCommand(cmd) {
-  if (cmd === 'delete') onDelete()
-}
+/* 面包屑 / onClose / onDelete / onMoreCommand 已随 showClose 退役（2026-09-12 审计 J14）。 */
 
 /**
  * 上下文跳变（切技能/切文件）共享重置体：清本会话插入名映射与循环跳转序号（会话隔离，CR-P1/#7）、
@@ -752,23 +734,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <!-- flush（整页编辑器 showClose=false）：去卡片边框/圆角/阴影/居中留白，铺满整个区域、贴边、无外灰框 -->
-  <div class="focus-editor" :class="{ flush: !showClose }">
+  <!-- 整页编辑器（2026-09-12 审计 J14 后唯一形态）：铺满整个区域、贴边、无卡片外框（样式见 .focus-editor） -->
+  <div class="focus-editor">
     <!-- 极简顶行（极简融合布局 §2，单行融合，~48px、与主区域同底、仅下边框，非悬浮 band）：
-         左：[整页 ← 返回] 或 [工作台 🧑‍💼岗位 / Agent▾ 导航] · 技能名(inline 可编辑+✎) [类别只读]
-         …弹性… 右：自动保存提示 + [同组切换] + ⋯(删除)。
-         整页/工作台共用这一行——AdminSkillEditPage 不再单画 topbar，返回/保存态经 prop/emit 下沉至此。 -->
+         左：← 返回 · 技能名(inline 可编辑+✎) [类别只读] …弹性… 右：自动保存提示 / 试跑。
+         AdminSkillEditPage 不再单画 topbar，返回/保存态经 prop/emit 下沉至此。 -->
     <div v-if="!loading && !loadError && skill" class="ed-topline">
-      <!-- 整页编辑器（showClose=false）：左侧「← 返回」，由父级执行 window.close + 兜底路由 -->
-      <span v-if="!showClose" class="topline-back" @click="emit('back')">{{ backLabel }}</span>
+      <!-- 左侧「← 返回」，由父级执行 window.close + 兜底路由 -->
+      <span class="topline-back" @click="emit('back')">{{ backLabel }}</span>
 
-      <!-- 工作台（showClose=true）：左侧岗位回返（反馈 5：去掉「所属 Agent ▾」下拉——技能归属在白板做，本页不需要） -->
-      <template v-else-if="!noPosition">
-        <span class="crumb-link" @click="onClose">🧑‍💼 {{ positionName }}</span>
-      </template>
-
-      <!-- 弱分隔：仅当左侧有「返回/导航」段时出现，避免无左段时成前导竖线 -->
-      <span v-if="!showClose || !noPosition" class="topline-div">|</span>
+      <!-- 弱分隔 -->
+      <span class="topline-div">|</span>
 
       <!-- #3：技能名前固定 label「技能名称：」；技能名仍 inline 可编辑 -->
       <span class="eh-name-label">技能名称：</span>
@@ -897,23 +873,8 @@ onBeforeUnmount(() => {
         >🧪 试跑此技能</button>
       </el-tooltip>
 
-      <!-- 反馈 5：去掉「同组」技能快速切换 chip（与系统配置员技能编辑器对齐，归属切换在白板做） -->
-      <!-- 工作台独立用时若还想保留「↩ 返回总览」文字入口（向后兼容 PositionWorkbench 现状） -->
-      <span v-if="showClose && closeLabel" class="ed-close" @click="onClose">{{ closeLabel }}</span>
-
-      <!-- #4 删除溢出菜单 ⋯：仅工作台（showClose=true，PositionWorkbench）保留；整页编辑器（showClose=false）不要删除入口。 -->
-      <el-dropdown v-if="showClose" trigger="click" placement="bottom-end" @command="onMoreCommand">
-        <button type="button" class="crumb-more" title="更多操作" aria-label="更多操作">
-          <el-icon><MoreFilled /></el-icon>
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="delete" class="more-del">
-              <el-icon><Delete /></el-icon> 删除此技能
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+      <!-- 反馈 5：去掉「同组」技能快速切换 chip；「↩ 返回总览」与删除 ⋯ 下拉已随 showClose 退役（2026-09-12 J14），
+           整页编辑器无删除入口（删除收口到列表页，md §二.3.6） -->
     </div>
 
     <!-- 信息条（布局 2026-08-14 统一）：上下结构、全宽拉通——上「描述」（3 行多行框）、下「示例问题」（单行框）。
@@ -943,14 +904,14 @@ onBeforeUnmount(() => {
         <el-tooltip :content="DESCRIPTION_HINT" placement="top" effect="dark">
           <span class="ib-l ib-l-help">描述<em v-if="!ro" class="ib-req">*</em></span>
         </el-tooltip>
-        <!-- 描述：3 行多行文本框、全宽拉通，1000 字上限 + 右下角计数器。只读态改只读文本展示。 -->
-        <!-- 2026-09-01（疑点6）：技能编辑器语境描述上限 2000 + 计数、占位对齐原型；旧语境 1000 不变 -->
+        <!-- 描述：3 行多行文本框、全宽拉通，2000 字上限 + 右下角计数器。只读态改只读文本展示。 -->
+        <!-- 2026-09-12 对齐一览表（技能描述上限只有 2000；审计 J15-5）：去掉 adminContext 分支，业务系统技能同样 2000 -->
         <el-input
           v-if="!ro"
           v-model="skillDescription"
           type="textarea"
           :rows="3"
-          :maxlength="adminContext ? 2000 : 1000"
+          :maxlength="2000"
           show-word-limit
           resize="none"
           class="ib-input"
@@ -1007,7 +968,7 @@ onBeforeUnmount(() => {
       <p>加载失败</p>
       <div class="ed-state-actions">
         <el-button @click="emit('retry')">重试</el-button>
-        <el-button @click="onClose">返回</el-button>
+        <el-button @click="emit('back')">返回</el-button>
       </div>
     </div>
     <div v-else-if="loading" class="ed-state">
@@ -1219,37 +1180,13 @@ onBeforeUnmount(() => {
      2026-09-09 原型复刻批次 3C · C1：320→384（原型 L114 `.skill-editor-stage` 第三栏 384px）。 */
   --dock-w: 384px;
   width: 100%;
-  /* §12 三栏（树 282 + ToolDock 384 = 666 固定 + 中栏 1fr）；放宽上限避免中栏被挤过窄。 */
-  max-width: min(98vw, 1640px);
-  margin: 0 auto;
+  /* 整页编辑器：铺满、贴边、无卡片外框（#1 去周边灰边）。原工作台卡片态（限宽/圆角/阴影/zoomIn）
+     已随 showClose 退役（2026-09-12 审计 J14），.flush 修饰类并入本规则。 */
   height: 100%;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: zoomIn var(--dur-slow) var(--ease-out) both;
-}
-/* 整页编辑器：铺满、贴边、无卡片外框（#1 去周边灰边） */
-.focus-editor.flush {
-  max-width: none;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  animation: none;
-}
-@keyframes zoomIn {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 /* 极简顶行（60px）：导航/技能名/类别/同组/删除一行；与主区域同底融合、仅下边框。
    2026-09-09 原型复刻批次 3C · C1：48→60（原型 L114 `.skill-editor-top{height:60px;min-height:60px}`），
@@ -1370,31 +1307,7 @@ onBeforeUnmount(() => {
   color: var(--c-text-faint);
   cursor: not-allowed;
 }
-.crumb-link {
-  color: var(--c-text-muted);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-.crumb-link:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
-}
-/* 反馈 5：已移除「所属 Agent ▾」下拉（.crumb-agent/.agent-dropdown/.ad-*）与「同组」切换（.sib-*）相关样式 */
-.ed-close {
-  cursor: pointer;
-  color: var(--c-text-muted);
-  padding: 4px 10px;
-  border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
-  border: 1px solid var(--border-base);
-  background: var(--bg-surface);
-}
-.ed-close:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
-}
+/* 反馈 5：已移除「所属 Agent ▾」下拉与「同组」切换样式；.crumb-link / .ed-close 随 showClose 退役（2026-09-12 J14） */
 .ed-state {
   flex: 1;
   display: flex;
@@ -1925,28 +1838,6 @@ onBeforeUnmount(() => {
   margin-right: 4px;
 }
 
-/* 面包屑溢出菜单触发器（规格 §4.2）：默认中性，hover 浅底 */
-.crumb-more {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--c-text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.crumb-more:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
-}
-.crumb-more:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--c-accent-soft);
-}
-
 /* 窄屏降级（规格 §1.3 / §2.3）：
  *  ≤1280px 树栏收窄 + ToolDock 收细条；
  *  ≤1100px 树折叠为抽屉（树栏从 grid 移除，☰ 文件 触发）；
@@ -2001,20 +1892,5 @@ onBeforeUnmount(() => {
     border-left: none;
     border-top: 1px solid var(--border-soft);
   }
-}
-</style>
-
-<!-- el-dropdown 菜单 teleport 到 body，scoped 选择器够不到，用全局类降权删除项（规格 §4.2：默认中性，hover 才红） -->
-<style>
-.el-dropdown-menu__item.more-del {
-  color: var(--c-text);
-}
-.el-dropdown-menu__item.more-del:not(.is-disabled):hover,
-.el-dropdown-menu__item.more-del:not(.is-disabled):focus {
-  background: var(--c-danger-soft);
-  color: var(--c-danger);
-}
-.el-dropdown-menu__item.more-del .el-icon {
-  color: inherit;
 }
 </style>

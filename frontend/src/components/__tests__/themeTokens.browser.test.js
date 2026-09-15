@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import 'element-plus/dist/index.css'
 import '@/assets/tokens.css'
 import '@/assets/theme.css'
-import tokensRaw from '@/assets/tokens.css?raw'
-import themeRaw from '@/assets/theme.css?raw'
+// 2026-09-12 审计 T21：扫描范围从 tokens/theme 两份扩到 src/assets/*.css 全部（含 admin-shell / admin-dialog /
+// connector / list-page / main / position-detail 六份共享样式——它们的 var(--x) 同样只在 tokens/theme 定义，
+// 令牌改名漏改这里一样静默失效）。?raw 只取源码不注入，不影响其它用例的样式环境。
+const ASSET_CSS_RAW = import.meta.glob('@/assets/*.css', { query: '?raw', import: 'default', eager: true })
 
 /**
  * 视觉效果守卫 · 主题令牌总闸（真浏览器，双主题，2026-08-08 扩充批）。
@@ -12,19 +14,26 @@ import themeRaw from '@/assets/theme.css?raw'
  * 展示端历史事故里有一整类根因是令牌层松动：token 改名/删除后引用侧 var() 静默解析为空、
  * 表面色被改成半透明（固定列透底的根因形态）、暗色可读性回退。三类各设一道断言：
  *
- *  1. 引用完整性：两个样式文件里全部 var(--x) 引用（含 fallback 形态里的引用），在双主题下
- *     都必须解析出非空值——token 改名漏改引用侧即红；
+ *  1. 引用完整性：src/assets/*.css 全部样式文件里的 var(--x) 引用（含 fallback 形态里的引用），在双主题下
+ *     都必须解析出非空值——token 改名漏改引用侧即红。**先剥 CSS 块注释再扫**：2026-09-11 94c8ecf 在
+ *     theme.css:321 注释里写了 `var(--c-primary)`（已废弃的旧名，作历史说明），不剥注释会把它当引用误报
+ *     （审计 T21）；
  *  2. 表面不透明契约：--bg-app/surface/elevated/sunken 是「承载内容的表面」，必须完全不透明
  *     （半透明表面 = sticky/fixed 元素透底这类 bug 的温床；--bg-hover/active 半透明是有意设计，不在此列）；
  *  3. 关键对比度（WCAG 口径）：正文/次级文本对表面 ≥ 4.5/3，强调色对其浅填充 ≥ 3——
  *     暗色主题「看不清」类回退在 CI 即红。
  */
 
-/** 从两份样式源码里抽出全部被引用的自定义属性名（含 var(--a, var(--b)) 嵌套里的每一个）。 */
+/** 去掉 CSS 块注释（注释里举例的 var(--旧名) 不是引用）。 */
+function stripCssComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
+/** 从 src/assets 全部样式源码里抽出被引用的自定义属性名（含 var(--a, var(--b)) 嵌套里的每一个），先剥注释。 */
 function referencedTokens() {
   const names = new Set()
-  for (const src of [tokensRaw, themeRaw]) {
-    for (const m of src.matchAll(/var\(\s*(--[\w-]+)/g)) {
+  for (const src of Object.values(ASSET_CSS_RAW)) {
+    for (const m of stripCssComments(src).matchAll(/var\(\s*(--[\w-]+)/g)) {
       names.add(m[1])
     }
   }
@@ -78,8 +87,14 @@ describe.each(['light', 'dark'])('主题令牌总闸 · %s', (theme) => {
     document.documentElement.removeAttribute('data-theme')
   })
 
-  it('引用完整性：tokens.css/theme.css 里每个 var(--x) 都解析出非空值', () => {
-    const missing = referencedTokens().filter((name) => tokenValue(name) === '')
+  it('引用完整性：src/assets/*.css 里每个 var(--x)（剥注释后）都解析出非空值', () => {
+    // 先守扫描面本身：8 份样式都读到了，且不是空扫（防 glob 路径写错导致 0 引用假绿）
+    expect(Object.keys(ASSET_CSS_RAW).length).toBeGreaterThanOrEqual(8)
+    const names = referencedTokens()
+    expect(names.length).toBeGreaterThan(50)
+    expect(names, '注释里的旧名不算引用（theme.css:321 `var(--c-primary)`）').not.toContain('--c-primary')
+
+    const missing = names.filter((name) => tokenValue(name) === '')
     expect(missing).toEqual([])
   })
 

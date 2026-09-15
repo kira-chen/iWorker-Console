@@ -541,63 +541,8 @@ export function diffRemovedTools(before, after) {
   return (Array.isArray(before) ? before : []).filter((t) => t?.code && !afterCodes.has(t.code))
 }
 
-/* ============================ Q3 平台已发布技能重审可见性 ============================ */
-
-/**
- * 某技能当前是否处于「已发布」态（Q3 硬前置条件之一）。
- * publications:[{target,status}]，任一 target status=PUBLISHED 即视为已发布（交互稿 §4.6）。
- */
-export function isPublished(publications) {
-  return (Array.isArray(publications) ? publications : []).some((p) => p?.status === 'PUBLISHED')
-}
-
-/**
- * Q3 重审判定（R1 语义升级）：操作成功后，比对操作前后的 publications，是否「确有发布行因本次内容
- * 改动被置脏 / 在途提交被作废」。R1 起编辑已发布技能<b>不再打回 PENDING_REVIEW</b>（线上继续供旧快照），
- * 后端改为置 reviewPending=true / 作废提交（submitted 变 false），提示条据此挂出。
- *
- * 触发硬条件（缺一不可，绝不靠前端猜，交互稿 §4.6）：
- *  - source=platform（调用方传入保证）；
- *  - 操作后后端真实回吐以下任一变化：
- *      a) 某 target 由干净变置脏（reviewPending false→true）；
- *      b) 某 target 在途提交被作废（submitted true→false，状态不变）；
- *      c) 兼容旧后端：PUBLISHED→PENDING_REVIEW 退回。
- *
- * 以后端真实回吐为准：before/after 均来自后端 publications，前端只做集合比对、不推断。
- *
- * @param {Array<{target,status,reviewPending,submitted}>} before 操作前 publications
- * @param {Array<{target,status,reviewPending,submitted}>} after  操作后（重新拉详情）publications
- * @returns {boolean} 是否确有置脏/提交作废/退回
- */
-export function didRequeueForReview(before, after) {
-  const beforeMap = mapByTarget(before)
-  const afterMap = mapByTarget(after)
-  for (const [target, b] of Object.entries(beforeMap)) {
-    const a = afterMap[target]
-    if (!a) continue
-    // a) 干净 → 置脏（R1 主路径：编辑已发布/已下架技能）
-    if (b.reviewPending !== true && a.reviewPending === true) return true
-    // b) 在途提交被作废（submitted 缺省视为已提交，与后端存量遗留口径一致）
-    if (b.submitted !== false && a.submitted === false) return true
-    // c) 兼容旧后端行为：PUBLISHED → PENDING_REVIEW 退回
-    if (b.status === 'PUBLISHED' && a.status === 'PENDING_REVIEW') return true
-  }
-  return false
-}
-
-function mapByTarget(publications) {
-  const map = {}
-  for (const p of Array.isArray(publications) ? publications : []) {
-    if (p?.target) map[p.target] = p
-  }
-  return map
-}
-
-// 操作是否「可能触发重审」= 是否针对 .md（含 SKILL.md）。.json/.txt 不触发（架构 §5.2）。
-// 用于决定是否需要在操作后重新拉详情比对（避免对 .json/.txt 做无谓往返）。
-export function isMdPath(path) {
-  return extOf(path) === 'md'
-}
+/* Q3「平台已发布技能重审可见性」段（isPublished / didRequeueForReview / isMdPath）
+   已于 2026-09-12 死码清理删除（审计 J13）：零调用方——重审提示现由 skillPublication.derivePlatformState 承担。 */
 
 /* ============================ SKILL.md YAML frontmatter 拆分 / 拼回（P3） ============================ */
 

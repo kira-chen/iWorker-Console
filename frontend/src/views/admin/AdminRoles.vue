@@ -24,7 +24,8 @@ import ListToolbar from '@/components/admin/ListToolbar.vue'
 import RoleEditor from '@/components/admin/RoleEditor.vue'
 import { listRoles, getPermissionTree, deleteRole } from '@/api/adminUser'
 // 操作列宽走共享 opsWidth；数据列宽照原型 colgroup（2026-09-08 原型复刻批次 2A · G#10）
-import { opsWidth } from '@/utils/tableLayout'
+// 操作列宽走共享 opsWidth；时间列 2026-09-12 起改共享 COL.TIME + col-nowrap（审计 K16：原硬编码 165 ≠ 全站 168 且无不换行类）
+import { COL, COL_NOWRAP, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -200,7 +201,8 @@ async function remove(row) {
           :data="rows"
           row-key="id"
         >
-        <!-- 列宽照原型 L315 <colgroup> 185 / 110 / auto / 165 / 135（2026-09-08 原型复刻批次 2A · G#10） -->
+        <!-- 列宽照原型 L315 <colgroup> 185 / 110 / auto / 165 / 135（2026-09-08 原型复刻批次 2A · G#10）；
+             时间列 2026-09-12 改 COL.TIME（审计 K16：与全站时间列同源同值，并挂 col-nowrap 不换行） -->
         <!-- 角色名称：主列（原型 <strong> 600）。code 不展示——它只是系统内标识，创建/编辑都不填 -->
         <el-table-column label="角色名称" :width="185" show-overflow-tooltip>
           <template #default="{ row }">
@@ -228,7 +230,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 最近更新时间：自定义排序按钮，默认倒序（改名或改页面权限都刷新） -->
-        <el-table-column label="最近更新时间" :width="165">
+        <el-table-column label="最近更新时间" :width="COL.TIME" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
           <template #header>
             <button type="button" class="time-sort" @click="toggleSort">
               最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

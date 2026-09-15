@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （positionApplicationsMock → request.js → router 链路触达 window，故用 jsdom；同 positionAssignmentMock）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listPositionApplications,
   countPendingApplications,
@@ -133,5 +133,43 @@ describe('positionApplicationsMock —— 岗位申请审批 mock（2026-09-09 P
 
   it('不存在的申请 → 404 报错', async () => {
     await expect(approvePositionApplication(999)).rejects.toThrow('申请不存在')
+  })
+})
+
+describe('positionApplicationsMock · 持久化读回（mockPersist v2；写点 reject → 刷新后仍在）', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 故与 mockPersist.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
+  const KEY = 'iworker-demo-mock:positionApplications'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('rejectPositionApplication(701) 落盘（v=2）→ 重新 import 模块 → 701 仍是已驳回且驳回原因在', async () => {
+    const first = await import('../positionApplicationsMock')
+    await first.rejectPositionApplication(701, '读回验证：驳回原因')
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.v).toBe(2)
+    expect(snap.data.applications.find((r) => r.id === 701).status).toBe('REJECTED')
+    vi.resetModules()
+    const fresh = await import('../positionApplicationsMock')
+    const { list } = await fresh.listPositionApplications()
+    expect(list.find((r) => r.id === 701)).toMatchObject({ reviewStatus: 'REJECTED', rejectReason: '读回验证：驳回原因' })
+    expect((await fresh.countPendingApplications()).count).toBe(2)
   })
 })

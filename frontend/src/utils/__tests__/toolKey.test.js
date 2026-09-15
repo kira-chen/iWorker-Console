@@ -10,15 +10,16 @@ import {
 } from '@/utils/toolKey'
 
 describe('normType', () => {
-  it('大写归一，缺省 / 非法兜底 MOCK', () => {
+  // 2026-09-12 审计 C4：原「TOOL_TYPES 暴露三来源」单独一条是常量同义反复，并入此处——
+  // 归一结果必须落在 TOOL_TYPES 之内才有意义（常量与函数互相约束，而非各自复述）。
+  it('大写归一，缺省 / 非法兜底 MOCK；归一结果恒在 TOOL_TYPES（MOCK / MCP / API）之内', () => {
     expect(normType('mock')).toBe('MOCK')
     expect(normType('Mcp')).toBe('MCP')
     expect(normType('api')).toBe('API')
     expect(normType(undefined)).toBe('MOCK')
     expect(normType('weird')).toBe('MOCK')
-  })
-  it('TOOL_TYPES 暴露三来源', () => {
     expect(TOOL_TYPES).toEqual(['MOCK', 'MCP', 'API'])
+    for (const t of ['mock', 'Mcp', 'api', undefined, 'weird']) expect(TOOL_TYPES).toContain(normType(t))
   })
 })
 

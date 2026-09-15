@@ -3,13 +3,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * AdminModels.vue 单测（V76 建；V95 改发布制 + 表格形态后重写）。
+ * AdminModels.vue 单测。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md
+ *   §二.3.1 三态按钮组合 / §二.3.3 审核中编辑置灰 / §二.3.4 验证列 / §二.3.5 发布 / §二.3.6 撤回 /
+ *   §二.3.7 停用 / §二.3.8 设为默认 / §二.3.9 删除 / §二.4 状态规则。
  *
- * 覆盖：三态状态列（未启用/审核中/已启用 + 版本号 + 新版在审）与操作区按状态显隐——
- * 「启用↔删除」并存于未启用态、「停用↔设为默认」并存于已启用态、「版本更新」仅已启用出现、
- * 审核期编辑锁定且只留「撤回提交」。
+ * 覆盖：三态展示（未发布 / 审核中 / 已发布，待审停用按 pendingAction 优先判「审核中」）与操作区按状态显隐——
+ * 「发布↔删除」并存于未发布态、「停用↔设为默认」并存于已发布态、审核中只留「撤回」且编辑置灰；
+ * 六个动作的确认文案 / 成功 toast / 重拉；验证列就地验证与完成 toast。
  *
  * 切断 api/adminModel 与 element-plus；EP 组件用轻量存根（el-table 存根按行渲染 default 插槽）。
+ * 真实挂载冒烟另见 adminModelsSmoke.test.js。
  * 2026-09-08 原型复刻批次 1 对齐：模型页改为 paged:'client' 本地切片分页、每页条数按窗口高度动态
  * （jsdom 默认 768 高 → 7 条 < 10 行种子），故把 innerHeight 拉高让全部种子行落在第 1 页。
  */
@@ -20,11 +24,12 @@ const api = {
   verifyModel: vi.fn(),
   publishModel: vi.fn(),
   delistModel: vi.fn(),
+  withdrawModel: vi.fn(),
   setDefaultModel: vi.fn()
 }
 vi.mock('@/api/adminModel', () => api)
 
-const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
+const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
 
@@ -135,33 +140,32 @@ function texts(rowEl) {
   return [...rowEl.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
 }
 
+// fixture 字段形状照 adminModelMock.mkModel（2026-09-12 T10：删幽灵字段 publishedVersion / reviewComment）
 const LIST = [
-  // 从未发布、未验证：不能启用（验证未过），可删
+  // 从未发布、未验证：不能发布（验证未过），可删
   {
     id: 'md_new_unver',
     name: '新建未验证',
     category: 'TEXT',
     status: 'DRAFT',
-    verifyStatus: 'UNVERIFIED',
-    publishedVersion: null
+    verifyStatus: 'UNVERIFIED'
   },
-  // 从未发布、已验证：可启用、可删
+  // 从未发布、已验证：可发布、可删
   {
     id: 'md_new_ok',
     name: '新建已验证',
     category: 'TEXT',
     status: 'DRAFT',
-    verifyStatus: 'SUCCESS',
-    publishedVersion: null
+    verifyStatus: 'SUCCESS'
   },
-  // 首次发布在审：编辑锁定，仅可撤回
+  // 首次发布在审：编辑锁定，仅可撤回（页面按 pendingAction 判审核中，2026-09-12 T18 补齐）
   {
     id: 'md_pending',
     name: '首发在审',
     category: 'TEXT',
     status: 'PENDING_REVIEW',
-    verifyStatus: 'SUCCESS',
-    publishedVersion: null
+    pendingAction: 'PUBLISH',
+    verifyStatus: 'SUCCESS'
   },
   // 已启用（非默认）：可版本更新 / 停用 / 设为默认，不可删
   {
@@ -205,14 +209,13 @@ const LIST = [
     verifiedAt: '2026-08-20T10:00:00+08:00',
     isDefault: false
   },
-  // 已停用（发布过）：显启用（走 relist）、可删
+  // 已停用（历史遗留态 DELISTED，页面归一为未发布）：显发布、可删
   {
     id: 'md_offline',
     name: '已停用',
     category: 'TEXT',
     status: 'DELISTED',
-    verifyStatus: 'SUCCESS',
-    publishedVersion: 2
+    verifyStatus: 'SUCCESS'
   },
   // 已启用但连通性验证失败：线上仍在服务（跑快照），但模型实际可能已连不上
   {
@@ -224,16 +227,22 @@ const LIST = [
     verifyError: 'TIMEOUT: connect timeout',
     isDefault: false
   },
-  // 被驳回：未启用 + 驳回原因
+  // 被驳回（历史遗留态 REJECTED，页面归一为未发布；md §二.4「不单独展示已驳回」）
   {
     id: 'md_rejected',
     name: '被驳回',
     category: 'TEXT',
     status: 'REJECTED',
-    verifyStatus: 'SUCCESS',
-    reviewComment: '地址不在白名单'
+    verifyStatus: 'SUCCESS'
   }
 ]
+
+async function flush(n = 4) {
+  for (let i = 0; i < n; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -244,15 +253,42 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () => {
-  it('渲染全部行，状态列显示三态文案', async () => {
+describe('AdminModels · 三态 + 发布/停用双向过审（md §二.3.1 三态按钮 + §二.3.4 验证列）', () => {
+  it('渲染全部行，状态列显示三态文案（md §二.4「仅展示未发布、审核中、已发布」）', async () => {
     await mount()
     expect(rowEls()).toHaveLength(LIST.length)
     const all = container.textContent
     expect(all).toContain('未发布')
     expect(all).toContain('已发布')
-    // V98：发布/停用两条都要过审，故三态齐全
+    // 发布/停用两条都要过审，故三态齐全
     expect(all).toContain('审核中')
+    // 历史遗留态不裸露枚举，也不单独展示「已驳回 / 已下架」
+    expect(all).not.toContain('REJECTED')
+    expect(all).not.toContain('DELISTED')
+    expect(rowByName('被驳回').querySelector('.status-tag').textContent).toBe('未发布')
+  })
+
+  // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，md §二.1 由文档组回写为
+  // 「状态作为独立列紧跟名称列之后展示」（模型保留【默认】标签句）；写法照 adminMcp.test.js「列结构」用例
+  it('列序：状态为独立列且紧跟「模型名称」列之后；【默认】标签仍在名称格内（09-11 拍板 · 审计 J1）', async () => {
+    await mount()
+    const labels = [...rowByName('在线模型丙默认').querySelectorAll('.t-cell')].map((c) => c.getAttribute('data-label'))
+    expect(labels).toContain('状态')
+    expect(labels.indexOf('状态')).toBe(labels.indexOf('模型名称') + 1)
+    const nameCell = rowByName('在线模型丙默认').querySelector('.t-cell[data-label="模型名称"]')
+    expect(nameCell.textContent).toContain('默认')
+    expect(rowByName('在线模型丙默认').querySelector('.t-cell[data-label="状态"] .status-tag').textContent).toBe('已发布')
+  })
+
+  // 2026-09-12 T18/T55：审核中行此前 fixture 无 pendingAction，从未真正触发过这条分支
+  it('发布审核中行 → 【查看】【编辑】（禁用，tooltip「审核中不可编辑，如需修改请先撤回提交」）【撤回】共 3 个（md §二.3.1 / §二.3.3）', async () => {
+    await mount()
+    const r = rowByName('首发在审')
+    expect(r.querySelector('.status-tag').textContent).toBe('审核中')
+    expect(texts(r)).toEqual(['查看', '编辑', '撤回'])
+    const edit = btn(r, '编辑')
+    expect(edit.disabled).toBe(true)
+    expect(edit.closest('.el-tooltip').dataset.tip).toBe('审核中不可编辑，如需修改请先撤回提交')
   })
 
   it('待审停用行：status 仍是 PUBLISHED，但展示为「审核中」并显「撤回」', async () => {
@@ -296,13 +332,20 @@ describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () 
     expect(btn(rowByName('新建未验证'), '发布').disabled).toBe(true)
   })
 
-  it('点「发布」：确认后调 publishModel 提交审核并刷新', async () => {
+  it('点「发布」→ 确认窗「发布模型」【提交审核】→ publishModel →「已提交发布审核」+ 重拉（md §二.3.5）', async () => {
     msgBox.confirm.mockResolvedValue(true)
     api.publishModel.mockResolvedValue({})
     await mount()
     btn(rowByName('新建已验证'), '发布').click()
-    await nextTick(); await Promise.resolve(); await nextTick()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('提交后进入审核，审核通过后模型「新建已验证」才会对客户端开放调用'),
+      '发布模型',
+      expect.objectContaining({ confirmButtonText: '提交审核' })
+    )
     expect(api.publishModel).toHaveBeenCalledWith('md_new_ok')
+    expect(msg.success).toHaveBeenCalledWith('已提交发布审核')
+    expect(api.listModels).toHaveBeenCalledTimes(2)
   })
 
   it('点「发布」：弹窗取消则不提交', async () => {
@@ -313,13 +356,112 @@ describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () 
     expect(api.publishModel).not.toHaveBeenCalled()
   })
 
-  it('点「停用」：确认后调 delistModel 提交审核', async () => {
+  it('点「停用」→ 确认窗「停用模型」【提交审核】说明审核通过前仍可用 → delistModel →「已提交停用审核」（md §二.3.7）', async () => {
     msgBox.confirm.mockResolvedValue(true)
     api.delistModel.mockResolvedValue({})
     await mount()
     btn(rowByName('在线模型甲'), '停用').click()
-    await nextTick(); await Promise.resolve(); await nextTick()
+    await flush()
+    const [text, title, opts] = msgBox.confirm.mock.calls[0]
+    expect(text).toContain('审核通过前该模型对客户端仍然可用')
+    expect(text).toContain('模型「在线模型甲」')
+    expect(text).not.toContain('**') // aa7d251 防回归：纯文本弹窗里带 ** 只会原样显示星号
+    expect(text).not.toContain('默认模型') // 非默认模型不带默认标记说明
+    expect(title).toBe('停用模型')
+    expect(opts).toEqual(expect.objectContaining({ confirmButtonText: '提交审核' }))
     expect(api.delistModel).toHaveBeenCalledWith('md_online')
+    expect(msg.success).toHaveBeenCalledWith('已提交停用审核')
+  })
+
+  it('停用默认模型：确认文案额外说明「停用生效后将同时取消其默认标记」（md §二.3.7 L153）', async () => {
+    msgBox.confirm.mockResolvedValue(true)
+    api.delistModel.mockResolvedValue({})
+    await mount()
+    btn(rowByName('在线模型丙默认'), '停用').click()
+    await flush()
+    const [text] = msgBox.confirm.mock.calls[0]
+    expect(text).toContain('停用生效后将同时取消其默认标记')
+    expect(text).not.toContain('**')
+    expect(api.delistModel).toHaveBeenCalledWith('md_default')
+  })
+
+  /* ===== 2026-09-12 T55：撤回 / 设为默认 / 删除 页面级用例（此前零覆盖） ===== */
+
+  it('待审停用行点「撤回」→ 确认窗说明「保持已发布、继续对客户端提供服务」→ withdrawModel →「已撤回」+ 重拉（md §二.3.6）', async () => {
+    msgBox.confirm.mockResolvedValue(true)
+    api.withdrawModel.mockResolvedValue({})
+    await mount()
+    btn(rowByName('待审停用'), '撤回').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '撤回后模型「待审停用」保持已发布、继续对客户端提供服务。确认撤回？',
+      '撤回',
+      expect.objectContaining({ confirmButtonText: '撤回' })
+    )
+    expect(api.withdrawModel).toHaveBeenCalledWith('md_pending_delist')
+    expect(msg.success).toHaveBeenCalledWith('已撤回')
+    expect(api.listModels).toHaveBeenCalledTimes(2)
+  })
+
+  it('待审发布行点「撤回」→ 确认窗说明「回到未发布状态，可修改后重新提交」；取消则不打接口（md §二.3.6）', async () => {
+    msgBox.confirm.mockRejectedValue('cancel')
+    await mount()
+    btn(rowByName('首发在审'), '撤回').click()
+    await flush()
+    expect(msgBox.confirm.mock.calls[0][0]).toBe('撤回后模型「首发在审」回到未发布状态，可修改后重新提交。确认撤回？')
+    expect(api.withdrawModel).not.toHaveBeenCalled()
+  })
+
+  it('点「设为默认」→ 确认窗「设为默认模型」说明同类别原默认自动取消 → setDefaultModel →「已设为默认模型」（md §二.3.8）', async () => {
+    msgBox.confirm.mockResolvedValue(true)
+    api.setDefaultModel.mockResolvedValue({})
+    await mount()
+    btn(rowByName('在线模型甲'), '设为默认').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '设为默认后，「文本生成」类别将以「在线模型甲」为默认模型（该类别原默认模型自动取消，不影响其它类别）。确认设置？',
+      '设为默认模型',
+      expect.objectContaining({ confirmButtonText: '设为默认' })
+    )
+    expect(api.setDefaultModel).toHaveBeenCalledWith('md_online')
+    expect(msg.success).toHaveBeenCalledWith('已设为默认模型')
+    expect(api.listModels).toHaveBeenCalledTimes(2)
+  })
+
+  it('点「删除」→ 确认窗提示「配置与密钥将不可恢复」【删除】危险样式 → deleteModel →「已删除」+ 重拉（md §二.3.9）', async () => {
+    msgBox.confirm.mockResolvedValue(true)
+    api.deleteModel.mockResolvedValue({})
+    await mount()
+    btn(rowByName('新建已验证'), '删除').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '删除后模型「新建已验证」的配置与密钥将不可恢复。确认删除？',
+      '删除模型',
+      expect.objectContaining({ confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' })
+    )
+    expect(api.deleteModel).toHaveBeenCalledWith('md_new_ok')
+    expect(msg.success).toHaveBeenCalledWith('已删除')
+    expect(api.listModels).toHaveBeenCalledTimes(2)
+  })
+
+  it('点「删除」取消 → 不执行删除（md §二.3.9「用户取消确认时不执行删除」）', async () => {
+    msgBox.confirm.mockRejectedValue('cancel')
+    await mount()
+    btn(rowByName('新建已验证'), '删除').click()
+    await flush()
+    expect(api.deleteModel).not.toHaveBeenCalled()
+    expect(api.listModels).toHaveBeenCalledTimes(1)
+  })
+
+  it('动作失败 → toast 错误原因，不重拉（md §二.5「单项操作失败保留原状态」口径）', async () => {
+    msgBox.confirm.mockResolvedValue(true)
+    api.setDefaultModel.mockRejectedValue(new Error('仅已发布模型可设为默认'))
+    await mount()
+    btn(rowByName('在线模型甲'), '设为默认').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布模型可设为默认')
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(api.listModels).toHaveBeenCalledTimes(1)
   })
 
   it('已停用行：显「发布」可再次提交', async () => {
@@ -338,11 +480,23 @@ describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () 
     expect(dlg.getAttribute('data-id')).toBe('md_online')
   })
 
-  it('「编辑」任何状态下都可点（无审核锁定态）', async () => {
+  it('非审核中行 → 「编辑」可点（md §二.3.3「未发布和已发布模型可以编辑」）', async () => {
     await mount()
     for (const name of ['新建已验证', '在线模型甲', '已停用']) {
       expect(btn(rowByName(name), '编辑').disabled).toBeFalsy()
     }
+    btn(rowByName('在线模型甲'), '编辑').click()
+    await nextTick()
+    const dlg = container.querySelector('.stub-edit-dialog')
+    expect(dlg.getAttribute('data-visible')).toBe('true')
+    expect(dlg.getAttribute('data-readonly')).toBe('0')
+    expect(dlg.getAttribute('data-id')).toBe('md_online')
+  })
+
+  it('验证列 · 从未验证过的行：刷新图标悬浮提示「尚未验证过，点击发起验证」（md §二.3.4 L107，审计 K22）', async () => {
+    await mount()
+    const icon = rowByName('新建未验证').querySelector('.md-vc-refresh')
+    expect(icon.closest('.el-tooltip').dataset.tip).toBe('尚未验证过，点击发起验证')
   })
 
   it('验证列：点刷新图标即发起验证（全部就地，无弹窗/抽屉）', async () => {
@@ -353,14 +507,14 @@ describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () 
     expect(api.verifyModel).toHaveBeenCalledWith('md_new_unver', expect.any(Object))
   })
 
-  it('验证列 · 验证中：图标转圈表达进行中，并显阶段文案', async () => {
+  it('验证列 · 验证中：图标转圈表达进行中，时间位显「正在验证…」（md §二.3.4 L112，审计 K22）', async () => {
     api.verifyModel.mockReturnValue(new Promise(() => {}))
     await mount()
     const r = rowByName('新建未验证')
     r.querySelector('.md-vc-refresh').click()
     await nextTick()
     expect(r.querySelector('.md-vc-refresh').className).toContain('is-spinning')
-    expect(r.textContent).toContain('正在连接模型')
+    expect(r.textContent).toContain('正在验证…')
   })
 
   it('验证列 · 验证中再次点击图标：不重复发起', async () => {
@@ -383,6 +537,39 @@ describe('AdminModels · 上架/下架（V96：模型不走审核流程）', () 
     r.querySelector('.md-vc-refresh').click()
     await nextTick()
     expect(api.verifyModel).toHaveBeenCalledWith('md_online', expect.any(Object))
+  })
+
+  // 2026-09-12 T55 · md §二.3.4 L115「连接正常时提示"检活完成 · 连接正常"；连接异常时提示"检活完成 · 连接异常"」
+  // + L114「验证完成后，当前行的状态和最近验证时间立即更新」（实现为重拉列表）
+  it('验证完成 · 连接正常 → toast「检活完成 · 连接正常」+ 重拉列表，图标停转（md §二.3.4）', async () => {
+    api.verifyModel.mockResolvedValue({ verifyStatus: 'SUCCESS', verifyLatencyMs: 90 })
+    await mount()
+    const r = rowByName('新建未验证')
+    r.querySelector('.md-vc-refresh').click()
+    await flush(6)
+    expect(api.verifyModel).toHaveBeenCalledWith('md_new_unver', expect.any(Object))
+    expect(msg.success).toHaveBeenCalledWith('检活完成 · 连接正常')
+    expect(api.listModels).toHaveBeenCalledTimes(2)
+    expect(rowByName('新建未验证').querySelector('.md-vc-refresh').className).not.toContain('is-spinning')
+  })
+
+  it('验证完成 · 连接异常 → toast「检活完成 · 连接异常」+ 重拉列表（md §二.3.4）', async () => {
+    api.verifyModel.mockResolvedValue({ verifyStatus: 'FAILED', verifyError: 'AUTH_FAILED: 鉴权失败' })
+    await mount()
+    rowByName('新建未验证').querySelector('.md-vc-refresh').click()
+    await flush(6)
+    expect(msg.warning).toHaveBeenCalledWith('检活完成 · 连接异常')
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(api.listModels).toHaveBeenCalledTimes(2)
+  })
+
+  it('验证请求层失败且无原因 → toast「检活失败，请稍后重试」，不重拉、验证态不改（md §二.3.4 L116 / §二.5）', async () => {
+    api.verifyModel.mockRejectedValue({})
+    await mount()
+    rowByName('新建未验证').querySelector('.md-vc-refresh').click()
+    await flush(6)
+    expect(msg.error).toHaveBeenCalledWith('检活失败，请稍后重试')
+    expect(api.listModels).toHaveBeenCalledTimes(1)
   })
 
   it('验证列：失败只显「异常」，错误分类名与错误码移入悬浮提示', async () => {

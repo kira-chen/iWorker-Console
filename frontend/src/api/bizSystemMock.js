@@ -17,6 +17,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { isBlankBizPage } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const nowIso = () => new Date().toISOString()
@@ -190,11 +191,16 @@ function applyBizPayload(b, payload) {
   b.description = (payload.description || '').trim()
   b.loginUrl = (payload.loginUrl || '').trim()
   b.connType = 'login_session' // 连接方式只读（本期仅登录态托管一种）
-  b.bizPages = (Array.isArray(payload.bizPages) ? payload.bizPages : []).map((p) => ({
-    url: (p?.url || '').trim(),
-    name: (p?.name || '').trim(),
-    description: (p?.description || '').trim()
-  }))
+  // 整行空白的业务页丢弃（2026-09-12 对齐 md 业务系统 §三.3 L108「自动丢弃空行」· 审计 K41）：
+  // 与编辑器 buildPayload / validateBizSystemForm 共用 defValidate.isBlankBizPage，编辑器丢、mock 也丢，
+  // 绕过 UI 直调 mock 时不会落进一条空行。
+  b.bizPages = (Array.isArray(payload.bizPages) ? payload.bizPages : [])
+    .filter((p) => !isBlankBizPage(p))
+    .map((p) => ({
+      url: (p?.url || '').trim(),
+      name: (p?.name || '').trim(),
+      description: (p?.description || '').trim()
+    }))
   b.exampleQuestions = [0, 1, 2].map((i) => (payload.exampleQuestions?.[i] || '').trim())
 }
 
@@ -291,6 +297,31 @@ export async function rejectBizSystem(id) {
   return toRow(b)
 }
 
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
+ * 复用上方既有的 approve/rejectBizSystem 状态机（不重复造），只抹掉 delay 与「无待审事项」抛错
+ * ——审核中心分发到没有待审事项的对象时应静默跳过（返回 false），不该把审核动作整体打断。
+ * md `prd-业务系统.md` §L46 / §L50。
+ */
+export function applyBizSystemReviewResult(refId, requestAction, approved) {
+  const b = findBiz(refId)
+  if (!b || b.status !== 'PENDING_REVIEW') return false
+  const isDelist = (requestAction || (b.pendingAction === 'DEACTIVATE' ? 'DELIST' : '')) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      b.status = 'NOT_PUBLISHED'
+    } else {
+      b.status = 'PUBLISHED'
+      b.publishedAt = nowIso()
+    }
+  } else {
+    b.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
+  }
+  b.pendingAction = null
+  persist()
+  return true
+}
+
 /* ================= 业务系统专属技能（BQ1 保留区块，N8 第三类） ================= */
 export async function listBizSystemSkills(id) {
   await delay(150)
@@ -320,29 +351,3 @@ export async function deleteBizSystemOwnedSkill(id, skillId) {
   return {}
 }
 
-/* ================= 示例问题 AI 生成（demo 本地模板随机填充，BQ4） ================= */
-const Q_TEMPLATES = [
-  [
-    (n) => `帮我在「${n}」里发起一个明天下午的请假审批`,
-    (n) => `打开「${n}」的工作台看看今天的待办`,
-    (n) => `帮我在「${n}」里查一条最近的业务记录`
-  ],
-  [
-    (n, d) => `用「${n}」${d ? d.split(/[，。、;；]/)[0] : '处理一件今天的事务'}`,
-    (n) => `帮我到「${n}」里提交一条新的申请`,
-    (n) => `查一下「${n}」里我负责的最新进展`
-  ],
-  [
-    (n) => `帮我登录「${n}」并打开常用业务页`,
-    (n) => `在「${n}」里帮我找到上周处理过的那条记录`,
-    (n) => `用「${n}」帮我完成一次日常办事操作`
-  ]
-]
-
-export async function aiGenerateBizExampleQuestions({ name, description } = {}) {
-  await delay(600) // 模拟模型生成耗时
-  const n = (name || '').trim() || '这个业务系统'
-  const d = (description || '').trim()
-  const group = Q_TEMPLATES[Math.floor(Math.random() * Q_TEMPLATES.length)]
-  return { questions: group.map((tpl) => tpl(n, d).slice(0, BIZ_QUESTION_MAX)) }
-}

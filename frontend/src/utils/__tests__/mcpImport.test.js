@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMcpConfig, suggestCodeFromKey } from '@/utils/mcpImport'
+import { parseMcpConfig } from '@/utils/mcpImport'
 
 describe('parseMcpConfig — 标准 stdio 配置', () => {
   it('解析 mcpServers 包裹的 stdio 服务（command/args/env）', () => {
@@ -102,17 +102,5 @@ describe('parseMcpConfig — 兼容形态与边界', () => {
     expect(r.args).toEqual([])
     expect(r.env).toEqual([])
     expect(r.warnings.length).toBeGreaterThanOrEqual(2)
-  })
-})
-
-describe('suggestCodeFromKey — 别名规整为候选 code', () => {
-  it('连字符转下划线', () => {
-    expect(suggestCodeFromKey('amap-maps')).toBe('amap_maps')
-  })
-  it('大写转小写、去首尾下划线', () => {
-    expect(suggestCodeFromKey('-My.Server-')).toBe('my_server')
-  })
-  it('空输入 → 空串', () => {
-    expect(suggestCodeFromKey('')).toBe('')
   })
 })

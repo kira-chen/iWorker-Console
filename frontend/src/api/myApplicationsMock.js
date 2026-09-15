@@ -169,6 +169,30 @@ export function withdrawApplicationRow(businessType, refId) {
 }
 
 /**
+ * 审核结论回写（2026-09-12 负责人决策 5（审计 J12））：审核中心通过 / 驳回后，把同一对象
+ * （businessType + refId）仍待审的申请行置为已通过 / 已驳回，并记审核人、审核时间、驳回原因。
+ *
+ * md `prd.我的申请.md` §六 L87「每条申请保存：……审核结果、审核人、审核时间和驳回原因」、
+ * §五 状态流转表（待审核 → 审核后为已通过 / 已驳回）。
+ * 无匹配待审行（如种子里只有审核中心行、没有对应申请行）时静默跳过，不建新行
+ * ——申请行只应由提交端 submitApplicationRow 创建。
+ * @param {Object} p { businessType, refId, approved, reviewer, reviewedAt?, rejectReason? }
+ * @returns {boolean} 是否命中并回写
+ */
+export function applyApplicationReviewResult(p = {}) {
+  const row = applications.find(
+    (r) => r.businessType === p.businessType && String(r.refId) === String(p.refId) && r.result === 'PENDING'
+  )
+  if (!row) return false
+  row.result = p.approved ? 'APPROVED' : 'REJECTED'
+  row.reviewer = p.reviewer || ''
+  row.reviewedAt = p.reviewedAt || now()
+  row.rejectReason = p.approved ? '' : String(p.rejectReason || '').trim()
+  persist()
+  return true
+}
+
+/**
  * 列表。params: { keyword?, businessType?, applicationType?, result?, sortDir?('asc'|'desc'), page?, size? }
  * → { list, total }
  */

@@ -76,6 +76,8 @@ const busy = ref({})
 
 // 服务级发布态：{ [mcpDefId]: aggregateStatus }。消费后端服务级聚合端点（单目标端 USER_END）。
 const pubAgg = ref({})
+// 审核中的待审类型（PUBLISH / DELIST），与 pubAgg 同源于发布态摘要，仅撤回确认文案用（md §3.5）
+const pendingActions = ref({})
 
 // 列表页状态筛选（三态）——前端按聚合态过滤，后端 listMcp 的 status 是「启用/停用」另一维度，不复用。
 const STATE_OPTIONS = [
@@ -228,6 +230,8 @@ async function loadPubSummary() {
         // 单目标端（2026-08-20）：后端只返回 USER_END 一段，取其聚合态即服务发布态。
         const seg = (data?.targets || [])[0]
         if (seg?.aggregateStatus) acc[id] = seg.aggregateStatus
+        // 审核中还要记是哪种待审（发布 / 停用），撤回确认按类型说明恢复结果（md §3.5）
+        pendingActions.value[id] = seg?.pendingAction || null
       } catch (e) {
         // 单行聚合失败：忽略（按未发布展示），不阻断列表
       }
@@ -374,8 +378,12 @@ async function publish(row) {
 /** 撤回：审核中 → 未发布（删除在审 listing 行，沿用后端服务级 withdraw 语义）。 */
 async function withdraw(row) {
   try {
+    // 按待审类型说明恢复结果（md §3.5，与 API / 模型同口径）：待审发布 → 未发布；待审停用 → 保持已发布
+    const isDelist = pendingActions.value[row.id] === 'DELIST'
     await ElMessageBox.confirm(
-      `撤回后「${row.name}」将回到未发布状态，需重新发布并再次审核。确认撤回？`,
+      isDelist
+        ? `撤回后「${row.name}」将保持已发布，继续对客户端提供服务。确认撤回？`
+        : `撤回后「${row.name}」将回到未发布状态，需重新发布并再次审核。确认撤回？`,
       '撤回审核',
       { type: 'warning', confirmButtonText: '撤回' }
     )

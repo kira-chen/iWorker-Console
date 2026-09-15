@@ -139,10 +139,11 @@ export function mkRequestMapRow(over = {}) {
   return { name: '', type: 'string', required: false, clientField: '', defaultValue: '', preset: false, children: [], ...over }
 }
 /**
- * 新建 API 数据源默认注入的三级递归示例组（2026-09-08 PRD-20260908 md §六.2）：
- * filters(object) → rules(array) → field / value(string)。可编辑、可删除、非预设（不属于平台强制参数）；
- * 仅新建时注入（md「新建 API 数据源默认展示」），编辑已有源不注入。
- * 原型 L2016 示例组在 filters 下另有 enabled(boolean)，md 未列——按 md 不含（改动记录-20260907 待确认 4，负责人默认按 md）。
+ * 新建 API 数据源默认注入的三级递归示例组（md 知识库 §六.2 L316）：
+ * filters(object) → rules(array) → field / value(string)，另在 filters 下与 rules 同级一个 enabled(boolean) 子字段
+ * （2026-09-12 对齐 md §六.2 L316「另在 filters 下与 rules 同级展示一个 enabled（boolean）子字段」· 审计 K37；
+ * 此前按 2026-09-07 旧口径不含 enabled，本版 md 已明确列出）。
+ * 可编辑、可删除、非预设（不属于平台强制参数）；仅新建时注入（md「新建 API 数据源默认展示」），编辑已有源不注入。
  */
 export function mkRequestMapExampleRows() {
   return [
@@ -154,7 +155,8 @@ export function mkRequestMapExampleRows() {
           name: 'rules',
           type: 'array',
           children: [mkRequestMapRow({ name: 'field' }), mkRequestMapRow({ name: 'value' })]
-        })
+        }),
+        mkRequestMapRow({ name: 'enabled', type: 'boolean' })
       ]
     })
   ]

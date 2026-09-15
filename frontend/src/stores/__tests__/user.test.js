@@ -20,34 +20,17 @@ class MemoryStorage {
     this.map.clear()
   }
 }
-globalThis.localStorage = new MemoryStorage()
+Object.defineProperty(globalThis, 'localStorage', { value: new MemoryStorage(), writable: true, configurable: true })
 
-// 切断 auth(axios→element-plus) 与兄弟 store 的真实依赖链，仅验证本 store 纯逻辑
-const getCurrentUser = vi.fn()
-vi.mock('@/api/auth', () => ({ login: vi.fn(), getCurrentUser }))
-const positionReset = vi.fn()
-const chatReset = vi.fn()
-vi.mock('@/stores/userPosition', () => ({
-  useUserPositionStore: () => ({ reset: positionReset })
-}))
-vi.mock('@/stores/chat', () => ({
-  useChatStore: () => ({ reset: chatReset })
-}))
-const sessionReset = vi.fn()
-vi.mock('@/stores/session', () => ({
-  useSessionStore: () => ({ reset: sessionReset })
-}))
-
+// 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役后，本 store 已不再 import
+// api/auth 与 userPosition / chat / session 三个兄弟 store（那四个模块都已删除），
+// 故原先的四组 vi.mock 一并移除——store 现已无外部依赖链，可直接 import。
 const { useUserStore } = await import('@/stores/user')
 
 describe('user store getters', () => {
   beforeEach(() => {
     localStorage.clear()
     setActivePinia(createPinia())
-    positionReset.mockClear()
-    chatReset.mockClear()
-    sessionReset.mockClear()
-    getCurrentUser.mockReset()
   })
 
   it('未登录默认态：role 空、roles 空、非 admin、不可进任一模块、未绑定、未登录', () => {
@@ -188,7 +171,9 @@ describe('user store getters', () => {
   // 注：refreshProfile 的 4 个用例已随该函数退役删除（取消登录后无 /auth/me 可刷，
   // demo 身份由 utils/demoIdentity.js 注入）。
 
-  it('logout 清登录态并重置兄弟 store', () => {
+  // 2026-09-12 负责人决策 3（审计 J2）：原用例名「logout 清登录态并重置兄弟 store」，
+  // 员工端退役后 userPosition / chat / session 三个兄弟 store 已删除，logout 只剩清登录态。
+  it('调用 logout → 清 token 与 userInfo 且同步落盘清除（员工端兄弟 store 已退役，无 reset 可调）', () => {
     const s = useUserStore()
     s.setToken('jwt')
     s.setUserInfo({ role: 'EMPLOYEE', boundPositionId: 1 })
@@ -196,9 +181,7 @@ describe('user store getters', () => {
     expect(s.isLoggedIn).toBe(false)
     expect(s.userInfo).toBeNull()
     expect(localStorage.getItem('ai_assistant_token')).toBeNull()
-    expect(positionReset).toHaveBeenCalledOnce()
-    expect(chatReset).toHaveBeenCalledOnce()
-    expect(sessionReset).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('ai_assistant_user')).toBeNull()
   })
 })
 

@@ -1,14 +1,16 @@
 <script setup>
 /**
- * 岗位「样例定时任务」两栏聚焦弹窗（交互规格 §1.3 / §2 / §3 / §4）。
+ * 岗位「自动化任务」页签两栏主从容器（md 岗位 §7.1）。
  *
- * 与「数据底座 / 效果测试」并列的第三个岗位级 .focus-stage 聚焦弹窗，整体复刻 PositionDataTableStage 骨架：
- *   zoomIn 入场 + .ed-crumb 面包屑顶栏（↩ 返回总览 / ✕）+ 左列表 + 右编辑 master/detail + 脏检查关闭。
+ * 左列表 + 右编辑 master/detail + 脏检查切换，骨架复刻自 PositionDataTableStage。
  *
  * 2026-09-09 原型复刻批次 4B（#16 / #17）：
- *   - embedded（页签内联）态去卡片外壳（描边/圆角/阴影/zoomIn），左栏 240px 白底、右栏灰底（原型 .pd2-task-layout）；
+ *   - 页签内联形态：去卡片外壳，左栏 240px 白卡、右栏白卡铺在页签灰底上（原型 .pd2-task-layout）；
  *   - 列表项操作精简为「删除」贴名称行右侧（「编辑」= 点行本身）；单任务启停按 md §7.2 保留，
  *     但从列表项移入右侧详情卡「基本信息」卡头（负责人 0908 折中）。
+ * 2026-09-12 审计 J5：退役 `embedded` 开关——本组件只在 PositionDetailTabs 页签内联使用，
+ *   浮层态（zoomIn 卡壳 + .ed-crumb 面包屑 + 顶栏关闭）无消费方，随开关一并删除；
+ *   删除确认与 toast 文案逐字照 md §7.8（审计 K6）。
  *
  * 左栏（master）：样例条目（拖拽手柄 ⠿ + 名称 + 副行「周期人话摘要 · 引用 N 工具」+ hover 删除/测试）；
  *   末尾「＋ 新增样例任务」（软上限 20 满额置灰 + warning）；空态 / loading / error 四态。
@@ -35,11 +37,9 @@ import ReActSteps from '@/components/ReActSteps.vue'
 
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
-  positionName: { type: String, default: '岗位' },
-  // Tab 内联模式：隐藏面包屑/返回；功能逻辑不变
-  embedded: { type: Boolean, default: false }
+  positionName: { type: String, default: '岗位' }
 })
-const emit = defineEmits(['close', 'saved', 'update:sampleCount'])
+const emit = defineEmits(['saved', 'update:sampleCount'])
 
 /* ============================ ① 列表（master） ============================ */
 const listLoading = ref(false)
@@ -197,12 +197,12 @@ async function onCreated(vo) {
   editorDirty.value = false
 }
 
-/* ============================ 删除（二次确认，软删口径） ============================ */
+/* ============================ 删除（二次确认，软删口径；文案逐字照 md §7.8 L437-438，2026-09-12 审计 K6） ============================ */
 const delBusy = ref(null)
 async function removeItem(it) {
   try {
     await ElMessageBox.confirm(
-      `删除任务「${it.name}」？删除后随下次发布从客户端下载中移除，不可恢复。`,
+      '删除后该任务将不可恢复，确认删除？',
       '删除自动化任务',
       {
         type: 'warning',
@@ -217,7 +217,7 @@ async function removeItem(it) {
   delBusy.value = it.id
   try {
     await deleteSampleTask(props.positionId, it.id)
-    ElMessage.success('任务已删除')
+    ElMessage.success('样例任务已删除')
     if (selectedId.value === it.id) clearSelection()
     await loadList()
     emit('saved')
@@ -348,36 +348,10 @@ function retryTest() {
   const it = items.value.find((i) => i.id === testPanel.sampleId)
   if (it) testItem(it)
 }
-
-/* ============================ 顶栏关闭（脏检查） ============================ */
-async function requestClose() {
-  if (editorDirty.value) {
-    try {
-      await ElMessageBox.confirm('有未保存的修改，确定关闭？', '关闭样例任务', {
-        type: 'warning',
-        confirmButtonText: '确定关闭',
-        cancelButtonText: '继续编辑'
-      })
-    } catch {
-      return
-    }
-  }
-  emit('close')
-}
 </script>
 
 <template>
-  <div class="st-editor" :class="{ 'st-embedded': embedded }">
-    <!-- 顶栏面包屑（复刻 .ed-crumb）；Tab 内联模式隐藏 -->
-    <div v-if="!embedded" class="ed-crumb">
-      <span class="crumb-link" @click="requestClose">⏰ {{ positionName }}</span>
-      <span class="crumb-sep">/</span>
-      <span class="crumb-cur">自动化任务</span>
-      <span class="crumb-sp"></span>
-      <span class="ed-close" @click="requestClose">↩ 返回总览</span>
-      <button type="button" class="crumb-x" title="关闭" aria-label="关闭" @click="requestClose">✕</button>
-    </div>
-
+  <div class="st-editor">
     <!-- 两栏体 -->
     <div class="st-body">
       <!-- ① 列表（master） -->
@@ -484,7 +458,6 @@ async function requestClose() {
           :key="selectedId"
           :position-id="positionId"
           :sample="selectedSample"
-          :embedded="embedded"
           :status-busy="selectedSample ? statusBusy === selectedSample.id : false"
           @dirty-change="onEditorDirty"
           @saved="onSaved"
@@ -545,125 +518,29 @@ async function requestClose() {
 </template>
 
 <style scoped>
-/* ── 根：复刻数据底座 .dt-editor（zoomIn 入场，像素级一致） ── */
+/* ── 根：页签内联形态（2026-09-12 审计 J5：原浮层卡壳 / zoomIn / 面包屑随 embedded 开关退役）
+      整块铺满页签，右栏走灰底（对齐原型 .pd2-task-layout{background:#f5f7f6}） ── */
 .st-editor {
   width: 100%;
-  max-width: min(96vw, 1440px);
-  margin: 0 auto;
-  height: 100%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: stsZoomIn var(--dur-slow) var(--ease-out) both;
-}
-@keyframes stsZoomIn {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* ── 页签内联态（#16）：去卡片外壳（描边/圆角/阴影/zoomIn），整块铺满页签，
-      右栏走灰底（对齐原型 .pd2-task-layout{background:#f5f7f6}）── */
-.st-editor.st-embedded {
-  max-width: none;
-  /* 内联态需要明确高度，让内部 flex 链路（.st-body flex:1 + 列表栏 overflow:auto）能闭合生效。
+  /* 需要明确高度，让内部 flex 链路（.st-body flex:1 + 列表栏 overflow:auto）能闭合生效。
      父链：.el-tabs__content(flex:1;min-height:0;overflow:auto) → .el-tab-pane(height:100%)
      → .pd-pane--flush(height:100%) → 本元素 → .st-body(flex:1) → 列表栏(overflow:auto)
      用 calc 减去 margin-top，避免溢出父容器。 */
   height: calc(100% - 22px);
   margin-top: 22px;
   background: var(--bg-sunken);
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  animation: none;
-}
-
-/* ── 顶栏面包屑（复刻 .ed-crumb） ── */
-.ed-crumb {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
-  flex-wrap: wrap;
-}
-.crumb-link {
-  color: var(--c-text-muted);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-.crumb-link:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
-}
-.crumb-sep {
-  color: var(--c-text-faint);
-  font-size: var(--fs-xs);
-}
-.crumb-cur {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-strong);
-}
-.crumb-sp {
-  flex: 1;
-}
-.ed-close {
-  cursor: pointer;
-  color: var(--c-text-muted);
-  padding: 4px 10px;
-  border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
-  border: 1px solid var(--border-base);
-  background: var(--bg-surface);
-}
-.ed-close:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
-}
-.crumb-x {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--c-text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-}
-.crumb-x:hover {
-  background: var(--bg-hover);
-  color: var(--c-text);
+  flex-direction: column;
+  overflow: hidden;
 }
 
-/* ── 两栏体 ── */
+/* ── 两栏体：左栏 240px，右栏 1fr（原型 .pd2-task-layout 实测 240px 1fr）。
+   2026-09-10 逐像素对齐（负责人指认「边框与对齐」）：原型两栏各自是独立白卡
+   （1px #dfe5e1 + 8px 圆角），故补 gap 与卡片化。 ── */
 .st-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  overflow: hidden;
-}
-/* 内联态（#16）：左栏 240px，右栏 1fr（原型 .pd2-task-layout 实测 240px 1fr / gap 0）。
-   2026-09-10 逐像素对齐（负责人指认「边框与对齐」）：原型两栏各自是独立白卡
-   （1px #dfe5e1 + 8px 圆角），此前现状两栏无外框、右栏通底，故补 gap 与卡片化。 */
-.st-embedded .st-body {
   grid-template-columns: 240px minmax(0, 1fr);
   background: var(--bg-sunken);
   gap: 16px;
@@ -672,15 +549,8 @@ async function requestClose() {
   overflow: hidden;
 }
 
-/* ① 列表栏 */
+/* ① 列表栏（原型 .pd2-task-list 实测：1px 边框 + 8px 圆角 + 白底 + padding 0） */
 .st-col-list {
-  border-right: 1px solid var(--border-soft);
-  background: var(--bg-surface);
-  padding: var(--space-3);
-  overflow: auto;
-}
-/* 列表栏卡片化（原型 .pd2-task-list 实测：1px 边框 + 8px 圆角 + 白底 + padding 0） */
-.st-embedded .st-col-list {
   /* 2026-09-10 像素账本 G3 附带（描边铺开）：同右栏编辑器，白卡描边走不透明令牌 */
   border: 1px solid var(--border-admin-card);
   /* 原型 .pd2-task-list / .pd2-task-detail 实测 8px */
@@ -691,9 +561,6 @@ async function requestClose() {
   max-height: calc(100vh - 166px);
   overflow: hidden auto;
   align-self: stretch;
-}
-.st-embedded .st-limit-tip {
-  margin: var(--space-2) var(--space-2) var(--space-1);
 }
 .list-error {
   display: flex;
@@ -709,7 +576,7 @@ async function requestClose() {
   background: var(--c-warning-soft);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
+  margin: var(--space-2) var(--space-2) var(--space-1);
   line-height: 1.5;
 }
 
@@ -829,22 +696,9 @@ async function requestClose() {
   vertical-align: middle;
   cursor: help;
 }
-/* 内联态（#16）：条目改原型 .pd2-task-item——无圆角、下描边分隔，选中态 3px 绿左条 + 淡绿底 */
-.st-embedded .st-item {
-  padding: 11px 14px;
-  border-radius: 0;
-  border-left: 3px solid transparent;
-  border-bottom: 1px solid var(--border-soft);
-}
-.st-embedded .st-item.on {
-  border-left-color: var(--c-accent);
-}
-.st-embedded .st-new {
-  margin: 6px 8px 10px;
-}
 
 .st-new {
-  margin-top: var(--space-3);
+  margin: 6px 8px 10px;
   border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-lg);
   background: transparent;
@@ -900,17 +754,15 @@ async function requestClose() {
   line-height: 1.6;
 }
 
-/* ② 编辑区栏 */
+/* ② 编辑区栏：右栏卡片化（原型 .pd2-task-detail 实测：1px 边框 + 8px 圆角 + 白底 +
+   padding 22px 28px 80px）。 */
 .st-col-edit {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
 }
-/* 内联态右栏卡片化（原型 .pd2-task-detail 实测：1px 边框 + 8px 圆角 + 白底 +
-   padding 22px 28px 80px）。此前为通底灰面无外框，是「边框缺失」的主因。 */
-.st-embedded .st-col-edit,
-.st-embedded .st-placeholder {
+.st-col-edit,
+.st-placeholder {
   background: var(--bg-surface);
   /* 2026-09-10 像素账本 G3 附带（描边铺开）：白卡浮在页签灰底上，描边取不透明卡描边令牌
      （半透明 --border-base 在灰底/白底交界处会合成出两种深浅），与左栏任务列表同源。 */
@@ -991,13 +843,11 @@ async function requestClose() {
     overflow: auto;
   }
   .st-col-list {
-    border-right: none;
-    border-bottom: 1px solid var(--border-soft);
     max-height: 220px;
   }
   .st-col-edit {
     overflow: visible;
-    max-height: none;
+    height: auto;
   }
 }
 </style>

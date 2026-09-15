@@ -4,8 +4,10 @@ import { createApp, h, nextTick, reactive } from 'vue'
 
 /**
  * ParamRowsEditor.vue 单测 —— 公共参数行编辑器（2026-08-31 B.3 抽象）。
- * MCP stdio Env（无位置列）与 API KEY 鉴权（带位置列）共用；本文件验行渲染、
- * 增删行事件、客户端填写互斥联动、占位提示、行级提示与 clientFillHint 展示。
+ * 三处消费方：知识库数据源（默认形态，无位置列）/ MCP stdio Env（M5 形态：表头恒显 + 行卡片 + 三步式）/
+ * API KEY 鉴权（showIn 带位置列 + 密码态）。本文件验行渲染、增删行事件、客户端填写互斥联动、
+ * 占位提示、行级提示与 clientFillHint 展示（对齐 MCP md §三.4.2 L278-286、API md §三.3 L128-138）。
+ * inDisabled prop 已于 2026-09-12 随死码清理删除（审计 J13）。
  * Element 组件按仓内范式桩化（同 drawerEditor.test.js）。
  */
 
@@ -92,10 +94,11 @@ afterEach(() => {
 const row = (over = {}) => ({ key: '', description: '', clientFill: false, value: '', configured: false, ...over })
 
 describe('ParamRowsEditor', () => {
-  it('默认（MCP Env 形态）：无位置列，表头四列，行随 rows 渲染', () => {
+  it('默认形态（知识库数据源用）：无位置列，表头四列「名称 / 描述（客户端可见）/ 客户端填写 / 平台值」，行随 rows 渲染', () => {
     const el = mountEditor({ rows: [row({ key: 'API_KEY', configured: true })] })
     expect(el.querySelectorAll('.pr-row:not(.pr-row-head)').length).toBe(1)
-    expect(el.querySelector('.pr-row-head').textContent).toContain('客户端填写')
+    const cols = [...el.querySelector('.pr-row-head').children].map((c) => c.textContent.trim()).filter(Boolean)
+    expect(cols).toEqual(['名称', '描述（客户端可见）', '客户端填写', '平台值'])
     expect(el.querySelector('.pr-in-select')).toBeNull()
   })
 
@@ -175,7 +178,7 @@ describe('ParamRowsEditor', () => {
 
   /* ===== 2026-09-09 原型复刻批次 3A（M5 MCP Env 形态 / A4 API 鉴权形态） ===== */
 
-  it('新增 prop 全部默认关闭：既有消费方形态不变（无空态、表头随行、添加在表底、无行卡片）', () => {
+  it('新增 prop 全部默认关闭：默认形态（知识库数据源用）不变——无空态、表头随行、添加在表底、无行卡片', () => {
     const el = mountEditor({ rows: [] })
     expect(el.querySelector('.pr-empty')).toBeNull()
     expect(el.querySelector('.pr-row-head')).toBeNull()

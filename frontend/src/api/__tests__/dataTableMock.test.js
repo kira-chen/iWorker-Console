@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listDataTables,
   getDataTable,
@@ -23,7 +23,11 @@ describe('dataTableMock · 工作档案（2026-09-02 岗位工作台补 mock）'
     expect(p401.total).toBe(1)
     expect(p401.list[0]).toMatchObject({ label: '经营复盘档案', recordCount: 12, refSkillCount: 1, status: 'active' })
     expect(p401.list[0].fieldCount).toBeGreaterThan(0)
+    // 2026-09-12 审计 D6：用例名写了 402/403，原来只断了 401——补齐
+    expect((await listDataTables(402)).total).toBe(1)
+    expect((await listDataTables(403)).total).toBe(1)
     expect((await listDataTables(404)).list).toEqual([])
+    expect((await listDataTables(404)).total).toBe(0)
   })
 
   it('详情含 uid 系统字段 + dossier；种子须通过前端轻校验（validateFields / validateDossierConfig）', async () => {
@@ -84,12 +88,102 @@ describe('dataTableMock · 工作档案（2026-09-02 岗位工作台补 mock）'
     expect(cfg.policy.confirmMode).toBe('LOW_ONLY')
     const saved = await saveDossierConfig(403, 9003, {
       policy: { ...cfg.policy, confirmMode: 'ALL' },
-      checklist: [{ key: '风险点', when: { type: 'ALWAYS' }, hint: null }],
       reduceRules: [{ key: '风险点', strategy: 'LIST', params: { normalize: true }, desc: null }]
     })
     expect(saved.policy.confirmMode).toBe('ALL')
     const back = await getDossierConfig(403, 9003)
-    expect(back.checklist).toHaveLength(1)
+    // 2026-09-12 负责人决策 6（审计 J13）：md §4.2.1 无应沉淀清单，dossier 不再带 checklist
+    expect(back.checklist).toBeUndefined()
     expect(back.reduceRules[0]).toMatchObject({ key: '风险点', strategy: 'LIST' })
+  })
+})
+
+/**
+ * 2026-09-12 测试审计补缺口（F5）：dataTableMock 持久化零用例（mockPersist v2，6 个写点：
+ * createDataTable / updateDataTable / deleteDataTable / saveDataTableFields / saveDossierConfig / __reset）。
+ * 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+ * 故与 positionMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，模拟「写入 → 刷新 → 重载」。
+ */
+describe('dataTableMock · 持久化（mockPersist v2）', () => {
+  const KEY = 'iworker-demo-mock:dataTable'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: vi.fn((k, v) => map.set(k, String(v))),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('五个业务写点各落盘一次（setItem 计数逐一 +1），只读接口不落盘', async () => {
+    const m = await import('../dataTableMock')
+    const writes = () => globalThis.localStorage.setItem.mock.calls.filter(([k]) => k === KEY).length
+    const base = writes()
+    await m.listDataTables(401)
+    await m.getDataTable(401, 9001)
+    await m.getTableDeleteImpact(401, 9001)
+    await m.getDossierConfig(401, 9001)
+    expect(writes()).toBe(base)
+    const created = await m.createDataTable(404, {
+      label: '选题档案',
+      fields: [{ fieldCode: 'topic', label: '选题', fieldType: 'TEXT' }]
+    })
+    expect(writes()).toBe(base + 1)
+    await m.updateDataTable(404, created.id, { label: '选题库' })
+    expect(writes()).toBe(base + 2)
+    await m.saveDataTableFields(404, created.id, [{ fieldCode: 'topic', label: '选题名', fieldType: 'TEXT' }], false)
+    expect(writes()).toBe(base + 3)
+    const cfg = await m.getDossierConfig(404, created.id)
+    await m.saveDossierConfig(404, created.id, { policy: cfg.policy, reduceRules: [] })
+    expect(writes()).toBe(base + 4)
+    await m.deleteDataTable(404, created.id)
+    expect(writes()).toBe(base + 5)
+    m.__resetDataTableMock()
+    expect(writes()).toBe(base + 6)
+  })
+
+  it('建表落盘（v=2）→ 重新 import（模拟刷新）→ 404 岗位仍能读到新建的表，且 tableSeq 延续不撞号', async () => {
+    const first = await import('../dataTableMock')
+    const created = await first.createDataTable(404, {
+      label: '选题档案',
+      fields: [{ fieldCode: 'topic', label: '选题', fieldType: 'TEXT' }]
+    })
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.v).toBe(2)
+    expect(snap.data.tablesByPosition['404'].map((t) => t.label)).toEqual(['选题档案'])
+    vi.resetModules()
+    const fresh = await import('../dataTableMock')
+    const { list, total } = await fresh.listDataTables(404)
+    expect(total).toBe(1)
+    expect(list[0]).toMatchObject({ id: created.id, label: '选题档案' })
+    const again = await fresh.createDataTable(404, { label: '第二张', fields: [{ fieldCode: 'x', label: 'X', fieldType: 'TEXT' }] })
+    expect(again.id).not.toBe(created.id)
+  })
+
+  it('存量快照版本不符（v=0）→ 丢弃并回种子：404 岗位回到空态', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 0, data: { tableSeq: 1, fieldSeq: 1, tablesByPosition: { 404: [{ id: 1, label: '旧数据', fields: [], refSkills: [] }] } } }))
+    const m = await import('../dataTableMock')
+    expect((await m.listDataTables(404)).list).toEqual([])
+    expect((await m.listDataTables(401)).list[0].label).toBe('经营复盘档案')
+  })
+
+  it('存量快照形状不合法（缺 tablesByPosition）→ restore 抛错被兜底，回种子不白屏', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { tableSeq: 1 } }))
+    const m = await import('../dataTableMock')
+    expect((await m.listDataTables(401)).total).toBe(1)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

@@ -13,16 +13,23 @@
  * - 显式保存 + 脏检查（切换条目 / 关闭由父组件调 isDirty() 决定是否二次确认）。
  *
  * 保存时机：显式点按钮才提交（不逐字段即时保存，避免半成品样例落库）。
- * 子组件 SchedulePicker / ToolPicker / MarkdownEditor 复用（SchedulePicker 内联态传 prototype）。
+ * 子组件 SchedulePicker / ToolPicker / MarkdownEditor 复用。
  *
  * 2026-09-09 原型复刻批次 4B（#18 / #19 / #20 / #21 / #22）：
  * - #18 分区卡头改「3px 绿条 + 灰底头条」，卡体单独 18px 内边距、去阴影（原型 .pd2-task-section-head）；
- * - #19 调度计划走 SchedulePicker prototype 态；
- * - #20 详细说明卡加引导文案 + 脚部字数计数（编辑器本体保留 MarkdownEditor，未照搬原型 contenteditable 壳）；
+ * - #19 调度计划走 SchedulePicker 三模式；
+ * - #20 提示词卡加引导文案 + 脚部字数计数（编辑器本体保留 MarkdownEditor，未照搬原型 contenteditable 壳）；
  * - #21 引用工具卡改「搜索框 + 已引用工具平铺行（含健康度 tag）+ 卡底虚线『+ 添加工具』」，
  *      「+ 添加工具」开弹窗内复用 ToolPicker 勾选；
  * - #22 引用平台技能卡改「已选 chips + 搜索 + 卡底满宽虚线『+ 添加技能』」，候选列表默认收起、点按钮才展开。
  * - md §7.2「支持启用/停用单个任务」的启停开关从列表项移入「基本信息」卡头（负责人 0908 折中）。
+ *
+ * 2026-09-12 对齐 md §7（测试审计闭环批）：
+ * - J5：退役 `embedded` 开关——本组件只在岗位「自动化任务」页签内联使用，无浮层态消费方，样式只留内联形态；
+ * - K4：buildSchedule() 带 scheduleMode / periodicPreset / intervalCount / intervalUnit（§7.3）；
+ * - K1 / K2：空闲时段提前准备默认开启，勾选 / 关闭两态提示分开（§7.3 L398-400）；
+ * - J7 / K7 / K9：提示词非必填、8000 字上限、引导文案与「已输入 N / 8000 字」计数（§7.4 / §7.7）；
+ * - K6 / K8 / J6：保存与创建 toast、搜索占位与空态、基本信息三处占位逐字照 md（§7.2 / §7.5 / §7.6 / §7.7）。
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -44,8 +51,6 @@ const props = defineProps({
   positionId: { type: [Number, String], default: null },
   // null = 新建态；样例条目 = 编辑态（回填自该条目）
   sample: { type: Object, default: null },
-  // 页签内联态（#16/#18）：右栏内容限宽 860 居中 + 分区卡改原型卡头形态
-  embedded: { type: Boolean, default: false },
   // 启停请求进行中（父组件 PositionSampleTaskStage 持有 setSampleTaskStatus 调用）
   statusBusy: { type: Boolean, default: false }
 })
@@ -80,13 +85,21 @@ const form = reactive({
   remark: '',
   schedule: blankSchedule(),
   sopDoc: '',
-  preKick: false,
+  // 空闲时段提前准备：md §7.3 L398「默认开启」（2026-09-12 审计 K1）
+  preKick: true,
   toolRefs: [], // { type, code, requiresConfirmation }（ToolPicker selected 结构）
   skillRefs: [] // { platformSkillId, name }（引用平台技能）
 })
 
+// 任务名称上限：一览表「名称类统一规则 64」（2026-09-12 负责人决策 1）。计数器与 maxlength 共用它。
+const NAME_MAX = 64
 // 与后端 @Size(max=2000) 对齐（字数提示 + maxlength 双保险）
 const PROMPT_MAX = 2000
+// 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7）
+const SOP_MAX = 8000
+// 空闲时段提前准备两态提示（md §7.3 L399-400，逐字；2026-09-12 审计 K2）
+const PRE_KICK_HINT_ON = '送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。'
+const PRE_KICK_HINT_OFF = '到点才开始执行，结果会晚几分钟。'
 
 const errors = reactive({ name: '', prompt: '', schedule: '', sopDoc: '', tools: '', skills: '' })
 const saving = ref(false)
@@ -270,8 +283,9 @@ function toggleSkillPicker() {
   if (skillPickerOpen.value && !skillCandidates.value.length) loadSkillCandidates()
 }
 
-/* ---------- #20 详细说明：脚部字数计数（原型 updateEditorCount：折叠空白后计长度） ---------- */
-const sopWordCount = computed(() => form.sopDoc.replace(/\s+/g, ' ').trim().length)
+/* ---------- 提示词：脚部字数计数「已输入 N / 8000 字」（md §7.4 L409；2026-09-12 审计 K7）
+   计数口径 = 原文字符数，与 8000 上限同一把尺（原型「折叠空白后计长」随原型退场） ---------- */
+const sopWordCount = computed(() => form.sopDoc.length)
 
 /* ============================ 调度预览（FDE 门，防抖） ============================ */
 const previewSummary = ref('')
@@ -327,19 +341,30 @@ async function doPreview() {
   }
 }
 
-/* ---- 组装提交用 Schedule（对齐 TaskEditor.buildSchedule） ---- */
+/* ---- 组装提交用 Schedule（md §7.3 三模式；2026-09-12 审计 K4：带 scheduleMode / periodicPreset /
+   intervalCount / intervalUnit，否则 mock 回默认，「每 3 小时」会落成每 1 天、「单次」重开回「按周期」） ---- */
 function buildSchedule() {
   const sc = form.schedule
-  const out = { scheduleType: sc.scheduleType }
-  if (sc.scheduleType === 'ONCE') {
+  const mode = sc.scheduleMode || 'PERIODIC'
+  const out = { scheduleMode: mode, scheduleType: sc.scheduleType }
+  if (mode === 'ONCE') {
+    out.scheduleType = 'ONCE'
     out.onceAt = sc.onceAt
+  } else if (mode === 'INTERVAL') {
+    out.intervalCount = sc.intervalCount || 1
+    out.intervalUnit = sc.intervalUnit || 'DAY'
+    out.scheduleType = `INTERVAL_${out.intervalUnit}`
+    // 每间隔模式：times[0] 为起始时刻（md §7.3 L396）
+    out.times = dedupeTimes(sc.times).slice(0, 1)
   } else {
+    out.periodicPreset = sc.periodicPreset || 'DAILY'
     out.times = dedupeTimes(sc.times)
     if (sc.scheduleType === 'WEEKLY') out.daysOfWeek = sc.daysOfWeek
     if (sc.scheduleType === 'MONTHLY') out.daysOfMonth = sc.daysOfMonth
   }
   if (sc.startDate) out.startDate = sc.startDate
-  if (sc.endDate) out.endDate = sc.endDate
+  // 单次模式仅设起始时间（md §7.3 L397）
+  if (sc.endDate && mode !== 'ONCE') out.endDate = sc.endDate
   return out
 }
 
@@ -354,8 +379,8 @@ function validate() {
   if (!name) {
     errors.name = '请填写任务名称'
     ok = false
-  } else if (name.length > 60) {
-    errors.name = '任务名称不超过 60 字'
+  } else if (name.length > 64) {
+    errors.name = '任务名称不超过 64 个字符'
     ok = false
   }
 
@@ -399,8 +424,10 @@ function validate() {
     }
   }
 
-  if (!form.sopDoc.trim()) {
-    errors.sopDoc = '请填写详细说明（这件事要怎么办）'
+  // 提示词非必填（md §7.7 必填只有任务名称 + 一句话指令；2026-09-12 审计 J7 / K9 删原「详细说明」必填门），
+  // 仅守 md §7.4「最多 8000 字符」上限（K7）。
+  if (form.sopDoc.length > SOP_MAX) {
+    errors.sopDoc = `提示词不超过 ${SOP_MAX} 字`
     ok = false
   }
   return ok
@@ -464,14 +491,15 @@ async function save() {
   }
   saving.value = true
   try {
+    // toast 文案逐字照 md §7.7 L431-432（2026-09-12 审计 K6）
     if (isEdit.value) {
       const vo = await updateSampleTask(props.positionId, props.sample.id, payload)
-      ElMessage.success('样例已保存')
+      ElMessage.success('样例任务已保存')
       clearDirty()
       emit('saved', vo)
     } else {
       const vo = await createSampleTask(props.positionId, payload)
-      ElMessage.success('样例已创建')
+      ElMessage.success('样例任务已创建')
       clearDirty()
       emit('created', vo)
     }
@@ -507,6 +535,8 @@ function fillFrom(sample) {
     form.remark = ''
     form.schedule = blankSchedule()
     form.sopDoc = ''
+    // 新建态复位到默认开启（md §7.3 L398；2026-09-12 审计 K1）
+    form.preKick = true
     form.toolRefs = []
     form.skillRefs = []
   } else {
@@ -528,7 +558,8 @@ function fillFrom(sample) {
       endDate: sample.schedule?.endDate || ''
     }
     form.sopDoc = sample.sopDoc || ''
-    form.preKick = sample.preKick ?? false
+    // 存量无该字段时按 md §7.3 L398 默认开启（2026-09-12 审计 K1）
+    form.preKick = sample.preKick ?? true
     form.toolRefs = (sample.toolRefs || []).map((t) => ({
       type: t.type,
       code: t.code,
@@ -563,7 +594,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="ste-body" :class="{ 'ste-embedded': embedded }">
+  <div class="ste-body">
     <div class="ste-scroll">
       <div class="ste-inner">
       <!-- 分区 1：基本信息 -->
@@ -586,11 +617,13 @@ onMounted(async () => {
         <div class="te-card-body">
         <div class="te-field">
           <!-- 2026-09-10 岗位详情原型对齐（L1）：字数计数照原型移到标签行右侧，不再用输入框内 word-limit -->
-          <label class="te-label">任务名称 <span class="req">*</span><span class="te-count">{{ (form.name || '').length }} / 60</span></label>
+          <label class="te-label">任务名称 <span class="req">*</span><span class="te-count">{{ (form.name || '').length }} / {{ NAME_MAX }}</span></label>
+          <!-- 占位逐字照 md §7.2 L385；上限 64 = 一览表名称类统一规则（2026-09-12 负责人决策 1 裁定，J6 已闭环）。
+               计数器与 maxlength 共用 NAME_MAX，避免两处分别维护再次写歪（2026-09-14 实测曾出现计数 /60、实拦 64） -->
           <el-input
             v-model="form.name"
-            maxlength="60"
-            placeholder="给样例起个名字，如「每日工单汇总」"
+            :maxlength="NAME_MAX"
+            placeholder="如：每日经营分析报告"
             :class="{ 'is-err': errors.name }"
             @input="markDirty(); clearError('name')"
           />
@@ -603,7 +636,7 @@ onMounted(async () => {
             type="textarea"
             :rows="4"
             :maxlength="PROMPT_MAX"
-            placeholder="到点让搭子做什么，自包含大白话，可含 [SILENT] 降噪（无实质变化只输出不打扰）"
+            placeholder="描述任务目标，如：分析昨日核心指标并生成周报"
             :class="{ 'is-err': errors.prompt }"
             @input="markDirty(); clearError('prompt')"
           />
@@ -611,13 +644,13 @@ onMounted(async () => {
           <p v-if="errors.prompt" class="te-err">{{ errors.prompt }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 200</span></label>
+          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 500</span></label>
           <el-input
             v-model="form.remark"
             type="textarea"
             :rows="4"
-            maxlength="200"
-            placeholder="这条样例帮领用者做什么、适合谁用（可不填）"
+            maxlength="500"
+            placeholder="补充任务背景或注意事项"
             @input="markDirty"
           />
         </div>
@@ -637,29 +670,27 @@ onMounted(async () => {
             :preview-times="previewTimes"
             :preview-loading="previewLoading"
             :preview-error="previewError"
-            :prototype="embedded"
             @preview="onScheduleChange"
           />
+          <!-- 空闲时段提前准备：默认开启，勾选 / 关闭两态提示分开（md §7.3 L398-400；2026-09-12 审计 K1 / K2） -->
           <div class="te-pre-kick">
             <el-checkbox v-model="form.preKick" @change="markDirty">
               空闲时段提前准备
             </el-checkbox>
-            <p class="te-pre-kick-hint">
-              送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。
-              关闭则到点才开始执行，结果会晚几分钟。
-            </p>
+            <p class="te-pre-kick-hint">{{ form.preKick ? PRE_KICK_HINT_ON : PRE_KICK_HINT_OFF }}</p>
           </div>
         </div>
       </section>
 
-      <!-- 分区 3：提示词 -->
+      <!-- 分区 3：提示词（md §7.4：非必填、最多 8000 字符；2026-09-12 审计 J7 / K7 / K9） -->
       <section class="te-card">
         <div class="te-card-title">
-          <span class="te-card-dot"></span> 提示词 <span class="req">*</span>
+          <span class="te-card-dot"></span> 提示词
         </div>
         <div class="te-card-body">
+          <!-- 引导文案逐字照 md §7.4 L407 -->
           <p class="te-card-guide">
-            描述任务目标、产出格式和推送方式
+            使用自然语言描述任务目标、产出格式和推送方式。定时触发时，Agent 读取该内容作为任务指令执行业务。
           </p>
           <MarkdownEditor
             v-model="form.sopDoc"
@@ -668,9 +699,9 @@ onMounted(async () => {
             placeholder="例如：每天上班前，用「工单查询工具」拉取昨日工单，汇总成今日待办清单。"
             @update:model-value="markDirty(); clearError('sopDoc')"
           />
-          <!-- 脚部只留字数计数（原型 .pd2-task-editor-foot） -->
+          <!-- 脚部字数计数逐字照 md §7.4 L409「已输入 N / 8000 字」 -->
           <div class="te-editor-foot">
-            <span class="te-editor-counter">字数: {{ sopWordCount }}</span>
+            <span class="te-editor-counter" :class="{ 'is-over': sopWordCount > SOP_MAX }">已输入 {{ sopWordCount }} / {{ SOP_MAX }} 字</span>
           </div>
         </div>
       </section>
@@ -681,9 +712,10 @@ onMounted(async () => {
           <span class="te-card-dot"></span> 引用工具
         </div>
         <div class="te-card-body">
+          <!-- 占位逐字照 md §7.5 L413（2026-09-12 审计 K8） -->
           <el-input
             v-model="toolKeyword"
-            placeholder="搜索工具名称 / 类型"
+            placeholder="搜索工具名称或类型"
             clearable
             class="tl-search"
           >
@@ -710,7 +742,8 @@ onMounted(async () => {
             <template v-if="toolKeyword.trim() && toolRows.length">
               没有匹配「{{ toolKeyword.trim() }}」的已引用工具。
             </template>
-            <template v-else>还没有引用工具；不选工具，多半办不成事。</template>
+            <!-- 空态逐字照 md §7.5 L416（2026-09-12 审计 K8） -->
+            <template v-else>暂无引用工具，点击下方添加</template>
           </div>
 
           <button type="button" class="te-dash-add" @click="openToolPicker">+ 添加工具</button>
@@ -728,8 +761,10 @@ onMounted(async () => {
             引用<b>平台技能</b>（由系统配置员发布），让这条样例复用现成能力；你自建的 FDE 技能不在此列。
           </p>
 
+          <!-- 无已选技能空态逐字照 md §7.6 L425（2026-09-12 审计 K8） -->
+          <div v-if="!form.skillRefs.length" class="sk-none">暂无引用技能，点击下方添加</div>
           <!-- 已选平台技能 chips（名称 + 可移除） -->
-          <div v-if="form.skillRefs.length" class="sk-chips">
+          <div v-else class="sk-chips">
             <span v-for="s in form.skillRefs" :key="s.platformSkillId" class="sk-chip">
               <span class="sk-chip-name">{{ s.name || `技能 #${s.platformSkillId}` }}</span>
               <button
@@ -742,9 +777,10 @@ onMounted(async () => {
             </span>
           </div>
 
+          <!-- 占位逐字照 md §7.6 L422（2026-09-12 审计 K8） -->
           <el-input
             v-model="skillKeyword"
-            placeholder="搜索平台技能名 / 描述"
+            placeholder="搜索平台技能名称或描述"
             clearable
             class="sk-search"
             @input="onSkillSearch"
@@ -833,6 +869,9 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 2026-09-12 审计 J5：退役 embedded 开关后只留页签内联形态——
+   撑满外层 .st-col-edit（height: calc(100vh-166px)），内部 .ste-scroll 负责滚动；
+   右栏 padding 已由 .st-col-edit（22px 28px 80px）承担，此处不再叠加。 */
 .ste-body {
   display: flex;
   flex-direction: column;
@@ -844,31 +883,15 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--space-5);
+  padding: 0;
 }
-/* 页签内联态（#16）：右栏内容限宽 860 居中（原型 .pd2-task-detail-inner） */
+/* 右栏内容限宽 860 居中（原型 .pd2-task-detail-inner），卡间距 20px */
 .ste-inner {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-}
-/* 2026-09-10 逐像素对齐：内联态右栏 padding 已由 .st-col-edit 按原型
-   （22px 28px 80px）承担，此处不再叠加；卡间距改用原型的 20px。 */
-.ste-embedded .ste-body {
-  /* embedded 态：撑满外层 .st-col-edit（height: calc(100vh-166px)），内部 ste-scroll 负责滚动 */
-  height: 100%;
-  overflow: hidden;
-}
-.ste-embedded .ste-scroll {
-  padding: 0;
-  overflow: auto;
-  flex: 1;
-  min-height: 0;
-}
-.ste-embedded .ste-inner {
+  gap: 20px;
   max-width: 860px;
   margin: 0 auto;
-  gap: 20px;
 }
 
 /* 分区卡（#18：卡头带 3px 绿条 + 灰底头条，卡体单独 18px 内边距，去阴影） */
@@ -940,7 +963,7 @@ onMounted(async () => {
   font-weight: var(--fw-semibold);
 }
 
-/* ── #20 详细说明脚部：只留字数计数（原型 .pd2-task-editor-foot） ── */
+/* ── 提示词脚部：只留字数计数「已输入 N / 8000 字」（md §7.4） ── */
 .te-editor-foot {
   display: flex;
   justify-content: flex-end;
@@ -951,6 +974,9 @@ onMounted(async () => {
   color: var(--c-text-faint);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
+}
+.te-editor-counter.is-over {
+  color: var(--c-danger);
 }
 
 /* ── #21 引用工具：搜索 + 已引用工具平铺行 ── */
@@ -1072,6 +1098,17 @@ onMounted(async () => {
 .te-card-hint b {
   color: var(--c-text-strong);
   font-weight: var(--fw-semibold);
+}
+
+/* ── 引用平台技能：无已选技能空态（md §7.6 L425），视觉同工具空态 .tl-empty ── */
+.sk-none {
+  padding: var(--space-5);
+  margin-bottom: var(--space-3);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
 }
 
 /* ── 引用平台技能：已选 chips ── */
@@ -1207,24 +1244,13 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-/* 底部 sticky 操作条（复刻数据底座 .meta-actions） */
+/* 底部操作条：右栏已卡片化并自带滚动（padding-bottom 80px 给按钮留位），随内容流、不 sticky
+   （2026-09-10 逐像素对齐；2026-09-12 审计 J5 随 embedded 开关退役并入基础样式） */
 .meta-actions {
   flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--border-soft);
-  background: var(--bg-sunken);
-}
-/* 2026-09-10 逐像素对齐：内联态右栏已卡片化并自带滚动（padding-bottom 80px 给按钮留位，
-   同原型 .pd2-task-detail），此处若继续 sticky 会浮在卡片底部盖住内容——改为随内容流。 */
-.ste-embedded .meta-actions {
-  position: static;
-  border-top: none;
-  background: transparent;
   padding: var(--space-4) 0 0;
 }
 </style>

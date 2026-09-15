@@ -40,78 +40,8 @@ export function resolveDisplayStatus(row) {
   return STATUS_TO_DISPLAY[r.connStatus] || 'UNKNOWN'
 }
 
-/**
- * 行是否需要红点提示（契约 §4.1：redDot=true ⇔ displayStatus=UNHEALTHY）。
- * 优先取后端 redDot；缺省时由归一后的四态推导。
- */
-export function isRedDot(row) {
-  const r = row || {}
-  if (typeof r.redDot === 'boolean') return r.redDot
-  return resolveDisplayStatus(r) === 'UNHEALTHY'
-}
-
-/**
- * 统计一组工具行中需红点（UNHEALTHY）的数量（页头/Tab 角标用）。
- */
-export function countUnhealthy(rows) {
-  return (rows || []).reduce((n, r) => (isRedDot(r) ? n + 1 : n), 0)
-}
-
-/* ============================ 使用统计格式化（MCP 数据结构扩展 · 展示规格 §3.1.1 D/E） ============================ */
-// 列表与抽屉共用的纯函数；除零 / null / NaN / Infinity / ms→s / 千分位 / 百分比一处收口，
-// 模板只读判定结果，绝不外泄 NaN/null/Infinity（设计 §4.6 派生指标无样本返回 null）。
-
-/**
- * 入参是否为「可用于格式化的有限数值」。null/undefined/NaN/±Infinity/非数值 一律 false。
- */
-function isFiniteNum(v) {
-  return typeof v === 'number' && Number.isFinite(v)
-}
-
-/**
- * 调用次数：千分位分组。无效值（null/undefined/NaN/Infinity）→ '0'（次数本身缺省按 0 计）。
- * @param {number} n
- * @returns {string} 如 '1,280' / '0'
- */
-export function fmtCount(n) {
-  if (!isFiniteNum(n)) return '0'
-  return Math.trunc(n).toLocaleString('en-US')
-}
-
-/**
- * 平均耗时（ms）：null/无样本 → '—'；<1000ms 显 'X ms'（整数）；≥1000ms 换算 'Y.y s'（保留 1 位）。
- * @param {number|null} ms
- * @returns {string} 如 '820 ms' / '1.4 s' / '—'
- */
-export function fmtDuration(ms) {
-  if (!isFiniteNum(ms) || ms < 0) return '—'
-  if (ms < 1000) return `${Math.round(ms)} ms`
-  return `${(ms / 1000).toFixed(1)} s`
-}
-
-/**
- * 成功率（0~1 小数）：null/无样本 → '—'；整百显 '100%'（不补 .0）；否则保留 1 位小数 + '%'。
- * 不染色（健康度交给 line1 HealthTag）。越界值（>1/<0）按裁剪后展示，杜绝异常外泄。
- * @param {number|null} rate
- * @returns {string} 如 '99.2%' / '100%' / '0%' / '—'
- */
-export function fmtPercent(rate) {
-  if (!isFiniteNum(rate)) return '—'
-  const pct = Math.min(100, Math.max(0, rate * 100))
-  if (Number.isInteger(pct)) return `${pct}%`
-  return `${pct.toFixed(1)}%`
-}
-
-/**
- * 该行是否有调用记录（callCount>0）。用于列表「暂无调用」收敛判定（§3.1.1 E）。
- * 后端字段未就绪时 callCount 为 undefined → false → 显「暂无调用」，零回归。
- * @param {Object} row
- * @returns {boolean}
- */
-export function hasUsage(row) {
-  const c = row && row.callCount
-  return isFiniteNum(c) && c > 0
-}
+/* isRedDot / countUnhealthy（红点角标）与 fmtCount / fmtDuration / fmtPercent / hasUsage（使用统计格式化）
+   已于 2026-09-12 删除（审计 J13）：零调用方——页头红点角标 2026-08-22 起移除，编辑页不再展示调用统计（PRD §三.4）。 */
 
 /**
  * 拉取工具后刷新展示区（工具清单只读化：server 返回即权威全集，契约 §3/§4 同规则）。

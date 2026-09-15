@@ -76,9 +76,9 @@ describe('类型派生工具', () => {
     expect(isPlatformFamily(null)).toBe(false)
   })
 
-  // 2026-09-01 PRD 对齐改造取代旧口径：类型文案对齐交互原型 v2 最终覆写态 typeLabels
-  //（系统内置→通用技能、平台共享→市场技能）
-  it('三类文案与用户口径一致', () => {
+  // 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §一 L12：
+  // 技能类型筛选可选「岗位私有、市场技能、通用技能」（旧词表 系统内置→通用技能、平台共享→市场技能）
+  it('三类文案与 md L12 一致：通用技能 / 岗位私有 / 市场技能', () => {
     expect(SKILL_TYPE_LABEL[SKILL_TYPE.SYSTEM_DEFAULT]).toBe('通用技能')
     expect(SKILL_TYPE_LABEL[SKILL_TYPE.POSITION]).toBe('岗位私有')
     expect(SKILL_TYPE_LABEL[SKILL_TYPE.PLATFORM]).toBe('市场技能')

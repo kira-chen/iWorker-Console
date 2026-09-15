@@ -11,8 +11,9 @@
  * - 数据走 fieldDict.js（demo 默认 fieldDictMock 内存 mock）。
  * 2026-09-08 原型复刻批次 2B（D-1 / D-2 / D-3）：编辑弹窗选项行照原型 .fm5-option-row（描边 + 浅底 + 7px 圆角 +
  *   9px 11px 内距，序号 / 34px 输入框 / × 图标钮），列表限高 310 滚动；「＋ 添加选项」改 plain 描边按钮、纳入
- *   列表容器末尾、上加 1px 分隔线（.fm5-option-add）；删除确认保留 ElMessageBox（原型原生 window.confirm 不搬，
- *   按钮文案待负责人定）；弹窗点遮罩可关（md §三「关闭弹窗，放弃本次未保存修改」）。
+ *   列表容器末尾、上加 1px 分隔线（.fm5-option-add）；弹窗点遮罩可关（md §三「关闭弹窗，放弃本次未保存修改」）。
+ * 2026-09-12 删除确认的两次反复（以 md 为准）：审计 J19/K32 曾按当时 md「仅从当前编辑草稿中移除」撤掉确认弹窗；
+ *   同日 PRD 方 ad4abbe 把 md §三 L48 改为「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除」，故按新 md 恢复。
  */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -111,7 +112,7 @@ async function addOption() {
   optionInputs.value[draft.value.length - 1]?.focus?.()
 }
 
-// 删除仅移出草稿（保存在【完成】时统一发生）；确认文案按字段两分支（原型口径）
+// 删除仅从当前编辑草稿中移除、不弹确认（2026-09-12 对齐 md §三 L48，审计 J19/K32）；保存在【完成】时统一发生
 async function removeOption(idx) {
   const name = draft.value[idx]?.name?.trim() || '该选项'
   const impact =
@@ -119,7 +120,6 @@ async function removeOption(idx) {
       ? '删除后，已使用该分类的技能将显示为未分类。'
       : '删除后，已有记录中的该值不会被自动替换。'
   try {
-    // 2026-09-04 PRD-20260903 对齐：确认文案引号照新原型直引号「确认删除"××"？」
     await ElMessageBox.confirm(`确认删除"${name}"？${impact}`, '删除选项', {
       type: 'warning',
       confirmButtonText: '删除',

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （adminUserMock → request.js → router 链路触达 window，故用 jsdom；同 positionMock.test）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   listUsers,
   createUser,
@@ -41,13 +41,15 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     expect((await listUsers({ status: 'disabled' })).total).toBe(2)
   })
 
-  it('新建用户：初始 active + 从未登录；用户名长度/重名校验按 field 报错', async () => {
+  it('新建用户：初始 active + 从未登录；用户名过短 →「请输入 3–32 个字符」（md §三.3 L157，K15）/ 重名 →「用户名已存在」，均按 field 报错', async () => {
     const u = await createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
     expect(u).toMatchObject({ status: 'active', lastLogin: null })
     await expect(createUser({ username: 'ab', displayName: 'x', roleCodes: ['普通用户'] }))
-      .rejects.toMatchObject({ field: 'username' })
+      .rejects.toMatchObject({ field: 'username', message: '请输入 3–32 个字符' })
+    await expect(createUser({ username: 'a'.repeat(33), displayName: 'x', roleCodes: ['普通用户'] }))
+      .rejects.toMatchObject({ field: 'username', message: '请输入 3–32 个字符' })
     await expect(createUser({ username: 'zhangwei', displayName: 'x', roleCodes: ['普通用户'] }))
-      .rejects.toMatchObject({ field: 'username' })
+      .rejects.toMatchObject({ field: 'username', message: '用户名已存在' })
   })
 
   it('编辑/设置角色/重置密码：状态启停、roleCodes 全量替换、重置走成功链路', async () => {
@@ -104,5 +106,115 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     const free = roles.find((r) => r.name === '审计观察员')
     await expect(deleteRole(free.id)).resolves.toEqual({})
     expect((await listRoles()).some((r) => r.name === '审计观察员')).toBe(false)
+  })
+})
+
+/**
+ * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（mockPersist v2，写点：用户 CRUD / 设角色 /
+ * 角色 CRUD / 改权限 / __resetOrgMock）。与 dataTableMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，
+ * 模拟「写入 → 刷新 → 重载」；坏形状 / 旧版本快照须回种子（13 用户 / 5 角色）不白屏。
+ * K15（createUser 文案「用户名 3–32 位」≠ md「请输入 3–32 个字符」）为代码缺陷，不写对应用例。
+ */
+describe('adminUserMock · 持久化（mockPersist v2，key iworker-demo-mock:adminUser）', () => {
+  const KEY = 'iworker-demo-mock:adminUser'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: vi.fn((k, v) => map.set(k, String(v))),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  const snap = () => JSON.parse(globalThis.localStorage.getItem(KEY))
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('写点各落盘一次（createUser / updateUser / setUserRoles / deleteUser / createRole / updateRole / setRolePermissions / deleteRole），只读接口不落盘', async () => {
+    const m = await import('../adminUserMock')
+    const writes = () => globalThis.localStorage.setItem.mock.calls.filter(([k]) => k === KEY).length
+    const base = writes()
+    await m.listUsers()
+    await m.getUser(201)
+    await m.listRoles()
+    await m.getPermissionTree()
+    await m.resetUserPassword(201)
+    expect(writes()).toBe(base)
+    const u = await m.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
+    expect(writes()).toBe(base + 1)
+    await m.updateUser(u.id, { displayName: '新人二' })
+    expect(writes()).toBe(base + 2)
+    await m.setUserRoles(u.id, ['审计观察员'])
+    expect(writes()).toBe(base + 3)
+    await m.deleteUser(u.id)
+    expect(writes()).toBe(base + 4)
+    const r = await m.createRole({ name: '内容运营', modules: ['驾驶舱'] })
+    expect(writes()).toBe(base + 5)
+    await m.updateRole(r.id, { name: '内容运营组' })
+    expect(writes()).toBe(base + 6)
+    await m.setRolePermissions(r.id, ['驾驶舱', '专家'])
+    expect(writes()).toBe(base + 7)
+    await m.deleteRole(r.id)
+    expect(writes()).toBe(base + 8)
+    m.__resetOrgMock()
+    expect(writes()).toBe(base + 9)
+  })
+
+  it('createUser 后快照 v=2、形状 { userSeq, roleSeq, roles, users }，新用户在首位且 userSeq 递增', async () => {
+    const m = await import('../adminUserMock')
+    await m.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
+    const s = snap()
+    expect(s.v).toBe(2)
+    expect(Object.keys(s.data).sort()).toEqual(['roleSeq', 'roles', 'userSeq', 'users'])
+    expect(s.data.users).toHaveLength(14)
+    expect(s.data.users[0]).toMatchObject({ id: 214, username: 'newuser', status: 'active', lastLogin: null })
+    expect(s.data.userSeq).toBe(215)
+  })
+
+  it('createUser + deleteRole 落盘 → 重新 import（模拟刷新）→ 新用户仍在、被删角色不在、新建不撞号', async () => {
+    const first = await import('../adminUserMock')
+    const u = await first.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
+    const free = (await first.listRoles()).find((r) => r.name === '审计观察员')
+    await first.deleteRole(free.id)
+    vi.resetModules()
+    const fresh = await import('../adminUserMock')
+    const users = await fresh.listUsers({ keyword: 'newuser' })
+    expect(users.total).toBe(1)
+    expect(users.list[0]).toMatchObject({ id: u.id, username: 'newuser' })
+    expect((await fresh.listUsers()).total).toBe(14)
+    const roles = await fresh.listRoles()
+    expect(roles).toHaveLength(4)
+    expect(roles.some((r) => r.name === '审计观察员')).toBe(false)
+    const again = await fresh.createUser({ username: 'another', displayName: '又一位', roleCodes: ['普通用户'] })
+    expect(again.id).toBe(u.id + 1)
+  })
+
+  it('存量快照形状不合法（users 不是数组）→ restore 抛错被兜底：清 key、回种子 13 用户 / 5 角色，不白屏', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { userSeq: 214, roleSeq: 306, roles: [], users: 'oops' } }))
+    const m = await import('../adminUserMock')
+    expect((await m.listUsers()).total).toBe(13)
+    expect(await m.listRoles()).toHaveLength(5)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('存量快照版本不符（v=1 旧种子）→ 丢弃并回种子：不会读到旧快照里的用户', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 1, data: { userSeq: 300, roleSeq: 400, roles: [], users: [{ id: 1, username: 'ghost', displayName: '旧', roles: [], status: 'active', lastLogin: null }] } })
+    )
+    const m = await import('../adminUserMock')
+    expect((await m.listUsers({ keyword: 'ghost' })).total).toBe(0)
+    expect((await m.listUsers()).total).toBe(13)
+    expect(await m.listRoles()).toHaveLength(5)
   })
 })

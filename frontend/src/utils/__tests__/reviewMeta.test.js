@@ -15,9 +15,10 @@ import {
 } from '../reviewMeta'
 
 /**
- * 治理两页展示词表（2026-09-01 PRD 对齐改造）回归保护：
- * 文案逐字对齐交互原型 v2（typeLabel/typeKind/reviewActionLabel/myBusinessLabel/
- * myBusinessKind/myResultMeta），色系映射按报告口径（蓝→accent / 紫→purple 新变体）。
+ * 治理两页展示词表回归保护（2026-09-12 对齐 md）：
+ * 审核中心业务类型 / 申请类型词表照 `prd.审核中心.md` §二.2-3 / §3.1；
+ * 我的申请业务类型 / 审核结果词表照 `prd.我的申请.md` §二.2-4 / §3.1；
+ * 色系映射为站内 StatusTag 六色口径（蓝→accent / 紫→purple），md 未规定颜色。
  */
 describe('reviewMeta · 审核中心新口径', () => {
   // 2026-09-09 PRD 复核·G3G6 · A6：md `prd.审核中心.md` §二.2 / §3.1 业务类型八项，含「知识库」

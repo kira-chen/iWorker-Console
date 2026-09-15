@@ -16,6 +16,8 @@ import { reviewTypeMatch } from '@/utils/reviewMeta'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相
 import { nowMinuteText as now } from '@/utils/datetime'
+// 2026-09-12 负责人决策 5（审计 J12）：审核人取 demo 当前身份，不硬编码人名
+import { currentDemoUserName } from '@/utils/demoIdentity'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const clone = (v) => JSON.parse(JSON.stringify(v))
@@ -46,7 +48,10 @@ function seedRows() {
       r.version = '—'
     } else {
       r.requestAction = 'VERSION_PUBLISH'
-      r.version = 'v1.2.0'
+      // 2026-09-12 审计 K19：行 2 指向 sk_302，其在审版本已按「在审号必须由线上 v1.4.0 递增得出」
+      // 改为 v1.5.0（unifiedSkillMock persist v4）；这里跟着取同一个号，否则列表显 v1.2.0、
+      // 详情与审核快照显 v1.5.0，三方不自洽。其余行仍是 v1.2.0。
+      r.version = r.id === 2 ? 'v1.5.0' : 'v1.2.0'
     }
   })
   // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体：
@@ -149,7 +154,9 @@ export function cancelReviewRow(type, refId) {
 const persist = attachPersist('reviews', {
   // version 5（2026-09-09 发布前收口）：种子 6 由「法务审阅专家 203 · DELIST」改指
   // 「研究报告专家 204 · VERSION_PUBLISH」——203 是草稿态、永远补播不出审核快照。
-  version: 5,
+  // version 6（2026-09-12 负责人决策 5 · 审计 J12）：行结构增 reviewer（审核人，md §5.1 L71 / §5.2 L82）；
+  // 存量快照里已审的行没有该字段、且当时未联动业务对象与我的申请，三方会不自洽 → 丢弃回种子。
+  version: 6,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {
@@ -203,17 +210,75 @@ export async function getReview(id) {
   return clone(findOr404(id))
 }
 
-/** 通过：DELIST 申请 → DELISTED，其余 → PUBLISHED（原型 approveReview 口径）。 */
+/* ---------------- 审核结论联动（2026-09-12 负责人决策 5（审计 J12）） ----------------
+ * md `prd.审核中心.md` §5.1 L71「确认后记录审核人、审核时间和驳回原因，审核结果更新为已驳回」、
+ * §5.2 L79-82「首次发布、新版本发布通过后，对象更新为已发布并启用相应版本；停用申请通过后，
+ * 对象变为未发布 / 已下架……确认后记录审核人和审核时间」；`prd.我的申请.md` §六 L87
+ * 「每条申请保存：……审核结果、审核人、审核时间和驳回原因」。
+ *
+ * 分发原则：审核中心只调各业务模块自己暴露的「应用审核结果」入口（applyXxxReviewResult），
+ * 绝不直接改别的模块内部数组——各模块的落态规则写在各自 md 里，规则归属留在各自模块。
+ *
+ * 为什么是动态 import 而非顶层静态 import：knowledgeBaseMock / mcpConnectorMock 反向 import
+ * 本模块（提交端接线），静态引会成环；且审核中心页不该把 8 个业务 mock 全部拉进首屏包。
+ *
+ * 【不要改成模块加载时预热】曾试过在本模块加载时就发起这些 import 以省掉首次点击的冷加载，
+ * 结果 mcpConnectorMock.test.js（每例 vi.resetModules 取全新模块）成片翻红：该模块静态 import
+ * 本模块，本模块加载期再反向 import 它，新旧实例互相穿插。保持「用到才引」这一条即无此问题。
+ */
+const LOADERS = {
+  POSITION: () => import('./positionMock').then((m) => m.applyPositionReviewResult),
+  EXPERT: () => import('./domainExpertMock').then((m) => m.applyExpertReviewResult),
+  SKILL: () => import('./unifiedSkillMock').then((m) => m.applySkillReviewResult),
+  KNOWLEDGE_BASE: () => import('./knowledgeBaseMock').then((m) => m.applyKnowledgeBaseReviewResult),
+  MODEL: () => import('./adminModelMock').then((m) => m.applyModelReviewResult),
+  BIZ_SYSTEM: () => import('./bizSystemMock').then((m) => m.applyBizSystemReviewResult),
+  // 连接器两件套由 type=TOOL + subType 拆分（同列表筛选口径，见 utils/reviewMeta）
+  'TOOL:MCP': () => import('./mcpConnectorMock').then((m) => m.applyMcpReviewResult),
+  'TOOL:API': () => import('./apiConnectorMock').then((m) => m.applyApiReviewResult)
+}
+
+/** 把审核结论落到对应业务对象；无对应模块 / 对象已无待审事项时静默跳过。 */
+async function applyToBusinessObject(row, approved) {
+  const load = LOADERS[row.type === 'TOOL' ? `TOOL:${row.subType}` : row.type]
+  if (!load) return
+  const apply = await load()
+  if (typeof apply === 'function') apply(row.refId, row.requestAction, approved)
+}
+
+/** 把审核结论同步到「我的申请」同 type+refId 的待审行（含审核人 / 审核时间 / 驳回原因）。 */
+async function applyToMyApplication(row, approved, reviewer, reviewedAt, rejectReason) {
+  const { applyApplicationReviewResult } = await import('./myApplicationsMock')
+  applyApplicationReviewResult({
+    businessType: row.type === 'TOOL' ? row.subType : row.type,
+    refId: row.refId,
+    approved,
+    reviewer,
+    reviewedAt,
+    rejectReason
+  })
+}
+
+/**
+ * 通过：审核行 DELIST → DELISTED / 其余 → PUBLISHED（原型 approveReview 口径，记录离开待审列表），
+ * 同时记审核人与审核时间（md §5.2 L82），并联动业务对象与「我的申请」行（md §5.2 L79-80 / §六 L87）。
+ */
 export async function approveReview(id) {
   await delay()
   const row = findOr404(id)
   row.status = row.requestAction === 'DELIST' ? 'DELISTED' : 'PUBLISHED'
+  row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()
+  await applyToBusinessObject(row, true)
+  await applyToMyApplication(row, true, row.reviewer, row.reviewedAt, '')
   return clone(row)
 }
 
-/** 驳回：必填驳回原因（空值由页面拦，mock 兜底再校验一次）。 */
+/**
+ * 驳回：必填驳回原因（空值由页面拦，mock 兜底再校验一次）；记审核人 / 审核时间 / 驳回原因，
+ * 业务对象按申请类型回退、我的申请行转「已驳回」并带原因（md §5.1 L71 / §六 L87）。
+ */
 export async function rejectReview(id, reason) {
   await delay()
   const row = findOr404(id)
@@ -225,7 +290,10 @@ export async function rejectReview(id, reason) {
   }
   row.status = 'REJECTED'
   row.rejectReason = trimmed
+  row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()
+  await applyToBusinessObject(row, false)
+  await applyToMyApplication(row, false, row.reviewer, row.reviewedAt, trimmed)
   return clone(row)
 }

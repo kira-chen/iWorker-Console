@@ -4,6 +4,10 @@ import { createApp, h, nextTick, ref } from 'vue'
 
 /**
  * VersionDrawer.vue 单测 —— 技能 / 专家 / 岗位统一的版本管理抽屉。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §四 版本管理弹窗 L225-258
+ * （撤回提示「已撤回提交」L243；提交失败弹窗保持打开、保留填写内容并提示原因 L234）。
+ * 提交发布成功 toast 文案：md L79 与 L232 曾自相矛盾（审计 J8②），2026-09-12 负责人决策 2 统一取带版本号的
+ * 「已提交发布 vX.Y.Z，进入审核」，md L79 已回写，故此处逐字断言。
  *
  * 本文件承接合并前三个弹窗各自测试的覆盖点，避免合并造成覆盖回退：
  *  · 来自 PlatformSkillVersionDialog.test：首发 v1.0.0 / 非首发 bump 进位 / 审核中撤回 /
@@ -145,6 +149,8 @@ describe('VersionDrawer · 发布语义', () => {
     await flush(2)
     btn('提交发布').click(); await flush()
     expect(a.publish).toHaveBeenCalledWith('sk_1', { bump: 'NONE', releaseNotes: '首版' })
+    // md §二.3 L80 / §四.2 L233 同一句（负责人决策 2）
+    expect(ElMessage.success).toHaveBeenCalledWith('已提交发布 v1.0.0，进入审核')
   })
 
   it('非首发：默认取建议号；选「功能更新」→ minor 进位并按该 bump 提交', async () => {
@@ -168,15 +174,41 @@ describe('VersionDrawer · 发布语义', () => {
     expect(a.publish).not.toHaveBeenCalled()
   })
 
-  it('审核中：无发布编辑器，显撤回 → 调 adapter.withdraw', async () => {
+  it('审核中：无发布编辑器，显撤回 → 二次确认后调 adapter.withdraw，提示「已撤回提交」并 emit done（md L243）', async () => {
+    const done = vi.fn()
     const a = makeAdapter({
       deriveView: () => ({ state: 'REVIEWING', label: '审核中', tagType: 'warning', actions: ['withdraw'] })
     })
-    mount(a); await flush()
+    mount(a, { onDone: done }); await flush()
     expect(btn('提交发布')).toBeUndefined()
     expect(txt()).toContain('审核中')
     btn('撤回提交').click(); await flush()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
     expect(a.withdraw).toHaveBeenCalledWith('sk_1')
+    expect(ElMessage.success).toHaveBeenCalledWith('已撤回提交')
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  it('提交失败 → error(原因)、抽屉不关、升级说明与更新类型保留、不 emit done（md L234）', async () => {
+    const done = vi.fn()
+    const a = makeAdapter({ publish: vi.fn().mockRejectedValue(new Error('已有在审提交')) })
+    mount(a, { onDone: done }); await flush()
+    container.querySelector('.el-radio-btn[data-v="MINOR"]').click(); await flush(2)
+    container.querySelector('.el-input').value = '加功能'
+    container.querySelector('.el-input').dispatchEvent(new Event('input'))
+    await flush(2)
+    btn('提交发布').click(); await flush()
+    expect(a.publish).toHaveBeenCalledTimes(1)
+    expect(ElMessage.error).toHaveBeenCalledWith('已有在审提交')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(done).not.toHaveBeenCalled()
+    // 弹窗保持打开、填写内容保留（升级说明 + 已选更新类型对应的版本号）
+    expect(visibleRef.value).toBe(true)
+    expect(container.querySelector('.el-drawer')).toBeTruthy()
+    expect(container.querySelector('.el-input').value).toBe('加功能')
+    expect(txt()).toContain('v1.3.0')
+    // 失败后按钮恢复可点（busy 复位），可重试
+    expect(btn('提交发布').disabled).toBe(false)
   })
 })
 

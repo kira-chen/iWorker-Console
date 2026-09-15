@@ -166,8 +166,10 @@ let reviewSnapshots = {}
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots（审核版本快照，提交模块自持）；
 // 旧快照无该键 → 兜底 {} 并对种子在审专家补播，避免既有在审行「快照缺失」误拦。
 const persist = attachPersist('domainExpert', {
-  // v3（2026-09-09 发布前收口）：专家 203 由 draft/无在途 改为 published + pendingAction:'DELIST'
-  // 并补 v2.0.0 版本行——审核中心 id 6 与我的申请 510 引用它，原种子下审核快照缺失、点【查看】即空。
+  // v3（2026-09-09 发布前收口）：bump 以丢弃旧快照重播种子——种子本身未改（203 仍是全套唯一的草稿样本，
+  // 204 是唯一在审专家 · PUBLISH v1.2.0）；配套改动在 reviewsMock（审核中心种子 6 由 203 改指 204，
+  // 见其 version 5 注释），这里 bump 是为了让 seedReviewSnapshots 对 204 补播审核快照、点【查看】不再空。
+  // （2026-09-12 审计 K25：原注释描述的「203 改 published+DELIST 并补 v2.0.0」从未落地，改为与种子一致。）
   version: 3,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
@@ -336,10 +338,14 @@ export async function getExpertDeleteImpact(id) {
 }
 
 // 删除（解除技能引用，技能本体不受影响）。返回被解除的引用数。confirmName 兼容旧签名，不再校验。
+// 2026-09-12 对齐 md 专家 §二.3.7（审计 K27）：【删除】仅在「未发布且无审核中操作」时可用——
+// 已发布需先完成停用审核、审核中按钮隐藏；mock 侧同样守卫，UI 藏按钮之外不留后门。
 export async function deleteExpert(id) {
   await delay()
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
+  if (e.pendingAction) throw err('审核中的专家不可删除，请先撤回或等待审核完成', null, 409)
+  if (e.status !== 'draft') throw err('已发布的专家不可删除，需先完成停用审核', null, 409)
   const removed = e.skillIds.length
   experts = experts.filter((x) => x !== e)
   delete publications[e.id]
@@ -498,6 +504,58 @@ export async function unpublishExpert(id) {
   return {}
 }
 
+/* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
+ * 由 reviewsMock.applyReviewResult 分发到此；审核中心不直接改本模块内部数组。
+ *
+ * md 依据（`prd.专家.md`）：
+ * - §L86「审核通过后状态变为"已发布"并生成 v1.0.0 版本快照；被拒绝或撤回后回到"未发布"」；
+ * - §L102「审核通过后专家变为"未发布"……被拒绝或撤回后恢复"已发布"」；
+ * - §L229「审核通过时才生成不可变专家配置快照、写入版本历史、更新最新版本号，并将新版本设为
+ *   唯一启用版本；原启用版本自动禁用」。
+ */
+export function applyExpertReviewResult(refId, requestAction, approved) {
+  const e = findExpert(refId)
+  if (!e || !e.pendingAction) return false
+  const isDelist = (requestAction || e.pendingAction) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      e.status = 'draft' // 停用通过 → 未发布（md L102）；版本历史保留
+    } else {
+      const label = e.pendingVersion || 'v1.0.0'
+      const rows = publications[e.id] || (publications[e.id] = [])
+      rows.forEach((r) => {
+        if (r.status === 'ACTIVE') {
+          r.status = 'DELISTED'
+          r.delistedAt = nowIso()
+        }
+      })
+      rows.unshift({
+        id: (rows[0]?.id || 800) + 1,
+        version: (rows[0]?.version || 0) + 1,
+        versionLabel: label,
+        status: 'ACTIVE',
+        sizeBytes: 8602,
+        publishedBy: '管理员',
+        publishedAt: nowIso(),
+        delistedAt: null,
+        releaseNotes: e.pendingReleaseNotes || ''
+      })
+      e.status = 'published'
+      e.latestVersionLabel = label
+    }
+  } else {
+    // 驳回口径与撤回同向（md L86 / L102）
+    e.status = isDelist ? 'published' : 'draft'
+  }
+  e.pendingAction = null
+  delete e.pendingVersion
+  delete e.pendingReleaseNotes
+  e.updatedAt = nowIso()
+  delete reviewSnapshots[String(e.id)]
+  persist()
+  return true
+}
+
 /* ============================ 版本历史 + 禁用/启用（互斥） ============================ */
 
 export async function listExpertPublications(id) {
@@ -550,5 +608,8 @@ export function __resetExpertMock() {
   expertSeq = 205
   experts = seedExperts()
   publications = seedPublications()
+  // 审核快照表一并回种子（2026-09-12 测试审计 T23）：此前不清，前一用例提交/撤回留下的快照会跨用例残留
+  reviewSnapshots = {}
+  seedReviewSnapshots()
   persist()
 }

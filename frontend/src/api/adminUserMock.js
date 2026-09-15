@@ -157,7 +157,8 @@ export async function getUser(id) {
 export async function createUser(payload = {}) {
   await delay()
   const username = String(payload.username || '').trim()
-  if (username.length < 3 || username.length > 32) throw err('用户名 3–32 位', 'username')
+  // 2026-09-12 对齐 md 用户 §三.3 L157（审计 K15）：文案逐字「请输入 3–32 个字符」
+  if (username.length < 3 || username.length > 32) throw err('请输入 3–32 个字符', 'username')
   if (users.some((u) => u.username === username)) throw err('用户名已存在', 'username', 1005)
   if (!String(payload.displayName || '').trim()) throw err('请输入显示名', 'displayName')
   const roleCodes = Array.isArray(payload.roleCodes) ? payload.roleCodes.filter(Boolean) : []

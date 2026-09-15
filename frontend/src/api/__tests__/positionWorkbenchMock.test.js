@@ -25,7 +25,6 @@ describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
     expect(d.name).toBe('经营分析岗')
     expect(d.status).toBe('published')
     expect(Array.isArray(d.claimDesc)).toBe(true)
-    expect(d.recommendedQuestions).toHaveLength(4)
     expect(d.intakeSchema.length).toBeGreaterThan(0)
     // 同源联动：3 个 Agent、技能并集 1（与列表行 agentCount:3 / skillCount:1 一致）
     expect(d.agents).toHaveLength(3)
@@ -51,13 +50,6 @@ describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
     await expect(updatePosition(404, { name: '经营分析岗' })).rejects.toMatchObject({ field: 'name' })
   })
 
-  it('推荐问题部分更新语义：payload 未含该字段 = 不改', async () => {
-    const before = (await getPosition(401)).recommendedQuestions
-    const after = (await updatePosition(401, { persona: 'x' })).recommendedQuestions
-    expect(after).toEqual(before)
-    const set = await updatePosition(401, { recommendedQuestions: ['a', 'b', 'c', 'd'] })
-    expect(set.recommendedQuestions).toEqual(['a', 'b', 'c', 'd'])
-  })
 })
 
 describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-20260903 对齐）', () => {
@@ -101,8 +93,9 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(61), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
-    // createPosition 同口径校验描述 2000
-    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
+    // createPosition 同口径校验描述 500（md 岗位 §2.1 L175；positionMock.js createPosition 500 线）：500 放行 / 501 拦
+    await expect(createPosition({ name: '描述恰 500 岗', description: 'x'.repeat(500) })).resolves.toMatchObject({ name: '描述恰 500 岗' })
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
   })
 })
 
@@ -166,7 +159,6 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     const created = await createPosition({ name: '售后支持岗', description: '售后答疑' })
     expect(created).toMatchObject({ name: '售后支持岗', status: 'draft', agents: [] })
     const d = await getPosition(created.positionId)
-    expect(d.recommendedQuestions).toHaveLength(4)
     // 新岗位可直接建 Agent + 引用技能（全链路落内存）
     const agent = await createAgent(created.positionId, { name: '答疑' })
     await assignSkill('sk_301', agent.agentId)

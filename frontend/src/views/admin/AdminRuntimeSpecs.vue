@@ -5,6 +5,11 @@
  * 基准 = 负责人提供的交互截图（04运行 无 prd md 与原型 render）；标准件拼装：
  * PageHeader + 说明条（D17 口径）+ ListToolbar（右侧新建）+ ListStates + el-table
  * + 底部汇总 + RuntimeSpecEditor 抽屉。岗位批量继承，个人配置覆盖，默认规格兜底。
+ *
+ * 2026-09-12 对齐 md 运行规格（审计 K30 ①②③）：
+ *  ① §三.3.6 L222 默认规格【删除】置灰并提示「默认运行规格用于平台兜底，不能删除」（悬停 title）；
+ *  ② §二.3 L110 无查询结果时保留查询条件并提供【清空筛选】；
+ *  ③ §三.1 L123-126 列格式「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」；最大存活 md 未给小时写法，按同款「24 小时」。
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -64,6 +69,16 @@ function toggleSortOrder() {
 
 const sortArrow = computed(() => query.sortOrder === 'descending' ? '↓' : '↑')
 
+// 【清空筛选】（md §二.3 L110）：清空关键词与使用状态后按默认条件重查
+function clearFilters() {
+  query.keyword = ''
+  query.usage = ''
+  reload()
+}
+
+// 默认规格【删除】置灰的悬停提示（md §三.3.6 L222）
+const DEFAULT_DELETE_TIP = '默认运行规格用于平台兜底，不能删除'
+
 onMounted(refresh)
 
 /* ---------- 抽屉（新建 / 编辑共用 RuntimeSpecEditor） ---------- */
@@ -101,7 +116,7 @@ const busyId = ref(null)
 async function remove(row) {
   if (busyId.value != null) return
   let block = ''
-  if (row.isDefault) block = '默认运行规格承担平台兜底，不能删除。'
+  if (row.isDefault) block = `${DEFAULT_DELETE_TIP}。`
   else if (row.positionCount > 0) block = `该规格已配置给 ${row.positionCount} 个岗位（${row.positionNames.join('、')}），请先解除岗位配置。`
   else if (row.directUsers.length > 0) block = `该规格存在 ${row.directUsers.length} 个个人配置或待审批申请，请先处理后再删除。`
   if (block) {
@@ -199,22 +214,23 @@ function usedTip(row) {
               <div class="rs-desc" :title="row.boundaryDesc">{{ row.boundaryDesc }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="CPU / 内存" width="96">
+          <!-- 列格式照 md §三.1 L123-127（2026-09-12 审计 K30③）：「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」「不限 / 24 小时」 -->
+          <el-table-column label="CPU / 内存" width="112" header-class-name="rs-nowrap-header">
             <template #default="{ row }">
-              <span class="rs-muted">{{ row.cpu }}c / {{ row.memoryGi }}Gi</span>
+              <span class="rs-muted rs-nowrap">{{ row.cpu }} 核 / {{ row.memoryGi }} Gi</span>
             </template>
           </el-table-column>
           <el-table-column label="临时存储" width="92" header-class-name="rs-nowrap-header">
-            <template #default="{ row }"><span class="rs-muted">{{ row.diskGi }}Gi</span></template>
+            <template #default="{ row }"><span class="rs-muted rs-nowrap">{{ row.diskGi }} Gi</span></template>
           </el-table-column>
           <el-table-column label="就绪超时" width="92" header-class-name="rs-nowrap-header">
-            <template #default="{ row }"><span class="rs-muted">{{ row.readinessTimeoutMin }} min</span></template>
+            <template #default="{ row }"><span class="rs-muted rs-nowrap">{{ row.readinessTimeoutMin }} 分钟</span></template>
           </el-table-column>
           <el-table-column label="空闲回收" width="92" header-class-name="rs-nowrap-header">
-            <template #default="{ row }"><span class="rs-muted">{{ row.idleRecycleMin }} min</span></template>
+            <template #default="{ row }"><span class="rs-muted rs-nowrap">{{ row.idleRecycleMin }} 分钟</span></template>
           </el-table-column>
           <el-table-column label="最大存活" width="100" align="center" header-class-name="rs-nowrap-header">
-            <template #default="{ row }">{{ row.maxLifetimeHours === 0 ? '不限' : `${row.maxLifetimeHours} h` }}</template>
+            <template #default="{ row }"><span class="rs-nowrap">{{ row.maxLifetimeHours === 0 ? '不限' : `${row.maxLifetimeHours} 小时` }}</span></template>
           </el-table-column>
           <el-table-column label="适用岗位" width="108">
             <template #default="{ row }">
@@ -254,7 +270,10 @@ function usedTip(row) {
                 <el-button link type="primary" @click="openView(row)">查看</el-button>
                 <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
                 <el-button link type="primary" @click="openUsers(row)">配置范围</el-button>
-                <el-button link type="danger" :disabled="row.isDefault" :loading="busyId === row.id" @click="remove(row)">删除</el-button>
+                <!-- 默认规格：置灰 + 悬停提示（md §三.3.6 L222，K30①）；禁用钮不收鼠标事件，title 挂在外层 span -->
+                <span class="rs-del-wrap" :title="row.isDefault ? DEFAULT_DELETE_TIP : undefined">
+                  <el-button link type="danger" :disabled="row.isDefault" :loading="busyId === row.id" @click="remove(row)">删除</el-button>
+                </span>
               </div>
             </template>
           </el-table-column>
@@ -270,6 +289,10 @@ function usedTip(row) {
           </span>
         </div>
       </ListStates>
+      <!-- 无查询结果：保留查询条件并提供【清空筛选】（md §二.3 L110，K30②）；ListStates 空态无动作插槽，故紧随其后 -->
+      <div v-if="isEmpty && hasFilter && !loading && !loadError" class="rs-empty-actions">
+        <el-button @click="clearFilters">清空筛选</el-button>
+      </div>
     </div>
     <!-- 分页条置于卡片之外（2026-09-11 全站统一，见 ListPagination 注释） -->
     <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
@@ -365,6 +388,24 @@ function usedTip(row) {
   align-items: center;
   flex-wrap: nowrap;
   white-space: nowrap;
+}
+/* 删除钮外层（承载默认规格的 title 提示）：与相邻 link 按钮同样左距，视觉与其余三钮一致 */
+.rs-del-wrap {
+  display: inline-flex;
+  margin-left: 12px;
+}
+.rs-del-wrap .el-button {
+  margin-left: 0;
+}
+.rs-nowrap {
+  white-space: nowrap;
+}
+/* 无查询结果下的【清空筛选】：空态块下方居中（md §二.3 L110） */
+.rs-empty-actions {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4) var(--space-5);
+  margin-top: calc(-1 * var(--space-6));
 }
 :deep(.rs-nowrap-header .cell) {
   white-space: nowrap;

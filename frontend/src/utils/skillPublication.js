@@ -136,34 +136,5 @@ export function isLocked(publications) {
   )
 }
 
-/* ============================ 连接器（工具市场）旧口径，沿用不动 ============================ */
-// 发布目标枚举（连接器/版本历史仍分端；平台技能单轨已不用）
-export const TARGETS = ['FDE_WORKBENCH', 'USER_END']
-
-export const TARGET_LABEL = {
-  FDE_WORKBENCH: 'FDE 工作台',
-  USER_END: '用户端'
-}
-
-export function targetLabel(target) {
-  return TARGET_LABEL[target] || target || '—'
-}
-
-/**
- * 【连接器（工具市场）沿用】某原始 status 当前可执行的发布操作：
- *   NONE / REJECTED → publish；PENDING_REVIEW → withdraw；PUBLISHED → delist；DELISTED → relist。
- */
-export function targetActions(status) {
-  switch (status) {
-    case 'PENDING_REVIEW':
-      return ['withdraw']
-    case 'PUBLISHED':
-      return ['delist']
-    case 'DELISTED':
-      return ['relist']
-    case 'REJECTED':
-    case 'NONE':
-    default:
-      return ['publish']
-  }
-}
+/* 「连接器（工具市场）旧口径」段（TARGETS / TARGET_LABEL / targetLabel / targetActions）
+   已于 2026-09-12 死码清理删除（审计 J13）：零调用方——连接器侧同名口径在 utils/marketMeta.js。 */

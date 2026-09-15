@@ -1,10 +1,10 @@
 /**
  * 统一发布审核台前端元数据（V39 S4）——类型/子类型/状态的展示文案与 StatusTag 颜色映射。
  *
- * 单一来源：统一审核台的「类型」列徽标在此集中维护。状态(status)四态徽标、目标(target)/读写性质
- * (writeClass) 均复用 utils/marketMeta，不重复定义（工具/技能状态枚举一致，避免两套漂移）。
+ * 单一来源：统一审核台的「类型」列徽标在此集中维护。
+ * 2026-09-12 死码清理（审计 J13）：MODEL_ACTION_LABEL / reviewStatusMeta / REVIEW_STATUS_OPTIONS 三个零调用方导出
+ * 已删（AdminPositionAssignments 自带同名本地实现），随之不再 import marketMeta。
  */
-import { statusMeta as listingStatusMeta } from '@/utils/marketMeta'
 
 // 行类型 type（后端 UnifiedReviewItemVO.type）
 export const REVIEW_TYPE_TOOL = 'TOOL'
@@ -43,28 +43,12 @@ export function typeTagType(type) {
   return 'info'
 }
 
-/** 模型待审动作 → 中文（审核台子类型位；两者影响相反，必须让审核员一眼分辨）。 */
-export const MODEL_ACTION_LABEL = { PUBLISH: '发布', DELIST: '停用' }
-
-// 审核态 → 文案 + StatusTag type。四态对称展现，复用 marketMeta 的 LISTING_STATUS_META
-// （PENDING_REVIEW=warning / PUBLISHED=success / REJECTED=danger / DELISTED=info），
-// 工具与技能状态枚举一致，技能行同样适用。
-export function reviewStatusMeta(status) {
-  return listingStatusMeta(status)
-}
-
-// 状态筛选下拉（含「全部」由前端置空 value 表达 → 不传 status，后端返四态全集）
-export const REVIEW_STATUS_OPTIONS = [
-  { value: 'PENDING_REVIEW', label: '待审核' },
-  { value: 'PUBLISHED', label: '已发布' },
-  { value: 'REJECTED', label: '已驳回' },
-  { value: 'DELISTED', label: '已下架' }
-]
-
 /* ==================================================================================
  * 2026-09-01 PRD 对齐改造（审核中心 / 我的申请，基准 = 交互原型 v2 五模块 renderReviews /
  * renderMyApplications）：以下为治理两页新口径的展示词表与筛选映射。
- * 上方旧口径导出保留（marketMeta 等旁路仍引用），新页面一律用下面这套。
+ * 上方旧口径导出（REVIEW_TYPE_* / REVIEW_TYPE_OPTIONS / typeLabel / typeTagType）当前亦无调用方，
+ * 本轮（2026-09-12 J13）只按清单删了 MODEL_ACTION_LABEL / reviewStatusMeta / REVIEW_STATUS_OPTIONS，其余留待下批裁决；
+ * 新页面一律用下面这套。
  * ================================================================================== */
 
 /* ---------------- 审核中心（review-center） ---------------- */

@@ -34,8 +34,7 @@ const props = defineProps({
   showIn: { type: Boolean, default: false },
   /** 位置下拉选项 [{ value, label }]（仅 showIn）。 */
   inOptions: { type: Array, default: () => [] },
-  /** 位置选项禁用判定（仅 showIn，如 BODY×GET/DELETE 互斥）。 */
-  inDisabled: { type: Function, default: () => false },
+  // inDisabled（位置选项禁用判定）已于 2026-09-12 删除（审计 J13）：零调用方——BODY×GET/DELETE 硬拦 2026-09-01 拍板放开，改 rowNotice 软提示。
   /** 行级提示（仅 showIn 场景用到，如 QUERY 泄漏警示）：(row) => { type:'warn'|'hint', text } | null */
   rowNotice: { type: Function, default: () => null },
   keyHeader: { type: String, default: '名称' },
@@ -227,7 +226,6 @@ defineExpose({ addRow })
             :key="o.value"
             :value="o.value"
             :label="o.label"
-            :disabled="inDisabled(o.value)"
           />
         </el-select>
         <!-- 平台值列：三步式托管行未点【改值】时不给输入框，只显示状态字 +【改值】（md L281「仅展示名称，不展示原值」） -->

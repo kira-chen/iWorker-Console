@@ -3,10 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * 只读态（平台技能 Tab 只读详情）组件级写入口关闭清单回归保护（设计 §4.2）：
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.2/§三.5/§三.7 只读态。
+ * 入口 = 列表【查看】→ 编辑路由 ?view=1（md L72/L139）；只读态不提供插入和移除（md L213）。
+ * 组件级写入口关闭清单回归保护：
  * - ToolDock(readonly)：不渲染 picker（搜索/Tab/插入），不拉工具清单；
  * - SkillFileTree(readonly)：不渲染节点 ⋯ 菜单 + 不渲染底部导出 zip 入口。
  * 写入口须 v-if 不渲染（非置灰），漏一个就「只读页能改」。
+ * source 取 'platform'（'platform-candidate' 已无调用方，ReviewSkillDetailPage 7ca8241 已删）。
  */
 
 const listToolPickerMock = vi.fn(() => Promise.resolve([]))
@@ -61,9 +64,9 @@ function mount(component, props) {
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('ToolDock(readonly) · picker 写入口不渲染', () => {
+describe('ToolDock(readonly) · picker 写入口不渲染（md §三.7 L213 只读态不提供插入和移除）', () => {
   it('readonly → 无搜索框 / 无 Tab / 无插入按钮，且不拉工具清单', async () => {
-    const el = mount(ToolDock, { collapsed: false, readonly: true, skillSource: 'platform-candidate', referencedView: [] })
+    const el = mount(ToolDock, { collapsed: false, readonly: true, skillSource: 'platform', referencedView: [] })
     await nextTick(); await nextTick()
     expect(el.querySelector('.dock-search')).toBe(null)
     expect(el.querySelector('.dock-tab')).toBe(null)
@@ -78,10 +81,10 @@ describe('ToolDock(readonly) · picker 写入口不渲染', () => {
   })
 })
 
-describe('SkillFileTree(readonly) · 写入口不渲染', () => {
+describe('SkillFileTree(readonly) · 写入口不渲染（md §三.5 只读态）', () => {
   const files = [{ path: 'SKILL.md', name: 'SKILL.md', isEntry: true, fileType: 'md' }]
   it('readonly → 无节点 ⋯ 菜单、无底部导出 zip 入口', async () => {
-    const el = mount(SkillFileTree, { skillId: 1, files, source: 'platform-candidate', readonly: true })
+    const el = mount(SkillFileTree, { skillId: 1, files, source: 'platform', readonly: true })
     await nextTick()
     expect(el.querySelector('.ft-more')).toBe(null)
     expect(el.querySelector('.ft-foot')).toBe(null)

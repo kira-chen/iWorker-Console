@@ -128,30 +128,6 @@ export function exampleQuestionSoftHint(text) {
     : ''
 }
 
-/* ============================ N4 岗位推荐问题（固定 4 个，必填，不许增删） ============================ */
-// 单条硬上限 30 字（输入框 maxlength 直接拦 + 字数计数，替代原 20 字软提示口径）。
-export const RECOMMENDED_Q_COUNT = 4
-export const RECOMMENDED_Q_MAX_LEN = 30
-
-// 归一为固定 4 格数组（不足补空、超出截断）。编辑器 4 个输入框稳定绑定用。
-export function normalizeRecommendedQuestions(list) {
-  const arr = Array.isArray(list) ? list.map((q) => (q == null ? '' : String(q))) : []
-  return [0, 1, 2, 3].map((i) => arr[i] ?? '')
-}
-
-// 4 格是否全部填写（去空白后非空）→ 满足必填。用于发布门与"是否可随保存下发"判定。
-export function recommendedQuestionsComplete(list) {
-  const arr = normalizeRecommendedQuestions(list)
-  return arr.every((q) => String(q || '').trim().length > 0)
-}
-
-// 校验 4 格：返回 { ok, errors:[bool×4] }（errors[i]=true 表示第 i 格未填）。
-export function validateRecommendedQuestions(list) {
-  const arr = normalizeRecommendedQuestions(list)
-  const errors = arr.map((q) => String(q || '').trim().length === 0)
-  return { ok: errors.every((e) => !e), errors }
-}
-
 /* ============================ 人格页签必填要素（2026-09-04 PRD-20260903 对齐） ============================ */
 // 岗位描述：必填，最多 500 字（2026-09-08 决议第 5 项：统一 500——人格页签 / 新建弹窗 / mock 校验三处同口径；
 // 早先「统一 2000」的中间决议已被最终决议推翻，勿再改回）。
@@ -525,7 +501,8 @@ export const COMPLETENESS_ITEMS = [
   { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
   { key: 'positionSop', label: '岗位 SOP', tab: 'persona' },
   { key: 'agents', label: 'Agent 与技能', tab: 'agents' },
-  { key: 'sampleTasks', label: '自动化任务', tab: 'sampleTasks' }
+  // tab 标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③；key 为完整性内部键不随之改）
+  { key: 'sampleTasks', label: '自动化任务', tab: 'tasks' }
 ]
 
 export function computeCompletenessMissing(detail) {

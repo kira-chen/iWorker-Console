@@ -2,8 +2,11 @@
 /**
  * 入参/出参「字段行编辑器」（契约 §0.6 / 设计 §3.5，N10 起支持多级嵌套）。
  * 单一职责：以字段行维护一组字段，双向绑定字段行数组（v-model:rows）。
- * 列形态由 variant 分流（2026-09-01 拍板；2026-09-09 A16/Q117 起「必填」列两形态共有）：
- * request=参数名|描述|类型|请求方法(默认Query)|必填|默认值；response=参数名|描述|变量类型|必填。
+ * 列形态由 variant 分流（2026-09-01 拍板；2026-09-09 A16/Q117 起「必填」列两形态共有；
+ * 2026-09-12 列头 / 列序照 md prd-API.md §三.5 L161「字段名、字段类型、请求方法、是否必填、默认值、字段说明」· 审计 J15-4）：
+ * request=字段名|字段类型|请求方法(默认Query)|是否必填|默认值|字段说明；response=字段名|字段类型|是否必填|字段说明。
+ * 查看态（readonly，2026-09-12 md §三.5 L170 · 审计 K38）：完整展示字段层级，隐藏【＋ 添加字段】【＋子字段】与删除入口
+ * （输入控件的禁用由外层 el-form :disabled 承担）。
  * 类型选「对象 object」或「数组 array」时（PRD-20260828 §5），行下方展开一块缩进的子字段区，
  * 递归复用本组件配置子字段——配几层就是几层；切换为非对象/数组类型时清空已有子字段。
  * 组装/反解析 JSON Schema 由父级用 utils/schema 完成。错误（如 field 级红框）由父级通过 error 传入。
@@ -42,18 +45,21 @@ const props = defineProps({
   // 字段级错误文案（来自后端 data.field 命中 inputSchema/outputSchema 时）
   error: { type: String, default: '' },
   /**
-   * 列形态（2026-09-01 拍板）：
-   * - request：参数名 | 描述 | 类型 | 请求方法（默认 Query）| 必填 | 默认值
-   * - response（默认）：参数名 | 描述 | 变量类型 | 必填（必填列 2026-09-09 · A16/Q117 补出）
+   * 列形态（列序照 md §三.5 L161，2026-09-12 J15-4）：
+   * - request：字段名 | 字段类型 | 请求方法（默认 Query）| 是否必填 | 默认值 | 字段说明
+   * - response（默认）：字段名 | 字段类型 | 是否必填 | 字段说明（必填列 2026-09-09 · A16/Q117 补出）
    */
-  variant: { type: String, default: 'response' }
+  variant: { type: String, default: 'response' },
+  /** 查看态：隐藏新增 / 删除 / 添加子字段等编辑入口（md §三.5 L170，K38）。 */
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:rows'])
 
 const isRequest = computed(() => props.variant === 'request')
 // A5：请求方法列各层都在（原型 requestRowsHtml 每层行都渲染 `.req-method`）
 const showIn = computed(() => isRequest.value)
-const gridClass = computed(() => (isRequest.value ? 'sfe-grid-req' : 'sfe-grid-resp'))
+// 查看态无操作列（K38）→ 网格少一列，用独立 class 收掉末列宽度
+const gridClass = computed(() => [isRequest.value ? 'sfe-grid-req' : 'sfe-grid-resp', { 'is-readonly': props.readonly }])
 // 缩进最深 3 级（原型 `depth-1/2/3` = 左缩进 24/48/72px，再深不继续缩进）
 const INDENT_PX = 24
 const MAX_INDENT_DEPTH = 3
@@ -187,18 +193,19 @@ function removeConfirmText(row) {
 <template>
   <div class="sfe" :class="{ 'sfe-error': !!error }">
     <!-- 表头只一份（原型 schemaBlock L901 `.schema-header-row`），子字段行共用同一套列 -->
+    <!-- 列头 / 列序照 md §三.5 L161（2026-09-12 J15-4）：字段名、字段类型、请求方法、是否必填、默认值、字段说明 -->
     <div v-if="flatRows.length" class="sfe-head" :class="gridClass">
-      <span>参数名</span>
-      <span>描述</span>
-      <span>{{ isRequest ? '类型' : '变量类型' }}</span>
+      <span>字段名</span>
+      <span>字段类型</span>
       <span v-if="showIn">请求方法</span>
       <!-- 必填列（2026-09-09 PRD 复核轮 · G4/A16 · Q117）：md prd-API.md §五 L160/L165
            把「是否必填」列在请求参数与响应字段的共同字段行规则里（「勾选后表示运行时必须提供
            **或返回** 该字段」）→ 响应侧也要暴露。数据层本就恒带 required（schema newRow），
            此前只是 UI 藏起来了。 -->
-      <span class="col-req">必填</span>
+      <span class="col-req">是否必填</span>
       <span v-if="isRequest">默认值</span>
-      <span class="col-op"></span>
+      <span>字段说明</span>
+      <span v-if="!readonly" class="col-op"></span>
     </div>
     <!-- 扁平缩进行（A5）：父行后紧跟其子行，depth 决定左缩进；每行列完整 -->
     <div
@@ -210,13 +217,8 @@ function removeConfirmText(row) {
     >
       <el-input
         :model-value="item.row.name"
-        placeholder="参数名"
+        placeholder="字段名"
         @update:model-value="patch(item.path, 'name', $event)"
-      />
-      <el-input
-        :model-value="item.row.description"
-        placeholder="描述"
-        @update:model-value="patch(item.path, 'description', $event)"
       />
       <el-select
         :model-value="item.row.type"
@@ -253,8 +255,14 @@ function removeConfirmText(row) {
         placeholder="默认值（可选）"
         @update:model-value="patch(item.path, 'defaultValue', $event)"
       />
-      <!-- 行操作区（原型 `.api-schema-row-actions`）：对象/数组行多出【＋子字段】，其后是删除 -->
-      <div class="sfe-row-actions col-op">
+      <el-input
+        :model-value="item.row.description"
+        placeholder="字段说明"
+        @update:model-value="patch(item.path, 'description', $event)"
+      />
+      <!-- 行操作区（原型 `.api-schema-row-actions`）：对象/数组行多出【＋子字段】，其后是删除；
+           查看态整块不渲染（md §三.5 L170「隐藏新增、删除、添加子字段等编辑入口」，K38） -->
+      <div v-if="!readonly" class="sfe-row-actions col-op">
         <el-button
           v-if="typeHasChildren(item.row.type)"
           link
@@ -282,7 +290,7 @@ function removeConfirmText(row) {
       </div>
     </div>
     <div v-if="flatRows.length === 0" class="sfe-empty">暂无字段，可不配置（留空表示不约束）</div>
-    <div class="sfe-foot">
+    <div v-if="!readonly" class="sfe-foot">
       <el-button link type="primary" @click="addRow">＋ 添加字段</el-button>
       <span class="sfe-hint">类型选「对象」或「数组」可展开配子字段，支持任意层级嵌套</span>
     </div>
@@ -306,16 +314,23 @@ function removeConfirmText(row) {
   gap: var(--space-2);
   align-items: center;
 }
-/* 列宽按形态分流（2026-09-01 拍板列序）：
-   response：参数名|描述|变量类型|必填；request：参数名|描述|类型|请求方法|必填|默认值
+/* 列宽按形态分流（列序照 md §三.5 L161，2026-09-12 J15-4）：
+   request：字段名|字段类型|请求方法|是否必填|默认值|字段说明；response：字段名|字段类型|是否必填|字段说明
    （A5：请求方法列各层都在，子层不再另设一套列宽；
-     2026-09-09 · A16/Q117：response 补出「必填」列 44px，与 request 侧同宽） */
+     2026-09-09 · A16/Q117：response 补出「必填」列，与 request 侧同宽；
+     查看态 .is-readonly 去掉末尾 96px 操作列，K38） */
 .sfe-grid-req {
   /* 末列放【＋子字段】+ 删除两枚按钮，比原来的 36px 单删除列宽 */
-  grid-template-columns: 1.2fr 1.5fr 1fr 0.9fr 44px 1fr 96px;
+  grid-template-columns: 1.2fr 1fr 0.9fr 64px 1fr 1.5fr 96px;
+}
+.sfe-grid-req.is-readonly {
+  grid-template-columns: 1.2fr 1fr 0.9fr 64px 1fr 1.5fr;
 }
 .sfe-grid-resp {
-  grid-template-columns: 1.4fr 1.8fr 1.1fr 44px 96px;
+  grid-template-columns: 1.4fr 1.1fr 64px 1.8fr 96px;
+}
+.sfe-grid-resp.is-readonly {
+  grid-template-columns: 1.4fr 1.1fr 64px 1.8fr;
 }
 .sfe-head {
   font-size: var(--fs-xs);

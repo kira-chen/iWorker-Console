@@ -1,24 +1,26 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick } from 'vue'
+import { createApp, h, nextTick, reactive } from 'vue'
 
 /**
- * PositionDetailTabs · 页签信息架构契约。
+ * PositionDetailTabs · 页签信息架构契约（对齐 md 岗位 §1.2 顶栏 / §1.3 页签；2026-09-12 审计 T26/T53 修头注、补顶栏用例）。
  *
- * 2026-09-04 PRD-20260903 对齐重写（原 9-Tab 断言过时）：
- * - md 六页签序：人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务（业务系统页签 2026-09-09 已移除）；
- *   其后保留 demo 既有扩展页签 运行 / 效果测试 / 版本（版本=Q2 冻结）。
- * - 人格页签为 md 三.2 六区块（岗位描述 / 岗位图标 / 岗位认领说明 / 示例问题 / 岗位 SOP / 岗位人格）。
+ * - 页签集合：md §1.3 七页签（人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统）
+ *   + demo 扩展「运行」「效果测试」两占位 = 9 个（2026-09-10 负责人选 C「9 页签全留」）；「版本」页签已删。
+ *   md §1.3 页签 name `tasks`（2026-09-12 审计 J8③ 已由 `sampleTasks` 改齐），本组不钉 name。
+ * - 人格页签为 md §2 六区块（岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
- * - 只读态（query.view=1）：顶部隐藏【保存】【发布岗位】。
+ * - 顶栏（md §1.2 L144-145）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
+ * - 只读态（query.view=1）/ 审核中：顶部隐藏【保存】【发布岗位】。
  * 只钉页面这一层，不测子组件内部（全桩）。
  */
 
-const store = {
+// reactive：顶栏脏检查 isDirty 是 computed，store.basic 被 patchBasic 整体替换后须能触发重算
+const store = reactive({
   positionId: 5,
   loading: false,
   error: '',
-  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [], recommendedQuestions: ['', '', '', ''] },
+  basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] },
   agents: [],
   allSkills: [],
   isPublished: false,
@@ -28,7 +30,7 @@ const store = {
   reset: vi.fn(),
   saveBasic: vi.fn(() => Promise.resolve({ warnings: [] })),
   hydrate: vi.fn()
-}
+})
 vi.mock('@/stores/position', () => ({ usePositionStore: () => store }))
 vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
@@ -45,8 +47,9 @@ vi.mock('vue-router', () => ({
   createRouter: () => ({ beforeEach: vi.fn(), afterEach: vi.fn(), push: vi.fn(), replace: vi.fn() }),
   createWebHistory: () => ({})
 }))
+const listPublicationsSpy = vi.fn(() => Promise.resolve([]))
 vi.mock('@/api/position', () => ({
-  createPosition: vi.fn(), publishPosition: vi.fn(() => Promise.resolve({})), getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')), listPositionPublications: vi.fn(() => Promise.resolve([]))
+  createPosition: vi.fn(), publishPosition: vi.fn(() => Promise.resolve({})), getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')), listPositionPublications: (...a) => listPublicationsSpy(...a)
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn(() => Promise.resolve([])) }))
 // 2026-09-09 PRD 复核·G1（A1）：完整性校验第 6 项要自动化任务条数，详情页挂载即独立预取
@@ -56,9 +59,9 @@ vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
-// 2026-09-10：featureFlags 新增 FRONT_RUNTIME_ENABLED（yuepu 删「运行/效果测试」页签那批），
-// mock 未同步补上会让引用它的组件加载即报错，故此处与真实模块的导出保持一致。
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, FRONT_RUNTIME_ENABLED: false }))
+// featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
+// 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
 
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [
@@ -86,9 +89,14 @@ async function mount() {
   container = document.createElement('div'); document.body.appendChild(container)
   app = createApp(PositionDetailTabs)
   app.component('el-tabs', elTabs); app.component('el-tab-pane', elTabPane)
-  for (const t of ['el-button', 'el-input', 'el-skeleton', 'el-empty',
+  for (const t of ['el-button', 'el-skeleton', 'el-empty',
     'el-form', 'el-form-item', 'el-select', 'el-option', 'el-switch', 'el-tag', 'el-table',
     'el-icon', 'el-dialog', 'el-tooltip']) app.component(t, passthrough(t))
+  // el-input 轻桩：透传 class + 能发 update:modelValue，顶栏岗位名就地编辑用它触发脏检查
+  app.component('el-input', {
+    name: 'el-input', props: ['modelValue', 'maxlength', 'placeholder', 'disabled'], emits: ['update:modelValue'],
+    template: '<input class="el-input" :maxlength="maxlength" :placeholder="placeholder" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  })
   // el-table-column 的 #default 是行作用域插槽（需 { row }）；本组测试只钉 Tab 骨架，不渲染行内容，
   // 故桩成不调用插槽的空节点——否则真组件会以 undefined 作用域触发 "Cannot destructure property 'row'"。
   app.component('el-table-column', { name: 'el-table-column', props: ['prop', 'label'], template: '<div class="el-table-column"></div>' })
@@ -97,18 +105,24 @@ async function mount() {
   await nextTick(); await Promise.resolve(); await nextTick()
   return container
 }
-beforeEach(() => { store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null })
+beforeEach(() => {
+  store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null
+  store.isPublished = false
+  store.detail = { positionId: 5, status: 'draft', pendingAction: null }
+  store.basic = { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] }
+  listPublicationsSpy.mockClear()
+  listPublicationsSpy.mockImplementation(() => Promise.resolve([]))
+})
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）', () => {
+describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签 + 两占位 = 9，2026-09-10 选 C）', () => {
   // 页签集合的裁决沿革（改这条断言前先读完，它是历次裁决的载体）：
   // - 2026-09-09：移除「业务系统」与「版本」；「运行」「效果测试」保持空置占位。
   // - 2026-09-10 上午：负责人就页签数拍板「维持现状 8 个，页签数量上 html 原型不作准」。
   // - 2026-09-10 下午：业务系统页签带完整逻辑重新实现（引用/查看/排序，数据经
   //   store.basic.businessSystemIds 落库），负责人复核后裁决「**选 C · 9 页签全留**」——
-  //   即 md 六页签 + 业务系统 + 运行 + 效果测试。运行/效果测试仍按 09-09 指示空置占位。
-  // 注：md §1.3 仍写「固定 6 页签」，与现状 9 个属负责人认可的已知偏差（09-10 在册）。
-  it('渲染 md 六页签 + 业务系统 + demo 扩展两页签，共 9 个，label 与顺序正确', async () => {
+  //   即 md §1.3 七页签（含业务系统）+ 运行 + 效果测试。运行/效果测试仍按 09-09 指示空置占位。
+  it('渲染 md §1.3 七页签 + demo 扩展「运行」「效果测试」两占位，共 9 个，label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
     expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试'])
@@ -139,6 +153,36 @@ describe('PositionDetailTabs · 页签结构（2026-09-04 PRD-20260903 对齐）
     expect(top.textContent).toContain('发布岗位')
     expect(top.querySelector('.tb-dirty').textContent.trim()).toBe('')
     expect(store.saveBasic).not.toHaveBeenCalled()
+  })
+
+  it('顶栏岗位名改动后 → 显「有未保存的修改」（md §1.2 L145）；未改动时隐藏', async () => {
+    await mount()
+    expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('')
+    const input = container.querySelector('.tb-name-input')
+    input.value = '销售岗'
+    input.dispatchEvent(new Event('input'))
+    await nextTick(); await nextTick()
+    expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('有未保存的修改')
+    expect(container.querySelector('.tb-dirty').classList.contains('on')).toBe(true)
+  })
+
+  it('已发布岗位 → 顶栏展示当前在架版本号（如 v2.1.0，md §1.2 L144）', async () => {
+    store.isPublished = true
+    store.detail = { positionId: 5, status: 'published', pendingAction: null }
+    listPublicationsSpy.mockImplementation(() => Promise.resolve([
+      { version: 2, versionLabel: 'v2.1.0', status: 'ACTIVE' },
+      { version: 1, versionLabel: 'v2.0.0', status: 'DELISTED' }
+    ]))
+    await mount()
+    await nextTick(); await Promise.resolve(); await nextTick()
+    expect(listPublicationsSpy).toHaveBeenCalledWith(5)
+    expect(container.querySelector('.tb-version')?.textContent.trim()).toBe('v2.1.0')
+  })
+
+  it('未发布岗位 → 顶栏不展示版本号（md §1.2 L144）', async () => {
+    await mount()
+    await nextTick(); await Promise.resolve(); await nextTick()
+    expect(container.querySelector('.tb-version')).toBeNull()
   })
 
   it('只读态（query.view=1，列表【查看】进入）：顶部隐藏【保存】【发布岗位】', async () => {

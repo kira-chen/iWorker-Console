@@ -115,7 +115,7 @@ const editRouteName = computed(() => {
 // #2：返回文案 FDE/平台一律「← 返回」（不再区分技能列表/平台技能列表）。
 const backLabel = computed(() => '← 返回')
 // 详情 / 保存：平台技能走平台端点；业务系统技能走 biz-systems/{bizId}/skills 端点；FDE 沿用 position store。
-// 注：整页编辑器无删除入口（见 SkillFocusEditor 删除 ⋯ 仅 showClose=true 工作台渲染），故此处不含删除分支。
+// 注：整页编辑器无删除入口（SkillFocusEditor 的删除 ⋯ 下拉已随 showClose 开关退役，2026-09-12 审计 J14；删除收口到列表页 md §二.3.6），故此处不含删除分支。
 /**
  * 详情取数。
  *
@@ -1190,7 +1190,7 @@ function onTestMaskClick(e) {
     <div class="se-container">
       <!-- 单行融合（去掉独立 topbar band）：返回/技能名/类别/保存态 全在 SkillFocusEditor 的极简顶行一行内。
            AdminSkillEditPage 不再单画顶栏——把「返回(emit back)」「自动保存提示」下沉/透传进 topline。
-           整页编辑器无删除入口（show-close=false → SkillFocusEditor 的删除 ⋯ 仅工作台 show-close=true 渲染）。 -->
+           整页编辑器无删除入口（SkillFocusEditor 的 show-close 开关与删除 ⋯ 下拉已退役，2026-09-12 审计 J14）。 -->
       <!-- 编辑舞台：为 SkillFocusEditor 提供铺满的定位父级 -->
       <div class="se-stage">
         <SkillFocusEditor
@@ -1199,7 +1199,6 @@ function onTestMaskClick(e) {
           :load-error="loadError"
           :position-name="positionName"
           :position-id="positionId"
-          :show-close="false"
           :readonly="readonly"
           :back-label="backLabel"
           :save-status="saveStatus"
@@ -1224,7 +1223,6 @@ function onTestMaskClick(e) {
           @update:skill="onUpdateSkill"
           @update:display-category="onUpdateDisplayCategory"
           @update:active-file-content="onUpdateActiveContent"
-          @close="onClose"
           @back="onClose"
           @retry="loadSkill(currentSkillId)"
           @select-file="onSelectFile"
@@ -1327,7 +1325,7 @@ function onTestMaskClick(e) {
   min-width: 0;
 }
 /* 单行融合收口：原独立 .topbar band 已拆除——返回/技能名/类别/保存态 全在 SkillFocusEditor 极简顶行一行内。
-   整页编辑器无删除入口（show-close=false），删除溢出菜单仅工作台模式渲染，不涉及本页样式。 */
+   整页编辑器无删除入口（show-close 开关与删除溢出菜单已退役，2026-09-12 J14），不涉及本页样式。 */
 /* 编辑舞台（#1 去周边灰边、平铺）：无内边距/无灰底，让 flush 态编辑器铺满整个区域、贴边无外框 */
 .se-stage {
   flex: 1;

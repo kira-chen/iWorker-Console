@@ -140,7 +140,7 @@ describe('PublishCheckDialog · 发布提交门穷举（四个条件缺一不可
     expect(el.textContent).toContain('存在告警项')
   })
 
-  it('版本号只读展示（无输入框）+ 更新类型三选一文案与顺序照原型 L1224；点类型 emit update:bump', () => {
+  it('版本号只读展示（无输入框）+ 更新类型三选一文案与顺序对齐 md §3.7（历史出处：原型 L1224）；点类型 emit update:bump', () => {
     const bumpSpy = vi.fn()
     const el = mount({ versionLabel: 'v1.2.1', bump: 'NONE', 'onUpdate:bump': bumpSpy })
     expect(el.querySelector('.pub-ver-num').textContent).toBe('v1.2.1')

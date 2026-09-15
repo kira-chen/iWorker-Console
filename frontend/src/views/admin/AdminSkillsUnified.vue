@@ -396,9 +396,10 @@ const versionAdapter = computed(() => {
     guardLastActive: true,
     lastActiveTip: '当前版本是该技能最后一个启用版本。如需停止对外提供，请先整体下架技能',
     exclusiveActive: true, // 启用某历史版本 → 其余启用版本自动禁用（原型 toggleHistory 口径）
+    // 2026-09-12 对齐 md 技能 §二.3.4 L231（审计 K18，Q216）：拦截提示逐字 md，去掉多出的「请到技能编辑页…」一句
     submitGate: () =>
       row.type === SKILL_TYPE.PLATFORM && !(row.displayCategoryId ?? null)
-        ? '该技能还未选择「技能分类」，按规则不可提交发布。请到技能编辑页选择分类并保存后再来发布。'
+        ? '该技能还未选择「技能分类」，按规则不可提交发布'
         : '',
     // 疑点10：撤回确认保留现状分场景文案
     withdrawText: (state) =>

@@ -43,7 +43,7 @@ const props = defineProps({
   /**
    * 2026-09-01 PRD 对齐（技能编辑器语境专用，props 驱动、不改岗位工作台现状）：
    * 页签收敛覆写——传入类型码数组（如 ['MCP','API','BIZ_SYSTEM']）即按此渲染页签，
-   * 不传（null）保持既有按 skillSource 推导的页签集（岗位工作台四页签 / 平台族两页签）。
+   * 不传（null）为默认四页签（MCP / API / 数据表 / 业务系统；业务系统技能编辑器走此分支）。
    */
   tabs: { type: Array, default: null },
   /**
@@ -62,9 +62,10 @@ const isPlatform = computed(() => props.skillSource === 'platform' || props.skil
 // 仅 MCP/API/业务系统可引用（向后兼容：工作台传 positionId 时四 tab 照常可用）。
 const tableDisabled = computed(() => props.positionId == null)
 
-// 平台技能无岗位、运行时不可达数据表/业务系统 → 只留 MCP/API 两 tab；FDE 技能四 tab 不变。
 // 组②：各 Tab 说人话提示（title 悬浮，面向不懂技术的配置者）。文案复用 utils/skillTerms（单一真相）。
-// 2026-09-01：技能编辑器语境经 props.tabs 覆写为 MCP / API / 业务系统 三页签（岗位工作台不传，保持现状）。
+// 2026-09-01：技能编辑器语境经 props.tabs 覆写为 MCP / API / 业务系统 三页签；不传 tabs 时按默认四页签
+// （业务系统技能 admin-context=false 走这里）。原「平台族只留 MCP/API 两 tab」默认分支已于 2026-09-12 删除
+// （审计 J13）：平台 / 系统技能编辑器恒传 tabs=ADMIN_TOOL_TABS，该分支运行时不可达；数据源分流（isPlatform）保留。
 const TAB_DEFS = {
   MCP: { type: 'MCP', label: 'MCP', tip: TERMS.mcp },
   API: { type: 'API', label: 'API', tip: TERMS.api },
@@ -77,14 +78,12 @@ const TABS = computed(() => {
       .filter((t) => TAB_DEFS[t])
       .map((t) => ({ ...TAB_DEFS[t], disabled: t === 'TABLE' ? tableDisabled.value : false }))
   }
-  return isPlatform.value
-    ? [TAB_DEFS.MCP, TAB_DEFS.API]
-    : [
-        TAB_DEFS.MCP,
-        TAB_DEFS.API,
-        { ...TAB_DEFS.TABLE, disabled: tableDisabled.value },
-        TAB_DEFS.BIZ_SYSTEM
-      ]
+  return [
+    TAB_DEFS.MCP,
+    TAB_DEFS.API,
+    { ...TAB_DEFS.TABLE, disabled: tableDisabled.value },
+    TAB_DEFS.BIZ_SYSTEM
+  ]
 })
 
 const activeTab = ref('MCP')

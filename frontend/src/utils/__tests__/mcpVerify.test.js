@@ -30,13 +30,18 @@ describe('mcpVerify · 检活错误分类反查', () => {
   })
 
   /**
-   * 与后端 failReason 的对齐守卫。
+   * 错误目录封闭集守卫。
    *
-   * 后端 `ToolHealthService#failReason` / `McpProvisionService#failReason` 把
-   * McpTransportException.ErrorKind 穷举映射成这五条中文简述。两处 switch 完全一致，
-   * 是封闭集合。此处逐条锁定——后端改了措辞而前端没跟，这条会红。
+   * 2026-09-12 头注更新（审计 D8）：原注释引用的后端 `ToolHealthService#failReason` /
+   * `McpProvisionService#failReason` 已随发布单元退役；本仓为纯前端 demo，检活简述由
+   * api/mcpConnectorMock 下发（种子 lastCheckError 为「连接超时」「服务端返回错误」，
+   * 见该文件 MCP_SEEDS）。目录 key 即前端自己维护的封闭集，此处逐条锁定——
+   * 目录被误删一条，列表验证列悬浮的「错误码」会退成 UNKNOWN（md MCP §二.2 L61）。
+   *
+   * 注：mock 手动检活失败用的 MOCK_FAIL_REASON 自 2026-09-12（审计 J16 闭环）起改为目录 key「连接失败」
+   * （mcpConnectorMock / apiConnectorMock 同改），下方遍历即覆盖；其断言见各 mock 的测试文件。
    */
-  it('五种 ErrorKind 的中文简述全部登记在案（与后端 failReason 对齐）', () => {
+  it('五种传输层错误简述全部登记在案（mock 种子 lastCheckError 也在其中）', () => {
     for (const brief of [
       '连接超时',
       '连接失败',
@@ -44,7 +49,7 @@ describe('mcpVerify · 检活错误分类反查', () => {
       '服务端返回错误',
       '响应解析失败'
     ]) {
-      expect(MCP_ERROR_CATALOG[brief], `后端 failReason 的「${brief}」未登记`).toBeTruthy()
+      expect(MCP_ERROR_CATALOG[brief], `错误简述「${brief}」未登记`).toBeTruthy()
       expect(explainMcpError(brief).code).not.toBe('UNKNOWN')
     }
   })

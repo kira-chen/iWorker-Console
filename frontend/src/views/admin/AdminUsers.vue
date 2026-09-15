@@ -30,8 +30,9 @@ import UserRoleDialog from '@/components/admin/UserRoleDialog.vue'
 import { listUsers, deleteUser, resetUserPassword, listRoles } from '@/api/adminUser'
 import { fmtTime } from '@/utils/docMeta'
 import '@/assets/connector.css'
-// 操作列宽走共享 opsWidth；数据列宽照原型 colgroup（见模板注释，2026-09-08 原型复刻批次 2A）
-import { opsWidth } from '@/utils/tableLayout'
+// 操作列宽走共享 opsWidth；数据列宽照原型 colgroup（见模板注释，2026-09-08 原型复刻批次 2A）；
+// 时间列 2026-09-12 起改共享 COL.TIME + col-nowrap（审计 K16：原硬编码 165 ≠ 全站 168 且无不换行类）
+import { COL, COL_NOWRAP, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -42,15 +43,9 @@ const query = reactive({ keyword: '', roleCode: '', status: '', sort: 'desc' })
 // 排序方向箭头
 const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')
 
-// 切换排序
+// 切换排序（2026-09-12 审计 K46：原经 onSortChange({prop,order}) 兼容壳中转，该壳已无任何消费方，退役后直接翻转）
 function toggleSort() {
-  onSortChange({ prop: 'lastLogin', order: query.sort === 'desc' ? 'ascending' : 'descending' })
-}
-
-// 保留列表统一改造前的排序事件入口，供既有测试和可能的表格适配层复用。
-function onSortChange({ prop, order } = {}) {
-  if (prop !== 'lastLogin') return
-  query.sort = order === 'ascending' ? 'asc' : 'desc'
+  query.sort = query.sort === 'desc' ? 'asc' : 'desc'
   reload()
 }
 
@@ -252,7 +247,8 @@ const emptyText = computed(() =>
         :empty-text="emptyText"
         @retry="fetchList"
       >
-        <!-- 列宽照原型 L238 <colgroup> 140/120/220/230/90/165/210（用户名 / 显示名 / 邮箱 / 角色 取 min-width 伸缩） -->
+        <!-- 列宽照原型 L238 <colgroup> 140/120/220/230/90/165/210（用户名 / 显示名 / 邮箱 / 角色 取 min-width 伸缩）；
+             时间列 2026-09-12 改 COL.TIME（审计 K16：与全站时间列同源同值，并挂 col-nowrap 不换行） -->
         <el-table
           :data="rows"
           class="users-table"
@@ -287,7 +283,7 @@ const emptyText = computed(() =>
             </template>
           </el-table-column>
           <!-- 最近登录时间：自定义排序按钮，默认倒序；从未登录显「从未登录」且恒排最后 -->
-          <el-table-column :width="165">
+          <el-table-column :width="COL.TIME" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSort">
                 最近登录时间 <span class="time-sort-arrow">{{ sortArrow }}</span>

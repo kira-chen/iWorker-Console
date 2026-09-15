@@ -1,3 +1,6 @@
+// 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役，但被测的 utils/intakeForm.js 是管理端活代码
+//（components/intake/IntakeFormFields.vue「岗位采集」页签 + components/test/EffectTestStage.vue 均在用），
+// 故本文件豁免删除、用例继续守管理端行为（原「仅作代码考古」头注作废）。
 import { describe, it, expect } from 'vitest'
 import {
   buildIntakeModel,

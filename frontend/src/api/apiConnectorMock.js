@@ -28,6 +28,13 @@ let skillSeq = 10
 
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
+/**
+ * demo 检活失败原因（种子 + healthCheckApi 共用）。
+ * 2026-09-12 对齐 md MCP §二.2 L61 同口径（审计 J16）：值须为 utils/mcpVerify `MCP_ERROR_CATALOG` 的目录 key，
+ * AdminApis.verifyTip 经 explainMcpError 才能解出真实错误码（CONN_FAILED）；原 'CONN_REFUSED: …' 落 UNKNOWN。
+ */
+const MOCK_FAIL_REASON = '连接失败'
+
 /* ---------------- 服务提供系统 ---------------- */
 let providerSystems = [
   { id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口' },
@@ -191,7 +198,7 @@ let apis = [
     status: 'NOT_PUBLISHED',
     displayStatus: 'UNHEALTHY',
     lastCheckedAt: '2026-08-22T10:35:00+08:00',
-    lastCheckError: 'CONN_REFUSED: 连接被拒绝（目标服务未响应）',
+    lastCheckError: MOCK_FAIL_REASON,
     createdAt: '2026-08-22T09:00:00+08:00',
     updatedAt: '2026-08-22T10:35:00+08:00',
     // mock 专用：该行检活恒返回异常，改过 URL 后恢复正常（模拟修好地址）
@@ -435,8 +442,10 @@ let apis = [
 // 无 Map/Set、无派生索引；「验证中」仅是 healthCheckApi 延时期间的 UI 瞬态，模型里只落
 // null/HEALTHY/UNHEALTHY 三个稳定值——restore 兜底把未知值归一为 null（未探测），避免脏数据卡中间态。
 // version 2（2026-09-10 E8）：星火系列种子描述改「大白话首句 + 接入说明」措辞，旧快照弃用回种子。
+// version 3（2026-09-12 审计 J16）：种子 api_1104 的 lastCheckError 改为 mcpVerify 目录 key「连接失败」
+//   （旧值 'CONN_REFUSED: …' 悬浮显 UNKNOWN），旧快照弃用回种子。
 const persist = attachPersist('apiConnector', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -574,6 +583,8 @@ export async function getApi(id) {
 
 function validateApiPayload(payload) {
   if (!(payload.name || '').trim()) throw err('名称不能为空', 'name')
+  // 名称上限 64（2026-09-12 对齐《各模块必填选填字段一览表》§6.2 · 审计 K36；与 ApiEditor.validate 同口径）
+  if (payload.name.trim().length > 64) throw err('名称最多 64 个字符', 'name')
   if (!payload.providerSystemId || !findPs(payload.providerSystemId)) {
     throw err('必须选择所属服务提供系统', 'providerSystemId')
   }
@@ -704,7 +715,7 @@ export async function healthCheckApi(id) {
   await delay(900) // 模拟探测耗时（验证中图标旋转可见）
   if (a._mockUnhealthy) {
     a.displayStatus = 'UNHEALTHY'
-    a.lastCheckError = 'CONN_REFUSED: 连接被拒绝（目标服务未响应）'
+    a.lastCheckError = MOCK_FAIL_REASON
   } else {
     a.displayStatus = 'HEALTHY'
     a.lastCheckError = null
@@ -749,6 +760,33 @@ export async function deactivateApi(id) {
   a.pendingAction = 'DEACTIVATE'
   persist()
   return toRow(a)
+}
+
+/**
+ * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此，
+ * 审核中心不直接改本模块内部数组。口径与 bizSystemMock.approve/rejectBizSystem 同型（md 明写「逻辑同」）。
+ *
+ * md `prd-API.md` §L65「提交后状态变为"审核中"，审核通过后变为"已发布"」；
+ * §L70「确认后提交停用审核，状态变为"审核中"，审核通过后变为"未发布"，被拒绝或撤回后恢复"已发布"」。
+ */
+export function applyApiReviewResult(refId, requestAction, approved) {
+  const a = findApi(refId)
+  if (!a || a.status !== 'PENDING_REVIEW') return false
+  const isDelist = (requestAction || (a.pendingAction === 'DEACTIVATE' ? 'DELIST' : '')) === 'DELIST'
+  if (approved) {
+    if (isDelist) {
+      a.status = 'NOT_PUBLISHED'
+    } else {
+      a.status = 'PUBLISHED'
+      a.publishedAt = nowIso()
+    }
+  } else {
+    // 驳回与撤回同向：待审停用被拒 → 保持已发布；待审发布被拒 → 未发布
+    a.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
+  }
+  a.pendingAction = null
+  persist()
+  return true
 }
 
 /* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */

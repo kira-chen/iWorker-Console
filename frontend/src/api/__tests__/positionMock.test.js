@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // （positionMock → request.js → router 链路触达 window，故用 jsdom；同 fieldDictMock.test）
-import { describe, it, expect, beforeEach } from 'vitest'
+// 2026-09-12 测试审计 T53：补 persist v4 读回（真 localStorage + vi.resetModules 重新 import）。
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   listPositions,
   publishPosition,
@@ -82,7 +83,8 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     await unpublishPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('DELIST')
-    // 2026-09-08 PRD-20260908 对齐：md §6.5 Agent 与技能不参与发布阻断 → 无技能岗位也可提交发布（原 Q3 mock 兜底已删）
+    // mock 层不做完整性门（原「§6.5 不参与发布阻断」口径已被 09-09 Q11 推翻）：发布门在页面层
+    // computeCompletenessMissing（positionModel.js）；404 种子自 2026-09-09 起六项齐备，故 mock 直接放行提交发布
     await publishPosition(404, { releaseNotes: 'x' })
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')
@@ -96,5 +98,44 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     const { total } = await listPositions()
     expect(total).toBe(3)
     expect(getPositionNameById(404)).toBe('')
+  })
+})
+
+describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新后仍在）', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（Node 22+ 自带的实验性 localStorage 占位，
+  // mockPersist 探测后走纯内存模式），故与 mockPersist.test 同款：注入内存版存储，
+  // 用 vi.resetModules + 动态 import 模拟「写入 → 刷新页面 → 重新加载模块」。
+  const KEY = 'iworker-demo-mock:position'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('deletePosition 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+    const first = await import('../positionMock')
+    await first.deletePosition(404)
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.v).toBe(5) // 2026-09-12 决策 6 删 recommendedQuestions 时 bump
+    expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
+    vi.resetModules()
+    const fresh = await import('../positionMock')
+    const { list, total } = await fresh.listPositions()
+    expect(total).toBe(3)
+    expect(list.map((p) => p.name)).not.toContain('市场研究岗')
   })
 })

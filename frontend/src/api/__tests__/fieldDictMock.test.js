@@ -2,7 +2,7 @@
 // （fieldDictMock → request.js → router 链路触达 window，故用 jsdom）
 // 注意：vitest 全局随机顺序执行——用例间不得有状态顺序依赖：
 // 种子断言只查从不被本文件改写的字段；改写类用例基于当前态自洽断言。
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { listFieldDict, saveFieldOptions, getFieldOptionNames } from '../fieldDictMock'
 
 describe('fieldDictMock —— 字段字典（2026-09-01 PRD 对齐轮：草稿整存模型）', () => {
@@ -44,5 +44,43 @@ describe('fieldDictMock —— 字段字典（2026-09-01 PRD 对齐轮：草稿�
     await expect(saveFieldOptions('riskType', ['x'])).rejects.toThrow('字段不存在')
     await expect(saveFieldOptions('riskLevel', ['x'])).rejects.toThrow('字段不存在')
     expect(getFieldOptionNames('riskType')).toEqual([])
+  })
+})
+
+/* ---------------- F9：restore 形状守卫（fieldDictMock.js:37-39；mockPersist 兜底回种子；2026-09-12 测试审计） ---------------- */
+describe('fieldDictMock · 持久化 restore 形状守卫', () => {
+  // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
+  // 与 positionMock.test 同款：注入内存版存储 + vi.resetModules + 动态 import 模拟「刷新后重新加载模块」。
+  const KEY = 'iworker-demo-mock:fieldDict'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('存量快照版本对但缺字段键 / 值非数组 → 启动时抛「快照形状不合法」被兜底：两字段回 md §2.2 种子、坏 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { seq: 1, store: { skillCategory: 'not-an-array' } } }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fresh = await import('../fieldDictMock')
+    const dict = await fresh.listFieldDict()
+    expect(dict.skillCategory.map((o) => o.name)).toEqual(['办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他'])
+    expect(dict.expertCategory.map((o) => o.name)).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('fieldDict 存量数据不可用'), expect.any(Error))
+    warn.mockRestore()
   })
 })

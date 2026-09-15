@@ -11,10 +11,11 @@ async function flush(n = 6) {
 }
 
 /**
- * SampleTaskEditor · 一句话指令(prompt)：
+ * SampleTaskEditor · 一句话指令(prompt) 与提示词(sopDoc) 校验门（md 岗位 §7.2 / §7.4 / §7.7）：
  * - 详情回填 SampleTaskVO.prompt；
  * - 空 prompt（启用样例）阻断保存并标红，不落 create；
- * - 填了 prompt → createSampleTask payload 含 prompt。
+ * - 填了 prompt → createSampleTask payload 含 prompt；
+ * - 2026-09-12 审计 J7 / K7 / K9：提示词非必填（留空可建），仅 8000 字上限拦截（错误文案「提示词不超过 8000 字」）。
  */
 const createSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
 const updateSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
@@ -36,16 +37,16 @@ vi.mock('element-plus', () => ({
 // 子组件 stub（隔离重依赖）。
 vi.mock('@/components/task/SchedulePicker.vue', () => ({ default: { name: 'SchedulePicker', setup: () => () => h('div', { class: 'stub-sched' }) } }))
 vi.mock('@/components/admin/ToolPicker.vue', () => ({ default: { name: 'ToolPicker', setup: () => () => h('div', { class: 'stub-tool' }) } }))
-// MarkdownEditor stub 暴露 emit 句柄（lastSopEmit），供测试在创建态填 sopDoc（必填门用）。
+// MarkdownEditor stub 暴露 emit 句柄（lastSopEmit），供测试在创建态填 sopDoc；error prop 落 data-err 供断言上限文案。
 let lastSopEmit = null
 vi.mock('@/components/admin/MarkdownEditor.vue', () => ({
   default: {
     name: 'MarkdownEditor',
-    props: ['modelValue'],
+    props: ['modelValue', 'error'],
     emits: ['update:modelValue', 'update:model-value'],
     setup: (p, { emit }) => {
       lastSopEmit = (v) => emit('update:modelValue', v)
-      return () => h('div', { class: 'stub-md', 'data-md': p.modelValue ?? '' })
+      return () => h('div', { class: 'stub-md', 'data-md': p.modelValue ?? '', 'data-err': p.error ?? '' })
     }
   }
 }))
@@ -111,10 +112,9 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
   it('空 prompt → 阻断保存，不落 create（其余必填齐备，证明归因到 prompt 门）', async () => {
     mount({ positionId: 1, sample: null })
     await flush()
-    // 填齐除 prompt 外全部必填：name（输入框 0）、sopDoc（MarkdownEditor emit 句柄）；
-    // schedule 创建态默认 DAILY + ['09:00'] 本就合法（blankSchedule），仅 prompt 留空。
+    // 填齐除 prompt 外全部必填：name（输入框 0）；schedule 创建态默认 DAILY + ['09:00'] 本就合法（blankSchedule），
+    // 提示词非必填（J7）留空，仅 prompt 留空。
     setInput(0, '样例B')
-    lastSopEmit('怎么办：拉昨日工单，汇总成待办清单')
     await flush()
     // 点击保存（最后一个按钮为主保存）。
     const btns = [...container.querySelectorAll('button')]
@@ -125,6 +125,43 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
     // 归因：标红错误仅 prompt 一条（name/sopDoc/schedule 均已通过校验）。
     const errs = [...container.querySelectorAll('.te-err')].map((e) => e.textContent)
     expect(errs).toEqual(['请填写一句话指令（启用样例必填）'])
+  })
+
+  it('J7 提示词留空 + 名称 / 指令齐备 → 直接落 create，payload.sopDoc 为空串（md §7.7 必填只有名称 + 一句话指令）', async () => {
+    mount({ positionId: 1, sample: null })
+    await flush()
+    setInput(0, '样例D')
+    setInput(1, '到点汇总昨日工单')
+    await flush()
+    const btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).toHaveBeenCalled()
+    expect(createSpy.mock.calls[0][1].sopDoc).toBe('')
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('')
+  })
+
+  it('K7 提示词 8001 字 → 阻断 create，MarkdownEditor 收到错误「提示词不超过 8000 字」；8000 字放行（md §7.4 L405）', async () => {
+    mount({ positionId: 1, sample: null })
+    await flush()
+    setInput(0, '样例E')
+    setInput(1, '到点汇总昨日工单')
+    lastSopEmit('字'.repeat(8001))
+    await flush()
+    let btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('提示词不超过 8000 字')
+    // 改到恰好 8000 字 → 放行
+    lastSopEmit('字'.repeat(8000))
+    await flush()
+    btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).toHaveBeenCalled()
+    expect(createSpy.mock.calls[0][1].sopDoc).toHaveLength(8000)
   })
 
   it('编辑态改 prompt → updateSampleTask payload 含新 prompt', async () => {
