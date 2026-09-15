@@ -48,6 +48,20 @@ npm run test         # 单测（vitest）
 npm run build        # 生产构建
 ```
 
+## 提交代码
+
+main 受分支保护，**不走直推、改动经 PR 合入**（2026-09-15 启用）：
+
+```bash
+git switch -c fix/xxx          # 开临时分支（类型/简述）
+# 改代码；本地 npm run test 与 npm run build 须绿
+git push -u origin fix/xxx
+```
+
+然后在 GitHub 上开 PR，点 **Enable auto-merge**——CI（单测 + 构建）绿则自动合并进 main、
+临时分支自动删除；红则停住等修。CI 按 push 次数触发，故仍按「一个验证过的闭环批次一次推」攒着推。
+完整约定见 `CLAUDE.md`「PR 流程与 CI」。
+
 ## 文档索引
 
 - PRD 对齐基准：`docs/PRD/数字员工管理端PRD/`（长期正本，git 直改、修订历史看 git log）——各模块 prd md（**唯一口径**；交互原型已退场，旧原型与截图仅历史参考）+《各模块必填选填字段一览表.md》
