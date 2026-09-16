@@ -22,6 +22,7 @@ const api = {
   updateModel: vi.fn()
 }
 vi.mock('@/api/adminModel', () => api)
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
 const AdminModels = (await import('@/views/admin/AdminModels.vue')).default
 

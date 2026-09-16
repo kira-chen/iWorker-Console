@@ -15,7 +15,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *  - listPositions 拒绝 → 「加载失败」+【重试】优先于空态（md §一.3 L29），点【重试】重拉后表格回来。
  */
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
 
 const listPositions = vi.fn()
 vi.mock('@/api/position', () => ({
