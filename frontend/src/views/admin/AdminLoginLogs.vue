@@ -12,6 +12,7 @@
  *   删去敏感知识库检索页签；数据走 accessAuditMock.js。
  */
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -24,6 +25,8 @@ import { COL } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
+
+const router = useRouter()
 
 // 当前子页
 const activeTab = ref('login')
@@ -67,16 +70,64 @@ function isOnline(row) {
   return row.status === 'ONLINE'
 }
 
+// ── 时间范围工具（三页签共用）────────────────────────────────
+function defaultRange() {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 89)  // 含今天共 90 天
+  return [start, end]
+}
+
+function inRange(timeStr, range) {
+  if (!range?.[0] || !range?.[1]) return true
+  const t = new Date(timeStr.replace(' ', 'T'))
+  const s = new Date(range[0]); s.setHours(0, 0, 0, 0)
+  const e = new Date(range[1]); e.setHours(23, 59, 59, 999)
+  return t >= s && t <= e
+}
+
+function makeDisabledDate(firstRef) {
+  return computed(() => {
+    const first = firstRef.value
+    return (d) => first ? Math.abs(d - first) / 86400000 > 30 : false
+  })
+}
+
+function onCalendarChange(firstRef, val) {
+  firstRef.value = val?.[1] ? null : (val?.[0] ?? null)
+}
+
+// ── 登录访问：时间范围 ────────────────────────────────────────
+const loginDateRange = ref(defaultRange())
+const loginPickFirst = ref(null)
+const loginDisabledDate = makeDisabledDate(loginPickFirst)
+const loginFiltered = computed(() => rows.value.filter((r) => inRange(r.loginAt, loginDateRange.value)))
+
 // ── 产物下载 ─────────────────────────────────────────────────
 const dlKeyword = ref('')
 const dlResult = ref('')
+const dlSortOrder = ref('descending')
+const dlSortArrow = computed(() => dlSortOrder.value === 'descending' ? '↓' : '↑')
+const dlDateRange = ref(defaultRange())
+const dlPickFirst = ref(null)
+const dlDisabledDate = makeDisabledDate(dlPickFirst)
+
+function toggleDlSort() {
+  dlSortOrder.value = dlSortOrder.value === 'descending' ? 'ascending' : 'descending'
+}
 
 const dlFiltered = computed(() => {
   const q = dlKeyword.value.toLowerCase()
-  return dlRecords.filter(
+  const base = dlRecords.filter(
     (r) =>
       (!q || r.filename.toLowerCase().includes(q) || r.user.toLowerCase().includes(q)) &&
-      (!dlResult.value || r.result === dlResult.value),
+      (!dlResult.value || r.result === dlResult.value) &&
+      inRange(r.time, dlDateRange.value),
+  )
+  return [...base].sort((a, b) =>
+    dlSortOrder.value === 'descending'
+      ? b.time.localeCompare(a.time)
+      : a.time.localeCompare(b.time)
   )
 })
 
@@ -86,19 +137,33 @@ const dlDeniedCount = computed(() => dlFiltered.value.filter((r) => r.result !==
 const opsKeyword = ref('')
 const opsModule = ref('')
 const opsAction = ref('')
+const opsSortOrder = ref('descending')
+const opsSortArrow = computed(() => opsSortOrder.value === 'descending' ? '↓' : '↑')
+const opsDateRange = ref(defaultRange())
+const opsPickFirst = ref(null)
+const opsDisabledDate = makeDisabledDate(opsPickFirst)
+
+function toggleOpsSort() {
+  opsSortOrder.value = opsSortOrder.value === 'descending' ? 'ascending' : 'descending'
+}
 
 const opsFiltered = computed(() => {
   const q = opsKeyword.value.toLowerCase()
-  return opsRecords.filter(
+  const base = opsRecords.filter(
     (r) =>
       (!q || r.operator.toLowerCase().includes(q) || r.target.toLowerCase().includes(q)) &&
       (!opsModule.value || r.module === opsModule.value) &&
-      (!opsAction.value || r.action === opsAction.value),
+      (!opsAction.value || r.action === opsAction.value) &&
+      inRange(r.time, opsDateRange.value),
+  )
+  return [...base].sort((a, b) =>
+    opsSortOrder.value === 'descending'
+      ? b.time.localeCompare(a.time)
+      : a.time.localeCompare(b.time)
   )
 })
 
-// 原型 modColors / actColors / chanColor / resColor 映射到本地 tag 样式类
-const CHAN_CLS = { Web: 'tag-orange', Windows: 'tag-blue', Mac: 'tag-purple' }
+// 原型 actColors / resColor 映射到本地 tag 样式类
 const RES_CLS = { SUCCESS: 'tag-green', FAILED: 'tag-red' }
 const MOD_CLS = {
   岗位: 'tag-green',
@@ -121,28 +186,54 @@ const ACT_CLS = {
   审核驳回: 'tag-red',
 }
 
-function opsGoto(module) {
-  ElMessage.info(`正式系统中将跳转至「${module}」模块`)
+// 模块 → 路由映射（点「查看操作」跳转对应模块页并注入搜索条件）
+const VERSION_MODULES = new Set(['岗位', '专家', '技能'])
+
+const MODULE_ROUTE = {
+  岗位:       { name: 'AdminPositions' },
+  专家:       { name: 'AdminExperts' },
+  技能:       { name: 'AdminSkillsUnified' },
+  知识库:     { name: 'AdminKnowledgeBase' },
+  MCP:        { name: 'AdminConnector', extraQuery: { tab: 'mcp' } },
+  API:        { name: 'AdminConnector', extraQuery: { tab: 'api' } },
+  业务系统:   { name: 'AdminConnector', extraQuery: { tab: 'bizsystem' } },
+  模型:       { name: 'AdminModels' },
+  审核中心:   { name: 'UnifiedReview' },
+  用户技能审核: { name: 'SysConfigUserSkillReviews' },
+}
+
+function opsGoto(row) {
+  const def = MODULE_ROUTE[row.module]
+  if (!def) {
+    ElMessage.info(`正式系统中将跳转至「${row.module}」模块`)
+    return
+  }
+  router.push({
+    name: def.name,
+    query: { ...(def.extraQuery || {}), keyword: row.target }
+  })
 }
 </script>
 
 <template>
   <div class="list-page">
-    <PageHeader title="访问审计" subtitle="查看用户的登录 / 登出记录、在线状态与来源 IP" />
+    <PageHeader title="访问审计" subtitle="记录用户登录访问、产物下载与管理端操作的完整行为轨迹" />
 
-    <!-- 子页 Tab 导航（原型 aa-nav-tabs 样式） -->
-    <div class="aa-nav-tabs">
-      <button
-        v-for="tab in [['login', '登录访问'], ['download', '产物下载'], ['admin-ops', '管理端操作']]"
-        :key="tab[0]"
-        :class="['aa-nav-tab', activeTab === tab[0] && 'active']"
-        @click="activeTab = tab[0]"
-      >{{ tab[1] }}</button>
-    </div>
+    <el-tabs v-model="activeTab" class="aa-tabs">
 
-    <!-- ── 登录访问 ─────────────────────────────────────────── -->
-    <template v-if="activeTab === 'login'">
+      <!-- ── 登录访问 ─────────────────────────────────────────── -->
+      <el-tab-pane label="登录访问" name="login">
       <ListToolbar>
+        <el-date-picker
+          v-model="loginDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :disabled-date="loginDisabledDate"
+          @calendar-change="(v) => onCalendarChange(loginPickFirst, v)"
+          class="lt-date-range"
+        />
         <el-input
           v-model="query.keyword"
           placeholder="搜索用户名"
@@ -168,7 +259,7 @@ function opsGoto(module) {
           empty-text="暂无登录记录"
           @retry="fetchList"
         >
-          <el-table :data="rows" class="ll-table">
+          <el-table :data="loginFiltered" class="ll-table">
             <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
               <template #default="{ row }">{{ row.username || '—' }}</template>
             </el-table-column>
@@ -219,11 +310,21 @@ function opsGoto(module) {
         :total="total"
         @change="fetchList"
       />
-    </template>
+      </el-tab-pane>
 
-    <!-- ── 产物下载 ─────────────────────────────────────────── -->
-    <template v-else-if="activeTab === 'download'">
+      <!-- ── 产物下载 ─────────────────────────────────────────── -->
+      <el-tab-pane label="产物下载" name="download">
       <ListToolbar>
+        <el-date-picker
+          v-model="dlDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :disabled-date="dlDisabledDate"
+          @calendar-change="(v) => onCalendarChange(dlPickFirst, v)"
+          class="lt-date-range"
+        />
         <el-input
           v-model="dlKeyword"
           placeholder="搜索文件名 / 用户名"
@@ -249,7 +350,12 @@ function opsGoto(module) {
 
       <div class="table-wrap">
         <el-table :data="dlFiltered" class="ll-table">
-          <el-table-column label="时间" width="160" class-name="col-nowrap">
+          <el-table-column width="170" class-name="col-nowrap">
+            <template #header>
+              <button type="button" class="ll-sort" @click="toggleDlSort">
+                时间 <span class="ll-sort-arrow">{{ dlSortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }"><span class="ll-muted">{{ row.time }}</span></template>
           </el-table-column>
           <el-table-column label="用户名" width="90">
@@ -258,13 +364,10 @@ function opsGoto(module) {
           <el-table-column label="产物文件名" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">{{ row.filename }}</template>
           </el-table-column>
-          <el-table-column label="访问端" width="100">
+          <el-table-column label="终端" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
-              <span :class="['aa-tag', CHAN_CLS[row.channel] || 'tag-gray']">{{ row.channel }}</span>
+              <StatusTag type="accent">{{ row.channel }}</StatusTag>
             </template>
-          </el-table-column>
-          <el-table-column label="链接有效期" width="110" class-name="col-nowrap">
-            <template #default="{ row }"><span class="ll-muted">{{ row.validMins }} 分钟</span></template>
           </el-table-column>
           <el-table-column label="访问结果" width="120">
             <template #default="{ row }">
@@ -275,11 +378,21 @@ function opsGoto(module) {
           </el-table-column>
         </el-table>
       </div>
-    </template>
+      </el-tab-pane>
 
-    <!-- ── 管理端操作 ───────────────────────────────────────── -->
-    <template v-else-if="activeTab === 'admin-ops'">
+      <!-- ── 管理端操作 ───────────────────────────────────────── -->
+      <el-tab-pane label="管理端操作" name="admin-ops">
       <ListToolbar>
+        <el-date-picker
+          v-model="opsDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :disabled-date="opsDisabledDate"
+          @calendar-change="(v) => onCalendarChange(opsPickFirst, v)"
+          class="lt-date-range"
+        />
         <el-input
           v-model="opsKeyword"
           placeholder="搜索操作人 / 操作对象"
@@ -308,7 +421,12 @@ function opsGoto(module) {
 
       <div class="table-wrap">
         <el-table :data="opsFiltered" class="ll-table">
-          <el-table-column label="时间" width="160" class-name="col-nowrap">
+          <el-table-column width="170" class-name="col-nowrap">
+            <template #header>
+              <button type="button" class="ll-sort" @click="toggleOpsSort">
+                时间 <span class="ll-sort-arrow">{{ opsSortArrow }}</span>
+              </button>
+            </template>
             <template #default="{ row }"><span class="ll-muted">{{ row.time }}</span></template>
           </el-table-column>
           <el-table-column label="操作人" width="110" show-overflow-tooltip>
@@ -324,20 +442,29 @@ function opsGoto(module) {
               <span :class="['aa-tag', ACT_CLS[row.action] || 'tag-gray']">{{ row.action }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作对象" width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.target }}</template>
-          </el-table-column>
           <el-table-column label="变更内容" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }"><span class="ll-muted" style="font-size:13px">{{ row.detail }}</span></template>
-          </el-table-column>
-          <el-table-column width="72">
             <template #default="{ row }">
-              <el-button link @click="opsGoto(row.module)">查看</el-button>
+              <span class="ll-muted">{{ row.detail || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作对象" min-width="200">
+            <template #default="{ row }">
+              <span class="ops-target">
+                <span class="ops-target-name">{{ row.target }}</span>
+                <span v-if="VERSION_MODULES.has(row.module) && row.version" class="ops-version">{{ row.version }}</span>
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="opsGoto(row)">查看</el-button>
             </template>
           </el-table-column>
         </el-table>
       </div>
-    </template>
+      </el-tab-pane>
+
+    </el-tabs>
   </div>
 </template>
 
@@ -364,43 +491,38 @@ function opsGoto(module) {
   font-weight: var(--fw-medium);
 }
 
-/* 子页 Tab 导航（原型 aa-nav-tabs） */
-.aa-nav-tabs {
+/* Tab 导航（对齐连接器页 connector-tabs 样式） */
+.aa-tabs :deep(.el-tabs__header) {
+  margin-bottom: var(--space-4);
+}
+.aa-tabs :deep(.el-tabs__content) {
+  overflow: visible;
+}
+
+/* 操作对象单元格：名称 + 版本号 */
+.ops-target {
   display: flex;
   align-items: center;
-  gap: 0;
-  margin: 0 0 2px;
-  border-bottom: 1px solid var(--c-border);
-  overflow-x: auto;
+  gap: 6px;
+  min-width: 0;
 }
-.aa-nav-tab {
-  height: 44px;
-  padding: 0 18px;
-  border: 0;
-  background: transparent;
-  color: var(--c-text-muted);
-  font-size: 14px;
-  font-weight: 500;
-  position: relative;
+.ops-target-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.ops-version {
   flex-shrink: 0;
-  cursor: pointer;
-}
-.aa-nav-tab:hover {
-  color: var(--c-text-base);
-}
-.aa-nav-tab.active {
-  color: var(--c-primary);
-  font-weight: 650;
-}
-.aa-nav-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--c-primary);
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--c-bg-soft);
+  color: var(--c-text-muted);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.2px;
 }
 
 /* 统计摘要栏（原型 aa-stats-bar） */
@@ -425,6 +547,12 @@ function opsGoto(module) {
 /* 工具栏弹性占位（「导出 CSV」推到右侧） */
 .lt-spacer {
   flex: 1;
+}
+
+/* 时间范围选择器（三页签共用） */
+.lt-date-range {
+  width: 240px;
+  flex-shrink: 0;
 }
 
 /* 彩色小标签（对应原型 P.tag 各颜色） */
