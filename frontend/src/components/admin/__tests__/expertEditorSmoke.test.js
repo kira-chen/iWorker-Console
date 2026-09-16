@@ -52,7 +52,7 @@ describe('ExpertEditor · 真实挂载冒烟（真 el-drawer / el-form，只 moc
     expect(text).toContain('专家由多个市场技能组成。技能保持引用关系，市场技能更新后专家会同步使用最新内容。')
     // md §三.2 基本信息字段（真 el-form-item label）
     const labels = [...drawer.querySelectorAll('.el-form-item__label')].map((l) => l.textContent.trim())
-    expect(labels).toEqual(['专家名', '分类', '图标', '背景色', '简介', '职责描述'])
+    expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
     expect(drawer.querySelector('input[placeholder="如 经营分析专家"]')).toBeTruthy()
     // 图标行双按钮（真 IconField）
     const iconBtns = [...drawer.querySelectorAll('.icon-row .el-button')].map((b) => b.textContent.trim())
