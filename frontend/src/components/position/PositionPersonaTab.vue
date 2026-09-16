@@ -35,7 +35,7 @@ const store = usePositionStore()
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-// 领用页文案（原「岗位认领说明」；纯文本动态列表，可选，≤6 条 × 100 字，md §2.3）
+// 领用页文案（原「岗位认领说明」；纯文本动态列表，可选，≤6 条 × 300 字，md §2.3）
 const claimNotesModel = computed({
   get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
   set: (v) => patchBasic('claimDescriptions', v)
@@ -106,7 +106,7 @@ function aiGenSop() {
       </div>
     </section>
 
-    <!-- 2. 岗位描述（必填，≤500 字，2026-09-08 决议第 5 项；全链同口径：新建弹窗 / mock 校验） -->
+    <!-- 2. 岗位描述（必填，≤2000 字，一览表描述类统一规则） -->
     <section class="pd-card">
       <div class="pd-card-head">
         <span class="pd-card-title">岗位描述<i class="pd-req">*</i></span>
@@ -149,7 +149,7 @@ function aiGenSop() {
       </div>
     </section>
 
-    <!-- 4. 示例问题（3 条必填 × 60 字 + 区级 AI 生成） -->
+    <!-- 4. 示例问题（3 条必填 × 300 字 + 区级 AI 生成） -->
     <section class="pd-card">
       <div class="pd-card-head">
         <span class="pd-card-title">示例问题<i class="pd-req">*</i></span>

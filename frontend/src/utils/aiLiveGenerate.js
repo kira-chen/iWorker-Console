@@ -45,7 +45,7 @@ export function shortText(text, max) {
   return clean.length > max ? clean.slice(0, max) + '…' : clean
 }
 
-/** 按码点硬截断到 max 字（原型 limit 同口径，对齐输入框 maxlength=60）。 */
+/** 按码点硬截断到 max 字，与调用处 maxlength 同口径。 */
 export function limitLen(text, max) {
   const chars = Array.from(String(text || ''))
   return chars.length > max ? chars.slice(0, max).join('') : chars.join('')

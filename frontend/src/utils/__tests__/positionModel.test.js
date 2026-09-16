@@ -71,12 +71,12 @@ describe('N2 技能示例问题（1 个必填 + 20 字软提示）', () => {
 })
 
 describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', () => {
-  it('上限常量与新 md 口径一致：描述 500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 6×100 / 示例问题 3×60 / SOP 4000', () => {
-    expect(DESCRIPTION_MAX_LEN).toBe(500)
+  it('上限常量与一览表口径一致：描述 2000 / 领用页文案 6×300 / 示例问题 3×300 / SOP 4000', () => {
+    expect(DESCRIPTION_MAX_LEN).toBe(2000)
     expect(CLAIM_NOTE_MAX).toBe(6)
-    expect(CLAIM_NOTE_LEN).toBe(100)
+    expect(CLAIM_NOTE_LEN).toBe(300)
     expect(EXAMPLE_Q_COUNT).toBe(3)
-    expect(EXAMPLE_Q_MAX_LEN).toBe(60)
+    expect(EXAMPLE_Q_MAX_LEN).toBe(300)
     expect(SOP_MAX_LEN).toBe(4000)
   })
   it('示例问题归一为恒 3 格：不足补空、超出截断、null→空串', () => {
@@ -94,7 +94,7 @@ describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', (
     expect(normalizeClaimNotes(['a', null, 2])).toEqual(['a', '', '2'])
     expect(normalizeClaimNotes(null)).toEqual([])
   })
-  it('AI 生成示例问题：基于描述产出 3 条、每条 ≤60 字、内容含主题词', () => {
+  it('AI 生成示例问题：基于描述产出 3 条、每条 ≤300 字、内容含主题词', () => {
     const qs = genExampleQuestions('经营分析岗', '负责经营数据汇总与分析')
     expect(qs).toHaveLength(3)
     qs.forEach((q) => {

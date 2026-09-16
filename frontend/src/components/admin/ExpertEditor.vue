@@ -10,7 +10,7 @@
  * - 基本信息：专家名 / 分类（必选，8 类同源字段字典）/ 图标（必填，沿用 IconPickerPopover——2026-09-02
  *   起组件按 PRD 图标统一规则升级 5MB/方形裁剪流，本消费方零改动）/ 简介（maxlength 2000，Z3 拍板
  *   不写「最多 200 字」）/ 职责描述（Markdown，2000 字）。
- * - 「专家帮你做（示例问题）」：必填固定 3 条（每条 60 字）+ 区标题右侧【AI 生成】（Z2 拍板：
+ * - 「专家帮你做（示例问题）」：必填固定 3 条（每条 300 字，一览表示例类统一规则）+ 区标题右侧【AI 生成】（Z2 拍板：
  *   一次生成填满 3 行，本地模板随机 + toast，不走接口）。
  * - 市场技能引用**内嵌**（不再弹选择器）：搜索（按名称/描述/分类）+「已选择 X 个 · 共 Y 个市场技能」+
  *   卡片勾选 + 默认收起前 2 个、【展开更多（N）】；新建态即可勾选（选择随 create/update 一次性落库，
@@ -743,7 +743,7 @@ const metaItems = computed(() => {
                 <el-input
                   :ref="(el) => setQuestionRef(el, i)"
                   v-model="form.exampleQuestions[i]"
-                  maxlength="60"
+                  maxlength="300"
                   :disabled="disabled"
                   :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
                   :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"

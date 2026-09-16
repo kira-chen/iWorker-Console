@@ -345,13 +345,12 @@ async function onDeleteSkill({ agentId, skillId }) {
       </div>
       <div class="pd-card-body">
         <el-form label-position="top" :disabled="agentDrawerReadonly" class="pd-drawer-form">
-          <!-- 字段上限按 md §6.2：名称 64（Q25⑤ 全局名称类统一 64，原型 60 不跟进）、
-               职责描述必填 ≤500（Q25④ 补充说明「取 500，尽量减少例外情况」） -->
+          <!-- 字段上限：名称 64（名称类统一规则）、职责描述 ≤2000（一览表描述类统一规则） -->
           <el-form-item label="Agent 名称" required>
             <el-input v-model="agentDraft.name" maxlength="64" show-word-limit placeholder="如：客户洞察" />
           </el-form-item>
           <el-form-item label="职责描述" required>
-            <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="500" show-word-limit
+            <el-input v-model="agentDraft.description" type="textarea" :rows="5" maxlength="2000" show-word-limit
                       placeholder="决定主实例把子任务委派给这个 Agent 时的执行口径" />
           </el-form-item>
         </el-form>

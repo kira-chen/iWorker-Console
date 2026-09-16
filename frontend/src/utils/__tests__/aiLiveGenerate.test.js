@@ -40,7 +40,7 @@ describe('文本工具（shortText / limitLen 截断口径）', () => {
     expect(shortText('', 18)).toBe('')
   })
 
-  it('limitLen：按码点硬截断到 max（对齐输入框 maxlength=60）', () => {
+  it('limitLen：按码点硬截断到 max', () => {
     expect(limitLen('abc', 5)).toBe('abc')
     expect(limitLen('一二三四五', 3)).toBe('一二三')
   })
