@@ -2,14 +2,14 @@
 // 数据来源：数字员工管理端交互原型.html dlRecords / opsRecords。
 
 export const dlRecords = [
-  { id: 1, time: '2026-08-28 10:32', user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', validMins: 30, result: 'SUCCESS' },
-  { id: 2, time: '2026-08-28 10:18', user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', validMins: 30, result: 'SUCCESS' },
-  { id: 3, time: '2026-08-28 09:55', user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', validMins: 30, result: 'SUCCESS' },
-  { id: 4, time: '2026-08-27 22:06', user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', validMins: 30, result: 'FAILED' },
-  { id: 5, time: '2026-08-27 18:40', user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', validMins: 30, result: 'FAILED' },
-  { id: 6, time: '2026-08-27 16:15', user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', validMins: 30, result: 'SUCCESS' },
-  { id: 7, time: '2026-08-27 14:50', user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', validMins: 30, result: 'SUCCESS' },
-  { id: 8, time: '2026-08-27 11:23', user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', validMins: 30, result: 'SUCCESS' },
+  { id: 1, time: '2026-08-28 10:32', user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
+  { id: 2, time: '2026-08-28 10:18', user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 3, time: '2026-08-28 09:55', user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 4, time: '2026-08-27 22:06', user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', source: '知识库·我的资料', result: 'FAILED', failReason: '磁盘空间不足（CS端）' },
+  { id: 5, time: '2026-08-27 18:40', user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', source: '会话产物', result: 'FAILED', failReason: '无写入权限（CS端）' },
+  { id: 6, time: '2026-08-27 16:15', user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 7, time: '2026-08-27 14:50', user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', source: '知识库·我的资料', result: 'SUCCESS' },
+  { id: 8, time: '2026-08-27 11:23', user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
 ]
 
 export const opsRecords = [
