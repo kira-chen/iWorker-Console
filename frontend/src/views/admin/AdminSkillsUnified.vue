@@ -481,6 +481,7 @@ function onWindowFocus() {
 
 onMounted(async () => {
   // 深链 ?referenced=no|yes：自动落到「岗位私有 + 引用状态」视图（疑点7 保留）。
+  if (route.query?.keyword) query.keyword = route.query.keyword
   const q = route.query?.referenced
   if (q === 'no' || q === 'yes') {
     suppressTypeWatchOnce = true

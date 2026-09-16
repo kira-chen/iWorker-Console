@@ -14,6 +14,7 @@
  *   配色对齐「平台技能」页：常规=primary、上架=success、下架=warning、删除=danger。
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -212,7 +213,11 @@ const fetchList = list.reload
 // 筛选 / 查询 / 排序变化：回第 1 页重取（分页后不能停在越界页）
 const searchList = list.search
 
-onMounted(fetchList)
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) keyword.value = route.query.keyword
+  fetchList()
+})
 
 // 排序方向箭头
 const sortArrow = computed(() => sortOrder.value === 'desc' ? '↓' : '↑')

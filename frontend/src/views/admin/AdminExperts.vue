@@ -21,6 +21,7 @@
  *   useDynPageSize；原「Z1 不实施动态分页」注释已过期，2026-09-09 PRD 复核·G5 清理）。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -70,7 +71,11 @@ const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
-onMounted(fetchList)
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) query.keyword = route.query.keyword
+  fetchList()
+})
 
 // 排序方向箭头
 const sortArrow = computed(() => query.sort === 'desc' ? '↓' : '↑')

@@ -16,6 +16,7 @@
  *   搜索/筛选后只展示存在匹配 API 的分组，无筛选时展示全部分组（含空分组）。
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listApis,
@@ -247,7 +248,14 @@ function onStateChange() {
   fetchAll()
 }
 
-onMounted(fetchAll)
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
+  fetchAll()
+})
 
 function toggleCollapse(psId) {
   const next = new Set(collapsed.value)

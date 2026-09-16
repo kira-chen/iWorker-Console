@@ -137,6 +137,10 @@ function onStateChange() {
 // AdminConnector?tab=bizsystem&view=<id> → 本页消费 query.view，进入即只读打开该业务系统详情）。
 const route = useRoute()
 onMounted(async () => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
   await fetchList()
   const viewId = route.query.view
   if (viewId) {

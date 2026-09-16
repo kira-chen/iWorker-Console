@@ -18,6 +18,7 @@
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -281,7 +282,14 @@ function onTypeChange() {
   return reload()
 }
 
-onMounted(fetchList)
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
+  fetchList()
+})
 
 function openCreate() {
   editingId.value = null
