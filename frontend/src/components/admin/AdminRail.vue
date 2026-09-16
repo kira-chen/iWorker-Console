@@ -29,7 +29,7 @@ const userName = computed(() => userStore.userInfo?.name || '管理员')
 // - 01 总览：驾驶舱（规划中占位）。三后台角色均可见（总览定位）。
 // - 02 岗位：岗位 / 岗位管理（2026-09-07 PRD-20260904 对齐：原「岗位分配」改名）/ 岗位技能（原「技能」FDE 入口），随 canFde 显隐。
 // - 03 能力：专家 / 平台技能 / 系统内置技能 / 知识库(规划中) / 连接器 / 模型，整段随 canSysConfig 显隐；「模型」仅 ADMIN 逐项收窄。
-// - 04 运行：实例与会话 / 运行规格 / 配额与限流（均规划中占位），仅 ADMIN。
+// - 04 运行：实例管理 / 运行规格 / 配额与限流，仅 ADMIN；实例管理与运行规格已落地。
 // - 05 治理：审核中心(原「发布审核」) / 用户技能审核 / 访问审计(原「登录明细」) / 用户反馈 / 字段字典(原「字段管理」)，均仅 ADMIN。
 // - 06 组织：用户 / 角色与权限(原「角色」)，仅 ADMIN。
 // 【显隐口径 V102】每项挂 page（页面权限 code，与后端 Module 枚举一一对应），优先按 userStore.hasPage 逐页判定；
@@ -86,11 +86,10 @@ const allGroups = [
     key: 'RUNTIME',
     no: '04',
     title: '运行',
-    // 运行治理段均为规划中占位，仅 ADMIN 可见（与治理/组织门槛一致）。
+    // 运行治理段仅 ADMIN 可见（与治理/组织门槛一致）。
     visible: () => userStore.isAdmin,
     items: [
-      // 以下三项均为规划中占位，点击跳统一「功能开发中」占位页并高亮。
-      { index: 'AdminInstances', label: '实例与会话', icon: 'Monitor', page: 'RUNTIME_INSTANCE' },
+      { index: 'AdminInstances', label: '实例管理', icon: 'Monitor', page: 'RUNTIME_INSTANCE' },
       { index: 'AdminRuntimeSpecs', label: '运行规格', icon: 'SetUp', page: 'RUNTIME_SPEC' },
       { index: 'AdminQuotaThrottle', label: '配额与限流', icon: 'Histogram', page: 'RUNTIME_QUOTA' }
     ]

@@ -166,11 +166,11 @@ const adminChildren = [
     meta: { title: '知识库', roles: ['SYS_CONFIG', 'ADMIN'], module: 'SYSCONFIG' }
   },
   {
-    // 04 运行 → 实例与会话（规划中）：运行治理段，仅 ADMIN（与治理/组织门槛一致）。
+    // 04 运行 → 实例管理（2026-09-16 落地）：实例汇总、明细、详情与受控运行操作，仅 ADMIN。
     path: 'instances',
     name: 'AdminInstances',
-    component: () => import('@/views/admin/AdminComingSoonPlaceholder.vue'),
-    meta: { title: '实例与会话', roles: ['ADMIN'], module: 'SYSCONFIG' }
+    component: () => import('@/views/admin/AdminInstances.vue'),
+    meta: { title: '实例管理', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
     // 04 运行 → 运行规格（2026-09-02 落地：k8s Pod 资源模板管理，列表 + 抽屉）。

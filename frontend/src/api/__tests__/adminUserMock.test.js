@@ -82,6 +82,8 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     const pages = tree.flatMap((s) => s.groups.flatMap((g) => g.pages))
     expect(pages).toHaveLength(23)
     expect(pages).toContain('专家')
+    expect(pages).toContain('实例管理')
+    expect(pages).not.toContain('实例与会话')
     expect(pages).toContain('角色与权限')
   })
 
@@ -110,12 +112,12 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
 })
 
 /**
- * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（mockPersist v2，写点：用户 CRUD / 设角色 /
+ * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（当前mockPersist v3，写点：用户 CRUD / 设角色 /
  * 角色 CRUD / 改权限 / __resetOrgMock）。与 dataTableMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，
  * 模拟「写入 → 刷新 → 重载」；坏形状 / 旧版本快照须回种子（13 用户 / 5 角色）不白屏。
  * K15（createUser 文案「用户名 3–32 位」≠ md「请输入 3–32 个字符」）为代码缺陷，不写对应用例。
  */
-describe('adminUserMock · 持久化（mockPersist v2，key iworker-demo-mock:adminUser）', () => {
+describe('adminUserMock · 持久化（mockPersist v3，key iworker-demo-mock:adminUser）', () => {
   const KEY = 'iworker-demo-mock:adminUser'
   const makeStorage = () => {
     const map = new Map()
@@ -168,11 +170,11 @@ describe('adminUserMock · 持久化（mockPersist v2，key iworker-demo-mock:ad
     expect(writes()).toBe(base + 9)
   })
 
-  it('createUser 后快照 v=2、形状 { userSeq, roleSeq, roles, users }，新用户在首位且 userSeq 递增', async () => {
+  it('createUser 后快照 v=3、形状 { userSeq, roleSeq, roles, users }，新用户在首位且 userSeq 递增', async () => {
     const m = await import('../adminUserMock')
     await m.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
     const s = snap()
-    expect(s.v).toBe(2)
+    expect(s.v).toBe(3)
     expect(Object.keys(s.data).sort()).toEqual(['roleSeq', 'roles', 'userSeq', 'users'])
     expect(s.data.users).toHaveLength(14)
     expect(s.data.users[0]).toMatchObject({ id: 214, username: 'newuser', status: 'active', lastLogin: null })
@@ -199,7 +201,7 @@ describe('adminUserMock · 持久化（mockPersist v2，key iworker-demo-mock:ad
 
   it('存量快照形状不合法（users 不是数组）→ restore 抛错被兜底：清 key、回种子 13 用户 / 5 角色，不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { userSeq: 214, roleSeq: 306, roles: [], users: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { userSeq: 214, roleSeq: 306, roles: [], users: 'oops' } }))
     const m = await import('../adminUserMock')
     expect((await m.listUsers()).total).toBe(13)
     expect(await m.listRoles()).toHaveLength(5)
