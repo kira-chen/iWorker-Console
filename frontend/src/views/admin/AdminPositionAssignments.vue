@@ -14,7 +14,7 @@
  * 状态切换即刷新不重置分页；【查询】按钮回第 1 页。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
@@ -23,7 +23,8 @@ import UserPositionEditDialog from '@/components/admin/UserPositionEditDialog.vu
 import {
   listPositionAssignments,
   countPendingApplications,
-  markApplicationAssigned
+  markApplicationAssigned,
+  setUserPosition
 } from '@/api/positionAssignment'
 import { listPositions } from '@/api/position'
 import '@/assets/connector.css'
@@ -145,6 +146,58 @@ async function onSaved() {
   }
 }
 
+// ── 批量绑定 ─────────────────────────────────────────────────
+const tableRef = ref(null)
+const selectedRows = ref([])
+const batchDialogVisible = ref(false)
+const batchPositionId = ref('')
+const batchBinding = ref(false)
+
+function onSelectionChange(selection) {
+  selectedRows.value = selection
+}
+
+function openBatchDialog() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先勾选要批量绑定的用户')
+    return
+  }
+  batchPositionId.value = ''
+  batchDialogVisible.value = true
+}
+
+async function confirmBatchBind() {
+  if (!batchPositionId.value) {
+    ElMessage.warning('请选择要绑定的岗位')
+    return
+  }
+  const pos = positionOptions.value.find(p => p.positionId === batchPositionId.value)
+  const userList = selectedRows.value.map(r => r.username || r.displayName || r.userId).join('、')
+  try {
+    await ElMessageBox.confirm(
+      `将 ${selectedRows.value.length} 名用户（${userList}）统一绑定至「${pos?.name || ''}」？`,
+      '批量绑定确认',
+      { type: 'warning', confirmButtonText: '确认绑定', cancelButtonText: '取消' }
+    )
+  } catch { return }
+
+  batchBinding.value = true
+  try {
+    await Promise.all(
+      selectedRows.value.map(row => setUserPosition(row.userId, batchPositionId.value))
+    )
+    ElMessage.success(`已将 ${selectedRows.value.length} 名用户绑定至「${pos?.name || ''}」`)
+    batchDialogVisible.value = false
+    tableRef.value?.clearSelection?.()
+    selectedRows.value = []
+    list.reload()
+  } catch (e) {
+    ElMessage.error(e?.message || '批量绑定失败，请重试')
+  } finally {
+    batchBinding.value = false
+  }
+}
+
 onMounted(() => {
   list.reload()
   loadPositions()
@@ -183,6 +236,13 @@ onMounted(() => {
         待分配申请<span v-if="pendingCount" class="pm-count">{{ pendingCount }}</span>
       </el-button>
       <el-button @click="reload">查询</el-button>
+      <div class="lt-spacer" />
+      <el-button
+        :class="['lt-batch-btn', { 'is-active': selectedRows.length }]"
+        @click="openBatchDialog"
+      >
+        批量绑定<span v-if="selectedRows.length" class="pm-count">{{ selectedRows.length }}</span>
+      </el-button>
     </ListToolbar>
 
     <div v-loading="loading" class="table-wrap">
@@ -193,7 +253,8 @@ onMounted(() => {
         :empty-text="query.hasPendingRequest ? '暂无待分配申请' : '没有匹配的用户'"
         @retry="list.reload"
       >
-        <el-table :data="rows" class="pa-table" :row-class-name="rowClass">
+        <el-table ref="tableRef" :data="rows" class="pa-table" :row-class-name="rowClass" @selection-change="onSelectionChange">
+          <el-table-column type="selection" width="50" />
           <el-table-column label="用户名" min-width="130" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="pa-username">{{ row.username }}</span>
@@ -239,6 +300,30 @@ onMounted(() => {
       :position-options="positionOptions"
       @saved="onSaved"
     />
+
+    <!-- 批量绑定岗位弹窗 -->
+    <el-dialog v-model="batchDialogVisible" title="批量绑定岗位" width="480px" :close-on-click-modal="false">
+      <div class="batch-dialog-body">
+        <p class="batch-tip">已选 <strong>{{ selectedRows.length }}</strong> 名用户，请选择要统一绑定的岗位：</p>
+        <el-select
+          v-model="batchPositionId"
+          placeholder="请选择岗位"
+          filterable
+          style="width: 100%"
+        >
+          <el-option
+            v-for="p in positionOptions"
+            :key="p.positionId"
+            :label="p.name"
+            :value="p.positionId"
+          />
+        </el-select>
+      </div>
+      <template #footer>
+        <el-button @click="batchDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchBinding" @click="confirmBatchBind">确认绑定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -283,5 +368,32 @@ onMounted(() => {
 /* 分配后置顶高亮行 */
 .pa-table :deep(.pa-row-focus) td {
   background: var(--c-accent-fill);
+}
+/* 工具栏弹性占位（把批量绑定推到右侧） */
+.lt-spacer {
+  flex: 1;
+}
+/* 批量绑定按钮 */
+.lt-batch-btn {
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.lt-batch-btn.is-active {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+/* 批量绑定弹窗内容 */
+.batch-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.batch-tip {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: 14px;
+}
+.batch-tip strong {
+  color: var(--c-text-strong);
 }
 </style>
