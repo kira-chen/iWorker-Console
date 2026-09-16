@@ -202,6 +202,25 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
   beforeEach(async () => {
     vi.resetModules()
     stubInstantTimers()
+    // 本组靠 resetModules 拿「全新 11 条种子」，但 attachPersist 在模块加载时会 restore localStorage 存量：
+    // 若本文件的持久化组先跑过（vitest 默认 shuffle），那份落盘数据会把种子放大（total 11→16/19、
+    // 已停用的行又变回已发布……）。本机 Node 26 因 jsdom 探测不到可用存储而走纯内存，永远碰不到；
+    // CI 的 Node 22 下 jsdom 提供真 Storage，就会真泄漏（2026-09-15 CI#13 / 09-16 CI 两次红均由此）。
+    // 故进组前显式清掉 mock 层的全部持久化 key —— 对「当前生效的那个 Storage」直接删，不依赖能否替换
+    // 全局访问器。不能只清 mcpConnector：本组⑨会经 submitReviewRow 写 reviewsMock 的行，那份同样会落盘。
+    try {
+      const ls = globalThis.localStorage
+      if (ls) {
+        const doomed = []
+        for (let i = 0; i < (ls.length ?? 0); i++) {
+          const k = ls.key?.(i)
+          if (k && k.startsWith('iworker-demo-mock:')) doomed.push(k)
+        }
+        doomed.forEach((k) => ls.removeItem?.(k))
+      }
+    } catch {
+      /* 环境无存储时忽略 */
+    }
     m = await import('../mcpConnectorMock')
   })
   afterEach(() => {
@@ -500,12 +519,19 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 /**
  * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v6；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
- * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import。
- * 注入内存版 localStorage 必须用 Object.defineProperty，不能直接赋值：
- * 本机 Node 26 自带实验性 localStorage，在 globalThis 上留下 get/set 俱全的访问器，赋值恰好生效；
- * 而 CI 的 Node 22 没有原生实现，jsdom 装的是**只有 getter、没有 setter**的访问器——直接赋值静默失效、
- * delete 也删不掉，桩根本没装上，写入落到 jsdom 真实 Storage 并泄漏给后续 describe（attachPersist 在模块
- * 加载时会 restore 存量，导致种子被放大：2026-09-15 CI#13 即因此红了 4 条，本机全绿）。
+ * 注入内存版存储 + vi.resetModules 动态 import。
+ *
+ * 【隔离要点·两次踩坑换来的】本组会把数据真正写进 localStorage，而 attachPersist 在模块加载时会
+ * restore 存量——一旦泄漏给 A19 组（那组靠 resetModules 拿「全新 11 条种子」），种子就会被放大，
+ * 表现为 total 11→16/19、state 筛选多出行、已停用的行又变回已发布等一连串错位。
+ *
+ * 环境差异是诱因：本机 Node 26 自带实验性 localStorage（globalThis 上是 get/set 俱全的访问器），
+ * jsdom 探测不到可用存储 → attachPersist 走纯内存，什么都不落盘，所以本机怎么跑都绿；
+ * 而 CI 的 Node 22 没有原生实现，jsdom 自己装了真 Storage → 真落盘、真泄漏。
+ *
+ * 因此隔离不能只靠「换掉 globalThis.localStorage 再换回来」（换回 undefined 并不会清掉 jsdom 那份
+ * 真 Storage 里已写入的 key），必须在每例前后**显式删掉本模块的持久化 key**。vitest 默认 shuffle，
+ * 本组可能排在 A19 之前跑，所以 beforeEach 也要清一次，不能只清 afterEach。
  */
 describe('mcpConnectorMock · 持久化（mockPersist v6）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
@@ -520,14 +546,26 @@ describe('mcpConnectorMock · 持久化（mockPersist v6）', () => {
       clear: () => map.clear()
     }
   }
+  // 删掉本模块的持久化 key：对「当前生效的那个 localStorage」直接操作，
+  // 不依赖 globalThis 上的访问器能否被替换，故两种 Node 环境都可靠。
+  const dropPersistedKey = () => {
+    try {
+      globalThis.localStorage?.removeItem?.(KEY)
+    } catch {
+      /* 环境无存储时忽略 */
+    }
+  }
   beforeEach(() => {
+    dropPersistedKey() // shuffle 下本组可能先于 A19 跑，进组前也要保证干净
     Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
     vi.resetModules()
     stubInstantTimers()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
+    dropPersistedKey() // 先清：此时 globalThis.localStorage 还是本组装的桩，清完再还原
     Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    dropPersistedKey() // 再清一次：还原后若露出的是 jsdom 真 Storage，把它那份也清掉
     vi.resetModules()
   })
 
