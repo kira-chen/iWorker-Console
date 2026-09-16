@@ -82,7 +82,7 @@ vi.mock('@/composables/useVersionPublish', () => ({
 }))
 // featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
 // 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, MCP_AUTH_CONFIG_ENABLED: true }))
 
 for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
@@ -273,18 +273,18 @@ describe('Agent 抽屉 · 新建/编辑同一抽屉 + 引用技能勾选（4C #1
     const drawer = container.querySelector('.drawer')
     expect(drawer.getAttribute('data-title')).toBe('编辑 Agent')
     expect(drawerInput('64').value).toBe('经营分析 Agent')
-    expect(drawerInput('500').value).toBe('汇总经营指标并识别异常')
+    expect(drawerInput('2000').value).toBe('汇总经营指标并识别异常')
     // 已引用的 302 预勾（候选表里 300/301/302 三条，最后一条为已引用）
     expect(checkedStates()).toEqual([false, false, true])
     expect(drawer.textContent).toContain(`已勾选：1/${LIMITS.SKILL_MAX}`)
   })
 
-  it('字段上限按 md §6.2：名称 64、职责描述 500（不取原型的 60/300）', async () => {
+  it('字段上限按 md §6.2：名称 64、职责描述 2000（不取原型的 60/300）', async () => {
     await mount()
     await clickAgentRowOp(0, '编辑')
     const maxes = [...container.querySelectorAll('.drawer .el-input')].map((i) => i.getAttribute('maxlength'))
     expect(maxes).toContain('64')
-    expect(maxes).toContain('500')
+    expect(maxes).toContain('2000')
     expect(maxes).not.toContain('60')
     expect(maxes).not.toContain('300')
   })
@@ -314,7 +314,7 @@ describe('Agent 抽屉 · 新建/编辑同一抽屉 + 引用技能勾选（4C #1
     await mount()
     await clickNewAgent()
     await type(drawerInput('64'), '新 A')
-    await type(drawerInput('500'), '职责')
+    await type(drawerInput('2000'), '职责')
     await toggleBox(1) // 勾 301
     await clickDrawerFoot('新建')
     expect(store.addAgent).toHaveBeenCalledWith(expect.objectContaining({ name: '新 A', description: '职责' }))
