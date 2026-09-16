@@ -184,6 +184,12 @@ async function selectCategory(value) {
   sel.dispatchEvent(new Event('change'))
   await flush(2)
 }
+async function selectType(value) {
+  const sel = container.querySelectorAll('select.el-select')[1]
+  sel.value = value
+  sel.dispatchEvent(new Event('change'))
+  await flush(2)
+}
 async function checkSkill(index, on = true) {
   const box = skillChecks()[index]
   box.checked = on
@@ -191,10 +197,11 @@ async function checkSkill(index, on = true) {
   await flush(2)
 }
 
-/** 填满全部必填项（专家名/分类/图标/简介/职责描述/3 条示例问题/≥1 技能）。 */
+/** 填满全部必填项（专家名/分类/类型/图标/简介/职责描述/3 条示例问题/≥1 技能）。 */
 async function fillRequired(name = '新专家') {
   await type(inputs()[0], name) // 专家名
   await selectCategory('通用')
+  await selectType('PLATFORM')
   container.querySelector('.icon-picker').click()
   await flush(2)
   await type(inputs()[1], '一句话简介') // 简介
@@ -226,6 +233,7 @@ const DETAIL = {
   id: 201,
   name: '经营分析专家',
   category: '投资',
+  type: 'PLATFORM',
   avatar: '▤',
   backgroundColor: '#DCF5E4',
   intro: '汇总经营数据',
@@ -334,6 +342,8 @@ describe('ExpertEditor — 新建', () => {
     expect(createExpert).toHaveBeenCalledWith({
       name: '新专家',
       category: '通用',
+      type: 'PLATFORM',
+      positionId: null,
       avatar: '🧑',
       backgroundColor: '#DCF5E4', // 背景色默认色随建落库
       intro: '一句话简介',
@@ -391,9 +401,9 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述
+    // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
-    expect(labels).toEqual(['专家名', '分类', '图标', '背景色', '简介', '职责描述'])
+    expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
   })
 
   it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {
@@ -632,6 +642,8 @@ describe('ExpertEditor — 编辑', () => {
     expect(updateExpert).toHaveBeenCalledWith(201, {
       name: '改名后',
       category: '投资',
+      type: 'PLATFORM',
+      positionId: null,
       avatar: '▤',
       backgroundColor: '#DCF5E4',
       intro: '汇总经营数据',
