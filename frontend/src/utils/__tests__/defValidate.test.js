@@ -95,11 +95,11 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     // 空白串按未填算（trim 后为空）
     expect(validateMcpForm({ ...valid, exampleQuestions: ['a', '  ', 'c'] }).errors.exampleQuestions).toBeTruthy()
   })
-  it('示例问题：单条上限 60 字', () => {
-    const long = ['x'.repeat(61), 'b', 'c']
-    expect(validateMcpForm({ ...valid, exampleQuestions: long }).errors.exampleQuestions).toContain('60')
-    const ok60 = ['x'.repeat(60), 'b', 'c']
-    expect(validateMcpForm({ ...valid, exampleQuestions: ok60 }).errors.exampleQuestions).toBeUndefined()
+  it('示例问题：单条上限 300 字', () => {
+    const long = ['x'.repeat(301), 'b', 'c']
+    expect(validateMcpForm({ ...valid, exampleQuestions: long }).errors.exampleQuestions).toContain('300')
+    const ok300 = ['x'.repeat(300), 'b', 'c']
+    expect(validateMcpForm({ ...valid, exampleQuestions: ok300 }).errors.exampleQuestions).toBeUndefined()
   })
 
   it('工具清单只读化：无工具可保存（不再校验 tools）', () => {
@@ -309,14 +309,14 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(validateBizSystemForm({ ...valid, loginUrl: 'https://ok.example.com' }).errors.loginUrl).toBeUndefined()
   })
 
-  it('示例问题固定 3 条均必填、每条 ≤60（md §三.2 L98）', () => {
+  it('示例问题固定 3 条均必填、每条 ≤300（md §三.2 L98）', () => {
     expect(validateBizSystemForm({ ...valid, exampleQuestions: ['a', '', 'c'] }).errors.exampleQuestions).toBe(
       '示例问题固定 3 条，须全部填写'
     )
     expect(validateBizSystemForm({ ...valid, exampleQuestions: undefined }).errors.exampleQuestions).toBeTruthy()
     expect(
-      validateBizSystemForm({ ...valid, exampleQuestions: ['q'.repeat(61), 'b', 'c'] }).errors.exampleQuestions
-    ).toBe('示例问题每条不超过 60 字')
+      validateBizSystemForm({ ...valid, exampleQuestions: ['q'.repeat(301), 'b', 'c'] }).errors.exampleQuestions
+    ).toBe('示例问题每条不超过 300 字')
     expect(validateBizSystemForm(valid).errors.exampleQuestions).toBeUndefined()
   })
 
