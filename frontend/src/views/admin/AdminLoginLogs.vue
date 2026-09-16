@@ -106,6 +106,7 @@ const loginFiltered = computed(() => rows.value.filter((r) => inRange(r.loginAt,
 // ── 产物下载 ─────────────────────────────────────────────────
 const dlKeyword = ref('')
 const dlResult = ref('')
+const dlSource = ref('')
 const dlSortOrder = ref('descending')
 const dlSortArrow = computed(() => dlSortOrder.value === 'descending' ? '↓' : '↑')
 const dlDateRange = ref(defaultRange())
@@ -122,6 +123,7 @@ const dlFiltered = computed(() => {
     (r) =>
       (!q || r.filename.toLowerCase().includes(q) || r.user.toLowerCase().includes(q)) &&
       (!dlResult.value || r.result === dlResult.value) &&
+      (!dlSource.value || r.source === dlSource.value) &&
       inRange(r.time, dlDateRange.value),
   )
   return [...base].sort((a, b) =>
@@ -130,8 +132,6 @@ const dlFiltered = computed(() => {
       : a.time.localeCompare(b.time)
   )
 })
-
-const dlDeniedCount = computed(() => dlFiltered.value.filter((r) => r.result !== 'SUCCESS').length)
 
 // ── 管理端操作 ───────────────────────────────────────────────
 const opsKeyword = ref('')
@@ -313,7 +313,7 @@ function opsGoto(row) {
       </el-tab-pane>
 
       <!-- ── 产物下载 ─────────────────────────────────────────── -->
-      <el-tab-pane label="产物下载" name="download">
+      <el-tab-pane label="用户端文件下载" name="download">
       <ListToolbar>
         <el-date-picker
           v-model="dlDateRange"
@@ -333,20 +333,19 @@ function opsGoto(row) {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-select v-model="dlResult" placeholder="全部访问结果" clearable class="lt-filter">
+        <el-select v-model="dlResult" placeholder="全部下载结果" clearable class="lt-filter">
           <el-option label="成功" value="SUCCESS" />
           <el-option label="失败" value="FAILED" />
+        </el-select>
+        <el-select v-model="dlSource" placeholder="全部产物来源" clearable class="lt-filter">
+          <el-option label="会话产物" value="会话产物" />
+          <el-option label="知识库·本地产物" value="知识库·本地产物" />
+          <el-option label="知识库·我的资料" value="知识库·我的资料" />
         </el-select>
         <el-button>查询</el-button>
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>
-
-      <div class="aa-stats-bar">
-        <span>今日下载 <strong>1,904</strong> 次</span>
-        <span>失败 <strong class="danger">{{ dlDeniedCount }}</strong> 次</span>
-        <span>筛选结果 <strong>{{ dlFiltered.length }}</strong> 条</span>
-      </div>
 
       <div class="table-wrap">
         <el-table :data="dlFiltered" class="ll-table">
@@ -369,10 +368,15 @@ function opsGoto(row) {
               <StatusTag type="accent">{{ row.channel }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="访问结果" width="120">
+          <el-table-column label="产物来源" width="140">
+            <template #default="{ row }">
+              <span class="aa-tag tag-gray">{{ row.source || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="下载结果" min-width="160">
             <template #default="{ row }">
               <span :class="['aa-tag', RES_CLS[row.result] || 'tag-gray']">
-                {{ row.result === 'SUCCESS' ? '成功' : '失败' }}
+                {{ row.result === 'SUCCESS' ? '成功' : (row.failReason || '失败') }}
               </span>
             </template>
           </el-table-column>
@@ -413,11 +417,6 @@ function opsGoto(row) {
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>
-
-      <div class="aa-stats-bar">
-        <span>近 30 日共 <strong>1,208</strong> 条操作记录</span>
-        <span>筛选结果 <strong>{{ opsFiltered.length }}</strong> 条</span>
-      </div>
 
       <div class="table-wrap">
         <el-table :data="opsFiltered" class="ll-table">

@@ -15,6 +15,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 真：ListToolbar / ListPagination / ListStates / StatusTag / HealthTag（页面局部 import，全局桩无效）。
  */
 
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+
 const conn = {
   listApis: vi.fn(),
   deleteApi: vi.fn(),
