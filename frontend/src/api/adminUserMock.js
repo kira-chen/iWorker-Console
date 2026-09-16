@@ -39,7 +39,7 @@ const PERMISSION_GROUPS = [
       { name: '01 总览', pages: ['驾驶舱'] },
       { name: '02 岗位', pages: ['岗位', '岗位管理'] },
       { name: '03 能力', pages: ['专家', '技能', '知识库', '连接器', '模型'] },
-      { name: '04 运行', pages: ['实例与会话', '运行规格', '配额与限流'] },
+      { name: '04 运行', pages: ['实例管理', '运行规格', '配额与限流'] },
       { name: '05 治理', pages: ['我的申请', '审核中心', '用户技能审核', '访问审计', '用户反馈', '字段字典'] },
       { name: '06 组织', pages: ['用户', '角色与权限'] }
     ]
@@ -96,9 +96,9 @@ let users = seedUsers()
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=用户/角色 CRUD、设角色、改权限与 __resetOrgMock。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子。
-// version 2（2026-09-07）：PRD-20260904 对齐「岗位分配→岗位管理」，权限树页面名与角色 modules 种子改名，旧快照弃用回种子。
+// version 3（2026-09-16）：04运行「实例与会话→实例管理」，权限树页面名与角色 modules 种子改名，旧快照弃用回种子。
 const persist = attachPersist('adminUser', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ userSeq, roleSeq, roles, users }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.userSeq) || !Number.isFinite(d.roleSeq) || !Array.isArray(d.roles) || !Array.isArray(d.users)) {
