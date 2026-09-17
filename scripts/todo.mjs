@@ -8,8 +8,8 @@
  * 本脚本负责把那一行从「待处理」搬到「已处理」，状态改成「已处理（日期）」。
  *
  * 【谁调用】
- *   1. .githooks/commit-msg —— 每次 commit 时自动跑 `close <msgFile>`，搬完顺手 git add，
- *      改动随同一次 commit 入库（git 是在 commit-msg 钩子之后才写树，所以能带上）。
+ *   1. .githooks/post-commit —— 每次 commit 后自动跑 `close <msgFile>`，搬完 git add 并 amend，
+ *      改动并入刚才那条 commit（不用 commit-msg：git 在它之前就定好了树，那时 add 进不去）。
  *   2. CI（.github/workflows/ci.yml）—— 对本次推送的每条 commit 跑 `verify`，
  *      说了关闭却没搬的（比如本地没装钩子）直接红，防止状态与事实脱节。
  *   3. 人工 —— `node scripts/todo.mjs close-id yuepu#2` 可手动补搬。
