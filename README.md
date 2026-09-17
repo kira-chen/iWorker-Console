@@ -28,7 +28,7 @@
 │   └── 调研讨论/             # 讨论稿（负责人指令才开，必须有结论段），闭环后进 已闭环/
 ├── scripts/todo.mjs          # 待办自动流转（commit 说明「关闭待办 人#序号」→ 搬行），.githooks/post-commit 调用
 ├── CLAUDE.md                 # 协同约定（技术栈约束、前端编码规范）
-└── .claude/                  # 可选：Claude Code 角色分工参考与项目权限配置
+└── .claude/                  # Claude Code 技能（prd-import / test-audit 及各自视角清单）与项目权限配置
 ```
 
 ## 本地启动
