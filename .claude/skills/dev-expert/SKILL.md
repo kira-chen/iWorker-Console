@@ -18,7 +18,7 @@ allowed-tools:
 
 # 编程专家.Skill -- P8级编程专家
 
-> **本项目适用性说明（2026-09-01）**：项目已降级为纯前端 demo（无后端 / 无数据库 / 无 Git）。
+> **本项目适用性说明（2026-09-01）**：项目已降级为纯前端 demo（无后端 / 无数据库；Git 托管 GitHub、经 PR 进 main）。
 > 后端与 DB 类子技能（API设计、MySQL 等）对本项目不适用；`.ai-memory/` 工作记忆已随历史文档归档停用，
 > Step 0 记忆加载与相关落盘跳过即可。改动记录写 commit message，跨人待办进 `docs/产品经理待办任务/`（见根 CLAUDE.md；PRD-review 已停用）。
 
