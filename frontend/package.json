@@ -10,7 +10,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "vitest run --config vitest.browser.config.js",
-    "audit:pixel": "node tools/pixel-audit/run.js",
     "prepare": "git -C .. config core.hooksPath .githooks || true",
     "todo:close": "node ../scripts/todo.mjs close-id"
   },
