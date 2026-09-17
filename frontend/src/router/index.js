@@ -152,10 +152,10 @@ const adminChildren = [
   // 真实页面尚未建设，先给真实路由 + 导航项 + 高亮（点击可跳转、路径可直达/收藏）。
   // 就绪后把 component 换成真实页面即可，name/path 保留不动。
   {
-    // 01 总览 → 驾驶舱：全局概览驾驶舱（规划中）。三后台角色均可见（与总览段定位一致）。
+    // 01 总览 → 驾驶舱：全局概览（2026-09-17 落地，见 AdminCockpit.vue）。三后台角色均可见（与总览段定位一致）。
     path: 'cockpit',
     name: 'AdminCockpit',
-    component: () => import('@/views/admin/AdminComingSoonPlaceholder.vue'),
+    component: () => import('@/views/admin/AdminCockpit.vue'),
     meta: { title: '驾驶舱', roles: ['ADMIN', 'FDE', 'SYS_CONFIG'], module: 'SYSCONFIG' }
   },
   {
