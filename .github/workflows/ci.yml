@@ -83,6 +83,13 @@ jobs:
           MSGS=$(git log --format=%B "$RANGE" 2>/dev/null || git log -1 --format=%B)
           node scripts/todo.mjs verify "$MSGS"
 
+      - name: 本地审查门禁（软：只提示不拦）
+        # 改了 docs/PRD/ 的批次须本地跑过 /prd-import，改了 frontend/src/ 的须跑过 /test-audit，
+        # 以 commit 说明里的「review: … ok」签名为凭；缺签名打 warning，暂不红（2026-09-17 先软后硬）。见 scripts/review-gate.mjs。
+        run: |
+          RANGE="${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.event.pull_request.head.sha || github.sha }}"
+          node scripts/review-gate.mjs "$RANGE" || true
+
       - name: 跑生产构建
         working-directory: frontend
         # 单测过了不代表能构建出来，两道都要过

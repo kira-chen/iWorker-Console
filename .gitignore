@@ -21,3 +21,6 @@ docs/历史文档归档-*.zip
 # 归档区（2026-09-10 负责人指示）：已归档不再使用的文件统一放这里，仅本地保留、不提交 GitHub。
 # 迁入前已入 git 的文件可经 git 历史恢复，见 docs/归档/README.md
 Archive/
+
+# 本地审查产物（/prd-import、/test-audit 的差异清单、报告、截图）：只在本地，不入库；结论以 commit 签名行 + 待办入库
+.review/
