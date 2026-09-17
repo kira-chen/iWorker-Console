@@ -21,8 +21,12 @@
 ├── frontend/                 # Vue 3 管理后台（demo 主体）
 │   └── src/  (views / components / stores / api / router / utils)
 ├── docs/
+│   ├── README.md             # docs/ 目录规则与文档生命周期（一页纸）
 │   ├── PRD/数字员工管理端PRD/ # PRD 对齐基准长期正本（各模块 md 为唯一口径 + 必填选填一览表；原型已退场）
-│   └── 产品经理待办任务/      # 跨人待办：slchen / clcao / dysun / yuepu 各一份，序号·状态·发起人·详述
+│   ├── 产品经理待办任务/      # 跨人待办：slchen / clcao / dysun / yuepu 各一份，「待处理 / 已处理」两表
+│   ├── 规范/                 # 长期参考：UI/ 设计图（仅视觉参考）、接口/ 接口规范
+│   └── 调研讨论/             # 讨论稿（负责人指令才开，必须有结论段），闭环后进 已闭环/
+├── scripts/todo.mjs          # 待办自动流转（commit 说明「关闭待办 人#序号」→ 搬行），.githooks/post-commit 调用
 ├── CLAUDE.md                 # 协同约定（技术栈约束、前端编码规范）
 └── .claude/                  # 可选：Claude Code 角色分工参考与项目权限配置
 ```
@@ -58,6 +62,8 @@ git switch -c fix/xxx          # 开临时分支（类型/简述）
 git push -u origin fix/xxx
 ```
 
+（`npm install` 会自动启用 `.githooks/`：commit 说明里写 `关闭待办 yuepu#2` 会自动把对应待办搬到「已处理」并并入该 commit。）
+
 然后在 GitHub 上开 PR，点 **Enable auto-merge**——CI（单测 + 构建）绿则自动合并进 main、
 临时分支自动删除；红则停住等修。CI 按 push 次数触发，故仍按「一个验证过的闭环批次一次推」攒着推。
 完整约定见 `CLAUDE.md`「PR 流程与 CI」。
@@ -73,7 +79,7 @@ git push -u origin fix/xxx
 
 - **硬：推 PR 前本地跑 `npm run test` + `npm run build`，两个都绿再推**。本地红就不要推，推上去只是把同一个红搬到 GitHub 上多等 5 分钟。
 - **硬：改了现有行为就同步改对应用例**。判据很简单——你把它跑红了就归你改，不用研究整个测试体系。
-- **软：新功能顺手补用例**。鼓励但不作为合并门槛；缺口由定期 `/test-audit` 轮次统一补（报告在 `docs/05-测试用例审计/`）。
+- **软：新功能顺手补用例**。鼓励但不作为合并门槛；缺口由定期 `/test-audit` 轮次统一补（报告在 `docs/05-测试用例审计/`，按需重建）。
 
 两个常见坑：
 
