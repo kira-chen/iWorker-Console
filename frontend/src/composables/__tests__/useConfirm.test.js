@@ -5,7 +5,7 @@ import { confirmDialog, alertDialog, useConfirm } from '@/composables/useConfirm
 /**
  * useConfirm（管理后台确认弹窗统一封装）契约——2026-09-12 审计 T57 新建（此前零单测）。
  *
- * 出处：docs/PRD-review/2026-09-08.md 负责人拍板「新增 useConfirm（440 无图标，danger 保留红档）接岗位列表/岗位管理」；
+ * 出处：负责人 2026-09-08 拍板（记录见 git eb55dfe，台账已归档）「新增 useConfirm（440 无图标，danger 保留红档）接岗位列表/岗位管理」；
  * 各页面单测 mock 的是 ElMessageBox.confirm/alert 本身，这里补的是封装层自己的三件事：
  *  1. danger / warning 落到确认键 class（删除红档、停用橙档），公共项 customClass=admin-confirm、无 ×；
  *  2. alertDialog 默认确认文案「知道了」（领用护栏等单键提示；岗位 md「知道了」逐字）；

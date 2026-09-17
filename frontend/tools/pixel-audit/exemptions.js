@@ -14,7 +14,7 @@
  * 【维护规矩（硬要求）】
  * 1. 新增豁免必须先经负责人裁决，不允许开发自行判断「这个差异无所谓」就加。
  * 2. 每条必须填全 5 个字段：id / 标题 / decidedOn（裁决日期）/ decidedBy（裁决人）
- *    / source（出处，指到 docs/PRD-review/ 的具体日期文件），缺一不可。
+ *    / source（出处：裁决所在 commit 号或当时的 PRD-review 日期；台账会归档，优先写 commit），缺一不可。
  * 3. match() 就是「判定条件」——什么样的差异算这一类，用代码写死，
  *    而不是靠人读文字去理解，避免下一个人把范围放大或缩小。
  * 4. 豁免不是永久静默：跑批会统计每条的命中数，0 命中的会被显式提示
@@ -58,7 +58,7 @@ export const exemptions = [
     title: '全站表格密度（表头/行高/单元格内距/字号）与原型差一档',
     decidedOn: '2026-09-10',
     decidedBy: '负责人',
-    source: 'docs/PRD-review/2026-09-10.md · 「四页签逐像素对齐批次」待裁决 T1 + 文末拍板行',
+    source: 'git 335aff7（2026-09-10 台账，已归档）· 「四页签逐像素对齐批次」待裁决 T1 + 文末拍板行',
     condition:
       '表格类容器（选择器命中 table / thead / tbody / tr / td / th / .el-table / .pd-table / .pd2-table）' +
       '上的密度属性（四边 padding、height、font-size、line-height）差异。' +
@@ -75,7 +75,7 @@ export const exemptions = [
     title: '抽屉 body padding：站内共享 DrawerEditor 统一 22/28/34，与原型【部分壳】不一致',
     decidedOn: '2026-09-10',
     decidedBy: '负责人',
-    source: 'docs/PRD-review/2026-09-10.md · 「四页签逐像素对齐批次」待裁决 T2 + 文末拍板行',
+    source: 'git 335aff7（2026-09-10 台账，已归档）· 「四页签逐像素对齐批次」待裁决 T2 + 文末拍板行',
     // 【适用范围实测收窄，2026-09-10 全站扫描】原标题写成「vs 原型 20px 24px 30px」，
     // 容易被读成「全站抽屉都差这一档」。实测并非如此：原型里抽屉壳不止一种——
     //   · 专家新建抽屉、知识库 proto2-drawer → 20/24/30，与站内不同（本豁免要挡的就是这两类）
@@ -111,7 +111,7 @@ export const exemptions = [
     title: '无对应令牌的原型值（9px 圆角 / 18px 系间距 / EP 按钮尺寸圆角与品牌绿）',
     decidedOn: '2026-09-10',
     decidedBy: '负责人',
-    source: 'docs/PRD-review/2026-09-10.md · 「四页签逐像素对齐批次」待裁决 T3 + 文末拍板行',
+    source: 'git 335aff7（2026-09-10 台账，已归档）· 「四页签逐像素对齐批次」待裁决 T3 + 文末拍板行',
     condition:
       '原型用了站内设计令牌里根本没有的值，按「找不到令牌不自造」维持站内规范。三小类：' +
       '(a) 圆角：原型 9px、站内 8px（差 1px 且原型值不是 4px 梯度上的数）；' +
