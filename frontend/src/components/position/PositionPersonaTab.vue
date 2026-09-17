@@ -87,6 +87,24 @@ function aiGenSop() {
 
 <template>
   <div class="pd-pane">
+    <!-- 0. 岗位名称（从顶栏移入人格页签；编辑后随顶部【保存】提交） -->
+    <section class="pd-card">
+      <div class="pd-card-head">
+        <span class="pd-card-title">岗位名称<i class="pd-req">*</i></span>
+        <span class="pd-card-sub">用于列表、标题栏与员工端展示</span>
+      </div>
+      <div class="pd-card-body">
+        <el-input
+          :model-value="store.basic?.name || ''"
+          maxlength="64"
+          placeholder="岗位名称，最多 64 个字符"
+          :disabled="isReadonly"
+          @update:model-value="patchBasic('name', $event)"
+        />
+        <div class="pd-card-hint">必填，最多 64 个字符</div>
+      </div>
+    </section>
+
     <!-- 1. 岗位图标（原型 position-icon-section：预览 + 从图标库选择 / 上传图标） -->
     <section class="pd-card">
       <div class="pd-card-head">

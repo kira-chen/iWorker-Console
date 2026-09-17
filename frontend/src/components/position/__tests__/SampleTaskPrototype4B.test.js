@@ -69,6 +69,8 @@ vi.mock('@/api/position', () => ({
   listPlatformSkillCandidates: vi.fn(() => Promise.resolve([{ id: 9, name: '经营分析技能', description: '' }]))
 }))
 vi.mock('@/api/request', () => ({ ApiError: class ApiError extends Error {} }))
+// 执行动作 · 选 Agent 下拉候选源（该岗位下已有 Agent 列表）
+vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ agents: [] }) }))
 vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
   ElMessageBox: { confirm: vi.fn(() => Promise.resolve()), prompt: vi.fn() }
@@ -372,7 +374,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     SampleTaskEditor = (await import('@/components/position/SampleTaskEditor.vue')).default
   })
 
-  it('#18 五个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 引用平台技能」', async () => {
+  it('#18 七个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 执行动作 / 引用平台技能 / 执行模型」', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     const heads = [...container.querySelectorAll('.te-card-title')].map((n) => n.textContent.trim())
@@ -380,8 +382,10 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(heads[1]).toContain('调度计划')
     expect(heads[2]).toContain('提示词')
     expect(heads[3]).toContain('引用工具')
-    expect(heads[4]).toContain('引用平台技能')
-    expect(container.querySelectorAll('.te-card-body').length).toBe(5)
+    expect(heads[4]).toContain('执行动作')
+    expect(heads[5]).toContain('引用平台技能')
+    expect(heads[6]).toContain('执行模型')
+    expect(container.querySelectorAll('.te-card-body').length).toBe(7)
   })
 
   it('#16 右栏内容有限宽居中容器 .ste-inner（J5：embedded 开关退役后即基础形态）', async () => {
