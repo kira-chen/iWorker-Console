@@ -221,15 +221,17 @@ body.admin-scope .lt-search {
   width: 300px;
 }
 
-/* 页头档位（原型 L23–24 `h1{font-size:25px;font-weight:650;letter-spacing:-.02em}` /
- * `p{margin:5px 0 0;font-size:15px}`）。员工端页头不带 admin-scope，仍是 22px/600 + 13px 档。
+/* 页头档位。员工端页头不带 admin-scope，仍是 22px/600 + 13px 档。
  * 2026-09-09 从 PageHeader.vue 的 scoped 块搬来：那里写成 `:global(body.admin-scope) .page-header-title`
  * 会被 scoped 编译降解成 `body.admin-scope { font-size:25px; font-weight:650 }`（后半截选择器丢失），
- * 导致整个后台继承 650、表格每格都加粗。全局选择器不要写在 scoped 块里。 */
+ * 导致整个后台继承 650、表格每格都加粗。全局选择器不要写在 scoped 块里。
+ * 2026-09-17 字号档按 MasterGo 设计稿 W9gCP2CB 校正：稿面标题是 20px/600/行高28（PingFang SC
+ * 中粗体），原 25px/650/-0.02em 字距是旧版 HTML 原型（docs/prd/PRD-20260907）的档位，本轮以
+ * MasterGo 为准整体调小，不再带负字距。 */
 body.admin-scope .page-header-title {
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
 }
 body.admin-scope .page-header-sub {
   /* margin-top 归零（2026-09-11）：5px 是上下堆叠时代的留白，09-10 页头改左右并排后

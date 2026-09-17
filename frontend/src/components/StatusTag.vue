@@ -35,14 +35,17 @@ const tagClass = computed(() => `st--${props.type}`)
 </template>
 
 <style scoped>
+/* 形状（2026-09-17 按 MasterGo 设计稿 W9gCP2CB 校正）：稿面状态标签是 4px 小圆角矩形
+   （非胶囊），24px 高（20px 行高 + 上下各 2px）；配色维持现有语义令牌不动（品牌绿等），
+   本轮只改形状，不改色——色值改动影响面远超本次范围，需另行拍板。 */
 .status-tag {
   display: inline-flex;
   align-items: center;
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
-  line-height: 1.4;
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-pill);
+  line-height: 20px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 .st--success {
