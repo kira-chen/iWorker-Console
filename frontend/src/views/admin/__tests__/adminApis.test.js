@@ -143,6 +143,7 @@ const mkApi = (over) => ({
   name: over.name,
   description: over.description || '',
   providerSystemId: over.ps,
+  type: 'PLATFORM',
   method: 'GET',
   readWrite: 'read',
   status: 'NOT_PUBLISHED',
@@ -280,7 +281,7 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务�
 
   it('状态筛选「审核中」+【查询】 → listApis 收到 state=PENDING_REVIEW，只展示有命中 API 的分组（md §一.1 L11 / §一.2 L19）', async () => {
     await mount()
-    const sel = container.querySelector('.lt-filter')
+    const sel = container.querySelectorAll('.lt-filter')[1]
     sel.value = 'PENDING_REVIEW'
     sel.dispatchEvent(new Event('change'))
     await nextTick()

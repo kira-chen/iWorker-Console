@@ -17,7 +17,9 @@ import { makeElTableStubs } from './helpers/elTableStub'
 
 const listLoginLogs = vi.fn()
 vi.mock('@/api/loginLog', () => ({ listLoginLogs: (...a) => listLoginLogs(...a) }))
-vi.mock('@element-plus/icons-vue', () => ({ Search: { render: () => h('i', { class: 'icon-search' }) } }))
+vi.mock('@element-plus/icons-vue', async (importOriginal) => importOriginal())
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+vi.mock('@/api/accessAuditMock', () => ({ dlRecords: [], opsRecords: [] }))
 vi.mock('@/components/PageHeader.vue', () => ({
   default: {
     props: ['title', 'subtitle'],
@@ -59,6 +61,24 @@ const elButton = {
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
+const elTabs = {
+  name: 'el-tabs',
+  props: ['modelValue'],
+  template: '<div class="el-tabs"><slot /></div>'
+}
+const elTabPane = {
+  name: 'el-tab-pane',
+  props: ['label', 'name'],
+  setup(props, { slots }) {
+    return () => props.name === 'login' ? h('div', { class: 'el-tab-pane' }, slots.default?.()) : null
+  }
+}
+const elDatePicker = {
+  name: 'el-date-picker',
+  props: ['modelValue', 'type', 'rangeSeparator', 'startPlaceholder', 'endPlaceholder', 'disabledDate'],
+  emits: ['update:modelValue'],
+  template: '<div class="el-date-picker"></div>'
+}
 
 let app, container
 async function mount() {
@@ -73,6 +93,9 @@ async function mount() {
   app.component('el-table-column', tableColStub)
   app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
+  app.component('el-tabs', elTabs)
+  app.component('el-tab-pane', elTabPane)
+  app.component('el-date-picker', elDatePicker)
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -107,7 +130,7 @@ afterEach(() => {
 describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
   it('页面说明取 md §一 L8；挂载即按登录时间倒序拉列表（sortField=loginAt、sortDir=desc、page=1）（md §3.1 L34）', async () => {
     await mount()
-    expect(container.querySelector('.ph-sub').textContent).toBe('查看用户的登录 / 登出记录、在线状态与来源 IP')
+    expect(container.querySelector('.ph-sub').textContent).toBe('记录用户登录访问、产物下载与管理端操作的完整行为轨迹')
     expect(listLoginLogs).toHaveBeenCalledWith(expect.objectContaining({ sortField: 'loginAt', sortDir: 'desc', page: 1 }))
   })
 

@@ -48,6 +48,7 @@ const DETAIL = {
   icon: '📄',
   description: '按报销单号查询审批状态',
   providerSystemId: 'pv_1',
+  type: 'PLATFORM',
   url: 'https://api.x.com/q',
   method: 'GET',
   enabled: true,
@@ -189,6 +190,9 @@ async function fillValidNew(el) {
   const ps = itemByLabel(el, '所属服务提供系统').querySelector('select')
   ps.value = 'pv_1'
   ps.dispatchEvent(new Event('change'))
+  const ts = itemByLabel(el, '连接器类型').querySelector('select')
+  ts.value = 'PLATFORM'
+  ts.dispatchEvent(new Event('change'))
   setInput(inputOf(el, 'API 描述'), '一句话描述')
   eqInputs(el).forEach((inp, i) => setInput(inp, `问题${i + 1}`))
   setInput(inputOf(el, 'API 地址'), 'https://x.example.com/api')
@@ -208,12 +212,12 @@ afterEach(() => {
 })
 
 describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
-  it('新建全空点【保存】 → 名称/图标/所属系统/描述/地址 5 个表单项标红 + 示例问题区标红，warning「请先修正标红项」，不调 createApi', async () => {
+  it('新建全空点【保存】 → 名称/所属系统/连接器类型/图标/描述/地址 6 个表单项标红 + 示例问题区标红，warning「请先修正标红项」，不调 createApi', async () => {
     const el = await mountEditor(null)
     findBtn(el, '保存').click()
     await flush()
     const red = [...el.querySelectorAll('.el-form-item')].filter((it) => it.getAttribute('data-error'))
-    expect(red.map((it) => it.dataset.label)).toEqual(['名称', '所属服务提供系统', '图标', 'API 描述', 'API 地址'])
+    expect(red.map((it) => it.dataset.label)).toEqual(['名称', '所属服务提供系统', '连接器类型', '图标', 'API 描述', 'API 地址'])
     expect(itemByLabel(el, '名称').dataset.error).toBe('名称不能为空')
     expect(itemByLabel(el, '所属服务提供系统').dataset.error).toBe('必须选择所属服务提供系统')
     expect(itemByLabel(el, 'API 地址').dataset.error).toBe('API 地址必须为合法的 HTTP 或 HTTPS URL')

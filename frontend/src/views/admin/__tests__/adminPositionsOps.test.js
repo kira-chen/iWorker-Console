@@ -21,7 +21,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  */
 
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
 
 const listPositions = vi.fn()
@@ -401,11 +401,11 @@ describe('AdminPositions · 原型复刻批次 2A', () => {
     expect([...dlg.querySelectorAll('.dlg-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '创建岗位'])
   })
 
-  it('B2 校验规则：岗位描述必填、上限 500；创建成功 toast 后进岗位详情页', async () => {
+  it('B2 校验规则：岗位描述必填、上限 2000；创建成功 toast 后进岗位详情页', async () => {
     await mount2A()
     const rules = inst().setupState.createRules
     expect(rules.description[0]).toMatchObject({ required: true, message: '请填写岗位描述' })
-    expect(rules.description[1]).toMatchObject({ max: 500 })
+    expect(rules.description[1]).toMatchObject({ max: 2000 })
     createPosition.mockResolvedValue({ positionId: 'ps_new' })
     inst().setupState.createForm.name = '经营分析岗'
     inst().setupState.createForm.description = '负责经营分析'

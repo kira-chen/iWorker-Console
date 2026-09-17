@@ -62,12 +62,12 @@ describe('AdminExperts · 真实挂载冒烟（真 Element Plus，只 mock api�
 
     // md §一.1 页面标题与说明、新建入口、筛选占位
     expect(text).toContain('专家')
-    expect(text).toContain('把多个市场技能归类整合成一个可交付单元，只引用市场技能，与 FDE 技能互不影响')
+    expect(text).toContain('平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理')
     expect(text).toContain('新建专家')
     expect(mounted.container.querySelector('input[placeholder="搜索专家名、描述或分类"]')).toBeTruthy()
     // el-select 2.9 的占位是 .el-select__placeholder 文本节点
     const placeholders = [...mounted.container.querySelectorAll('.el-select__placeholder')].map((n) => n.textContent.trim())
-    expect(placeholders).toEqual(['全部专家分类', '全部状态'])
+    expect(placeholders).toEqual(['全部专家类型', '全部专家分类', '全部状态'])
 
     // md §二.1 真 el-table 三行：名称 / 三态标签 / 分类 / 技能数 / 最新版本（无版本「—」）
     const rows = [...mounted.container.querySelectorAll('.el-table__body tr.el-table__row')]

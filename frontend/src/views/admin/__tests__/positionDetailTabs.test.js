@@ -61,7 +61,7 @@ vi.mock('@/composables/useVersionPublish', () => ({
 }))
 // featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
 // 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, MCP_AUTH_CONFIG_ENABLED: true }))
 
 // 重组件/编辑器全桩（只关心 Tab 骨架）
 for (const p of [
@@ -72,7 +72,9 @@ for (const p of [
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
-  '@/components/admin/KnowledgeSearchDialog.vue'
+  '@/components/admin/KnowledgeSearchDialog.vue',
+  // 2026-09-15 连接器页签重构：PositionBusinessSystemTab 引入 McpEditor 等重组件，全桩避免拖入 featureFlags 副作用
+  '@/components/position/PositionBusinessSystemTab.vue'
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))
 }
@@ -115,17 +117,17 @@ beforeEach(() => {
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签 + 两占位 = 9，2026-09-10 选 C）', () => {
+describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-09-15 连接器替换业务系统/运行/效果测试）', () => {
   // 页签集合的裁决沿革（改这条断言前先读完，它是历次裁决的载体）：
   // - 2026-09-09：移除「业务系统」与「版本」；「运行」「效果测试」保持空置占位。
   // - 2026-09-10 上午：负责人就页签数拍板「维持现状 8 个，页签数量上 html 原型不作准」。
   // - 2026-09-10 下午：业务系统页签带完整逻辑重新实现（引用/查看/排序，数据经
-  //   store.basic.businessSystemIds 落库），负责人复核后裁决「**选 C · 9 页签全留**」——
-  //   即 md §1.3 七页签（含业务系统）+ 运行 + 效果测试。运行/效果测试仍按 09-09 指示空置占位。
-  it('渲染 md §1.3 七页签 + demo 扩展「运行」「效果测试」两占位，共 9 个，label 与顺序正确', async () => {
+  //   store.basic.businessSystemIds 落库），负责人复核后裁决「**选 C · 9 页签全留**」。
+  // - 2026-09-15 重构：「连接器」三区域页签取代「业务系统」，「运行」「效果测试」移除，共 7 页签。
+  it('渲染 md §1.3 七页签（2026-09-15 连接器替换业务系统/运行/效果测试移除），label 与顺序正确', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '业务系统', '运行', '效果测试'])
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '连接器'])
     expect(labels).not.toContain('版本')
   })
 
@@ -201,21 +203,22 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签 + 两�
     expect(top.textContent).not.toContain('发布岗位')
   })
 
-  it('「知识」为只读列表（区块头 + 工具栏【查询】，无新建 / 编辑入口，md §5.2 已删）；「运行」仍为占位', async () => {
+  it('「知识」为只读列表（区块头 + 工具栏【查询】，无新建 / 编辑入口，md §5.2 已删）', async () => {
     await mount()
     const paneText = (name) => [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === name)?.textContent || ''
     expect(paneText('knowledge')).not.toContain('开发中')
     expect(paneText('knowledge')).toContain('该岗位可见范围内的知识库')
     expect(paneText('knowledge')).toContain('查询')
     expect(paneText('knowledge')).not.toContain('新建知识库')
-    expect(paneText('runtime')).toContain('开发中')
   })
 
-  // 原「业务系统页签挂载引用面板」用例随该页签移除一并删除（2026-09-09 负责人裁决）
+  // 「运行」「效果测试」页签已于 2026-09-15 移除
 
-  it('效果测试在 EFFECT_TEST_ENABLED=false 时显「开发中」占位（不擅自开启被关链路）', async () => {
+  it('「连接器」页签渲染（PositionBusinessSystemTab 已桩）；「运行」「效果测试」页签不再存在', async () => {
     await mount()
-    const et = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'effectTest')
-    expect(et?.textContent).toContain('开发中')
+    const panes = [...container.querySelectorAll('.el-tab-pane')]
+    expect(panes.find((p) => p.getAttribute('data-name') === 'businessSystems')).toBeTruthy()
+    expect(panes.find((p) => p.getAttribute('data-name') === 'runtime')).toBeUndefined()
+    expect(panes.find((p) => p.getAttribute('data-name') === 'effectTest')).toBeUndefined()
   })
 })

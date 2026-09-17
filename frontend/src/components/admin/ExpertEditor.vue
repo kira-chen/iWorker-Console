@@ -136,7 +136,7 @@ const form = reactive({
   skillIds: []
 })
 
-const errors = reactive({ name: '', category: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
+const errors = reactive({ name: '', category: '', type: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
 
 function clearErrors() {
   for (const k of Object.keys(errors)) errors[k] = ''
