@@ -5,9 +5,12 @@
  * 点赞/点踩统计模块收窄为「点踩统计 + 点踩上下文明细」，不再展示点赞相关数据）。
  */
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import '@/assets/admin-dialog.css'
+
+const router = useRouter()
 
 const refreshTime = ref('09:30')
 const refreshing = ref(false)
@@ -33,11 +36,11 @@ const pendingMetric = {
   ]
 }
 
-// 异常与待办
+// 异常与待办：行动按钮真实跳转对应模块页面（原型是 toast 占位，这里改为路由跳转）
 const alerts = [
-  { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核' },
-  { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理' },
-  { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '技能审核', action: '去审核' },
+  { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
+  { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
+  { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
 ]
 const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 
@@ -61,14 +64,15 @@ function assetPcts(item) {
   return { p, r, d, total }
 }
 
-// 岗位领用 Top 5
+// 岗位领用 Top 5：只展示已发布状态的岗位（2026-09-17 裁决），故 status 拆成独立字段供筛选
 const posTop = [
-  { rank: '01', top: true, name: '销售顾问',    version: 'v2.3.0 / 已发布', users: 48, skills: 9, agents: 3 },
-  { rank: '02', top: true, name: '经营分析师',  version: 'v1.6.0 / 已发布', users: 39, skills: 7, agents: 4 },
-  { rank: '03', top: true, name: '项目经理助手', version: 'v1.4.0 / 已发布', users: 34, skills: 6, agents: 2 },
-  { rank: '04', top: false, name: '产品经理助手', version: 'v2.1.0 / 已发布', users: 27, skills: 8, agents: 3 },
-  { rank: '05', top: false, name: '公文写作',    version: 'v1.2.0 / 已发布', users: 21, skills: 4, agents: 1 },
+  { rank: '01', top: true, name: '销售顾问',    version: 'v2.3.0', status: '已发布', users: 48, skills: 9, agents: 3 },
+  { rank: '02', top: true, name: '经营分析师',  version: 'v1.6.0', status: '已发布', users: 39, skills: 7, agents: 4 },
+  { rank: '03', top: true, name: '项目经理助手', version: 'v1.4.0', status: '已发布', users: 34, skills: 6, agents: 2 },
+  { rank: '04', top: false, name: '产品经理助手', version: 'v2.1.0', status: '已发布', users: 27, skills: 8, agents: 3 },
+  { rank: '05', top: false, name: '公文写作',    version: 'v1.2.0', status: '已发布', users: 21, skills: 4, agents: 1 },
 ]
+const publishedPosTop = computed(() => posTop.filter((p) => p.status === '已发布'))
 const maxUsers = 48
 
 // 点踩统计（2026-09-17 裁决：模块收窄为点踩，不再展示点赞数据；按岗位分布及其筛选项一并删去）
@@ -199,9 +203,9 @@ function tip(text) {
   ElMessage({ message: `正式系统中将进入「${text}」`, plain: true })
 }
 
-// 异常与待办卡片的行动按钮：与其它入口的通用 tip() 措辞不同，原型是专用文案（原型 data-alert-action）
+// 异常与待办卡片的行动按钮：真实跳转对应模块页面处理（2026-09-17 裁决：由 toast 占位改为路由跳转）
 function openAlertAction(item) {
-  ElMessage({ message: `打开处理详情：${item.text}`, plain: true })
+  router.push({ name: item.to })
 }
 </script>
 
@@ -318,7 +322,6 @@ function openAlertAction(item) {
               <span class="dft" :style="`width:${assetPcts(item).d}%`"></span>
             </span>
             <span class="dash-asset-detail"><b>{{ item.published }}</b> / {{ item.review }} / {{ item.draft }}</span>
-            <span><button class="mini-btn" @click="tip(item.name + '列表')">查看</button></span>
           </div>
         </div>
       </section>
@@ -331,21 +334,20 @@ function openAlertAction(item) {
         <table class="dash-table">
           <thead>
             <tr>
-              <th style="width:32%">岗位</th>
-              <th style="width:30%">领用人数</th>
+              <th style="width:34%">岗位</th>
+              <th style="width:32%">领用人数</th>
               <th class="dash-num">技能数</th>
               <th class="dash-num">Agent 数</th>
-              <th style="width:56px"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="pos in posTop" :key="pos.rank">
+            <tr v-for="pos in publishedPosTop" :key="pos.rank">
               <td>
                 <span class="dash-rank-name">
                   <span class="dash-rank-no" :class="{ top: pos.top }">{{ pos.rank }}</span>
                   <span>
                     <span class="dash-name-main">{{ pos.name }}</span>
-                    <span class="dash-name-sub">{{ pos.version }}</span>
+                    <span class="dash-name-sub">{{ pos.version }} / {{ pos.status }}</span>
                   </span>
                 </span>
               </td>
@@ -357,7 +359,6 @@ function openAlertAction(item) {
               </td>
               <td class="dash-num">{{ pos.skills }}</td>
               <td class="dash-num">{{ pos.agents }}</td>
-              <td><button class="mini-btn" @click="tip(pos.name + '详情')">查看</button></td>
             </tr>
           </tbody>
         </table>
@@ -762,7 +763,7 @@ function openAlertAction(item) {
 .dash-legend .dft { background: #c7cfcb; }
 .dash-asset-row {
   display: grid;
-  grid-template-columns: 78px 40px minmax(100px, 1fr) 140px 56px;
+  grid-template-columns: 78px 40px minmax(100px, 1fr) 140px;
   align-items: center;
   gap: 12px;
   min-height: 39px;
