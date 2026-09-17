@@ -276,20 +276,18 @@ function toListItem(s) {
 }
 
 /**
- * 合并列表：keyword（名称/描述）/ type / categoryId（=分类名）/ status（三态）/ referenced（岗位私有）
+ * 合并列表：keyword（名称/描述）/ type / categoryId（=分类名）/ status（三态）
  * + page/size。默认按最近更新时间由近到远。
  */
 export async function listUnifiedSkills(params = {}) {
   await delay()
-  const { keyword = '', type = '', categoryId = '', status = '', referenced, page = 1, size = 20, sort = 'desc' } = params
+  const { keyword = '', type = '', categoryId = '', status = '', page = 1, size = 20, sort = 'desc' } = params
   const q = String(keyword).trim().toLowerCase()
   let list = skills.filter((s) => {
     if (q && ![s.name, s.description].some((v) => String(v || '').toLowerCase().includes(q))) return false
     if (type && s.type !== type) return false
     if (categoryId && s.category !== categoryId) return false
     if (status && displayStateOf(s) !== status) return false
-    if (referenced === true && !s.refNames.length) return false
-    if (referenced === false && s.refNames.length) return false
     return true
   })
   // sort=asc|desc 按最近更新时间（2026-09-08 原型复刻批次 2C · E-A1：列头切换方向作用于全量再切页，原型 L664 同口径）

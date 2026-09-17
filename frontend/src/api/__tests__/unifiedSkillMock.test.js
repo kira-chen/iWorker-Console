@@ -169,13 +169,6 @@ describe('列表：筛选 + 三态 + 默认按最近更新时间由近到远', (
     expect(ascPage1.list[0].updatedAt).toBe(times[0])
     expect(ascPage1.list[0].updatedAt <= desc.list[0].updatedAt).toBe(true)
   })
-
-  it('referenced 布尔筛选（岗位私有深链口径）', async () => {
-    const yes = await mock.listUnifiedSkills({ type: 'POSITION', referenced: true, size: 100 })
-    expect(yes.list.every((r) => r.refCount > 0)).toBe(true)
-    const no = await mock.listUnifiedSkills({ type: 'POSITION', referenced: false, size: 100 })
-    expect(no.list.every((r) => r.refCount === 0)).toBe(true)
-  })
 })
 
 describe('版本历史：最后启用版守卫 + 启用互斥', () => {

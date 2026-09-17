@@ -58,7 +58,7 @@ const adminChildren = [
   },
   {
     // 技能三页合一（2026-08-23）：岗位技能页已下线，重定向到「技能」页。
-    // 保留 redirect 而非直删——外部书签、历史链接、以及 ?referenced=no 深链（合并页已支持）仍可用。
+    // 保留 redirect 而非直删——外部书签、历史链接仍可用。
     path: 'skills',
     redirect: (to) => ({ name: 'AdminSkillsUnified', query: to.query })
   },
