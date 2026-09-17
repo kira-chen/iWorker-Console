@@ -492,15 +492,8 @@ function backToList() {
         <div class="tb-l">
           <span class="tb-back" @click="backToList">← 返回</span>
           <span class="tb-sep">|</span>
-          <!-- 岗位名称可直接编辑（md 三.1：最多 64 字；只读态禁用）：写入 store.basic.name，随「保存」提交 -->
-          <el-input
-            :model-value="store.basic?.name || ''"
-            class="tb-name-input"
-            maxlength="64"
-            placeholder="岗位名称"
-            :disabled="isReadonly"
-            @update:model-value="patchBasic('name', $event)"
-          />
+          <!-- 岗位名称：只读静态展示；编辑入口已移至「人格」页签的岗位名称卡 -->
+          <span class="tb-name-display">{{ store.basic?.name || '未命名岗位' }}</span>
           <!-- 状态标签三态（md 三.1：未发布 灰 / 审核中 橙 / 已发布 绿） -->
           <StatusTag :type="statusView.type">{{ statusView.label }}</StatusTag>
           <span v-if="store.isPublished && currentVersionLabel" class="tb-version" title="当前已发布的最新版本">{{ currentVersionLabel }}</span>
@@ -686,24 +679,15 @@ function backToList() {
   font-size: var(--fs-sm);
   user-select: none;
 }
-/* 岗位名称就地编辑：静态时无边框像标题，聚焦时才显输入框（与技能编辑页名称框同口径） */
-.tb-name-input {
-  width: 240px;
-}
-.tb-name-input :deep(.el-input__inner) {
+/* 岗位名称静态展示（编辑入口已移至人格页签） */
+.tb-name-display {
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
-}
-.tb-name-input :deep(.el-input__wrapper) {
-  box-shadow: none;
-  background: transparent;
-  padding-left: var(--space-2);
-}
-.tb-name-input :deep(.el-input__wrapper:hover),
-.tb-name-input :deep(.el-input__wrapper.is-focus) {
-  background: var(--bg-sunken);
-  box-shadow: 0 0 0 1px var(--border-base) inset;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tb-version {
   font-family: var(--font-mono);

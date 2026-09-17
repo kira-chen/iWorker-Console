@@ -131,10 +131,10 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(labels).not.toContain('版本')
   })
 
-  it('「人格」Tab 含 md §2 六区块：岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名）', async () => {
+  it('「人格」Tab 含 md §2 七区块：岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名；岗位名称从顶栏移入）', async () => {
     await mount()
     const persona = [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === 'persona')
-    for (const sec of ['岗位图标', '岗位描述', '领用页文案', '示例问题', '岗位 SOP', '岗位人格']) {
+    for (const sec of ['岗位名称', '岗位图标', '岗位描述', '领用页文案', '示例问题', '岗位 SOP', '岗位人格']) {
       expect(persona?.textContent).toContain(sec)
     }
     expect(persona?.textContent).not.toContain('岗位认领说明')
@@ -145,24 +145,24 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(persona?.textContent).toContain('AI 生成')
   })
 
-  it('顶栏：「返回」+ 分隔 + 可编辑名称 + 保存/发布岗位；未改动时不显「有未保存的修改」', async () => {
+  it('顶栏：「返回」+ 分隔 + 静态名称显示 + 保存/发布岗位；未改动时不显「有未保存的修改」', async () => {
     await mount()
     const top = container.querySelector('.topbar')
     expect(top.querySelector('.tb-back').textContent.trim()).toBe('← 返回')
     expect(top.querySelector('.tb-sep')).toBeTruthy()
-    expect(top.querySelector('.tb-name-input')).toBeTruthy()
+    expect(top.querySelector('.tb-name-display')).toBeTruthy()
+    expect(top.querySelector('.tb-name-input')).toBeFalsy()
     expect(top.textContent).toContain('保存')
     expect(top.textContent).toContain('发布岗位')
     expect(top.querySelector('.tb-dirty').textContent.trim()).toBe('')
     expect(store.saveBasic).not.toHaveBeenCalled()
   })
 
-  it('顶栏岗位名改动后 → 显「有未保存的修改」（md §1.2 L145）；未改动时隐藏', async () => {
+  it('人格Tab名称改动后 → 顶栏显「有未保存的修改」（md §1.2 L145）；未改动时隐藏', async () => {
     await mount()
     expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('')
-    const input = container.querySelector('.tb-name-input')
-    input.value = '销售岗'
-    input.dispatchEvent(new Event('input'))
+    // 岗位名称编辑框已移入人格Tab；直接改 store 触发 dirty 检测
+    store.basic = { ...store.basic, name: '销售岗' }
     await nextTick(); await nextTick()
     expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('有未保存的修改')
     expect(container.querySelector('.tb-dirty').classList.contains('on')).toBe(true)
