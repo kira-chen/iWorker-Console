@@ -156,7 +156,7 @@
   --bg-admin-page: #fcfcfc; /* 后台主区底（稿面比原 #f6f8f7 更白、去绿调） */
   --border-admin-row: #ebedf0; /* 行分隔线，采样 rgb(235,237,240) */
   --bg-admin-head: #f7f7f7; /* 表头底，采样 rgb(247,247,247) */
-  --c-admin-head: #8d8d8d; /* 表头字，采样 rgb(141,141,141) */
+  --c-admin-head: #6a6a6a; /* 表头字（2026-09-17 MasterGo 设计稿 W9gCP2CB 校正：DSL 二级文本 token 值 rgb(106,106,106)；原截图估色 #8d8d8d 偏浅） */
   --bg-admin-primary: #141619; /* 主按钮（＋新建 X）近黑底，采样 rgb(20,22,25) */
   --c-admin-sub: #8e8e8e; /* 页头副文案，采样 rgb(142,142,142) */
 }
