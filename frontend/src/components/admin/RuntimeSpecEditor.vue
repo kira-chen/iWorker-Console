@@ -317,7 +317,7 @@ async function save() {
       />
       <el-form label-position="top">
         <el-form-item label="规格名称" :error="fieldErrors.name" required>
-          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 标准、高敏" :disabled="readonly" />
+          <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如：标准、高性能" :disabled="readonly" />
         </el-form-item>
         <el-form-item label="能力边界说明" :error="fieldErrors.boundaryDesc" required>
           <el-input
