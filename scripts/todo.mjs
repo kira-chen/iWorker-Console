@@ -93,7 +93,7 @@ if (cmd === 'close') {
     const file = `docs/产品经理待办任务/${person}.md`
     if (r === 'moved') {
       execSync(`git add "${file}"`, { cwd: ROOT })
-      console.log(`[todo] 已关闭 ${person}#${id} → 搬入「已处理」（${file} 已随本次提交暂存）`)
+      console.log(`[todo] 已关闭 ${person}#${id} → 搬入「已处理」（${file} 已暂存，钩子随后 amend 进本次提交）`)
     } else if (r === 'already') console.log(`[todo] ${person}#${id} 已在「已处理」，跳过`)
     else console.error(`[todo] ⚠ ${person}#${id} 在「待处理」里找不到，未搬（请检查序号）`)
   }
