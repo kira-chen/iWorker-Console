@@ -129,6 +129,7 @@ const mkBiz = (over) => ({
   icon: '◎',
   description: over.description || '',
   loginUrl: over.loginUrl || 'https://x.example.com/login',
+  type: 'PLATFORM',
   status: 'NOT_PUBLISHED',
   pendingAction: null,
   referencedBySkillCount: 0,
@@ -214,7 +215,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     const input = container.querySelector('.lt-search')
     input.value = '资源'
     input.dispatchEvent(new Event('input'))
-    const sel = container.querySelector('.lt-filter')
+    const sel = [...container.querySelectorAll('.lt-filter')][1]
     sel.value = 'PENDING_REVIEW'
     sel.dispatchEvent(new Event('change'))
     await nextTick()

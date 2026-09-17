@@ -3,47 +3,98 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive, inject, unref, computed } from 'vue'
 
 /**
- * PositionBusinessSystemTab（岗位详情「业务系统」页签，0de8fe9 带逻辑重新实现）—— 2026-09-12 测试审计 T53 新建，
- * 对齐 md 岗位 §8.1 / §8.2 / §8.3 / §11：
- *  - 引用列表只出 store.basic.businessSystemIds 命中的已发布业务系统；空态「暂无引用的业务系统」；
- *  - 【＋ 新业务系统】→ 弹窗「引用业务系统」，只列已发布且未被当前岗位引用的，可按名称搜索；
- *  - 勾选后【确认引用】→ 写 businessSystemIds + toast「引用成功」+ 列表新增该行；未勾选 → warning「请选择要引用的业务系统」；
- *  - 只读态隐藏【＋ 新业务系统】；行内仅【查看】→ 打开只读抽屉（复用 BizSystemEditor，readonly=true，editingId=该行 id）。
- * 数据走 usePositionStore（reactive 桩）；@/api/admin.listBizSystems mock；BizSystemEditor 轻桩记录 props；el-table 逐行桩。
+ * PositionBusinessSystemTab（岗位详情「连接器」页签，2026-09-15 重构为三区域）—— 单测。
+ * 对齐新组件逻辑：
+ *  - 三区域：岗位私有 MCP / 岗位私有 API / 岗位私有业务系统；
+ *  - 各区域只展示 store.basic.connectorMcpIds / connectorApiIds / businessSystemIds 命中的条目；
+ *  - 无绑定时不调 API、显空态文案；
+ *  - 【＋ 新增】→ 绑定弹窗（搜索 + 确认绑定）；【查看】→ 只读编辑器；【移除】→ ElMessageBox 确认后移除；
+ *  - 只读态隐藏【＋ 新增】和【移除】。
  */
 
 const store = reactive({
   positionId: 5,
-  basic: { positionId: 5, name: '经营分析岗', businessSystemIds: ['biz_2101'] }
+  basic: {
+    connectorMcpIds: ['mcp_1'],
+    connectorApiIds: ['api_1'],
+    businessSystemIds: ['biz_1']
+  }
 })
 vi.mock('@/stores/position', () => ({ usePositionStore: () => store }))
+
 vi.mock('element-plus', () => ({
-  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() })
+  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  ElMessageBox: { confirm: vi.fn(() => Promise.resolve()) }
 }))
+
+const listMcp = vi.fn()
 const listBizSystems = vi.fn()
-vi.mock('@/api/admin', () => ({ listBizSystems: (...a) => listBizSystems(...a) }))
+vi.mock('@/api/admin', () => ({
+  listMcp: (...a) => listMcp(...a),
+  listBizSystems: (...a) => listBizSystems(...a)
+}))
+
+const listApis = vi.fn()
+vi.mock('@/api/apiConnector', () => ({ listApis: (...a) => listApis(...a) }))
+
+vi.mock('@/components/admin/McpEditor.vue', () => ({
+  default: {
+    name: 'McpEditor',
+    props: ['visible', 'mcpId', 'readonly'],
+    emits: ['update:visible'],
+    setup: (props) => () => h('div', {
+      class: 'stub-mcp-editor',
+      'data-visible': String(!!props.visible),
+      'data-id': props.mcpId ?? '',
+      'data-readonly': String(!!props.readonly)
+    })
+  }
+}))
+vi.mock('@/components/admin/ApiEditor.vue', () => ({
+  default: {
+    name: 'ApiEditor',
+    props: ['visible', 'apiId', 'readonly'],
+    emits: ['update:visible'],
+    setup: (props) => () => h('div', {
+      class: 'stub-api-editor',
+      'data-visible': String(!!props.visible),
+      'data-id': props.apiId ?? '',
+      'data-readonly': String(!!props.readonly)
+    })
+  }
+}))
 vi.mock('@/components/admin/BizSystemEditor.vue', () => ({
   default: {
     name: 'BizSystemEditor',
-    props: ['visible', 'editingId', 'readonly'],
+    props: ['visible', 'bizId', 'readonly'],
     emits: ['update:visible'],
-    setup: (props) => () => h('div', { class: 'biz-viewer', 'data-visible': String(!!props.visible), 'data-id': props.editingId ?? '', 'data-readonly': String(!!props.readonly) })
+    setup: (props) => () => h('div', {
+      class: 'stub-biz-editor',
+      'data-visible': String(!!props.visible),
+      'data-id': props.bizId ?? '',
+      'data-readonly': String(!!props.readonly)
+    })
   }
 }))
 
 const PositionBusinessSystemTab = (await import('@/components/position/PositionBusinessSystemTab.vue')).default
 
-// 已发布业务系统 3 条：biz_2101 已被引用、biz_2102 / biz_2103 未引用
-const PUBLISHED = [
-  { id: 'biz_2101', name: 'CRM 客户系统', icon: '◎', description: '客户资料与跟进记录', loginUrl: 'https://crm.example.com', bizPagesCount: 3, updatedAt: '2026-08-24T14:12:00+08:00' },
-  { id: 'biz_2102', name: 'ERP 进销存', icon: '▤', description: '库存与订单', loginUrl: 'https://erp.example.com', bizPagesCount: 0, updatedAt: '2026-08-20T09:00:00+08:00' },
-  { id: 'biz_2103', name: '工单系统', icon: '✎', description: '售后工单', loginUrl: 'https://ticket.example.com', bizPagesCount: 1, updatedAt: '2026-08-22T09:00:00+08:00' }
+const ALL_MCPS = [
+  { id: 'mcp_1', name: 'CRM MCP', description: '客户数据接口', icon: '⚙', tools: [{}, {}], updatedAt: '2026-08-24T15:40:00+08:00' },
+  { id: 'mcp_2', name: 'ERP MCP', description: 'ERP 数据接口', icon: '▤', tools: [{}], updatedAt: '2026-08-20T09:00:00+08:00' }
+]
+const ALL_APIS = [
+  { id: 'api_1', name: '报销查询', description: '按报销单号查询审批状态', method: 'GET', icon: '', updatedAt: '2026-08-24T15:40:00+08:00' },
+  { id: 'api_2', name: '合同审批', description: '提交合同审批申请', method: 'POST', icon: '', updatedAt: '2026-08-20T09:00:00+08:00' }
+]
+const ALL_BIZS = [
+  { id: 'biz_1', name: 'CRM 系统', description: '客户管理', icon: '◎', loginUrl: 'https://crm.example.com', updatedAt: '2026-08-24T15:40:00+08:00' },
+  { id: 'biz_2', name: 'ERP 系统', description: '进销存管理', icon: '▤', loginUrl: 'https://erp.example.com', updatedAt: '2026-08-20T09:00:00+08:00' }
 ]
 
-const elButton = { name: 'el-button', props: ['type', 'link'], emits: ['click'], template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>' }
-const elInput = { name: 'el-input', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }
-const elDialog = { name: 'el-dialog', props: ['modelValue', 'title', 'width'], template: '<div v-if="modelValue" class="el-dialog" :data-title="title" :data-width="width"><slot /><div class="dlg-footer"><slot name="footer" /></div></div>' }
-// checkbox-group / checkbox：点 checkbox 把 label 加入/移出 group 的 modelValue
+const elButton = { name: 'el-button', props: ['type', 'link', 'size'], emits: ['click'], template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>' }
+const elInput = { name: 'el-input', props: ['modelValue', 'placeholder', 'clearable'], emits: ['update:modelValue'], template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }
+const elDialog = { name: 'el-dialog', props: ['modelValue', 'title', 'width', 'closeOnClickModal'], template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><div class="dlg-footer"><slot name="footer" /></div></div>' }
 const elCheckboxGroup = {
   name: 'el-checkbox-group', props: ['modelValue'], emits: ['update:modelValue'],
   provide() { return { cbxGroup: { get: () => this.modelValue, set: (v) => this.$emit('update:modelValue', v) } } },
@@ -57,10 +108,10 @@ const elCheckbox = {
 const elTable = {
   name: 'el-table', props: ['data', 'emptyText'],
   provide() { return { tableRows: computed(() => this.data) } },
-  template: '<div class="el-table" :data-empty-text="emptyText" :data-count="(data || []).length"><slot /></div>'
+  template: '<div class="el-table" :data-count="(data || []).length"><slot /></div>'
 }
 const elTableColumn = {
-  name: 'el-table-column', props: ['label', 'prop'],
+  name: 'el-table-column', props: ['label', 'prop', 'minWidth', 'width', 'fixed', 'align', 'showOverflowTooltip', 'className', 'labelClassName', 'rowKey'],
   setup(props, { slots }) {
     const tableRows = inject('tableRows', null)
     return () => {
@@ -72,6 +123,7 @@ const elTableColumn = {
     }
   }
 }
+const elTag = { name: 'el-tag', props: ['size', 'type', 'effect'], template: '<span class="el-tag"><slot /></span>' }
 
 let app, container
 async function mount(props = {}) {
@@ -85,132 +137,143 @@ async function mount(props = {}) {
   app.component('el-checkbox', elCheckbox)
   app.component('el-table', elTable)
   app.component('el-table-column', elTableColumn)
+  app.component('el-tag', elTag)
   app.directive('loading', {})
   app.mount(container)
   await flush()
   return container
 }
-const flush = async () => { for (let i = 0; i < 6; i++) { await Promise.resolve(); await nextTick() } }
-const col = (label) => [...container.querySelectorAll('.el-table-column')].find((c) => c.getAttribute('data-label') === label)
-const names = () => [...col('业务系统').querySelectorAll('.cell .biz-name')].map((n) => n.textContent.trim())
-const addBtn = () => [...container.querySelectorAll('.pd-list-head .el-button')].find((b) => b.textContent.includes('新业务系统'))
-const dialog = () => container.querySelector('.el-dialog')
-const dialogItems = () => [...dialog().querySelectorAll('.ref-item')].map((it) => it.querySelector('.ref-item-name').textContent.trim())
+const flush = async () => { for (let i = 0; i < 8; i++) { await Promise.resolve(); await nextTick() } }
+
+const section = (title) => [...container.querySelectorAll('.conn-section')].find(s => s.querySelector('.section-title')?.textContent === title)
+const sectionBtn = (sec, text) => [...sec.querySelectorAll('.el-button')].find(b => b.textContent.trim().includes(text))
+const sectionNames = (sec) => [...sec.querySelectorAll('.el-table-column[data-label="名称"] .cell .mc-name')].map(n => n.textContent.trim())
+const dlg = (title) => [...container.querySelectorAll('.el-dialog')].find(d => d.getAttribute('data-title') === title)
+const dlgItems = (d) => [...d.querySelectorAll('.bind-item .bind-name')].map(n => n.textContent.trim())
+const dlgBtn = (d, text) => [...d.querySelectorAll('.dlg-footer .el-button')].find(b => b.textContent.trim() === text)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  listBizSystems.mockResolvedValue({ list: PUBLISHED, total: PUBLISHED.length })
-  store.basic = { positionId: 5, name: '经营分析岗', businessSystemIds: ['biz_2101'] }
+  listMcp.mockResolvedValue({ list: ALL_MCPS, total: ALL_MCPS.length })
+  listApis.mockResolvedValue({ list: ALL_APIS, total: ALL_APIS.length })
+  listBizSystems.mockResolvedValue({ list: ALL_BIZS, total: ALL_BIZS.length })
+  store.basic = {
+    connectorMcpIds: ['mcp_1'],
+    connectorApiIds: ['api_1'],
+    businessSystemIds: ['biz_1']
+  }
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('业务系统页签 · 引用列表（md §8.1）', () => {
-  it('只列 businessSystemIds 命中的已发布业务系统（图标 + 名称 / 登录地址 / 业务页 / 时间 / 操作）', async () => {
+describe('连接器页签 · 三区域展示', () => {
+  it('三区域标题渲染：岗位私有 MCP / 岗位私有 API / 岗位私有业务系统', async () => {
     await mount()
-    expect(listBizSystems).toHaveBeenCalledWith({ status: 'PUBLISHED' })
-    expect(names()).toEqual(['CRM 客户系统'])
-    expect(col('业务系统').querySelector('.cell .biz-icon').textContent.trim()).toBe('◎')
-    expect(col('登录地址').querySelector('.cell a').getAttribute('href')).toBe('https://crm.example.com')
-    expect(col('业务页').querySelector('.cell').textContent.trim()).toBe('3 个')
-    expect(container.querySelector('.time-sort').textContent).toContain('最近更新时间')
-    expect(container.querySelector('.pd-list-sub').textContent.trim()).toBe('该岗位引用的已发布业务系统列表')
+    expect(section('岗位私有 MCP')).toBeTruthy()
+    expect(section('岗位私有 API')).toBeTruthy()
+    expect(section('岗位私有业务系统')).toBeTruthy()
   })
 
-  it('未引用任何业务系统 → 不取详情、空态文案「暂无引用的业务系统」', async () => {
-    store.basic.businessSystemIds = []
+  it('各区域只展示已绑定条目（各 1 条），未绑定条目不出现', async () => {
     await mount()
+    expect(listMcp).toHaveBeenCalledWith({})
+    expect(listApis).toHaveBeenCalledWith({})
+    expect(listBizSystems).toHaveBeenCalledWith({})
+    expect(sectionNames(section('岗位私有 MCP'))).toEqual(['CRM MCP'])
+    expect(sectionNames(section('岗位私有 API'))).toEqual(['报销查询'])
+    expect(sectionNames(section('岗位私有业务系统'))).toEqual(['CRM 系统'])
+  })
+
+  it('无绑定时各区域不调 API，显空态文案', async () => {
+    store.basic = { connectorMcpIds: [], connectorApiIds: [], businessSystemIds: [] }
+    await mount()
+    expect(listMcp).not.toHaveBeenCalled()
+    expect(listApis).not.toHaveBeenCalled()
     expect(listBizSystems).not.toHaveBeenCalled()
-    expect(container.querySelector('.el-table').getAttribute('data-empty-text')).toBe('暂无引用的业务系统')
-    expect(container.querySelector('.el-table').getAttribute('data-count')).toBe('0')
-  })
-
-  it('行内操作仅【查看】（无移除）；点【查看】→ 打开只读抽屉 BizSystemEditor(readonly, editingId=该行)（md §8.3 / §11）', async () => {
-    await mount()
-    const opBtns = [...col('操作').querySelectorAll('.cell .el-button')].map((b) => b.textContent.trim())
-    expect(opBtns).toEqual(['查看'])
-    expect(container.querySelector('.biz-viewer').getAttribute('data-visible')).toBe('false')
-    col('操作').querySelector('.cell .el-button').click()
-    await flush()
-    const viewer = container.querySelector('.biz-viewer')
-    expect(viewer.getAttribute('data-visible')).toBe('true')
-    expect(viewer.getAttribute('data-id')).toBe('biz_2101')
-    expect(viewer.getAttribute('data-readonly')).toBe('true')
-  })
-
-  it('只读态 → 隐藏【＋ 新业务系统】，列表与【查看】仍在（md §8.2 末条）', async () => {
-    await mount({ isReadonly: true })
-    expect(addBtn()).toBeUndefined()
-    expect(names()).toEqual(['CRM 客户系统'])
-    expect([...col('操作').querySelectorAll('.cell .el-button')].map((b) => b.textContent.trim())).toEqual(['查看'])
+    expect(section('岗位私有 MCP').textContent).toContain('暂无绑定的私有 MCP')
+    expect(section('岗位私有 API').textContent).toContain('暂无绑定的私有 API')
+    expect(section('岗位私有业务系统').textContent).toContain('暂无绑定的业务系统')
   })
 })
 
-describe('业务系统页签 · 引用弹窗（md §8.2）', () => {
-  it('点【＋ 新业务系统】→ 弹窗「引用业务系统」700px，只列已发布且未被引用的 2 条（含图标 / 名称 / 描述）+ 搜索框', async () => {
+describe('连接器页签 · MCP 区域操作', () => {
+  it('【查看】→ McpEditor 以 readonly=true、mcpId=该行 id 打开', async () => {
     await mount()
-    addBtn().click()
+    expect(container.querySelector('.stub-mcp-editor').getAttribute('data-visible')).toBe('false')
+    sectionBtn(section('岗位私有 MCP'), '查看').click()
     await flush()
-    expect(dialog()).toBeTruthy()
-    expect(dialog().getAttribute('data-title')).toBe('引用业务系统')
-    expect(dialog().getAttribute('data-width')).toBe('700px')
-    expect(dialogItems()).toEqual(['ERP 进销存', '工单系统'])
-    expect(dialog().textContent).not.toContain('CRM 客户系统')
-    expect(dialog().querySelector('.ref-item .ref-item-desc').textContent.trim()).toBe('库存与订单')
-    expect(dialog().querySelector('.el-input').getAttribute('placeholder')).toBe('搜索业务系统名称')
-    expect([...dialog().querySelectorAll('.dlg-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '确认引用'])
+    const editor = container.querySelector('.stub-mcp-editor')
+    expect(editor.getAttribute('data-visible')).toBe('true')
+    expect(editor.getAttribute('data-id')).toBe('mcp_1')
+    expect(editor.getAttribute('data-readonly')).toBe('true')
   })
 
-  it('弹窗搜索按名称过滤：输「工单」只剩工单系统；无命中显「未找到匹配的业务系统」', async () => {
-    await mount()
-    addBtn().click()
-    await flush()
-    const search = dialog().querySelector('.el-input')
-    search.value = '工单'
-    search.dispatchEvent(new Event('input'))
-    await flush()
-    expect(dialogItems()).toEqual(['工单系统'])
-    search.value = '不存在'
-    search.dispatchEvent(new Event('input'))
-    await flush()
-    expect(dialogItems()).toEqual([])
-    expect(dialog().querySelector('.ref-empty').textContent.trim()).toBe('未找到匹配的业务系统')
-  })
-
-  it('勾选 ERP 后【确认引用】→ businessSystemIds 追加 biz_2102 + toast「引用成功」+ 弹窗关 + 列表多出 ERP 行', async () => {
+  it('【移除】→ ElMessageBox 确认后 store 移除该 id + toast「已移除」', async () => {
     const { ElMessage } = await import('element-plus')
     await mount()
-    addBtn().click()
+    sectionBtn(section('岗位私有 MCP'), '移除').click()
     await flush()
-    dialog().querySelectorAll('.ref-item .el-checkbox')[0].click()
-    await flush()
-    expect(dialog().querySelectorAll('.ref-item .el-checkbox')[0].getAttribute('data-checked')).toBe('true')
-    ;[...dialog().querySelectorAll('.dlg-footer .el-button')].find((b) => b.textContent.trim() === '确认引用').click()
-    await flush()
-    expect(store.basic.businessSystemIds).toEqual(['biz_2101', 'biz_2102'])
-    expect(ElMessage.success).toHaveBeenCalledWith('引用成功')
-    expect(dialog()).toBeNull()
-    // 列表重拉后按最近更新时间倒序：CRM(08-24) 在前、ERP(08-20) 在后
-    expect(names()).toEqual(['CRM 客户系统', 'ERP 进销存'])
+    expect(store.basic.connectorMcpIds).toEqual([])
+    expect(ElMessage.success).toHaveBeenCalledWith('已移除')
   })
 
-  it('未勾选直接【确认引用】→ warning「请选择要引用的业务系统」，不写 store、弹窗不关', async () => {
+  it('【＋ 新增】→ 弹窗「绑定私有 MCP」，只列未绑定 MCP（mcp_2），搜索「ERP」保留、「不存在」清空并显空态', async () => {
+    await mount()
+    sectionBtn(section('岗位私有 MCP'), '新增').click()
+    await flush()
+    const d = dlg('绑定私有 MCP')
+    expect(d).toBeTruthy()
+    expect(dlgItems(d)).toEqual(['ERP MCP'])
+    const searchInput = d.querySelector('.el-input')
+    searchInput.value = 'ERP'
+    searchInput.dispatchEvent(new Event('input'))
+    await flush()
+    expect(dlgItems(d)).toEqual(['ERP MCP'])
+    searchInput.value = '不存在'
+    searchInput.dispatchEvent(new Event('input'))
+    await flush()
+    expect(dlgItems(d)).toEqual([])
+    expect(d.querySelector('.bind-empty').textContent).toContain('未找到匹配的 MCP')
+  })
+
+  it('弹窗勾选 ERP MCP 后【确认绑定】→ store 追加 mcp_2 + toast「绑定成功」+ 弹窗关', async () => {
     const { ElMessage } = await import('element-plus')
     await mount()
-    addBtn().click()
+    sectionBtn(section('岗位私有 MCP'), '新增').click()
     await flush()
-    ;[...dialog().querySelectorAll('.dlg-footer .el-button')].find((b) => b.textContent.trim() === '确认引用').click()
+    const d = dlg('绑定私有 MCP')
+    // 重置搜索确保列表显示，点击第一个 checkbox（ERP MCP）
+    d.querySelector('.el-checkbox').click()
     await flush()
-    expect(ElMessage.warning).toHaveBeenCalledWith('请选择要引用的业务系统')
-    expect(store.basic.businessSystemIds).toEqual(['biz_2101'])
-    expect(dialog()).toBeTruthy()
+    expect(d.querySelector('.el-checkbox').getAttribute('data-checked')).toBe('true')
+    dlgBtn(d, '确认绑定').click()
+    await flush()
+    expect(store.basic.connectorMcpIds).toEqual(['mcp_1', 'mcp_2'])
+    expect(ElMessage.success).toHaveBeenCalledWith('绑定成功')
+    expect(dlg('绑定私有 MCP')).toBeUndefined()
   })
 
-  it('全部已引用 → 弹窗空态「暂无可引用的业务系统」', async () => {
-    store.basic.businessSystemIds = ['biz_2101', 'biz_2102', 'biz_2103']
+  it('未勾选直接【确认绑定】→ warning「请选择要绑定的 MCP」，不改 store，弹窗不关', async () => {
+    const { ElMessage } = await import('element-plus')
     await mount()
-    addBtn().click()
+    sectionBtn(section('岗位私有 MCP'), '新增').click()
     await flush()
-    expect(dialogItems()).toEqual([])
-    expect(dialog().querySelector('.ref-empty').textContent.trim()).toBe('暂无可引用的业务系统')
+    const d = dlg('绑定私有 MCP')
+    dlgBtn(d, '确认绑定').click()
+    await flush()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请选择要绑定的 MCP')
+    expect(store.basic.connectorMcpIds).toEqual(['mcp_1'])
+    expect(dlg('绑定私有 MCP')).toBeTruthy()
+  })
+})
+
+describe('连接器页签 · 只读态', () => {
+  it('只读态：三区域均无【＋ 新增】和【移除】按钮，【查看】仍保留', async () => {
+    await mount({ isReadonly: true })
+    for (const title of ['岗位私有 MCP', '岗位私有 API', '岗位私有业务系统']) {
+      const sec = section(title)
+      expect(sectionBtn(sec, '新增')).toBeUndefined()
+      expect(sectionBtn(sec, '移除')).toBeUndefined()
+      expect(sectionBtn(sec, '查看')).toBeTruthy()
+    }
   })
 })

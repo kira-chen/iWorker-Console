@@ -35,10 +35,11 @@ import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
 import { TRI_STATE_META } from '@/utils/publishTriState'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 // 输入区（暂存）与已应用条件分离：点【查询】才生效（与 API 连接器页同口径）
-const query = reactive({ keyword: '', state: '' })
-const applied = reactive({ keyword: '', state: '' })
+const query = reactive({ keyword: '', type: '', state: '' })
+const applied = reactive({ keyword: '', type: '', state: '' })
 
 const editorVisible = ref(false)
 const editingId = ref(null)
@@ -117,14 +118,29 @@ function toggleSort() {
 // 点【查询】/ 回车：把输入区条件应用后刷新（回第 1 页）
 function search() {
   applied.keyword = query.keyword.trim()
+  applied.type = query.type
   applied.state = query.state
   list.search()
+}
+
+function onTypeChange() {
+  applied.type = query.type
+  fetchList()
+}
+
+function onStateChange() {
+  applied.state = query.state
+  fetchList()
 }
 
 // 深链打开查看抽屉（2026-09-04 PRD-20260903 对齐：岗位详情页「业务系统」页签点名称跳转
 // AdminConnector?tab=bizsystem&view=<id> → 本页消费 query.view，进入即只读打开该业务系统详情）。
 const route = useRoute()
 onMounted(async () => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
   await fetchList()
   const viewId = route.query.view
   if (viewId) {
@@ -256,7 +272,10 @@ async function remove(row) {
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter">
+      <el-select v-model="query.type" placeholder="全部连接器类型" clearable class="lt-filter" @change="onTypeChange">
+        <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+      </el-select>
+      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="onStateChange">
         <el-option v-for="o in STATE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-button @click="search">查询</el-button>
@@ -308,6 +327,14 @@ async function remove(row) {
           </template>
         </el-table-column>
 
+        <!-- 连接器类型 -->
+        <el-table-column label="连接器类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <span v-if="row.type">{{ CONNECTOR_TYPE_LABEL[row.type] || row.type }}</span>
+            <span v-else class="cell-na">—</span>
+          </template>
+        </el-table-column>
+
         <!-- 登录地址：长 URL 溢出省略，悬浮看全 -->
         <el-table-column label="登录地址" :min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
@@ -316,17 +343,31 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 引用情况（B3）：N 个技能引用（悬停技能名清单，点击弹窗）/ 暂无引用 -->
+        <!-- 引用情况：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 — -->
         <el-table-column label="引用情况" :min-width="110">
           <template #default="{ row }">
-            <el-button
-              v-if="row.referencedBySkillCount > 0"
-              link
-              type="primary"
-              :title="(row.refs || []).join('、')"
-              @click="openRefs(row)"
-            >{{ row.referencedBySkillCount }} 个技能引用</el-button>
-            <span v-else class="cell-na">暂无引用</span>
+            <template v-if="row.type === CONNECTOR_TYPE.POSITION">
+              <el-button
+                v-if="row.positionCount > 0"
+                link
+                type="primary"
+                @click="openRefs(row)"
+              >{{ row.positionCount }}个岗位引用</el-button>
+              <span v-else class="cell-na">暂无引用</span>
+            </template>
+            <template v-else-if="row.type === CONNECTOR_TYPE.PLATFORM">
+              <el-button
+                v-if="row.referencedBySkillCount > 0"
+                link
+                type="primary"
+                :title="(row.refs || []).join('、')"
+                @click="openRefs(row)"
+              >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+              <span v-else class="cell-na">暂无引用</span>
+            </template>
+            <template v-else>
+              <span class="cell-na">—</span>
+            </template>
           </template>
         </el-table-column>
 

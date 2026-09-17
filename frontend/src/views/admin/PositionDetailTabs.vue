@@ -46,7 +46,7 @@
  *   跨层接线走 provide：pdActiveTab（知识页签懒加载）/ pdEqShowErrors（示例问题标红）/
  *   pdEnsurePersisted（新建态先落库）。
  */
-import { ref, computed, watch, provide, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, provide, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
@@ -75,10 +75,6 @@ import PositionIntakeTab from '@/components/position/PositionIntakeTab.vue'
 import PositionKnowledgeTab from '@/components/position/PositionKnowledgeTab.vue'
 import PositionAgentSkillTab from '@/components/position/PositionAgentSkillTab.vue'
 import PositionBusinessSystemTab from '@/components/position/PositionBusinessSystemTab.vue'
-// 效果测试页签（2026-09-10「选 C · 9 页签全留」裁决后随页签一并恢复）：
-// 开关关闭时只渲染「开发中」占位，异步加载避免把测试台打进主 chunk。
-import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
-const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -99,8 +95,6 @@ const eqShowErrors = ref(false)
 provide('pdActiveTab', activeTab)
 provide('pdEqShowErrors', eqShowErrors)
 provide('pdEnsurePersisted', ensurePersisted)
-
-const testStageOpen = ref(false)
 
 /* ---------- 加载 ---------- */
 const intakeErrors = ref({})
@@ -377,7 +371,6 @@ onBeforeRouteLeave(async () => {
   // 同页其它 append-to-body 浮层一并复位，避免遮罩在卸载时残留闪烁（CR 一致性）。
   // 注：这两个 ref 在下方声明，回调在导航时（setup 完成后）才执行，闭包引用安全。
   publishDialogVisible.value = false
-  testStageOpen.value = false
 })
 
 /* 技能从 Agent 移除（onDeleteSkill）已随拆分下沉 PositionAgentSkillTab.vue（2026-09-10 病 A 拆分） */
@@ -550,7 +543,7 @@ function backToList() {
         </div>
         <div v-else-if="store.loading" class="board-state"></div>
 
-        <el-tabs v-else-if="store.basic" v-model="activeTab" :class="['pd-tabs', { 'tab-flush': ['tasks', 'dataTable', 'effectTest'].includes(activeTab) }]">
+        <el-tabs v-else-if="store.basic" v-model="activeTab" :class="['pd-tabs', { 'tab-flush': ['tasks', 'dataTable'].includes(activeTab) }]">
           <!-- ① 人格（md §2 六区块；卡片化分区照交互原型岗位详情页最终覆写态——每区块=独立卡片
                （头：标题+必填星+弱色说明，体：内容+底部 hint），区块顺序 图标→描述→领用页文案→示例问题→SOP→人格） -->
           <el-tab-pane label="人格" name="persona">
@@ -609,31 +602,9 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ⑦ 业务系统（2026-09-10 恢复：展示岗位引用的已发布业务系统列表） -->
-          <el-tab-pane label="业务系统" name="businessSystems">
+          <!-- ⑦ 连接器（展示岗位绑定的私有 MCP / 私有 API / 业务系统） -->
+          <el-tab-pane label="连接器" name="businessSystems">
             <PositionBusinessSystemTab :is-readonly="isReadonly" />
-          </el-tab-pane>
-
-          <!-- 「版本」页签已按 2026-09-09 负责人裁决移除——版本管理的正式入口是岗位列表页
-               【版本管理】按钮（md §3.7），详情页此页签属重复入口，删除不影响版本管理链路。 -->
-
-          <!-- 「运行」「效果测试」：2026-09-10 一度被删，同日负责人裁决「选 C · 9 页签全留」后恢复。
-               二者按 2026-09-09 负责人指示保持空置（占位不实现），勿再当作冗余删除。 -->
-          <el-tab-pane label="运行" name="runtime">
-            <div class="pd-pane"><div class="pd-empty pd-dev">🚧 运行 · 开发中</div></div>
-          </el-tab-pane>
-
-          <el-tab-pane label="效果测试" name="effectTest">
-            <div class="pd-pane pd-pane--flush">
-              <EffectTestStage
-                v-if="EFFECT_TEST_ENABLED"
-                mode="position"
-                :position="{ basic: store.basic, agents: store.agents, tableCount: dtTableCount }"
-                :position-id="store.positionId"
-                embedded
-              />
-              <div v-else class="pd-empty pd-dev">🚧 效果测试 · 开发中</div>
-            </div>
           </el-tab-pane>
 
         </el-tabs>

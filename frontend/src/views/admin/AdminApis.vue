@@ -16,6 +16,7 @@
  *   搜索/筛选后只展示存在匹配 API 的分组，无筛选时展示全部分组（含空分组）。
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listApis,
@@ -32,6 +33,7 @@ import { fmtTime } from '@/utils/docMeta'
 import { TRI_STATE_META } from '@/utils/publishTriState'
 import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
@@ -48,8 +50,8 @@ const loadError = ref(false)
 const providerSystems = ref([]) // [{ id, name, description, apiCount }]
 const apis = ref([]) // 当前条件下的 API（含 providerSystemId/providerSystemName），客户端按分组归并
 // 输入区（暂存）与已应用条件分离：点【查询】才生效（PRD §一.2）
-const query = reactive({ keyword: '', state: '' })
-const applied = reactive({ keyword: '', state: '' })
+const query = reactive({ keyword: '', type: '', state: '' })
+const applied = reactive({ keyword: '', type: '', state: '' })
 
 // 折叠态：默认全部展开；记录被折叠的分组 id 集合
 const collapsed = ref(new Set())
@@ -231,11 +233,29 @@ async function fetchAll() {
 // 点【查询】/ 回车：把输入区条件应用后刷新（PRD §一.2）
 function search() {
   applied.keyword = query.keyword.trim()
+  applied.type = query.type
   applied.state = query.state
   fetchAll()
 }
 
-onMounted(fetchAll)
+function onTypeChange() {
+  applied.type = query.type
+  fetchAll()
+}
+
+function onStateChange() {
+  applied.state = query.state
+  fetchAll()
+}
+
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
+  fetchAll()
+})
 
 function toggleCollapse(psId) {
   const next = new Set(collapsed.value)
@@ -431,7 +451,10 @@ async function removeApi(row) {
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter">
+      <el-select v-model="query.type" placeholder="全部连接器类型" clearable class="lt-filter" @change="onTypeChange">
+        <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+      </el-select>
+      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="onStateChange">
         <el-option v-for="o in STATE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-button @click="search">查询</el-button>
@@ -544,6 +567,14 @@ async function removeApi(row) {
                 </template>
               </el-table-column>
 
+              <!-- 连接器类型 -->
+              <el-table-column label="连接器类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <span v-if="row.type">{{ CONNECTOR_TYPE_LABEL[row.type] || row.type }}</span>
+                  <span v-else class="cell-na">—</span>
+                </template>
+              </el-table-column>
+
               <!-- 请求方式：GET/POST/PUT/DELETE/PATCH -->
               <el-table-column label="请求方式" :width="COL.TAG - 4" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
@@ -558,16 +589,30 @@ async function removeApi(row) {
                 </template>
               </el-table-column>
 
-              <!-- 引用情况：N 个技能引用（点击弹引用清单）/ 暂无引用 -->
+              <!-- 引用情况：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 — -->
               <el-table-column label="引用情况" :min-width="110">
                 <template #default="{ row }">
-                  <el-button
-                    v-if="row.referencedBySkillCount > 0"
-                    link
-                    type="primary"
-                    @click="openRefs(row)"
-                  >{{ row.referencedBySkillCount }} 个技能引用</el-button>
-                  <span v-else class="cell-na">暂无引用</span>
+                  <template v-if="row.type === CONNECTOR_TYPE.POSITION">
+                    <el-button
+                      v-if="row.positionCount > 0"
+                      link
+                      type="primary"
+                      @click="openRefs(row)"
+                    >{{ row.positionCount }}个岗位引用</el-button>
+                    <span v-else class="cell-na">暂无引用</span>
+                  </template>
+                  <template v-else-if="row.type === CONNECTOR_TYPE.PLATFORM">
+                    <el-button
+                      v-if="row.referencedBySkillCount > 0"
+                      link
+                      type="primary"
+                      @click="openRefs(row)"
+                    >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+                    <span v-else class="cell-na">暂无引用</span>
+                  </template>
+                  <template v-else>
+                    <span class="cell-na">—</span>
+                  </template>
                 </template>
               </el-table-column>
 

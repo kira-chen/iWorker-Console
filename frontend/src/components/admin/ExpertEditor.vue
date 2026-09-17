@@ -10,7 +10,7 @@
  * - 基本信息：专家名 / 分类（必选，8 类同源字段字典）/ 图标（必填，沿用 IconPickerPopover——2026-09-02
  *   起组件按 PRD 图标统一规则升级 5MB/方形裁剪流，本消费方零改动）/ 简介（maxlength 2000，Z3 拍板
  *   不写「最多 200 字」）/ 职责描述（Markdown，2000 字）。
- * - 「专家帮你做（示例问题）」：必填固定 3 条（每条 60 字）+ 区标题右侧【AI 生成】（Z2 拍板：
+ * - 「专家帮你做（示例问题）」：必填固定 3 条（每条 300 字，一览表示例类统一规则）+ 区标题右侧【AI 生成】（Z2 拍板：
  *   一次生成填满 3 行，本地模板随机 + toast，不走接口）。
  * - 市场技能引用**内嵌**（不再弹选择器）：搜索（按名称/描述/分类）+「已选择 X 个 · 共 Y 个市场技能」+
  *   卡片勾选 + 默认收起前 2 个、【展开更多（N）】；新建态即可勾选（选择随 create/update 一次性落库，
@@ -71,6 +71,7 @@ import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { stateMeta as kbStateMeta, sourcesText as kbSourcesText, hasUploadSource as kbHasUploadSource } from '@/utils/knowledgeBaseMeta'
 import { useAiLiveGenerate, expertQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
+import { EXPERT_TYPE, EXPERT_TYPE_LABEL, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 
@@ -99,6 +100,21 @@ const detail = ref(null)
 // 专家分类选项：同源字段字典（8 类），不本组件硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
 
+// 已发布岗位列表（用于岗位私有类型绑定）
+const publishedPositions = ref([])
+
+async function loadPublishedPositions() {
+  try {
+    // 获取已发布岗位列表
+    const { default: { listPositions } } = await import('@/api/position')
+    const res = await listPositions({ status: 'PUBLISHED' })
+    publishedPositions.value = res.list || []
+  } catch (err) {
+    console.warn('加载已发布岗位失败:', err)
+    publishedPositions.value = []
+  }
+}
+
 /* ==================== 背景色（2026-09-04 新增必填字段，原型 expert-background-color 覆写） ====================
  * 固定 7 色板单选（不提供自定义取色），默认 #DCF5E4；选色实时同步图标预览背景 +
  * 专家列表头像按行背景色着色（列表侧见 AdminExperts.vue）。 */
@@ -110,6 +126,8 @@ const safeBackground = (v) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(
 const form = reactive({
   name: '',
   category: '',
+  type: '',
+  positionId: null,
   avatar: '',
   backgroundColor: BACKGROUND_FALLBACK,
   intro: '',
@@ -118,7 +136,7 @@ const form = reactive({
   skillIds: []
 })
 
-const errors = reactive({ name: '', category: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
+const errors = reactive({ name: '', category: '', type: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
 
 function clearErrors() {
   for (const k of Object.keys(errors)) errors[k] = ''
@@ -127,6 +145,8 @@ function clearErrors() {
 function resetForm(d) {
   form.name = d?.name || ''
   form.category = d?.category || ''
+  form.type = d?.type || ''
+  form.positionId = d?.positionId || null
   form.avatar = d?.avatar || ''
   form.backgroundColor = safeBackground(d?.backgroundColor)
   form.intro = d?.intro || ''
@@ -318,6 +338,7 @@ function testKnowledge(row) {
 async function load() {
   loadCandidates()
   loadKnowledge()
+  loadPublishedPositions()
   if (!isEdit.value) {
     detail.value = null
     resetForm(null)
@@ -354,6 +375,14 @@ function validate() {
   }
   if (!String(form.category || '').trim()) {
     errors.category = '请选择专家分类'
+    ok = false
+  }
+  if (!String(form.type || '').trim()) {
+    errors.type = '请选择专家类型'
+    ok = false
+  }
+  if (form.type === EXPERT_TYPE.POSITION && !form.positionId) {
+    errors.positionId = '岗位私有专家必须绑定岗位'
     ok = false
   }
   if (!String(form.avatar || '').trim()) {
@@ -394,6 +423,8 @@ function buildPayload() {
   return {
     name: String(form.name).trim(),
     category: form.category,
+    type: form.type,
+    positionId: form.type === EXPERT_TYPE.POSITION ? form.positionId : null,
     avatar: form.avatar,
     backgroundColor: safeBackground(form.backgroundColor),
     intro: form.intro,
@@ -574,6 +605,44 @@ const metaItems = computed(() => {
                 <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
+            <!-- 类型和所属岗位同行，宽度与名称框一致 -->
+            <div class="ee-form-row">
+              <el-form-item label="专家类型" required :error="errors.type" class="ee-row-item">
+                <el-select
+                  v-model="form.type"
+                  placeholder="请选择专家类型"
+                  :disabled="disabled || isEdit"
+                  style="width: 100%"
+                  @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionId = null"
+                >
+                  <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+                </el-select>
+                <div v-if="isEdit" class="ee-type-hint">专家类型创建后不可更改</div>
+              </el-form-item>
+              <el-form-item
+                v-if="form.type === EXPERT_TYPE.POSITION"
+                label="所属岗位"
+                :error="errors.positionId"
+                class="ee-row-item"
+              >
+                <el-select
+                  v-model="form.positionId"
+                  placeholder="选择已发布的岗位"
+                  clearable
+                  :disabled="disabled || isEdit"
+                  style="width: 100%"
+                  @change="errors.positionId = ''"
+                >
+                  <el-option
+                    v-for="pos in publishedPositions"
+                    :key="pos.id"
+                    :label="pos.name"
+                    :value="pos.id"
+                  />
+                </el-select>
+                <div v-if="isEdit" class="ee-type-hint">所属岗位创建后不可更改</div>
+              </el-form-item>
+            </div>
             <el-form-item label="图标" required :error="errors.avatar">
               <!-- 图标行（E2/C5，原型 L1331 decorateEditor 后的 `.icon-row.compact-icon-row`）：
                    预览块 + 并排【从图标库选择】【上传图标】两枚 plain 按钮，链路仍是 IconPickerPopover
@@ -674,7 +743,7 @@ const metaItems = computed(() => {
                 <el-input
                   :ref="(el) => setQuestionRef(el, i)"
                   v-model="form.exampleQuestions[i]"
-                  maxlength="60"
+                  maxlength="300"
                   :disabled="disabled"
                   :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
                   :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"
@@ -841,6 +910,14 @@ const metaItems = computed(() => {
   font-weight: var(--fw-regular, 400);
   white-space: nowrap;
 }
+
+/* 专家类型提示文本 */
+.ee-type-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-3, #86909c);
+  line-height: 18px;
+}
 /* 子分区标题（.section-title 在卡内是贴边灰底条，子分区里要退回普通标题） */
 .ee-sub-title {
   display: flex;
@@ -882,8 +959,23 @@ const metaItems = computed(() => {
 .ee-full {
   grid-column: 1 / -1;
 }
+
+/* 类型和所属岗位同行布局 */
+.ee-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.ee-form-row .ee-row-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
 @media (max-width: 620px) {
   .ee-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .ee-form-row {
     grid-template-columns: 1fr;
   }
 }

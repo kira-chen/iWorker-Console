@@ -110,7 +110,7 @@ export const BIZ_URL_MAX = 1024 // URL ≤1024（§2.9）
 export const BIZ_PAGE_NAME_MAX = 20 // 业务页名称 ≤20
 export const BIZ_PAGE_DESC_MAX = 100 // 业务页描述 ≤100（行级描述沿用旧上限）
 export const BIZ_PAGES_MAX = 20 // 业务页条目数 ≤20（选项类上限）
-export const BIZ_QUESTION_MAX = 60 // 示例问题每条 ≤60（BQ4 指示）
+export const BIZ_QUESTION_MAX = 300 // 示例问题每条 ≤300（一览表示例类统一规则）
 
 /**
  * 业务页行是否「完全空白」（2026-09-09 PRD 复核轮 · G4/A15，Q176/Q342 二轮决策「自动丢弃空行」）。

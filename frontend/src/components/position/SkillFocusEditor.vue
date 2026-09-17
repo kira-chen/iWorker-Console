@@ -43,6 +43,7 @@ import { PUBLISH_READY_TIP, publishDisabledTitle } from '@/api/unifiedSkill'
 import { useAiLiveGenerate, skillExampleQuestion } from '@/utils/aiLiveGenerate'
 import SaveStatusIndicator from '@/components/position/SaveStatusIndicator.vue'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
+import { SKILL_TYPE } from '@/api/unifiedSkill'
 import {
   ENTRY_PATH,
   fileIconName,
@@ -759,6 +760,14 @@ onBeforeUnmount(() => {
         <el-icon class="eh-name-pen" title="可编辑技能名"><EditPen /></el-icon>
       </span>
       <span v-else class="eh-name-ro" :title="skillName">{{ skillName || '未命名技能' }}</span>
+      <!-- 所属岗位标签（岗位私有类型时显示） -->
+      <StatusTag
+        v-if="skill?.type === SKILL_TYPE.POSITION && positionName"
+        type="info"
+        class="eh-position-tag"
+      >
+        {{ positionName }}
+      </StatusTag>
       <!-- 类别只读标签：全页唯一一处（面包屑/信息条均无） -->
       <el-tooltip
         v-if="hasCategory(skill?.category)"
@@ -927,7 +936,7 @@ onBeforeUnmount(() => {
           v-if="!ro"
           v-model="exampleQuestion"
           class="ib-input"
-          :maxlength="60"
+          :maxlength="300"
           :placeholder="adminContext
             ? '输入 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'
             : '选填：填 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'"
@@ -1372,6 +1381,12 @@ onBeforeUnmount(() => {
 .eh-name-wrap:hover .eh-name-pen,
 .eh-name-wrap:focus-within .eh-name-pen {
   opacity: 1;
+}
+/* 所属岗位标签：技能名后显示 */
+.eh-position-tag {
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+  cursor: default;
 }
 .eh-category {
   flex-shrink: 0;

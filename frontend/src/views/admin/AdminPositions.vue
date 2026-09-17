@@ -20,7 +20,7 @@
  *   （新建小弹窗→工作台整页，Q4 不拆不删）。
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick, defineAsyncComponent } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { confirmDialog, alertDialog } from '@/composables/useConfirm'
 import { Search } from '@element-plus/icons-vue'
@@ -66,6 +66,7 @@ import '@/assets/admin-dialog.css'
 // 同时保持现有测试 import 图不变（与 AdminSkills / PositionWorkbench 同款做法）。
 const EffectTestStage = defineAsyncComponent(() => import('@/components/test/EffectTestStage.vue'))
 
+const route = useRoute()
 const router = useRouter()
 
 // sort：最近更新时间排序方向（原型 positionSort，默认降序）
@@ -100,7 +101,10 @@ watch(loading, (v) => {
   else showLoading.value = false
 })
 onBeforeUnmount(() => clearTimeout(loadingTimer))
-onMounted(() => fetchList())
+onMounted(() => {
+  if (route.query.keyword) query.keyword = route.query.keyword
+  fetchList()
+})
 
 // 状态筛选选项：三态展示口径（原型 positionStatus 下拉：全部状态/未发布/审核中/已发布）。
 const STATE_OPTIONS = [

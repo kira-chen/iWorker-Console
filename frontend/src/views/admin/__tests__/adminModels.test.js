@@ -28,6 +28,7 @@ const api = {
   setDefaultModel: vi.fn()
 }
 vi.mock('@/api/adminModel', () => api)
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }

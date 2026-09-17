@@ -129,16 +129,15 @@ export function exampleQuestionSoftHint(text) {
 }
 
 /* ============================ 人格页签必填要素（2026-09-04 PRD-20260903 对齐） ============================ */
-// 岗位描述：必填，最多 500 字（2026-09-08 决议第 5 项：统一 500——人格页签 / 新建弹窗 / mock 校验三处同口径；
-// 早先「统一 2000」的中间决议已被最终决议推翻，勿再改回）。
-export const DESCRIPTION_MAX_LEN = 500
+// 岗位描述：必填，最多 2000 字（一览表描述类统一规则；2026-09-16 与其余描述类字段对齐）。
+export const DESCRIPTION_MAX_LEN = 2000
 // 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.3 改名）：动态文本列表，
-// 可选、不参与发布阻断；最多 6 条、每条 100 字。底层字段仍为 claimDescriptions。
+// 可选、不参与发布阻断；最多 6 条、每条 300 字（一览表示例类统一规则）。底层字段仍为 claimDescriptions。
 export const CLAIM_NOTE_MAX = 6
-export const CLAIM_NOTE_LEN = 100
-// 示例问题：固定 3 条，每条不超过 60 字（原 N4「推荐问题 4 条」口径由本组替代）。
+export const CLAIM_NOTE_LEN = 300
+// 示例问题：固定 3 条，每条不超过 300 字（一览表示例类统一规则）。
 export const EXAMPLE_Q_COUNT = 3
-export const EXAMPLE_Q_MAX_LEN = 60
+export const EXAMPLE_Q_MAX_LEN = 300
 // 岗位 SOP：必填，最多 4000 字。
 export const SOP_MAX_LEN = 4000
 

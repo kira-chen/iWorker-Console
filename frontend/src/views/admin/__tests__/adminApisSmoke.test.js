@@ -14,6 +14,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *  - 搜索占位「搜索 API 名称或描述」+【新建服务提供系统】（md §一.1 L10/L13）；
  *  - 分组头系统名 / 「N 个 API」+ 组内 el-table 行；分页条（站内统一 .list-pager）「共 N 个数据」（md §二.1 L44）。
  */
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+
 const listApis = vi.fn()
 const listProviderSystems = vi.fn()
 vi.mock('@/api/apiConnector', () => ({

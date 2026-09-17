@@ -453,6 +453,9 @@ async function loadSkill(skillId) {
       category: data.category ?? null,
       // N3 展示分类引用 id（可空=未分类）。并入手动「保存配置」（2026-07-08：不再选即存）。
       displayCategoryId: data.displayCategoryId ?? null,
+      // 技能类型与所属岗位（岗位私有类型显示标签用）
+      type: data.type || pageSkillType.value,
+      positionId: data.positionId ?? null,
       // 只读元信息（2026-09-01 清单22：编辑区底部元信息条）
       createdAt: data.createdAt || '',
       updatedAt: data.updatedAt || '',
@@ -590,7 +593,7 @@ async function saveConfig() {
   if (!s || s.skillId == null) return
   const id = s.skillId
   // 2026-09-01 保存门（清单20 对齐原型 skill-editor-save 校验链）：
-  // 名称必填 ≤64 / 分类必选 / 描述必填 ≤2000 / 示例问题必填 ≤60（业务系统技能沿用旧口径豁免分类）。
+  // 名称必填 ≤64 / 分类必选 / 描述必填 ≤2000 / 示例问题必填 ≤300（一览表示例类统一规则）。
   const nameText = String(s.name || '').trim()
   if (!nameText || nameText.length > 64) {
     ElMessage.warning('请填写不超过 64 个字符的技能名称')
@@ -607,8 +610,8 @@ async function saveConfig() {
     return
   }
   const exampleText = String(s.exampleQuestion || '').trim()
-  if (!isBizSystem.value && (!exampleText || exampleText.length > 60)) {
-    ElMessage.warning('请填写不超过 60 个字符的示例问题')
+  if (!isBizSystem.value && (!exampleText || exampleText.length > 300)) {
+    ElMessage.warning('请填写不超过 300 个字符的示例问题')
     return
   }
   const catChanged = (s.displayCategoryId ?? null) !== savedConfig.displayCategoryId

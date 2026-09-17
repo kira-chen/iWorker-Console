@@ -18,6 +18,7 @@
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -30,6 +31,7 @@ import { resolveDisplayStatus } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
 import { explainMcpError } from '@/utils/mcpVerify'
 import { mcpListStateMeta } from '@/utils/marketMeta'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
@@ -50,8 +52,8 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 //   → 只在点【查询】/ 回车时才进 applied；原 300ms 防抖自动刷新已删除。
 // - state：md §一.3 L26「切换或清空状态筛选后，页面按照当前条件刷新，同时回到第 1 页」
 //   → 切换即刷新，但用的是 applied.keyword（未点查询的输入不生效），两条口径互不打架。
-const query = reactive({ keyword: '', state: '' })
-const applied = reactive({ keyword: '', state: '', sort: 'desc' })
+const query = reactive({ keyword: '', type: '', state: '' })
+const applied = reactive({ keyword: '', type: '', state: '', sort: 'desc' })
 
 // 排序方向箭头
 const sortArrow = computed(() => applied.sort === 'desc' ? '↓' : '↑')
@@ -263,6 +265,7 @@ function reload() {
  */
 function search() {
   applied.keyword = query.keyword.trim()
+  applied.type = query.type
   applied.state = query.state
   return reload()
 }
@@ -273,7 +276,20 @@ function onStateChange() {
   return reload()
 }
 
-onMounted(fetchList)
+/** 类型筛选切换：切换或清空即按当前条件刷新并回第 1 页。 */
+function onTypeChange() {
+  applied.type = query.type
+  return reload()
+}
+
+const route = useRoute()
+onMounted(() => {
+  if (route.query.keyword) {
+    query.keyword = route.query.keyword
+    applied.keyword = route.query.keyword
+  }
+  fetchList()
+})
 
 function openCreate() {
   editingId.value = null
@@ -453,6 +469,10 @@ async function remove(row) {
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
+      <!-- 连接器类型筛选：切换即按当前条件刷新并回第 1 页 -->
+      <el-select v-model="query.type" placeholder="全部连接器类型" clearable class="lt-filter" @change="onTypeChange">
+        <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+      </el-select>
       <!-- 状态筛选：切换即按当前条件刷新并回第 1 页（md §一.3 L26） -->
       <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="onStateChange">
         <el-option v-for="o in STATE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
@@ -507,6 +527,14 @@ async function remove(row) {
           </template>
         </el-table-column>
 
+        <!-- 连接器类型 -->
+        <el-table-column label="连接器类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+          <template #default="{ row }">
+            <span v-if="row.type">{{ CONNECTOR_TYPE_LABEL[row.type] || row.type }}</span>
+            <span v-else class="cell-na">—</span>
+          </template>
+        </el-table-column>
+
         <!-- 传输方式：展示完整枚举值（stdio / streamable-http），无内容显示 — -->
         <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
@@ -523,19 +551,34 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 引用情况（PRD §二.1）：暂无引用 / N 个技能引用，悬停查看引用技能名；
+        <!-- 引用情况（PRD §二.1）：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 —；
              点击弹「被技能引用」清单（原型 L171/L189，批次 2C · M2） -->
         <el-table-column label="引用情况" :width="135">
           <template #default="{ row }">
-            <span v-if="!row.referencedBySkillCount" class="cell-na">暂无引用</span>
-            <el-button
-              v-else
-              link
-              type="primary"
-              class="mc-refs"
-              :title="refsTip(row)"
-              @click="openRefs(row)"
-            >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+            <template v-if="row.type === CONNECTOR_TYPE.POSITION">
+              <span v-if="!row.positionCount" class="cell-na">暂无引用</span>
+              <el-button
+                v-else
+                link
+                type="primary"
+                class="mc-refs"
+                @click="openRefs(row)"
+              >{{ row.positionCount }}个岗位引用</el-button>
+            </template>
+            <template v-else-if="row.type === CONNECTOR_TYPE.PLATFORM">
+              <span v-if="!row.referencedBySkillCount" class="cell-na">暂无引用</span>
+              <el-button
+                v-else
+                link
+                type="primary"
+                class="mc-refs"
+                :title="refsTip(row)"
+                @click="openRefs(row)"
+              >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+            </template>
+            <template v-else>
+              <span class="cell-na">—</span>
+            </template>
           </template>
         </el-table-column>
 

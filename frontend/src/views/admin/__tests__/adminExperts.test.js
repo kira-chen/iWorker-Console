@@ -20,6 +20,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
 
 const listExperts = vi.fn()
 const deleteExpert = vi.fn()
@@ -174,7 +175,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
   it('subtitle 用「市场技能」措辞；挂载拉列表（默认按最近更新时间降序）', async () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent)
-      .toBe('把多个市场技能归类整合成一个可交付单元，只引用市场技能，与 FDE 技能互不影响')
+      .toBe('平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理')
     expect(container.textContent).not.toContain('平台技能')
     expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ sort: 'desc' }))
   })
@@ -222,7 +223,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
 
   it('分类选「法律」+ 状态选「未发布」→ 组合条件透传 listExperts {category:法律, status:draft}（md §一.1 / §一.2）', async () => {
     await mount()
-    const [category, status] = [...container.querySelectorAll('select.el-select')]
+    const [, category, status] = [...container.querySelectorAll('select.el-select')]
     category.value = '法律'
     category.dispatchEvent(new Event('change'))
     await flush()
@@ -236,7 +237,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
 
   it('分类下拉 8 项 = 字段字典 expertCategory，且与 md §一.1 列举逐一相等', async () => {
     await mount()
-    const [category, status] = [...container.querySelectorAll('select.el-select')]
+    const [, category, status] = [...container.querySelectorAll('select.el-select')]
     const labels = [...category.querySelectorAll('option')].map((o) => o.textContent)
     expect(labels).toEqual(getFieldOptionNames('expertCategory'))
     expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])

@@ -68,8 +68,8 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     const values = [...c.querySelectorAll('.cn-item .stub-input')].map((i) => i.value)
     expect(values).toEqual(['第一条', '第二条'])
     expect(btnByText(c, '删除')).toBeTruthy()
-    // hint 照原型置底：「每条最多 100 个字符」
-    expect(c.querySelector('.cn-hint')?.textContent).toContain('每条最多 100 个字符')
+    // hint 照原型置底：「每条最多 300 个字符」
+    expect(c.querySelector('.cn-hint')?.textContent).toContain('每条最多 300 个字符')
   })
 
   it('行内编辑某条 → 实时回吐替换后的数组', async () => {
@@ -87,7 +87,7 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     await nextTick()
     const input = c.querySelector('.cn-form .stub-input')
     expect(input).toBeTruthy()
-    expect(input.getAttribute('maxlength')).toBe('100')
+    expect(input.getAttribute('maxlength')).toBe('300')
     expect(input.getAttribute('placeholder')).toBe('请输入员工领用时看到的一条卖点')
     input.value = '新说明'
     input.dispatchEvent(new Event('input'))

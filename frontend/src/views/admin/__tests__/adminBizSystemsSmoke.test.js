@@ -33,9 +33,9 @@ vi.mock('@/api/admin', () => ({
 const AdminBizSystems = (await import('@/views/admin/AdminBizSystems.vue')).default
 
 const ROWS = [
-  { id: 'biz_2101', name: '客户管理系统 CRM', icon: '◎', description: '管理客户资料、商机与销售跟进', loginUrl: 'https://crm.example.com/login', status: 'PUBLISHED', pendingAction: null, referencedBySkillCount: 2, referencedBySkills: [], refs: ['客户拜访准备', '销售方案生成'], updatedAt: '2026-08-24T15:40:00+08:00' },
-  { id: 'biz_2102', name: '人力资源系统', icon: '▦', description: '员工、组织、请假和入转调离管理', loginUrl: 'https://hr.example.com/login', status: 'PENDING_REVIEW', pendingAction: 'PUBLISH', referencedBySkillCount: 1, referencedBySkills: [], refs: ['员工信息查询'], updatedAt: '2026-08-24T11:32:00+08:00' },
-  { id: 'biz_2103', name: '合同管理系统', icon: '↗', description: '合同起草、审批、归档与风险跟踪', loginUrl: 'https://contract.example.com/login', status: 'NOT_PUBLISHED', pendingAction: null, referencedBySkillCount: 0, referencedBySkills: [], refs: [], updatedAt: '2026-08-22T16:18:00+08:00' }
+  { id: 'biz_2101', name: '客户管理系统 CRM', icon: '◎', description: '管理客户资料、商机与销售跟进', loginUrl: 'https://crm.example.com/login', type: 'PLATFORM', status: 'PUBLISHED', pendingAction: null, referencedBySkillCount: 2, referencedBySkills: [], refs: ['客户拜访准备', '销售方案生成'], updatedAt: '2026-08-24T15:40:00+08:00' },
+  { id: 'biz_2102', name: '人力资源系统', icon: '▦', description: '员工、组织、请假和入转调离管理', loginUrl: 'https://hr.example.com/login', type: 'PLATFORM', status: 'PENDING_REVIEW', pendingAction: 'PUBLISH', referencedBySkillCount: 1, referencedBySkills: [], refs: ['员工信息查询'], updatedAt: '2026-08-24T11:32:00+08:00' },
+  { id: 'biz_2103', name: '合同管理系统', icon: '↗', description: '合同起草、审批、归档与风险跟踪', loginUrl: 'https://contract.example.com/login', type: 'PLATFORM', status: 'NOT_PUBLISHED', pendingAction: null, referencedBySkillCount: 0, referencedBySkills: [], refs: [], updatedAt: '2026-08-22T16:18:00+08:00' }
 ]
 
 // jsdom 没有 ResizeObserver（el-table 布局用），补一个空实现

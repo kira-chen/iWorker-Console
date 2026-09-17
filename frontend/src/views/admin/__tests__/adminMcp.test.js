@@ -27,6 +27,7 @@ const adminApi = {
   healthCheckTool: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
 
 const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
@@ -150,11 +151,11 @@ function stateOf(rowEl) {
 
 // fixture 名互不为子串，避免 rowByName 误命中
 const LIST = [
-  { id: 'mc_none', name: '未发布服务', transport: 'stdio', toolCount: 2, referencedBySkillCount: 0, status: 'active', icon: '🗺️', displayStatus: 'HEALTHY', createdAt: '2026-08-01T10:00:00Z' },
-  { id: 'mc_pending', name: '在审服务', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 1, status: 'active', displayStatus: 'HEALTHY' },
-  { id: 'mc_pub', name: '已上线服务', transport: 'stdio', toolCount: 4, referencedBySkillCount: 2, status: 'active', icon: '/api/public/icons/abc.png', timeoutMs: 30000, displayStatus: 'HEALTHY' },
-  { id: 'mc_delisted', name: '已下架服务', transport: 'stdio', toolCount: 1, referencedBySkillCount: 0, status: 'active', displayStatus: 'HEALTHY' },
-  { id: 'mc_empty', name: '空工具服务', transport: 'stdio', toolCount: 0, referencedBySkillCount: 0, status: 'active', displayStatus: 'HEALTHY' }
+  { id: 'mc_none', name: '未发布服务', transport: 'stdio', toolCount: 2, referencedBySkillCount: 0, status: 'active', icon: '🗺️', type: 'PLATFORM', displayStatus: 'HEALTHY', createdAt: '2026-08-01T10:00:00Z' },
+  { id: 'mc_pending', name: '在审服务', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 1, status: 'active', type: 'PLATFORM', displayStatus: 'HEALTHY' },
+  { id: 'mc_pub', name: '已上线服务', transport: 'stdio', toolCount: 4, referencedBySkillCount: 2, status: 'active', icon: '/api/public/icons/abc.png', timeoutMs: 30000, type: 'PLATFORM', displayStatus: 'HEALTHY' },
+  { id: 'mc_delisted', name: '已下架服务', transport: 'stdio', toolCount: 1, referencedBySkillCount: 0, status: 'active', type: 'PLATFORM', displayStatus: 'HEALTHY' },
+  { id: 'mc_empty', name: '空工具服务', transport: 'stdio', toolCount: 0, referencedBySkillCount: 0, status: 'active', type: 'PLATFORM', displayStatus: 'HEALTHY' }
 ]
 
 const AGG_SEED = {
@@ -754,7 +755,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
 
     it('切换状态筛选 → 立即按 state 刷新并回到第 1 页（md §一.2 L26）；清空 → 不再下发 state', async () => {
       await mount()
-      const select = container.querySelector('select')
+      const select = container.querySelectorAll('select')[1]
       select.value = 'PUBLISHED'
       select.dispatchEvent(new Event('change'))
       await flush()

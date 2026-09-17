@@ -381,7 +381,7 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
     expect(patchSkillSpy).toHaveBeenCalledTimes(2)
   })
 
-  describe('保存门（一览表 §三 L58 名称 ≤64 / L61 描述 ≤2000 / L62 示例问题 ≤60 / 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
+  describe('保存门（一览表 §三 L58 名称 ≤64 / L61 描述 ≤2000 / L62 示例问题 ≤300 / 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
     it('技能名称超过 64 字符 → warning「请填写不超过 64 个字符的技能名称」，不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
@@ -413,13 +413,13 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       expect(patchSkillSpy).not.toHaveBeenCalled()
     })
 
-    it('示例问题超过 60 字符 → warning「请填写不超过 60 个字符的示例问题」，不发配置 PUT', async () => {
+    it('示例问题超过 300 字符 → warning「请填写不超过 300 个字符的示例问题」，不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
-      focus.updateSkill({ exampleQuestion: '问'.repeat(61) })
+      focus.updateSkill({ exampleQuestion: '问'.repeat(301) })
       focus.saveConfig()
       await vi.runOnlyPendingTimersAsync()
-      expect(ElMessage.warning).toHaveBeenCalledWith('请填写不超过 60 个字符的示例问题')
+      expect(ElMessage.warning).toHaveBeenCalledWith('请填写不超过 300 个字符的示例问题')
       expect(patchSkillSpy).not.toHaveBeenCalled()
     })
   })

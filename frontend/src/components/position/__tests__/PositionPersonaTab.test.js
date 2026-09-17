@@ -6,7 +6,7 @@ import { createApp, h, nextTick, reactive } from 'vue'
  * PositionPersonaTab（岗位详情「人格」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §2.1 / §2.4 / §2.5：
  *  - 岗位描述为空 → 两处【AI 生成】disabled + title「请先填写岗位描述」；填了描述恢复可用；
  *  - 点【AI 生成】→ 按钮变「生成中…」，500ms 后示例问题 3 条填入 / SOP 填入，toast「已生成示例问题」「已生成岗位 SOP」；
- *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 60；
+ *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；
  *  - 只读态不出【AI 生成】；
  *  - 2026-09-12 审计 J18：领用页文案满 6 条【＋ 新增一条】不隐藏，点击直调 ClaimNotesEditor.startAdd。
  * 数据走 usePositionStore（reactive 桩），三个重子组件（IconField / ClaimNotesEditor / SkillMilkdownEditor）桩掉。
@@ -184,20 +184,20 @@ describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3
 })
 
 describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.1 / §2.4 / §2.5）', () => {
-  it('示例问题 3 格：占位第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 60；提示「3 条均为必填，每条不超过 60 个字符」', async () => {
+  it('示例问题 3 格：占位第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；提示「3 条均为必填，每条不超过 300 个字符」', async () => {
     await mount()
     const card = cardByTitle('示例问题')
     const inputs = [...card.querySelectorAll('.pd-eq-row .el-input')]
     expect(inputs).toHaveLength(3)
     expect(inputs.map((i) => i.getAttribute('placeholder'))).toEqual(['如：帮我分析本周经营数据', '请输入示例问题', '请输入示例问题'])
-    expect(inputs.map((i) => i.getAttribute('maxlength'))).toEqual(['60', '60', '60'])
-    expect(card.textContent).toContain('3 条均为必填，每条不超过 60 个字符')
+    expect(inputs.map((i) => i.getAttribute('maxlength'))).toEqual(['300', '300', '300'])
+    expect(card.textContent).toContain('3 条均为必填，每条不超过 300 个字符')
   })
 
-  it('岗位描述 maxlength 500 + 占位「说明该岗位负责什么、可以帮助用户完成哪些工作」；SOP maxlength 4000 + 占位「说明岗位如何组合使用 Agent、技能、知识与工具完成工作」', async () => {
+  it('岗位描述 maxlength 2000 + 占位「说明该岗位负责什么、可以帮助用户完成哪些工作」；SOP maxlength 4000 + 占位「说明岗位如何组合使用 Agent、技能、知识与工具完成工作」', async () => {
     await mount()
     const desc = container.querySelector('.pd-desc-input')
-    expect(desc.getAttribute('maxlength')).toBe('500')
+    expect(desc.getAttribute('maxlength')).toBe('2000')
     expect(desc.getAttribute('placeholder')).toBe('说明该岗位负责什么、可以帮助用户完成哪些工作')
     const sop = container.querySelector('.pd-sop-input')
     expect(sop.getAttribute('maxlength')).toBe('4000')
