@@ -29,6 +29,7 @@ vi.mock('@/api/position', () => ({
   listPlatformSkillCandidates: vi.fn(() => Promise.resolve([]))
 }))
 vi.mock('@/api/request', () => ({ ApiError: class ApiError extends Error {} }))
+vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ agents: [] }) }))
 const warnSpy = vi.fn()
 vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: warnSpy, info: vi.fn() }),
