@@ -1,0 +1,5 @@
+#!/bin/sh
+# 跨人待办自动流转：commit 说明里写「关闭待办 yuepu#2」→ 把该行从「待处理」搬到「已处理」并随本次 commit 入库。
+# 由 frontend/package.json 的 prepare 脚本在 npm install 时自动启用（git config core.hooksPath .githooks），无需手动安装。
+# 脚本细节见 scripts/todo.mjs 文件头。
+node "$(git rev-parse --show-toplevel)/scripts/todo.mjs" close "$1"
