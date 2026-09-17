@@ -56,22 +56,12 @@ const EffectTestStage = defineAsyncComponent(() => import('@/components/test/Eff
 const router = useRouter()
 const route = useRoute()
 
-// referenced 存 UI 口径的 '' | 'yes' | 'no'，下发前转成 mock/后端要的布尔（见 params）。
 // sort：「最近更新时间」列头方向（2026-09-08 原型复刻批次 2C · E-A1：原型 L664 对全量排序再切页，
 // 改 sortable="custom" 交 mock 全量排序，与专家页同做法；原 el-table 本地 sortable 只排当页）。
-const query = reactive({ type: '', keyword: '', status: '', categoryId: '', referenced: '', sort: 'desc' })
+const query = reactive({ type: '', keyword: '', status: '', categoryId: '', sort: 'desc' })
 
-const list = useAdminList(listUnifiedSkills, {
-  params: () => {
-    const { referenced, ...rest } = query
-    // 引用筛选只对岗位私有有意义（疑点7 保留 + ?referenced 深链），仅 type=POSITION 时下发。
-    const onlyPosition = rest.type === SKILL_TYPE.POSITION
-    return {
-      ...rest,
-      referenced: onlyPosition && referenced ? referenced === 'yes' : undefined
-    }
-  }
-})
+// 「引用状态」筛选与 ?referenced 深链已于 2026-09-17 删除（prd.技能.md 无此筛选，负责人裁决按 md 收敛）。
+const list = useAdminList(listUnifiedSkills, { params: () => ({ ...query }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 
 const categoryOptions = ref([])
@@ -89,23 +79,7 @@ function toggleSort() {
   fetchList()
 }
 
-// 引用状态筛选只对岗位私有有意义（只有它进岗位引用表）。
-const referencedFilterEnabled = computed(() => query.type === SKILL_TYPE.POSITION)
-
-// 深链在 onMounted 里预置 query.type 会异步触发本 watch，导致首屏重复请求一次；一次性抑制标记跳过。
-let suppressTypeWatchOnce = false
-
-watch(
-  () => query.type,
-  () => {
-    if (!referencedFilterEnabled.value) query.referenced = ''
-    if (suppressTypeWatchOnce) {
-      suppressTypeWatchOnce = false
-      return
-    }
-    reload()
-  }
-)
+watch(() => query.type, () => reload())
 
 /* ============================ 行派生 ============================ */
 
@@ -480,14 +454,7 @@ function onWindowFocus() {
 }
 
 onMounted(async () => {
-  // 深链 ?referenced=no|yes：自动落到「岗位私有 + 引用状态」视图（疑点7 保留）。
   if (route.query?.keyword) query.keyword = route.query.keyword
-  const q = route.query?.referenced
-  if (q === 'no' || q === 'yes') {
-    suppressTypeWatchOnce = true
-    query.type = SKILL_TYPE.POSITION
-    query.referenced = q
-  }
   fetchList()
   try {
     const dict = await listFieldDict()
@@ -538,21 +505,6 @@ onBeforeUnmount(() => {
         <el-option label="未发布" value="UNPUBLISHED" />
         <el-option label="审核中" value="REVIEWING" />
         <el-option label="已发布" value="PUBLISHED" />
-      </el-select>
-      <!-- 引用状态：仅岗位私有可用（疑点7 保留 + ?referenced 深链）。
-           2026-09-08 原型复刻批次 2C · E-A3：原型最终层 L666 工具栏无此格，改为仅 type=岗位私有 时渲染
-           （代码超集保留，其余类型不再占一格禁用） -->
-      <el-select
-        v-if="referencedFilterEnabled"
-        v-model="query.referenced"
-        placeholder="引用状态"
-        clearable
-        class="lt-filter"
-        @change="reload"
-      >
-        <el-option label="全部引用状态" value="" />
-        <el-option label="已被引用" value="yes" />
-        <el-option label="未被引用" value="no" />
       </el-select>
       <el-button @click="reload">查询</el-button>
       <template #right>

@@ -1,5 +1,5 @@
 // 访问审计 —— 产物下载 & 管理端操作两个子页静态 mock 数据。
-// 数据来源：数字员工管理端交互原型.html dlRecords / opsRecords。
+// 数据来源：原交互原型的 dlRecords / opsRecords（原型 html 已于 2026-09-17 退役删除，git 历史可查）。
 
 export const dlRecords = [
   { id: 1, time: '2026-08-28 10:32', user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },

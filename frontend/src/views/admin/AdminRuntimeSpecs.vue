@@ -259,7 +259,7 @@ function usedTip(row) {
           <el-table-column :width="COL.TIME" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header>
               <button type="button" class="time-sort" @click="toggleSortOrder">
-                最近更新 <span class="time-sort-arrow">{{ sortArrow }}</span>
+                最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
               </button>
             </template>
             <template #default="{ row }"><span class="rs-muted">{{ row.updatedAt }}</span></template>

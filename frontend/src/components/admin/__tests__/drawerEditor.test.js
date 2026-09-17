@@ -172,7 +172,7 @@ describe('DrawerEditor · 底部动作条', () => {
 })
 
 describe('DrawerEditor · 外壳参数', () => {
-  it('默认 780px（docs/PRD-review/2026-09-08.md 负责人拍板「DrawerEditor 默认 780（模型 820）」；原型已退场），可覆盖', () => {
+  it('默认 780px（负责人 2026-09-08 拍板，记录见 git eb55dfe「DrawerEditor 默认 780（模型 820）」；原型已退场），可覆盖', () => {
     mount()
     expect(container.querySelector('.el-drawer').dataset.size).toBe('780px')
     app.unmount(); container.remove()

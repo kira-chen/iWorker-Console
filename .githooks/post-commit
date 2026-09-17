@@ -1,0 +1,13 @@
+#!/bin/sh
+# 跨人待办自动流转：commit 说明里写「关闭待办 yuepu#2」→ 把该行从「待处理」搬到「已处理」，并 amend 进刚才这条 commit。
+# 为什么用 post-commit 而不是 commit-msg：git 在跑 commit-msg 之前就已把提交树定好，那时再 git add 进不了本次提交。
+# 由 frontend/package.json 的 prepare 脚本在 npm install 时自动启用（git config core.hooksPath .githooks）。
+# 脚本细节见 scripts/todo.mjs 文件头。
+[ -n "$TODO_AMENDING" ] && exit 0            # amend 自身触发的 post-commit，防递归
+ROOT="$(git rev-parse --show-toplevel)"
+git log -1 --format=%B > "$ROOT/.git/TODO_MSG"
+if node "$ROOT/scripts/todo.mjs" close "$ROOT/.git/TODO_MSG" | grep -q '已关闭'; then
+  TODO_AMENDING=1 git commit --amend --no-edit --no-verify -q
+  echo "[todo] 待办文件改动已并入本次 commit（$(git rev-parse --short HEAD)）"
+fi
+rm -f "$ROOT/.git/TODO_MSG"

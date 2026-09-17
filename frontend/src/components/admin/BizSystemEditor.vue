@@ -487,8 +487,9 @@ async function save() {
               <el-input v-model="form.loginUrl" placeholder="https://crm.example.com/login" />
             </el-form-item>
           </div>
-          <!-- 自动化操作配置占位（BQ1 指示：保留不动，可能是已拍板扩展） -->
-          <el-form-item label="自动化操作配置">
+          <!-- 自动化操作配置占位（BQ1 保留区块；prd-业务系统.md §三.5「编辑态展示」——
+               2026-09-17 负责人裁决按 md：仅编辑态渲染，新建态与查看态不出现） -->
+          <el-form-item v-if="isEdit && !readonly" label="自动化操作配置">
             <el-input
               disabled
               type="textarea"

@@ -544,6 +544,13 @@ describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', 
     expect(Object.keys(payload)).not.toContain('automation')
   })
 
+  it('自动化操作配置只在编辑态出现：新建态与查看态都不渲染该表单项（md §三.5「编辑态展示」，2026-09-17 负责人裁决按 md，销 09-12 Q2）', async () => {
+    const findItem = (el) => [...el.querySelectorAll('.el-form-item')].find((it) => it.dataset.label === '自动化操作配置')
+    expect(findItem(await mountEditor(null))).toBeUndefined()
+    expect(findItem(await mountEditor('biz_1', { readonly: true }))).toBeUndefined()
+    expect(findItem(await mountEditor('biz_1'))).toBeDefined()
+  })
+
   it('抽屉顶部提示「业务系统通过登录态托管供技能执行办事操作，可配置最多 20 条业务页入口。」+ 连接方式只读「登录态托管」（md §三.1 L80 / §三.2 L96）', async () => {
     const el = await mountEditor(null)
     expect(el.querySelector('.ad-note').textContent.trim()).toBe('业务系统通过登录态托管供技能执行办事操作，可配置最多 20 条业务页入口。')

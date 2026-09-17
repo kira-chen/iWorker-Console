@@ -76,7 +76,7 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     // 底部汇总（md §三.1「N 个规格 · P 个岗位已配置 · M 个用户有生效规格」）
     expect(mounted.container.querySelector('.rs-foot-sum').textContent.replace(/\s+/g, ' ').trim()).toBe('5 个规格 · 2 个岗位已配置 · 13 个用户有生效规格')
     // 时间列表头不换行（2026-09-11 补 col-nowrap，否则 132px 内折成两行读不出分钟）
-    const timeTh = [...mounted.container.querySelectorAll('.el-table__header th')].find((th) => th.textContent.includes('最近更新'))
+    const timeTh = [...mounted.container.querySelectorAll('.el-table__header th')].find((th) => th.textContent.includes('最近更新时间'))  // md prd.运行规格.md L131 列头（09-17 对齐 0914 C2）
     expect(timeTh.classList.contains('col-nowrap')).toBe(true)
     expect(mounted.container.querySelector('.list-pager-info').textContent).toContain('共 5 ')
     expect(consoleErr).not.toHaveBeenCalled()

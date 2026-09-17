@@ -16,5 +16,3 @@ yarn-error.log*
 /blob-report/
 /playwright/.cache/
 
-# pixel-audit 跑批输出（每次跑覆盖，不入库）
-tools/pixel-audit/out/

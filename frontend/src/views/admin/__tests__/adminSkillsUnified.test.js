@@ -197,11 +197,9 @@ describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端
     await settle()
     vm.page = 3
     vm.query.categoryId = '办公效率'
-    vm.query.referenced = 'yes'
     vm.query.type = 'SYSTEM_DEFAULT'
     await settle()
     expect(vm.query.categoryId).toBe('办公效率') // 分类词表三类通用，不清
-    expect(vm.query.referenced).toBe('')        // 引用筛选只对岗位私有有意义 → 被清
     expect(vm.page).toBe(1)
     expect(vm.rows.length).toBeGreaterThan(0)
     expect(vm.rows.every((r) => r.type === 'SYSTEM_DEFAULT' && r.displayCategoryId === '办公效率')).toBe(true)
@@ -527,55 +525,6 @@ describe('最新版本列：展示当前已发布的版本号', () => {
     const vm = await mountPage()
     expect(vm.latestVersion({ type: 'POSITION', versionLabel: null })).toBe('')
     expect(vm.latestVersion({ type: 'PLATFORM', versionLabel: null, publications: [] })).toBe('')
-  })
-})
-
-describe('P0-4：引用状态筛选 + ?referenced 深链（疑点7 保留）', () => {
-  it('深链 ?referenced=no → 自动落「岗位私有 + 未被引用」：列表只出无引用的岗位私有行（种子 308）', async () => {
-    routeQuery = { referenced: 'no' }
-    const vm = await mountLoaded()
-    expect(vm.query.type).toBe('POSITION')
-    expect(vm.query.referenced).toBe('no')
-    expect(listSpy.mock.calls.at(-1)[0]).toMatchObject({ type: 'POSITION', referenced: false }) // 'no' → 布尔 false
-    expect(vm.rows.length).toBeGreaterThan(0)
-    expect(vm.rows.every((r) => r.type === 'POSITION' && vm.refCountOf(r) === 0)).toBe(true)
-    expect(vm.rows.map((r) => r.name)).toContain('报销单智能填报')
-    expect(vm.rows.map((r) => r.name)).not.toContain('日报周报生成') // 301 被两个岗位引用
-  })
-
-  it('深链只预置一次、不重复请求首屏', async () => {
-    routeQuery = { referenced: 'no' }
-    await mountLoaded()
-    expect(listSpy).toHaveBeenCalledTimes(1)
-  })
-
-  it('非岗位私有类型不下发 referenced（否则平台族会被整体判为未被引用）：市场技能行照常出现', async () => {
-    const vm = await mountLoaded()
-    vm.query.referenced = 'no'
-    vm.query.type = 'PLATFORM'
-    await settle()
-    expect(listSpy.mock.calls.at(-1)[0].referenced).toBeUndefined()
-    expect(vm.rows.every((r) => r.type === 'PLATFORM')).toBe(true)
-    expect(vm.rows.map((r) => r.name)).toContain('经营数据分析') // 302 被 3 个专家引用，仍在列表
-  })
-
-  it('切离岗位私有时清空引用状态筛选值', async () => {
-    const vm = await mountPage()
-    vm.query.type = 'POSITION'
-    await nextTick()
-    vm.query.referenced = 'yes'
-    vm.query.type = 'SYSTEM_DEFAULT'
-    await nextTick()
-    await nextTick()
-    expect(vm.query.referenced).toBe('')
-  })
-
-  it('引用状态筛选仅岗位私有可用', async () => {
-    const vm = await mountPage()
-    expect(vm.referencedFilterEnabled).toBe(false)   // 默认「全部技能类型」
-    vm.query.type = 'POSITION'
-    await nextTick()
-    expect(vm.referencedFilterEnabled).toBe(true)
   })
 })
 

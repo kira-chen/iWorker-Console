@@ -119,7 +119,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     // 上限来自接口（不由前端固定）
     expect(api.getRuntimeSpecLimits).toHaveBeenCalled()
     // md §四.2 占位；§四.3 允许用户申请默认开
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]')).toBeTruthy()
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]')).toBeTruthy()
     expect(d.querySelector('.el-switch').classList.contains('is-checked')).toBe(true)
     // md §四.7 L341 / §四.9 新建不展示时间信息与生效情况
@@ -131,7 +131,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
   it('填名称与能力边界后点【创建】→ createRuntimeSpec 收到默认值 payload →「规格已创建」+ emit saved + 关抽屉（md §四.7 L346）', async () => {
     api.createRuntimeSpec.mockResolvedValue({ id: 11 })
     const d = await open({ specId: null })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '  分析档  ')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '  分析档  ')
     await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '适合数据分析')
     footBtn(d, '创建').click()
     await flushAll(8)
@@ -157,7 +157,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
 
   it('CPU 0.7 / 内存 1.5 / 能力边界 201 字 → 字段下方文案逐字 md §四.10 L388-390，不发接口（K28）', async () => {
     const d = await open({ specId: null })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '校验档')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '校验档')
     await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '边'.repeat(201))
     // el-input-number 会把非法值钉回 min/step，直接改组件态更贴近「手工输入 / 接口提交超限」（md L302）
     setForm({ cpu: 0.7, memoryGi: 1.5 })
@@ -176,7 +176,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
   it('接口回 {field:name}「规格名称已存在，请换一个」→ 定位到规格名称就地红字，不 toast、不关抽屉（md §四.10 L386）', async () => {
     api.createRuntimeSpec.mockRejectedValue({ field: 'name', message: '规格名称已存在，请换一个' })
     const d = await open({ specId: null })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '标准')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '标准')
     await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '重名测试')
     footBtn(d, '创建').click()
     await flushAll(8)
@@ -191,13 +191,13 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     api.getRuntimeSpecLimits.mockRejectedValueOnce(new Error('limits down')).mockResolvedValue({ ...LIMITS })
     const d = await open({ specId: null })
     expect(d.textContent).toContain('加载失败')
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]')).toBeNull() // 不展示空白表单可提交
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeNull() // 不展示空白表单可提交
     const retry = [...d.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
     expect(retry).toBeTruthy()
     retry.click()
     await flushAll(10)
     expect(d.textContent).not.toContain('加载失败')
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]')).toBeTruthy()
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(api.getRuntimeSpecLimits).toHaveBeenCalledTimes(2)
   })
 })
@@ -208,7 +208,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     const d = await open({ specId: 3 })
     expect(api.getRuntimeSpec).toHaveBeenCalledWith(3)
     expect(title(d)).toBe('编辑规格')
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]').value).toBe('重')
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]').value).toBe('重')
     expect(numberValue(d, 'CPU（核）')).toBe('4')
     expect(numberValue(d, '最大存活时长（小时）')).toBe('24')
     expect(d.querySelector('.rs-times').textContent).toContain('创建时间：2026-08-15 10:22')
@@ -247,7 +247,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     expect(title(d)).toBe('查看规格')
     expect(d.querySelector('.rs-default-alert').textContent).toContain('未绑定岗位或岗位未配置专属规格的用户自动使用；默认规格不可删除')
     expect(d.querySelector('.el-switch').classList.contains('is-disabled')).toBe(true)
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]').disabled).toBe(true)
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]').disabled).toBe(true)
     expect(d.querySelector('.rs-used').textContent).toContain('陈宇')
     expect(d.querySelector('.rs-used').textContent).toContain('平台默认')
     expect(footBtns(d)).toEqual(['关闭'])
@@ -257,7 +257,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     api.getRuntimeSpec.mockResolvedValue({ ...DEFAULT_SPEC })
     const d = await open({ specId: 2 })
     expect(title(d)).toBe('编辑规格')
-    expect(d.querySelector('input[placeholder="如 标准、高敏"]').disabled).toBe(false)
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]').disabled).toBe(false)
     expect(d.querySelector('.el-switch').classList.contains('is-disabled')).toBe(true)
     expect(footBtns(d)).toEqual(['取消', '保存'])
   })
@@ -281,7 +281,7 @@ describe('RuntimeSpecEditor · 关闭放弃确认（md §四.1 L266，审计 K29
     mounted.unmount(); mounted = null; document.body.innerHTML = ''
 
     const d2 = await open({ specId: null })
-    await typeInput(d2.querySelector('input[placeholder="如 标准、高敏"]'), '草稿')
+    await typeInput(d2.querySelector('input[placeholder="如：标准、高性能"]'), '草稿')
     confirmSpy.mockRejectedValueOnce('cancel')
     footBtn(d2, '取消').click()
     await flushAll(4)
@@ -298,7 +298,7 @@ describe('RuntimeSpecEditor · 关闭放弃确认（md §四.1 L266，审计 K29
 
   it('抽屉 X / ESC 走 el-drawer before-close 钩子：有改动且取消确认 → done(true) 保持打开；确认 → done() 关闭且随后回报不再二次询问', async () => {
     const d = await open({ specId: null })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '草稿')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '草稿')
     const { onBeforeClose } = editorState()
     // 钩子已透传到真 el-drawer（DrawerEditor 单根）：X 按钮存在且点击后触发确认
     confirmSpy.mockRejectedValueOnce('cancel')
@@ -351,7 +351,7 @@ describe('RuntimeSpecEditor · 保存前配置影响（md §四.3 L286 / §四.8
   it('新建时选中被「重」占用的岗位 401 → 保存前确认「岗位规格切换」列出「财务审核岗：重 → 新档」并提示切换；取消不发接口、确认后发 createRuntimeSpec（md §四.3 L286 / §四.10 L397）', async () => {
     api.createRuntimeSpec.mockResolvedValue({ id: 11 })
     const d = await open({ specId: null })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '新档')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '新档')
     await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '说明')
     setForm({ positionIds: [401] })
     await flushAll(2)
@@ -401,7 +401,7 @@ describe('RuntimeSpecEditor · 保存前配置影响（md §四.3 L286 / §四.8
     api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
     api.updateRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
     const d = await open({ specId: 3 })
-    await typeInput(d.querySelector('input[placeholder="如 标准、高敏"]'), '重·改名')
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '重·改名')
     footBtn(d, '保存').click()
     await flushAll(8)
     expect(confirmSpy).not.toHaveBeenCalled()

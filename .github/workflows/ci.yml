@@ -73,6 +73,23 @@ jobs:
           TZ: Asia/Shanghai
         run: npm run test
 
+      - name: 核验待办状态与 commit 说明一致
+        # commit 说明里写了「关闭待办 xx#n」的，对应行必须已在该人待办文件的「已处理」表里
+        # （本地 post-commit 钩子会自动搬；没装钩子就会在这里红）。见 scripts/todo.mjs。
+        # PR 事件下比对 base..head 的全部 commit；push 到 main 时只看本次推送范围。
+        run: |
+          RANGE="${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.event.pull_request.head.sha || github.sha }}"
+          git fetch --no-tags --depth=200 origin ${{ github.event.pull_request.base.ref || github.ref_name }} 2>/dev/null || true
+          MSGS=$(git log --format=%B "$RANGE" 2>/dev/null || git log -1 --format=%B)
+          node scripts/todo.mjs verify "$MSGS"
+
+      - name: 本地审查门禁（软：只提示不拦）
+        # 改了 docs/PRD/ 的批次须本地跑过 /prd-import，改了 frontend/src/ 的须跑过 /test-audit，
+        # 以 commit 说明里的「review: … ok」签名为凭；缺签名打 warning，暂不红（2026-09-17 先软后硬）。见 scripts/review-gate.mjs。
+        run: |
+          RANGE="${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.event.pull_request.head.sha || github.sha }}"
+          node scripts/review-gate.mjs "$RANGE" || true
+
       - name: 跑生产构建
         working-directory: frontend
         # 单测过了不代表能构建出来，两道都要过
