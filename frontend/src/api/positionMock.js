@@ -27,6 +27,8 @@ import * as skillMock from './unifiedSkillMock'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
+// 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
+import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -372,13 +374,13 @@ export async function getNextVersionLabel(id) {
  */
 let reviewSnapshots = {}
 
-function writeReviewSnapshot(p, requestAction) {
+function writeReviewSnapshot(p, requestAction, submittedAt) {
   reviewSnapshots[String(p.positionId)] = {
     kind: 'POSITION',
     refId: p.positionId,
     requestAction,
     version: p.pendingVersion || p.latestVersion || '',
-    submittedAt: nowIso(),
+    submittedAt: submittedAt || nowIso(), // 种子补播传对象自身时间（09-18 审查：不再显示成页面加载时刻）
     // 提交当时的完整岗位配置（人格要素 / Agent→技能 / 采集 schema 等）
     detail: JSON.parse(JSON.stringify(detailVO(p)))
   }
@@ -417,7 +419,9 @@ export async function publishPosition(id, payload = {}) {
   // 在审版本一律走 pendingVersion；审核通过落快照时才推进 latestVersion。
   p.updatedAt = nowIso()
   // A5：提交审核即存版本快照（md §四 L48）
-  writeReviewSnapshot(p, rows.length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  const requestAction = publishActionOf(rows.length > 0)
+  writeReviewSnapshot(p, requestAction)
+  enrollReview({ businessType: 'POSITION', refId: p.positionId, name: p.name, description: p.description, requestAction, version: label, versionNotes: p.pendingReleaseNotes })
   persist()
   return {}
 }
@@ -438,6 +442,7 @@ export async function withdrawPosition(id) {
   p.updatedAt = nowIso()
   // A5：撤回即销毁本次提交的版本快照（下次提交重新生成）
   delete reviewSnapshots[String(p.positionId)]
+  unenrollReview('POSITION', p.positionId)
   persist()
   return {}
 }
@@ -452,6 +457,7 @@ export async function unpublishPosition(id) {
   p.pendingAction = 'DELIST'
   p.updatedAt = nowIso()
   writeReviewSnapshot(p, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  enrollReview({ businessType: 'POSITION', refId: p.positionId, name: p.name, description: p.description, requestAction: 'DELIST', version: p.latestVersion || '—', versionNotes: '申请停用该岗位' })
   persist()
   return {}
 }
@@ -470,7 +476,9 @@ export async function unpublishPosition(id) {
 export function applyPositionReviewResult(refId, requestAction, approved) {
   const p = findPos(refId)
   if (!p || !p.pendingAction) return false
-  const isDelist = (requestAction || p.pendingAction) === 'DELIST'
+  // 2026-09-18 R1：审核行说的发布/停用必须与对象自己记的在途事项同向，否则拒绝落地（返回 false）
+  if (requestAction && !reviewActionMatches(requestAction, p.pendingAction)) return false
+  const isDelist = p.pendingAction === 'DELIST'
   if (approved) {
     if (isDelist) {
       p.status = 'draft' // 停用通过 → 未发布（md §3.5 L92）；版本历史不删（审核中心 md §六 L91）
@@ -498,8 +506,9 @@ export function applyPositionReviewResult(refId, requestAction, approved) {
       p.latestVersion = label
     }
   } else {
-    // 驳回：待审发布 → 未发布；待审停用 → 已发布（md §3.3 L78 / §3.5 L92）
-    p.status = isDelist ? 'published' : 'draft'
+    // 驳回 = 恢复提交前状态（md §二.4 L116「被拒绝或撤回后恢复提交前状态」、L117「审核期间当前已发布版本
+    // 继续可用」）。提交时 status 本就没动过，所以这里**不改 status**——原实现 `isDelist ? 'published' : 'draft'`
+    // 把已发布岗位的迭代驳回打成「未发布」，线上版本被下线（09-18 审查 P1 / 实走 D）。
     if (!isDelist) p.latestVersion = publications[p.positionId]?.[0]?.versionLabel || ''
   }
   p.pendingAction = null
@@ -921,7 +930,7 @@ function seedReviewSnapshots() {
   for (const p of positions) {
     if (!p.pendingAction) continue
     if (reviewSnapshots[String(p.positionId)]) continue
-    writeReviewSnapshot(p, p.pendingAction === 'DELIST' ? 'DELIST' : p.latestVersion ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+    writeReviewSnapshot(p, p.pendingAction === 'DELIST' ? 'DELIST' : p.latestVersion ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', p.updatedAt)
   }
 }
 seedReviewSnapshots()

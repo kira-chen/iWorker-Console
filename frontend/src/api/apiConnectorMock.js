@@ -20,6 +20,8 @@
 import { ApiError } from './request'
 import { maskSecret } from '@/utils/secretMask'
 import { attachPersist } from './mockPersist'
+// 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
+import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let psSeq = 5
@@ -734,6 +736,7 @@ export async function publishApi(id) {
   if (a.displayStatus !== 'HEALTHY') throw err('连通性验证通过后才可提交发布')
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'PUBLISH'
+  enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: a.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该 API 连接器' })
   persist()
   return toRow(a)
 }
@@ -746,6 +749,7 @@ export async function withdrawApi(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   a.status = a.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   a.pendingAction = null
+  unenrollReview('API', a.id)
   persist()
   return toRow(a)
 }
@@ -758,6 +762,7 @@ export async function deactivateApi(id) {
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'DEACTIVATE'
+  enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 API 对外提供' })
   persist()
   return toRow(a)
 }
@@ -772,7 +777,8 @@ export async function deactivateApi(id) {
 export function applyApiReviewResult(refId, requestAction, approved) {
   const a = findApi(refId)
   if (!a || a.status !== 'PENDING_REVIEW') return false
-  const isDelist = (requestAction || (a.pendingAction === 'DEACTIVATE' ? 'DELIST' : '')) === 'DELIST'
+  if (requestAction && !reviewActionMatches(requestAction, a.pendingAction)) return false // 2026-09-18 R1
+  const isDelist = a.pendingAction === 'DEACTIVATE'
   if (approved) {
     if (isDelist) {
       a.status = 'NOT_PUBLISHED'

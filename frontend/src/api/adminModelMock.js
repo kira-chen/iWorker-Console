@@ -19,6 +19,8 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
+import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { maskSecret } from '@/utils/secretMask'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -399,6 +401,7 @@ export async function publishModel(id) {
   // 2026-09-09 PRD-20260908 复核批次 0 · A20：md `prd-模型.md` §二.2「提交审核与撤回提交后，
   // 按新的最近更新时间重新排列」——原实现漏刷新，列表排序不会前移。
   m.updatedAt = nowIso()
+  enrollReview({ businessType: 'MODEL', refId: m.id, name: m.name, description: m.description || '', requestAction: m.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该模型' })
   persist()
   return toRow(m)
 }
@@ -410,6 +413,7 @@ export async function delistModel(id) {
   if (displayKey(m) !== 'PUBLISHED') throw err('仅已发布状态可提交停用')
   // 停用走停用审核：status 保持 PUBLISHED（审核期间客户端仍可用），展示态转审核中
   m.pendingAction = 'DELIST'
+  enrollReview({ businessType: 'MODEL', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该模型对外提供' })
   persist()
   return toRow(m)
 }
@@ -425,6 +429,7 @@ export async function withdrawModel(id) {
   // 2026-09-09 PRD-20260908 复核批次 0 · A20：md `prd-模型.md` §二.2「提交审核与撤回提交后，
   // 按新的最近更新时间重新排列」——原实现漏刷新。
   m.updatedAt = nowIso()
+  unenrollReview('MODEL', m.id)
   persist()
   return toRow(m)
 }
@@ -467,7 +472,8 @@ export async function rejectModel(id) {
 export function applyModelReviewResult(refId, requestAction, approved) {
   const m = findModel(refId)
   if (!m || !m.pendingAction) return false
-  const isDelist = (requestAction || m.pendingAction) === 'DELIST'
+  if (requestAction && !reviewActionMatches(requestAction, m.pendingAction)) return false // 2026-09-18 R1
+  const isDelist = m.pendingAction === 'DELIST'
   if (approved) {
     if (isDelist) {
       m.status = 'DRAFT'

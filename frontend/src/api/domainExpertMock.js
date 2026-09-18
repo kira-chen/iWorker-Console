@@ -26,6 +26,8 @@ import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
+// 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
+import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -421,13 +423,13 @@ export async function getExpertNextVersionLabel(id) {
  * 缺失时：治理侧按 md §七 阻止审核并提示联系提交人重新提交。
  * （表本体 reviewSnapshots 声明在文件上方 attachPersist 之前，见该处注释。）
  */
-function writeReviewSnapshot(e, requestAction) {
+function writeReviewSnapshot(e, requestAction, submittedAt) {
   reviewSnapshots[String(e.id)] = {
     kind: 'EXPERT',
     refId: e.id,
     requestAction,
     version: e.pendingVersion || '',
-    submittedAt: nowIso(),
+    submittedAt: submittedAt || nowIso(), // 种子补播传对象自身时间（09-18 审查）
     detail: JSON.parse(JSON.stringify(toDetail(e)))
   }
 }
@@ -442,7 +444,7 @@ export function getExpertReviewSnapshot(id) {
 function seedReviewSnapshots() {
   for (const e of experts) {
     if (!e.pendingAction || reviewSnapshots[String(e.id)]) continue
-    writeReviewSnapshot(e, e.pendingAction === 'DELIST' ? 'DELIST' : (publications[e.id] || []).length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+    writeReviewSnapshot(e, e.pendingAction === 'DELIST' ? 'DELIST' : (publications[e.id] || []).length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', e.updatedAt)
   }
 }
 seedReviewSnapshots()
@@ -468,7 +470,9 @@ export async function publishExpert(id, payload = {}) {
   e.pendingReleaseNotes = String(payload.releaseNotes || '').trim()
   e.updatedAt = nowIso()
   // A5：提交审核即存版本快照（md §四 L48）
-  writeReviewSnapshot(e, rows.length ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  const requestAction = publishActionOf(rows.length > 0)
+  writeReviewSnapshot(e, requestAction)
+  enrollReview({ businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '', requestAction, version: label, versionNotes: e.pendingReleaseNotes })
   persist()
   return {}
 }
@@ -484,6 +488,7 @@ export async function withdrawExpert(id) {
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
   delete reviewSnapshots[String(e.id)] // A5：撤回即销毁本次提交的版本快照
+  unenrollReview('EXPERT', e.id)
   persist()
   return {}
 }
@@ -500,6 +505,7 @@ export async function unpublishExpert(id) {
   // md `prd.专家.md` §二.2 只列「保存配置、提交审核或撤回提交后」三种刷新场景，停用不在其内；
   // 与 `prd-模型.md` §二.2「停用时不改变最近更新时间」口径一致。原 e.updatedAt = nowIso() 已删。
   writeReviewSnapshot(e, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  enrollReview({ businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '', requestAction: 'DELIST', version: e.latestVersionLabel || '—', versionNotes: '申请停止该专家对外提供' })
   persist()
   return {}
 }
@@ -516,7 +522,9 @@ export async function unpublishExpert(id) {
 export function applyExpertReviewResult(refId, requestAction, approved) {
   const e = findExpert(refId)
   if (!e || !e.pendingAction) return false
-  const isDelist = (requestAction || e.pendingAction) === 'DELIST'
+  // 2026-09-18 R1：审核行申请类型须与对象在途事项同向，否则拒绝落地
+  if (requestAction && !reviewActionMatches(requestAction, e.pendingAction)) return false
+  const isDelist = e.pendingAction === 'DELIST'
   if (approved) {
     if (isDelist) {
       e.status = 'draft' // 停用通过 → 未发布（md L102）；版本历史保留
@@ -544,8 +552,8 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
       e.latestVersionLabel = label
     }
   } else {
-    // 驳回口径与撤回同向（md L86 / L102）
-    e.status = isDelist ? 'published' : 'draft'
+    // 驳回 = 恢复提交前状态（md §四.1 L235「审核拒绝…新版本发布回到原"已发布"版本」）。提交时 status 没动，
+    // 这里不改——原 `isDelist ? 'published' : 'draft'` 会把已发布专家的迭代驳回打成未发布（09-18 审查 E2）。
   }
   e.pendingAction = null
   delete e.pendingVersion
