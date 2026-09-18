@@ -41,7 +41,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v))
 function seedRows() {
   const row = (r) => ({ target: 'USER_END', submitterName: 'config.admin', submitterId: 12, status: 'PENDING_REVIEW', ...r })
   return [
-    row({ id: 1, refId: 'api_1102', type: 'TOOL', subType: 'API', name: '提交付款申请', description: '发起一笔付款申请并进入审批流', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 09:42', code: 'payment.apply', writeClass: 'WRITE', requiresConfirmation: true }),
+    row({ id: 1, refId: 'api_1102', type: 'TOOL', subType: 'API', name: '提交付款申请', description: '创建付款申请并返回流程编号', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 09:42', code: 'payment.apply', writeClass: 'WRITE', requiresConfirmation: true }),
     row({ id: 2, refId: 'sk_302', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', submitterName: 'li.na', submitterId: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', requestAction: 'VERSION_PUBLISH', version: 'v1.5.0', submittedAt: '2026-08-28 09:18' }),
     row({ id: 3, refId: 'biz_2102', type: 'BIZ_SYSTEM', name: '人力资源系统', description: '员工、组织、请假和入转调离管理', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 18:34' }),
     row({ id: 4, refId: 'md_103', type: 'MODEL', subType: 'PUBLISH', submitterName: 'platform.admin', submitterId: 1, name: '企业视觉理解模型', description: '图片理解与多模态问答模型', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 16:20' }),

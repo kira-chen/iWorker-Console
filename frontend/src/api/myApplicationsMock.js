@@ -32,7 +32,7 @@ function seedRows() {
   const row = (r) => ({ submitter: 'config.admin', reviewedAt: '', reviewer: '', rejectReason: '', objectDeleted: false, ...r })
   return [
     // —— 待审核（与审核中心 id 1..12 逐笔对应）——
-    row({ id: 501, refId: 'api_1102', objectName: '提交付款申请', description: '发起一笔付款申请并进入审批流', businessType: 'API', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 09:42', result: 'PENDING', versionNotes: '首次开放付款申请能力' }),
+    row({ id: 501, refId: 'api_1102', objectName: '提交付款申请', description: '创建付款申请并返回流程编号', businessType: 'API', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 09:42', result: 'PENDING', versionNotes: '首次开放付款申请能力' }),
     row({ id: 505, refId: 'local_files', objectName: '本地文件 MCP', description: '读取工作区文件并执行受限文件操作', businessType: 'MCP', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 10:05', result: 'PENDING', versionNotes: '首次登记本地文件操作工具' }),
     row({ id: 506, refId: 'biz_2102', objectName: '人力资源系统', description: '员工、组织、请假和入转调离管理', businessType: 'BIZ_SYSTEM', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 18:34', result: 'PENDING', versionNotes: '首次接入用户端业务系统' }),
     row({ id: 509, refId: 'md_103', objectName: '企业视觉理解模型', description: '图片理解与多模态问答模型', businessType: 'MODEL', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 16:20', result: 'PENDING', versionNotes: '首次接入视觉理解模型' }),
