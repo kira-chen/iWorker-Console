@@ -267,7 +267,7 @@ export async function getModel(id) {
 function validateModelPayload(payload, selfId = null) {
   const name = (payload.name || '').trim()
   if (!name) throw err('模型名称必填', 'name')
-  if (name.length > MODEL_NAME_MAX) throw err(`模型名称不超过 ${MODEL_NAME_MAX} 字`, 'name')
+  if (name.length > MODEL_NAME_MAX) throw err(`模型名称最多 ${MODEL_NAME_MAX} 个字符`, 'name')
   if (models.some((m) => m.name === name && m.id !== selfId)) {
     throw err('模型名称平台内不可重复', 'name')
   }

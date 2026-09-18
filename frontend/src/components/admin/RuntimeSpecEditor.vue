@@ -185,9 +185,9 @@ function validate() {
   const name = form.name.trim()
   const boundaryDesc = form.boundaryDesc.trim()
   if (!name) errors.name = '规格名称不能为空'
-  else if (name.length > 64) errors.name = '规格名称不超过 64 个字符'
+  else if (name.length > 64) errors.name = '规格名称最多 64 个字符'
   if (!boundaryDesc) errors.boundaryDesc = '请填写能力边界说明'
-  else if (boundaryDesc.length > 200) errors.boundaryDesc = '能力边界说明不超过 200 个字符'
+  else if (boundaryDesc.length > 200) errors.boundaryDesc = '能力边界说明最多 200 个字符'
   const cpu = Number(form.cpu)
   if (!(cpu >= 0.5) || !Number.isInteger(cpu * 2)) errors.cpu = 'CPU须不小于 0.5 核，并按照 0.5 递增'
   if (!isIntAtLeast1(form.memoryGi)) errors.memoryGi = '内存须为不小于 1 的整数'

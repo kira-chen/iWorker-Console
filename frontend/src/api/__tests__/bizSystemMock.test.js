@@ -126,7 +126,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     // 每条 ≤300（2026-09-18 待办 yuepu#5⑥：BIZ_QUESTION_MAX 曾卡在 60，输入框已放宽到 300，此前保存会被拒）
     await expect(createBizSystem({ ...base, exampleQuestions: ['x'.repeat(301), 'b', 'c'] })).rejects.toMatchObject({
       field: 'exampleQuestions',
-      message: '示例问题每条不超过 300 字'
+      message: '示例问题每条最多 300 个字符'
     })
     // 换个名字，避免这条成功创建的行占掉 base.name、影响本测试后续复用同名的失败态断言
     await expect(createBizSystem({ ...base, name: `${base.name}-ok`, exampleQuestions: ['x'.repeat(300), 'b', 'c'] })).resolves.toMatchObject({
@@ -143,7 +143,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(createBizSystem({ ...VALID, name: '   ' })).rejects.toMatchObject({ field: 'name', message: '系统名称必填' })
     await expect(createBizSystem({ ...VALID, name: 'x'.repeat(65) })).rejects.toMatchObject({
       field: 'name',
-      message: '系统名称不超过 64 字'
+      message: '系统名称最多 64 个字符'
     })
     await expect(createBizSystem({ ...VALID, name: '人力资源系统' })).rejects.toMatchObject({
       field: 'name',

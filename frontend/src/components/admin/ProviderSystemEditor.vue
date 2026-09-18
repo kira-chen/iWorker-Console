@@ -71,12 +71,12 @@ function validate() {
   if (!name) {
     fieldErrors.name = '系统名称必填'
   } else if (name.length > 64) {
-    fieldErrors.name = '系统名称最多 64 字符'
+    fieldErrors.name = '系统名称最多 64 个字符'
   }
   if (!form.description.trim()) {
     fieldErrors.description = '系统描述必填'
   } else if (form.description.length > 2000) {
-    fieldErrors.description = '系统描述最多 2000 字符'
+    fieldErrors.description = '系统描述最多 2000 个字符'
   }
   return Object.keys(fieldErrors).length === 0
 }

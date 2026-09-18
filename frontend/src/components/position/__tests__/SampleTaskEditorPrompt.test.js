@@ -15,7 +15,7 @@ async function flush(n = 6) {
  * - 详情回填 SampleTaskVO.prompt；
  * - 空 prompt（启用样例）阻断保存并标红，不落 create；
  * - 填了 prompt → createSampleTask payload 含 prompt；
- * - 2026-09-12 审计 J7 / K7 / K9：提示词非必填（留空可建），仅 8000 字上限拦截（错误文案「提示词不超过 8000 字」）。
+ * - 2026-09-12 审计 J7 / K7 / K9：提示词非必填（留空可建），仅 8000 字上限拦截（错误文案「提示词最多 8000 个字符」）。
  */
 const createSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
 const updateSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
@@ -142,7 +142,7 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
     expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('')
   })
 
-  it('K7 提示词 8001 字 → 阻断 create，MarkdownEditor 收到错误「提示词不超过 8000 字」；8000 字放行（md §7.4 L405）', async () => {
+  it('K7 提示词 8001 字 → 阻断 create，MarkdownEditor 收到错误「提示词最多 8000 个字符」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过 8000 字」）；8000 字放行（md §7.4 L405）', async () => {
     mount({ positionId: 1, sample: null })
     await flush()
     setInput(0, '样例E')
@@ -154,7 +154,7 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
     await flush()
     expect(createSpy).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalled()
-    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('提示词不超过 8000 字')
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('提示词最多 8000 个字符')
     // 改到恰好 8000 字 → 放行
     lastSopEmit('字'.repeat(8000))
     await flush()

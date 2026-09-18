@@ -5,7 +5,7 @@ import { createApp, h, nextTick, ref } from 'vue'
 /**
  * ProviderSystemEditor.vue 单测（2026-09-12 测试审计 T58 新建；146 行此前零用例）。
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/API/prd-API.md §二.5 L78 + 一览表 §6.1：
- *   弹窗展示系统名称（必填，最多 64 字符，平台内不可重复）和系统描述（必填，最多 2000 字符）；
+ *   弹窗展示系统名称（必填，最多 64 个字符，平台内不可重复）和系统描述（必填，最多 2000 个字符）；
  *   保存成功后关闭弹窗并刷新列表，不跳转页面。
  * 桩：api/apiConnector、element-plus（ElMessage）、el-dialog（露 title）/ el-form-item（露 error）等最小桩。
  */
@@ -109,14 +109,14 @@ describe('ProviderSystemEditor · 服务提供系统弹窗（md §二.5 L78）',
     expect(el.querySelector('.el-dialog')).toBeTruthy()
   })
 
-  it('名称 65 字 → 「系统名称最多 64 字符」；描述 2001 字 → 「系统描述最多 2000 字符」；64 / 2000 字通过', async () => {
+  it('名称 65 字 → 「系统名称最多 64 个字符」；描述 2001 字 → 「系统描述最多 2000 个字符」；64 / 2000 字通过', async () => {
     const el = await mountEditor(null)
     setInput(inputOf(el, '系统名称'), 'x'.repeat(65))
     setInput(inputOf(el, '系统描述'), 'd'.repeat(2001))
     findBtn(el, '保存').click()
     await flush()
-    expect(item(el, '系统名称').dataset.error).toBe('系统名称最多 64 字符')
-    expect(item(el, '系统描述').dataset.error).toBe('系统描述最多 2000 字符')
+    expect(item(el, '系统名称').dataset.error).toBe('系统名称最多 64 个字符')
+    expect(item(el, '系统描述').dataset.error).toBe('系统描述最多 2000 个字符')
     expect(conn.createProviderSystem).not.toHaveBeenCalled()
     setInput(inputOf(el, '系统名称'), 'x'.repeat(64))
     setInput(inputOf(el, '系统描述'), 'd'.repeat(2000))

@@ -124,10 +124,10 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     await expect(createRuntimeSpec({ ...VALID, maxLifetimeHours: 1.5 })).rejects.toMatchObject({ field: 'maxLifetimeHours' })
   })
 
-  it('能力边界说明 201 字 → 拒绝「能力边界说明不超过 200 个字符」；为空 →「请填写能力边界说明」；名称 65 字 →「规格名称不超过 64 个字符」（md §四.10 L384-388）', async () => {
-    await expect(createRuntimeSpec({ ...VALID, boundaryDesc: '边'.repeat(201) })).rejects.toMatchObject({ field: 'boundaryDesc', message: '能力边界说明不超过 200 个字符' })
+  it('能力边界说明 201 字 → 拒绝「能力边界说明最多 200 个字符」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」）；为空 →「请填写能力边界说明」；名称 65 字 →「规格名称最多 64 个字符」（md §四.10 L384-388）', async () => {
+    await expect(createRuntimeSpec({ ...VALID, boundaryDesc: '边'.repeat(201) })).rejects.toMatchObject({ field: 'boundaryDesc', message: '能力边界说明最多 200 个字符' })
     await expect(createRuntimeSpec({ ...VALID, boundaryDesc: '   ' })).rejects.toMatchObject({ field: 'boundaryDesc', message: '请填写能力边界说明' })
-    await expect(createRuntimeSpec({ ...VALID, name: '名'.repeat(65) })).rejects.toMatchObject({ field: 'name', message: '规格名称不超过 64 个字符' })
+    await expect(createRuntimeSpec({ ...VALID, name: '名'.repeat(65) })).rejects.toMatchObject({ field: 'name', message: '规格名称最多 64 个字符' })
     await expect(createRuntimeSpec({ ...VALID, name: '  ' })).rejects.toMatchObject({ field: 'name', message: '规格名称不能为空' })
     await expect(createRuntimeSpec({ ...VALID, boundaryDesc: '边'.repeat(200) })).resolves.toMatchObject({ boundaryDesc: '边'.repeat(200) })
   })

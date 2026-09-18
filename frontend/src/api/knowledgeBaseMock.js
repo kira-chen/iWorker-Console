@@ -527,7 +527,7 @@ function validateSourceConfig(payload, prev) {
       if (ep.length > 500) bad('MCP 服务地址最多 500 个字符', 'endpoint')
       if (!HTTP_RE.test(ep)) bad('MCP 服务地址需以 http:// 或 https:// 开头', 'endpoint')
       if (cfg.authType === 'header' && !/^[A-Za-z0-9-]{1,128}$/.test(String(cfg.authHeaderName || '').trim())) {
-        bad('Header 名仅允许字母、数字和连字符（不超过 128 字符）', 'authHeaderName')
+        bad('Header 名仅允许字母、数字和连字符（最多 128 个字符）', 'authHeaderName')
       }
       if (cfg.authType && cfg.authType !== 'none' && !(payload.authValue || '').trim() && !prev?.config?.credentialMasked) {
         bad('访问凭证必填', 'authValue')

@@ -38,7 +38,7 @@ function validateParamRows(rows, opts) {
     // 必填/去重校验——否则「删掉重名的旧变量、另加一个同名新变量」会被自己拦住。
     if (it?.pendingDelete) continue
     if (!k) return `${noun}名称必填`
-    if (k.length > 128) return `${noun}名不超过 128 字`
+    if (k.length > 128) return `${noun}名最多 128 个字符`
     if (keyRe && !keyRe.test(k)) return `${noun}名不合法：${k}${keyReText}`
     if (withIn && !inValues.includes(it?.in)) return `${noun} ${k} 请选择参数位置`
     const dedupeKey = withIn ? `${it.in}|${k}` : k
@@ -46,7 +46,7 @@ function validateParamRows(rows, opts) {
       return withIn ? `${noun}重复：${inLabel(it.in)} 位置已有 ${k}` : `${noun}名重复：${k}`
     }
     seen.add(dedupeKey)
-    if (desc.length > MCP_ENV_DESC_MAX) return `${noun} ${k} 的描述不超过 ${MCP_ENV_DESC_MAX} 字`
+    if (desc.length > MCP_ENV_DESC_MAX) return `${noun} ${k} 的描述最多 ${MCP_ENV_DESC_MAX} 个字符`
     if (it?.clientFill) {
       if (val.trim()) return `${noun} ${k} 已勾选客户端填写，不可再填平台值`
     } else if (!val.trim() && !it?.configured) {
@@ -135,7 +135,7 @@ export function validateBizSystemForm(form) {
   const errors = {}
   const name = (form.name || '').trim()
   if (!name) errors.name = '系统名称必填'
-  else if (name.length > BIZ_NAME_MAX) errors.name = `系统名称不超过 ${BIZ_NAME_MAX} 字`
+  else if (name.length > BIZ_NAME_MAX) errors.name = `系统名称最多 ${BIZ_NAME_MAX} 个字符`
 
   // 连接器类型必选（PRD §三.3；所属岗位不强制——2026-09-18 负责人拍板按 md 字面允许先不绑，
   // 与 ApiEditor/ExpertEditor 同口径）
@@ -146,12 +146,12 @@ export function validateBizSystemForm(form) {
 
   const description = (form.description || '').trim()
   if (!description) errors.description = '系统描述必填'
-  else if (description.length > BIZ_DESC_MAX) errors.description = `系统描述不超过 ${BIZ_DESC_MAX} 字`
+  else if (description.length > BIZ_DESC_MAX) errors.description = `系统描述最多 ${BIZ_DESC_MAX} 个字符`
 
   // 登录地址必填（B10：标签去「（可选）」）
   const loginUrl = (form.loginUrl || '').trim()
   if (!loginUrl) errors.loginUrl = '登录地址必填'
-  else if (loginUrl.length > BIZ_URL_MAX) errors.loginUrl = `登录地址不超过 ${BIZ_URL_MAX} 字`
+  else if (loginUrl.length > BIZ_URL_MAX) errors.loginUrl = `登录地址最多 ${BIZ_URL_MAX} 个字符`
   else if (!URL_RE.test(loginUrl)) errors.loginUrl = '登录地址需以 http:// 或 https:// 开头'
 
   if (form.connType && !BIZ_CONN_VALUES.includes(form.connType)) {
@@ -171,24 +171,24 @@ export function validateBizSystemForm(form) {
     if (isBlankBizPage(p)) return // 空白行自动丢弃，不校验
     const url = (p?.url || '').trim()
     if (!url) errors[`bizPages.${i}.url`] = '业务页 URL 必填'
-    else if (url.length > BIZ_URL_MAX) errors[`bizPages.${i}.url`] = `业务页 URL 不超过 ${BIZ_URL_MAX} 字`
+    else if (url.length > BIZ_URL_MAX) errors[`bizPages.${i}.url`] = `业务页 URL 最多 ${BIZ_URL_MAX} 个字符`
     else if (!URL_RE.test(url)) errors[`bizPages.${i}.url`] = '业务页 URL 需以 http:// 或 https:// 开头'
 
     const pname = (p?.name || '').trim()
     if (!pname) errors[`bizPages.${i}.name`] = '业务页名称必填'
     else if (pname.length > BIZ_PAGE_NAME_MAX)
-      errors[`bizPages.${i}.name`] = `业务页名称不超过 ${BIZ_PAGE_NAME_MAX} 字`
+      errors[`bizPages.${i}.name`] = `业务页名称最多 ${BIZ_PAGE_NAME_MAX} 个字符`
 
     const pdesc = (p?.description || '').trim()
     if (pdesc.length > BIZ_PAGE_DESC_MAX)
-      errors[`bizPages.${i}.description`] = `业务页描述不超过 ${BIZ_PAGE_DESC_MAX} 字`
+      errors[`bizPages.${i}.description`] = `业务页描述最多 ${BIZ_PAGE_DESC_MAX} 个字符`
   })
 
   // 示例问题（BQ4）：固定 3 条，保存时均须非空且每条 ≤60
   const qs = [0, 1, 2].map((i) => (form.exampleQuestions?.[i] || '').trim())
   if (qs.some((q) => !q)) errors.exampleQuestions = '示例问题固定 3 条，须全部填写'
   else if (qs.some((q) => q.length > BIZ_QUESTION_MAX))
-    errors.exampleQuestions = `示例问题每条不超过 ${BIZ_QUESTION_MAX} 字`
+    errors.exampleQuestions = `示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`
 
   return { ok: Object.keys(errors).length === 0, errors }
 }
@@ -199,9 +199,9 @@ export function validateMcpForm(form) {
   const errors = {}
   const name = (form.name || '').trim()
   if (!name) errors.name = '名称必填'
-  else if (name.length > 64) errors.name = '名称不超过 64 字'
+  else if (name.length > 64) errors.name = '名称最多 64 个字符'
   if (!(form.description || '').trim()) errors.description = '服务描述必填'
-  else if (form.description.trim().length > 2000) errors.description = '服务描述不超过 2000 字'
+  else if (form.description.trim().length > 2000) errors.description = '服务描述最多 2000 个字符'
   if (!form.icon) errors.icon = '请选择或上传图标'
   // 示例问题（2026-09-09 PRD 复核轮 · G4，清单第五节第 3 项「拉齐为强制必填」）：
   // md prd-连接器-MCP.md §三.3 L242「示例问题：必填，固定 3 条输入行……单条示例问题最多 60 字符」，
@@ -211,7 +211,7 @@ export function validateMcpForm(form) {
   const mcpQs = [0, 1, 2].map((i) => (form.exampleQuestions?.[i] || '').trim())
   if (mcpQs.some((q) => !q)) errors.exampleQuestions = '示例问题固定 3 条，须全部填写'
   else if (mcpQs.some((q) => q.length > BIZ_QUESTION_MAX))
-    errors.exampleQuestions = `示例问题每条不超过 ${BIZ_QUESTION_MAX} 字`
+    errors.exampleQuestions = `示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`
   // 超时：必填，1000～120000 ms（PRD §三.4，默认 10000）
   const t = Number(form.timeoutMs)
   if (!Number.isFinite(t) || t < 1000 || t > 120000) {
@@ -244,7 +244,7 @@ export function validateMcpForm(form) {
       const hn = (form.authHeaderName || '').trim()
       if (!hn) errors.authConfig = '鉴权 Header 名必填'
       else if (!MCP_AUTH_HEADER_NAME_RE.test(hn))
-        errors.authConfig = '鉴权 Header 名仅允许字母 / 数字 / 连字符（不超过 128 字符）'
+        errors.authConfig = '鉴权 Header 名仅允许字母 / 数字 / 连字符（最多 128 个字符）'
     }
     if (!errors.authConfig) {
       const hasNew = !!(form.authValue || '').trim()

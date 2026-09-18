@@ -97,7 +97,7 @@ describe('skillReviewMock · 审核记录', () => {
   it('驳回：原因必填 ≤500 字；记录审核人 / 时间 / 原因，状态 REJECTED', async () => {
     await expect(rejectReviewApplication('usr_4', { reason: '   ' })).rejects.toMatchObject({ message: '请填写驳回原因' })
     await expect(rejectReviewApplication('usr_4', { reason: 'x'.repeat(501) })).rejects.toMatchObject({
-      message: '驳回原因不能超过 500 字'
+      message: '驳回原因最多 500 个字符'
     })
     const d = await rejectReviewApplication('usr_4', { reviewer: 'audit.admin', reason: ' 请缩小权限范围 ' })
     expect(d.status).toBe('REJECTED')

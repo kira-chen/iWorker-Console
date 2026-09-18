@@ -540,13 +540,13 @@ export async function getProviderSystem(id) {
 function validatePsPayload(payload, selfId = null) {
   const name = (payload.name || '').trim()
   if (!name) throw err('系统名称必填', 'name')
-  if (name.length > 64) throw err('系统名称最多 64 字符', 'name')
+  if (name.length > 64) throw err('系统名称最多 64 个字符', 'name')
   if (providerSystems.some((p) => p.name === name && p.id !== selfId)) {
     throw err('系统名称平台内不可重复', 'name')
   }
   const description = (payload.description || '').trim()
   if (!description) throw err('系统描述必填', 'description')
-  if (description.length > 2000) throw err('系统描述最多 2000 字符', 'description')
+  if (description.length > 2000) throw err('系统描述最多 2000 个字符', 'description')
   return { name, description }
 }
 

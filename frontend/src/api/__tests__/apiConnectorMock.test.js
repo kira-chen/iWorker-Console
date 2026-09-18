@@ -171,10 +171,10 @@ describe('③ 状态机双向（md §二.4 L64-69）', () => {
 describe('④ 服务提供系统校验（md §二.5 L78）', () => {
   it.each([
     ['名称空', { name: '  ', description: 'd' }, 'name', '系统名称必填'],
-    ['名称 65 字', { name: 'x'.repeat(65), description: 'd' }, 'name', '系统名称最多 64 字符'],
+    ['名称 65 字', { name: 'x'.repeat(65), description: 'd' }, 'name', '系统名称最多 64 个字符'],
     ['名称与种子重名', { name: '财务服务系统', description: 'd' }, 'name', '系统名称平台内不可重复'],
     ['描述空', { name: '新系统', description: '' }, 'description', '系统描述必填'],
-    ['描述 2001 字', { name: '新系统', description: 'd'.repeat(2001) }, 'description', '系统描述最多 2000 字符']
+    ['描述 2001 字', { name: '新系统', description: 'd'.repeat(2001) }, 'description', '系统描述最多 2000 个字符']
   ])('新建 %s → rejects {field, message}', async (_l, payload, field, message) => {
     await expect(run(m.createProviderSystem(payload))).rejects.toMatchObject({ field, message })
   })

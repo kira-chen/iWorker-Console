@@ -319,7 +319,7 @@ export async function rejectReviewApplication(reviewId, payload = {}) {
   if (r.status !== 'PENDING') throw err('该记录已审核，不能重复操作', 40900)
   const reason = String(payload.reason || '').trim()
   if (!reason) throw err('请填写驳回原因')
-  if (reason.length > 500) throw err('驳回原因不能超过 500 字')
+  if (reason.length > 500) throw err('驳回原因最多 500 个字符')
   r.status = 'REJECTED'
   r.reviewer = String(payload.reviewer || '').trim() || 'admin'
   r.reviewedAt = nowIso()

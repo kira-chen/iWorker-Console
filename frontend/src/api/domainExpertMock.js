@@ -276,7 +276,7 @@ export async function createExpert(payload = {}) {
   await delay()
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写专家名', 'name')
-  if (name.length > 64) throw err('专家名不超过 64 字', 'name')
+  if (name.length > 64) throw err('专家名最多 64 个字符', 'name')
   if (experts.some((e) => e.name === name)) throw err('专家名已存在', 'name', 1005)
   const now = nowIso()
   const e = {

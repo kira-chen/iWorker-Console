@@ -388,7 +388,7 @@ function validate() {
     errors.name = '请填写任务名称'
     ok = false
   } else if (name.length > 64) {
-    errors.name = '任务名称不超过 64 个字符'
+    errors.name = '任务名称最多 64 个字符'
     ok = false
   }
 
@@ -399,7 +399,7 @@ function validate() {
     errors.prompt = '请填写一句话指令（启用样例必填）'
     ok = false
   } else if (form.prompt.length > PROMPT_MAX) {
-    errors.prompt = `一句话指令不超过 ${PROMPT_MAX} 字`
+    errors.prompt = `一句话指令最多 ${PROMPT_MAX} 个字符`
     ok = false
   }
 
@@ -435,7 +435,7 @@ function validate() {
   // 提示词非必填（md §7.7 必填只有任务名称 + 一句话指令；2026-09-12 审计 J7 / K9 删原「详细说明」必填门），
   // 仅守 md §7.4「最多 8000 字符」上限（K7）。
   if (form.sopDoc.length > SOP_MAX) {
-    errors.sopDoc = `提示词不超过 ${SOP_MAX} 字`
+    errors.sopDoc = `提示词最多 ${SOP_MAX} 个字符`
     ok = false
   }
   return ok

@@ -398,7 +398,7 @@ function validate() {
     errors.roleDesc = '请填写职责描述'
     ok = false
   } else if (soulLen.value > SOUL_SOFT_LIMIT) {
-    errors.roleDesc = `职责描述不超过 ${SOUL_SOFT_LIMIT} 字，当前 ${soulLen.value} 字`
+    errors.roleDesc = `职责描述最多 ${SOUL_SOFT_LIMIT} 个字符，当前 ${soulLen.value} 个字符`
     ok = false
   }
   // 示例问题校验收紧（2026-09-04 原型 expert-final-layout-required-module）：3 条必须全填，

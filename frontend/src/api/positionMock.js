@@ -295,7 +295,7 @@ export async function createPosition(payload = {}) {
   if (!name) throw err('请填写岗位名称', 'name')
   if (positions.some((p) => p.name === name)) throw err('已存在同名岗位', 'name', 1005)
   // 岗位描述 500 字上限（2026-09-08 决议第 5 项：统一 500，全链同口径：新建弹窗 / 人格页签 / mock 兜底）
-  if (String(payload.description || '').trim().length > 500) throw err('岗位描述不超过 500 字', 'description')
+  if (String(payload.description || '').trim().length > 500) throw err('岗位描述最多 500 个字符', 'description')
   const now = nowIso()
   const p = {
     positionId: posSeq++,
@@ -709,7 +709,7 @@ export async function updatePosition(id, payload = {}) {
   if ('description' in payload) {
     const description = String(payload.description || '').trim()
     // 岗位描述 500 字上限（2026-09-08 决议第 5 项：统一 500）
-    if (description.length > 500) throw err('岗位描述不超过 500 字', 'description')
+    if (description.length > 500) throw err('岗位描述最多 500 个字符', 'description')
     p.description = description
   }
   if ('intro' in payload) wb.intro = String(payload.intro || '').trim()
@@ -721,19 +721,19 @@ export async function updatePosition(id, payload = {}) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
     // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3），可选、≤6 条 × 100 字
     if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')
-    if (notes.some((s) => s.length > 100)) throw err('领用页文案每条不超过 100 字', 'claimDescriptions')
+    if (notes.some((s) => s.length > 100)) throw err('领用页文案每条最多 100 个字符', 'claimDescriptions')
     wb.claimDescriptions = notes
   }
   if ('exampleQuestions' in payload) {
     const qs = normEq(payload.exampleQuestions)
     // 300 = utils/positionModel.js EXAMPLE_Q_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
     // 2026-09-18 待办 yuepu#5⑥：此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
-    if (qs.some((q) => q.trim().length > 300)) throw err('示例问题每条不超过 300 字', 'exampleQuestions')
+    if (qs.some((q) => q.trim().length > 300)) throw err('示例问题每条最多 300 个字符', 'exampleQuestions')
     wb.exampleQuestions = qs
   }
   if ('positionSop' in payload) {
     const sop = String(payload.positionSop || '')
-    if (sop.length > 4000) throw err('岗位 SOP 不超过 4000 字', 'positionSop')
+    if (sop.length > 4000) throw err('岗位 SOP 最多 4000 个字符', 'positionSop')
     wb.positionSop = sop
   }
   if ('businessSystemIds' in payload) {

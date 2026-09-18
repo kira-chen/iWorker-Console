@@ -462,7 +462,7 @@ function validateTyped() {
       if (form.mcp.authType === 'header') {
         const hn = (form.mcp.authHeaderName || '').trim()
         if (!hn) errors.mcpHeaderName = 'Header 名必填'
-        else if (!HEADER_NAME_RE.test(hn)) errors.mcpHeaderName = '仅允许字母、数字和连字符（不超过 128 字符）'
+        else if (!HEADER_NAME_RE.test(hn)) errors.mcpHeaderName = '仅允许字母、数字和连字符（最多 128 个字符）'
       }
       if (form.mcp.authType !== 'none' && !mcpCredential.value.trim() && !keepMcpCredential.value) {
         errors.mcpCredential = form.mcp.authType === 'bearer' ? 'Bearer Token 必填' : '访问凭证必填'

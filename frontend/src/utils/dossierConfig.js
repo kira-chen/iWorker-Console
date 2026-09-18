@@ -95,10 +95,10 @@ export function validateDossierConfig(cfg) {
   const seenRules = new Set()
   if ((cfg?.reduceRules || []).length > MAX_RULES) err('reduceRules', `业务规则最多 ${MAX_RULES} 条`)
   ;(cfg?.reduceRules || []).forEach((r, i) => {
-    if ((r?.desc || '').length > 200) err(`reduceRules[${i}].desc`, '规则描述不超过 200 字')
+    if ((r?.desc || '').length > 200) err(`reduceRules[${i}].desc`, '规则描述最多 200 个字符')
     const key = (r?.key || '').trim()
     if (!key) err(`reduceRules[${i}].key`, '键名不能为空')
-    else if (key.length > MAX_KEY_LEN) err(`reduceRules[${i}].key`, `不超过 ${MAX_KEY_LEN} 字`)
+    else if (key.length > MAX_KEY_LEN) err(`reduceRules[${i}].key`, `最多 ${MAX_KEY_LEN} 个字符`)
     else if (seenRules.has(key)) err(`reduceRules[${i}].key`, `同一键名只能配一条：${key}`)
     seenRules.add(key)
     if (!REDUCE_STRATEGIES.some((s) => s.value === r?.strategy)) err(`reduceRules[${i}].strategy`, '请选择归纳方式')
