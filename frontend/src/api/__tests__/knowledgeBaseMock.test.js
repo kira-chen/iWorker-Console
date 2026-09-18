@@ -504,19 +504,19 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
   })
 
   // A7：md §三.3.1 基本信息表 + §三.3.2 每类 ≤5
-  it('A7 名称超 64 字（2026-09-18 待办 yuepu#5① 一览表拍板收窄，原 100） → field=name「知识库名称最多 64 个字符」；描述超 500 字 → field=description（md §三.3.1）', async () => {
+  it('A7 名称超 64 字（2026-09-18 待办 yuepu#5① 一览表拍板收窄，原 100） → field=name「知识库名称最多 64 个字符」；描述超 2000 字（2026-09-18 待办 yuepu#5，代码追平 217ce1f 已改的 md，原 500） → field=description', async () => {
     await expect(create({ name: 'x'.repeat(65), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [] })).rejects.toMatchObject({
       field: 'name',
       message: '知识库名称最多 64 个字符'
     })
-    await expect(create({ name: uniq('长描述库'), kbType: 'ENTERPRISE', description: 'd'.repeat(501), sourceIds: [] })).rejects.toMatchObject({
+    await expect(create({ name: uniq('长描述库'), kbType: 'ENTERPRISE', description: 'd'.repeat(2001), sourceIds: [] })).rejects.toMatchObject({
       field: 'description',
-      message: '描述最多 500 个字符'
+      message: '描述最多 2000 个字符'
     })
-    // 恰好 64 / 500 放行
-    const ok = await create({ name: `${'y'.repeat(58)}${Math.random().toString(36).slice(2, 8)}`, kbType: 'ENTERPRISE', description: 'd'.repeat(500), sourceIds: [] })
+    // 恰好 64 / 2000 放行
+    const ok = await create({ name: `${'y'.repeat(58)}${Math.random().toString(36).slice(2, 8)}`, kbType: 'ENTERPRISE', description: 'd'.repeat(2000), sourceIds: [] })
     expect(ok.name.length).toBe(64)
-    expect(ok.description.length).toBe(500)
+    expect(ok.description.length).toBe(2000)
   })
 
   it('A7 专家 / 岗位知识库缺可见范围 → field=scopeRefId「请选择可见范围」；企业库不需要（md §三.3.1 可见范围必填）', async () => {
