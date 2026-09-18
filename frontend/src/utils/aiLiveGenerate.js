@@ -38,6 +38,9 @@ export const AI_LIVE_DELAY_MS = 500
 export const AI_LIVE_DONE_TOAST = 'AI 内容已生成，请确认后保存'
 /** 生成中按钮文案（原型 button.textContent） */
 export const AI_LIVE_BUSY_LABEL = '生成中…'
+/** 生成的示例问题截断长度（一览表示例类统一规则；2026-09-18 待办 yuepu#5⑥：此前 7 处硬编码 60，
+ *  输入框已放宽到 300，生成内容仍被这里截到 60 字，活 bug——收成一个常量，改一处生效） */
+export const AI_LIVE_QUESTION_MAX = 300
 
 /** 压空白 + 截断加省略号（原型 shortText 同口径），用于把源文本收成模板主语。 */
 export function shortText(text, max) {
@@ -80,9 +83,9 @@ export function expertQuestionSet(ctx) {
   const c = typeof ctx === 'string' ? { intro: ctx } : ctx || {}
   const subject = pickSubject([c.name, c.intro, c.roleDesc, c.category], 18)
   return [
-    limitLen(`请围绕"${subject}"给出专业分析`, 60),
-    limitLen(`请基于"${subject}"识别关键问题并提出建议`, 60),
-    limitLen(`请针对"${subject}"整理一份可执行方案`, 60)
+    limitLen(`请围绕"${subject}"给出专业分析`, AI_LIVE_QUESTION_MAX),
+    limitLen(`请基于"${subject}"识别关键问题并提出建议`, AI_LIVE_QUESTION_MAX),
+    limitLen(`请针对"${subject}"整理一份可执行方案`, AI_LIVE_QUESTION_MAX)
   ]
 }
 
@@ -96,9 +99,9 @@ export function connectorQuestionSet(ctx) {
   const c = typeof ctx === 'string' ? { description: ctx } : ctx || {}
   const subject = pickSubject([c.name, c.description], 18)
   return [
-    limitLen(`请查询与"${subject}"相关的信息`, 60),
-    limitLen(`请处理一项关于"${subject}"的业务请求`, 60),
-    limitLen(`请返回"${subject}"的最新处理结果`, 60)
+    limitLen(`请查询与"${subject}"相关的信息`, AI_LIVE_QUESTION_MAX),
+    limitLen(`请处理一项关于"${subject}"的业务请求`, AI_LIVE_QUESTION_MAX),
+    limitLen(`请返回"${subject}"的最新处理结果`, AI_LIVE_QUESTION_MAX)
   ]
 }
 
@@ -111,7 +114,7 @@ export function connectorQuestionSet(ctx) {
 export function skillExampleQuestion(ctx) {
   const c = typeof ctx === 'string' ? { description: ctx } : ctx || {}
   const subject = pickSubject([c.name, c.description], 24)
-  return limitLen(`请帮我使用这个技能完成"${subject}"`, 60)
+  return limitLen(`请帮我使用这个技能完成"${subject}"`, AI_LIVE_QUESTION_MAX)
 }
 
 /**

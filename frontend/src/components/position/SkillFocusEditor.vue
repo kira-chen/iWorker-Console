@@ -937,6 +937,7 @@ onBeforeUnmount(() => {
           v-model="exampleQuestion"
           class="ib-input"
           :maxlength="300"
+          show-word-limit
           :placeholder="adminContext
             ? '输入 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'
             : '选填：填 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'"

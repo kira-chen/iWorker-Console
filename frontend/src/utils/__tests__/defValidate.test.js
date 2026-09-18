@@ -151,9 +151,9 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
       expect(validateMcpForm({ ...apiKey, authHeaderName: '   ' }).errors.authConfig).toBe('鉴权 Header 名必填')
     })
 
-    it('Header 名 129 字或含下划线 → 「仅允许字母 / 数字 / 连字符（不超过 128 字符）」；恰 128 字通过', () => {
+    it('Header 名 129 字或含下划线 → 「仅允许字母 / 数字 / 连字符（最多 128 个字符）」；恰 128 字通过', () => {
       const tooLong = validateMcpForm({ ...apiKey, authHeaderName: 'a'.repeat(129) }).errors.authConfig
-      expect(tooLong).toBe('鉴权 Header 名仅允许字母 / 数字 / 连字符（不超过 128 字符）')
+      expect(tooLong).toBe('鉴权 Header 名仅允许字母 / 数字 / 连字符（最多 128 个字符）')
       expect(validateMcpForm({ ...apiKey, authHeaderName: 'X_Api_Key' }).errors.authConfig).toContain('仅允许字母')
       expect(validateMcpForm({ ...apiKey, authHeaderName: 'a'.repeat(128) }).errors.authConfig).toBeUndefined()
       expect(validateMcpForm({ ...apiKey, authHeaderName: 'X-Api-Key-2' }).ok).toBe(true)
@@ -291,7 +291,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
 
   it('系统名称必填 + ≤64（一览表 §七 第 1 行）', () => {
     expect(validateBizSystemForm({ ...valid, name: '' }).errors.name).toBe('系统名称必填')
-    expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(65) }).errors.name).toBe('系统名称不超过 64 字')
+    expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(65) }).errors.name).toBe('系统名称最多 64 个字符')
     expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(64) }).errors.name).toBeUndefined()
   })
 
@@ -308,7 +308,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
   it('系统描述必填 + ≤2000（md §三.2 L95）', () => {
     expect(validateBizSystemForm({ ...valid, description: '' }).errors.description).toBe('系统描述必填')
     expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2000) }).errors.description).toBeUndefined()
-    expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2001) }).errors.description).toBe('系统描述不超过 2000 字')
+    expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2001) }).errors.description).toBe('系统描述最多 2000 个字符')
   })
 
   it('登录地址必填 + 合法 HTTP/HTTPS（md §三.2 L97 / §三.7 L144）', () => {
@@ -324,7 +324,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(validateBizSystemForm({ ...valid, exampleQuestions: undefined }).errors.exampleQuestions).toBeTruthy()
     expect(
       validateBizSystemForm({ ...valid, exampleQuestions: ['q'.repeat(301), 'b', 'c'] }).errors.exampleQuestions
-    ).toBe('示例问题每条不超过 300 字')
+    ).toBe('示例问题每条最多 300 个字符')
     expect(validateBizSystemForm(valid).errors.exampleQuestions).toBeUndefined()
   })
 
@@ -386,7 +386,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
         ...valid,
         bizPages: [{ url: 'https://a.com', name: 'n'.repeat(21) }]
       }).errors['bizPages.0.name']
-    ).toBe('业务页名称不超过 20 字')
+    ).toBe('业务页名称最多 20 个字符')
   })
 
   it('业务页逐项：description 选填 ≤100（md 未写上限，代码现状；审计 J15 待补 md）', () => {

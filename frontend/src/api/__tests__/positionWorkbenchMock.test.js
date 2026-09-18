@@ -85,13 +85,13 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(after.claimDescriptions).toEqual(['第一条说明'])
   })
 
-  it('mock 校验：描述 >500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 >6 条或单条 >100 / 示例问题单条 >60 / SOP >4000 均被拦', async () => {
+  it('mock 校验：描述 >500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 >6 条或单条 >100 / 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {
     // 描述 500 以内放行、501 拦（人格页 / 新建弹窗同口径）
     await expect(updatePosition(404, { description: 'x'.repeat(500) })).resolves.toBeTruthy()
     await expect(updatePosition(404, { description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
     await expect(updatePosition(404, { claimDescriptions: Array.from({ length: 7 }, (_, i) => `条${i}`) })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
-    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(61), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
+    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(301), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
     // createPosition 同口径校验描述 500（md 岗位 §2.1 L175；positionMock.js createPosition 500 线）：500 放行 / 501 拦
     await expect(createPosition({ name: '描述恰 500 岗', description: 'x'.repeat(500) })).resolves.toMatchObject({ name: '描述恰 500 岗' })

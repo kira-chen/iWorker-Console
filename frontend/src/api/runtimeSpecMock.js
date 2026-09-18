@@ -54,10 +54,10 @@ const isIntAtLeast1 = (v) => Number.isInteger(Number(v)) && Number(v) >= 1
 function validatePayload(p) {
   const name = String(p.name || '').trim()
   if (!name) throw err('规格名称不能为空', 40001, 'name')
-  if (name.length > 64) throw err('规格名称不超过 64 个字符', 40001, 'name')
+  if (name.length > 64) throw err('规格名称最多 64 个字符', 40001, 'name')
   const boundaryDesc = String(p.boundaryDesc || '').trim()
   if (!boundaryDesc) throw err('请填写能力边界说明', 40001, 'boundaryDesc')
-  if (boundaryDesc.length > 200) throw err('能力边界说明不超过 200 个字符', 40001, 'boundaryDesc')
+  if (boundaryDesc.length > 200) throw err('能力边界说明最多 200 个字符', 40001, 'boundaryDesc')
   // CPU：≥0.5 且按 0.5 递增（乘 2 后须为整数，避免浮点比较）
   const cpu = Number(p.cpu)
   if (!(cpu >= 0.5) || !Number.isInteger(cpu * 2)) throw err('CPU须不小于 0.5 核，并按照 0.5 递增', 40001, 'cpu')

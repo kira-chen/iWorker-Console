@@ -28,7 +28,10 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let bizSeq = 2104
 let skillSeq = 3
 
-export const BIZ_QUESTION_MAX = 60
+// 与 utils/defValidate.js 的同名 BIZ_QUESTION_MAX 同口径（mock 不 import utils，数值对齐即可；
+// 2026-09-18 待办 yuepu#5⑥ 改口径时两处曾一度失配：这里卡在 60、defValidate 已经是 300，
+// 导致输入框能填 300 字、保存却被这里拒——改这个值时务必同步另一处）
+export const BIZ_QUESTION_MAX = 300
 
 const mkBiz = (over) => ({
   id: over.id,
@@ -180,14 +183,14 @@ export async function getBizSystem(id) {
 function validateBizPayload(payload, selfId = null) {
   const name = (payload.name || '').trim()
   if (!name) throw err('系统名称必填', 'name')
-  if (name.length > 64) throw err('系统名称不超过 64 字', 'name')
+  if (name.length > 64) throw err('系统名称最多 64 个字符', 'name')
   if (bizRows.some((b) => b.name === name && b.id !== selfId)) {
     throw err('系统名称平台内不可重复', 'name')
   }
   if (!payload.icon) throw err('请选择图标', 'icon')
   const description = (payload.description || '').trim()
   if (!description) throw err('系统描述必填', 'description')
-  if (description.length > 2000) throw err('系统描述不超过 2000 字', 'description')
+  if (description.length > 2000) throw err('系统描述最多 2000 个字符', 'description')
   if (!/^https?:\/\//i.test((payload.loginUrl || '').trim())) {
     throw err('登录地址必须以 http:// 或 https:// 开头', 'loginUrl')
   }
@@ -196,7 +199,7 @@ function validateBizPayload(payload, selfId = null) {
   const qs = [0, 1, 2].map((i) => (payload.exampleQuestions?.[i] || '').trim())
   if (qs.some((q) => !q)) throw err('示例问题固定 3 条，须全部填写', 'exampleQuestions')
   if (qs.some((q) => q.length > BIZ_QUESTION_MAX)) {
-    throw err(`示例问题每条不超过 ${BIZ_QUESTION_MAX} 字`, 'exampleQuestions')
+    throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
   }
 }
 
@@ -362,6 +365,8 @@ export async function createBizSystemOwnedSkill(id, payload = {}) {
   if (!b) throw err('业务系统不存在')
   const name = (payload.name || '').trim()
   if (!name) throw err('技能名必填', 'name')
+  // 名称类字段统一上限 64（2026-09-18 待办 yuepu#5④，与技能模块技能名同口径；此前无长度校验）
+  if (name.length > 64) throw err('技能名最多 64 个字符', 'name')
   const skill = { skillId: `sk_own_${skillSeq++}`, name }
   b.ownedSkills.push(skill)
   persist()

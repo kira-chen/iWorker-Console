@@ -105,6 +105,9 @@ const NAME_MAX = 64
 const PROMPT_MAX = 2000
 // 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7）
 const SOP_MAX = 8000
+// 说明（备注）上限：计数器与 maxlength 共用它（2026-09-18 待办 yuepu#5⑧，此前两处各写一遍字面量 500，
+// 与 NAME_MAX/PROMPT_MAX 已经在用的「计数器与 maxlength 共用同一常量」模式看齐）
+const REMARK_MAX = 500
 // 空闲时段提前准备两态提示（md §7.3 L399-400，逐字；2026-09-12 审计 K2）
 const PRE_KICK_HINT_ON = '送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。'
 const PRE_KICK_HINT_OFF = '到点才开始执行，结果会晚几分钟。'
@@ -388,7 +391,7 @@ function validate() {
     errors.name = '请填写任务名称'
     ok = false
   } else if (name.length > 64) {
-    errors.name = '任务名称不超过 64 个字符'
+    errors.name = '任务名称最多 64 个字符'
     ok = false
   }
 
@@ -399,7 +402,7 @@ function validate() {
     errors.prompt = '请填写一句话指令（启用样例必填）'
     ok = false
   } else if (form.prompt.length > PROMPT_MAX) {
-    errors.prompt = `一句话指令不超过 ${PROMPT_MAX} 字`
+    errors.prompt = `一句话指令最多 ${PROMPT_MAX} 个字符`
     ok = false
   }
 
@@ -435,7 +438,7 @@ function validate() {
   // 提示词非必填（md §7.7 必填只有任务名称 + 一句话指令；2026-09-12 审计 J7 / K9 删原「详细说明」必填门），
   // 仅守 md §7.4「最多 8000 字符」上限（K7）。
   if (form.sopDoc.length > SOP_MAX) {
-    errors.sopDoc = `提示词不超过 ${SOP_MAX} 字`
+    errors.sopDoc = `提示词最多 ${SOP_MAX} 个字符`
     ok = false
   }
   return ok
@@ -661,12 +664,12 @@ onMounted(async () => {
           <p v-if="errors.prompt" class="te-err">{{ errors.prompt }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 500</span></label>
+          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / {{ REMARK_MAX }}</span></label>
           <el-input
             v-model="form.remark"
             type="textarea"
             :rows="4"
-            maxlength="500"
+            :maxlength="REMARK_MAX"
             placeholder="补充任务背景或注意事项"
             @input="markDirty"
           />

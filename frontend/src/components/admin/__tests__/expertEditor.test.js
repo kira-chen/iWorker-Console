@@ -310,7 +310,7 @@ describe('ExpertEditor — 新建', () => {
   })
 
   // 2026-09-12 T55 · md §三.2「职责描述：必填，最多 2000 字符」（ExpertEditor.vue:375-377 软上限拦截）
-  it('职责描述 2001 字 → 就地红字「职责描述不超过 2000 字」+ toast，不发 createExpert（md §三.2）', async () => {
+  it('职责描述 2001 字 → 就地红字「职责描述最多 2000 个字符」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过 2000 字」）+ toast，不发 createExpert（md §三.2）', async () => {
     await mount({ expertId: null })
     await fillRequired('新专家')
     const mde = container.querySelector('.soul-mde')
@@ -321,7 +321,7 @@ describe('ExpertEditor — 新建', () => {
     btn('创建专家').click()
     await flush()
     expect(createExpert).not.toHaveBeenCalled()
-    expect(errTexts()).toContain('职责描述不超过 2000 字，当前 2001 字')
+    expect(errTexts()).toContain('职责描述最多 2000 个字符，当前 2001 个字符')
     expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
     // 恰好 2000 字放行
     mde.value = '字'.repeat(2000)

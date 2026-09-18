@@ -535,7 +535,7 @@ function cardFieldCount(t) {
                   <el-input
                     v-if="!readonly"
                     v-model="meta.label"
-                    maxlength="128"
+                    maxlength="64"
                     placeholder="如「经营分析报告」"
                     :class="{ 'is-err': !!metaErrors.label }"
                   />
@@ -646,10 +646,10 @@ function cardFieldCount(t) {
     <el-dialog v-model="createDialogOpen" title="新建工作档案" width="480px" :close-on-click-modal="false" append-to-body>
       <el-form label-position="top" class="pd-drawer-form">
         <el-form-item label="档案名称" required>
-          <el-input v-model="createDraft.label" maxlength="128" placeholder="如「经营分析报告」" />
+          <el-input v-model="createDraft.label" maxlength="64" placeholder="如「经营分析报告」" />
         </el-form-item>
         <el-form-item label="说明">
-          <el-input v-model="createDraft.description" type="textarea" :rows="3" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
+          <el-input v-model="createDraft.description" type="textarea" :rows="3" maxlength="500" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
         </el-form-item>
       </el-form>
       <template #footer>

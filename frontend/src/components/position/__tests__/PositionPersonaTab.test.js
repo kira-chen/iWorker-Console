@@ -104,7 +104,7 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5�
     }
   })
 
-  it('点示例问题【AI 生成】→ 按钮变「生成中…」+ loading；500ms 后 3 条示例问题填入（每条 ≤60 字）+ toast「已生成示例问题」', async () => {
+  it('点示例问题【AI 生成】→ 按钮变「生成中…」+ loading；500ms 后 3 条示例问题填入（每条 ≤300 字，2026-09-18 待办 yuepu#5⑥，原 60）+ toast「已生成示例问题」', async () => {
     const { ElMessage } = await import('element-plus')
     vi.useFakeTimers()
     store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
@@ -120,7 +120,7 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5�
     vi.advanceTimersByTime(1)
     await flush()
     expect(store.basic.exampleQuestions).toHaveLength(3)
-    expect(store.basic.exampleQuestions.every((q) => q.trim() && q.length <= 60)).toBe(true)
+    expect(store.basic.exampleQuestions.every((q) => q.trim() && q.length <= 300)).toBe(true)
     expect(ElMessage.success).toHaveBeenCalledWith('已生成示例问题')
     expect(aiBtns()[0].textContent.trim()).toBe('AI 生成')
     // 输入框回显生成结果

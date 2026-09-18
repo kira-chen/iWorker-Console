@@ -287,10 +287,11 @@ export async function get(id) {
 }
 function validate(payload, selfId) {
   if (!payload.name?.trim()) throw new ApiError({ message: '知识库名称不能为空', code: 400, field: 'name' })
-  if (payload.name.trim().length > 100) throw new ApiError({ message: '知识库名称最多 100 个字符', code: 400, field: 'name' })
-  // 描述必填（md §三.3.1：必填，最多 500 字符）
+  if (payload.name.trim().length > 64) throw new ApiError({ message: '知识库名称最多 64 个字符', code: 400, field: 'name' })
+  // 描述必填（md §三.3.1：必填，最多 2000 字符；2026-09-16 217ce1f 全站字数统一时 md 改了这里，
+  // 代码漏改，2026-09-18 待办 yuepu#5① 一并补上）
   if (!String(payload.description || '').trim()) throw new ApiError({ message: '请输入知识库描述', code: 400, field: 'description' })
-  if (String(payload.description).trim().length > 500) throw new ApiError({ message: '描述最多 500 个字符', code: 400, field: 'description' })
+  if (String(payload.description).trim().length > 2000) throw new ApiError({ message: '描述最多 2000 个字符', code: 400, field: 'description' })
   const dup = rows.find((r) => r.id !== selfId && r.kbType === payload.kbType && r.name.trim().toLowerCase() === payload.name.trim().toLowerCase())
   if (dup) throw new ApiError({ message: '同类型下已存在同名知识库', code: 409, field: 'name' })
   if (payload.kbType !== 'ENTERPRISE' && !payload.scopeRefId) throw new ApiError({ message: '请选择可见范围', code: 400, field: 'scopeRefId' })
@@ -526,7 +527,7 @@ function validateSourceConfig(payload, prev) {
       if (ep.length > 500) bad('MCP 服务地址最多 500 个字符', 'endpoint')
       if (!HTTP_RE.test(ep)) bad('MCP 服务地址需以 http:// 或 https:// 开头', 'endpoint')
       if (cfg.authType === 'header' && !/^[A-Za-z0-9-]{1,128}$/.test(String(cfg.authHeaderName || '').trim())) {
-        bad('Header 名仅允许字母、数字和连字符（不超过 128 字符）', 'authHeaderName')
+        bad('Header 名仅允许字母、数字和连字符（最多 128 个字符）', 'authHeaderName')
       }
       if (cfg.authType && cfg.authType !== 'none' && !(payload.authValue || '').trim() && !prev?.config?.credentialMasked) {
         bad('访问凭证必填', 'authValue')

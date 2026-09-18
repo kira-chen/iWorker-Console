@@ -158,11 +158,11 @@ const nameError = ref('')
 const createRules = {
   name: [
     { required: true, message: '请填写岗位名称', trigger: 'blur' },
-    { max: 64, message: '岗位名称不超过 64 字', trigger: 'blur' }
+    { max: 64, message: '岗位名称最多 64 个字符', trigger: 'blur' }
   ],
   description: [
     { required: true, message: '请填写岗位描述', trigger: 'blur' },
-    { max: DESCRIPTION_MAX_LEN, message: `岗位描述不超过 ${DESCRIPTION_MAX_LEN} 字`, trigger: 'blur' }
+    { max: DESCRIPTION_MAX_LEN, message: `岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`, trigger: 'blur' }
   ]
 }
 

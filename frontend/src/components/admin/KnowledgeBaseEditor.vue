@@ -394,7 +394,7 @@ function close() {
         <div class="kb-grid">
           <!-- 第一行：名称 + 图标 -->
           <el-form-item label="知识库名称" prop="name" required>
-            <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="如 产品与解决方案库" />
+            <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 产品与解决方案库" />
           </el-form-item>
           <el-form-item label="图标">
             <IconField :icon="form.icon" :name="form.name" :readonly="readonlyAll" @pick="({ icon }) => (form.icon = icon)" />
@@ -416,7 +416,7 @@ function close() {
             <div class="kb-help">{{ positionLock ? '可见范围锁定为当前岗位' : SCOPE_HELP[form.kbType] }}</div>
           </el-form-item>
           <el-form-item label="描述" prop="description" class="kb-grid-full" required>
-            <el-input v-model="form.description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="必填：这个知识库放什么、给谁用" />
+            <el-input v-model="form.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="必填：这个知识库放什么、给谁用" />
           </el-form-item>
         </div>
       </section>

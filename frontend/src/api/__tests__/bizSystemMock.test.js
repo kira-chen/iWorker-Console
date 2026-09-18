@@ -123,6 +123,15 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
       field: 'exampleQuestions',
       message: '示例问题固定 3 条，须全部填写'
     })
+    // 每条 ≤300（2026-09-18 待办 yuepu#5⑥：BIZ_QUESTION_MAX 曾卡在 60，输入框已放宽到 300，此前保存会被拒）
+    await expect(createBizSystem({ ...base, exampleQuestions: ['x'.repeat(301), 'b', 'c'] })).rejects.toMatchObject({
+      field: 'exampleQuestions',
+      message: '示例问题每条最多 300 个字符'
+    })
+    // 换个名字，避免这条成功创建的行占掉 base.name、影响本测试后续复用同名的失败态断言
+    await expect(createBizSystem({ ...base, name: `${base.name}-ok`, exampleQuestions: ['x'.repeat(300), 'b', 'c'] })).resolves.toMatchObject({
+      exampleQuestions: expect.arrayContaining(['x'.repeat(300)])
+    })
     await expect(createBizSystem({ ...base, bizPages: Array.from({ length: 21 }, () => ({ url: 'https://a.com', name: 'p' })) })).rejects.toMatchObject({
       field: 'bizPages',
       message: '业务页最多 20 条'
@@ -134,7 +143,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(createBizSystem({ ...VALID, name: '   ' })).rejects.toMatchObject({ field: 'name', message: '系统名称必填' })
     await expect(createBizSystem({ ...VALID, name: 'x'.repeat(65) })).rejects.toMatchObject({
       field: 'name',
-      message: '系统名称不超过 64 字'
+      message: '系统名称最多 64 个字符'
     })
     await expect(createBizSystem({ ...VALID, name: '人力资源系统' })).rejects.toMatchObject({
       field: 'name',
@@ -242,6 +251,15 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     skills = await listBizSystemSkills('biz_2102')
     expect(skills.some((s) => s.skillId === created.skillId)).toBe(false)
     await expect(createBizSystemOwnedSkill('biz_2102', { name: ' ' })).rejects.toMatchObject({ field: 'name' })
+  })
+
+  it('专属技能名最多 64 个字符（2026-09-18 待办 yuepu#5④，原 128；与技能模块技能名同口径，此前无长度校验）', async () => {
+    await expect(createBizSystemOwnedSkill('biz_2102', { name: 'x'.repeat(65) })).rejects.toMatchObject({
+      field: 'name',
+      message: '技能名最多 64 个字符'
+    })
+    const ok = await createBizSystemOwnedSkill('biz_2102', { name: 'x'.repeat(64) })
+    expect(ok.name.length).toBe(64)
   })
 
 })

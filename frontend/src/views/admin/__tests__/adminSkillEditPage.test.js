@@ -10,7 +10,7 @@ import { createApp, h, provide, inject } from 'vue'
  *  - §三.1 L139-141 进入方式（【查看】= 编辑路由 ?view=1 只读态；【编辑】= 编辑态）/ 返回回到技能列表；
  *  - §三.3 L176-177 【保存】成功提示「技能配置已保存」；只读态不展示分类修改 / 默认安装 / 发布 / 保存；
  *  - §三.6 SKILL.md 文件树操作（Q2 工具引用 diff）；
- *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤60）。
+ *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤300）。
  *
  * 公共桩：vue-router 用 hoisted routeState（meta/params/query 按 describe 切换）+ leaveGuard 捕获；
  * stores/position 的 fetchSkillDetail/patchSkill 为可切实现的 spy；SkillFocusEditor 桩取各文件 props/emits 并集，
@@ -382,13 +382,13 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
   })
 
   describe('保存门（一览表 §三 L58 名称 ≤64 / L61 描述 ≤2000 / L62 示例问题 ≤300 / 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
-    it('技能名称超过 64 字符 → warning「请填写不超过 64 个字符的技能名称」，不发配置 PUT', async () => {
+    it('技能名称超过 64 字符 → warning「请填写最多 64 个字符的技能名称」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
       focus.updateSkill({ name: '名'.repeat(65) })
       focus.saveConfig()
       await vi.runOnlyPendingTimersAsync()
-      expect(ElMessage.warning).toHaveBeenCalledWith('请填写不超过 64 个字符的技能名称')
+      expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 64 个字符的技能名称')
       expect(patchSkillSpy).not.toHaveBeenCalled()
       expect(ElMessage.success).not.toHaveBeenCalled()
     })
@@ -403,23 +403,23 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       expect(patchSkillSpy).not.toHaveBeenCalled()
     })
 
-    it('描述超过 2000 字符 → warning「请填写不超过 2000 个字符的技能描述」，不发配置 PUT', async () => {
+    it('描述超过 2000 字符 → warning「请填写最多 2000 个字符的技能描述」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
       focus.updateSkill({ description: '描'.repeat(2001) })
       focus.saveConfig()
       await vi.runOnlyPendingTimersAsync()
-      expect(ElMessage.warning).toHaveBeenCalledWith('请填写不超过 2000 个字符的技能描述')
+      expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 2000 个字符的技能描述')
       expect(patchSkillSpy).not.toHaveBeenCalled()
     })
 
-    it('示例问题超过 300 字符 → warning「请填写不超过 300 个字符的示例问题」，不发配置 PUT', async () => {
+    it('示例问题超过 300 字符 → warning「请填写最多 300 个字符的示例问题」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
       focus.updateSkill({ exampleQuestion: '问'.repeat(301) })
       focus.saveConfig()
       await vi.runOnlyPendingTimersAsync()
-      expect(ElMessage.warning).toHaveBeenCalledWith('请填写不超过 300 个字符的示例问题')
+      expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 300 个字符的示例问题')
       expect(patchSkillSpy).not.toHaveBeenCalled()
     })
   })

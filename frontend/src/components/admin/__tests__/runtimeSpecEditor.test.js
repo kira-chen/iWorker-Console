@@ -166,7 +166,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     await flushAll(4)
     await wait(150)
     expect(api.createRuntimeSpec).not.toHaveBeenCalled()
-    expect(errorOf(d, '能力边界说明')).toBe('能力边界说明不超过 200 个字符')
+    expect(errorOf(d, '能力边界说明')).toBe('能力边界说明最多 200 个字符')
     expect(errorOf(d, 'CPU（核）')).toBe('CPU须不小于 0.5 核，并按照 0.5 递增')
     expect(errorOf(d, '内存（Gi）')).toBe('内存须为不小于 1 的整数')
     // 超上限文案「不能超过平台单实例上限 {最大值}{单位}」（md §四.4 L302）：el-input-number 的 :max 会把超限值钉回上限

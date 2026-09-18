@@ -43,7 +43,7 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
 
   it('新建/编辑校验与回显：缺名被拦（field 定位）；提示词留空放行、超 8000 字被拦（md §7.4 / §7.7；J7 / K7）；成功回 VO 含摘要', async () => {
     await expect(createSampleTask(404, validPayload({ name: '' }))).rejects.toMatchObject({ field: 'name' })
-    await expect(createSampleTask(404, validPayload({ sopDoc: 'x'.repeat(8001) }))).rejects.toMatchObject({ field: 'sopDoc', message: '提示词不超过 8000 字' })
+    await expect(createSampleTask(404, validPayload({ sopDoc: 'x'.repeat(8001) }))).rejects.toMatchObject({ field: 'sopDoc', message: '提示词最多 8000 个字符' })
     const noSop = await createSampleTask(404, validPayload({ name: '无提示词任务', sopDoc: ' ' }))
     expect(noSop.name).toBe('无提示词任务')
     const vo = await createSampleTask(404, validPayload())

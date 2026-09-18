@@ -47,7 +47,8 @@ import {
   API_AUTH_TYPES,
   API_AUTH_IN_OPTIONS,
   API_BODY_METHODS,
-  validateApiAuthParams
+  validateApiAuthParams,
+  BIZ_QUESTION_MAX
 } from '@/utils/defValidate'
 import { rowsToSchema, schemaToRows, validateRows } from '@/utils/schema'
 import { fmtTime } from '@/utils/docMeta'
@@ -92,7 +93,7 @@ const form = reactive({
   exampleQuestions: ['', '', '']
 })
 // 示例问题每条上限（一览表示例类统一规则 300 字；AI 生成器同上限截断）
-const QUESTION_MAX = 300
+const QUESTION_MAX = BIZ_QUESTION_MAX
 // 名称上限 64（2026-09-12 对齐《各模块必填选填字段一览表》§6.2「最多 64 字符」· 审计 K36；原 128）
 const API_NAME_MAX = 64
 /** 示例问题 AI 生成（统一 AI 实况生成机制）：源=API 描述（空则按钮禁用 + title 引导），

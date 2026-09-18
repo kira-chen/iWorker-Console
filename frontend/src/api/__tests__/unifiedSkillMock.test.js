@@ -300,12 +300,12 @@ describe('种子自洽（md §二.3.4 L226-229 在审版本号由线上版本自
 })
 
 describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () => {
-  it('updateSkill：名称必填≤64 / 描述≤2000 / 示例问题≤60', async () => {
+  it('updateSkill：名称必填≤64 / 描述≤2000 / 示例问题≤300（2026-09-18 待办 yuepu#5⑥，原 60）', async () => {
     const id = await mkSkill()
     await expect(mock.updateSkill(id, { name: ' ' })).rejects.toThrow('技能名称不能为空')
     await expect(mock.updateSkill(id, { name: 'x'.repeat(65) })).rejects.toThrow('64')
     await expect(mock.updateSkill(id, { description: 'x'.repeat(2001) })).rejects.toThrow('2000')
-    await expect(mock.updateSkill(id, { exampleQuestion: 'x'.repeat(61) })).rejects.toThrow('60')
+    await expect(mock.updateSkill(id, { exampleQuestion: 'x'.repeat(301) })).rejects.toThrow('300')
   })
 
   it('AI 生成：从固定例句生成；同一技能重复点击轮换（覆盖式重新生成可感知）', async () => {
