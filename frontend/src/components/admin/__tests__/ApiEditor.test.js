@@ -356,6 +356,26 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
     expect(optionLabels).toContain('经营分析岗')
   })
 
+  it('连接器类型=岗位私有但不绑定岗位 → 仍可保存成功（2026-09-18 按 PRD 字面松绑「必须绑定」强校验）', async () => {
+    const el = await mountEditor(null)
+    setInput(inputOf(el, '名称'), '新接口')
+    el.querySelector('.icon-pick').click()
+    const ps = itemByLabel(el, '所属服务提供系统').querySelector('select')
+    ps.value = 'pv_1'
+    ps.dispatchEvent(new Event('change'))
+    const ts = itemByLabel(el, '连接器类型').querySelector('select')
+    ts.value = 'POSITION' // 不选「所属岗位」，留空
+    ts.dispatchEvent(new Event('change'))
+    setInput(inputOf(el, 'API 描述'), '一句话描述')
+    eqInputs(el).forEach((inp, i) => setInput(inp, `问题${i + 1}`))
+    setInput(inputOf(el, 'API 地址'), 'https://x.example.com/api')
+    await flush()
+    expect(itemByLabel(el, '所属岗位')?.dataset.error || '').toBe('')
+    findBtn(el, '保存').click()
+    await flush()
+    expect(conn.createApi).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionId: null }))
+  })
+
   it('查看态（readonly）：表单禁用、图标按钮置灰、鉴权参数行增删禁用、无【AI 生成】、底部仅【关闭】', async () => {
     conn.getApi.mockResolvedValue({
       ...DETAIL,

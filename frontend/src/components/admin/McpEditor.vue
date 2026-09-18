@@ -778,7 +778,7 @@ async function save() {
                   :value="pos.positionId"
                 />
               </el-select>
-              <div v-if="isEdit" class="md-type-hint">所属岗位创建后不可更改</div>
+              <div v-if="isEdit" class="md-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
             </el-form-item>
           </div>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>
