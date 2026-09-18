@@ -74,6 +74,11 @@ function seed(row) {
     refNames: [],
     files: null,
     snapshots: [],
+    // SKILL.md 内 name 字段（包作者定义的技术名；与本行 name／后台可编辑的展示名各管各，见
+    // skillFileTree.js frontmatter 拆分区注释）。zip 导入时落值并参与全平台唯一性校验（md §三.2
+    // 新建技能弹窗「skill.md 内 name 不可重名」）；种子行默认取 name（视同已占用）；手动创建
+    // （SKILL.md 尚为空）不落值。
+    skillMdName: row.name || null,
     ...row
   }
 }
@@ -370,6 +375,7 @@ export async function createSkill({ name, type, categoryName }) {
   const row = seed({
     id: newId(), type, name: clean, icon: '', description: '', category: categoryName,
     status: 'draft', version: '',
+    skillMdName: null, // 手动创建 SKILL.md 尚为空，未占用任何 skill.md name
     createdAt: stamp, updatedAt: stamp, publishedAt: '',
     files: { 'SKILL.md': '' }
   })
@@ -387,11 +393,18 @@ export async function importSkillZip({ fileName, type, categoryName }) {
   if (!type) throw new ApiError({ code: 40001, message: '请选择技能类型' })
   if (!categoryName) throw new ApiError({ code: 40001, message: '请为技能包选择分类' })
   assertCategory(categoryName)
-  const name = String(fileName).replace(/\.zip$/i, '')
+  const name = String(fileName).replace(/\.zip$/i, '').trim()
+  // skill.md 内 name 全局唯一校验（md §三.2「新建技能弹窗」）：demo 不真正解包 zip，
+  // 以包名近似 skill.md 内 name 字段；命中即拒绝导入（批量场景下先导入的包已写入 skills，
+  // 后续同名包同样会在此处命中，天然覆盖同批重名）。
+  if (skills.some((s) => s.skillMdName && s.skillMdName === name)) {
+    throw new ApiError({ code: 40906, message: `当前已有同名技能：${name}` })
+  }
   const stamp = nowText()
   const row = seed({
     id: newId(), type, name, icon: '', description: '', category: categoryName,
     status: 'draft', version: '',
+    skillMdName: name,
     createdAt: stamp, updatedAt: stamp, publishedAt: '',
     files: { 'SKILL.md': SKILL_MD_TPL(name, '由技能包导入，请继续完善办事流程。') }
   })
@@ -891,8 +904,10 @@ let reviewSnapshots = {}
 // 审核中心 id 2 引用它，原种子无在途标记 → 无审核快照，审核人点【查看】只能撞「无法查看」。
 // version 4（2026-09-12 审计 K19）：sk_302 在审版本 v1.2.0 → v1.5.0（md L226-229 在审号必须由线上 v1.4.0 递增得出），
 // bump 丢弃旧快照重播种子。
+// version 5（2026-09-18 技能同名校验）：新增 skillMdName（SKILL.md 内 name 字段，zip 导入全局唯一校验用）；
+// 旧快照无该键 → bump 丢弃重播种子，避免存量行 skillMdName 缺失导致校验漏判。
 const persist = attachPersist('unifiedSkill', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (

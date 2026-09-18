@@ -36,8 +36,11 @@ const tagClass = computed(() => `st--${props.type}`)
 
 <style scoped>
 /* 形状（2026-09-17 按 MasterGo 设计稿 W9gCP2CB 校正）：稿面状态标签是 4px 小圆角矩形
-   （非胶囊），24px 高（20px 行高 + 上下各 2px）；配色维持现有语义令牌不动（品牌绿等），
-   本轮只改形状，不改色——色值改动影响面远超本次范围，需另行拍板。 */
+   （非胶囊），24px 高（20px 行高 + 上下各 2px）。
+   配色仍用本文件的品牌语义令牌（--c-success 等）——这是员工端等场景的缺省色；
+   后台管理页的具体色值（2026-09-18 MasterGo 设计稿 WaqNPFdC 拍板）改由
+   assets/admin-shell.css 的 body.admin-scope 覆盖（--*-admin-status-* 令牌组），
+   不改本组件默认值，避免影响 StatusTag 未来在员工端的观感。 */
 .status-tag {
   display: inline-flex;
   align-items: center;

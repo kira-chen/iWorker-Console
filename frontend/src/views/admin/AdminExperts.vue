@@ -371,7 +371,7 @@ async function stopExpert(row) {
           </el-table-column>
           <el-table-column label="分类" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
-              <span v-if="row.category" class="ex-category">{{ row.category }}</span>
+              <span v-if="row.category">{{ row.category }}</span>
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
@@ -538,10 +538,6 @@ async function stopExpert(row) {
 .ex-name:hover {
   text-decoration: underline;
 }
-.ex-category {
-  color: var(--c-text-muted);
-}
-
 /* 时间列排序按钮样式（对齐审核中心 UnifiedReview.vue） */
 .time-sort {
   display: inline-flex;
