@@ -473,12 +473,17 @@ describe('连接器类型=岗位私有 → 所属岗位下拉（2026-09-18 修�
   it('选「岗位私有」后展示真实已发布岗位', async () => {
     await mount()
     await setSelect(selectOf('连接器类型'), 'POSITION')
-    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待
-    // （本文件桩较多，import+首次 transform 开销更大，留足余量到 500ms）
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待；
+    // 轮询而非固定 sleep——机器负载高（并发跑很多测试文件）时固定 500ms 也可能不够，轮询到 3s 上限更稳。
     const positionSelect = selectOf('所属岗位')
     expect(positionSelect).toBeTruthy()
-    const optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
+    const deadline = Date.now() + 3000
+    let optionLabels = []
+    while (Date.now() < deadline) {
+      optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
+      if (optionLabels.includes('经营分析岗')) break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
     expect(optionLabels).toContain('经营分析岗')
   })
 })

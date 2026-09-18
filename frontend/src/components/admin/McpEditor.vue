@@ -590,6 +590,9 @@ const {
 
 function buildPayload() {
   const payload = {
+    // 连接器类型 + 所属岗位（创建后不可改；mock 只在 createMcp 落一次，编辑态即使传了也会被忽略）
+    type: form.type,
+    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     name: form.name.trim(),
     description: form.description.trim() || null, // 空串归 null，与后端 blank→null 一致
     icon: form.icon || null, // V97：空串归 null（未配置）

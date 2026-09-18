@@ -220,6 +220,7 @@ async function fetchAll() {
     const apiParams = {}
     if (applied.keyword) apiParams.keyword = applied.keyword
     if (applied.state) apiParams.state = applied.state
+    if (applied.type) apiParams.type = applied.type
     const [psData, apiData] = await Promise.all([listProviderSystems({}), listApis(apiParams)])
     providerSystems.value = psData?.list || []
     apis.value = apiData?.list || []

@@ -86,6 +86,11 @@ const mkMcp = (over) => ({
   code: over.code,
   name: '',
   icon: '',
+  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）+
+  // 所属岗位（仅 POSITION 时有意义）。两者创建后不可改，applyMcpPayload 不碰这两个字段，只在
+  // createMcp 里从 payload 落一次（2026-09-18 待办 yuepu#1）。
+  type: 'PLATFORM',
+  positionId: null,
   description: '',
   transport: 'streamable-http',
   endpoint: '',
@@ -157,22 +162,24 @@ const refs = (names) => names.map((skillName, i) => ({ skillId: `sk_ref_${i + 1}
 // 原型 updated「2026-08-23 11:02」→ ISO（+08:00）
 const iso = (s) => `${s.replace(' ', 'T')}:00+08:00`
 
+// type/posId（2026-09-18 待办 yuepu#1）：POSITION 行给 posId（401=经营分析岗 / 402=客户成功岗，
+// 取自 positionMock.js 已发布岗位种子）；不给 type 的行按 seedToMcp 兜底落 PLATFORM。
 const PROTO_SEEDS = [
-  { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, refs: ['市场研究助手', '销售方案生成', '客户问题解答'], updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp' },
-  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, refs: ['报销单查询', '财务单据助手'], updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp' },
+  { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, refs: ['市场研究助手', '销售方案生成', '客户问题解答'], updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp', type: 'PLATFORM' },
+  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, refs: ['报销单查询', '财务单据助手'], updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posId: 401 },
   // env 两条样例（一条平台值 + 一条客户端填写）：让 stdio 环境变量的「改值 / 待删除 / 撤销」
   // 三步式交互开箱即可点到，否则种子全是 env:[]，演示时会被误判为功能没做（2026-09-09 收口回归 P2）
   { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, refs: [], updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx', env: [
     { key: 'WORKSPACE_ROOT', description: '允许访问的工作区根目录', clientFill: false, value: '/srv/iworker/workspace' },
     { key: 'ACCESS_TOKEN', description: '由使用者在客户端填写的访问令牌', clientFill: true, value: '' }
-  ] },
-  { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, refs: ['项目周报', '任务风险识别', '研发进度跟踪', '会议行动项'], updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp' },
-  { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, refs: [], updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx' },
-  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp' },
-  { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, refs: ['会议行动项'], updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp' },
-  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, refs: ['销售方案生成'], updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp' },
-  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, refs: [], updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node' },
-  { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, refs: [], updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp' }
+  ], type: 'SYSTEM_DEFAULT' },
+  { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, refs: ['项目周报', '任务风险识别', '研发进度跟踪', '会议行动项'], updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp', type: 'PLATFORM' },
+  { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, refs: [], updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx', type: 'SYSTEM_DEFAULT' },
+  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION', posId: 402 },
+  { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, refs: ['会议行动项'], updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp', type: 'SYSTEM_DEFAULT' },
+  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, refs: ['销售方案生成'], updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION', posId: 402 },
+  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, refs: [], updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM' },
+  { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, refs: [], updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp', type: 'SYSTEM_DEFAULT' }
 ]
 
 function seedToMcp(s) {
@@ -181,6 +188,8 @@ function seedToMcp(s) {
   const updatedAt = iso(s.updated)
   return mkMcp({
     code: s.code,
+    type: s.type || 'PLATFORM',
+    positionId: s.type === 'POSITION' ? (s.posId ?? null) : null,
     name: s.name,
     icon: s.icon,
     description: s.desc,
@@ -270,7 +279,9 @@ const persist = attachPersist('mcpConnector', {
   //    旧快照里的行没有该字段会让「报销系统 / 资产管理」两行永远探测成功 → 丢弃重播种
   // v6（2026-09-12 审计 K34 / J16）：行新增 `pendingAction`（审核中区分发布 / 停用审核，撤回按其恢复），
   //    MOCK_FAIL_REASON 改为 mcpVerify 目录 key「连接失败」（旧快照落过 'CONN_REFUSED: …'）→ 丢弃重播种
-  version: 6,
+  // v7（2026-09-18 待办 yuepu#1）：行新增 `type` / `positionId`（连接器类型/所属岗位），
+  //    旧快照没有这两个字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种
+  version: 7,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -308,7 +319,9 @@ function toRow(m) {
       valueMasked: e.clientFill ? false : e.value ? maskSecret(e.value) : false
     })),
     toolCount: (m.tools || []).length,
-    referencedBySkillCount: (m.referencedBySkills || []).length
+    referencedBySkillCount: (m.referencedBySkills || []).length,
+    // 岗位私有类型的引用数：单 positionId 绑定 → 已绑定即 1（列表「N 个岗位引用」按钮态用）
+    positionCount: m.positionId ? 1 : 0
   }
 }
 
@@ -338,6 +351,7 @@ export async function listMcp(params = {}) {
   }
   if (params.status) list = list.filter((m) => m.status === params.status)
   if (params.state) list = list.filter((m) => aggStateKey(m.id) === params.state)
+  if (params.type) list = list.filter((m) => m.type === params.type)
   const dir = params.sort === 'asc' ? 1 : -1
   list = [...list].sort((a, b) => dir * String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
   const total = list.length
@@ -418,6 +432,9 @@ export async function createMcp(payload) {
   mcpSeq += 1
   const m = mkMcp({
     code,
+    // 类型 + 所属岗位创建后不可更改（PRD），只在这里从 payload 落一次；applyMcpPayload 不碰这两个字段
+    type: payload.type || 'PLATFORM',
+    positionId: payload.type === 'POSITION' ? (payload.positionId ?? null) : null,
     displayStatus: 'UNKNOWN',
     connStatus: 'unknown',
     createdAt: nowIso(),

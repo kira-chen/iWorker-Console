@@ -348,11 +348,17 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
     ts.value = 'POSITION'
     ts.dispatchEvent(new Event('change'))
     await flush()
-    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待
-    await new Promise((resolve) => setTimeout(resolve, 500))
     const positionItem = itemByLabel(el, '所属岗位')
     expect(positionItem).toBeTruthy()
-    const optionLabels = [...positionItem.querySelectorAll('option')].map((o) => o.textContent)
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待；
+    // 轮询而非固定 sleep——机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。
+    const deadline = Date.now() + 3000
+    let optionLabels = []
+    while (Date.now() < deadline) {
+      optionLabels = [...positionItem.querySelectorAll('option')].map((o) => o.textContent)
+      if (optionLabels.includes('经营分析岗')) break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
     expect(optionLabels).toContain('经营分析岗')
   })
 
