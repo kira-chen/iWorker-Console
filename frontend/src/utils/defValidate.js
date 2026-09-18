@@ -89,7 +89,7 @@ export function validateApiAuthParams(rows) {
 }
 
 // MCP 鉴权方式（仅 streamable-http；value 与后端 AUTH_TYPE_* 对齐，小写）。
-// label 按 PRD §四.1：无鉴权 / Bearer Token / API Key（API Key = Header 名 + 访问凭证，即原自定义 Header）
+// label 按 PRD（prd-连接器-MCP.md）§三.4.1：无鉴权 / Bearer Token / API Key（API Key = Header 名 + 访问凭证，即原自定义 Header）
 export const MCP_AUTH_TYPES = [
   { value: 'none', label: '无鉴权' },
   { value: 'bearer', label: 'Bearer Token' },
