@@ -105,6 +105,9 @@ const NAME_MAX = 64
 const PROMPT_MAX = 2000
 // 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7）
 const SOP_MAX = 8000
+// 说明（备注）上限：计数器与 maxlength 共用它（2026-09-18 待办 yuepu#5⑧，此前两处各写一遍字面量 500，
+// 与 NAME_MAX/PROMPT_MAX 已经在用的「计数器与 maxlength 共用同一常量」模式看齐）
+const REMARK_MAX = 500
 // 空闲时段提前准备两态提示（md §7.3 L399-400，逐字；2026-09-12 审计 K2）
 const PRE_KICK_HINT_ON = '送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。'
 const PRE_KICK_HINT_OFF = '到点才开始执行，结果会晚几分钟。'
@@ -661,12 +664,12 @@ onMounted(async () => {
           <p v-if="errors.prompt" class="te-err">{{ errors.prompt }}</p>
         </div>
         <div class="te-field">
-          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / 500</span></label>
+          <label class="te-label">说明（备注）<span class="te-count">{{ (form.remark || '').length }} / {{ REMARK_MAX }}</span></label>
           <el-input
             v-model="form.remark"
             type="textarea"
             :rows="4"
-            maxlength="500"
+            :maxlength="REMARK_MAX"
             placeholder="补充任务背景或注意事项"
             @input="markDirty"
           />
