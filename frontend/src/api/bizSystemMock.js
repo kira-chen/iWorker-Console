@@ -362,6 +362,8 @@ export async function createBizSystemOwnedSkill(id, payload = {}) {
   if (!b) throw err('业务系统不存在')
   const name = (payload.name || '').trim()
   if (!name) throw err('技能名必填', 'name')
+  // 名称类字段统一上限 64（2026-09-18 待办 yuepu#5④，与技能模块技能名同口径；此前无长度校验）
+  if (name.length > 64) throw err('技能名最多 64 个字符', 'name')
   const skill = { skillId: `sk_own_${skillSeq++}`, name }
   b.ownedSkills.push(skill)
   persist()

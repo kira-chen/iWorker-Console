@@ -779,7 +779,7 @@ async function save() {
           <el-input
             v-model="createName"
             placeholder="给这个专属技能起个名字，建后进编辑器继续配置"
-            maxlength="128"
+            maxlength="64"
             show-word-limit
             @keyup.enter="confirmCreateOwnedSkill"
           />

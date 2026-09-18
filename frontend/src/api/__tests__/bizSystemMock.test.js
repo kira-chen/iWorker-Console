@@ -244,6 +244,15 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(createBizSystemOwnedSkill('biz_2102', { name: ' ' })).rejects.toMatchObject({ field: 'name' })
   })
 
+  it('专属技能名最多 64 个字符（2026-09-18 待办 yuepu#5④，原 128；与技能模块技能名同口径，此前无长度校验）', async () => {
+    await expect(createBizSystemOwnedSkill('biz_2102', { name: 'x'.repeat(65) })).rejects.toMatchObject({
+      field: 'name',
+      message: '技能名最多 64 个字符'
+    })
+    const ok = await createBizSystemOwnedSkill('biz_2102', { name: 'x'.repeat(64) })
+    expect(ok.name.length).toBe(64)
+  })
+
 })
 
 /**
