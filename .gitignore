@@ -24,3 +24,6 @@ Archive/
 
 # 本地审查产物（/prd-import、/test-audit 的差异清单、报告、截图）：只在本地，不入库；结论以 commit 签名行 + 待办入库
 .review/
+
+# Obsidian 编辑器个人配置（窗口布局/外观），与 PRD 内容无关，不入库（负责人 2026-09-18 定）
+.obsidian/
