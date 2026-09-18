@@ -1,13 +1,29 @@
 #!/bin/sh
-# 跨人待办自动流转：commit 说明里写「关闭待办 yuepu#2」→ 把该行从「待处理」搬到「已处理」，并 amend 进刚才这条 commit。
+# 两件事，commit 后台自动跑完，最后统一 amend 并入刚才这条 commit（同一次 amend，不连续改写两次）：
+#   1. 跨人待办自动流转：commit 说明里写「关闭待办 yuepu#2」→ 把该行从「待处理」搬到「已处理」。
+#   2. PRD 模块「变更记录.md」自动刷新：从 git log 重新渲染受影响模块文件夹的变更记录。
 # 为什么用 post-commit 而不是 commit-msg：git 在跑 commit-msg 之前就已把提交树定好，那时再 git add 进不了本次提交。
 # 由 frontend/package.json 的 prepare 脚本在 npm install 时自动启用（git config core.hooksPath .githooks）。
-# 脚本细节见 scripts/todo.mjs 文件头。
-[ -n "$TODO_AMENDING" ] && exit 0            # amend 自身触发的 post-commit，防递归
+# 脚本细节见 scripts/todo.mjs、scripts/prd-changelog.mjs 文件头。
+[ -n "$POST_COMMIT_AMENDING" ] && exit 0     # amend 自身触发的 post-commit，防递归
 ROOT="$(git rev-parse --show-toplevel)"
+CHANGED=0
+
 git log -1 --format=%B > "$ROOT/.git/TODO_MSG"
 if node "$ROOT/scripts/todo.mjs" close "$ROOT/.git/TODO_MSG" | grep -q '已关闭'; then
-  TODO_AMENDING=1 git commit --amend --no-edit --no-verify -q
-  echo "[todo] 待办文件改动已并入本次 commit（$(git rev-parse --short HEAD)）"
+  echo "[todo] 待办文件改动已纳入本次 commit"
+  CHANGED=1
 fi
 rm -f "$ROOT/.git/TODO_MSG"
+
+node "$ROOT/scripts/prd-changelog.mjs" >/dev/null
+if [ -n "$(git status --porcelain -- "$ROOT/docs/PRD/数字员工管理端PRD")" ]; then
+  git add "$ROOT/docs/PRD/数字员工管理端PRD"
+  echo "[prd-changelog] 变更记录.md 已纳入本次 commit"
+  CHANGED=1
+fi
+
+if [ "$CHANGED" = "1" ]; then
+  POST_COMMIT_AMENDING=1 git commit --amend --no-edit --no-verify -q
+  echo "[post-commit] 已并入本次 commit（$(git rev-parse --short HEAD)）"
+fi
