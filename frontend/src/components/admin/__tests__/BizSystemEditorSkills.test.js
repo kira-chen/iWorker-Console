@@ -24,6 +24,8 @@ const admin = {
   getBizSystem: vi.fn(() =>
     Promise.resolve({
       name: 'CRM',
+      type: 'PLATFORM',
+      positionId: null,
       icon: '◎',
       description: '客户管理',
       loginUrl: 'https://crm.example.com/login',
@@ -89,11 +91,12 @@ const stubs = {
   'el-radio-group': { template: '<div><slot /></div>' },
   'el-radio': { props: ['value'], template: '<label :data-value="value"><slot /></label>' },
   'el-select': {
-    props: ['modelValue'],
-    emits: ['update:modelValue', 'focus'],
-    template: '<div class="el-select"><slot /></div>'
+    props: ['modelValue', 'disabled', 'placeholder'],
+    emits: ['update:modelValue', 'change', 'focus'],
+    template:
+      '<select class="el-select" :disabled="disabled" :data-placeholder="placeholder" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
   },
-  'el-option': { props: ['label', 'value'], template: '<div class="el-option" :data-value="value" :data-label="label"></div>' },
+  'el-option': { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' },
   'el-button': {
     props: ['type', 'loading', 'disabled', 'link', 'title'],
     emits: ['click'],
@@ -170,6 +173,8 @@ function typeName(el, value) {
 // 编辑态合法详情（过 validateBizSystemForm 真校验）
 const DETAIL = {
   name: 'CRM',
+  type: 'PLATFORM',
+  positionId: null,
   icon: '◎',
   description: '客户管理',
   loginUrl: 'https://crm.example.com/login',
@@ -206,6 +211,55 @@ afterEach(() => {
   openSpy?.mockRestore()
   app?.unmount()
   container?.remove()
+})
+
+describe('连接器类型 / 所属岗位（2026-09-18 待办 yuepu#1；比照 ApiEditor/ExpertEditor/McpEditor）', () => {
+  it('新建态默认无类型；选「岗位私有」后展示「所属岗位」下拉，走真实 listPositions', async () => {
+    const el = await mountEditor(null)
+    const typeSelect = itemByLabel(el, '连接器类型').querySelector('select')
+    expect(typeSelect.value).toBe('')
+    expect(itemByLabel(el, '所属岗位')).toBeUndefined()
+    typeSelect.value = 'POSITION'
+    typeSelect.dispatchEvent(new Event('change'))
+    await flush()
+    const positionItem = itemByLabel(el, '所属岗位')
+    expect(positionItem).toBeTruthy()
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout；轮询到 3s 上限更稳
+    const deadline = Date.now() + 3000
+    let optionLabels = []
+    while (Date.now() < deadline) {
+      optionLabels = [...positionItem.querySelectorAll('option')].map((o) => o.textContent)
+      if (optionLabels.includes('经营分析岗')) break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    expect(optionLabels).toContain('经营分析岗')
+  })
+
+  it('岗位私有但不绑定岗位 → 仍可创建成功，payload positionId 为 null（按 PRD 字面松绑必填）', async () => {
+    const el = await mountEditor(null)
+    setInput(inputOf(el, '系统名称'), '新系统')
+    const typeSelect = itemByLabel(el, '连接器类型').querySelector('select')
+    typeSelect.value = 'POSITION'
+    typeSelect.dispatchEvent(new Event('change'))
+    el.querySelector('.stub-icon-picker').click()
+    setInput(inputOf(el, '系统描述'), '一句话描述')
+    setInput(inputOf(el, '登录地址'), 'https://new.example.com/login')
+    eqInputs(el).forEach((inp, i) => setInput(inp, `问题${i + 1}`))
+    await nextTick()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(admin.createBizSystem).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionId: null }))
+    expect(msg.warning).not.toHaveBeenCalled()
+  })
+
+  it('编辑态类型/所属岗位下拉禁用（创建后不可改）；未绑定时提示「未绑定岗位」', async () => {
+    admin.getBizSystem.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionId: null })
+    const el = await mountEditor('biz_1')
+    expect(itemByLabel(el, '连接器类型').querySelector('select').disabled).toBe(true)
+    const positionItem = itemByLabel(el, '所属岗位')
+    expect(positionItem.querySelector('select').disabled).toBe(true)
+    expect(positionItem.textContent).toContain('未绑定岗位')
+  })
 })
 
 describe('业务系统专属技能 新建/编辑/删除（md §三.4）', () => {
@@ -346,7 +400,8 @@ const pagesToggle = (el) => el.querySelector('.ad-pages-toggle')
 const toggleText = (el) => pagesToggle(el).textContent.replace(/\s+/g, '').replace('▶', '')
 // 按钮名逐字照 md §三.3 L107【＋ 添加业务页】（全角＋，K41）
 const addPageBtn = (el) => [...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 添加业务页')
-const inputOf = (el, label) => [...el.querySelectorAll('.el-form-item')].find((it) => it.dataset.label === label).querySelector('input.el-input')
+const itemByLabel = (el, label) => [...el.querySelectorAll('.el-form-item')].find((it) => it.dataset.label === label)
+const inputOf = (el, label) => itemByLabel(el, label).querySelector('input.el-input')
 const setInput = (input, value) => {
   input.value = value
   input.dispatchEvent(new Event('input'))
@@ -464,6 +519,9 @@ describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', 
     expect(footBtns(el)).toEqual(['取消', '保存'])
     expect(admin.getBizSystem).not.toHaveBeenCalled()
     setInput(inputOf(el, '系统名称'), '新系统')
+    const typeSelect = itemByLabel(el, '连接器类型').querySelector('select')
+    typeSelect.value = 'PLATFORM'
+    typeSelect.dispatchEvent(new Event('change'))
     el.querySelector('.stub-icon-picker').click()
     setInput(inputOf(el, '系统描述'), '一句话描述')
     setInput(inputOf(el, '登录地址'), 'https://new.example.com/login')
@@ -473,6 +531,8 @@ describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', 
     await flush()
     expect(admin.createBizSystem).toHaveBeenCalledWith({
       name: '新系统',
+      type: 'PLATFORM',
+      positionId: null,
       icon: '✓',
       description: '一句话描述',
       loginUrl: 'https://new.example.com/login',
@@ -497,12 +557,12 @@ describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', 
     expect(visible.value).toBe(false)
   })
 
-  it('新建全空点【保存】 → 名称 / 图标 / 描述 / 登录地址标红 + 示例问题错误，warning「请先修正标红项」，不调 createBizSystem', async () => {
+  it('新建全空点【保存】 → 名称 / 连接器类型 / 图标 / 描述 / 登录地址标红 + 示例问题错误，warning「请先修正标红项」，不调 createBizSystem', async () => {
     const el = await mountEditor(null)
     findBtn(el, '保存').click()
     await flush()
     const red = [...el.querySelectorAll('.el-form-item')].filter((it) => it.getAttribute('data-error')).map((it) => it.dataset.label)
-    expect(red).toEqual(['系统名称', '图标', '系统描述', '登录地址'])
+    expect(red).toEqual(['系统名称', '图标', '连接器类型', '系统描述', '登录地址'])
     expect(el.textContent).toContain('示例问题固定 3 条，须全部填写')
     expect(msg.warning).toHaveBeenCalledWith('请先修正标红项')
     expect(admin.createBizSystem).not.toHaveBeenCalled()
