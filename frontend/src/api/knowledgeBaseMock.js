@@ -287,7 +287,7 @@ export async function get(id) {
 }
 function validate(payload, selfId) {
   if (!payload.name?.trim()) throw new ApiError({ message: '知识库名称不能为空', code: 400, field: 'name' })
-  if (payload.name.trim().length > 100) throw new ApiError({ message: '知识库名称最多 100 个字符', code: 400, field: 'name' })
+  if (payload.name.trim().length > 64) throw new ApiError({ message: '知识库名称最多 64 个字符', code: 400, field: 'name' })
   // 描述必填（md §三.3.1：必填，最多 500 字符）
   if (!String(payload.description || '').trim()) throw new ApiError({ message: '请输入知识库描述', code: 400, field: 'description' })
   if (String(payload.description).trim().length > 500) throw new ApiError({ message: '描述最多 500 个字符', code: 400, field: 'description' })

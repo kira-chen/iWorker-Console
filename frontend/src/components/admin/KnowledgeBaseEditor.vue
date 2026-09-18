@@ -394,7 +394,7 @@ function close() {
         <div class="kb-grid">
           <!-- 第一行：名称 + 图标 -->
           <el-form-item label="知识库名称" prop="name" required>
-            <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="如 产品与解决方案库" />
+            <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 产品与解决方案库" />
           </el-form-item>
           <el-form-item label="图标">
             <IconField :icon="form.icon" :name="form.name" :readonly="readonlyAll" @pick="({ icon }) => (form.icon = icon)" />
