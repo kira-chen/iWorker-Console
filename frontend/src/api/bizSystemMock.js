@@ -34,6 +34,11 @@ const mkBiz = (over) => ({
   id: over.id,
   name: '',
   icon: '',
+  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）+
+  // 所属岗位（仅 POSITION 时有意义）。两者创建后不可改，applyBizPayload 不碰这两个字段，只在
+  // createBizSystem 里从 payload 落一次（2026-09-18 待办 yuepu#1）。
+  type: 'PLATFORM',
+  positionId: null,
   description: '',
   loginUrl: '',
   connType: 'login_session',
@@ -56,6 +61,8 @@ let bizRows = [
   // 原型 L734：已发布
   mkBiz({
     id: 'biz_2101',
+    type: 'POSITION',
+    positionId: 402,
     name: '客户管理系统 CRM',
     icon: '◎',
     description: '管理客户资料、商机与销售跟进',
@@ -93,6 +100,7 @@ let bizRows = [
   // 原型 L736：未发布
   mkBiz({
     id: 'biz_2103',
+    type: 'SYSTEM_DEFAULT',
     name: '合同管理系统',
     icon: '↗',
     description: '合同起草、审批、归档与风险跟踪',
@@ -108,8 +116,10 @@ let bizRows = [
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=新建/编辑/删除、
 // 发布/撤回/停用/审核通过/驳回、专属技能增删。restore 做最小形状校验，快照不合法即抛错 → 兜底回种子。
+// version 2（2026-09-18 待办 yuepu#1）：行新增 `type` / `positionId`（连接器类型/所属岗位），
+//   旧快照没有这两个字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 const persist = attachPersist('bizSystem', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ bizSeq, skillSeq, bizRows }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.bizSeq) || !Number.isFinite(d.skillSeq) || !Array.isArray(d.bizRows)) {
@@ -133,7 +143,9 @@ function toRow(b) {
     referencedBySkills: (b.referencedBySkills || []).map((s) => ({ ...s })),
     referencedBySkillCount: (b.referencedBySkills || []).length,
     refs: (b.referencedBySkills || []).map((s) => s.skillName),
-    bizPagesCount: (b.bizPages || []).length
+    bizPagesCount: (b.bizPages || []).length,
+    // 岗位私有类型的引用数：单 positionId 绑定 → 已绑定即 1（列表「N 个岗位引用」按钮态用）
+    positionCount: b.positionId ? 1 : 0
   }
 }
 
@@ -150,6 +162,7 @@ export async function listBizSystems(params = {}) {
   }
   const state = params.state || params.status
   if (state) list = list.filter((b) => b.status === state)
+  if (params.type) list = list.filter((b) => b.type === params.type)
   // 原型 L806：按最近更新时间排序（默认由近到远）
   const dir = params.sort === 'asc' ? 1 : -1
   list = [...list].sort((a, b) => dir * String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
@@ -209,7 +222,14 @@ function applyBizPayload(b, payload) {
 export async function createBizSystem(payload) {
   await delay(250)
   validateBizPayload(payload)
-  const b = mkBiz({ id: `biz_${bizSeq++}`, createdAt: nowIso(), updatedAt: nowIso() })
+  // 类型 + 所属岗位创建后不可更改（PRD），只在这里从 payload 落一次；applyBizPayload 不碰这两个字段
+  const b = mkBiz({
+    id: `biz_${bizSeq++}`,
+    type: payload.type || 'PLATFORM',
+    positionId: payload.type === 'POSITION' ? (payload.positionId ?? null) : null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  })
   applyBizPayload(b, payload)
   bizRows.push(b)
   persist()

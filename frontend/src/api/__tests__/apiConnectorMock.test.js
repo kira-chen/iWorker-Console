@@ -232,6 +232,19 @@ describe('⑥ listApis 搜索与筛选（md §一.1 L10-11）', () => {
     expect(a.providerSystemName).toBe('财务服务系统')
     expect(a.referencedBySkillCount).toBe(2)
   })
+
+  it('type 只留该连接器类型；行带 type/positionId/positionCount（2026-09-18 待办 yuepu#1）', async () => {
+    const { list: all } = await run(m.listApis())
+    const a1101 = all.find((x) => x.id === 'api_1101')
+    expect(a1101).toMatchObject({ type: 'POSITION', positionId: 401, positionCount: 1 })
+    const a1102 = all.find((x) => x.id === 'api_1102')
+    expect(a1102).toMatchObject({ type: 'PLATFORM', positionId: null, positionCount: 0 })
+    const { list: pos } = await run(m.listApis({ type: 'POSITION' }))
+    expect(pos.length).toBe(3)
+    expect(pos.every((a) => a.type === 'POSITION')).toBe(true)
+    const { list: sysDefault } = await run(m.listApis({ type: 'SYSTEM_DEFAULT' }))
+    expect(sysDefault.map((a) => a.id)).toEqual(['api_1106'])
+  })
 })
 
 describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查看态不明文）', () => {
@@ -282,6 +295,21 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
       field: 'authConfig'
     })
   })
+
+  it('type/positionId 只在 createApi 落一次，updateApi 不改动（2026-09-18 待办 yuepu#1，创建后不可改）', async () => {
+    const created = await run(m.createApi({ ...NEW_API, type: 'POSITION', positionId: 401 }))
+    expect(created).toMatchObject({ type: 'POSITION', positionId: 401 })
+    // 编辑时即使 payload 带了不同的 type/positionId，也不应改动已落库的值
+    const updated = await run(m.updateApi(created.id, { ...NEW_API, name: '改名', type: 'PLATFORM', positionId: null }))
+    expect(updated).toMatchObject({ type: 'POSITION', positionId: 401, name: '改名' })
+  })
+
+  it('未传 type → 落 PLATFORM 默认值；type≠POSITION 时 positionId 强制落 null', async () => {
+    const noType = await run(m.createApi({ ...NEW_API }))
+    expect(noType).toMatchObject({ type: 'PLATFORM', positionId: null })
+    const platformWithPos = await run(m.createApi({ ...NEW_API, type: 'PLATFORM', positionId: 401 }))
+    expect(platformWithPos.positionId).toBeNull()
+  })
 })
 
 describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中间态归一', () => {
@@ -306,7 +334,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(3) // v3：2026-09-12 J16 种子 lastCheckError 改目录 key
+    expect(harness.options.version).toBe(4) // v4：2026-09-18 待办 yuepu#1 行新增 type/positionId
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1102')).toBe(false)

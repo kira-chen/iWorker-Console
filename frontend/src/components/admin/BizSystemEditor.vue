@@ -52,6 +52,7 @@ import {
   BIZ_PAGES_MAX,
   BIZ_QUESTION_MAX
 } from '@/utils/defValidate'
+import { CONNECTOR_TYPE, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 
 const router = useRouter()
@@ -83,6 +84,9 @@ const QUESTION_MAX = BIZ_QUESTION_MAX
 
 const form = reactive({
   name: '',
+  // 连接器类型 + 所属岗位（2026-09-18 待办 yuepu#1）：创建后不可改，仅 POSITION 类型时所属岗位有意义
+  type: '',
+  positionId: null,
   icon: '',
   description: '',
   loginUrl: '',
@@ -99,6 +103,18 @@ const bodyRef = ref(null)
 const pagesOpen = ref(false)
 
 // 示例问题 AI 生成（2026-09-04 PRD-20260903：统一 AI 实况生成机制，定义见下方 generateQuestions）
+
+// 已发布岗位列表（用于岗位私有类型绑定；与 ExpertEditor/McpEditor/ApiEditor 同款）
+const publishedPositions = ref([])
+async function loadPublishedPositions() {
+  try {
+    const { listPositions } = await import('@/api/position')
+    const res = await listPositions({ status: 'published' })
+    publishedPositions.value = res.list || []
+  } catch (err) {
+    console.warn('加载已发布岗位失败:', err)
+  }
+}
 
 // 被引用列表（只读）：[{ skillId, skillName }]
 const referencedBySkills = ref([])
@@ -207,6 +223,8 @@ function clearErrors() {
 }
 function resetForm() {
   form.name = ''
+  form.type = ''
+  form.positionId = null
   form.icon = ''
   form.description = ''
   form.loginUrl = ''
@@ -225,6 +243,7 @@ function resetForm() {
 
 async function load() {
   clearErrors()
+  loadPublishedPositions()
   if (!isEdit.value) {
     resetForm()
     return
@@ -234,6 +253,8 @@ async function load() {
   try {
     const d = await getBizSystem(props.bizId)
     form.name = d.name || ''
+    form.type = d.type || ''
+    form.positionId = d.positionId || null
     form.icon = d.icon || ''
     form.description = d.description || ''
     form.loginUrl = d.loginUrl || ''
@@ -355,6 +376,9 @@ function buildPayload() {
     }))
   return {
     name: form.name.trim(),
+    // 连接器类型 + 所属岗位：创建后不可改，mock 只在 createBizSystem 落一次
+    type: form.type,
+    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     icon: form.icon || '',
     description: form.description.trim(),
     loginUrl: form.loginUrl.trim(),
@@ -464,6 +488,44 @@ async function save() {
                 placeholder="—"
                 @pick="onIconPick"
               />
+            </el-form-item>
+          </div>
+          <!-- 类型和所属岗位同行（2026-09-18 待办 yuepu#1；与 ApiEditor/ExpertEditor/McpEditor 同款） -->
+          <div class="ad-form-row">
+            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="ad-row-item">
+              <el-select
+                v-model="form.type"
+                placeholder="请选择连接器类型"
+                :disabled="readonly || isEdit"
+                style="width: 100%"
+                @change="fieldErrors.type = ''; if (form.type !== CONNECTOR_TYPE.POSITION) form.positionId = null"
+              >
+                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <div v-if="isEdit" class="ad-type-hint">连接器类型创建后不可更改</div>
+            </el-form-item>
+            <el-form-item
+              v-if="form.type === CONNECTOR_TYPE.POSITION"
+              label="所属岗位"
+              :error="fieldErrors.positionId"
+              class="ad-row-item"
+            >
+              <el-select
+                v-model="form.positionId"
+                placeholder="选择已发布的岗位"
+                clearable
+                :disabled="readonly || isEdit"
+                style="width: 100%"
+                @change="fieldErrors.positionId = ''"
+              >
+                <el-option
+                  v-for="pos in publishedPositions"
+                  :key="pos.positionId"
+                  :label="pos.name"
+                  :value="pos.positionId"
+                />
+              </el-select>
+              <div v-if="isEdit" class="ad-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
             </el-form-item>
           </div>
           <!-- 描述（BQ3 指示：必填、≤2000 + 字数统计，占位去「选填」字样） -->
@@ -787,6 +849,22 @@ async function save() {
 /* B2：连接方式 ｜ 登录地址 同行——与「名称 | 图标」不同，这行是等分两列 */
 .ad-conn-row {
   grid-template-columns: 1fr 1fr;
+}
+/* 类型和所属岗位同行（与 McpEditor .md-form-row / .md-row-item 同构） */
+.ad-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.ad-form-row .ad-row-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.ad-type-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+  line-height: 18px;
 }
 /* 连接方式只读展示（B10） */
 .ad-readonly-value {

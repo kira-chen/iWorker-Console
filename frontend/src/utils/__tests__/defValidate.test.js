@@ -271,6 +271,8 @@ describe('API_BODY_METHODS（BODY 位软提示的 method 口径）', () => {
 describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；一览表 §七）', () => {
   const valid = {
     name: '客户管理系统 CRM', // ≤64
+    type: 'PLATFORM',
+    positionId: null,
     icon: '◎',
     description: '销售办事主系统，记录与查询客户',
     loginUrl: 'https://crm.example.com/login',
@@ -295,6 +297,12 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
 
   it('图标必填（md §三.2 L87）', () => {
     expect(validateBizSystemForm({ ...valid, icon: '' }).errors.icon).toBe('请选择或上传图标')
+  })
+
+  it('连接器类型必选；所属岗位不强制（2026-09-18 待办 yuepu#1，按 PRD 字面允许先不绑）', () => {
+    expect(validateBizSystemForm({ ...valid, type: '' }).errors.type).toBe('请选择连接器类型')
+    expect(validateBizSystemForm({ ...valid, type: 'POSITION', positionId: null }).ok).toBe(true)
+    expect(validateBizSystemForm({ ...valid, type: 'POSITION', positionId: null }).errors.positionId).toBeUndefined()
   })
 
   it('系统描述必填 + ≤2000（md §三.2 L95）', () => {

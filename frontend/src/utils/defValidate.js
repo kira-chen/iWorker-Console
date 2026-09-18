@@ -137,6 +137,10 @@ export function validateBizSystemForm(form) {
   if (!name) errors.name = '系统名称必填'
   else if (name.length > BIZ_NAME_MAX) errors.name = `系统名称不超过 ${BIZ_NAME_MAX} 字`
 
+  // 连接器类型必选（PRD §三.3；所属岗位不强制——2026-09-18 负责人拍板按 md 字面允许先不绑，
+  // 与 ApiEditor/ExpertEditor 同口径）
+  if (!form.type) errors.type = '请选择连接器类型'
+
   // 图标必填（BQ5 指示：复用 McpEditor 图标选择范式）
   if (!form.icon) errors.icon = '请选择或上传图标'
 

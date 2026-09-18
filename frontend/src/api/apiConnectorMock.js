@@ -53,6 +53,11 @@ const mkApi = (over) => ({
   code: over.code,
   name: '',
   icon: '',
+  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）+
+  // 所属岗位（仅 POSITION 时有意义）。两者创建后不可改，applyApiPayload 不碰这两个字段，只在
+  // createApi 里从 payload 落一次（2026-09-18 待办 yuepu#1）。
+  type: 'PLATFORM',
+  positionId: null,
   description: '',
   providerSystemId: null,
   method: 'GET',
@@ -82,6 +87,8 @@ const mkApi = (over) => ({
 let apis = [
   mkApi({
     code: 'api_1101',
+    type: 'POSITION',
+    positionId: 401,
     name: '报销单查询',
     icon: '📄',
     description: '按报销单号查询审批状态与金额',
@@ -140,6 +147,8 @@ let apis = [
   }),
   mkApi({
     code: 'api_1103',
+    type: 'POSITION',
+    positionId: 402,
     name: '客户资料查询',
     icon: '👤',
     description: '按客户编号读取客户基础信息',
@@ -189,6 +198,8 @@ let apis = [
   }),
   mkApi({
     code: 'api_1104',
+    type: 'POSITION',
+    positionId: 402,
     name: '新增客户跟进',
     icon: '✅',
     description: '写入客户跟进记录和下次联系时间',
@@ -286,6 +297,7 @@ let apis = [
   }),
   mkApi({
     code: 'api_1106',
+    type: 'SYSTEM_DEFAULT',
     name: '星火任务链执行',
     icon: '🔗',
     // E8（2026-09-10）：首句大白话讲用途；参数结构等技术细节挪到「接入说明」句
@@ -446,8 +458,10 @@ let apis = [
 // version 2（2026-09-10 E8）：星火系列种子描述改「大白话首句 + 接入说明」措辞，旧快照弃用回种子。
 // version 3（2026-09-12 审计 J16）：种子 api_1104 的 lastCheckError 改为 mcpVerify 目录 key「连接失败」
 //   （旧值 'CONN_REFUSED: …' 悬浮显 UNKNOWN），旧快照弃用回种子。
+// version 4（2026-09-18 待办 yuepu#1）：行新增 `type` / `positionId`（连接器类型/所属岗位），
+//   旧快照没有这两个字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -499,7 +513,9 @@ function toRow(a) {
     ...a,
     authConfig: sanitizeAuth(a),
     providerSystemName: findPs(a.providerSystemId)?.name || '',
-    referencedBySkillCount: a.referencedBySkills.length
+    referencedBySkillCount: a.referencedBySkills.length,
+    // 岗位私有类型的引用数：单 positionId 绑定 → 已绑定即 1（列表「N 个岗位引用」按钮态用）
+    positionCount: a.positionId ? 1 : 0
   }
 }
 
@@ -573,6 +589,7 @@ export async function listApis(params = {}) {
     )
   }
   if (params.state) list = list.filter((a) => a.status === params.state)
+  if (params.type) list = list.filter((a) => a.type === params.type)
   return { list: list.map(toRow) }
 }
 
@@ -677,7 +694,14 @@ function applyApiPayload(a, payload) {
 export async function createApi(payload) {
   await delay(250)
   validateApiPayload(payload)
-  const a = mkApi({ code: `api_${apiSeq++}`, createdAt: nowIso(), updatedAt: nowIso() })
+  // 类型 + 所属岗位创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰这两个字段
+  const a = mkApi({
+    code: `api_${apiSeq++}`,
+    type: payload.type || 'PLATFORM',
+    positionId: payload.type === 'POSITION' ? (payload.positionId ?? null) : null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  })
   applyApiPayload(a, payload)
   apis.push(a)
   persist()

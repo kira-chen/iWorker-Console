@@ -356,6 +356,30 @@ describe('ExpertEditor — 新建', () => {
     expect(visibleSpy).toHaveBeenCalledWith(false)
   })
 
+  it('专家类型=岗位私有但不绑定岗位 → 仍可创建成功（2026-09-18 按 PRD 字面松绑「必须绑定」强校验）', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
+    await mount({ expertId: null })
+    await type(inputs()[0], '新专家')
+    await selectCategory('通用')
+    await selectType('POSITION') // 不选「所属岗位」，留空
+    container.querySelector('.icon-picker').click()
+    await flush(2)
+    await type(inputs()[1], '一句话简介')
+    const mde = container.querySelector('.soul-mde')
+    mde.value = '我是新专家'
+    mde.dispatchEvent(new Event('input'))
+    await flush(2)
+    await type(inputs()[2], '问题一')
+    await type(inputs()[3], '问题二')
+    await type(inputs()[4], '问题三')
+    await checkSkill(0)
+    expect(errTexts()).not.toContain('岗位')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionId: null }))
+    expect(ElMessage.success).toHaveBeenCalledWith('专家已创建')
+  })
+
   // 2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制（取代旧「固定文案即填」断言）
   it('【AI 生成】实况机制：简介空→禁用+title「请先填写专家简介」；填简介→点击「生成中…」500ms 后按简介模板填 3 条 + toast', async () => {
     vi.useFakeTimers()
@@ -404,6 +428,26 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
     expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
+  })
+
+  it('专家类型=岗位私有 → 「所属岗位」下拉展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
+    await mount({ expertId: null })
+    await selectCategory('通用')
+    await selectType('POSITION')
+    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    expect(positionSelect).toBeTruthy()
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout（非微任务），
+    // 需要真实等待；轮询而非固定 sleep——机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。
+    const deadline = Date.now() + 3000
+    let optionLabels = []
+    while (Date.now() < deadline) {
+      optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
+      if (optionLabels.includes('经营分析岗')) break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    expect(optionLabels).toContain('经营分析岗')
+    const optionValues = [...positionSelect.querySelectorAll('option')].map((o) => o.value)
+    expect(optionValues).toContain('401')
   })
 
   it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {

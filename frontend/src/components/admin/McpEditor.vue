@@ -108,8 +108,8 @@ const publishedPositions = ref([])
 
 async function loadPublishedPositions() {
   try {
-    const { default: { listPositions } } = await import('@/api/position')
-    const res = await listPositions({ status: 'PUBLISHED' })
+    const { listPositions } = await import('@/api/position')
+    const res = await listPositions({ status: 'published' })
     publishedPositions.value = res.list || []
   } catch (err) {
     console.warn('加载已发布岗位失败:', err)
@@ -590,6 +590,9 @@ const {
 
 function buildPayload() {
   const payload = {
+    // 连接器类型 + 所属岗位（创建后不可改；mock 只在 createMcp 落一次，编辑态即使传了也会被忽略）
+    type: form.type,
+    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     name: form.name.trim(),
     description: form.description.trim() || null, // 空串归 null，与后端 blank→null 一致
     icon: form.icon || null, // V97：空串归 null（未配置）
@@ -773,12 +776,12 @@ async function save() {
               >
                 <el-option
                   v-for="pos in publishedPositions"
-                  :key="pos.id"
+                  :key="pos.positionId"
                   :label="pos.name"
-                  :value="pos.id"
+                  :value="pos.positionId"
                 />
               </el-select>
-              <div v-if="isEdit" class="md-type-hint">所属岗位创建后不可更改</div>
+              <div v-if="isEdit" class="md-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
             </el-form-item>
           </div>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>

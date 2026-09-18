@@ -106,8 +106,8 @@ const publishedPositions = ref([])
 async function loadPublishedPositions() {
   try {
     // 获取已发布岗位列表
-    const { default: { listPositions } } = await import('@/api/position')
-    const res = await listPositions({ status: 'PUBLISHED' })
+    const { listPositions } = await import('@/api/position')
+    const res = await listPositions({ status: 'published' })
     publishedPositions.value = res.list || []
   } catch (err) {
     console.warn('加载已发布岗位失败:', err)
@@ -381,10 +381,6 @@ function validate() {
     errors.type = '请选择专家类型'
     ok = false
   }
-  if (form.type === EXPERT_TYPE.POSITION && !form.positionId) {
-    errors.positionId = '岗位私有专家必须绑定岗位'
-    ok = false
-  }
   if (!String(form.avatar || '').trim()) {
     errors.avatar = '请选择图标'
     ok = false
@@ -635,12 +631,12 @@ const metaItems = computed(() => {
                 >
                   <el-option
                     v-for="pos in publishedPositions"
-                    :key="pos.id"
+                    :key="pos.positionId"
                     :label="pos.name"
-                    :value="pos.id"
+                    :value="pos.positionId"
                   />
                 </el-select>
-                <div v-if="isEdit" class="ee-type-hint">所属岗位创建后不可更改</div>
+                <div v-if="isEdit" class="ee-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
               </el-form-item>
             </div>
             <el-form-item label="图标" required :error="errors.avatar">

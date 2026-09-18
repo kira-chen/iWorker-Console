@@ -141,8 +141,8 @@ async function loadProviderSystems() {
 const publishedPositions = ref([])
 async function loadPublishedPositions() {
   try {
-    const { default: { listPositions } } = await import('@/api/position')
-    const res = await listPositions({ status: 'PUBLISHED' })
+    const { listPositions } = await import('@/api/position')
+    const res = await listPositions({ status: 'published' })
     publishedPositions.value = res.list || []
   } catch (err) {
     console.warn('加载已发布岗位失败:', err)
@@ -338,9 +338,6 @@ function validate() {
   else if (form.name.trim().length > API_NAME_MAX) errors.name = `名称最多 ${API_NAME_MAX} 个字符`
   if (!form.icon) errors.icon = '请选择或上传图标'
   if (!form.type) errors.type = '请选择连接器类型'
-  if (form.type === CONNECTOR_TYPE.POSITION && !form.positionId) {
-    errors.positionId = '岗位私有连接器必须绑定岗位'
-  }
   if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
   if (!form.description.trim()) errors.description = 'API 描述必填'
   // 示例问题（2026-09-06 Q1 拍板：需要填写，固定 3 条均非空）
@@ -524,12 +521,12 @@ async function save() {
               >
                 <el-option
                   v-for="pos in publishedPositions"
-                  :key="pos.id"
+                  :key="pos.positionId"
                   :label="pos.name"
-                  :value="pos.id"
+                  :value="pos.positionId"
                 />
               </el-select>
-              <div v-if="isEdit" class="ad-type-hint">所属岗位创建后不可更改</div>
+              <div v-if="isEdit" class="ad-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
             </el-form-item>
           </div>
           <!-- 图标（md §三.2 L106「图标：必填」；原型最终层 L2181 把它删了属原型缺陷，
