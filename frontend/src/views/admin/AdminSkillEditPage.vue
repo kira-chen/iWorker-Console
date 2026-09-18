@@ -954,7 +954,10 @@ const govRejecting = ref(false)
  * 快照由 unifiedSkillMock 在提交发布/停用时自存，本页只读取；缺失 → 阻止审核（吸底条撤驳回/通过）。 */
 const isGovReadonly = computed(() => readonly.value && !!(route.query?.govReview || route.query?.myApp))
 const govSnapshot = ref(null)
-const govSnapshotMissing = computed(() => isGovReadonly.value && !loading.value && !govSnapshot.value)
+// 快照缺失闸门只对审核中心（?govReview）生效：md §七 L102 是审核中心的规则。我的申请（?myApp）里已驳回 / 已撤回的行
+// 快照本来就已销毁（各 mock 在驳回/撤回时删快照），再套这道闸会把【前往修改】【重新提交】一起撤下（09-18 审查 G-13）。
+// 与 GovObjectDetail.vue 的 snapshotGate 口径一致：我的申请是提交人自己回看，看当前配置即可。
+const govSnapshotMissing = computed(() => isGovReadonly.value && !!route.query?.govReview && !loading.value && !govSnapshot.value)
 
 async function loadGovContext() {
   govReviewRow.value = null

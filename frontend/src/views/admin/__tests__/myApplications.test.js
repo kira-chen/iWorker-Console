@@ -150,6 +150,7 @@ const ROWS = [
   { id: 502, objectName: '经营分析专家', description: '汇总经营数据，识别异常并形成管理建议', businessType: 'EXPERT', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-27 16:20', result: 'APPROVED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 17:05', rejectReason: '', refId: 201, objectDeleted: false },
   { id: 503, objectName: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', businessType: 'POSITION', applicationType: 'VERSION_PUBLISH', version: 'v2.2.0', submittedAt: '2026-08-27 15:10', result: 'REJECTED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 16:02', rejectReason: '岗位说明未明确数据使用范围，请补充后重新提交。', refId: 401, objectDeleted: false },
   { id: 504, objectName: '行业研究助手', description: '汇总行业资料、竞品动态并生成结构化研究结论', businessType: 'SKILL', applicationType: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-27 11:42', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-27 12:10', rejectReason: '', refId: 'sk_309', objectDeleted: false },
+  { id: 507, objectName: 'Kimi K2', description: '支持长上下文分析和文本生成的通用模型', businessType: 'MODEL', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-26 15:08', result: 'REJECTED', reviewer: 'model.audit', reviewedAt: '2026-08-26 16:30', rejectReason: '连通性验证未通过。', refId: 'md_104', objectDeleted: false },
   { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-24 10:46', rejectReason: '', refId: 203, objectDeleted: true }
 ]
 const byId = (id) => ROWS.find((r) => r.id === id)
@@ -198,12 +199,12 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
       return Promise.resolve({ list, total: list.length })
     })
     await mount()
-    expect(rowEls()).toHaveLength(5)
+    expect(rowEls()).toHaveLength(ROWS.length)
     listMyApplications.mockClear()
     pick(container.querySelectorAll('.el-select')[2], 'REJECTED')
     await flush()
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ result: 'REJECTED', page: 1 }))
-    expect(rowEls()).toHaveLength(1)
+    expect(rowEls()).toHaveLength(2) // 503 岗位 + 507 模型
     expect(rowEls()[0].textContent).toContain('经营分析岗')
     pick(container.querySelectorAll('.el-select')[0], 'EXPERT')
     await flush()
@@ -351,37 +352,46 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(alertResubmitSuccess).toHaveBeenCalledWith('经营分析岗')
   })
 
-  it('列表【重新提交】（已撤回的专家行 510 对象已删，用已驳回岗位行 503）→ 直接以编辑态打开详情，不立即提交（疑点 1 处置）', async () => {
+  it('列表【重新提交】（已驳回岗位行 503）→ 直接 resubmitMyApplication(503)，不再先开编辑态（2026-09-18 R1：重提经业务模块，改内容走【前往修改】）', async () => {
     await mount()
     rowBtn(rowById(503), '重新提交').click()
     await flush()
-    const detail = container.querySelector('.gov-detail')
-    expect(detail.dataset.readonly).toBe('false')
-    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭', '提交审核'])
-    expect(resubmitMyApplication).not.toHaveBeenCalled()
+    expect(resubmitMyApplication).toHaveBeenCalledWith(503)
+    expect(container.querySelector('.gov-detail')).toBeNull()
   })
 
-  it('重新提交失败 → toast 具体原因，详情保持打开（md §七 L100「保留当前状态并提示具体原因」）', async () => {
-    resubmitMyApplication.mockRejectedValueOnce(new Error('仅已驳回或已撤回的申请可重新提交'))
+  it('详情【前往修改】→ 非岗位类以编辑态打开且**不出吸底条**（编辑器自己的保存可用，09-18 G-6）；岗位类保留 关闭|提交审核', async () => {
     await mount()
+    // 岗位行 503：只读视图 + 关闭|提交审核
     rowBtn(rowById(503), '查看').click()
     await flush()
-    detailBtns()[2].click()
+    detailBtns().find((b) => b.textContent === '前往修改').click()
     await flush()
-    expect(ElMessage.error).toHaveBeenCalledWith('仅已驳回或已撤回的申请可重新提交')
-    expect(alertResubmitSuccess).not.toHaveBeenCalled()
-    expect(container.querySelector('.gov-detail')).toBeTruthy()
+    let detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.readonly).toBe('false')
+    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭', '提交审核'])
+    detailBtns().find((b) => b.textContent === '关闭').click()
+    await flush()
+    // 模型行 507（已驳回）：编辑态无吸底条
+    rowBtn(rowById(507), '查看').click()
+    await flush()
+    detailBtns().find((b) => b.textContent === '前往修改').click()
+    await flush()
+    detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.readonly).toBe('false')
+    expect(detailBtns()).toHaveLength(0)
   })
 
-  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView；列表【重新提交】→ 跳编辑路由 SysConfigSkillEdit（query.myApp=申请 id）（md §四 L46 / §4.4）', async () => {
+  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView（query.myApp=申请 id）；列表【重新提交】直接重提（md §四 L46 / §4.4）', async () => {
     await mount()
     rowBtn(rowById(504), '查看').click()
     await flush()
     expect(push).toHaveBeenCalledWith({ name: 'SysConfigSkillView', params: { id: 'sk_309' }, query: { myApp: '504' } })
     expect(container.querySelector('.gov-detail')).toBeNull()
+    // 列表【重新提交】对技能行同样直接经 mock 重提，不跳编辑路由（2026-09-18 R1）
     rowBtn(rowById(504), '重新提交').click()
     await flush()
-    expect(push).toHaveBeenLastCalledWith({ name: 'SysConfigSkillEdit', params: { id: 'sk_309' }, query: { myApp: '504' } })
+    expect(resubmitMyApplication).toHaveBeenCalledWith(504)
   })
 
   it('申请时间列头点击 → 切正序 ↑ 并按 sortDir=asc 重查回第 1 页（md §3.1 L33）', async () => {
