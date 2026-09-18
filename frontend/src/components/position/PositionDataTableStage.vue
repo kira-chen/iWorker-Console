@@ -649,7 +649,7 @@ function cardFieldCount(t) {
           <el-input v-model="createDraft.label" maxlength="64" placeholder="如「经营分析报告」" />
         </el-form-item>
         <el-form-item label="说明">
-          <el-input v-model="createDraft.description" type="textarea" :rows="3" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
+          <el-input v-model="createDraft.description" type="textarea" :rows="3" maxlength="500" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
         </el-form-item>
       </el-form>
       <template #footer>
