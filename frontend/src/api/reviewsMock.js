@@ -1,9 +1,7 @@
 /**
  * 审核中心内存 mock（2026-09-01 PRD 对齐改造，仅 DEV 生效，见 reviews.js 头注释）。
  *
- * 种子数据照交互原型 v2 五模块脚本的 `var reviews=[…]` 8 条逐字抄录（含其后的
- * requestAction / version 补丁逻辑：id 3/6 → DELIST v2.0.0；id 1/4/8 → FIRST_PUBLISH —；
- * 其余 → VERSION_PUBLISH v1.2.0）。列表口径同原型 renderReviews：
+ * 种子 12 行与各业务模块 mock 里「在审」的对象逐条对齐（2026-09-18 R1 重写，见 seedRows 注释）。列表口径：
  * - 只出待审核（status === 'PENDING_REVIEW'），无四态历史；
  * - keyword 过滤域 [name, description, submitterName]；
  * - 业务类型七项筛选（CONNECTOR_MCP/CONNECTOR_API 由 TOOL+subType 拆分）；
@@ -22,80 +20,40 @@ import { currentDemoUserName } from '@/utils/demoIdentity'
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const clone = (v) => JSON.parse(JSON.stringify(v))
 
-/* ---------------- 种子（原型 var reviews 逐字抄录） ---------------- */
+/* ---------------- 种子 ----------------
+ * 2026-09-18 R1 修复重写：每一行必须与其 refId 所指业务对象的**当前在途事项**逐字段一致
+ * （申请类型同向、申请版本同号），否则审核落地会把停用当发布、或造出重复版本历史——09-18 逻辑审查
+ * 发现原 9 行里 6 行对不上（行 1/8 指向已发布对象、行 3 把待审发布记成停用、行 5/7 版本号或类型错）。
+ * 对齐来源（各 mock 种子里 pendingAction 非空的对象）：
+ *   positionMock       403 财务审核岗        draft + PUBLISH v1.0.0（首发）
+ *   domainExpertMock   204 研究报告专家      published v1.1.0 + PUBLISH v1.2.0
+ *   unifiedSkillMock   sk_302 经营数据分析   published v1.4.0 + publish v1.5.0
+ *                      sk_304 合同风险检查   published v1.1.0 + publish v1.1.1
+ *                      sk_308 报销单智能填报 draft + publish v1.0.0（首发）
+ *                      sk_309 行业研究助手   published v1.0.0 + stop（停用）
+ *   apiConnectorMock   api_1102 提交付款申请 PENDING_REVIEW + PUBLISH（首发）
+ *   bizSystemMock      biz_2102 人力资源系统 PENDING_REVIEW + PUBLISH（首发）
+ *   adminModelMock     md_103 企业视觉理解模型 PENDING_REVIEW + PUBLISH（首发）
+ *   mcpConnectorMock   local_files 本地文件 MCP / crm CRM MCP  PENDING_REVIEW + PUBLISH（首发）
+ *   knowledgeBaseMock  kb_3 法规与标准库     DRAFT + PUBLISH（首发）
+ * 名称 / 描述照对象本体（Q10 拍板：以业务模块种子为准）。id 保持 1..9 区间之外新增用 10+。
+ */
 function seedRows() {
-  const rows = [
-    { id: 1, name: '客户资料查询', description: '按客户编号读取客户基础信息', type: 'TOOL', subType: 'API', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', code: 'customer.query', writeClass: 'READ', requiresConfirmation: false },
-    { id: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', submitterName: 'li.na', submitterId: 2, submittedAt: '2026-08-28 09:18', status: 'PENDING_REVIEW' },
-    { id: 3, name: '人力资源系统', description: '员工、组织、请假和入转调离管理', type: 'BIZ_SYSTEM', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW' },
-    { id: 4, name: 'Kimi K2', description: '长上下文文本生成模型', type: 'MODEL', subType: 'PUBLISH', target: 'USER_END', submitterName: 'platform.admin', submitterId: 1, submittedAt: '2026-08-27 16:20', status: 'PENDING_REVIEW' },
-    { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', target: 'FDE_WORKBENCH', submitterName: 'wangfang', submitterId: 4, submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW' },
-    { id: 6, name: '研究报告专家', description: '从公开资料生成行业研究与竞品报告', type: 'EXPERT', target: 'USER_END', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:18', status: 'PENDING_REVIEW' },
-    { id: 7, name: '行业研究助手', description: '由客户端用户上传的研究技能', type: 'SKILL', platformSource: 'USER_UPLOADED', target: 'USER_END', submitterName: 'zhangwei', submitterId: 1, submittedAt: '2026-08-28 08:55', status: 'PENDING_REVIEW' },
-    { id: 8, name: '企业知识库 MCP', description: '连接企业知识库，提供文档检索与内容读取能力', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', submitterName: 'config.admin', submitterId: 12, submittedAt: '2026-08-28 10:05', status: 'PENDING_REVIEW', code: 'knowledge.search', writeClass: 'READ', requiresConfirmation: false }
+  const row = (r) => ({ target: 'USER_END', submitterName: 'config.admin', submitterId: 12, status: 'PENDING_REVIEW', ...r })
+  return [
+    row({ id: 1, refId: 'api_1102', type: 'TOOL', subType: 'API', name: '提交付款申请', description: '创建付款申请并返回流程编号', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 09:42', code: 'payment.apply', writeClass: 'WRITE', requiresConfirmation: true }),
+    row({ id: 2, refId: 'sk_302', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', submitterName: 'li.na', submitterId: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', requestAction: 'VERSION_PUBLISH', version: 'v1.5.0', submittedAt: '2026-08-28 09:18' }),
+    row({ id: 3, refId: 'biz_2102', type: 'BIZ_SYSTEM', name: '人力资源系统', description: '员工、组织、请假和入转调离管理', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 18:34' }),
+    row({ id: 4, refId: 'md_103', type: 'MODEL', subType: 'PUBLISH', submitterName: 'platform.admin', submitterId: 1, name: '企业视觉理解模型', description: '图片理解与多模态问答模型', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-27 16:20' }),
+    row({ id: 5, refId: 403, type: 'POSITION', target: 'FDE_WORKBENCH', submitterName: 'wangfang', submitterId: 4, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', requestAction: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-27 14:05' }),
+    row({ id: 6, refId: 204, type: 'EXPERT', name: '研究报告专家', description: '从公开资料生成行业研究与竞品报告', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-28 10:18' }),
+    row({ id: 7, refId: 'sk_309', type: 'SKILL', platformSource: 'USER_UPLOADED', submitterName: 'zhangwei', submitterId: 1, name: '行业研究助手', description: '汇总行业资料、竞品动态并生成结构化研究结论', requestAction: 'DELIST', version: 'v1.0.0', submittedAt: '2026-08-28 08:55' }),
+    row({ id: 8, refId: 'local_files', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', name: '本地文件 MCP', description: '读取工作区文件并执行受限文件操作', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 10:05', code: 'local.files', writeClass: 'WRITE', requiresConfirmation: true }),
+    row({ id: 9, refId: 'kb_3', type: 'KNOWLEDGE_BASE', name: '法规与标准库', description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 11:02' }),
+    row({ id: 10, refId: 'sk_304', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', requestAction: 'VERSION_PUBLISH', version: 'v1.1.1', submittedAt: '2026-08-25 10:12' }),
+    row({ id: 11, refId: 'sk_308', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', name: '报销单智能填报', description: '按发票信息自动填写并提交报销单', requestAction: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-25 09:30' }),
+    row({ id: 12, refId: 'crm', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', name: 'CRM MCP', description: '查询客户资料及商机状态', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-15 14:26', code: 'crm.query', writeClass: 'READ', requiresConfirmation: false })
   ]
-  // 原型补丁逻辑逐字对应：申请类型与申请版本
-  // 【2026-09-09 发布前收口】id 6（专家）原为 DELIST，但专家 mock 里没有任何「已发布 + 停用在审」
-  // 的实体可指：203 是全套种子唯一的草稿样本（多处用例依赖，不能动），204 才是真正在审的那条，
-  // 且它是 PUBLISH 方向。改指 204 并同步申请类型为 VERSION_PUBLISH，使审核中心与业务模块自洽
-  // （原口径下审核快照永不补播，审核人点【查看】必撞「无法查看」）。
-  rows.forEach((r) => {
-    if (r.id === 3) {
-      r.requestAction = 'DELIST'
-      r.version = 'v2.0.0'
-    } else if ([1, 4, 8].includes(r.id)) {
-      r.requestAction = 'FIRST_PUBLISH'
-      r.version = '—'
-    } else {
-      r.requestAction = 'VERSION_PUBLISH'
-      // 2026-09-12 审计 K19：行 2 指向 sk_302，其在审版本已按「在审号必须由线上 v1.4.0 递增得出」
-      // 改为 v1.5.0（unifiedSkillMock persist v4）；这里跟着取同一个号，否则列表显 v1.2.0、
-      // 详情与审核快照显 v1.5.0，三方不自洽。其余行仍是 v1.2.0。
-      r.version = r.id === 2 ? 'v1.5.0' : 'v1.2.0'
-    }
-  })
-  // demo 附加接线：原生只读详情的目标实体 id，指向各业务模块 mock 里真实存在的实体：
-  //   1 → apiConnectorMock api_1103 客户资料查询    2 → unifiedSkillMock sk_302 经营数据分析
-  //   3 → bizSystemMock  biz_2102  人力资源系统     4 → adminModelMock   md_104 Kimi K2
-  //   5 → positionMock   403       财务审核岗       6 → domainExpertMock 203    法务审阅专家
-  //   7 → unifiedSkillMock sk_309  行业研究助手     8 → mcpConnectorMock knowledge_hub 企业知识库 MCP
-  //
-  // 【2026-09-09 PRD 复核·G2 顺修：refId 借名缺陷已修正】原种子 4 行的 name 与其 refId 所指实体不同名
-  // （5「合同审阅专员」借 403 财务审核岗、1「客户数据查询 API」借 api_1103、3「企业人事系统」借 biz_2102、
-  // 8「知识库检索 MCP」借 spark_bridge_mcp），点【查看】打开的只读抽屉与列表行名对不上。这些名只出自
-  // 已退役的交互原型 html（L1539），md 无依据 —— 按 Q10 既定拍板（原型名与业务模块种子冲突时以业务模块
-  // 为准，见 positionAssignmentMock / positionApplicationsMock 头注释）：name/description 对齐实体本体，
-  // 8 另把 refId 改指同名的 knowledge_hub。三方（审核中心 ↔ 各业务模块 ↔ 我的申请）现已同名。
-  const REF = {
-    1: 'api_1103',
-    2: 'sk_302',
-    3: 'biz_2102',
-    4: 'md_104',
-    5: 403,
-    6: 204, // 研究报告专家（唯一在审专家；原指 203 草稿态 → 无审核快照）
-    7: 'sk_309',
-    8: 'knowledge_hub'
-  }
-  rows.forEach((r) => {
-    r.refId = REF[r.id] ?? r.id
-  })
-  // 2026-09-09 PRD 复核 A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」；md §二.2/§3.1 业务类型含知识库）：
-  // 补一条知识库在审种子，refId 指向 knowledgeBaseMock 的 kb_3「法规与标准库」（种子本就是 pendingAction:'PUBLISH'）。
-  rows.push({
-    id: 9,
-    name: '法规与标准库',
-    description: '行业法规、国标与行标条文检索，供合规与方案设计参考。',
-    type: 'KNOWLEDGE_BASE',
-    target: 'USER_END',
-    submitterName: 'config.admin',
-    submitterId: 12,
-    submittedAt: '2026-08-28 11:02',
-    status: 'PENDING_REVIEW',
-    requestAction: 'FIRST_PUBLISH',
-    version: '—',
-    refId: 'kb_3'
-  })
-  return rows
 }
 
 let reviews = seedRows()
@@ -156,7 +114,8 @@ const persist = attachPersist('reviews', {
   // 「研究报告专家 204 · VERSION_PUBLISH」——203 是草稿态、永远补播不出审核快照。
   // version 6（2026-09-12 负责人决策 5 · 审计 J12）：行结构增 reviewer（审核人，md §5.1 L71 / §5.2 L82）；
   // 存量快照里已审的行没有该字段、且当时未联动业务对象与我的申请，三方会不自洽 → 丢弃回种子。
-  version: 6,
+  // version 7（2026-09-18 R1）：种子重写为与各业务模块在审对象逐条一致（12 行），旧快照丢弃回种子。
+  version: 7,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {
@@ -238,20 +197,39 @@ const LOADERS = {
   'TOOL:API': () => import('./apiConnectorMock').then((m) => m.applyApiReviewResult)
 }
 
-/** 把审核结论落到对应业务对象；无对应模块 / 对象已无待审事项时静默跳过。 */
+/**
+ * 把审核结论落到对应业务对象。
+ * 2026-09-18 R1：不再「静默跳过」——各模块的 apply 会核对审核行的申请类型与对象自身在途事项是否同向
+ * （见 reviewEnroll.reviewActionMatches），对不上 / 对象已无待审事项时返回 false，这里转成 409 抛出，
+ * **审核行保持待审不动**。原实现先改审核行再落地，对象没落态也算「已审」，就是 09-18 审查里
+ * 「通过后本体不动、我的申请却显示已通过」的根因。
+ */
 async function applyToBusinessObject(row, approved) {
   const load = LOADERS[row.type === 'TOOL' ? `TOOL:${row.subType}` : row.type]
-  if (!load) return
+  if (!load) throw conflict('该业务类型暂不支持审核落地')
   const apply = await load()
-  if (typeof apply === 'function') apply(row.refId, row.requestAction, approved)
+  const ok = typeof apply === 'function' && apply(row.refId, row.requestAction, approved)
+  if (!ok) throw conflict('业务对象当前没有与本申请对应的待审事项（可能已被撤回或另行处理），请让提交人重新提交')
 }
 
-/** 把审核结论同步到「我的申请」同 type+refId 的待审行（含审核人 / 审核时间 / 驳回原因）。 */
+function conflict(message) {
+  const err = new Error(message)
+  err.code = 409
+  return err
+}
+
+/** 已审结的行不能再审（md 审核中心 §七 L101「记录已被其他审核人处理 → 操作失败」）。 */
+function assertPending(row) {
+  if (row.status !== 'PENDING_REVIEW') throw conflict('该记录已被处理，请刷新列表')
+}
+
+/** 把审核结论同步到「我的申请」同 type+refId+申请类型 的待审行（含审核人 / 审核时间 / 驳回原因）。 */
 async function applyToMyApplication(row, approved, reviewer, reviewedAt, rejectReason) {
   const { applyApplicationReviewResult } = await import('./myApplicationsMock')
   applyApplicationReviewResult({
     businessType: row.type === 'TOOL' ? row.subType : row.type,
     refId: row.refId,
+    applicationType: row.requestAction,
     approved,
     reviewer,
     reviewedAt,
@@ -266,11 +244,12 @@ async function applyToMyApplication(row, approved, reviewer, reviewedAt, rejectR
 export async function approveReview(id) {
   await delay()
   const row = findOr404(id)
+  assertPending(row)
+  await applyToBusinessObject(row, true) // 先落业务对象，落不上就整体失败，审核行不动
   row.status = row.requestAction === 'DELIST' ? 'DELISTED' : 'PUBLISHED'
   row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()
-  await applyToBusinessObject(row, true)
   await applyToMyApplication(row, true, row.reviewer, row.reviewedAt, '')
   return clone(row)
 }
@@ -288,12 +267,13 @@ export async function rejectReview(id, reason) {
     err.code = 400
     throw err
   }
+  assertPending(row)
+  await applyToBusinessObject(row, false) // 同 approve：先落业务对象
   row.status = 'REJECTED'
   row.rejectReason = trimmed
   row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()
-  await applyToBusinessObject(row, false)
   await applyToMyApplication(row, false, row.reviewer, row.reviewedAt, trimmed)
   return clone(row)
 }

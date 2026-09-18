@@ -8,13 +8,13 @@
  * - 筛选：keyword（域 objectName/description）+ 业务类型 + 申请类型 + 审核结果 + 「查询」按钮；
  * - 操作列：固定【查看】（2026-09-09 PRD 复核·G2：md §四 L47——对应业务对象已删除时置灰并悬停说明，
  *   行本身保留）；PENDING 加【撤回】；REJECTED/WITHDRAWN 加【重新提交】
- *   （2026-09-01 疑点1 处置：列表【重新提交】=打开编辑态（底部 关闭|提交审核），
- *    详情底部【重新提交】=直接提交）；
+ *   （2026-09-18 R1：列表【重新提交】与详情底部【重新提交】都=直接经业务模块重新提交；
+ *    要改内容先【前往修改】——非岗位类走编辑器自己的保存，岗位类只读视图 + 关闭|提交审核）；
  * - 详情复用业务原生视图（GovObjectDetail 分发；SKILL 跳技能整页 + 吸底操作栏；
  *   无业务页可跳的类型 toast「该申请对象暂无可跳转的业务页面」——疑点2 处置；2026-09-08 决议第 8 项后
  *   业务类型不含 OTHER，此分支仅作兜底）；
  *   详情底部按状态：PENDING=关闭|撤回申请；APPROVED=仅关闭；REJECTED/WITHDRAWN=
- *   关闭|前往修改|重新提交；编辑态=关闭|提交审核。
+ *   关闭|前往修改|重新提交；编辑态：岗位=关闭|提交审核，其余不出吸底条。
  * 2026-09-08 原型复刻批次 2B（G-5 / M-1 / M-2）：申请时间列头改原型文字箭头「申请时间 ↓/↑」（列头插槽自管
  *   排序态，点击切正倒序并回第 1 页）；列表【撤回】按原型 L1562 为普通 link（非 danger，详情底栏「撤回申请」
  *   仍 danger plain）；详情【前往修改】照原型 goBusiness(row,true) 先关只读抽屉再以编辑态重开，
@@ -95,11 +95,16 @@ const detailKind = ref('')
 const detailMode = ref('view') // 'view' | 'edit'
 const busyKey = ref('') // 'withdraw' | 'resubmit' | 'submit'
 
-// 详情吸底操作栏：编辑态=关闭|提交审核；查看态按审核结果出按钮
+// 详情吸底操作栏：查看态按审核结果出按钮；编辑态分两种——
+//   · 岗位：没有编辑抽屉（整页工作台），只读视图 + 关闭|提交审核；
+//   · 其余：**不出吸底条**，让编辑器自己的「取消 / 保存」可用。原实现在编辑态也盖一条「关闭|提交审核」，
+//     把编辑器脚部按钮盖住了，改的内容既没保存也没提交、关闭即丢（09-18 审查 G-6）。
+//     改完用编辑器的【保存】关抽屉，再点列表【重新提交】即经业务模块真正提交审核。
 const detailButtons = computed(() => {
   const row = detailRow.value
   if (!row) return []
   if (detailMode.value === 'edit') {
+    if (detailKind.value !== 'POSITION') return []
     return [
       { key: 'close', label: '关闭' },
       { key: 'submit', label: '提交审核', type: 'primary' }
@@ -107,7 +112,7 @@ const detailButtons = computed(() => {
   }
   const buttons = [{ key: 'close', label: '关闭' }]
   if (row.result === 'PENDING') buttons.push({ key: 'withdraw', label: '撤回申请', type: 'danger' })
-  if (row.result === 'REJECTED' || row.result === 'WITHDRAWN') {
+  if ((row.result === 'REJECTED' || row.result === 'WITHDRAWN') && !row.objectDeleted) {
     buttons.push({ key: 'modify', label: '前往修改' })
     buttons.push({ key: 'resubmit', label: '重新提交', type: 'primary' })
   }
@@ -117,7 +122,7 @@ const detailButtons = computed(() => {
 /**
  * 打开业务原生视图（原型 goBusiness 口径）。
  * @param {Object} row 申请行
- * @param {boolean} edit true=编辑态（列表【重新提交】/详情【前往修改】），false=只读查看
+ * @param {boolean} edit true=编辑态（详情【前往修改】），false=只读查看
  */
 function openDetail(row, edit = false) {
   const t = row.businessType
@@ -174,14 +179,17 @@ async function withdraw(row) {
     fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '撤回失败')
+    // md §七 L99「撤回时申请已被审核 → 阻止撤回并刷新最新审核结果」：另一端已审完，本地列表是旧的，重取
+    detailVisible.value = false
+    fetchList()
   } finally {
     busyRowId.value = null
     busyKey.value = ''
   }
 }
 
-// 重新提交/提交审核：result→PENDING、刷新申请时间、清空审核人/审核时间/驳回原因（mock 内落实），
-// 成功弹「提交成功」对话框（原型 submitAudit 文案逐字）
+// 重新提交/提交审核：经业务模块重新走一遍提交发布 / 停用（2026-09-18 R1），生成新的待审申请行与审核中心行，
+// 原行保留为历史；成功弹「提交成功」对话框
 async function resubmit(row, key = 'resubmit') {
   busyRowId.value = row.id
   busyKey.value = key
@@ -312,13 +320,15 @@ async function resubmit(row, key = 'resubmit') {
                 >
                   撤回
                 </el-button>
+                <!-- 对象已删除的行不可重新提交（09-18 审查 G-12；md §四 L47 只定义【查看】置灰，此处补齐同一态） -->
                 <el-button
-                  v-if="row.result === 'REJECTED' || row.result === 'WITHDRAWN'"
+                  v-if="(row.result === 'REJECTED' || row.result === 'WITHDRAWN') && !row.objectDeleted"
                   link
                   type="primary"
                   class="ma-op"
+                  :loading="busyRowId === row.id && busyKey === 'resubmit'"
                   :disabled="busyRowId === row.id"
-                  @click="openDetail(row, true)"
+                  @click="resubmit(row)"
                 >
                   重新提交
                 </el-button>

@@ -18,7 +18,8 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
-import { submitReviewRow, cancelReviewRow } from './reviewsMock'
+// 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
+import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { maskSecret } from '@/utils/secretMask'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -580,8 +581,11 @@ export async function publishMcpService(id) {
   await delay(250)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
+  if (pubAgg[id] === 'PENDING_REVIEW') throw err('该 MCP 已在审核中，请先撤回')
+  if (pubAgg[id] === 'PUBLISHED') throw err('该 MCP 已发布，无需重复提交')
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'PUBLISH'
+  enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: m.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该 MCP 连接器' })
   persist()
   return { mcpId: id, mcpCode: m.code, toolTotal: m.tools.length, results: [] }
 }
@@ -596,7 +600,7 @@ export async function withdrawMcpService(id) {
   if (pubAgg[id] !== 'PENDING_REVIEW') throw err('仅审核中状态可撤回')
   pubAgg[id] = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   m.pendingAction = null
-  cancelReviewRow('TOOL', m.id)
+  unenrollReview('MCP', m.id)
   persist()
   return { affected: (m.tools || []).length, skipped: 0 }
 }
@@ -613,15 +617,7 @@ export async function delistMcpService(id) {
   if (pubAgg[id] !== 'PUBLISHED' && pubAgg[id] !== 'PARTIAL') throw err('仅已发布状态可提交停用')
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'DELIST'
-  submitReviewRow({
-    type: 'TOOL',
-    subType: 'MCP',
-    refId: m.id,
-    name: m.name,
-    description: m.description || '',
-    requestAction: 'DELIST',
-    version: '—'
-  })
+  enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 MCP 对外提供' })
   persist()
   return { affected: (m.tools || []).length, skipped: 0 }
 }
@@ -642,7 +638,8 @@ export async function relistMcpService(id) {
 export function applyMcpReviewResult(refId, requestAction, approved) {
   const m = findMcp(refId)
   if (!m || pubAgg[m.id] !== 'PENDING_REVIEW') return false
-  const isDelist = (requestAction || m.pendingAction) === 'DELIST'
+  if (requestAction && !reviewActionMatches(requestAction, m.pendingAction)) return false // 2026-09-18 R1
+  const isDelist = m.pendingAction === 'DELIST'
   m.pendingAction = null
   if (approved && !isDelist) {
     m.publishedAt = nowIso()

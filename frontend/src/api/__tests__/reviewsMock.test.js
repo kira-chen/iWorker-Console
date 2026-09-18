@@ -10,161 +10,107 @@ import {
 } from '../reviewsMock'
 
 /**
- * 审核中心 mock 层回归保护（2026-09-12 对齐 md `prd.审核中心.md` §二 / §3.1 / §5.1 / §5.2 / §六）：
- * 种子 = 8 条待审记录 + 1 条知识库待审记录（2026-09-09 PRD 复核·G3G6 · A6）；列表只出待审核（md §六 L88）；
- * 业务类型八项筛选（md §二.2，含知识库；MCP/API 由 TOOL+subType 拆分）；申请类型筛选（md §二.3）；
- * submittedAt 排序默认 desc（md §3.1）；通过（含停用申请 → 已下架，md §5.2 L80）/ 驳回后记录离开待审列表（md §5.1 L71 / §5.2 L82）。
- * 2026-09-12 测试审计 T56：补提交端接线（submitReviewRow 覆盖在审行、新 id 避开种子 / cancelReviewRow 静默，md §六 L92）；F9 补 restore 形状守卫。
+ * 审核中心 mock 层回归保护（2026-09-18 R1 重写，对齐 md `prd.审核中心.md` §二 / §3.1 / §5.1 / §5.2 / §六 / §七）：
+ * 种子 12 行，每行与其 refId 所指业务对象的在途事项逐字段一致（见 reviewsMock.seedRows 注释）；
+ * 列表只出待审核（§六 L88）；业务类型八项筛选（§二.2，MCP/API 由 TOOL+subType 拆分）；申请类型筛选（§二.3）；
+ * submittedAt 排序默认 desc（§3.1）；通过 / 驳回**先落业务对象再改审核行**，对象无对应在途事项则 409 且审核行不动；
+ * 已审结的行不能再审（§七 L101）。
  *
- * 【超时放宽到 20s】2026-09-12 负责人决策 5（审计 J12）起，approveReview / rejectReview 会联动业务对象
- * （按行 type 动态 import 对应业务 mock 再落态，见 reviewsMock.js LOADERS）。首次调用要现场加载一个
- * 千行级业务 mock，叠上各 mock 自带的 delay(150~900) 拟真耗时，全量并行跑（160 个测试文件抢 CPU）时
- * 会顶破 vitest 5s 默认超时翻假红。放宽的是等待上限，断言一个没松。
+ * 【超时放宽到 20s】approveReview / rejectReview 会动态 import 对应业务 mock 再落态，首次加载千行级模块
+ * 叠上各 mock 自带的 delay，全量并行跑时会顶破 5s 默认超时翻假红。放宽的是等待上限，断言一个没松。
  */
 describe('reviewsMock · 审核中心内存 mock', { timeout: 20000 }, () => {
   beforeEach(() => resetReviewsMock())
 
-  it('默认列表：9 条全待审（含知识库 A6 新增行），按 submittedAt desc', async () => {
+  it('默认列表：12 条全待审，按 submittedAt desc，最新一条是知识库行（08-28 11:02）', async () => {
     const { list, total } = await listReviews()
-    expect(total).toBe(9)
+    expect(total).toBe(12)
     expect(list.every((r) => r.status === 'PENDING_REVIEW')).toBe(true)
     const times = list.map((r) => r.submittedAt)
     expect(times).toEqual([...times].sort().reverse())
-    expect(list[0].name).toBe('法规与标准库') // 2026-08-28 11:02 最新（A6 知识库行）
+    expect(list[0].name).toBe('法规与标准库')
   })
 
-  it('申请类型补丁：id 3/6=停用 v2.0.0，id 1/4/8=首次发布 —，其余=新版本发布（id 2 取技能 sk_302 在审号 v1.5.0，余 v1.2.0）', async () => {
-    const { list } = await listReviews()
+  it('种子与业务对象在途事项逐字段一致：申请类型 / 申请版本（09-18 R1 重写前 9 行里 6 行对不上）', async () => {
+    const { list } = await listReviews({ size: 50 })
     const byId = Object.fromEntries(list.map((r) => [r.id, r]))
-    expect(byId[3].requestAction).toBe('DELIST')
-    expect(byId[3].version).toBe('v2.0.0')
-    expect(byId[1].requestAction).toBe('FIRST_PUBLISH')
-    expect(byId[1].version).toBe('—')
-    expect(byId[2].requestAction).toBe('VERSION_PUBLISH')
-    // 2026-09-12 审计 K19：id 2 指向 sk_302，其在审版本已改 v1.5.0（由线上 v1.4.0 递增），
-    // 审核中心列表要与技能详情/审核快照同号，故这里也是 v1.5.0；其余新版本发布行仍 v1.2.0。
-    expect(byId[2].version).toBe('v1.5.0')
-    expect(byId[5].version).toBe('v1.2.0')
+    // 首发：对象从未发布过，版本列「—」或首版号
+    expect(byId[1]).toMatchObject({ refId: 'api_1102', requestAction: 'FIRST_PUBLISH', version: '—' })
+    expect(byId[3]).toMatchObject({ refId: 'biz_2102', requestAction: 'FIRST_PUBLISH' })
+    expect(byId[4]).toMatchObject({ refId: 'md_103', requestAction: 'FIRST_PUBLISH' })
+    expect(byId[5]).toMatchObject({ refId: 403, requestAction: 'FIRST_PUBLISH', version: 'v1.0.0' })
+    expect(byId[8]).toMatchObject({ refId: 'local_files', subType: 'MCP', requestAction: 'FIRST_PUBLISH' })
+    expect(byId[9]).toMatchObject({ refId: 'kb_3', requestAction: 'FIRST_PUBLISH' })
+    expect(byId[11]).toMatchObject({ refId: 'sk_308', requestAction: 'FIRST_PUBLISH', version: 'v1.0.0' })
+    expect(byId[12]).toMatchObject({ refId: 'crm', subType: 'MCP', requestAction: 'FIRST_PUBLISH' })
+    // 新版本发布：版本号 = 对象的 pendingVersion
+    expect(byId[2]).toMatchObject({ refId: 'sk_302', requestAction: 'VERSION_PUBLISH', version: 'v1.5.0' })
+    expect(byId[6]).toMatchObject({ refId: 204, requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' })
+    expect(byId[10]).toMatchObject({ refId: 'sk_304', requestAction: 'VERSION_PUBLISH', version: 'v1.1.1' })
+    // 停用：唯一一条
+    expect(byId[7]).toMatchObject({ refId: 'sk_309', requestAction: 'DELIST', version: 'v1.0.0' })
   })
 
   it('业务类型筛选：CONNECTOR_MCP / CONNECTOR_API 由 TOOL+subType 拆分', async () => {
-    const mcp = await listReviews({ type: 'CONNECTOR_MCP' })
-    expect(mcp.list.map((r) => r.id)).toEqual([8])
-    const api = await listReviews({ type: 'CONNECTOR_API' })
-    expect(api.list.map((r) => r.id)).toEqual([1])
-    const skill = await listReviews({ type: 'SKILL' })
-    expect(skill.list.map((r) => r.id).sort()).toEqual([2, 7])
-    const biz = await listReviews({ type: 'CONNECTOR_BIZ' })
-    expect(biz.list.map((r) => r.id)).toEqual([3])
+    expect((await listReviews({ type: 'CONNECTOR_MCP' })).list.map((r) => r.id).sort()).toEqual([12, 8])
+    expect((await listReviews({ type: 'CONNECTOR_API' })).list.map((r) => r.id)).toEqual([1])
+    expect((await listReviews({ type: 'SKILL' })).list.map((r) => r.id).sort()).toEqual([10, 11, 2, 7])
+    expect((await listReviews({ type: 'CONNECTOR_BIZ' })).list.map((r) => r.id)).toEqual([3])
+    expect((await listReviews({ type: 'KNOWLEDGE_BASE' })).list.map((r) => r.id)).toEqual([9])
   })
 
-  it('2026-09-08 原型复刻批次 2B（G-4）：POSITION 行 5 refId 接线岗位 mock 403（借财务审核岗示意）', async () => {
-    const row = await getReview(5)
-    expect(row.type).toBe('POSITION')
-    expect(row.refId).toBe(403)
-  })
-
-  it('keyword 过滤域 = 名称/描述/提交人（搜提交人 zhangwei 命中技能行）', async () => {
+  it('keyword 过滤域 = 名称/描述/提交人（搜提交人 zhangwei 命中技能行 7）', async () => {
     const { list } = await listReviews({ keyword: 'zhangwei' })
     expect(list.map((r) => r.id)).toEqual([7])
   })
 
   it('申请类型筛选 + 升序排序', async () => {
-    // 取 VERSION_PUBLISH 做多行样本：DELIST 自 2026-09-09 起只剩 id 3 一条（原 id 6 改指
-    // 在审的专家 204、方向为 VERSION_PUBLISH），单行验证不出排序。按提交时间升序：
-    // 5(08-27 14:05) → 7(08-28 08:55) → 2(08-28 09:18) → 6(08-28 10:18)
+    // VERSION_PUBLISH 三行按提交时间升序：10(08-25 10:12) → 2(08-28 09:18) → 6(08-28 10:18)
     const { list } = await listReviews({ requestAction: 'VERSION_PUBLISH', sortDir: 'asc' })
-    expect(list.map((r) => r.id)).toEqual([5, 7, 2, 6])
-    // DELIST 仍可筛出且只此一条
-    const delist = await listReviews({ requestAction: 'DELIST' })
-    expect(delist.list.map((r) => r.id)).toEqual([3])
-  })
-
-  it('通过发布申请 → PUBLISHED 并移出待审列表', async () => {
-    const row = await approveReview(1)
-    expect(row.status).toBe('PUBLISHED')
-    const { total } = await listReviews()
-    expect(total).toBe(8)
-  })
-
-  it('通过停用申请 → DELISTED（md §5.2 L80「停用申请通过后，对象变为未发布 / 已下架」）', async () => {
-    const row = await approveReview(3)
-    expect(row.status).toBe('DELISTED')
-  })
-
-  it('驳回：原因必填，成功后 REJECTED 带 rejectReason', async () => {
-    await expect(rejectReview(2, '   ')).rejects.toThrow('请输入驳回原因')
-    const row = await rejectReview(2, '描述不完整')
-    expect(row.status).toBe('REJECTED')
-    expect(row.rejectReason).toBe('描述不完整')
-    const { total } = await listReviews()
-    expect(total).toBe(8)
-  })
-
-  // 2026-09-09 PRD 复核·G3G6 · A6（Q265③「知识库也需要发布审核」；md `prd.审核中心.md` §二.2/§3.1）
-  it('A6 知识库：种子含 KNOWLEDGE_BASE 待审行，可按业务类型筛出，refId 指向 kb_3', async () => {
-    const { list } = await listReviews({ type: 'KNOWLEDGE_BASE' })
-    expect(list.map((r) => r.id)).toEqual([9])
-    expect(list[0].refId).toBe('kb_3')
-    expect(list[0].requestAction).toBe('FIRST_PUBLISH')
-    // 其它类型筛选不被知识库行污染
-    const skill = await listReviews({ type: 'SKILL' })
-    expect(skill.list.every((r) => r.type === 'SKILL')).toBe(true)
+    expect(list.map((r) => r.id)).toEqual([10, 2, 6])
+    expect((await listReviews({ requestAction: 'DELIST' })).list.map((r) => r.id)).toEqual([7])
   })
 
   it('getReview：按 id 取单条；不存在抛 404', async () => {
     const row = await getReview(5)
-    // 2026-09-09 PRD 复核·G2 顺修：种子名对齐 refId 所指实体（403 财务审核岗），
-    // 原「合同审阅专员」只出自已退役原型 html、与所指岗位不同名（refId 借名缺陷）
     expect(row.name).toBe('财务审核岗')
     expect(row.refId).toBe(403)
     await expect(getReview(999)).rejects.toMatchObject({ code: 404 })
   })
 
-  /* ---------------- 提交端接线（2026-09-12 测试审计 T56 补缺口；reviewsMock.js:114-140） ---------------- */
+  it('驳回：原因必填（空白拦下，审核行不动）', async () => {
+    await expect(rejectReview(2, '   ')).rejects.toThrow('请输入驳回原因')
+    expect((await getReview(2)).status).toBe('PENDING_REVIEW')
+  })
+
+  /* ---------------- 提交端接线（reviewsMock.js submitReviewRow / cancelReviewRow） ---------------- */
 
   it('submitReviewRow：同一对象已在审（同 type+refId）→ 覆盖原行不新建（md §六 L92「同一对象同一时间只允许存在一条待审核申请」）', async () => {
-    // 种子 id 8 = TOOL/MCP knowledge_hub 在审
     const written = submitReviewRow({
-      type: 'TOOL',
-      subType: 'MCP',
-      refId: 'knowledge_hub',
-      name: '企业知识库 MCP',
-      description: '重新提交后的描述',
-      requestAction: 'VERSION_PUBLISH',
-      version: 'v3.5.0',
-      submittedAt: '2026-08-29 09:00'
+      type: 'TOOL', subType: 'MCP', refId: 'local_files', name: '本地文件 MCP',
+      description: '重新提交后的描述', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-29 09:00'
     })
-    expect(written.id).toBe(8) // 沿用原行 id
+    expect(written.id).toBe(8)
     const { list, total } = await listReviews()
-    expect(total).toBe(9) // 不多出一行
-    const row = list.find((r) => r.id === 8)
-    expect(row.description).toBe('重新提交后的描述')
-    expect(row.version).toBe('v3.5.0')
-    expect(row.status).toBe('PENDING_REVIEW')
+    expect(total).toBe(12)
+    expect(list.find((r) => r.id === 8).description).toBe('重新提交后的描述')
   })
 
-  it('submitReviewRow：新对象 → 新建行，id 避开种子 1..9（取现有最大 id + 1），带默认提交人与「—」版本', async () => {
-    const written = submitReviewRow({
-      type: 'EXPERT',
-      refId: 205,
-      name: '合规审阅专家',
-      requestAction: 'FIRST_PUBLISH',
-      submittedAt: '2026-08-29 09:00'
-    })
-    expect(written.id).toBe(10)
+  it('submitReviewRow：新对象 → 新建行，id 取现有最大 id + 1，带默认提交人与「—」版本', async () => {
+    const written = submitReviewRow({ type: 'EXPERT', refId: 205, name: '合规审阅专家', requestAction: 'FIRST_PUBLISH', submittedAt: '2026-08-29 09:00' })
+    expect(written.id).toBe(13)
     expect(written).toMatchObject({ status: 'PENDING_REVIEW', submitterName: 'config.admin', version: '—' })
     const { list, total } = await listReviews()
-    expect(total).toBe(10)
-    expect(list[0].name).toBe('合规审阅专家') // 08-29 比种子最新的 08-28 11:02 更晚，倒序排第一
+    expect(total).toBe(13)
+    expect(list[0].name).toBe('合规审阅专家')
   })
 
-  it('cancelReviewRow：命中在审行即摘掉（撤回后离开待审列表）；无匹配对象静默、列表不变', async () => {
-    cancelReviewRow('TOOL', 'api_1103') // 种子 id 1
+  it('cancelReviewRow：命中在审行即摘掉；无匹配对象静默、列表不变', async () => {
+    cancelReviewRow('TOOL', 'api_1102') // 种子 id 1
     expect((await listReviews()).list.some((r) => r.id === 1)).toBe(false)
-    expect((await listReviews()).total).toBe(8)
+    expect((await listReviews()).total).toBe(11)
     expect(() => cancelReviewRow('EXPERT', 99999)).not.toThrow()
-    expect((await listReviews()).total).toBe(8)
+    expect((await listReviews()).total).toBe(11)
   })
 })
 
@@ -197,7 +143,7 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     gov.resetReviewsMock()
   })
 
-  /** 提交端还没接线的模块，测试里手工补一行审核中心行（等价于业务模块提交时该写的那行）。 */
+  /** 2026-09-18 R1 起各模块提交时已自动落审核行；这里再写一次只是覆盖同一行（同 type+refId 去重），顺带拿到行 id。 */
   const enroll = (row) => gov.submitReviewRow({ submittedAt: '2026-09-12 10:00', ...row })
 
   /** 把技能摆到「已发布 vX + 无在审」的已知起点（抹掉兄弟用例留下的状态）。 */
@@ -495,17 +441,33 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     expect(b.pendingAction).toBeFalsy()
   })
 
-  it('对象没有在途审核事项时静默跳过：审核行照常落结论，业务对象不被误改（审核中心不该被单个对象打断）', async () => {
+  it('对象没有在途审核事项 / 申请类型不同向 → 409，审核行保持待审不动（2026-09-18 R1：不再静默把审核行标成已审）', async () => {
     const modelMock = await import('../adminModelMock')
+    // md_104 无在途事项：手工给它造一条审核行再审
     const cur = await modelMock.getModel('md_104')
     if (cur.pendingAction) await modelMock.withdrawModel('md_104')
-    const statusBefore = (await modelMock.getModel('md_104')).status
+    const orphan = enroll({ type: 'MODEL', refId: 'md_104', name: 'Kimi K2', requestAction: 'FIRST_PUBLISH' })
+    await expect(gov.approveReview(orphan.id)).rejects.toMatchObject({ code: 409 })
+    expect((await gov.getReview(orphan.id)).status).toBe('PENDING_REVIEW')
+    expect((await modelMock.getModel('md_104')).status).toBe(cur.status)
 
-    // 种子审核行 4 指 md_104，但该模型并无待审事项（跨模块种子不自洽，见 J12 报告）
-    const approved = await gov.approveReview(4)
+    // 方向不同向：技能 sk_309 在途是停用，审核行却写成发布 → 同样拒绝
+    const skillMock = await import('../unifiedSkillMock')
+    skillMock._reset('sk_309', { status: 'published', version: 'v1.0.0', delisted: false, pendingAction: null, pendingVersion: '', pendingReleaseNotes: '', snapshots: [ACTIVE_SNAP('v1.0.0')] })
+    await skillMock.delistSkill('sk_309')
+    const wrong = enroll({ type: 'SKILL', refId: 'sk_309', name: '行业研究助手', requestAction: 'VERSION_PUBLISH', version: 'v1.1.0' })
+    await expect(gov.approveReview(wrong.id)).rejects.toMatchObject({ code: 409 })
+    expect(skillMock._getRaw('sk_309').pendingAction).toBe('stop') // 对象没被误落
+  })
 
-    expect(approved.status).toBe('PUBLISHED') // 审核行自身照常落结论
-    expect((await modelMock.getModel('md_104')).status).toBe(statusBefore) // 业务对象不被误改
+  it('已审结的行不能再审：通过后再驳回 / 再通过都 409（md §七 L101）', async () => {
+    const skillMock = await resetSkill('sk_304', 'v1.1.0', [ACTIVE_SNAP('v1.1.0')])
+    await skillMock.publishSkill('sk_304', { bump: 'PATCH', releaseNotes: '守卫验证' })
+    const row = (await gov.listReviews({ type: 'SKILL', size: 50 })).list.find((r) => r.refId === 'sk_304')
+    await gov.approveReview(row.id)
+    await expect(gov.rejectReview(row.id, '反悔')).rejects.toMatchObject({ code: 409 })
+    await expect(gov.approveReview(row.id)).rejects.toMatchObject({ code: 409 })
+    expect(skillMock._getRaw('sk_304').status).toBe('published')
   })
 
   it('我的申请无对应待审行时不新建行（申请行只由提交端创建）', async () => {
@@ -546,19 +508,19 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     vi.resetModules()
   })
 
-  it('存量快照版本对但 reviews 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 9 条、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 6, data: { reviews: 'oops' } }))
+  it('存量快照版本对但 reviews 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 12 条、坏 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { reviews: 'oops' } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../reviewsMock')
-    expect((await fresh.listReviews()).total).toBe(9)
+    expect((await fresh.listReviews()).total).toBe(12)
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('reviews 存量数据不可用'), expect.any(Error))
     warn.mockRestore()
   })
 
-  it('对照：形状合法的存量快照（v=6）会被读回——列表按快照而非种子', async () => {
+  it('对照：形状合法的存量快照（v=7）会被读回——列表按快照而非种子', async () => {
     const seedOnly = [{ id: 42, name: '快照里的唯一行', type: 'MODEL', refId: 'md_104', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-09-01 10:00', status: 'PENDING_REVIEW' }]
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 6, data: { reviews: seedOnly } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { reviews: seedOnly } }))
     const fresh = await import('../reviewsMock')
     const { list, total } = await fresh.listReviews()
     expect(total).toBe(1)

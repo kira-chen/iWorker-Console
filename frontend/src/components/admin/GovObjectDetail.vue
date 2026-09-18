@@ -91,7 +91,8 @@ watch(
       const { getModel } = await import('@/api/adminModel')
       modelRow.value = await getModel(refId)
     } catch (e) {
-      /* 取不到（demo 无对应实体）→ 保持合成对象兜底 */
+      // 取不到（对象已删除等）→ 用行数据合成最小对象兜底，仍打开只读抽屉给个能看的壳
+      modelRow.value = props.item ? { id: props.refId, name: displayName.value, description: props.item.description || '' } : { id: props.refId, name: displayName.value }
     }
   },
   { immediate: true }
@@ -185,9 +186,12 @@ defineExpose({ snapshot, snapshotMissing })
     :readonly="readonly"
     @update:visible="vis = $event"
   />
+  <!-- 模型抽屉只在 visible 变 true 那一刻从 props.model 灌表单（ModelConfigEditDialog 的 watch），
+       所以必须等 getModel 取到完整行再打开——原实现先用行数据合成的最小对象打开，表单其余字段全空，
+       编辑态【保存】会把空字段提交出去（09-18 实走附带发现）。 -->
   <ModelConfigEditDialog
     v-else-if="kind === 'MODEL'"
-    :visible="visible"
+    :visible="visible && !!modelRow"
     :model="modelObj"
     :readonly="readonly"
     @update:visible="vis = $event"

@@ -17,6 +17,8 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+// 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
+import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { isBlankBizPage } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -241,6 +243,7 @@ export async function publishBizSystem(id) {
   if (b.status !== 'NOT_PUBLISHED') throw err('仅未发布状态可提交发布')
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'PUBLISH'
+  enrollReview({ businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: b.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该业务系统' })
   persist()
   return toRow(b)
 }
@@ -253,6 +256,7 @@ export async function withdrawBizSystem(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
+  unenrollReview('BIZ_SYSTEM', b.id)
   persist()
   return toRow(b)
 }
@@ -265,6 +269,7 @@ export async function deactivateBizSystem(id) {
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'DEACTIVATE'
+  enrollReview({ businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该业务系统对外提供' })
   persist()
   return toRow(b)
 }
@@ -306,7 +311,8 @@ export async function rejectBizSystem(id) {
 export function applyBizSystemReviewResult(refId, requestAction, approved) {
   const b = findBiz(refId)
   if (!b || b.status !== 'PENDING_REVIEW') return false
-  const isDelist = (requestAction || (b.pendingAction === 'DEACTIVATE' ? 'DELIST' : '')) === 'DELIST'
+  if (requestAction && !reviewActionMatches(requestAction, b.pendingAction)) return false // 2026-09-18 R1
+  const isDelist = b.pendingAction === 'DEACTIVATE'
   if (approved) {
     if (isDelist) {
       b.status = 'NOT_PUBLISHED'

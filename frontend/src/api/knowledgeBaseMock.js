@@ -32,6 +32,7 @@ import { attachPersist } from './mockPersist'
 // 2026-09-09 A6：知识库提交发布/停用 → 挂进审核中心与我的申请（治理 mock 反向不引本模块，无环）
 import { submitReviewRow, cancelReviewRow } from './reviewsMock'
 import { submitApplicationRow, withdrawApplicationRow } from './myApplicationsMock'
+import { reviewActionMatches } from './reviewEnroll' // 2026-09-18 R1：审核落地前核对申请类型
 import { maskSecret } from '@/utils/secretMask'
 import {
   MAX_SOURCES_PER_TYPE,
@@ -385,7 +386,8 @@ export async function transition(id, action) {
 export function applyKnowledgeBaseReviewResult(refId, requestAction, approved) {
   const r = rows.find((x) => x.id === refId)
   if (!r || !r.pendingAction) return false
-  const isDelist = (requestAction || r.pendingAction) === 'DELIST'
+  if (requestAction && !reviewActionMatches(requestAction, r.pendingAction)) return false
+  const isDelist = r.pendingAction === 'DELIST'
   if (approved) r.status = isDelist ? 'DRAFT' : 'PUBLISHED'
   r.pendingAction = null
   persist()

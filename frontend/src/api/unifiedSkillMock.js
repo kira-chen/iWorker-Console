@@ -32,6 +32,8 @@ import { getFieldOptionNames } from './fieldDictMock'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相（mock 引 utils 为既有范式）
 import { nowMinuteText as nowText } from '@/utils/datetime'
+// 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
+import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms))
 
@@ -517,13 +519,13 @@ function skillSnapshotDetail(s) {
   }
 }
 
-function writeReviewSnapshot(s, requestAction) {
+function writeReviewSnapshot(s, requestAction, submittedAt) {
   reviewSnapshots[String(s.id)] = {
     kind: 'SKILL',
     refId: s.id,
     requestAction,
     version: s.pendingVersion || s.version || '',
-    submittedAt: nowText(),
+    submittedAt: submittedAt || nowText(), // 种子补播传对象自身时间，避免「提交时快照」显示成页面加载时刻（09-18 审查）
     detail: JSON.parse(JSON.stringify(skillSnapshotDetail(s)))
   }
 }
@@ -538,7 +540,7 @@ export function getSkillReviewSnapshot(id) {
 function seedReviewSnapshots() {
   for (const s of skills) {
     if (!s.pendingAction || reviewSnapshots[String(s.id)]) continue
-    writeReviewSnapshot(s, s.pendingAction === 'stop' ? 'DELIST' : s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+    writeReviewSnapshot(s, s.pendingAction === 'stop' ? 'DELIST' : s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', s.updatedAt)
   }
 }
 
@@ -551,10 +553,13 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   s.pendingAction = 'publish'
   s.pendingVersion = s.version ? bumpVersion(s.version, bump) : 'v1.0.0'
   s.pendingReleaseNotes = String(releaseNotes).trim()
-  s.delisted = false
+  // 2026-09-18 R1：这里**不再**提前清 delisted——已下架技能再提交发布时，撤回/驳回要能回到「已下架」；
+  // 原实现先清掉，撤回后就变「已发布」，等于绕过审核重新上线（09-18 审查 S1）。通过时再清（见 apply）。
   s.updatedAt = nowText()
   // A5：提交审核即存版本快照（md §四 L48）
-  writeReviewSnapshot(s, s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH')
+  const requestAction = s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH'
+  writeReviewSnapshot(s, requestAction)
+  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction, version: s.pendingVersion, versionNotes: s.pendingReleaseNotes })
   persist()
   return { skillId: s.id, pendingVersion: s.pendingVersion, publications: publicationsOf(s) }
 }
@@ -567,13 +572,11 @@ export async function withdrawPublish(id) {
   s.pendingAction = null
   s.pendingVersion = ''
   s.pendingReleaseNotes = ''
-  if (s.version) {
-    s.status = 'published'
-  } else {
-    s.status = 'draft'
-  }
+  // 恢复提交前状态：有线上版本且未下架 → 已发布；否则未发布（含已下架再提交发布的撤回，09-18 R1）
+  s.status = s.version && !s.delisted ? 'published' : 'draft'
   s.updatedAt = nowText()
   delete reviewSnapshots[String(s.id)] // A5：撤回即销毁本次提交的版本快照
+  unenrollReview('SKILL', s.id)
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -589,6 +592,7 @@ export async function delistSkill(id) {
   s.pendingAction = 'stop'
   s.updatedAt = nowText()
   writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: '申请停止该技能对外提供' })
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -605,7 +609,9 @@ export async function delistSkill(id) {
 export function applySkillReviewResult(refId, requestAction, approved) {
   const s = skills.find((x) => String(x.id) === String(refId))
   if (!s || !s.pendingAction) return false
-  const isDelist = (requestAction || (s.pendingAction === 'stop' ? 'DELIST' : '')) === 'DELIST'
+  // 2026-09-18 R1：审核行申请类型须与对象在途事项同向，否则拒绝落地
+  if (requestAction && !reviewActionMatches(requestAction, s.pendingAction)) return false
+  const isDelist = s.pendingAction === 'stop'
   if (approved) {
     if (isDelist) {
       // 停用通过 → 未发布（md L97）；版本快照保留（md §六「停用通过不删除历史版本」）
