@@ -48,6 +48,23 @@ describe('创建 / 导入（分类必选，fieldDict 同源校验）', () => {
     const tree = await mock.listSkillFiles(vo.skillId)
     expect(tree.files.some((f) => f.path === 'SKILL.md')).toBe(true)
   })
+
+  it('zip 导入：skill.md 内 name 全局唯一——同名包（含种子行、同批后续包）均拒绝，提示携具体名称', async () => {
+    // 命中种子行 sk_301（日报周报生成）：skillMdName 默认取种子 name，视同已占用。
+    await expect(
+      mock.importSkillZip({ fileName: '日报周报生成.zip', type: 'PLATFORM', categoryName: CAT })
+    ).rejects.toThrow('当前已有同名技能：日报周报生成')
+    // 首个包成功导入后，同批次后续同名包同样命中（skills 数组已写入，天然覆盖同批重名）。
+    await mock.importSkillZip({ fileName: '批量重名校验.zip', type: 'PLATFORM', categoryName: CAT })
+    await expect(
+      mock.importSkillZip({ fileName: '批量重名校验.zip', type: 'PLATFORM', categoryName: CAT })
+    ).rejects.toThrow('当前已有同名技能：批量重名校验')
+    // 手动创建的技能 SKILL.md 尚为空、不占用 name 命名空间，zip 导入同名不受影响。
+    await mkSkill({ name: '手动同名技能' })
+    await expect(
+      mock.importSkillZip({ fileName: '手动同名技能.zip', type: 'PLATFORM', categoryName: CAT })
+    ).resolves.toMatchObject({ name: '手动同名技能' })
+  })
 })
 
 describe('三态 + pendingAction 状态机', () => {
@@ -310,7 +327,7 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
   })
 })
 
-describe('unifiedSkillMock · 持久化读回（mockPersist v4，2026-09-12 K19 bump；key iworker-demo-mock:unifiedSkill）', () => {
+describe('unifiedSkillMock · 持久化读回（mockPersist v5，2026-09-18 技能同名校验 bump；key iworker-demo-mock:unifiedSkill）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:unifiedSkill'
@@ -334,10 +351,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v4，2026-09-12 K19 
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=4）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(4)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(5)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })
