@@ -220,6 +220,26 @@ body.admin-scope .el-table__body tr > td.hover-cell.el-table-fixed-column--right
 body.admin-scope .lt-search {
   width: 300px;
 }
+/* 筛选下拉框（2026-09-18 MasterGo 设计稿 WaqNPFdC 拍板对齐）：list-page.css 默认 150px 上调到稿面的 200px */
+body.admin-scope .lt-filter {
+  width: 200px;
+}
+
+/* 状态标签色值（2026-09-18 MasterGo 设计稿 WaqNPFdC 拍板对齐）：已发布/审核中/未发布三态改用稿面色值
+ * （tokens.css 的 --*-admin-status-* 组），不再走品牌语义色 --c-success/--c-warning/--c-text-muted。
+ * StatusTag.vue 全站仅用于后台管理页，限定 body.admin-scope 不影响该组件未来在员工端复用的观感。 */
+body.admin-scope .status-tag.st--success {
+  color: var(--c-admin-status-success);
+  background: var(--bg-admin-status-success);
+}
+body.admin-scope .status-tag.st--warning {
+  color: var(--c-admin-status-warning);
+  background: var(--bg-admin-status-warning);
+}
+body.admin-scope .status-tag.st--info {
+  color: var(--c-admin-status-default);
+  background: var(--bg-admin-status-default);
+}
 
 /* 页头档位。员工端页头不带 admin-scope，仍是 22px/600 + 13px 档。
  * 2026-09-09 从 PageHeader.vue 的 scoped 块搬来：那里写成 `:global(body.admin-scope) .page-header-title`
