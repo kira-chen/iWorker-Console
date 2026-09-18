@@ -468,6 +468,21 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
   })
 })
 
+/* ================= 连接器类型 / 所属岗位（2026-09-18 修坏链） ================= */
+describe('连接器类型=岗位私有 → 所属岗位下拉（2026-09-18 修坏链：@/api/position 动态 import 解构错误 + status 大小写 + positionId 非 id）', () => {
+  it('选「岗位私有」后展示真实已发布岗位', async () => {
+    await mount()
+    await setSelect(selectOf('连接器类型'), 'POSITION')
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待
+    // （本文件桩较多，import+首次 transform 开销更大，留足余量到 500ms）
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const positionSelect = selectOf('所属岗位')
+    expect(positionSelect).toBeTruthy()
+    const optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
+    expect(optionLabels).toContain('经营分析岗')
+  })
+})
+
 /* ================= §三.6 工具清单 ================= */
 describe('工具清单：展开 / 收起 / 拉取（md §三.6 L303-311, §三.6.1-§三.6.2）', () => {
   it('说明文案逐字；默认收起只留【展开工具清单】【拉取工具】；展开后无工具显「暂无工具，点击「拉取工具」从 MCP server 同步」，按钮变【收起工具清单】', async () => {

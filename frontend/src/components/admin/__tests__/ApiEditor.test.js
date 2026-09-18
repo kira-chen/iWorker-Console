@@ -342,6 +342,20 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
     expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
   })
 
+  it('连接器类型=岗位私有 → 所属岗位下拉展示真实已发布岗位（2026-09-18 修坏链：@/api/position 动态 import 解构错误 + status 大小写 + positionId 非 id）', async () => {
+    const el = await mountEditor(null)
+    const ts = itemByLabel(el, '连接器类型').querySelector('select')
+    ts.value = 'POSITION'
+    ts.dispatchEvent(new Event('change'))
+    await flush()
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const positionItem = itemByLabel(el, '所属岗位')
+    expect(positionItem).toBeTruthy()
+    const optionLabels = [...positionItem.querySelectorAll('option')].map((o) => o.textContent)
+    expect(optionLabels).toContain('经营分析岗')
+  })
+
   it('查看态（readonly）：表单禁用、图标按钮置灰、鉴权参数行增删禁用、无【AI 生成】、底部仅【关闭】', async () => {
     conn.getApi.mockResolvedValue({
       ...DETAIL,

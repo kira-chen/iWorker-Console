@@ -106,8 +106,8 @@ const publishedPositions = ref([])
 async function loadPublishedPositions() {
   try {
     // 获取已发布岗位列表
-    const { default: { listPositions } } = await import('@/api/position')
-    const res = await listPositions({ status: 'PUBLISHED' })
+    const { listPositions } = await import('@/api/position')
+    const res = await listPositions({ status: 'published' })
     publishedPositions.value = res.list || []
   } catch (err) {
     console.warn('加载已发布岗位失败:', err)
@@ -635,9 +635,9 @@ const metaItems = computed(() => {
                 >
                   <el-option
                     v-for="pos in publishedPositions"
-                    :key="pos.id"
+                    :key="pos.positionId"
                     :label="pos.name"
-                    :value="pos.id"
+                    :value="pos.positionId"
                   />
                 </el-select>
                 <div v-if="isEdit" class="ee-type-hint">所属岗位创建后不可更改</div>

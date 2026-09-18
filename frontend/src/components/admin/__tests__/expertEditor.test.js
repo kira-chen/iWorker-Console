@@ -406,6 +406,21 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
   })
 
+  it('专家类型=岗位私有 → 「所属岗位」下拉展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
+    await mount({ expertId: null })
+    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout（非微任务），
+    // 需要真实等待，flush() 的若干次 Promise.resolve()/nextTick 不够。
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    await selectCategory('通用')
+    await selectType('POSITION')
+    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    expect(positionSelect).toBeTruthy()
+    const optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
+    expect(optionLabels).toContain('经营分析岗')
+    const optionValues = [...positionSelect.querySelectorAll('option')].map((o) => o.value)
+    expect(optionValues).toContain('401')
+  })
+
   it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {
     createExpert.mockResolvedValueOnce({ ...DETAIL, id: 205, name: '新专家' })
     await mount({ expertId: null })
