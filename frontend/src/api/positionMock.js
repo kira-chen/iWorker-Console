@@ -571,8 +571,8 @@ export async function relistPositionPublication(positionId, version) {
 
 /* ============================ 工作台：岗位详情树 + Agent/技能引用（2026-09-02 补 mock） ============================ */
 
-const AGENT_MAX = 20 // 与 utils/positionModel LIMITS 同口径（mock 不 import utils，数值对齐即可）
-const SKILL_PER_AGENT_MAX = 100 // Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
+const AGENT_MAX = 20 // 与 utils/positionModel.js LIMITS.AGENT_MAX 同口径（mock 不 import utils，改这个值务必同步那边）
+const SKILL_PER_AGENT_MAX = 100 // 与 utils/positionModel.js LIMITS.SKILL_MAX 同口径（mock 不 import utils，改这个值务必同步那边）；Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
 
 const bySort = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
 
@@ -726,7 +726,9 @@ export async function updatePosition(id, payload = {}) {
   }
   if ('exampleQuestions' in payload) {
     const qs = normEq(payload.exampleQuestions)
-    if (qs.some((q) => q.trim().length > 60)) throw err('示例问题每条不超过 60 字', 'exampleQuestions')
+    // 300 = utils/positionModel.js EXAMPLE_Q_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
+    // 2026-09-18 待办 yuepu#5⑥：此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
+    if (qs.some((q) => q.trim().length > 300)) throw err('示例问题每条不超过 300 字', 'exampleQuestions')
     wb.exampleQuestions = qs
   }
   if ('positionSop' in payload) {

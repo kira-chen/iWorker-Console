@@ -123,6 +123,15 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
       field: 'exampleQuestions',
       message: '示例问题固定 3 条，须全部填写'
     })
+    // 每条 ≤300（2026-09-18 待办 yuepu#5⑥：BIZ_QUESTION_MAX 曾卡在 60，输入框已放宽到 300，此前保存会被拒）
+    await expect(createBizSystem({ ...base, exampleQuestions: ['x'.repeat(301), 'b', 'c'] })).rejects.toMatchObject({
+      field: 'exampleQuestions',
+      message: '示例问题每条不超过 300 字'
+    })
+    // 换个名字，避免这条成功创建的行占掉 base.name、影响本测试后续复用同名的失败态断言
+    await expect(createBizSystem({ ...base, name: `${base.name}-ok`, exampleQuestions: ['x'.repeat(300), 'b', 'c'] })).resolves.toMatchObject({
+      exampleQuestions: expect.arrayContaining(['x'.repeat(300)])
+    })
     await expect(createBizSystem({ ...base, bizPages: Array.from({ length: 21 }, () => ({ url: 'https://a.com', name: 'p' })) })).rejects.toMatchObject({
       field: 'bizPages',
       message: '业务页最多 20 条'

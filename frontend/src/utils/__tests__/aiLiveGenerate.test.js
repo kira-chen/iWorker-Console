@@ -47,7 +47,7 @@ describe('文本工具（shortText / limitLen 截断口径）', () => {
 })
 
 describe('本地模板生成器（demo 固定模板句逐字）', () => {
-  it('expertQuestionSet：3 条『请围绕"…"给出专业分析』式，主语 18 字收束，每条 ≤60', () => {
+  it('expertQuestionSet：3 条『请围绕"…"给出专业分析』式，主语 18 字收束，每条 ≤300（2026-09-18 待办 yuepu#5⑥，原 60）', () => {
     const src = '汇总经营数据，识别异常并形成管理建议，输出可追溯的分析结论'
     const subject = shortText(src, 18)
     expect(subject.endsWith('…')).toBe(true) // 超 18 字被收束
@@ -57,7 +57,7 @@ describe('本地模板生成器（demo 固定模板句逐字）', () => {
       `请基于"${subject}"识别关键问题并提出建议`,
       `请针对"${subject}"整理一份可执行方案`
     ])
-    expect(qs.every((q) => Array.from(q).length <= 60)).toBe(true)
+    expect(qs.every((q) => Array.from(q).length <= 300)).toBe(true)
     // 短源不截断：主语原样入模板
     expect(expertQuestionSet('经营分析')[0]).toBe('请围绕"经营分析"给出专业分析')
   })
@@ -70,11 +70,11 @@ describe('本地模板生成器（demo 固定模板句逐字）', () => {
     ])
   })
 
-  it('skillExampleQuestion：1 条『请帮我使用这个技能完成"…"』（主语 24 字收束，≤60）', () => {
+  it('skillExampleQuestion：1 条『请帮我使用这个技能完成"…"』（主语 24 字收束，≤300，2026-09-18 待办 yuepu#5⑥，原 60）', () => {
     expect(skillExampleQuestion('整理销售周报')).toBe('请帮我使用这个技能完成"整理销售周报"')
     const long = skillExampleQuestion('一'.repeat(80))
     expect(long.startsWith('请帮我使用这个技能完成"')).toBe(true)
-    expect(Array.from(long).length).toBeLessThanOrEqual(60)
+    expect(Array.from(long).length).toBeLessThanOrEqual(300)
   })
 })
 
@@ -129,11 +129,11 @@ describe('生成器补传对象名称（Q363–Q366）', () => {
     expect(connectorQuestionSet(undefined)[0]).toBe('请查询与""相关的信息')
   })
 
-  it('长名称仍按 18 / 24 字收束，模板整体 ≤60', () => {
+  it('长名称仍按 18 / 24 字收束，模板整体 ≤300（2026-09-18 待办 yuepu#5⑥，原 60）', () => {
     const qs = expertQuestionSet({ name: '一'.repeat(40), intro: '简介' })
-    expect(qs.every((q) => Array.from(q).length <= 60)).toBe(true)
+    expect(qs.every((q) => Array.from(q).length <= 300)).toBe(true)
     expect(qs[0]).toContain('…')
-    expect(Array.from(skillExampleQuestion({ name: '一'.repeat(80) })).length).toBeLessThanOrEqual(60)
+    expect(Array.from(skillExampleQuestion({ name: '一'.repeat(80) })).length).toBeLessThanOrEqual(300)
   })
 })
 

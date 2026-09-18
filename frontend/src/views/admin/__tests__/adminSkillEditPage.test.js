@@ -10,7 +10,7 @@ import { createApp, h, provide, inject } from 'vue'
  *  - §三.1 L139-141 进入方式（【查看】= 编辑路由 ?view=1 只读态；【编辑】= 编辑态）/ 返回回到技能列表；
  *  - §三.3 L176-177 【保存】成功提示「技能配置已保存」；只读态不展示分类修改 / 默认安装 / 发布 / 保存；
  *  - §三.6 SKILL.md 文件树操作（Q2 工具引用 diff）；
- *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤60）。
+ *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤300）。
  *
  * 公共桩：vue-router 用 hoisted routeState（meta/params/query 按 describe 切换）+ leaveGuard 捕获；
  * stores/position 的 fetchSkillDetail/patchSkill 为可切实现的 spy；SkillFocusEditor 桩取各文件 props/emits 并集，

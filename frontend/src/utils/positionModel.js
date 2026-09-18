@@ -10,9 +10,10 @@
 
 /* ============================ 上限 / 软上限（交互规格 §12） ============================ */
 export const LIMITS = {
-  AGENT_MAX: 20, // 单岗位 Agent 上限（硬）
+  AGENT_MAX: 20, // 单岗位 Agent 上限（硬）；api/positionMock.js 的 AGENT_MAX 是同口径的独立副本，改这里务必同步那边
   // 单 Agent 技能引用上限（硬）：2026-09-09 负责人 Q378 决议由 20 放宽到 100，
   // 落点改为 Agent 抽屉内「引用技能」勾选区（达上限未勾选项置灰），md §6.4 同口径。
+  // api/positionMock.js 的 SKILL_PER_AGENT_MAX 是同口径的独立副本，改这里务必同步那边。
   SKILL_MAX: 100,
   INTAKE_MAX: 10, // 采集字段上限（硬）
   TRIGGER_MAX: 10, // 触发词个数上限（硬）

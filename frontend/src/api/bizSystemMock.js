@@ -28,7 +28,10 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let bizSeq = 2104
 let skillSeq = 3
 
-export const BIZ_QUESTION_MAX = 60
+// 与 utils/defValidate.js 的同名 BIZ_QUESTION_MAX 同口径（mock 不 import utils，数值对齐即可；
+// 2026-09-18 待办 yuepu#5⑥ 改口径时两处曾一度失配：这里卡在 60、defValidate 已经是 300，
+// 导致输入框能填 300 字、保存却被这里拒——改这个值时务必同步另一处）
+export const BIZ_QUESTION_MAX = 300
 
 const mkBiz = (over) => ({
   id: over.id,

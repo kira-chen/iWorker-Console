@@ -431,7 +431,9 @@ export async function updateSkill(id, payload = {}) {
   }
   if ('exampleQuestion' in payload) {
     const eq = String(payload.exampleQuestion ?? '')
-    if (eq.length > 60) throw new ApiError({ code: 40001, message: '示例问题最多 60 个字符' })
+    // 300 = 一览表示例类统一规则（mock 不 import utils，数值对齐即可；2026-09-18 待办 yuepu#5⑥：
+    // 此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
+    if (eq.length > 300) throw new ApiError({ code: 40001, message: '示例问题最多 300 个字符' })
     s.exampleQuestion = eq
   }
   if ('defaultInstall' in payload) s.defaultInstall = !!payload.defaultInstall
