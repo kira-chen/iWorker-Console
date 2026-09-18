@@ -159,6 +159,16 @@
   --c-admin-head: #6a6a6a; /* 表头字（2026-09-17 MasterGo 设计稿 W9gCP2CB 校正：DSL 二级文本 token 值 rgb(106,106,106)；原截图估色 #8d8d8d 偏浅） */
   --bg-admin-primary: #141619; /* 主按钮（＋新建 X）近黑底，采样 rgb(20,22,25) */
   --c-admin-sub: #8e8e8e; /* 页头副文案，采样 rgb(142,142,142) */
+
+  /* 状态标签色值（2026-09-18 MasterGo 设计稿 WaqNPFdC 拍板对齐，取代品牌语义色）：
+     已发布/审核中/未发布三态直接用稿面色值，不再走 --c-success/--c-warning/--c-text-muted——
+     StatusTag 目前仅用于后台管理页（body.admin-scope），品牌语义色在其余场景不受影响。 */
+  --bg-admin-status-success: #e5f7e1;
+  --c-admin-status-success: #12b312;
+  --bg-admin-status-warning: #fff5e0;
+  --c-admin-status-warning: #fa830c;
+  --bg-admin-status-default: #f3f3f3;
+  --c-admin-status-default: #6a6a6a;
 }
 
 /* ===========================================================================
@@ -233,6 +243,15 @@
   --c-admin-head: var(--c-text-muted);
   --bg-admin-primary: #e9e9e7;
   --c-admin-sub: var(--c-text-muted);
+
+  /* 状态标签色值（暗色映射）：稿面只给了浅色，这里按既有暗色策略降饱和实底改半透明叠色，
+     文字提亮，保证在暗底上的对比度与浅色档同一观感基准。 */
+  --bg-admin-status-success: rgba(18, 179, 18, 0.18);
+  --c-admin-status-success: #4ade80;
+  --bg-admin-status-warning: rgba(250, 131, 12, 0.18);
+  --c-admin-status-warning: #ffb454;
+  --bg-admin-status-default: rgba(255, 255, 255, 0.08);
+  --c-admin-status-default: var(--c-text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
