@@ -38,6 +38,8 @@ vi.mock('@/components/admin/BizSystemEditor.vue', () => editorStub('BizSystemEdi
 vi.mock('@/components/admin/ModelConfigEditDialog.vue', () => editorStub('ModelConfigEditDialog', 'model', { model: Object }))
 vi.mock('@/components/admin/PositionViewDrawer.vue', () => editorStub('PositionViewDrawer', 'positionId', { item: Object, snapshot: Object }))
 vi.mock('@/components/admin/KnowledgeBaseEditor.vue', () => editorStub('KnowledgeBaseEditor', 'kbId', { mode: String }))
+// 版本管理（2026-09-20）：VersionEditor 以版本行（version 对象）为入参，不自取数
+vi.mock('@/components/admin/VersionEditor.vue', () => editorStub('VersionEditor', 'versionId', { version: Object }))
 
 // McpEditor 真实组件：只打桩它的 api 层
 const getMcp = vi.fn()
@@ -51,6 +53,8 @@ vi.mock('@/api/admin', () => ({
 }))
 const getModel = vi.fn()
 vi.mock('@/api/adminModel', () => ({ getModel: (...a) => getModel(...a) }))
+const getVersion = vi.fn()
+vi.mock('@/api/version', () => ({ getVersion: (...a) => getVersion(...a) }))
 
 const loadReviewSnapshot = vi.fn()
 vi.mock('@/utils/reviewSnapshot', async (importOriginal) => ({
@@ -130,6 +134,7 @@ beforeEach(() => {
   loadReviewSnapshot.mockReset().mockResolvedValue(null)
   getMcp.mockReset().mockResolvedValue({ id: 'knowledge_hub', name: '企业知识库 MCP', transport: 'streamable-http', endpoint: 'https://kb.example.com/mcp', tools: [] })
   getModel.mockReset().mockResolvedValue({ id: 'md_104', name: 'Kimi K2' })
+  getVersion.mockReset().mockResolvedValue({ id: 7, name: 'Mac v1.2.0', version: 'v1.2.0', status: 'PENDING_REVIEW' })
 })
 afterEach(() => {
   app?.unmount()
@@ -241,6 +246,46 @@ describe('GovObjectDetail · 分发与吸底操作栏（md 审核中心 §四 / 
     await new Promise((r) => setTimeout(r, 0))
     await flush()
     expect(extra('ModelConfigEditDialog').model).toEqual({ id: 'md_999', name: '未知模型', description: 'd' })
+  })
+
+  it('版本管理（VERSION）：按 refId 取到版本行再打开 VersionEditor（把版本行传下去）；不需快照，审核中心 / 我的申请查看态一律只读', async () => {
+    await mount()
+    await open({ kind: 'VERSION', refId: 7, item: { name: 'Mac v1.2.0' }, snapshotGate: true })
+    await new Promise((r) => setTimeout(r, 0)) // 动态 import('@/api/version') 需一个宏任务
+    await flush()
+    expect(getVersion).toHaveBeenCalledWith(7)
+    expect(loadReviewSnapshot).not.toHaveBeenCalled() // 版本管理不生成快照
+    expect(editor('VersionEditor').dataset.visible).toBe('true')
+    expect(extra('VersionEditor')).toMatchObject({ readonly: true, version: { id: 7, name: 'Mac v1.2.0' } })
+    expect(barLabels()).toEqual(['关闭', '驳回', '通过']) // 吸底三键照常（快照闸门对 VERSION 不生效）
+  })
+
+  it('版本管理：编辑态（我的申请「前往修改」）只有「从未发布过的未发布版本」可改；发布过（含已回到未发布）/ 审核中 / 已发布一律只读', async () => {
+    await mount()
+    const cases = [
+      ['未发布·从未发布过', { status: 'UNPUBLISHED', publishedAt: null }, false],
+      ['未发布·曾发布过', { status: 'UNPUBLISHED', publishedAt: '2026-08-01T10:00:00+08:00' }, true],
+      ['审核中', { status: 'PENDING_REVIEW', publishedAt: null }, true],
+      ['已发布', { status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00' }, true]
+    ]
+    for (const [label, patch, readonly] of cases) {
+      getVersion.mockResolvedValue({ id: 7, name: 'Mac v1.2.0', ...patch })
+      state.visible = false
+      await flush()
+      await open({ kind: 'VERSION', refId: 7, readonly: false, buttons: [] })
+      await new Promise((r) => setTimeout(r, 0))
+      await flush()
+      expect(extra('VersionEditor').readonly, label).toBe(readonly)
+    }
+  })
+
+  it('版本管理：取不到版本（如 mock 数据被重置）→ 不打开抽屉（VersionEditor 保持 visible=false）', async () => {
+    getVersion.mockRejectedValue(new Error('版本不存在'))
+    await mount()
+    await open({ kind: 'VERSION', refId: 9999, item: { name: 'Mac v9.9.9' } })
+    await new Promise((r) => setTimeout(r, 0))
+    await flush()
+    expect(editor('VersionEditor').dataset.visible).toBe('false')
   })
 
   it('吸底栏：按钮组照 buttons 顺序渲染，点击上抛 action(key)；busyKey 命中的转圈、其余禁点；buttons 为空不出吸底栏', async () => {

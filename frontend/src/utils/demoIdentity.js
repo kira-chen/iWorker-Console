@@ -50,3 +50,23 @@ export function currentDemoUserName() {
   }
   return DEMO_ADMIN.name
 }
+
+/**
+ * 当前 demo 身份的登录用户名（2026-09-20 版本管理新增）。
+ *
+ * 用途：mock 层记「操作人 / 发布人」这类要展示用户名（如 xiaomei）而非姓名的字段——
+ * 版本管理的发布人、访问审计「管理端操作」的操作人。取值序：user store 落盘身份的 username → 内置演示管理员的 username。
+ * 与 currentDemoUserName（姓名口径，审核人用）区分，勿混用。
+ */
+export function currentDemoUsername() {
+  try {
+    const raw = globalThis.localStorage?.getItem(USER_KEY)
+    if (raw) {
+      const username = String(JSON.parse(raw)?.username || '').trim()
+      if (username) return username
+    }
+  } catch (e) {
+    // 解析失败按「无身份」处理，落到内置演示管理员
+  }
+  return DEMO_ADMIN.username
+}

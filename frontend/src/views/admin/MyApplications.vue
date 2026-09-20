@@ -127,7 +127,8 @@ const detailButtons = computed(() => {
 function openDetail(row, edit = false) {
   const t = row.businessType
   // 2026-09-09 PRD 复核 A6：白名单补 KNOWLEDGE_BASE（md §3.1 业务类型含知识库）
-  if (!['SKILL', 'EXPERT', 'POSITION', 'KNOWLEDGE_BASE', 'MCP', 'API', 'BIZ_SYSTEM', 'MODEL'].includes(t)) {
+  // 2026-09-20：白名单补 VERSION（版本管理发布走审核）
+  if (!['SKILL', 'EXPERT', 'POSITION', 'KNOWLEDGE_BASE', 'MCP', 'API', 'BIZ_SYSTEM', 'MODEL', 'VERSION'].includes(t)) {
     // 疑点2 处置：未知类型无业务页可跳（原型 toast 文案逐字；2026-09-08 决议第 8 项后 OTHER 已不存在，仅兜底）
     ElMessage.info('该申请对象暂无可跳转的业务页面')
     return

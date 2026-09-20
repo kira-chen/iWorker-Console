@@ -52,7 +52,9 @@ function seedRows() {
     row({ id: 9, refId: 'kb_3', type: 'KNOWLEDGE_BASE', name: '法规与标准库', description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 11:02' }),
     row({ id: 10, refId: 'sk_304', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', requestAction: 'VERSION_PUBLISH', version: 'v1.1.1', submittedAt: '2026-08-25 10:12' }),
     row({ id: 11, refId: 'sk_308', type: 'SKILL', platformSource: 'PLATFORM_CREATED', target: 'FDE_WORKBENCH', name: '报销单智能填报', description: '按发票信息自动填写并提交报销单', requestAction: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-25 09:30' }),
-    row({ id: 12, refId: 'crm', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', name: 'CRM MCP', description: '查询客户资料及商机状态', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-15 14:26', code: 'crm.query', writeClass: 'READ', requiresConfirmation: false })
+    row({ id: 12, refId: 'crm', type: 'TOOL', subType: 'MCP', target: 'FDE_WORKBENCH', name: 'CRM MCP', description: '查询客户资料及商机状态', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-15 14:26', code: 'crm.query', writeClass: 'READ', requiresConfirmation: false }),
+    // 版本管理（客户端版本）：对应 versionMock 里 Mac v1.2.0（refId 7，审核中，提交前未发布，该终端已发布过 → 新版本发布）
+    row({ id: 13, refId: 7, type: 'VERSION', submitterName: 'li.na', submitterId: 2, name: 'Mac v1.2.0', description: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-09-19 16:30' })
   ]
 }
 
@@ -115,7 +117,8 @@ const persist = attachPersist('reviews', {
   // version 6（2026-09-12 负责人决策 5 · 审计 J12）：行结构增 reviewer（审核人，md §5.1 L71 / §5.2 L82）；
   // 存量快照里已审的行没有该字段、且当时未联动业务对象与我的申请，三方会不自洽 → 丢弃回种子。
   // version 7（2026-09-18 R1）：种子重写为与各业务模块在审对象逐条一致（12 行），旧快照丢弃回种子。
-  version: 7,
+  // version 8（2026-09-20）：新增业务类型「版本管理」（VERSION），种子补 id 13（Mac v1.2.0），旧快照丢弃回种子。
+  version: 8,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {
@@ -194,7 +197,9 @@ const LOADERS = {
   BIZ_SYSTEM: () => import('./bizSystemMock').then((m) => m.applyBizSystemReviewResult),
   // 连接器两件套由 type=TOOL + subType 拆分（同列表筛选口径，见 utils/reviewMeta）
   'TOOL:MCP': () => import('./mcpConnectorMock').then((m) => m.applyMcpReviewResult),
-  'TOOL:API': () => import('./apiConnectorMock').then((m) => m.applyApiReviewResult)
+  'TOOL:API': () => import('./apiConnectorMock').then((m) => m.applyApiReviewResult),
+  // 版本管理（客户端版本，2026-09-20 新增）：发布必须走审核，通过 / 驳回经此落到版本自身
+  VERSION: () => import('./versionMock').then((m) => m.applyVersionReviewResult)
 }
 
 /**

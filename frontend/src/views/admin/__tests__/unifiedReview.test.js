@@ -7,7 +7,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * UnifiedReview.vue（审核中心）列表页单测（2026-09-12 测试审计 T56 新建，此前 368 行零测试）。
  *
  * 对齐 md `prd.审核中心.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索名称 / 用户名」、业务类型八项、申请类型三项、【查询】）；
+ * - §一 L8 页面说明；§二 查询区（占位「搜索名称 / 用户名」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、【查询】）；
  * - §3.1 七列（名称+描述 / 业务类型 / 申请类型 / 申请版本「—」/ 提交人 / 提交时间 ↓↑ / 操作【查看】【驳回】【通过】）；
  * - §四 【查看】：技能走整页只读路由，其余开原生详情抽屉（GovObjectDetail），底部 关闭|驳回|通过；
  * - §5.1 驳回弹窗 → 「已驳回审核」；§5.2 通过确认 → 发布类「已通过审核」/ 停用「已通过停用申请」，记录离开列表（重拉）；
@@ -191,7 +191,7 @@ afterEach(() => {
 describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
   it('页面说明取 md §一 L8；挂载即拉待审列表（默认 sortDir=desc、page=1）', async () => {
     await mount()
-    expect(container.querySelector('.ph-sub').textContent).toBe('审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请')
+    expect(container.querySelector('.ph-sub').textContent).toBe('审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请，以及用户端版本的发布、停用申请')
     expect(listReviews).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
   })
 
@@ -203,12 +203,12 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(container.querySelector('.el-input').value).toBe('经营分析岗')
   })
 
-  it('查询区（md §二）：占位「搜索名称 / 用户名」、业务类型八项、申请类型三项、【查询】按钮', async () => {
+  it('查询区（md §二）：占位「搜索名称 / 用户名」、业务类型九项（含版本管理）、申请类型三项、【查询】按钮', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索名称 / 用户名')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型'])
-    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型'])
+    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
     expect([...selects[1].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['首次发布', '新版本发布', '停用'])
     expect(toolbarBtn('查询')).toBeTruthy()
   })
