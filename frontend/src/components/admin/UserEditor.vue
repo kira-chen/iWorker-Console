@@ -113,6 +113,8 @@ const updatedText = computed(() => (props.user?.updatedAt ? fmtTime(props.user.u
 
 async function onSubmit() {
   if (!formRef.value) return
+  // 用户名先 trim 再校验，与 adminUserMock.createUser 同口径：页面若按原值校验，「  ab  」（6 位）会放行到数据层才被拒
+  form.username = form.username.trim()
   await formRef.value.validate(async (valid) => {
     // 角色必选校验独立于 el-form（卡片复选非表单项）：与表单校验并行亮起，任一不过即不提交
     if (!isEdit.value && !form.roleCodes.length) roleError.value = '请至少选择一个角色'

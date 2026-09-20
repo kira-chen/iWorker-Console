@@ -218,6 +218,24 @@ describe('UserEditor · 新建校验（md §三.3 L156-161 / 一览表 §九）'
     expect(visibleRef.value).toBe(true)
   })
 
+  // 待办 yuepu#8：页面校验与数据层同口径——先 trim 再判 3–32（此前页面按原值判、mock 按 trim 后判，前后不一致）。
+  it('用户名首尾空格先 trim 再校验：「  ab  」trim 后 2 位被拦；「  abc  」trim 后 3 位放行且以 trim 值提交', async () => {
+    mount({ user: null })
+    await open()
+    typeInto(inputByPlaceholder('用于展示的姓名'), '张三')
+    const username = inputByPlaceholder('3–32 个字符')
+    typeInto(username, '  ab  ')
+    footBtn('新建').click()
+    await flush()
+    expect(formErr('username')).toBe('请输入 3–32 个字符')
+    expect(createUser).not.toHaveBeenCalled()
+    typeInto(username, '  abc  ')
+    footBtn('新建').click()
+    await flush()
+    expect(createUser).toHaveBeenCalledTimes(1)
+    expect(createUser.mock.calls[0][0].username).toBe('abc')
+  })
+
   it('用户名 2 位 / 33 位 →「请输入 3–32 个字符」；3 位与 32 位通过（不限制字符类型）', async () => {
     mount({ user: null })
     await open()
