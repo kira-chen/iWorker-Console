@@ -33,8 +33,13 @@ const activeTab = ref('login')
 
 // ── 登录访问（原有逻辑，完整保留）────────────────────────────
 const query = reactive({ keyword: '', status: '', sortField: 'loginAt', sortDir: 'desc' })
+// 登录时间范围随查询参数一起下发，由 mock / 后端在分页之前过滤。
+// 不能对当前页 rows 再过滤：列表是服务端分页，只过滤当页会出现「第 1 页空表、total 仍是全量、翻到第 2 页才有数据」。
+const loginDateRange = ref(defaultRange())
 
-const list = useAdminList(listLoginLogs, { params: () => ({ ...query }) })
+const list = useAdminList(listLoginLogs, {
+  params: () => ({ ...query, dateFrom: ymd(loginDateRange.value?.[0]), dateTo: ymd(loginDateRange.value?.[1]) })
+})
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
@@ -78,6 +83,14 @@ function defaultRange() {
   return [start, end]
 }
 
+/** 日期 → 'YYYY-MM-DD'（本地日历日，与 loginAt 的墙钟日期同口径）；空值返回 ''，即该端不限。 */
+function ymd(d) {
+  if (!d) return ''
+  const x = new Date(d)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`
+}
+
 function inRange(timeStr, range) {
   if (!range?.[0] || !range?.[1]) return true
   const t = new Date(timeStr.replace(' ', 'T'))
@@ -98,10 +111,8 @@ function onCalendarChange(firstRef, val) {
 }
 
 // ── 登录访问：时间范围 ────────────────────────────────────────
-const loginDateRange = ref(defaultRange())
 const loginPickFirst = ref(null)
 const loginDisabledDate = makeDisabledDate(loginPickFirst)
-const loginFiltered = computed(() => rows.value.filter((r) => inRange(r.loginAt, loginDateRange.value)))
 
 // ── 产物下载 ─────────────────────────────────────────────────
 const dlKeyword = ref('')
@@ -232,6 +243,7 @@ function opsGoto(row) {
           end-placeholder="结束日期"
           :disabled-date="loginDisabledDate"
           @calendar-change="(v) => onCalendarChange(loginPickFirst, v)"
+          @change="reload"
           class="lt-date-range"
         />
         <el-input
@@ -259,7 +271,7 @@ function opsGoto(row) {
           empty-text="暂无登录记录"
           @retry="fetchList"
         >
-          <el-table :data="loginFiltered" class="ll-table">
+          <el-table :data="rows" class="ll-table">
             <el-table-column label="用户名" :width="COL.USER" show-overflow-tooltip>
               <template #default="{ row }">{{ row.username || '—' }}</template>
             </el-table-column>

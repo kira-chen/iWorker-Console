@@ -39,6 +39,29 @@ describe('loginLogMock —— 访问审计（md §三 / §四；同一账号多�
     expect(descFilled).toEqual([...ascFilled].reverse())
   })
 
+  // 待办 yuepu#12③：日期范围必须在分页之前过滤——否则页面只能过滤当前页，出现「第 1 页空表、total 仍是全量」。
+  it('登录日期范围（dateFrom / dateTo，含首尾）在分页之前过滤：total 随范围变化，翻页取的是过滤后的结果', async () => {
+    // 种子按登录日期：08-28 共 6 条（含 07:30 / 08:12 / 08:48 / 09:16 / 10:03 / 10:21），08-27 共 4 条，08-26 共 1 条
+    const day28 = await listLoginLogs({ dateFrom: '2026-08-28', dateTo: '2026-08-28' })
+    expect(day28.total).toBe(6)
+    expect(day28.list.every((r) => r.loginAt.startsWith('2026-08-28'))).toBe(true)
+
+    const from27 = await listLoginLogs({ dateFrom: '2026-08-27' })
+    expect(from27.total).toBe(10) // 只给起点：08-27 及以后，排除 08-26 那条
+
+    const upTo26 = await listLoginLogs({ dateTo: '2026-08-26' })
+    expect(upTo26.total).toBe(1) // 只给终点：08-26 及以前
+
+    // 过滤后只剩 6 条，每页 5 条：第 2 页应只有 1 条，且仍是范围内的记录（而不是全量的第 6~10 条）
+    const p2 = await listLoginLogs({ dateFrom: '2026-08-28', dateTo: '2026-08-28', page: 2, size: 5 })
+    expect(p2.total).toBe(6)
+    expect(p2.list).toHaveLength(1)
+    expect(p2.list[0].loginAt.startsWith('2026-08-28')).toBe(true)
+
+    const none = await listLoginLogs({ dateFrom: '2027-01-01' })
+    expect(none).toEqual({ list: [], total: 0 })
+  })
+
   it('分页切片', async () => {
     const { list, total } = await listLoginLogs({ page: 2, size: 10 })
     expect(total).toBe(11)

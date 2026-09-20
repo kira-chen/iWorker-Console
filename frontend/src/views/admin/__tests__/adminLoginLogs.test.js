@@ -147,6 +147,34 @@ describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
     expect(listLoginLogs).toHaveBeenCalledWith(expect.objectContaining({ status: 'ONLINE', page: 1 }))
   })
 
+  // 待办 yuepu#12③：时间范围是服务端分页下的「查询条件」，必须随参数下发，不能只过滤当前页 rows。
+  it('登录时间范围随查询参数下发（默认近 90 天 → dateFrom / dateTo）；改范围即回第 1 页重查；清空则两端都不限', async () => {
+    await mount()
+    const ymdRe = /^\d{4}-\d{2}-\d{2}$/
+    const first = listLoginLogs.mock.calls.at(-1)[0]
+    expect(first.dateFrom).toMatch(ymdRe)
+    expect(first.dateTo).toMatch(ymdRe)
+    expect(first.dateFrom < first.dateTo).toBe(true)
+
+    // 时间范围只作为查询条件，不再对返回的当页 rows 二次过滤：返回什么就渲染什么
+    expect(rowEls()).toHaveLength(ROWS.length)
+
+    const picker = container.querySelector('.el-date-picker').__vueParentComponent
+    listLoginLogs.mockClear()
+    picker.emit('update:modelValue', [new Date(2026, 7, 27), new Date(2026, 7, 28)])
+    picker.emit('change', [new Date(2026, 7, 27), new Date(2026, 7, 28)])
+    await flush()
+    expect(listLoginLogs).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: '2026-08-27', dateTo: '2026-08-28', page: 1 }))
+
+    listLoginLogs.mockClear()
+    picker.emit('update:modelValue', null)
+    picker.emit('change', null)
+    await flush()
+    const cleared = listLoginLogs.mock.calls.at(-1)[0]
+    expect(cleared.dateFrom).toBeFalsy()
+    expect(cleared.dateTo).toBeFalsy()
+  })
+
   it('六列表头：登录时间 / 登出时间 均为文字箭头列头，默认 ↓ / ↓（当前列倒序、非当前列恒显 ↓）（md §3.1）', async () => {
     await mount()
     const heads = [...container.querySelectorAll('.el-head .el-table-column')].map((c) => c.textContent.replace(/\s+/g, ' ').trim())
