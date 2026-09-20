@@ -9,7 +9,11 @@ import {
   sourceRefsChanged,
   stateMeta,
   isOffline,
-  isOnline
+  isOnline,
+  mkResponseMapRows,
+  mkMcpResponseMapRows,
+  validateResponseMap,
+  validateMcpResponseMap
 } from '@/utils/knowledgeBaseMeta'
 
 /**
@@ -30,14 +34,15 @@ describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md 
     expect(API_METHOD_OPTIONS[0]).toBe(API_DEFAULTS.method)
   })
 
-  it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 L363 / §七.4 L406）', () => {
+  it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 L363 / §七.6）', () => {
     expect(MCP_DEFAULTS).toEqual({
       transport: 'streamable-http',
       endpoint: '',
       authType: 'none',
       authHeaderName: '',
       command: 'npx',
-      timeoutMs: 10000
+      timeoutMs: 10000,
+      resultArrayPath: '$.content[0].items[*]'
     })
   })
 
@@ -51,8 +56,9 @@ describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md 
   })
 
   it('上传源默认：仅「提取 URL 和邮箱地址」开启、混合检索、Top K 5、向量模型留空待选（md §五.1）', () => {
-    expect(UPLOAD_DEFAULTS).toMatchObject({ docKind: 'DOC', replaceWhitespace: false, extractContacts: true, plainTable: false, embeddingModelId: '', retrieval: 'HYBRID', topK: 5 })
+    expect(UPLOAD_DEFAULTS).toMatchObject({ docKind: 'DOC', extractContacts: true, plainTable: false, embeddingModelId: '', retrieval: 'HYBRID', topK: 5 })
     expect(UPLOAD_DEFAULTS).not.toHaveProperty('threshold')
+    expect(UPLOAD_DEFAULTS).not.toHaveProperty('replaceWhitespace')
   })
 })
 
@@ -118,5 +124,39 @@ describe('knowledgeBaseMeta · 状态与关键变更（md §三.2 / §三.5）',
     expect(sourceRefsChanged(['a', 'b'], ['a'])).toBe(true)
     expect(sourceRefsChanged(['a'], ['c'])).toBe(true)
     expect(sourceRefsChanged(undefined, [])).toBe(false)
+  })
+})
+
+describe('knowledgeBaseMeta · 响应字段映射（2026-09-18 推翻 09-08 决议，API §六.3 / MCP §七.5 同一套显式改名机制）', () => {
+  it('mkResponseMapRows（API）：预设 content/source/score，接口返回字段名默认与参数名同名（延续改造前"不做改名映射"口径）', () => {
+    expect(mkResponseMapRows()).toEqual([
+      { name: 'content', sourceField: 'content', description: '内容', type: 'string', preset: true },
+      { name: 'source', sourceField: 'source', description: '来源', type: 'string', preset: true },
+      { name: 'score', sourceField: 'score', description: '相关度分数', type: 'number', preset: true }
+    ])
+  })
+  it('mkMcpResponseMapRows（MCP）：预设 title/content/sourceName，接口返回字段名默认留空待管理员填写', () => {
+    expect(mkMcpResponseMapRows()).toEqual([
+      { name: 'title', sourceField: '', description: '标题', type: 'string', preset: true },
+      { name: 'content', sourceField: '', description: '内容', type: 'string', preset: true },
+      { name: 'sourceName', sourceField: '', description: '来源名称', type: 'string', preset: true }
+    ])
+  })
+  it('validateResponseMap（API）：预设行清空接口返回字段名即报错；自定义行须补全参数名 / 接口返回字段名 / 变量类型', () => {
+    const cleared = mkResponseMapRows().map((r) => (r.name === 'source' ? { ...r, sourceField: '' } : r))
+    expect(validateResponseMap(cleared)).toBe('响应字段映射：source 需填写接口返回字段名')
+    const dupName = [...mkResponseMapRows(), { name: 'content', sourceField: 'x', description: '', type: 'string', preset: false }]
+    expect(validateResponseMap(dupName)).toBe('响应字段映射：参数名重复（content）')
+    expect(validateResponseMap(mkResponseMapRows())).toBe('')
+    expect(validateResponseMap([])).toBe('响应字段映射至少存在一条输出参数')
+  })
+  it('validateMcpResponseMap（MCP）：结果数组路径必填；title/content 必须填接口返回字段名，sourceName 可留空', () => {
+    const filled = mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
+    expect(validateMcpResponseMap(filled, '')).toBe('请填写结果数组路径')
+    expect(validateMcpResponseMap(filled, '$.content[0].items[*]')).toBe('')
+    const missingTitle = filled.map((r) => (r.name === 'title' ? { ...r, sourceField: '' } : r))
+    expect(validateMcpResponseMap(missingTitle, '$.content[0].items[*]')).toBe('响应字段：title 需填写接口返回字段名')
+    // sourceName 留空不报错（留空则取数据源名称）
+    expect(validateMcpResponseMap(mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' })), '$.a[*]')).toBe('')
   })
 })
