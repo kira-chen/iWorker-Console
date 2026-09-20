@@ -160,11 +160,15 @@ async function consumeRouteQuery() {
  * 刷新即从 query 还原，改筛选/翻页时回写。positionId 带来的类型锁定优先级更高，
  * 故 restore 放在 consumeRouteQuery 之后执行，不覆盖它设的 typeFilter。 */
 const STATE_KEYS = { KW: 'kw', TYPE: 'kbType', STATUS: 'st', PAGE: 'p' }
+// 入口键：访问审计【查看】等跨模块跳转统一带 query.keyword（其余列表页同款）。本页自己的状态键是 kw，
+// 故 keyword 只在首次还原时作 kw 的后备；回写时清掉，避免地址栏同时挂着 kw 与 keyword。
+const ENTRY_KW_KEY = 'keyword'
 function restoreListState() {
   // 部分单测不挂路由，取不到 route 时静默跳过状态保持
   const q = route?.query
   if (!q) return
-  if (q[STATE_KEYS.KW]) keyword.value = String(q[STATE_KEYS.KW])
+  const kwIn = q[STATE_KEYS.KW] || q[ENTRY_KW_KEY]
+  if (kwIn) keyword.value = String(kwIn)
   // 类型：positionId 场景已锁 POSITION，不再被 query 覆盖
   if (q[STATE_KEYS.TYPE] && !positionCtx.value) typeFilter.value = String(q[STATE_KEYS.TYPE])
   if (q[STATE_KEYS.STATUS]) statusFilter.value = String(q[STATE_KEYS.STATUS])
@@ -177,6 +181,7 @@ function syncListState() {
   // 顺手清掉另一子页（数据源）的状态键：两个子页共用同一条 URL，切页签时对方的键会留在地址栏，
   // 分享出去看着像是本页带了筛选。功能上互不影响（各自只读自己的键），纯粹是不留垃圾。
   for (const k of ['srcKw', 'srcType', 'srcSt', 'srcP']) delete next[k]
+  delete next[ENTRY_KW_KEY]
   const put = (k, v) => {
     if (v === '' || v == null) delete next[k]
     else next[k] = String(v)

@@ -39,7 +39,8 @@ vi.mock('@/utils/reviewSnapshot', async (importOriginal) => ({
 }))
 
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+const routeQuery = { value: {} }
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeQuery.value }), useRouter: () => ({ push }) }))
 
 vi.mock('@/components/PageHeader.vue', () => ({
   default: {
@@ -177,6 +178,7 @@ beforeEach(() => {
   loadReviewSnapshot.mockReset().mockResolvedValue({ kind: 'POSITION', detail: {} }) // 默认：快照在
   detailProps.mockReset()
   push.mockReset()
+  routeQuery.value = {}
   ElMessage.success.mockReset()
   ElMessage.error.mockReset()
   ElMessage.warning.mockReset()
@@ -191,6 +193,14 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent).toBe('审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请')
     expect(listReviews).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
+  })
+
+  // 待办 yuepu#12④：访问审计【查看】跳转统一带 query.keyword（md 访问审计 §6.3 L128），本页须作为初始搜索词。
+  it('跨模块入口 ?keyword=xxx（访问审计【查看】）：首拉即按该关键词取数，搜索框回显', async () => {
+    routeQuery.value = { keyword: '经营分析岗' }
+    await mount()
+    expect(listReviews.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: '经营分析岗', page: 1 }))
+    expect(container.querySelector('.el-input').value).toBe('经营分析岗')
   })
 
   it('查询区（md §二）：占位「搜索名称 / 用户名」、业务类型八项、申请类型三项、【查询】按钮', async () => {

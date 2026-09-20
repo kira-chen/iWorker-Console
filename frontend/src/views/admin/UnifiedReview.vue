@@ -15,7 +15,7 @@
  * 数据默认走 mock（api/reviewsMock.js，种子=原型 8 条），见 api/reviews.js 头注释。
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -40,6 +40,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 
+const route = useRoute()
 const router = useRouter()
 
 // 排序：仅提交时间列，默认 desc（原型 time-sort 补丁口径）
@@ -71,7 +72,11 @@ const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
-onMounted(fetchList)
+onMounted(() => {
+  // 访问审计【查看】等跨模块跳转带 query.keyword，作初始搜索词（与其余列表页同一范式）
+  if (route.query?.keyword) query.keyword = String(route.query.keyword)
+  fetchList()
+})
 
 let kwTimer = null
 watch(
