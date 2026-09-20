@@ -80,6 +80,9 @@ function blankSchedule() {
     endDate: ''
   }
 }
+// 执行动作默认值：技能（按引用平台技能执行）；新建态、存量无该字段、payload 兜底共用这一处
+const EXEC_TYPE_DEFAULT = 'SKILL'
+
 const form = reactive({
   name: '',
   // 一句话指令（后端 SampleTaskUpsertRequest.prompt，@Size(max=2000)）：
@@ -93,7 +96,7 @@ const form = reactive({
   toolRefs: [], // { type, code, requiresConfirmation }（ToolPicker selected 结构）
   skillRefs: [], // { platformSkillId, name }（引用平台技能）
   // 执行动作：触发时由谁来办（AGENT=整个交给某个 Agent；SKILL=按引用技能执行）
-  execType: 'AGENT',
+  execType: EXEC_TYPE_DEFAULT,
   execAgentId: null, // execType === 'AGENT' 时指定的 Agent（引用该岗位下 Agent 的 agentId）
   // 执行模型：空字符串 = 跟随平台默认模型
   execModel: ''
@@ -498,7 +501,7 @@ async function save() {
     preKick: form.preKick,
     toolRefs: buildToolRefs(),
     skillRefs: buildSkillRefs(),
-    execType: form.execType || 'AGENT',
+    execType: form.execType || EXEC_TYPE_DEFAULT,
     execAgentId: form.execType === 'AGENT' ? (form.execAgentId ?? undefined) : undefined,
     execModel: form.execModel || undefined
     // 无 enable / status：样例默认启用（后端缺省 ENABLED），列表不呈现运行态。
@@ -553,7 +556,7 @@ function fillFrom(sample) {
     form.preKick = true
     form.toolRefs = []
     form.skillRefs = []
-    form.execType = 'AGENT'
+    form.execType = EXEC_TYPE_DEFAULT
     form.execAgentId = null
     form.execModel = ''
   } else {
@@ -590,7 +593,7 @@ function fillFrom(sample) {
         name: s.name || ''
       }))
       .filter((s) => s.platformSkillId != null)
-    form.execType = sample.execType || 'AGENT'
+    form.execType = sample.execType || EXEC_TYPE_DEFAULT
     form.execAgentId = sample.execAgentId ?? null
     form.execModel = sample.execModel || ''
   }
@@ -778,7 +781,7 @@ onMounted(async () => {
         </div>
         <div class="te-card-body">
           <p class="te-card-guide">
-            触发时由谁来办：整个交给某个 Agent，或按下面指定的技能执行。可以指定技能或 Agent 执行。
+            触发时由谁来办：整个交给某个 <b>Agent</b>，或按下面指定的<b>技能</b>执行。
           </p>
           <el-radio-group v-model="form.execType" class="te-exec-type-group" @change="markDirty">
             <el-radio value="SKILL">技能</el-radio>
@@ -801,13 +804,36 @@ onMounted(async () => {
             </el-select>
             <p class="te-card-guide te-exec-agent-hint">下发时会自动带上该 Agent 名下的已发布技能。</p>
           </div>
-          <p v-if="form.execType === 'SKILL'" class="te-card-guide te-exec-skill-hint">
-            将使用下方「引用平台技能」中指定的技能来执行。
-          </p>
         </div>
       </section>
 
-      <!-- 分区 6：引用平台技能（#22：chips + 搜索 + 卡底「＋ 添加技能」） -->
+      <!-- 分区 6：执行模型（紧跟执行动作：先定谁来办，再定用哪个模型跑） -->
+      <section class="te-card">
+        <div class="te-card-title">
+          <span class="te-card-dot"></span> 执行模型
+        </div>
+        <div class="te-card-body">
+          <p class="te-card-guide">
+            这条任务用哪个模型跑。<b>不选 = 跟随平台默认模型</b>；领用者后续可自行调整，不影响下次下发。
+          </p>
+          <el-select
+            v-model="form.execModel"
+            placeholder="跟随平台默认模型"
+            clearable
+            class="te-exec-model-select"
+            @change="markDirty"
+          >
+            <el-option label="GLM5.3" value="xopglm53" />
+            <el-option label="DeepSeek-V4-Flash（平台默认）" value="xopdeepseekv4flash" />
+            <el-option label="GLM-5.2" value="xopglm52" />
+            <el-option label="PaddleOCR-VL-1.6" value="xoppaddleocrv16" />
+            <el-option label="DeepSeek-v4-pro" value="xopdeepseekv4pro" />
+            <el-option label="Qwen3.6-35B-A3B（平台默认）" value="xopqwen36v35b" />
+          </el-select>
+        </div>
+      </section>
+
+      <!-- 分区 7：引用平台技能（#22：chips + 搜索 + 卡底「＋ 添加技能」） -->
       <section class="te-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 引用平台技能
@@ -891,31 +917,6 @@ onMounted(async () => {
             {{ skillPickerOpen ? '收起技能候选' : '+ 添加技能' }}
           </button>
           <p v-if="errors.skills" class="te-err">{{ errors.skills }}</p>
-        </div>
-      </section>
-      <!-- 分区 7：执行模型 -->
-      <section class="te-card">
-        <div class="te-card-title">
-          <span class="te-card-dot"></span> 执行模型
-        </div>
-        <div class="te-card-body">
-          <p class="te-card-guide">
-            这条任务用哪个模型跑。不选 = 跟随平台默认模型；领用者后续可自行调整，不影响下次下发。
-          </p>
-          <el-select
-            v-model="form.execModel"
-            placeholder="跟随平台默认模型"
-            clearable
-            class="te-exec-model-select"
-            @change="markDirty"
-          >
-            <el-option label="GLM5.3" value="xopglm53" />
-            <el-option label="DeepSeek-V4-Flash（平台默认）" value="xopdeepseekv4flash" />
-            <el-option label="GLM-5.2" value="xopglm52" />
-            <el-option label="PaddleOCR-VL-1.6" value="xoppaddleocrv16" />
-            <el-option label="DeepSeek-v4-pro" value="xopdeepseekv4pro" />
-            <el-option label="Qwen3.6-35B-A3B（平台默认）" value="xopqwen36v35b" />
-          </el-select>
         </div>
       </section>
       </div>
@@ -1325,11 +1326,9 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-/* 执行动作 */
+/* 执行动作：「技能 / Agent」两个单选横排 */
 .te-exec-type-group {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin-bottom: 12px;
 }
 .te-exec-agent {
@@ -1338,8 +1337,7 @@ onMounted(async () => {
 .te-exec-agent-select {
   width: 100%;
 }
-.te-exec-agent-hint,
-.te-exec-skill-hint {
+.te-exec-agent-hint {
   margin-top: 4px;
   color: var(--c-text-muted);
   font-size: var(--fs-sm);

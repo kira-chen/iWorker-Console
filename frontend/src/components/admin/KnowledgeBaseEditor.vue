@@ -97,8 +97,12 @@ const refs = reactive({ UPLOAD: [], API: [], MCP: [] })
 const rules = computed(() => ({
   name: [{ required: true, message: '请输入知识库名称', trigger: 'blur' }],
   kbType: [{ required: true, message: '请选择类型', trigger: 'change' }],
+  // 必填星标放在规则里（required: true + 自定义 validator），不要写在 <el-form-item required> 上：
+  // 后者会让 Element 额外塞一条内置必填规则，企业类型固定「全员」、scopeRefId 恒为空 → 永远报 `scopeRefId is required`。
+  // 规则带 validator 时 async-validator 只认 validator，required 仅供 Element 画星标。
   scopeRefId: [
     {
+      required: true,
       validator: (r, v, cb) => (form.kbType !== 'ENTERPRISE' && !v ? cb(new Error('请选择可见范围')) : cb()),
       trigger: 'change'
     }
@@ -406,7 +410,7 @@ function close() {
             </el-select>
             <div class="kb-help">{{ positionLock && !isEdit ? '岗位知识库不可更改' : '创建后不可更改' }}</div>
           </el-form-item>
-          <el-form-item label="可见范围" prop="scopeRefId" required>
+          <el-form-item label="可见范围" prop="scopeRefId">
             <el-select v-if="form.kbType === 'ENTERPRISE'" model-value="ALL" disabled class="kb-full">
               <el-option label="全员" value="ALL" />
             </el-select>

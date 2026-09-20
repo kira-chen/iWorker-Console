@@ -314,7 +314,7 @@ function toVO(s, warnings) {
     skillRefs: (s.skillRefs || []).map((r) => ({ ...r })),
     scheduleType: s.schedule?.scheduleType || 'DAILY',
     scheduleSummary: summarizeSchedule(s.schedule),
-    execType: s.execType || 'AGENT',
+    execType: s.execType || 'SKILL',
     execAgentId: s.execAgentId ?? null,
     execModel: s.execModel || ''
   }
@@ -344,7 +344,7 @@ function normalizeUpsert(payload = {}) {
     preKick: payload.preKick ?? true,
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' })),
-    execType: payload.execType || 'AGENT',
+    execType: payload.execType || 'SKILL',
     execAgentId: payload.execType === 'AGENT' ? (payload.execAgentId ?? null) : null,
     execModel: payload.execModel || ''
   }
