@@ -134,6 +134,8 @@ async function submitReject(reason) {
 const riskVisible = ref(false)
 
 onMounted(() => {
+  // 访问审计【查看】等跨模块跳转带 query.keyword，作初始搜索词（与其余列表页同一范式）
+  if (route.query?.keyword) query.keyword = String(route.query.keyword)
   fetchList()
   // 深链：/admin/user-skill-reviews?view=<id>（原整页路由 /:id/view 重定向至此）→ 直接打开抽屉
   const viewId = route.query?.view

@@ -503,9 +503,10 @@ function backToList() {
           <span class="tb-dirty" :class="{ on: isDirty }">{{ isDirty ? '有未保存的修改' : '' }}</span>
           <ThemeToggle />
           <!-- md 三.1：只读状态和审核中状态隐藏【保存】和【发布岗位】 -->
+          <!-- 详情就绪（store.basic 有值）前禁用：冷加载期间点击会在 ensurePersisted 读 store.basic.name 报 TypeError -->
           <template v-if="!isReadonly">
-            <el-button @click="explicitSave">保存</el-button>
-            <el-button type="primary" @click="openPublish">发布岗位</el-button>
+            <el-button :disabled="!store.basic" @click="explicitSave">保存</el-button>
+            <el-button type="primary" :disabled="!store.basic" @click="openPublish">发布岗位</el-button>
           </template>
         </div>
       </header>

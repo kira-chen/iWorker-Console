@@ -24,18 +24,24 @@ const AUDITS = [
 
 /**
  * 登录明细列表。params：keyword（用户名模糊）/ status（ONLINE|OFFLINE）/
+ * dateFrom、dateTo（登录日期范围，'YYYY-MM-DD'，含首尾，可只传一端）/
  * sortField（loginAt|logoutAt，默认 loginAt）/ sortDir（asc|desc，默认 desc）/ page / size。
+ * 日期过滤必须在分页之前做（与关键字、状态同层）：页面若只过滤当前页，会出现「第 1 页空表、total 仍是全量」。
  */
 export async function listLoginLogs(params = {}) {
   await delay()
   const kw = String(params.keyword || '').trim().toLowerCase()
   const field = params.sortField === 'logoutAt' ? 'logoutAt' : 'loginAt'
   const dir = params.sortDir === 'asc' ? 'asc' : 'desc'
-  let list = AUDITS.filter(
-    (r) =>
+  let list = AUDITS.filter((r) => {
+    const loginDay = r.loginAt.slice(0, 10) // 'YYYY-MM-DD HH:mm' 取日期部分，字符串比较即日期比较
+    return (
       (!kw || r.username.toLowerCase().includes(kw)) &&
-      (!params.status || r.status === params.status)
-  )
+      (!params.status || r.status === params.status) &&
+      (!params.dateFrom || loginDay >= params.dateFrom) &&
+      (!params.dateTo || loginDay <= params.dateTo)
+    )
+  })
   // 2026-09-09 PRD-20260908 复核批次 0（G7）：md §四「按登出时间排序时，在线记录（无登出时间）
   // 统一排在列表末尾」——不分升降序。旧写法把空串一并丢进 localeCompare，desc 下碰巧排最后，
   // 但 asc 下会排到最前，违背 md。改为显式前置判断（口径同 adminUserMock 的「从未登录恒排最后」）。

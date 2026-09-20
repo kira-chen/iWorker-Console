@@ -318,6 +318,25 @@ describe('KnowledgeBaseList 列表契约（md §三.2 / §三.4.3 / §三.8）',
       expect(container.querySelector('.list-pager .page-btn.active')?.textContent.trim()).toBe('2')
     })
 
+    // 待办 yuepu#12④：访问审计【查看】跳转统一带 query.keyword（md 访问审计 §6.3 L128）；本页状态键是 kw，keyword 只作入口后备。
+    it('跨模块入口 ?keyword=xxx（访问审计【查看】）：首拉即按该关键词取数、输入框回显；地址栏回写 kw 并清掉 keyword；kw 存在时以 kw 为准', async () => {
+      routeMock.query = { tab: 'kb', keyword: '产品库' }
+      await mount()
+      expect(api.listKnowledgeBases.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: '产品库' }))
+      expect(container.querySelector('input').value).toBe('产品库')
+      await flush()
+      const q = routerMock.replace.mock.calls.at(-1)[0].query
+      expect(q.kw).toBe('产品库')
+      expect(q).not.toHaveProperty('keyword')
+
+      app.unmount(); container.remove()
+      vi.clearAllMocks()
+      api.listKnowledgeBases.mockResolvedValue({ list: LIST, total: LIST.length })
+      routeMock.query = { tab: 'kb', kw: '话术', keyword: '产品库' }
+      await mount()
+      expect(api.listKnowledgeBases.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: '话术' }))
+    })
+
     it('kbType 键还原类型筛选；positionId 场景类型锁 POSITION 不被 query 覆盖', async () => {
       routeMock.query = { tab: 'kb', kbType: 'EXPERT' }
       await mount()

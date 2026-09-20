@@ -336,6 +336,13 @@ describe('UserSkillReviews（2026-09-08 PRD-20260908 对齐）', () => {
     openSpy.mockRestore()
   })
 
+  // 待办 yuepu#12④：访问审计【查看】跳转统一带 query.keyword（md 访问审计 §6.3 L128），本页须作为初始搜索词。
+  it('跨模块入口 ?keyword=xxx（访问审计【查看】）：首拉即按该关键词取数', async () => {
+    routeQuery.value = { keyword: 'usr_skill_a' }
+    await mount()
+    expect(listReviewApplications.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: 'usr_skill_a', page: 1 }))
+  })
+
   it('深链 ?view=id：挂载即开抽屉并清掉 query', async () => {
     routeQuery.value = { view: 'usr_3' }
     await mount()

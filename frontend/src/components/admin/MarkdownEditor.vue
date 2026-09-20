@@ -4,8 +4,10 @@
  * 单一职责：封装 md-editor-v3，v-model 即标准 Markdown 源文本（直接落 sop_doc）。
  *
  * 体积控制（设计 §3.2 / 前端 CR AC-2）：
- * - 按需禁用未用插件：代码高亮(highlight)、公式(katex)、流程图(mermaid) 通过 `noXxx`
- *   全部关闭，不引入对应重型 CDN/依赖。
+ * - 按需禁用未用插件：代码高亮(highlight)、公式(katex)、流程图(mermaid)、格式化(prettier)、
+ *   图表(echarts) 通过 `noXxx` 全部关闭，不引入对应重型 CDN/依赖。md-editor-v3 这些扩展默认从 unpkg 拉取，
+ *   demo 在无外网环境演示时每次挂载会有 3 条 ERR_CONNECTION_CLOSED（echarts + prettier×2）；
+ *   用 md-editor-v3 的新扩展时，务必先确认它是否引入新的外网地址（待办 yuepu#12②）。
  * - 工具栏裁剪为 SOP 编写所需子集（标题/列表/表格/引用/插入片段等），去掉公式/流程图/截图等。
  * - previewTheme/codeTheme 仅用内置，不额外引高亮主题包。
  *
@@ -122,6 +124,8 @@ defineExpose({ insertText })
       :no-katex="true"
       :no-mermaid="true"
       :no-highlight="true"
+      :no-prettier="true"
+      :no-echarts="true"
       :no-upload-img="true"
       :no-img-zoom-in="true"
       :show-code-row-number="false"
