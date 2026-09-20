@@ -33,7 +33,7 @@ export const opsRecords = [
   { id: 12, time: '2026-08-25 16:20', operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '' },
   // 版本管理（客户端版本）：与 versionMock.js 种子里各版本的发布记录一一对应（时间 / 发布人 / 更新说明同源，
   // 由 versionMock.test.js 的「审计种子与版本种子一致」用例守着）。操作对象 =「终端 + 版本号」，不附灰色版本号小标签；
-  // 变更内容 = 该版本的更新说明。发布新版本时旧版本被自动停用不单独记一条「停用」，只有管理员点【停用】才记。
+  // 变更内容 = 该版本的更新说明（发布 / 停用 / 撤回三种动作一律如此）。新版本生效时旧版本被自动顶替回到未发布，不单独记一条「停用」。
   { id: 13, time: '2026-06-20 10:00', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Windows v1.0.0', detail: '首个正式版本：\n1. 支持岗位对话与技能调用\n2. 支持知识库检索\n3. 支持定时任务' },
   { id: 14, time: '2026-06-20 10:10', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Mac v1.0.0', detail: '首个正式版本（Mac）：支持岗位对话、技能调用与知识库检索。' },
   { id: 15, time: '2026-07-18 10:00', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Windows v1.1.0', detail: '新增技能市场；优化长对话滚动体验。' },

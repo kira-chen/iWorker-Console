@@ -44,17 +44,35 @@ export function updateVersion(id, payload) {
   return request.put(`/admin/versions/${id}`, payload)
 }
 
+// 新建版本时按终端自动生成的下一个版本号（该终端已有最大版本号的次版本位 +1，没有版本则 v1.0.0）。
+// 只是预填，用户可改；返回形如 'v1.4.0' 的字符串。
+export function getNextVersion(terminal) {
+  if (USE_MOCK) return mock.getNextVersion(terminal)
+  return request.get('/admin/versions/next-version', { params: { terminal } })
+}
+
+// 按 id 取单条（审核中心 / 我的申请查看详情）。返回版本行，附 name（终端 + 版本号）。
+export function getVersion(id) {
+  if (USE_MOCK) return mock.getVersion(id)
+  return request.get(`/admin/versions/${id}`)
+}
+
+// 发布 = 提交发布审核（不会直接生效）：版本进入「审核中」，审核中心与我的申请各生成一条申请，
+// 审核通过后才变「已发布」。返回更新后的版本行。
 export function publishVersion(id) {
   if (USE_MOCK) return mock.publishVersion(id)
   return request.post(`/admin/versions/${id}/publish`)
 }
 
+// 撤回审核中的申请（发布申请或停用申请）：版本回到提交前的状态（未发布 / 已发布）。
+export function withdrawVersion(id) {
+  if (USE_MOCK) return mock.withdrawVersion(id)
+  return request.post(`/admin/versions/${id}/withdraw`)
+}
+
+// 停用 = 提交停用审核（同样不会直接生效）：仅已发布的版本可提交，审核期间继续下发，
+// 审核通过后回到「未发布」、该终端暂无下发版本；不自动回退到上一个版本。
 export function stopVersion(id) {
   if (USE_MOCK) return mock.stopVersion(id)
   return request.post(`/admin/versions/${id}/stop`)
-}
-
-export function deleteVersion(id) {
-  if (USE_MOCK) return mock.deleteVersion(id)
-  return request.delete(`/admin/versions/${id}`)
 }

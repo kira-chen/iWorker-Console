@@ -4,9 +4,11 @@ import {
   normalizeVersion,
   compareVersions,
   formatFileSize,
+  suggestNextVersion,
   validatePackageFile,
   terminalLabel,
-  PACKAGE_MAX_BYTES
+  STATUS_META,
+  VERSION_STATUS
 } from '../versionMeta'
 
 /**
@@ -50,12 +52,48 @@ describe('版本号比较（PRD §二：三段数值逐段比，不做字符串�
   })
 })
 
+describe('版本状态词表（PRD §八）', () => {
+  it('状态只有三种：未发布 / 审核中 / 已发布（2026-09-20 负责人拍板，没有「已停用」）；审核中橙（与全站一致）、已发布绿', () => {
+    expect(Object.values(VERSION_STATUS)).toEqual(['UNPUBLISHED', 'PENDING_REVIEW', 'PUBLISHED'])
+    expect(Object.values(STATUS_META).map((m) => m.label)).toEqual(['未发布', '审核中', '已发布'])
+    expect(STATUS_META.PENDING_REVIEW.tagType).toBe('warning')
+    expect(STATUS_META.PUBLISHED.tagType).toBe('success')
+    expect(VERSION_STATUS).not.toHaveProperty('STOPPED')
+  })
+})
+
+describe('自动生成版本号（PRD §4.1）', () => {
+  it('该终端没有任何版本 → v1.0.0', () => {
+    expect(suggestNextVersion([])).toBe('v1.0.0')
+    expect(suggestNextVersion()).toBe('v1.0.0')
+  })
+
+  it('取已有最大版本号，次版本位 +1、修订位归零（v1.3.0 → v1.4.0）', () => {
+    expect(suggestNextVersion(['v1.0.0', 'v1.1.0', 'v1.3.0', 'v1.2.0'])).toBe('v1.4.0')
+    expect(suggestNextVersion(['v1.3.5'])).toBe('v1.4.0')
+    expect(suggestNextVersion(['v2.0.0', 'v1.9.0'])).toBe('v2.1.0')
+  })
+
+  it('按数值比较取最大（v1.10.0 > v1.9.0，不是字符串比较）', () => {
+    expect(suggestNextVersion(['v1.9.0', 'v1.10.0'])).toBe('v1.11.0')
+  })
+
+  it('无效版本号被忽略；结果一定高于已有全部版本、不与已有版本重号', () => {
+    expect(suggestNextVersion(['abc', '', null, 'v1.2.0'])).toBe('v1.3.0')
+    const existing = ['v1.0.0', 'v1.4.0', 'v1.2.7']
+    const next = suggestNextVersion(existing)
+    expect(existing).not.toContain(next)
+    expect(existing.every((v) => compareVersions(next, v) > 0)).toBe(true)
+  })
+})
+
 describe('文件大小与版本包校验（PRD §4.1 / §4.3）', () => {
   it('formatFileSize：去掉多余的 .0', () => {
     expect(formatFileSize(512)).toBe('512 B')
     expect(formatFileSize(1024)).toBe('1 KB')
     expect(formatFileSize(90596966)).toBe('86.4 MB')
-    expect(formatFileSize(PACKAGE_MAX_BYTES)).toBe('1 GB')
+    expect(formatFileSize(1024 ** 3)).toBe('1 GB')
+    expect(formatFileSize(5 * 1024 ** 3)).toBe('5 GB') // 不设上限：GB 级大小照常展示
     expect(formatFileSize(-1)).toBe('—')
   })
 
@@ -71,10 +109,14 @@ describe('文件大小与版本包校验（PRD §4.1 / §4.3）', () => {
     expect(validatePackageFile('MAC', f('a.exe'))).toBe('Mac 版本包仅支持 .dmg / .pkg / .zip')
   })
 
-  it('空文件与超大文件被拦，格式错误优先于其余', () => {
+  it('空文件被拦，格式错误优先于空文件', () => {
     expect(validatePackageFile('WINDOWS', { name: 'a.exe', size: 0 })).toBe('版本包不能为空文件')
-    expect(validatePackageFile('WINDOWS', { name: 'a.exe', size: PACKAGE_MAX_BYTES + 1 })).toBe('版本包不能超过 1 GB')
     expect(validatePackageFile('WINDOWS', { name: 'a.txt', size: 0 })).toContain('仅支持')
+  })
+
+  it('版本包大小不设上限（2026-09-20 负责人拍板）：GB 级、TB 级文件都通过校验', () => {
+    expect(validatePackageFile('WINDOWS', { name: 'big.exe', size: 5 * 1024 ** 3 })).toBe('')
+    expect(validatePackageFile('MAC', { name: 'huge.dmg', size: 2 * 1024 ** 4 })).toBe('')
   })
 
   it('terminalLabel：未知终端原样回显，空值显示 —', () => {

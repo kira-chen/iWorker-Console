@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 /**
  * 我的申请 mock 层回归保护（2026-09-18 R1 重写，对齐 md `prd.我的申请.md` §二 / §3.1 / §4.1 / §4.3 / §五 / §六 / §七）：
- * - 种子 17 行：12 条待审与审核中心逐笔同一（护栏见 govSeedRefIntegrity.test），5 条历史（含对象已删除样例 510）；
+ * - 种子 18 行：13 条待审与审核中心逐笔同一（护栏见 govSeedRefIntegrity.test），5 条历史（含对象已删除样例 510）；
  * - 撤回 / 重新提交**不再只翻本表**：分发到业务模块的撤回 / 提交入口，模块经 reviewEnroll 同步审核中心行与本表行
  *   （09-18 审查 G-4/G-5：原实现撤回后审核中心仍可通过并真的发布、重提后审核中心根本没这条）；
  * - 审核结论回写按 businessType + refId + applicationType 匹配（G-7：不再把停用申请标成「首发已通过」）。
@@ -21,10 +21,10 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     ;(await import('../reviewsMock')).resetReviewsMock()
   })
 
-  it('默认列表：17 条，按 submittedAt desc，最新一条是知识库行 511（08-28 11:02）', async () => {
+  it('默认列表：18 条，按 submittedAt desc，最新一条是版本管理行 518（09-19 16:30）', async () => {
     const { list, total } = await app.listMyApplications({ size: 50 })
-    expect(total).toBe(17)
-    expect(list[0].id).toBe(511)
+    expect(total).toBe(18)
+    expect(list[0].id).toBe(518)
     const times = list.map((r) => r.submittedAt)
     expect(times).toEqual([...times].sort().reverse())
   })
@@ -33,7 +33,7 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     expect((await app.listMyApplications({ businessType: 'EXPERT' })).list.map((r) => r.id).sort()).toEqual([502, 510, 513])
     expect((await app.listMyApplications({ applicationType: 'DELIST' })).list.map((r) => r.id).sort()).toEqual([510, 515])
     expect((await app.listMyApplications({ result: 'REJECTED' })).list.map((r) => r.id).sort()).toEqual([503, 507])
-    expect((await app.listMyApplications({ result: 'PENDING', size: 50 })).total).toBe(12) // 与审核中心 12 行逐笔对应
+    expect((await app.listMyApplications({ result: 'PENDING', size: 50 })).total).toBe(13) // 与审核中心 13 行逐笔对应
   })
 
   it('objectDeleted：默认 false；样例行 510 为 true，六个信息字段照常保留（md §四 L47）', async () => {
@@ -147,16 +147,16 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     const written = app.submitApplicationRow({ businessType: 'API', refId: 'api_1102', objectName: '提交付款申请', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-29 09:00' })
     expect(written.id).toBe(501)
     const { total } = await app.listMyApplications({ size: 50 })
-    expect(total).toBe(17)
+    expect(total).toBe(18)
   })
 
   it('submitApplicationRow：新对象 → 新建行，id 取现有最大 + 1，objectDeleted=false、result=PENDING', async () => {
     const written = app.submitApplicationRow({ businessType: 'MODEL', refId: 'md_101', objectName: '新模型', applicationType: 'FIRST_PUBLISH', submittedAt: '2026-08-29 09:00' })
-    expect(written.id).toBe(518)
+    expect(written.id).toBe(519)
     expect(written).toMatchObject({ result: 'PENDING', objectDeleted: false, version: '—', submitter: 'config.admin' })
     const { list, total } = await app.listMyApplications({ size: 50 })
-    expect(total).toBe(18)
-    expect(list[0].objectName).toBe('新模型')
+    expect(total).toBe(19)
+    expect(list.find((r) => r.id === written.id).objectName).toBe('新模型')
   })
 
   it('withdrawApplicationRow：命中待审行 → 行保留、result=WITHDRAWN、审核人「—」；无匹配静默', async () => {
@@ -165,7 +165,7 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     expect(row.result).toBe('WITHDRAWN')
     expect(row.reviewer).toBe('—')
     expect(() => app.withdrawApplicationRow('MODEL', 'nope')).not.toThrow()
-    expect((await app.listMyApplications({ size: 50 })).total).toBe(17)
+    expect((await app.listMyApplications({ size: 50 })).total).toBe(18)
   })
 
   it('applyApplicationReviewResult：按申请类型匹配——同一对象若同时有旧停用申请与新发布申请，只回写同类型那条（09-18 G-7）', async () => {
@@ -202,11 +202,11 @@ describe('myApplicationsMock · 持久化 restore 形状守卫', () => {
     vi.resetModules()
   })
 
-  it('存量快照版本对但 applications 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 17 条、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 6, data: { applications: { not: 'array' } } }))
+  it('存量快照版本对但 applications 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 18 条、坏 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { applications: { not: 'array' } } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../myApplicationsMock')
-    expect((await fresh.listMyApplications({ size: 50 })).total).toBe(17)
+    expect((await fresh.listMyApplications({ size: 50 })).total).toBe(18)
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('myApplications 存量数据不可用'), expect.any(Error))
     warn.mockRestore()

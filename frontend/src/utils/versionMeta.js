@@ -20,18 +20,23 @@ export function terminalLabel(terminal) {
 
 /* ---------------- 状态 ---------------- */
 
-/** 版本状态：未发布 → 已发布 → 已停用（→ 可重新发布），见 PRD §八「状态流转」。 */
+/**
+ * 版本状态**只有三种**（2026-09-20 负责人拍板，与岗位 / 专家 / 技能同一套三态），见 PRD §八「状态流转」：
+ * 未发布 →【发布】提交发布审核→ 审核中 →通过→ 已发布 →【停用】提交停用审核→ 审核中 →通过→ 未发布；
+ * 审核驳回 / 撤回 → 回到提交前的状态（未发布或已发布）。发布和停用都必须经审核中心；
+ * 被新版本顶替、或停用审核通过的旧版本都回到「未发布」，重新启用要重新走发布审核。
+ */
 export const VERSION_STATUS = {
   UNPUBLISHED: 'UNPUBLISHED',
-  PUBLISHED: 'PUBLISHED',
-  STOPPED: 'STOPPED'
+  PENDING_REVIEW: 'PENDING_REVIEW',
+  PUBLISHED: 'PUBLISHED'
 }
 
-/** 状态 → 文案与 StatusTag 类型（未发布灰 / 已发布绿 / 已停用橙）。 */
+/** 状态 → 文案与 StatusTag 类型（未发布灰 / 审核中橙，与全站「审核中」一致 / 已发布绿）。 */
 export const STATUS_META = {
   UNPUBLISHED: { label: '未发布', tagType: 'info' },
-  PUBLISHED: { label: '已发布', tagType: 'success' },
-  STOPPED: { label: '已停用', tagType: 'warning' }
+  PENDING_REVIEW: { label: '审核中', tagType: 'warning' },
+  PUBLISHED: { label: '已发布', tagType: 'success' }
 }
 
 /* ---------------- 版本号 ---------------- */
@@ -53,7 +58,7 @@ export function normalizeVersion(input) {
 
 /**
  * 版本号比较：三段**数值**逐段比（v1.10.0 > v1.9.0），不做字符串比较。
- * 用户端「有无更新」与发布前「须高于当前已发布版本」两处都靠它。
+ * 只用于自动生成下一个版本号时找最大值；用户端只比对版本号是否一致、不比大小，发布也不限制高低（PRD §二、§五）。
  * @returns {number} a>b 为正，a<b 为负，相等为 0
  */
 export function compareVersions(a, b) {
@@ -65,6 +70,23 @@ export function compareVersions(a, b) {
   return 0
 }
 
+/**
+ * 自动生成下一个版本号（新建版本时按终端预填，用户可自行修改）：
+ * 取该终端**已有全部版本**（含未发布 / 审核中 / 已发布）里数值最大的版本号，次版本位 +1、修订位归零
+ * （v1.3.0 → v1.4.0，即按「功能更新」递增）；该终端还没有任何版本 → v1.0.0。
+ * 以最大版本号为基准，保证生成结果不与已有版本重号、且高于已有全部版本。
+ * @param {string[]} existing 该终端已有的版本号列表
+ * @returns {string} vX.Y.0
+ */
+export function suggestNextVersion(existing = []) {
+  let best = null
+  for (const v of existing) {
+    const p = parseVersion(v)
+    if (p && (!best || compareVersions(v, `v${best.join('.')}`) > 0)) best = p
+  }
+  return best ? `v${best[0]}.${best[1] + 1}.0` : 'v1.0.0'
+}
+
 /* ---------------- 版本包 ---------------- */
 
 /** 各终端允许的版本包格式（PRD §4.1）。 */
@@ -72,9 +94,6 @@ export const PACKAGE_EXTS = {
   WINDOWS: ['.exe', '.msi', '.zip'],
   MAC: ['.dmg', '.pkg', '.zip']
 }
-
-/** 版本包大小上限。1 GB 为占位值，尚未与研发对齐（PRD §十 第 3 项）。 */
-export const PACKAGE_MAX_BYTES = 1024 ** 3
 
 /** 更新说明字数上限（描述类统一 2000，见《各模块必填选填字段一览表》）。 */
 export const RELEASE_NOTES_MAX = 2000
@@ -95,7 +114,8 @@ export function formatFileSize(bytes) {
 }
 
 /**
- * 选择文件时的即时校验（PRD §4.3）：格式 → 空文件 → 大小。
+ * 选择文件时的即时校验（PRD §4.3）：格式 → 空文件。
+ * **版本包大小不设上限**（2026-09-20 负责人拍板）。
  * @param {string} terminal WINDOWS / MAC
  * @param {{name:string,size:number}} file
  * @returns {string} 错误提示；通过返回 ''
@@ -107,6 +127,5 @@ export function validatePackageFile(terminal, file) {
     return `${terminalLabel(terminal)} 版本包仅支持 ${exts.join(' / ')}`
   }
   if (!file.size) return '版本包不能为空文件'
-  if (file.size > PACKAGE_MAX_BYTES) return `版本包不能超过 ${formatFileSize(PACKAGE_MAX_BYTES)}`
   return ''
 }

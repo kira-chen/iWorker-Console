@@ -63,7 +63,9 @@ export const REVIEW_BIZ_TYPE_OPTIONS = [
   { value: 'CONNECTOR_MCP', label: 'MCP' },
   { value: 'CONNECTOR_API', label: 'API' },
   { value: 'CONNECTOR_BIZ', label: '业务系统' },
-  { value: 'MODEL', label: '模型' }
+  { value: 'MODEL', label: '模型' },
+  // 2026-09-20：版本管理（客户端版本）发布必须走审核，作为新的业务类型接入
+  { value: 'VERSION', label: '版本管理' }
 ]
 
 // 业务类型筛选匹配（原型 reviewTypeMatch 逐字对应）
@@ -85,6 +87,7 @@ export function reviewBizTypeLabel(row) {
   if (row.type === 'BIZ_SYSTEM') return '业务系统'
   if (row.type === 'MODEL') return '模型'
   if (row.type === 'KNOWLEDGE_BASE') return '知识库'
+  if (row.type === 'VERSION') return '版本管理'
   return { POSITION: '岗位', EXPERT: '专家' }[row.type] || row.type
 }
 
@@ -126,7 +129,8 @@ export const MYAPP_BIZ_TYPE_OPTIONS = [
   { value: 'MCP', label: 'MCP' },
   { value: 'API', label: 'API' },
   { value: 'BIZ_SYSTEM', label: '业务系统' },
-  { value: 'MODEL', label: '模型' }
+  { value: 'MODEL', label: '模型' },
+  { value: 'VERSION', label: '版本管理' } // 2026-09-20：版本管理（客户端版本）发布走审核
 ]
 
 // 业务类型标签文案（2026-09-08 决议第 8 项：业务类型不含「其他」，OTHER 映射删除；
@@ -141,7 +145,8 @@ export function myAppBizTypeLabel(t) {
       MCP: 'MCP',
       API: 'API',
       BIZ_SYSTEM: '业务系统',
-      MODEL: '模型'
+      MODEL: '模型',
+      VERSION: '版本管理'
     }[t] || t
   )
 }

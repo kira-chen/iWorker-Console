@@ -6,7 +6,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
 /**
  * VersionEditor.vue（版本编辑抽屉）单测。对齐 docs/PRD/数字员工管理端PRD/05治理/版本管理/prd.版本管理.md：
  * - §四 三态：新建「新建版本」/ 编辑「编辑版本」（终端置灰）/ 查看「查看版本」（只读、底部仅【关闭】、展示 SHA-256）；
- * - §4.1 字段（终端 / 版本号 / 版本包 / 更新说明均必填）；§4.2 版本包上传状态机（idle / uploading / done / error）；
+ * - §4.1 字段（终端 / 版本号 / 版本包 / 更新说明均必填；版本号选终端后自动生成、可改）；§4.2 版本包上传状态机（idle / uploading / done / error）；
  * - §4.3 校验提示与保存（版本号重复就地报错、保存成功提示「版本已保存」）；
  * - §九 上传中关闭需二次确认并中断上传。
  *
@@ -14,7 +14,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  * 抽屉 append-to-body，故 DOM 从 document.body 取。
  */
 
-const api = { createVersion: vi.fn(), updateVersion: vi.fn(), uploadVersionPackage: vi.fn() }
+const api = { createVersion: vi.fn(), updateVersion: vi.fn(), uploadVersionPackage: vi.fn(), getNextVersion: vi.fn() }
 vi.mock('@/api/version', () => api)
 const confirmDialog = vi.fn()
 vi.mock('@/composables/useConfirm', () => ({ confirmDialog: (...a) => confirmDialog(...a) }))
@@ -30,7 +30,7 @@ const UPLOADED = { packageId: 'pkg_1', fileName: 'iWorker-Setup-1.4.0.exe', file
 const DRAFT = {
   id: 4, terminal: 'WINDOWS', version: 'v1.3.0', packageName: 'iWorker-Setup-1.3.0.exe', packageSize: 92274688,
   sha256: 'c'.repeat(64), releaseNotes: '新增记忆管理', status: 'UNPUBLISHED',
-  publishedAt: null, publishedBy: null, stoppedAt: null
+  publishedAt: null, publishedBy: null
 }
 const PUBLISHED = { ...DRAFT, id: 3, version: 'v1.2.0', status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: 'li.na' }
 
@@ -80,6 +80,8 @@ beforeEach(() => {
   api.createVersion.mockReset().mockResolvedValue({})
   api.updateVersion.mockReset().mockResolvedValue({})
   api.uploadVersionPackage.mockReset().mockResolvedValue(UPLOADED)
+  // 按终端给出「下一个版本号」（真实逻辑在 versionMock，见 versionMock.test.js）
+  api.getNextVersion.mockReset().mockImplementation(async (t) => (t === 'MAC' ? 'v1.3.0' : 'v1.4.0'))
   confirmDialog.mockReset().mockResolvedValue(true)
   for (const k of ['success', 'error', 'warning', 'info']) ElMessage[k].mockReset()
   saved = vi.fn()
@@ -121,13 +123,14 @@ describe('VersionEditor · 新建态结构（PRD §四 / §4.1）', () => {
     errSpy.mockRestore()
   })
 
-  it('选终端后上传区可用，提示当前终端支持的格式与大小上限（Windows：exe/msi/zip；Mac：dmg/pkg/zip）', async () => {
+  it('选终端后上传区可用，提示当前终端支持的格式（Windows：exe/msi/zip；Mac：dmg/pkg/zip），不再提示大小上限', async () => {
     await open()
     await chooseTerminal('Windows')
-    expect($('.el-drawer').textContent).toContain('Windows 支持 .exe / .msi / .zip，单个文件不超过 1 GB')
+    expect($('.el-drawer').textContent).toContain('Windows 支持 .exe / .msi / .zip')
+    expect($('.el-drawer').textContent).not.toContain('不超过')
     expect($('.ve-drop .el-upload').className).not.toContain('is-disabled')
     await chooseTerminal('Mac')
-    expect($('.el-drawer').textContent).toContain('Mac 支持 .dmg / .pkg / .zip，单个文件不超过 1 GB')
+    expect($('.el-drawer').textContent).toContain('Mac 支持 .dmg / .pkg / .zip')
   })
 
   it('更新说明：占位、上限 2000 字并显示字数统计', async () => {
@@ -148,16 +151,17 @@ describe('VersionEditor · 版本包上传状态机（PRD §4.2 / §4.3）', () 
     expect($('.el-drawer .ve-error').textContent).toBe('Windows 版本包仅支持 .exe / .msi / .zip')
   })
 
-  it('空文件、超大文件同样在选择时被拦', async () => {
+  it('空文件在选择时被拦；版本包大小不设上限——GB 级文件照常开始上传（2026-09-20 负责人拍板）', async () => {
     await open()
     await chooseTerminal('Windows')
     await pick(file('a.exe', 0))
     expect($('.el-drawer .ve-error').textContent).toBe('版本包不能为空文件')
-    const big = file('b.exe', 1)
-    Object.defineProperty(big, 'size', { value: 1024 ** 3 + 1 })
-    await pick(big)
-    expect($('.el-drawer .ve-error').textContent).toBe('版本包不能超过 1 GB')
     expect(api.uploadVersionPackage).not.toHaveBeenCalled()
+    const big = file('b.exe', 1)
+    Object.defineProperty(big, 'size', { value: 8 * 1024 ** 3 })
+    await pick(big)
+    expect($('.el-drawer .ve-error')).toBeNull()
+    expect(api.uploadVersionPackage).toHaveBeenCalledTimes(1)
   })
 
   it('上传中：展示文件名 / 大小 / 进度与【取消上传】，【保存】置灰；完成后转「重新上传 / 移除」', async () => {
@@ -376,6 +380,108 @@ describe('VersionEditor · 编辑 / 查看（PRD §四）', () => {
     expect(t).toContain('新增记忆管理')
     expect($('.el-drawer form')).toBeNull()
     expect($$('.el-drawer__footer button').map((b) => b.textContent.trim())).toEqual(['关闭'])
+  })
+})
+
+describe('VersionEditor · 审核中版本的查看（发布走审核）', () => {
+  const PENDING = { ...DRAFT, id: 7, terminal: 'MAC', version: 'v1.2.0', status: 'PENDING_REVIEW', submittedBy: 'li.na', submittedAt: '2026-09-19T16:30:00+08:00' }
+
+  it('审核中：状态「审核中」，展示申请人与申请时间（还没有发布人 / 发布时间，显示「—」）', async () => {
+    await open({ version: PENDING, readonly: true })
+    const t = $('.el-drawer').textContent.replace(/\s+/g, ' ')
+    expect(t).toContain('审核中')
+    // dt / dd 的 textContent 相连（无空白），故断言按「标签值」连写
+    expect(t).toContain('申请人li.na')
+    expect(t).toContain('申请时间2026-09-19 16:30')
+    expect(t).toContain('发布人—')
+    expect(t).toContain('发布时间—')
+  })
+
+  it('非审核中的版本不出现「申请人 / 申请时间」', async () => {
+    await open({ version: PUBLISHED, readonly: true })
+    const t = $('.el-drawer').textContent.replace(/\s+/g, ' ')
+    expect(t).not.toContain('申请人')
+    expect(t).not.toContain('申请时间')
+  })
+})
+
+describe('VersionEditor · 版本号自动生成（PRD §4.1）', () => {
+  const verInput = () => $('.el-drawer input[placeholder="如 v1.2.0"]')
+  const verHint = () => $$('.el-drawer .ve-hint').find((e) => e.textContent.includes('X.Y.Z')).textContent
+
+  it('新建：选好终端后按该终端预填下一个版本号，并提示「已自动生成，可直接修改」', async () => {
+    await open()
+    expect(verInput().value).toBe('')
+    await chooseTerminal('Windows')
+    expect(api.getNextVersion).toHaveBeenCalledWith('WINDOWS')
+    expect(verInput().value).toBe('v1.4.0')
+    expect(verHint()).toContain('已按该终端已有最高版本号自动生成，可直接修改')
+  })
+
+  it('没手改过版本号时，改选终端会按新终端重新生成', async () => {
+    await open()
+    await chooseTerminal('Windows')
+    expect(verInput().value).toBe('v1.4.0')
+    await chooseTerminal('Mac')
+    expect(api.getNextVersion).toHaveBeenLastCalledWith('MAC')
+    expect(verInput().value).toBe('v1.3.0')
+  })
+
+  it('手动改过版本号后，再改选终端不覆盖；提示回到基础文案', async () => {
+    await open()
+    await chooseTerminal('Windows')
+    setInput(verInput(), 'v2.0.0')
+    await flushAll()
+    expect(verHint()).not.toContain('自动生成')
+    await chooseTerminal('Mac')
+    expect(api.getNextVersion).toHaveBeenCalledTimes(1)
+    expect(verInput().value).toBe('v2.0.0')
+  })
+
+  it('把版本号清空视同没手填过：再改选终端可重新自动生成', async () => {
+    await open()
+    await chooseTerminal('Windows')
+    setInput(verInput(), '')
+    await flushAll()
+    await chooseTerminal('Mac')
+    expect(verInput().value).toBe('v1.3.0')
+  })
+
+  it('直接采用自动生成的版本号保存：createVersion 收到预填值', async () => {
+    await open()
+    await chooseTerminal('Windows')
+    await pick(file('iWorker-Setup-1.4.0.exe'))
+    setInput($('.el-drawer textarea'), '新增记忆管理')
+    footBtn('保存').click()
+    await settle(() => api.createVersion.mock.calls.length > 0)
+    expect(api.createVersion).toHaveBeenCalledWith(expect.objectContaining({ terminal: 'WINDOWS', version: 'v1.4.0' }))
+  })
+
+  it('取号请求在途时用户手填了版本号：放弃这次预填，不覆盖手填值', async () => {
+    let resolveNext
+    api.getNextVersion.mockImplementation(() => new Promise((r) => (resolveNext = r)))
+    await open()
+    await chooseTerminal('Windows')
+    setInput(verInput(), 'v7.7.7')
+    resolveNext('v1.4.0')
+    await flushAll()
+    expect(verInput().value).toBe('v7.7.7')
+    expect(verHint()).not.toContain('自动生成')
+  })
+
+  it('取号失败：版本号留空让用户手填，不弹错误提示', async () => {
+    api.getNextVersion.mockRejectedValue(new Error('boom'))
+    await open()
+    await chooseTerminal('Windows')
+    expect(verInput().value).toBe('')
+    expect(ElMessage.error).not.toHaveBeenCalled()
+  })
+
+  it('编辑态不取号：版本号保持原值', async () => {
+    await open({ version: DRAFT })
+    expect(api.getNextVersion).not.toHaveBeenCalled()
+    expect(verInput().value).toBe('v1.3.0')
+    expect(verHint()).not.toContain('自动生成')
   })
 })
 

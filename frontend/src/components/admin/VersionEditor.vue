@@ -3,8 +3,9 @@
  * 版本编辑抽屉（05 治理 / 版本管理，ADMIN 专属）。
  * 依据 docs/PRD/数字员工管理端PRD/05治理/版本管理/prd.版本管理.md §四。
  *
- * 【三态】新建（标题「新建版本」）/ 编辑（仅未发布，终端置灰）/ 查看（已发布·已停用，只读，底部仅【关闭】）。
- * 查看态额外展示只读的状态、发布人、发布时间、停用时间与 SHA-256 校验值（§四）。
+ * 【三态】新建（标题「新建版本」）/ 编辑（仅从未发布过的未发布版本，终端置灰）/ 查看（其余版本，只读，底部仅【关闭】）。
+ * 查看态额外展示只读的状态、发布人、发布时间与 SHA-256 校验值；审核中另展示申请类型 / 申请人 / 申请时间（§四）。
+ * 新建时选好终端会按终端自动生成版本号预填（可改，§4.1）。
  *
  * 【版本包上传（§4.2）】单文件，必须在本页上传（不支持外链）。状态机：
  *   idle（未上传）→ uploading（进度 + 取消）→ done（重新上传 / 移除）或 error（重试 / 移除）。
@@ -20,7 +21,7 @@ import { UploadFilled, Document } from '@element-plus/icons-vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { confirmDialog } from '@/composables/useConfirm'
-import { createVersion, updateVersion, uploadVersionPackage } from '@/api/version'
+import { createVersion, updateVersion, uploadVersionPackage, getNextVersion } from '@/api/version'
 import { fmtTime } from '@/utils/docMeta'
 import {
   TERMINAL_OPTIONS,
@@ -37,7 +38,7 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   // 待编辑 / 查看的版本行（null = 新建）
   version: { type: Object, default: null },
-  // 查看态：已发布 / 已停用版本只读
+  // 查看态：审核中 / 已发布 / 曾发布过的未发布版本只读
   readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'saved'])
@@ -65,7 +66,7 @@ const uploadRef = ref()
 const acceptAttr = computed(() => (PACKAGE_EXTS[form.terminal] || []).join(','))
 const uploadTip = computed(() =>
   form.terminal
-    ? `${terminalLabel(form.terminal)} 支持 ${PACKAGE_EXTS[form.terminal].join(' / ')}，单个文件不超过 1 GB`
+    ? `${terminalLabel(form.terminal)} 支持 ${PACKAGE_EXTS[form.terminal].join(' / ')}`
     : '请先选择终端，再上传版本包'
 )
 
@@ -80,11 +81,17 @@ function resetPkg(source) {
   prevPkg = null
 }
 
+// 版本号自动生成（PRD §4.1）：新建时选好终端 → 按终端预填下一个版本号，用户可改；手动输入过就不再覆盖
+let versionTouched = false
+const autoVersion = ref('') // 当前预填的自动版本号（用于提示「已自动生成」）
+
 function reset() {
   form.terminal = props.version?.terminal || ''
   form.version = props.version?.version || ''
   form.releaseNotes = props.version?.releaseNotes || ''
   versionError.value = ''
+  versionTouched = false
+  autoVersion.value = ''
   resetPkg(props.version)
   formRef.value?.clearValidate?.()
 }
@@ -148,6 +155,38 @@ function removePkg() {
   retryFile = null
   prevPkg = null
 }
+
+function onVersionInput(value) {
+  versionError.value = ''
+  // 输入框被清空视同没手填过，之后改选终端可重新自动生成
+  versionTouched = String(value || '').trim() !== ''
+  if (versionTouched) autoVersion.value = ''
+}
+
+watch(
+  () => form.terminal,
+  async (t) => {
+    if (isEdit.value || props.readonly || !t || versionTouched) return
+    try {
+      const next = await getNextVersion(t)
+      // 请求期间用户手填了版本号 / 又改了终端 → 放弃这次预填
+      if (versionTouched || form.terminal !== t) return
+      form.version = next
+      autoVersion.value = next
+      versionError.value = ''
+      formRef.value?.clearValidate?.('version')
+    } catch (e) {
+      // 取不到就留空，让用户手填，不打断操作
+    }
+  }
+)
+
+const versionHint = computed(() => {
+  const base = '格式为 X.Y.Z 三段数字，可带前缀 v；同一终端下不可重复'
+  return autoVersion.value && form.version === autoVersion.value
+    ? `已按该终端已有最高版本号自动生成，可直接修改。${base}`
+    : base
+})
 
 // 新建时改选终端：已传的包与新终端格式不符 → 提示并清空（.zip 两端通用，不受影响）
 watch(
@@ -268,6 +307,21 @@ const dialogVisible = computed({
             <dt>状态</dt>
             <dd><StatusTag :type="STATUS_META[version.status]?.tagType">{{ STATUS_META[version.status]?.label }}</StatusTag></dd>
           </div>
+          <!-- 审核中：展示申请类型（发布 / 停用）与提交申请的人、时间 -->
+          <template v-if="version.status === 'PENDING_REVIEW'">
+            <div class="ve-dl-item">
+              <dt>申请类型</dt>
+              <dd>{{ version.pendingAction === 'STOP' ? '停用' : '发布' }}</dd>
+            </div>
+            <div class="ve-dl-item">
+              <dt>申请人</dt>
+              <dd>{{ version.submittedBy || '—' }}</dd>
+            </div>
+            <div class="ve-dl-item">
+              <dt>申请时间</dt>
+              <dd>{{ version.submittedAt ? fmtTime(version.submittedAt) : '—' }}</dd>
+            </div>
+          </template>
           <div class="ve-dl-item">
             <dt>发布人</dt>
             <dd>{{ version.publishedBy || '—' }}</dd>
@@ -275,10 +329,6 @@ const dialogVisible = computed({
           <div class="ve-dl-item">
             <dt>发布时间</dt>
             <dd>{{ version.publishedAt ? fmtTime(version.publishedAt) : '—' }}</dd>
-          </div>
-          <div class="ve-dl-item">
-            <dt>停用时间</dt>
-            <dd>{{ version.stoppedAt ? fmtTime(version.stoppedAt) : '—' }}</dd>
           </div>
         </dl>
       </section>
@@ -312,8 +362,8 @@ const dialogVisible = computed({
           <div class="ve-hint">终端创建后不可修改（版本包与终端绑定）</div>
         </el-form-item>
         <el-form-item label="版本号" prop="version" :error="versionError">
-          <el-input v-model="form.version" placeholder="如 v1.2.0" maxlength="32" @input="versionError = ''" />
-          <div class="ve-hint">格式为 X.Y.Z 三段数字，可带前缀 v；同一终端下不可重复</div>
+          <el-input v-model="form.version" placeholder="如 v1.2.0" maxlength="32" @input="onVersionInput" />
+          <div class="ve-hint">{{ versionHint }}</div>
         </el-form-item>
 
         <!-- 版本包：状态机控件，不走 el-form 校验（无 prop），必填星标由 required 给，错误就地显示（pkgError） -->

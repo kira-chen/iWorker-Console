@@ -7,8 +7,12 @@
  * 「已发布」的版本，有更新就提示升级并展示更新说明（PRD §二，用户端界面不在管理端 Demo 内）。
  *
  * 【页面结构】当前下发概览条 → 查询区 → 版本列表；新建 / 编辑 / 查看走右侧抽屉（VersionEditor）。
- * 【状态与操作】未发布：编辑 / 发布 / 删除；已发布：查看 / 停用；已停用：查看 / 发布（PRD §3.3 对照表）。
- * 【业务规则在 api/versionMock.js】发布顺序（须高于当前已发布版本）、同终端只留一个已发布版本、
+ * 【状态与操作】状态只有三种（PRD §3.3 对照表）：**所有版本都有【查看】【编辑】**，第三个按钮随状态变：
+ * 未发布=【发布】、审核中=【撤回】、已发布=【停用】。【编辑】只对「从未发布过的未发布版本」可用，
+ * 发布过的版本（含被顶替回到未发布的旧版本）和审核中的版本置灰并给出原因。**版本不可删除**，没有删除操作。
+ * **发布和停用都必须走审核**：点【发布】【停用】只是提交申请，版本进入「审核中」，审核中心通过后才生效；
+ * 停用审核期间该版本继续下发；重新启用旧版本同样要走发布审核。
+ * 【业务规则在 api/versionMock.js】发布不限制版本号高低（用户端只比对是否一致，旧版本可直接发布来回退）、同终端只留一个已发布版本 / 一个审核中版本、
  * (终端 + 版本号) 唯一等；本页只负责把确认文案说清楚并展示结果，规则报错原样提示。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
@@ -21,7 +25,13 @@ import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import VersionEditor from '@/components/admin/VersionEditor.vue'
-import { listVersions, getVersionOverview, publishVersion, stopVersion, deleteVersion } from '@/api/version'
+import {
+  listVersions,
+  getVersionOverview,
+  publishVersion,
+  withdrawVersion,
+  stopVersion
+} from '@/api/version'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useAdminList } from '@/composables/useAdminList'
 import { COL, COL_NOWRAP, opsWidth } from '@/utils/tableLayout'
@@ -34,9 +44,9 @@ import {
   formatFileSize
 } from '@/utils/versionMeta'
 
-const { UNPUBLISHED, PUBLISHED, STOPPED } = VERSION_STATUS
+const { UNPUBLISHED, PENDING_REVIEW, PUBLISHED } = VERSION_STATUS
 
-// 排序仅发布时间列，默认倒序；未发布记录由数据层始终置顶（PRD §3.3）
+// 排序仅发布时间列，默认倒序；待处理记录（审核中、从未发布过的未发布）由数据层始终置顶（PRD §3.3）
 // 关键字入口：访问审计「管理端操作」的【查看】跳过来时带 query.keyword（操作对象名称，如 Windows v1.2.0），
 // 与其余列表页同款（首次进入还原到搜索框，之后以搜索框为准）。
 const route = useRoute()
@@ -71,7 +81,7 @@ async function loadOverview() {
   }
 }
 
-/** 列表与概览条一起刷新（发布 / 停用 / 删除 / 保存之后都会影响两者）。 */
+/** 列表与概览条一起刷新（提交发布 / 停用 / 撤回 / 保存之后都会影响两者）。 */
 function refresh() {
   list.reload()
   loadOverview()
@@ -83,24 +93,22 @@ onMounted(() => {
 })
 
 /* ---------------- 行操作：按状态唯一决定 ---------------- */
+/** 【编辑】置灰的原因；可编辑（从未发布过的未发布版本）返回 ''。有发布时间 = 曾发布过，内容冻结。 */
+function editDisabledReason(row) {
+  if (row.status === PENDING_REVIEW) return '审核中，已锁定不可编辑；如需修改请先撤回申请'
+  if (row.publishedAt) return '已发布过的版本不可编辑；如需更正请新建更高版本号的版本'
+  return ''
+}
+
 function rowActions(row) {
-  if (row.status === UNPUBLISHED) {
-    return [
-      { key: 'edit', label: '编辑', type: 'primary' },
-      { key: 'publish', label: '发布', type: 'success' },
-      { key: 'delete', label: '删除', type: 'danger' }
-    ]
-  }
-  if (row.status === PUBLISHED) {
-    return [
-      { key: 'view', label: '查看', type: 'primary' },
-      { key: 'stop', label: '停用', type: 'warning' }
-    ]
-  }
-  return [
+  const reason = editDisabledReason(row)
+  const base = [
     { key: 'view', label: '查看', type: 'primary' },
-    { key: 'publish', label: '发布', type: 'success' }
+    { key: 'edit', label: '编辑', type: 'primary', disabled: !!reason, tip: reason }
   ]
+  if (row.status === UNPUBLISHED) return [...base, { key: 'publish', label: '发布', type: 'success' }]
+  if (row.status === PENDING_REVIEW) return [...base, { key: 'withdraw', label: '撤回', type: 'warning' }]
+  return [...base, { key: 'stop', label: '停用', type: 'warning' }]
 }
 
 const busy = ref({})
@@ -117,47 +125,56 @@ async function withBusy(row, action, fn) {
   }
 }
 
+// 发布 = 提交审核，不会直接生效（见头注释）：确认文案要把「审核通过后才生效」说清楚
 async function publish(row) {
   const label = terminalLabel(row.terminal)
   const current = overview.value[row.terminal]
-  const tail = current && current.id !== row.id ? `原已发布版本 ${current.version} 将自动变为已停用。` : ''
+  // 状态只有三种，被顶替的旧版本自动回到「未发布」（保留上次发布信息，重新启用要重走发布审核）
+  const tail = current && current.id !== row.id ? `审核通过后，原已发布版本 ${current.version} 将自动回到「未发布」。` : ''
   const ok = await confirmDialog(
-    `发布后，${label} 用户端检测更新时将提示升级到 ${row.version}。${tail}`,
-    '发布版本',
-    { confirmText: '发布' }
+    `提交后将进入审核中心，审核通过后 ${label} 用户端检测更新时才会提示升级到 ${row.version}。${tail}`,
+    '提交发布审核',
+    { confirmText: '提交审核' }
   )
   if (!ok) return
   await withBusy(row, 'publish', async () => {
     await publishVersion(row.id)
-    ElMessage.success(`已发布 ${row.version}（${label}）`)
+    ElMessage.success(`已提交发布 ${row.version}，进入审核`)
     refresh()
   })
 }
 
+// 撤回审核中的申请：发布申请撤回 → 回到未发布；停用申请撤回 → 回到已发布（继续下发）
+async function withdraw(row) {
+  const isStop = row.pendingAction === 'STOP'
+  const kind = isStop ? '停用' : '发布'
+  const backKey = row.prev?.status || (isStop ? PUBLISHED : UNPUBLISHED)
+  // 回到未发布：从未发布过的可继续编辑；曾发布过的内容已冻结（【编辑】置灰），只能重新提交
+  const tail = backKey === PUBLISHED ? '，继续下发' : row.publishedAt ? '，可重新提交' : '，可继续编辑或重新提交'
+  const ok = await confirmDialog(
+    `撤回后 ${terminalLabel(row.terminal)} ${row.version} 将回到「${STATUS_META[backKey].label}」${tail}。确认撤回？`,
+    `撤回${kind}申请`,
+    { confirmText: '撤回', warning: true }
+  )
+  if (!ok) return
+  await withBusy(row, 'withdraw', async () => {
+    await withdrawVersion(row.id)
+    ElMessage.success(`已撤回${kind}申请`)
+    refresh()
+  })
+}
+
+// 停用 = 提交停用审核，同样不会直接生效：审核期间该版本继续下发，通过后才停止；不自动回退到上一个版本
 async function stop(row) {
   const ok = await confirmDialog(
-    `停用后，${terminalLabel(row.terminal)} 用户端将不再收到 ${row.version} 的更新提示，已升级的用户不受影响。停用后该终端暂无下发版本。确认停用？`,
-    '停用版本',
-    { confirmText: '停用', warning: true }
+    `提交后将进入审核中心，审核通过后 ${terminalLabel(row.terminal)} 用户端将不再收到 ${row.version} 的更新提示，已升级的用户不受影响，该终端暂无下发版本（不会自动回退到上一个版本）。审核期间该版本继续下发。`,
+    '提交停用审核',
+    { confirmText: '提交审核', warning: true }
   )
   if (!ok) return
   await withBusy(row, 'stop', async () => {
     await stopVersion(row.id)
-    ElMessage.success(`已停用 ${row.version}`)
-    refresh()
-  })
-}
-
-async function remove(row) {
-  const ok = await confirmDialog(
-    `删除后版本 ${row.version} 及其版本包将不可恢复。确认删除？`,
-    '删除版本',
-    { confirmText: '删除', danger: true }
-  )
-  if (!ok) return
-  await withBusy(row, 'delete', async () => {
-    await deleteVersion(row.id)
-    ElMessage.success('版本已删除')
+    ElMessage.success(`已提交停用 ${row.version}，进入审核`)
     refresh()
   })
 }
@@ -177,8 +194,8 @@ function onAction(key, row) {
   if (key === 'edit') openEditor(row, false)
   else if (key === 'view') openEditor(row, true)
   else if (key === 'publish') publish(row)
+  else if (key === 'withdraw') withdraw(row)
   else if (key === 'stop') stop(row)
-  else if (key === 'delete') remove(row)
 }
 </script>
 
@@ -291,15 +308,18 @@ function onAction(key, row) {
               <div class="tbl-ops">
                 <template v-for="(a, i) in rowActions(row)" :key="a.key">
                   <span v-if="i > 0" class="tbl-ops-sep" aria-hidden="true"></span>
-                  <el-button
-                    link
-                    :type="a.type"
-                    :loading="busy[row.id] === a.key"
-                    :disabled="!!busy[row.id]"
-                    @click="onAction(a.key, row)"
-                  >
-                    {{ a.label }}
-                  </el-button>
+                  <!-- 置灰的【编辑】用外层 span 挂原因提示（禁用按钮自身收不到鼠标事件） -->
+                  <span :title="a.tip || undefined">
+                    <el-button
+                      link
+                      :type="a.type"
+                      :loading="busy[row.id] === a.key"
+                      :disabled="a.disabled || !!busy[row.id]"
+                      @click="onAction(a.key, row)"
+                    >
+                      {{ a.label }}
+                    </el-button>
+                  </span>
                 </template>
               </div>
             </template>
