@@ -12,6 +12,7 @@
  * (终端 + 版本号) 唯一等；本页只负责把确认文案说清楚并展示结果，规则报错原样提示。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -36,7 +37,10 @@ import {
 const { UNPUBLISHED, PUBLISHED, STOPPED } = VERSION_STATUS
 
 // 排序仅发布时间列，默认倒序；未发布记录由数据层始终置顶（PRD §3.3）
-const query = reactive({ keyword: '', terminal: '', status: '', sortDir: 'desc' })
+// 关键字入口：访问审计「管理端操作」的【查看】跳过来时带 query.keyword（操作对象名称，如 Windows v1.2.0），
+// 与其余列表页同款（首次进入还原到搜索框，之后以搜索框为准）。
+const route = useRoute()
+const query = reactive({ keyword: String(route?.query?.keyword || ''), terminal: '', status: '', sortDir: 'desc' })
 
 // 取数编排统一走 useAdminList（四态 / 分页 / 竞态防护），本页只描述「取什么」
 const list = useAdminList(listVersions, { params: () => ({ ...query }) })
@@ -274,7 +278,8 @@ function onAction(key, row) {
             </template>
           </el-table-column>
 
-          <el-table-column label="发布人" :width="96" show-overflow-tooltip>
+          <!-- 发布人记登录用户名（如 xiaomei），比姓名长，故给 120 并保留悬停看全 -->
+          <el-table-column label="发布人" :width="120" show-overflow-tooltip>
             <template #default="{ row }">
               <span v-if="row.publishedBy">{{ row.publishedBy }}</span>
               <span v-else class="cell-na">—</span>

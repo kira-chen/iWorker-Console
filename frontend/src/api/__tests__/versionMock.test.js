@@ -12,17 +12,24 @@ import {
   deleteVersion,
   resetVersionMock
 } from '../versionMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
+import { fmtMinute } from '@/utils/datetime'
 
 /**
  * versionMock 业务规则单测。依据 prd.版本管理.md：
  * §3.3 默认排序（未发布置顶）、§五 发布规则（同终端唯一已发布 / 须高于当前）、§六 停用与回退、
- * §七 删除限制、§八 唯一性与不可变。种子：Windows v1.2.0 / Mac v1.1.0 已发布，各有一条未发布（id 4 / 7）。
+ * §七 删除限制、§八 唯一性与不可变与「审计」（发布 / 停用写访问审计「管理端操作」）、§3.3 发布人为登录用户名。
+ * 种子：Windows v1.2.0 / Mac v1.1.0 已发布，各有一条未发布（id 4 / 7）。
  */
 
 const pkg = { fileName: 'iWorker-Setup-1.4.0.exe', fileSize: 1024, sha256: 'a'.repeat(64) }
 const draft = (over = {}) => ({ terminal: 'WINDOWS', version: 'v1.4.0', releaseNotes: '说明', package: pkg, ...over })
 
-beforeEach(() => resetVersionMock())
+beforeEach(() => {
+  resetVersionMock()
+  resetAccessAuditMock()
+})
+const liveOps = () => opsRecords.filter((r) => r.live)
 
 describe('列表与概览', () => {
   it('默认排序：未发布置顶，其余按发布时间倒序；升序只翻转非未发布记录', async () => {
@@ -45,6 +52,14 @@ describe('列表与概览', () => {
     expect((await listVersions({ keyword: 'v1.2' })).list.map((v) => v.version)).toContain('v1.2.0')
     expect((await listVersions({ keyword: '桌面通知' })).total).toBeGreaterThan(0)
     expect((await listVersions({ keyword: '不存在的内容' })).total).toBe(0)
+  })
+
+  it('关键字匹配「终端 + 版本号」：访问审计【查看】按操作对象名称（如 Windows v1.2.0）跳过来，只应命中那一行', async () => {
+    const hit = await listVersions({ keyword: 'Windows v1.2.0' })
+    expect(hit.list.map((v) => `${v.terminal} ${v.version}`)).toEqual(['WINDOWS v1.2.0'])
+    expect((await listVersions({ keyword: 'mac v1.1.0' })).list.map((v) => v.id)).toEqual([6])
+    // 只写终端名也能筛出该终端的版本
+    expect((await listVersions({ keyword: 'windows' })).list.every((v) => v.terminal === 'WINDOWS' || /windows/i.test(v.releaseNotes))).toBe(true)
   })
 
   it('分页：page/size 切片，total 为筛选后总数', async () => {
@@ -199,5 +214,95 @@ describe('版本包上传（示意）', () => {
     await assertion
     vi.useRealTimers()
     expect(progress.mock.calls.length).toBe(calls)
+  })
+})
+
+describe('发布人为登录用户名（PRD §3.3）', () => {
+  it('种子发布人是用户名（zhang.wei / li.na），不是姓名', async () => {
+    const { list } = await listVersions({ status: 'PUBLISHED' })
+    expect(list.map((v) => v.publishedBy).sort()).toEqual(['li.na', 'li.na'])
+    const all = (await listVersions({ size: 50 })).list.filter((v) => v.publishedBy)
+    for (const v of all) expect(v.publishedBy).toMatch(/^[a-z]+(.[a-z]+)?$/)
+  })
+
+  it('新发布的版本，发布人取当前登录用户名（不是姓名）', async () => {
+    localStorage.setItem('ai_assistant_user', JSON.stringify({ name: '小美', username: 'xiaomei' }))
+    try {
+      const row = await publishVersion(4)
+      expect(row.publishedBy).toBe('xiaomei')
+    } finally {
+      localStorage.clear()
+    }
+  })
+
+  it('无落盘身份时回落到内置演示管理员的用户名 demo', async () => {
+    expect((await publishVersion(4)).publishedBy).toBe('demo')
+  })
+})
+
+describe('写访问审计「管理端操作」（PRD §八 审计 / prd.访问审计.md §6.2）', () => {
+  it('发布成功写一条：模块「版本管理」、动作「发布」、操作对象「终端 + 版本号」、变更内容=更新说明、操作人=用户名', async () => {
+    localStorage.setItem('ai_assistant_user', JSON.stringify({ name: '小美', username: 'xiaomei' }))
+    try {
+      await publishVersion(4) // Windows v1.3.0
+    } finally {
+      localStorage.clear()
+    }
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({
+      operator: 'xiaomei',
+      module: '版本管理',
+      action: '发布',
+      target: 'Windows v1.3.0',
+      detail: '新增记忆管理；技能市场支持记住上次筛选条件。'
+    })
+  })
+
+  it('停用成功写一条「停用」，变更内容为空', async () => {
+    await stopVersion(3) // Windows v1.2.0
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({ module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: '' })
+  })
+
+  it('发布新版本引起的旧版本自动停用不单独记一条「停用」，只记这次「发布」', async () => {
+    await publishVersion(4) // v1.3.0 上线，v1.2.0 被自动停用
+    expect(liveOps().map((r) => `${r.action} ${r.target}`)).toEqual(['发布 Windows v1.3.0'])
+  })
+
+  it('规则报错（版本号不高于当前 / 已发布不可停用 / 重复发布）时不写记录', async () => {
+    const low = await createVersion(draft({ version: 'v1.1.5' }))
+    await expect(publishVersion(low.id)).rejects.toBeTruthy()
+    await expect(stopVersion(4)).rejects.toBeTruthy() // 未发布不可停用
+    await expect(publishVersion(3)).rejects.toBeTruthy() // 已发布不可重复发布
+    expect(liveOps()).toHaveLength(0)
+  })
+
+  it('新建 / 编辑 / 删除（未上线的草稿）不写记录', async () => {
+    const row = await createVersion(draft({ version: 'v1.5.0' }))
+    await updateVersion(row.id, draft({ version: 'v1.5.1' }))
+    await deleteVersion(row.id)
+    expect(liveOps()).toHaveLength(0)
+  })
+
+  it('回退（先停用再重新发布）会各留一条记录，按时间倒序可追溯', async () => {
+    await publishVersion(4)
+    await stopVersion(4)
+    await publishVersion(3)
+    expect(liveOps().map((r) => `${r.action} ${r.target}`)).toEqual(['发布 Windows v1.2.0', '停用 Windows v1.3.0', '发布 Windows v1.3.0'])
+  })
+})
+
+describe('审计种子与版本种子一致（防两份手写种子漂移）', () => {
+  it('每个有发布时间的种子版本，在访问审计里都有一条同时间 / 同操作人 / 同更新说明的「发布」记录，且无多余记录', async () => {
+    const { list } = await listVersions({ size: 50 })
+    const published = list.filter((v) => v.publishedAt)
+    const seeds = opsRecords.filter((r) => r.module === '版本管理' && !r.live)
+    expect(seeds).toHaveLength(published.length)
+    for (const v of published) {
+      const target = `${v.terminal === 'MAC' ? 'Mac' : 'Windows'} ${v.version}`
+      const rec = seeds.find((r) => r.target === target)
+      expect(rec, target).toBeTruthy()
+      expect(rec).toMatchObject({ action: '发布', operator: v.publishedBy, time: fmtMinute(v.publishedAt), detail: v.releaseNotes })
+    }
   })
 })

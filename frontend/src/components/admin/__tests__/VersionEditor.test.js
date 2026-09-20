@@ -32,7 +32,7 @@ const DRAFT = {
   sha256: 'c'.repeat(64), releaseNotes: '新增记忆管理', status: 'UNPUBLISHED',
   publishedAt: null, publishedBy: null, stoppedAt: null
 }
-const PUBLISHED = { ...DRAFT, id: 3, version: 'v1.2.0', status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: '李娜' }
+const PUBLISHED = { ...DRAFT, id: 3, version: 'v1.2.0', status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: 'li.na' }
 
 let mounted
 let state
@@ -367,7 +367,7 @@ describe('VersionEditor · 编辑 / 查看（PRD §四）', () => {
     const t = $('.el-drawer').textContent.replace(/\s+/g, ' ')
     expect(t).toContain('Windows')
     expect(t).toContain('已发布')
-    expect(t).toContain('李娜')
+    expect(t).toContain('li.na') // 发布人显示登录用户名
     expect(t).toContain('2026-08-20 10:30')
     expect(t).toContain('iWorker-Setup-1.3.0.exe')
     expect(t).toContain('88 MB')

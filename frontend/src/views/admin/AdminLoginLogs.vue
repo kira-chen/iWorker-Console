@@ -176,6 +176,7 @@ const MOD_CLS = {
   模型: 'tag-orange',
   审核中心: 'tag-green',
   用户技能审核: 'tag-orange',
+  版本管理: 'tag-gray',
 }
 const ACT_CLS = {
   发布: 'tag-green',
@@ -200,6 +201,7 @@ const MODULE_ROUTE = {
   模型:       { name: 'AdminModels' },
   审核中心:   { name: 'UnifiedReview' },
   用户技能审核: { name: 'SysConfigUserSkillReviews' },
+  版本管理:   { name: 'AdminVersions' },
 }
 
 function opsGoto(row) {
@@ -406,7 +408,7 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','专家','技能','知识库','MCP','API','业务系统','模型','审核中心','用户技能审核']"
+          <el-option v-for="m in ['岗位','专家','技能','知识库','MCP','API','业务系统','模型','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">

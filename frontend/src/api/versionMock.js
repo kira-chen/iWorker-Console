@@ -8,6 +8,10 @@
  * - 发布前校验：待发布版本号须**大于**同终端当前已发布版本；同终端无已发布版本时不受限（PRD §五）。
  * - (终端 + 版本号) 唯一；仅「未发布」可编辑 / 删除；曾发布过的版本不可删除（PRD §七、§八）。
  * - 列表默认排序：未发布置顶，其余按发布时间排序（PRD §3.3）。
+ * - 发布人（publishedBy）记登录用户名（如 xiaomei），不是姓名（PRD §3.3）。
+ * - 发布 / 停用成功后往访问审计「管理端操作」写一条记录（PRD §八）：操作人=当前用户名、模块=版本管理、
+ *   操作对象=「终端 + 版本号」（如 Windows v1.2.0）、变更内容=发布时取更新说明、停用为空。
+ *   发布新版本引起的旧版本自动停用不单独记；规则报错（校验不通过）时不写。
  *
  * 【版本包上传是示意】demo 不真实存储文件：uploadVersionPackage 只按文件名 / 大小模拟进度，
  * 并生成一个假的 SHA-256。为了能演示「上传失败」态，文件名含 `fail` 的文件会模拟网络中断。
@@ -16,7 +20,8 @@
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 import { nowIsoLocal } from '@/utils/datetime'
-import { currentDemoUserName } from '@/utils/demoIdentity'
+import { currentDemoUsername } from '@/utils/demoIdentity'
+import { appendOpsRecord } from './accessAuditMock'
 import { VERSION_STATUS, normalizeVersion, compareVersions, terminalLabel } from '@/utils/versionMeta'
 
 const { UNPUBLISHED, PUBLISHED, STOPPED } = VERSION_STATUS
@@ -48,21 +53,21 @@ function seedRows() {
       id: 1, terminal: 'WINDOWS', version: 'v1.0.0', packageName: 'iWorker-Setup-1.0.0.exe', packageSize: 82314240,
       sha256: fakeSha256('win-1.0.0'), status: STOPPED,
       releaseNotes: '首个正式版本：\n1. 支持岗位对话与技能调用\n2. 支持知识库检索\n3. 支持定时任务',
-      publishedAt: '2026-06-20T10:00:00+08:00', publishedBy: '张伟', stoppedAt: '2026-07-18T10:05:00+08:00',
+      publishedAt: '2026-06-20T10:00:00+08:00', publishedBy: 'zhang.wei', stoppedAt: '2026-07-18T10:05:00+08:00',
       createdAt: '2026-06-19T16:20:00+08:00', updatedAt: '2026-07-18T10:05:00+08:00'
     },
     {
       id: 2, terminal: 'WINDOWS', version: 'v1.1.0', packageName: 'iWorker-Setup-1.1.0.exe', packageSize: 86104064,
       sha256: fakeSha256('win-1.1.0'), status: STOPPED,
       releaseNotes: '新增技能市场；优化长对话滚动体验。',
-      publishedAt: '2026-07-18T10:00:00+08:00', publishedBy: '张伟', stoppedAt: '2026-08-20T10:30:00+08:00',
+      publishedAt: '2026-07-18T10:00:00+08:00', publishedBy: 'zhang.wei', stoppedAt: '2026-08-20T10:30:00+08:00',
       createdAt: '2026-07-17T15:40:00+08:00', updatedAt: '2026-08-20T10:30:00+08:00'
     },
     {
       id: 3, terminal: 'WINDOWS', version: 'v1.2.0', packageName: 'iWorker-Setup-1.2.0.exe', packageSize: 90596966,
       sha256: fakeSha256('win-1.2.0'), status: PUBLISHED,
       releaseNotes: '1. 对话引用来源支持一键复制\n2. 任务完成后增加桌面通知\n3. 修复长对话滚动偶尔跳到顶部的问题',
-      publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: '李娜', stoppedAt: null,
+      publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: 'li.na', stoppedAt: null,
       createdAt: '2026-08-19T17:10:00+08:00', updatedAt: '2026-08-20T10:30:00+08:00'
     },
     {
@@ -76,14 +81,14 @@ function seedRows() {
       id: 5, terminal: 'MAC', version: 'v1.0.0', packageName: 'iWorker-1.0.0.dmg', packageSize: 96468992,
       sha256: fakeSha256('mac-1.0.0'), status: STOPPED,
       releaseNotes: '首个正式版本（Mac）：支持岗位对话、技能调用与知识库检索。',
-      publishedAt: '2026-06-20T10:10:00+08:00', publishedBy: '张伟', stoppedAt: '2026-08-20T10:32:00+08:00',
+      publishedAt: '2026-06-20T10:10:00+08:00', publishedBy: 'zhang.wei', stoppedAt: '2026-08-20T10:32:00+08:00',
       createdAt: '2026-06-19T16:30:00+08:00', updatedAt: '2026-08-20T10:32:00+08:00'
     },
     {
       id: 6, terminal: 'MAC', version: 'v1.1.0', packageName: 'iWorker-1.1.0.dmg', packageSize: 99614720,
       sha256: fakeSha256('mac-1.1.0'), status: PUBLISHED,
-      releaseNotes: '同步 Windows v1.2.0 的主要更新：引用来源一键复制、任务完成桌面通知。',
-      publishedAt: '2026-08-20T10:32:00+08:00', publishedBy: '李娜', stoppedAt: null,
+      releaseNotes: '与 Windows 端同步：引用来源一键复制、任务完成桌面通知。',
+      publishedAt: '2026-08-20T10:32:00+08:00', publishedBy: 'li.na', stoppedAt: null,
       createdAt: '2026-08-19T17:30:00+08:00', updatedAt: '2026-08-20T10:32:00+08:00'
     },
     {
@@ -99,9 +104,10 @@ function seedRows() {
 let versions = seedRows()
 let seq = 8
 
-// version 1（2026-09-20 首版）。快照结构变了记得 +1。
+// version 1（2026-09-20 首版）；version 2（2026-09-20）：发布人由姓名改为登录用户名，旧快照弃用回种子。
+// 快照结构 / 种子口径变了记得 +1。
 const persist = attachPersist('version', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ seq, versions }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.seq) || !Array.isArray(d.versions)) {
@@ -125,6 +131,7 @@ const currentPublished = (terminal) => versions.find((v) => v.terminal === termi
 
 /**
  * 列表。params: { keyword?, terminal?, status?, sortDir?('asc'|'desc'), page?, size? } → { list, total }
+ * 关键字匹配「终端 + 版本号」（如 Windows v1.2.0，访问审计【查看】按操作对象名称跳过来时注入的就是它）与更新说明。
  * 排序：未发布（无发布时间）始终置顶（按创建时间倒序），其余按发布时间排序，默认倒序。
  */
 export async function listVersions(params = {}) {
@@ -134,7 +141,7 @@ export async function listVersions(params = {}) {
     (v) =>
       (!params.terminal || v.terminal === params.terminal) &&
       (!params.status || v.status === params.status) &&
-      (!q || [v.version, v.releaseNotes].some((s) => String(s).toLowerCase().includes(q)))
+      (!q || [`${terminalLabel(v.terminal)} ${v.version}`, v.releaseNotes].some((s) => String(s).toLowerCase().includes(q)))
   )
   const dir = params.sortDir === 'asc' ? 1 : -1
   const byTime = (a, b) => dir * String(a.publishedAt).localeCompare(String(b.publishedAt))
@@ -242,6 +249,17 @@ export async function updateVersion(id, payload) {
   return clone(row)
 }
 
+/** 往访问审计「管理端操作」写一条版本管理记录（发布带更新说明，停用为空）。 */
+function auditVersionOp(row, action, detail = '') {
+  appendOpsRecord({
+    operator: currentDemoUsername(),
+    module: '版本管理',
+    action,
+    target: `${terminalLabel(row.terminal)} ${row.version}`,
+    detail
+  })
+}
+
 /** 发布 / 重新发布：见头注释的规则。 */
 export async function publishVersion(id) {
   await delay()
@@ -260,10 +278,11 @@ export async function publishVersion(id) {
   }
   row.status = PUBLISHED
   row.publishedAt = now
-  row.publishedBy = currentDemoUserName()
+  row.publishedBy = currentDemoUsername()
   row.stoppedAt = null
   row.updatedAt = now
   persist()
+  auditVersionOp(row, '发布', row.releaseNotes)
   return clone(row)
 }
 
@@ -278,6 +297,7 @@ export async function stopVersion(id) {
   row.stoppedAt = now
   row.updatedAt = now
   persist()
+  auditVersionOp(row, '停用')
   return clone(row)
 }
 

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
@@ -41,9 +42,9 @@ const row = (over) => ({
   ...over
 })
 const DRAFT = row({ id: 4, version: 'v1.3.0' })
-const PUBLISHED = row({ id: 3, version: 'v1.2.0', status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: '李娜' })
-const STOPPED = row({ id: 2, version: 'v1.1.0', status: 'STOPPED', publishedAt: '2026-07-18T10:00:00+08:00', publishedBy: '张伟', stoppedAt: '2026-08-20T10:30:00+08:00' })
-const MAC_PUBLISHED = row({ id: 6, terminal: 'MAC', version: 'v1.1.0', packageName: 'iWorker-1.1.0.dmg', status: 'PUBLISHED', publishedAt: '2026-08-20T10:32:00+08:00', publishedBy: '李娜' })
+const PUBLISHED = row({ id: 3, version: 'v1.2.0', status: 'PUBLISHED', publishedAt: '2026-08-20T10:30:00+08:00', publishedBy: 'li.na' })
+const STOPPED = row({ id: 2, version: 'v1.1.0', status: 'STOPPED', publishedAt: '2026-07-18T10:00:00+08:00', publishedBy: 'zhang.wei', stoppedAt: '2026-08-20T10:30:00+08:00' })
+const MAC_PUBLISHED = row({ id: 6, terminal: 'MAC', version: 'v1.1.0', packageName: 'iWorker-1.1.0.dmg', status: 'PUBLISHED', publishedAt: '2026-08-20T10:32:00+08:00', publishedBy: 'li.na' })
 const ROWS = [DRAFT, PUBLISHED, STOPPED, MAC_PUBLISHED]
 
 let mounted
@@ -54,8 +55,12 @@ const rowOf = (terminal, version) =>
 const opsOf = (tr) => [...tr.querySelectorAll('.tbl-ops button')].map((b) => b.textContent.trim())
 const clickOp = (tr, label) => [...tr.querySelectorAll('.tbl-ops button')].find((b) => b.textContent.trim() === label).click()
 
-async function mount() {
-  mounted = mountReal(AdminVersions)
+/** query：模拟从别的页面（如访问审计【查看】）带参跳进来。 */
+async function mount({ query = {} } = {}) {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  await router.push({ path: '/', query })
+  await router.isReady()
+  mounted = mountReal(AdminVersions, {}, { plugins: [router] })
   await flushAll(12)
 }
 
@@ -136,6 +141,21 @@ describe('AdminVersions · 页面结构（PRD §一 / §3.1 / §3.2）', () => {
   })
 })
 
+describe('AdminVersions · 从访问审计【查看】跳转进入（prd.访问审计.md §6.3）', () => {
+  it('地址带 keyword（操作对象名称，如 Windows v1.2.0）→ 预填搜索框，并作为首次取数条件', async () => {
+    await mount({ query: { keyword: 'Windows v1.2.0' } })
+    expect(mounted.container.querySelector('.lt-search input').value).toBe('Windows v1.2.0')
+    expect(api.listVersions).toHaveBeenCalledTimes(1)
+    expect(api.listVersions.mock.calls[0][0]).toMatchObject({ keyword: 'Windows v1.2.0', page: 1 })
+  })
+
+  it('不带 keyword 时搜索框为空，取数不带 keyword', async () => {
+    await mount()
+    expect(mounted.container.querySelector('.lt-search input').value).toBe('')
+    expect(api.listVersions.mock.calls[0][0]).not.toHaveProperty('keyword')
+  })
+})
+
 describe('AdminVersions · 列表（PRD §3.3）', () => {
   it('八列：版本号 / 终端 / 版本包 / 更新说明 / 状态 / 发布时间 / 发布人 / 操作', async () => {
     await mount()
@@ -150,7 +170,7 @@ describe('AdminVersions · 列表（PRD §3.3）', () => {
     expect(pub.textContent).toContain('86.4 MB')
     expect(pub.textContent).toContain('已发布')
     expect(pub.textContent).toContain('2026-08-20 10:30')
-    expect(pub.textContent).toContain('李娜')
+    expect(pub.textContent).toContain('li.na') // 发布人显示登录用户名（PRD §3.3）
     const draft = rowOf('Windows', 'v1.3.0')
     expect(draft.textContent).toContain('未发布')
     expect(draft.querySelectorAll('.cell-na')).toHaveLength(2)
