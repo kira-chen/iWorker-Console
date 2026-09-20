@@ -11,6 +11,15 @@
  * 2026-09-08 按 PRD-20260908 md §六.2 / §七 回齐：
  * - MCP 数据源不再有请求 / 响应映射（md §七 删除两节；映射仅 API 数据源持有）；
  * - API 请求参数映射递归嵌套细化：新建默认三级示例组 mkRequestMapExampleRows、object/array 至少一个有效子字段校验。
+ * 2026-09-18 推翻 09-08 决议，MCP 数据源重新加回两项映射，并顺带把 API 响应字段映射也改成同一套机制
+ * （md §六.3 / §七.5，两者字段结构完全一致，仅预设字段与必填项不同）：
+ * - 请求参数映射复用 mkRequestMapRows / validateRequestMap（预设 query/topK，API/MCP 完全一致，不单独建函数）；
+ * - 响应字段映射改为显式改名：参数名=平台标准字段固定，另有可编辑的「接口返回字段名」（sourceField）列，
+ *   按工具/接口实际返回的字段名填写（此前 API 侧「不做改名映射」的口径随之废止）；
+ *   mkResponsePresetRows 统一生产预设行，API 预设 content/source/score（sourceField 默认与参数名同名，
+ *   延续改造前行为）、MCP 预设 title/content/sourceName（sourceField 默认留空，由管理员按工具实际返回填写）；
+ *   validateResponseMap 收口两者校验，MCP 侧另经 validateMcpResponseMap 多校验一个「结果数组路径」必填字段
+ *   （工具返回结构无统一形状，需 JSONPath 定位结果数组，API 无此概念）。
  *
  * 状态三态：status ∈ DRAFT / PENDING_REVIEW / PUBLISHED；待发布与待停用由
  * pendingAction（PUBLISH / DELIST）标记，列表统一展示「审核中」（md §八.1），
@@ -88,10 +97,10 @@ export const DOC_KIND_LABELS = DOC_KIND_OPTIONS.reduce((acc, o) => ((acc[o.value
  * kinds：按文档类型动态展示（md：不展示对当前类型无效的配置）。
  */
 export const PREPROCESS_OPTIONS = [
-  { key: 'replaceWhitespace', label: '替换连续空格、换行符和制表符', desc: '压缩空白字符，保留语义连续性', kinds: ['DOC', 'TABLE', 'FAQ'] },
   { key: 'extractContacts', label: '提取 URL 和邮箱地址', desc: '识别链接与联系方式，便于引用追溯（默认开启）', kinds: ['DOC', 'TABLE', 'FAQ'] },
   { key: 'plainTable', label: '纯文本化表格内容', desc: '将行列结构转为可检索文本', kinds: ['DOC', 'TABLE'] }
   // 「启用图片理解」已删（2026-09-06 负责人拍板 Q19：预处理按原型 3 项，md 第 4 项不实现）
+  // 「替换连续空格、换行符和制表符」已删（2026-09-18 负责人拍板，md §五.1 同步去除）
 ]
 export const RETRIEVAL_OPTIONS = [
   { value: 'HYBRID', label: '混合检索' },
@@ -101,7 +110,6 @@ export const RETRIEVAL_OPTIONS = [
 export const UPLOAD_DEFAULTS = Object.freeze({
   docKind: 'DOC',
   // 预处理默认值：仅「提取 URL 和邮箱地址」默认开启（md §五.1）
-  replaceWhitespace: false,
   extractContacts: true,
   plainTable: false,
   embeddingModelId: '',
@@ -162,20 +170,43 @@ export function mkRequestMapExampleRows() {
   ]
 }
 /**
+ * 响应字段映射预设行工厂（2026-09-18 起 API §六.3 / MCP §七.5 同一套机制：参数名固定，另有可编辑的
+ * 「接口返回字段名」（sourceField）做显式改名映射）。行结构：{ name, sourceField, description, type, preset }。
+ */
+function mkResponsePresetRows(presets) {
+  return presets.map((p) => ({ name: p.name, sourceField: p.sourceField || '', description: p.description, type: p.type || 'string', preset: true }))
+}
+/**
  * 响应字段映射预设三行（md §六.3：content 内容·string / source 来源·string / score 相关度分数·number；
- * 预设不可删、变量类型可改）。行结构：{ name, description, type, preset }。
+ * 预设不可删、变量类型可改）。接口返回字段名默认与参数名同名（沿用改造前"不做改名映射"的隐含口径），
+ * 按需改为第三方实际返回的字段名；三者均无自然回退值，须保持非空。
  */
 export function mkResponseMapRows() {
-  return [
-    { name: 'content', description: '内容', type: 'string', preset: true },
-    { name: 'source', description: '来源', type: 'string', preset: true },
-    { name: 'score', description: '相关度分数', type: 'number', preset: true }
-  ]
+  return mkResponsePresetRows([
+    { name: 'content', sourceField: 'content', description: '内容' },
+    { name: 'source', sourceField: 'source', description: '来源' },
+    { name: 'score', sourceField: 'score', description: '相关度分数', type: 'number' }
+  ])
 }
 /** 响应映射自定义空行。 */
 export function mkResponseMapRow() {
-  return { name: '', description: '', type: 'string', preset: false }
+  return { name: '', sourceField: '', description: '', type: 'string', preset: false }
 }
+
+/**
+ * MCP 响应字段预设三行（md §七.5：title 标题·string / content 内容·string / sourceName 来源名称·string；
+ * 预设不可删、变量类型可改）。接口返回字段名留空展示，由管理员按工具实际返回结构填写
+ * （title/content 必填，sourceName 可留空——留空则取数据源名称，见 validateResponseMap 的 optionalPresetNames）。
+ */
+export function mkMcpResponseMapRows() {
+  return mkResponsePresetRows([
+    { name: 'title', description: '标题' },
+    { name: 'content', description: '内容' },
+    { name: 'sourceName', description: '来源名称' }
+  ])
+}
+/** 行结构与 API 响应字段映射完全一致，直接复用同一个自定义空行工厂。 */
+export const mkMcpResponseMapRow = mkResponseMapRow
 
 /** 空白自定义行（无名 / 无默认值 / 无子字段）：保存时丢弃、校验时跳过。 */
 function isBlankRequestRow(r) {
@@ -211,24 +242,41 @@ export function validateRequestMap(rows) {
   return walk(list, '')
 }
 /**
- * 校验响应字段映射行：至少一条输出参数（原型保存校验文案同口径）；
- * 行填了内容就必须有参数名、变量类型合法；参数名不重复。返回错误文案，无错 ''。
+ * 校验响应字段映射行（API md §六.3 / MCP md §七.5 共用）：预设行须填写接口返回字段名（除 optionalPresetNames
+ * 列出的字段——留空取运行时默认值，如 MCP 的 sourceName）；自定义行填了内容就必须有参数名、接口返回字段名、
+ * 合法变量类型；参数名不重复；至少一条输出参数。返回错误文案，无错 ''。
+ * opts.minPreset：预设行数量下限（防御性校验，正常流程由 mk*ResponseMapRows 保证）。
  */
-export function validateResponseMap(rows) {
+export function validateResponseMap(rows, opts = {}) {
+  const { label = '响应字段映射', minPreset = null, optionalPresetNames = [] } = opts
   const list = Array.isArray(rows) ? rows : []
+  if (minPreset != null && list.filter((r) => r.preset).length < minPreset) return `${label}缺少预设字段`
   const seen = new Set()
   let effective = 0
   for (const r of list) {
     const name = (r?.name || '').trim()
-    if (!r?.preset && !name && !(r?.description || '').trim()) continue
-    if (!name) return '响应字段映射：参数名必填'
-    if (!VAR_TYPE_OPTIONS.includes(r.type)) return `响应字段映射：${name} 请选择变量类型`
-    if (seen.has(name)) return `响应字段映射：参数名重复（${name}）`
+    const sourceField = (r?.sourceField || '').trim()
+    if (r?.preset) {
+      if (!optionalPresetNames.includes(name) && !sourceField) return `${label}：${name} 需填写接口返回字段名`
+      seen.add(name)
+      effective++
+      continue
+    }
+    if (!name && !sourceField && !(r?.description || '').trim()) continue // 空白自定义行：保存时丢弃
+    if (!name) return `${label}：参数名必填`
+    if (!sourceField) return `${label}：${name} 需填写接口返回字段名`
+    if (!VAR_TYPE_OPTIONS.includes(r.type)) return `${label}：${name} 请选择变量类型`
+    if (seen.has(name)) return `${label}：参数名重复（${name}）`
     seen.add(name)
     effective++
   }
-  if (!effective) return '响应字段映射至少存在一条输出参数'
+  if (!effective) return `${label}至少存在一条输出参数`
   return ''
+}
+/** 校验 MCP 响应字段（md §七.5）：结果数组路径必填 + 复用 validateResponseMap（sourceName 可留空）。 */
+export function validateMcpResponseMap(rows, resultArrayPath) {
+  if (!String(resultArrayPath || '').trim()) return '请填写结果数组路径'
+  return validateResponseMap(rows, { label: '响应字段', minPreset: 3, optionalPresetNames: ['sourceName'] })
 }
 
 export const API_DEFAULTS = Object.freeze({
@@ -245,7 +293,8 @@ export const MCP_DEFAULTS = Object.freeze({
   authType: 'none', // none | bearer | header（md §七.2.1：无鉴权、Bearer Token、API Key，默认无鉴权）
   authHeaderName: '', // API Key 模式 Header 名：≤128，仅字母数字连字符（md §七.2.1）
   command: 'npx', // stdio：npx | uvx | node | python3 | docker（md §七.2.2）
-  timeoutMs: 10000 // 必填，使用系统默认值可直接修改；默认 10000，范围 1000～120000（md §七.4，取值维持现实现）
+  timeoutMs: 10000, // 必填，使用系统默认值可直接修改；默认 10000，范围 1000～120000（md §七.6，取值维持现实现）
+  resultArrayPath: '$.content[0].items[*]' // 结果数组路径示例值，新建默认展示（md §七.5）
 })
 /** 各文档类型可接受的文件格式（md §五.2） */
 export const ACCEPT_BY_DOC_KIND = Object.freeze({

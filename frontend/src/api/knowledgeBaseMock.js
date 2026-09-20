@@ -19,6 +19,9 @@
  * - 保存校验按 md：地址 / 方法 / 鉴权条件必填 / 映射预设行必填项（API）/ 工具 ≥1（MCP）（validateSourceConfig）。
  * 2026-09-08 按 PRD-20260908 md §七 回齐：MCP config 不再有 requestMap / responseMap（md 删除两节，回退 09-07 半边实现）；
  *   映射校验与连接签名的映射项仅 API 持有；API 请求映射补 object/array 子字段校验（knowledgeBaseMeta.validateRequestMap）。
+ * 2026-09-18 推翻 09-08 决议：MCP config 重新加回 requestMap / responseMap / resultArrayPath（md §七.4 / §七.5），
+ *   validateSourceConfig / connSignature 的映射项两类数据源同口径校验；API 响应字段映射同步改为显式改名
+ *   （responseMap 行新增 sourceField，knowledgeBaseMeta.validateResponseMap 收口两者）。
  * 2026-09-08 决议第 9 项（md §八.1 L417）：数据源列表「概要」按验证状态由 mock 派生（sourceVO.summary）——
  *   新建保存未测试「未验证」→ 测试通过「已连通」（MCP 附所选检索工具名，如「已连通 · search_documents」）/
  *   测试失败「连接失败」→ 修改连接配置后保存重置「未验证」；对「刚测试过的这份配置」保存时不重置（lastTest 签名比对）。
@@ -43,8 +46,10 @@ import {
   RETRIEVAL_OPTIONS,
   mkRequestMapRows,
   mkResponseMapRows,
+  mkMcpResponseMapRows,
   validateRequestMap,
-  validateResponseMap
+  validateResponseMap,
+  validateMcpResponseMap
 } from '@/utils/knowledgeBaseMeta'
 import { MCP_TRANSPORTS, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
 
@@ -83,7 +88,6 @@ const mkSrc = (id, sourceType, name, config = {}, verifyStatus = 'UNVERIFIED', s
 const upl = (id, name, over = {}) =>
   mkSrc(id, 'UPLOAD', name, {
     docKind: 'DOC',
-    replaceWhitespace: false,
     extractContacts: true,
     plainTable: false,
     embeddingModelId: 'md_emb_1',
@@ -128,7 +132,11 @@ const mcpSrc = (id, name, over = {}) =>
       args: [],
       envVars: [],
       tools: ['search_documents', 'hybrid_search'], // 检索工具多选（md §七.3：≥1）
-      timeoutMs: 10000, // md §七.4：必填，系统默认值可直接修改
+      requestMap: mkRequestMapRows(), // 与 API 同构，预设 query/topK（md §七.4）
+      // 响应字段（md §七.5）：接口返回字段名给出真实示例（title/content 必填映射，sourceName 留空演示取数据源名称）
+      responseMap: mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: { title: 'title', content: 'text', sourceName: '' }[r.name] ?? '' })),
+      resultArrayPath: '$.content[0].items[*]', // md §七.5：结果数组路径必填
+      timeoutMs: 10000, // md §七.6：必填，系统默认值可直接修改
       ...over
     },
     'SUCCESS'
@@ -186,8 +194,11 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // version 6（2026-09-10 D3）：岗位可见范围种子对齐岗位模块四岗（销售顾问/HR 专员 → 经营分析岗/财务审核岗，
 // kb_4/kb_5 名称描述随岗位改写）；旧快照仍挂不存在的岗位名，弃用回种子。
 // version 7（2026-09-11）：知识库种子加 icon 字段；旧快照无该字段，弃用回种子。
+// version 8（2026-09-18）：①推翻 09-08 决议，MCP 种子加回 requestMap/responseMap/resultArrayPath，
+// API 种子 responseMap 行加 sourceField；②上传预处理删「替换连续空格/换行符/制表符」，UPLOAD 种子去
+// replaceWhitespace 键；旧快照两处结构均不兼容，弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 7,
+  version: 8,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -543,6 +554,11 @@ function validateSourceConfig(payload, prev) {
     if (!Array.isArray(cfg.tools) || !cfg.tools.length) bad('至少选择一个检索工具', 'tools')
     const t = Number(cfg.timeoutMs)
     if (!Number.isFinite(t) || t < 1000 || t > 120000) bad('超时时间需在 1000～120000ms 之间', 'timeoutMs')
+    // 请求 / 响应映射（md §七.4 / §七.5；与 API 同一套机制，MCP 多校验结果数组路径）
+    const mcpReqErr = validateRequestMap(cfg.requestMap)
+    if (mcpReqErr) bad(mcpReqErr, 'requestMap')
+    const mcpRespErr = validateMcpResponseMap(cfg.responseMap, cfg.resultArrayPath)
+    if (mcpRespErr) bad(mcpRespErr, 'responseMap')
   }
 }
 // 敏感信息：明文只在提交瞬间存在，落库即 maskSecret 掩码（md §四.3：保存后遮罩展示，不回显明文；
@@ -576,7 +592,7 @@ function mergeConfig(prev, payload) {
   return cfg
 }
 /**
- * 连接签名：请求地址 / 鉴权 / 映射（API，md §六.4）+ 服务地址 / 鉴权 / 工具（MCP，md §七.5；MCP 无映射）。
+ * 连接签名：请求地址 / 鉴权 / 映射（API，md §六.4）+ 服务地址 / 鉴权 / 工具 / 映射（MCP，md §七.7）。
  * 保存时签名变化或提交了新密钥 → 验证状态重置为未验证；仅改名称 / 状态 / 超时不重置。
  */
 function connSignature(type, cfg = {}) {
@@ -598,7 +614,10 @@ function connSignature(type, cfg = {}) {
       command: cfg.command,
       args: cfg.args,
       env: (cfg.envVars || []).map((r) => [r.key, !!r.clientFill]),
-      tools: cfg.tools
+      tools: cfg.tools,
+      req: cfg.requestMap,
+      resp: cfg.responseMap,
+      resultArrayPath: cfg.resultArrayPath
     })
   }
   return ''

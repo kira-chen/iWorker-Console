@@ -5,17 +5,21 @@
  * + 交互原型 sourceFields / kmcpMarkup 最终覆写生效态重排（字段口径以 md 为准，骨架照原型）；
  * 2026-09-08 按 PRD-20260908 回齐：MCP 数据源删除请求 / 响应映射（md §七 两节删除，回退 2026-09-07 半边实现）；
  * API 请求参数映射递归嵌套细化（md §六.2 七条：新建默认三级示例组、子层 4 列、层级提示、强调色、子字段校验）。
+ * 2026-09-18 推翻 09-08 决议，MCP 数据源重新加回请求参数映射 + 响应字段（md §七.4 / §七.5，SourceMappingEditor
+ *   加 variant='mcp' 复用，见该组件头注释）；请求映射与 API 完全同构（预设 query/topK）；响应字段预设
+ *   title/content/sourceName，多「结果数组路径」必填字段与「接口返回字段名」列（显式改名，API 侧无该列）。
  *
  * 【公共字段】（md §四.3）名称（≤50 必填）/ 类型（上传·API·MCP，创建后不可修改）/ 状态（启用·停用）。
  * 【上传】（md §五）本轮冻结不动：文档类型 / 预处理 / 向量模型 / 检索方式 Top K。
  * 【API】（md §六）请求配置（地址 ≤500 http(s)、方法五枚举默认 POST、超时 1000~60000 默认 8000）
  *   → 鉴权配置（无鉴权 / API KEY 多参数表[ParamRowsEditor] / Bearer Token）
- *   → 请求参数映射 + 响应字段映射（SourceMappingEditor，预设行不可删；新建时注入 filters→rules→field/value 示例组）
- *   → 测试连接。
+ *   → 请求参数映射 + 响应字段映射（SourceMappingEditor variant='api'，预设行不可删；新建时注入
+ *   filters→rules→field/value 示例组）→ 测试连接。
  * 【MCP】（md §七）仅直接填写（「引用现有 MCP」模式已删除）：传输方式 streamable-http（Endpoint + 鉴权
  *   无鉴权/Bearer/API Key）或 stdio（Command 下拉 + Arguments 多行 + 环境变量表[ParamRowsEditor]）；
- *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）；
- *   超时必填默认 10000 范围 1000~120000（md §七.4）→ 测试连接（md §七.5）。MCP 无映射配置。
+ *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）→ 请求参数映射 + 响应字段
+ *   （SourceMappingEditor variant='mcp'，不注入 API 侧的三级示例组）→ 超时必填默认 10000 范围 1000~120000
+ *   （md §七.6）→ 测试连接（md §七.7）。
  *
  * 敏感信息遮罩：明文只在提交瞬间存在，回显一律 maskSecret 掩码；编辑态留空=保留原值（md §八.2）。
  * 修改请求地址 / 鉴权 / 映射（API）或服务地址 / 鉴权 / 工具（MCP）→ 验证状态重置为未验证（md §六.4 / §七.5，mock 保存时同口径）。
@@ -57,8 +61,10 @@ import {
   mkRequestMapRows,
   mkRequestMapExampleRows,
   mkResponseMapRows,
+  mkMcpResponseMapRows,
   validateRequestMap,
-  validateResponseMap
+  validateResponseMap,
+  validateMcpResponseMap
 } from '@/utils/knowledgeBaseMeta'
 import {
   API_AUTH_IN_OPTIONS,
@@ -126,6 +132,8 @@ const loadedMcpAuthType = ref('none')
 const mcpArgsText = ref('')
 const mcpEnvRows = ref([])
 const mcpToolsSelected = ref([])
+const mcpRequestRows = ref(mkRequestMapRows())
+const mcpResponseRows = ref(mkMcpResponseMapRows())
 const availableTools = ref([]) // 连接测试成功返回的工具清单（md §七.3）
 
 const fieldErrors = reactive({})
@@ -209,10 +217,17 @@ function normalizeRequestRows(rows) {
   // 预设 query / topK 兜底补齐（固定行不可删，md §六.2）
   return out.filter((r) => r.preset).length >= 2 ? out : [...mkRequestMapRows(), ...out.filter((r) => !r.preset)]
 }
-function normalizeResponseRows(rows) {
-  if (!Array.isArray(rows) || !rows.length) return mkResponseMapRows()
-  const out = rows.map((r) => ({ name: r.name || '', description: r.description || '', type: r.type || 'string', preset: !!r.preset }))
-  return out.filter((r) => r.preset).length >= 3 ? out : [...mkResponseMapRows(), ...out.filter((r) => !r.preset)]
+/** 响应字段回填（md §六.3 API / §七.5 MCP 共用行结构）；mkDefaults 决定预设集，MCP 传 mkMcpResponseMapRows。 */
+function normalizeResponseRows(rows, mkDefaults = mkResponseMapRows) {
+  if (!Array.isArray(rows) || !rows.length) return mkDefaults()
+  const out = rows.map((r) => ({
+    name: r.name || '',
+    sourceField: r.sourceField || '',
+    description: r.description || '',
+    type: r.type || 'string',
+    preset: !!r.preset
+  }))
+  return out.filter((r) => r.preset).length >= 3 ? out : [...mkDefaults(), ...out.filter((r) => !r.preset)]
 }
 function resetForm() {
   Object.assign(form, { sourceType: 'UPLOAD', name: '', status: 'ENABLED', ...UPLOAD_DEFAULTS })
@@ -232,6 +247,8 @@ function resetForm() {
   mcpArgsText.value = ''
   mcpEnvRows.value = []
   mcpToolsSelected.value = []
+  mcpRequestRows.value = mkRequestMapRows()
+  mcpResponseRows.value = mkMcpResponseMapRows()
   availableTools.value = []
   verify.value = null
   clearErrors()
@@ -262,13 +279,16 @@ function hydrate(d) {
       authType: ['none', 'bearer', 'header'].includes(cfg.authType) ? cfg.authType : 'none',
       authHeaderName: cfg.authHeaderName || '',
       command: cfg.command || 'npx',
-      timeoutMs: cfg.timeoutMs || 10000
+      timeoutMs: cfg.timeoutMs || 10000,
+      resultArrayPath: cfg.resultArrayPath || ''
     }
     loadedMcpAuthType.value = form.mcp.authType
     mcpCredentialMasked.value = cfg.credentialMasked || ''
     mcpArgsText.value = (cfg.args || []).join('\n')
     mcpEnvRows.value = toParamRows(cfg.envVars, false)
     mcpToolsSelected.value = [...(cfg.tools || [])]
+    mcpRequestRows.value = normalizeRequestRows(cfg.requestMap)
+    mcpResponseRows.value = normalizeResponseRows(cfg.responseMap, mkMcpResponseMapRows)
     // 已保存的选中工具先作为可选清单展示；重新测试后以测试返回清单为准（md §七.3）
     availableTools.value = [...(cfg.tools || [])]
   }
@@ -320,7 +340,10 @@ const connSig = computed(() => {
       form.mcp.command,
       mcpArgsText.value,
       mcpEnvRows.value.map((r) => [r.key, r.clientFill, r.value]),
-      mcpToolsSelected.value
+      mcpToolsSelected.value,
+      mcpRequestRows.value,
+      mcpResponseRows.value,
+      form.mcp.resultArrayPath
     ])
   }
   return ''
@@ -402,10 +425,17 @@ function cleanRequestRows(rows) {
   }
   return out
 }
+/** 响应字段清洗（md §六.3 API / §七.5 MCP 共用行结构）：空白自定义行丢弃，保留 sourceField。 */
 const cleanResponseRows = (rows) =>
   (rows || [])
-    .filter((r) => r.preset || (r.name || '').trim() || (r.description || '').trim())
-    .map((r) => ({ name: (r.name || '').trim(), description: (r.description || '').trim(), type: r.type, ...(r.preset ? { preset: true } : {}) }))
+    .filter((r) => r.preset || (r.name || '').trim() || (r.sourceField || '').trim() || (r.description || '').trim())
+    .map((r) => ({
+      name: (r.name || '').trim(),
+      sourceField: (r.sourceField || '').trim(),
+      description: (r.description || '').trim(),
+      type: r.type,
+      ...(r.preset ? { preset: true } : {})
+    }))
 function buildConfig() {
   if (form.sourceType === 'UPLOAD') {
     const cfg = {}
@@ -432,6 +462,9 @@ function buildConfig() {
     args: mcpArgsText.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     envVars: form.mcp.transport === 'stdio' ? outParamRows(mcpEnvRows.value, false) : [],
     tools: [...mcpToolsSelected.value],
+    requestMap: cleanRequestRows(mcpRequestRows.value),
+    responseMap: cleanResponseRows(mcpResponseRows.value),
+    resultArrayPath: (form.mcp.resultArrayPath || '').trim(),
     timeoutMs: form.mcp.timeoutMs
   }
 }
@@ -473,6 +506,10 @@ function validateTyped() {
       if (envErr) errors.mcpEnv = envErr
     }
     if (!mcpToolsSelected.value.length) errors.mcpTools = '至少选择一个检索工具'
+    const mcpReqErr = validateRequestMap(cleanRequestRows(mcpRequestRows.value))
+    if (mcpReqErr) errors.mcpRequestMap = mcpReqErr
+    const mcpRespErr = validateMcpResponseMap(cleanResponseRows(mcpResponseRows.value), form.mcp.resultArrayPath)
+    if (mcpRespErr) errors.mcpResponseMap = mcpRespErr
   }
   Object.assign(fieldErrors, errors)
   return Object.keys(errors).length === 0
@@ -702,7 +739,8 @@ function close() {
         </section>
       </template>
 
-      <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态 L1985：连接与鉴权卡 → 检索工具卡 → 测试提示；无映射卡） -->
+      <!-- MCP 类（md §七；骨架照原型 kmcpMarkup 最终覆写态 L1985：连接与鉴权卡 → 检索工具卡 → 测试提示；
+           映射两卡（请求参数映射 + 响应字段）紧随其后，结构照 API 侧 SourceMappingEditor variant='mcp'） -->
       <template v-else>
         <!-- 外壳照原型 kmcpMarkup 的**意图**：.proto2-form-sec 卡 +「MCP 检索」灰底标题条。
              原型 L1985 该行 class 用了中文弯引号导致壳与标题条样式失效，属原型缺陷，不搬。 -->
@@ -823,6 +861,22 @@ function close() {
 
           <!-- 文案照原型 L1985 kmcp-test-note（该行 class 弯引号为原型缺陷，不搬） -->
           <div class="ksrc-note ksrc-test-note">保存前可使用下方“测试连接”验证连接与工具调用。</div>
+        </section>
+        <!-- 映射两卡（md §七.4 / §七.5，与 API §六.2 / §六.3 同一套机制，结果数组路径为 MCP 特有） -->
+        <section class="ksrc-plain-sec">
+          <SourceMappingEditor
+            variant="mcp"
+            :request-rows="mcpRequestRows"
+            :response-rows="mcpResponseRows"
+            :result-array-path="form.mcp.resultArrayPath"
+            :readonly="viewMode"
+            :request-error="fieldErrors.mcpRequestMap"
+            :response-error="fieldErrors.mcpResponseMap"
+            @update:request-rows="mcpRequestRows = $event"
+            @update:response-rows="mcpResponseRows = $event"
+            @update:result-array-path="form.mcp.resultArrayPath = $event"
+            @interact="delete fieldErrors.mcpRequestMap; delete fieldErrors.mcpResponseMap"
+          />
         </section>
       </template>
 
