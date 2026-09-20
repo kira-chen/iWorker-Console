@@ -110,6 +110,7 @@ async function mount() {
 beforeEach(() => {
   store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null
   store.isPublished = false
+  store.loading = false
   store.detail = { positionId: 5, status: 'draft', pendingAction: null }
   store.basic = { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] }
   listPublicationsSpy.mockClear()
@@ -185,6 +186,23 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     await mount()
     await nextTick(); await Promise.resolve(); await nextTick()
     expect(container.querySelector('.tb-version')).toBeNull()
+  })
+
+  // 待办 yuepu#12①：冷加载约 300ms 内 store.basic 仍为 null，此时点【保存】/【发布岗位】会在 ensurePersisted 里
+  // 读 store.basic.name → TypeError（pageerror）。详情就绪前两个按钮须禁用，就绪后才可点。
+  it('详情加载完成前（store.basic 为空）：顶栏【保存】【发布岗位】禁用；加载完成后可点', async () => {
+    const topBtns = () => [...container.querySelectorAll('.topbar .tb-r .el-button')]
+    const isDisabled = (b) => b.getAttribute('disabled') === 'true' || b.getAttribute('disabled') === ''
+    store.basic = null
+    store.loading = true
+    await mount()
+    expect(topBtns().map((b) => b.textContent.trim())).toEqual(['保存', '发布岗位'])
+    expect(topBtns().every(isDisabled)).toBe(true)
+
+    store.basic = { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] }
+    store.loading = false
+    await nextTick(); await Promise.resolve(); await nextTick()
+    expect(topBtns().some(isDisabled)).toBe(false)
   })
 
   it('只读态（query.view=1，列表【查看】进入）：顶部隐藏【保存】【发布岗位】', async () => {
