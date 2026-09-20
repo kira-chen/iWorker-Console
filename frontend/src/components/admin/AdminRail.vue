@@ -30,7 +30,7 @@ const userName = computed(() => userStore.userInfo?.name || '管理员')
 // - 02 岗位：岗位 / 岗位管理（2026-09-07 PRD-20260904 对齐：原「岗位分配」改名）/ 岗位技能（原「技能」FDE 入口），随 canFde 显隐。
 // - 03 能力：专家 / 平台技能 / 系统内置技能 / 知识库(规划中) / 连接器 / 模型，整段随 canSysConfig 显隐；「模型」仅 ADMIN 逐项收窄。
 // - 04 运行：实例管理 / 运行规格 / 配额与限流，仅 ADMIN；实例管理与运行规格已落地。
-// - 05 治理：审核中心(原「发布审核」) / 用户技能审核 / 访问审计(原「登录明细」) / 用户反馈 / 字段字典(原「字段管理」)，均仅 ADMIN。
+// - 05 治理：审核中心(原「发布审核」) / 用户技能审核 / 访问审计(原「登录明细」) / 用户反馈 / 字段字典(原「字段管理」) / 版本管理，均仅 ADMIN。
 // - 06 组织：用户 / 角色与权限(原「角色」)，仅 ADMIN。
 // 【显隐口径 V102】每项挂 page（页面权限 code，与后端 Module 枚举一一对应），优先按 userStore.hasPage 逐页判定；
 // 后端未下发 pages 时（旧 token / 旧响应）退回原口径：roles 派生的 canFde / canSysConfig / isAdmin + item.visible。
@@ -111,7 +111,9 @@ const allGroups = [
       // 用户反馈（V80）：客户端意见反馈只读列表。
       { index: 'AdminFeedback', label: '用户反馈', icon: 'ChatLineSquare', page: 'GOVERNANCE_FEEDBACK' },
       // 字段字典（原「字段管理」V94）：统一字段字典管理中心（技能分类 / 风险类型 / 风险等级……）。
-      { index: 'SysConfigFieldManagement', label: '字段字典', icon: 'Grid', page: 'GOVERNANCE_FIELD_DICT' }
+      { index: 'SysConfigFieldManagement', label: '字段字典', icon: 'Grid', page: 'GOVERNANCE_FIELD_DICT' },
+      // 版本管理（2026-09-20）：用户端（Windows / Mac）版本包与更新说明的配置下发。
+      { index: 'AdminVersions', label: '版本管理', icon: 'Box', page: 'GOVERNANCE_VERSION' }
     ]
   },
   {

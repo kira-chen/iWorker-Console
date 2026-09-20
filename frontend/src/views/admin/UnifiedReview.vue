@@ -187,7 +187,7 @@ async function submitReject(reason) {
 
 <template>
   <div class="list-page">
-    <PageHeader title="审核中心" subtitle="审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请" />
+    <PageHeader title="审核中心" subtitle="审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请，以及用户端版本的发布、停用申请" />
 
     <ListToolbar>
       <el-input

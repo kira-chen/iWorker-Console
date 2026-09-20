@@ -11,6 +11,7 @@ import { getMcp, getMcpServicePublishStatus } from '../mcpConnectorMock'
 import { getApi } from '../apiConnectorMock'
 import { getBizSystem } from '../bizSystemMock'
 import { getModel } from '../adminModelMock'
+import { getVersion, resetVersionMock } from '../versionMock'
 import { isDelistAction } from '../reviewEnroll'
 
 /**
@@ -36,7 +37,8 @@ const GETTER = {
   MCP: getMcp,
   API: getApi,
   BIZ_SYSTEM: getBizSystem,
-  MODEL: getModel
+  MODEL: getModel,
+  VERSION: getVersion // 版本管理（2026-09-20）：getVersion 返回带 name（终端 + 版本号）与统一 pendingAction 的版本行
 }
 
 /** 各模块「在途事项」的读法不同：统一取成 null | 'PUBLISH' | 'DELIST' */
@@ -65,13 +67,14 @@ describe('治理种子三方一致护栏：审核中心 / 我的申请 ↔ 业�
   beforeEach(() => {
     __resetPositionMock()
     __resetExpertMock()
+    resetVersionMock()
     resetReviewsMock()
     resetMyApplicationsMock()
   })
 
-  it('审核中心：全部待审行（12 条）的 name 与 refId 所指实体同名，且对象在途事项与申请类型同向', async () => {
+  it('审核中心：全部待审行（13 条）的 name 与 refId 所指实体同名，且对象在途事项与申请类型同向', async () => {
     const { list, total } = await listReviews({ size: 50 })
-    expect(total).toBe(12)
+    expect(total).toBe(13)
     const problems = []
     for (const row of list) {
       const kind = reviewKind(row)
@@ -83,7 +86,7 @@ describe('治理种子三方一致护栏：审核中心 / 我的申请 ↔ 业�
       else if ((pending === 'DELIST') !== isDelistAction(row.requestAction)) problems.push(`id ${row.id}（${kind} ${row.refId}）：审核行 ${row.requestAction} 与对象在途 ${pending} 不同向`)
     }
     expect(problems).toEqual([])
-    // 八类业务在种子里都至少出现一次，护栏不留空档
+    // 九类业务（含 2026-09-20 新增的版本管理）在种子里都至少出现一次，护栏不留空档
     expect(new Set(list.map(reviewKind))).toEqual(new Set(Object.keys(GETTER)))
   })
 

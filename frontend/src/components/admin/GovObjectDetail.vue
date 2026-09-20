@@ -14,6 +14,8 @@
  *                 原「待岗位模块拍板」占位抽屉已退役。岗位模块没有编辑抽屉（整页 PositionDetailTabs），
  *                 我的申请「前往修改 / 重新提交」的编辑态对岗位仍展示同一只读视图 + 关闭|提交审核 吸底条）
  *   KNOWLEDGE_BASE → KnowledgeBaseEditor（mode="view"；2026-09-09 PRD 复核 A6 新增分支）
+ *   VERSION     → VersionEditor（2026-09-20 版本管理发布走审核新增；按 refId 取版本当前配置，只读；
+ *                 编辑态仅「从未发布过的未发布版本」可改——发布申请被驳回 / 撤回后回到未发布的新版本可【前往修改】，审核中 / 已发布 / 发布过的旧版本只读）
  * SKILL（跳技能整页只读）与未知类型（toast）不进本组件，由页面路由/提示自行处理。
  *
  * 【审核快照】（2026-09-09 PRD 复核 A5，md `prd.审核中心.md` §四 L48 / §七 L102）
@@ -41,6 +43,7 @@ import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import ModelConfigEditDialog from '@/components/admin/ModelConfigEditDialog.vue'
 import PositionViewDrawer from '@/components/admin/PositionViewDrawer.vue'
 import KnowledgeBaseEditor from '@/components/admin/KnowledgeBaseEditor.vue'
+import VersionEditor from '@/components/admin/VersionEditor.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { needsSnapshot, loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
 
@@ -101,6 +104,24 @@ const modelObj = computed(
   () =>
     modelRow.value ||
     (props.item ? { id: props.refId, name: displayName.value, description: props.item.description || '' } : null)
+)
+
+// VERSION：VersionEditor 以版本行为入参、不自取数，打开时按 refId 拉一次（同 MODEL 的做法：取到再打开，
+// 避免抽屉先以空白表单打开）。版本被删除等取不到 → 不打开抽屉（visible 与 versionRow 联动）。
+const versionRow = ref(null)
+watch(
+  () => [props.visible, props.kind, props.refId],
+  async ([visible, kind, refId]) => {
+    if (!visible || kind !== 'VERSION' || refId == null) return
+    versionRow.value = null
+    try {
+      const { getVersion } = await import('@/api/version')
+      versionRow.value = await getVersion(refId)
+    } catch (e) {
+      versionRow.value = null
+    }
+  },
+  { immediate: true }
 )
 
 // 吸底条宽度随抽屉宽：模型抽屉 820px（ModelConfigEditDialog size="820px"），
@@ -213,6 +234,15 @@ defineExpose({ snapshot, snapshotMissing })
     :visible="visible"
     :kb-id="refId"
     :mode="readonly ? 'view' : 'edit'"
+    @update:visible="vis = $event"
+  />
+  <!-- VERSION：版本管理（客户端版本，2026-09-20；发布走审核）。版本自身读当前配置、不生成快照（审核期间版本被锁，
+       内容不会变）。只有「从未发布过的未发布版本」能进编辑态（发布申请驳回 / 撤回后回到未发布），审核中 / 已发布 / 发布过的旧版本一律只读。 -->
+  <VersionEditor
+    v-else-if="kind === 'VERSION'"
+    :visible="visible && !!versionRow"
+    :version="versionRow"
+    :readonly="readonly || versionRow?.status !== 'UNPUBLISHED' || !!versionRow?.publishedAt"
     @update:visible="vis = $event"
   />
 

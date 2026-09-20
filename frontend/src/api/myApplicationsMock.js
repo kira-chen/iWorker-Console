@@ -49,6 +49,8 @@ function seedRows() {
     row({ id: 508, refId: 'sk_304', objectName: '合同风险检查', description: '识别合同条款中的风险点并给出说明', businessType: 'SKILL', applicationType: 'VERSION_PUBLISH', version: 'v1.1.1', submittedAt: '2026-08-25 10:12', result: 'PENDING', versionNotes: '补充违约条款识别规则' }),
     row({ id: 516, refId: 'sk_308', objectName: '报销单智能填报', description: '按发票信息自动填写并提交报销单', businessType: 'SKILL', applicationType: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-25 09:30', result: 'PENDING', versionNotes: '首次发布' }),
     row({ id: 517, refId: 'crm', objectName: 'CRM MCP', description: '查询客户资料及商机状态', businessType: 'MCP', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-15 14:26', result: 'PENDING', versionNotes: '首次登记 CRM 查询工具' }),
+    // 版本管理（客户端版本）：与审核中心 id 13、versionMock 的 Mac v1.2.0（refId 7）同一笔
+    row({ id: 518, refId: 7, objectName: 'Mac v1.2.0', description: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。', businessType: 'VERSION', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-09-19 16:30', result: 'PENDING', submitter: 'li.na', versionNotes: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。' }),
     // md §四 L47「对应业务对象已被删除」样例：行保留、【查看】置灰。选终态行而非待审行（待审对象被删属异常数据）。
     row({ id: 510, refId: 'ex_gone_1', objectName: '合同审阅专员', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewedAt: '2026-08-24 10:46', reviewer: '—', versionNotes: '业务调整，申请停止专家对外提供', objectDeleted: true })
   ]
@@ -65,8 +67,9 @@ let applications = seedRows()
 // version 5（2026-09-09 PRD 复核 G2）：行结构增 objectDeleted（md §四 L47【查看】置灰）；
 // 502 改名「经营分析专家」、505 refId 改指 knowledge_hub（refId 借名缺陷修正），旧快照丢弃回种子。
 // version 6（2026-09-18 R1）：种子重写为与审核中心 / 业务对象逐笔一致，旧快照丢弃回种子。
+// version 7（2026-09-20）：新增业务类型「版本管理」（VERSION），种子补 518（Mac v1.2.0），旧快照丢弃回种子。
 const persist = attachPersist('myApplications', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {
@@ -210,7 +213,14 @@ const MODULES = {
   MCP: () => import('./mcpConnectorMock').then((m) => ({ withdraw: m.withdrawMcpService, publish: m.publishMcpService, delist: m.delistMcpService })),
   API: () => import('./apiConnectorMock').then((m) => ({ withdraw: m.withdrawApi, publish: m.publishApi, delist: m.deactivateApi })),
   BIZ_SYSTEM: () => import('./bizSystemMock').then((m) => ({ withdraw: m.withdrawBizSystem, publish: m.publishBizSystem, delist: m.deactivateBizSystem })),
-  MODEL: () => import('./adminModelMock').then((m) => ({ withdraw: m.withdrawModel, publish: m.publishModel, delist: m.delistModel }))
+  MODEL: () => import('./adminModelMock').then((m) => ({ withdraw: m.withdrawModel, publish: m.publishModel, delist: m.delistModel })),
+  // 版本管理：发布和停用都走审核。publish 忽略 notes——版本的更新说明是版本自身的字段，重新提交沿用即可
+  VERSION: () =>
+    import('./versionMock').then((m) => ({
+      withdraw: m.withdrawVersion,
+      publish: (id) => m.publishVersion(id),
+      delist: (id) => m.stopVersion(id)
+    }))
 }
 
 function conflict(message) {
