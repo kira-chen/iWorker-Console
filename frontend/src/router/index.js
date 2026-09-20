@@ -148,6 +148,13 @@ const adminChildren = [
     component: () => import('@/views/admin/AdminFeedback.vue'),
     meta: { title: '用户反馈', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
+  {
+    // 05 治理 → 版本管理（2026-09-20 新增）：用户端（Windows / Mac）版本包与更新说明的配置下发，仅 ADMIN。
+    path: 'versions',
+    name: 'AdminVersions',
+    component: () => import('@/views/admin/AdminVersions.vue'),
+    meta: { title: '版本管理', roles: ['ADMIN'], module: 'SYSCONFIG' }
+  },
   // —— 导航改版（2026-08-21）新增规划中入口：统一挂「功能开发中」占位页 ——
   // 真实页面尚未建设，先给真实路由 + 导航项 + 高亮（点击可跳转、路径可直达/收藏）。
   // 就绪后把 component 换成真实页面即可，name/path 保留不动。
