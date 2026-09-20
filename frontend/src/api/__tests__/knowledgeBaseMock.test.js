@@ -24,7 +24,7 @@ import {
 import { listReviews } from '../reviewsMock'
 import { listMyApplications } from '../myApplicationsMock'
 import { maskSecret } from '@/utils/secretMask'
-import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, UPLOAD_DEFAULTS } from '@/utils/knowledgeBaseMeta'
+import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResponseMapRows, UPLOAD_DEFAULTS } from '@/utils/knowledgeBaseMeta'
 
 /**
  * knowledgeBaseMock 状态机与口径单测。
@@ -37,7 +37,7 @@ import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, UPLOAD_DE
  *   §六.1.1 API KEY 多参数表 / Bearer、§六.2-§六.3 映射预设行与递归子字段、§六.4 改配置重置未验证、
  *   §七.2 MCP 传输方式（endpoint / 鉴权 Header 名 / stdio Command 枚举与 envVars）、§七.3 工具 ≥1、§七.4 超时 1000～120000、
  *   §七.5 改工具重置、§八.1 列表概要（未验证 / 已连通 / 连接失败）、§五.3 文档解析流转。
- * - 持久化（mockPersist v7，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
+ * - 持久化（mockPersist v8，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
  * K40（2026-09-12 闭环）：引用已停用数据源被数据层拒绝（md §三.3.2 L94）；UPLOAD 源三必填 + 文档类型校验（md §五.1）。
  */
 
@@ -53,6 +53,7 @@ const apiConfig = (over = {}) => ({
   timeoutMs: 8000,
   ...over
 })
+const mcpResponseMap = () => mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
 const mcpConfig = (over = {}) => ({
   transport: 'streamable-http',
   endpoint: 'https://mcp.example.com/mcp',
@@ -62,6 +63,9 @@ const mcpConfig = (over = {}) => ({
   args: [],
   envVars: [],
   tools: ['search_documents'],
+  requestMap: mkRequestMapRows(),
+  responseMap: mcpResponseMap(),
+  resultArrayPath: '$.content[0].items[*]',
   timeoutMs: 10000,
   ...over
 })
@@ -332,7 +336,7 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(cur.verifyStatus).toBe('UNVERIFIED')
     // 再测成功后改响应映射 → 同样重置
     await testSource('API', { sourceId: s.id, config: apiConfig({ url: 'https://changed.example.com' }) })
-    const respMap = [...mkResponseMapRows(), { name: 'extra', description: '', type: 'string' }]
+    const respMap = [...mkResponseMapRows(), { name: 'extra', sourceField: 'extra', description: '', type: 'string' }]
     await updateSource(s.id, {
       sourceType: 'API',
       name: `${s.name}改名`,
@@ -342,17 +346,47 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
-  it('MCP config 无请求 / 响应映射（md §七 仅接入方式 / 传输方式 / 检索工具 / 超时 / 连接测试五节）：不校验、种子不带、保存原样落库', async () => {
+  it('MCP config 请求 / 响应映射（2026-09-18 推翻 09-08 决议重新加回，md §七.4 / §七.5）：种子自带、与 API 同一套机制校验', async () => {
     const seeded = (await listSources({ sourceType: 'MCP' })).list
     expect(seeded.length).toBeGreaterThan(0)
     for (const s of seeded) {
-      expect(s.config).not.toHaveProperty('requestMap')
-      expect(s.config).not.toHaveProperty('responseMap')
+      expect(s.config.requestMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['query', 'topK'])
+      expect(s.config.responseMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['title', 'content', 'sourceName'])
+      expect(s.config.resultArrayPath).toBeTruthy()
     }
-    // MCP 不再要求映射预设行：无 requestMap/responseMap 可直接保存
-    const s = await createSource({ sourceType: 'MCP', name: uniq('无映射MCP'), config: mcpConfig() })
-    expect(s.config).not.toHaveProperty('requestMap')
+    const s = await createSource({ sourceType: 'MCP', name: uniq('带映射MCP'), config: mcpConfig() })
+    expect(s.config.requestMap.length).toBe(2)
     expect(s.config.tools).toEqual(['search_documents'])
+  })
+
+  it('MCP 请求参数映射校验（md §七.4，规则同 API §六.2）：缺预设行 query/topK 报错', async () => {
+    await expect(
+      createSource({ sourceType: 'MCP', name: uniq('MCP无预设请求'), config: mcpConfig({ requestMap: [] }) })
+    ).rejects.toMatchObject({ field: 'requestMap' })
+  })
+
+  it('MCP 响应字段校验（md §七.5）：结果数组路径必填；title/content 需填接口返回字段名；sourceName 可留空', async () => {
+    await expect(
+      createSource({ sourceType: 'MCP', name: uniq('MCP无数组路径'), config: mcpConfig({ resultArrayPath: '' }) })
+    ).rejects.toMatchObject({ field: 'responseMap' })
+    const badMap = mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'title' ? '' : 'text' }))
+    await expect(
+      createSource({ sourceType: 'MCP', name: uniq('MCP缺title映射'), config: mcpConfig({ responseMap: badMap }) })
+    ).rejects.toMatchObject({ field: 'responseMap' })
+    // sourceName 留空可直接保存（留空则取数据源名称）
+    const okMap = mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
+    const s = await createSource({ sourceType: 'MCP', name: uniq('MCP留空来源名'), config: mcpConfig({ responseMap: okMap }) })
+    expect(s.config.responseMap.find((r) => r.name === 'sourceName').sourceField).toBe('')
+  })
+
+  it('修改 MCP 映射后保存 → 验证状态重置未验证（md §七.7，规则同 API §六.4）', async () => {
+    const s = await createSource({ sourceType: 'MCP', name: uniq('重测MCP'), config: mcpConfig() })
+    await testSource('MCP', { sourceId: s.id, config: mcpConfig() })
+    let cur = (await listSources({ keyword: s.name })).list[0]
+    expect(cur.verifyStatus).toBe('SUCCESS')
+    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ resultArrayPath: '$.items[*]' }) })
+    cur = (await listSources({ keyword: s.name })).list[0]
+    expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
   it('MCP 保存校验（md §七.2 / §七.3）：Endpoint 必填；检索工具 ≥1；stdio Command 枚举', async () => {
@@ -643,13 +677,13 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（mockPersist v7；11 个写点：
+ * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（mockPersist v8；11 个写点：
  * create / update / remove / transition / createSource / updateSource / removeSource / testSource(带 sourceId) /
  * listDocs(状态流转时) / uploadDoc / deleteDoc）。
  * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import；
  * mock 接口都 `await delay()`，把 setTimeout 桩成立即回调免真等。
  */
-describe('knowledgeBaseMock · 持久化（mockPersist v7）', () => {
+describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
   const KEY = 'iworker-demo-mock:knowledgeBase'
   const makeStorage = () => {
     const map = new Map()
@@ -715,7 +749,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v7）', () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(7)
+    expect(snap.v).toBe(8)
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')
@@ -738,7 +772,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v7）', () => {
 
   it('坏形状快照（rows 不是数组）→ restore 抛「knowledgeBase 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     expect((await m.list()).total).toBe(7)
     const call = warn.mock.calls.find((c) => String(c[0]).includes('knowledgeBase'))

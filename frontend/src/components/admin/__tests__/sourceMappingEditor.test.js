@@ -3,20 +3,22 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { createApp, h, ref, nextTick } from 'vue'
 
 /**
- * SourceMappingEditor / SourceMapParamRows 单测——知识库 API 数据源的请求参数映射 / 响应字段映射。
- * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §六.2 L301-321 / §六.3 L323-337（2026-09-12 测试审计 T31 头注更新；
- * 映射仅 API 数据源持有，md §七 无 MCP 映射）：
- * - 请求映射预设 query / topK 行：参数名与类型固定展示、必填与映射不可改、固定参数不可删除（L313）；
- * - 【添加参数】新增自定义行（带 × 删除）（L314）；
- * - object / array 展开子字段区：子层列（子字段名 / 类型 / 默认值 / 删除）、「object / array 可继续嵌套」提示、
- *   【添加下一级子字段】、递归多层（L315-317）；删父级级联删后代（L320）；切基础类型收起并暂存草稿、切回恢复（L321）；
- * - 响应映射预设 content / source / score 行：不可删除、变量类型可改；【添加字段】新增自定义行（L331-332）。
+ * SourceMappingEditor / SourceMapParamRows 单测——知识库数据源的请求参数映射 / 响应字段映射。
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §六.2 L301-321 / §六.3（API）+ §七.4 / §七.5（MCP）
+ * （2026-09-18 推翻 09-08「MCP 无映射」决议，两类数据源改为同一套显式改名机制，本文件同步重写）：
+ * - 请求映射（两 variant 完全一致）预设 query / topK 行：参数名与类型固定展示、必填与映射不可改、固定参数不可删除（L313）；
+ *   【添加参数】新增自定义行（带 × 删除）（L314）；object / array 展开子字段区：子层列（子字段名 / 类型 / 默认值 / 删除）、
+ *   「object / array 可继续嵌套」提示、【添加下一级子字段】、递归多层（L315-317）；删父级级联删后代（L320）；
+ *   切基础类型收起并暂存草稿、切回恢复（L321）；
+ * - 响应字段映射（variant='api' 默认 / 'mcp'）：参数名固定 + 可编辑「接口返回字段名」+ 描述 + 变量类型，四列同构；
+ *   API 预设 content/source/score（md §六.3）、MCP 预设 title/content/sourceName 外加卡内「结果数组路径」必填输入
+ *   （md §七.5）；预设行不可删除、变量类型可改；【添加字段】新增自定义行。
  * 已知差异不在此断言：新建示例组缺 md L318 的 enabled(boolean) 子字段（审计 K37）。
  * Element 组件按仓内范式桩化（同 paramRowsEditor.test.js）。
  */
 
 const SourceMappingEditor = (await import('@/components/admin/SourceMappingEditor.vue')).default
-const { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows } = await import('@/utils/knowledgeBaseMeta')
+const { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResponseMapRows } = await import('@/utils/knowledgeBaseMeta')
 
 const stubs = {
   'el-input': {
@@ -48,13 +50,18 @@ const stubs = {
     props: { disabled: Boolean },
     emits: ['click'],
     template: '<button class="el-button" :disabled="disabled" @click="!disabled && $emit(\'click\')"><slot /></button>'
+  },
+  'el-form-item': {
+    props: { label: String, required: Boolean },
+    template: '<div class="el-form-item"><label>{{ label }}</label><slot /></div>'
   }
 }
 
-let app, container, requestRows, responseRows
-async function mountEditor(props = {}, initialRequestRows = mkRequestMapRows()) {
+let app, container, requestRows, responseRows, resultArrayPath
+async function mountEditor(props = {}, initialRequestRows = mkRequestMapRows(), initialResponseRows = mkResponseMapRows(), initialResultArrayPath = '') {
   requestRows = ref(initialRequestRows)
-  responseRows = ref(mkResponseMapRows())
+  responseRows = ref(initialResponseRows)
+  resultArrayPath = ref(initialResultArrayPath)
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp({
@@ -63,8 +70,10 @@ async function mountEditor(props = {}, initialRequestRows = mkRequestMapRows()) 
         h(SourceMappingEditor, {
           requestRows: requestRows.value,
           responseRows: responseRows.value,
+          resultArrayPath: resultArrayPath.value,
           'onUpdate:requestRows': (v) => (requestRows.value = v),
           'onUpdate:responseRows': (v) => (responseRows.value = v),
+          'onUpdate:resultArrayPath': (v) => (resultArrayPath.value = v),
           ...props
         })
     }
@@ -193,23 +202,62 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     expect(reqCard().querySelector('.smp-sub')).toBeNull()
   })
 
-  it('响应映射预设 content/source/score：不可删除，变量类型可改（md §六.3）', async () => {
+  it('响应字段映射预设 content/source/score（variant 默认 api）：不可删除，变量类型可改，接口返回字段名默认与参数名同名（md §六.3）', async () => {
     await mountEditor()
     const respCard = cards()[1]
     const fixed = [...respCard.querySelectorAll('.sme-fixed-name')].map((el) => el.textContent)
     expect(fixed).toEqual(['content', 'source', 'score'])
     expect(respCard.querySelector('.sme-x')).toBeNull()
+    // 无「结果数组路径」（API 侧无此概念）
+    expect(respCard.querySelector('.el-form-item')).toBeNull()
+    // 表头四列：参数名 / 接口返回字段名 / 描述 / 变量类型 + 操作列
+    expect([...respCard.querySelector('.sme-resp-head').children].map((el) => el.textContent.trim())).toEqual([
+      '参数名',
+      '接口返回字段名',
+      '描述',
+      '变量类型',
+      ''
+    ])
+    // 接口返回字段名默认与参数名同名，延续改造前「不做改名映射」的行为
+    expect(responseRows.value.map((r) => r.sourceField)).toEqual(['content', 'source', 'score'])
     // 类型下拉未禁用 → 可改
     const typeSelects = [...respCard.querySelectorAll('.sme-type')]
     expect(typeSelects.length).toBe(3)
     expect(typeSelects.every((s) => !s.disabled)).toBe(true)
-    // 【添加字段】新增自定义行带 × 删除
+    // 【添加字段】新增自定义行带 × 删除，新行 sourceField 留空待填
     btnByText(respCard, '＋ 添加字段').click()
     await nextTick()
     expect(responseRows.value.length).toBe(4)
+    expect(responseRows.value[3].sourceField).toBe('')
     expect(cards()[1].querySelector('.sme-x')).toBeTruthy()
-    // 副注为 API 专用文案（MCP 分支已退役）
-    expect(respCard.textContent).toContain('仅返回列表中配置的下游 API 原始字段')
+    // 副注为 API 专用文案，不提「结果数组路径」「工具」等 MCP 概念
+    expect(respCard.textContent).toContain('content / source / score 均为必填映射')
     expect(container.textContent).not.toContain('MCP')
+    expect(container.textContent).not.toContain('结果数组路径')
+  })
+
+  it("variant='mcp'：响应字段预设 title/content/sourceName + 卡内「结果数组路径」必填输入，接口返回字段名默认留空（md §七.5）", async () => {
+    await mountEditor({ variant: 'mcp' }, mkRequestMapRows(), mkMcpResponseMapRows(), '')
+    const [reqCard, respCard] = cards()
+    // 请求映射结构与 API 完全一致，仅副标题文案不同
+    expect(reqCard.textContent).toContain('平台调用工具时的入参结构')
+    // 卡标题改「响应字段」（非「响应字段映射」）
+    expect(respCard.querySelector('.sme-card-title strong').textContent).toBe('响应字段')
+    // 结果数组路径：必填输入，绑定 resultArrayPath
+    const pathInput = respCard.querySelector('.el-form-item input')
+    expect(pathInput).toBeTruthy()
+    expect(respCard.querySelector('.el-form-item label').textContent).toBe('结果数组路径')
+    pathInput.value = '$.content[0].items[*]'
+    pathInput.dispatchEvent(new Event('input'))
+    await nextTick()
+    expect(resultArrayPath.value).toBe('$.content[0].items[*]')
+    // 预设三行固定不可删，接口返回字段名默认留空（由管理员按工具实测结果填写）
+    const fixed = [...respCard.querySelectorAll('.sme-fixed-name')].map((el) => el.textContent)
+    expect(fixed).toEqual(['title', 'content', 'sourceName'])
+    expect(respCard.querySelector('.sme-x')).toBeNull()
+    expect(responseRows.value.map((r) => r.sourceField)).toEqual(['', '', ''])
+    // 副注提示 title/content 必填、sourceName 可留空
+    expect(respCard.textContent).toContain('title / content 必填，sourceName 留空则取数据源名称')
+    expect(respCard.textContent).not.toContain('content / source / score')
   })
 })
