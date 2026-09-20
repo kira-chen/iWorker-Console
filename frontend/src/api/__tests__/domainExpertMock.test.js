@@ -52,6 +52,33 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect((await listExperts({ status: 'draft' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
   })
 
+  // 2026-09-20 待办 yuepu#6②：专家类型 / 所属岗位落数据层（md 专家 §一 类型筛选、§二.1 类型列与引用情况、§三 L167-168）
+  it('专家类型：种子三型齐全且列表出参带 type/positionId/positionCount；type 筛选生效', async () => {
+    const { list } = await listExperts()
+    const byName = Object.fromEntries(list.map((e) => [e.name, e]))
+    expect(byName['经营分析专家']).toMatchObject({ type: 'PLATFORM', positionId: null, positionCount: 0 })
+    expect(byName['企业知识助手']).toMatchObject({ type: 'SYSTEM_DEFAULT', positionId: null, positionCount: 0 })
+    expect(byName['法务审阅专家']).toMatchObject({ type: 'POSITION', positionId: 401, positionCount: 1 })
+    expect((await listExperts({ type: 'POSITION' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
+    expect((await listExperts({ type: 'PLATFORM' })).list.map((e) => e.name)).toEqual(['经营分析专家', '研究报告专家'])
+    expect((await listExperts({ type: 'SYSTEM_DEFAULT' })).total).toBe(1)
+  })
+
+  it('专家类型：新建落 type，岗位私有可先不绑岗位（4229ae6）、非岗位私有丢弃 positionId；非法 type 字段级报错；编辑不可改', async () => {
+    const pos = await createExpert({ name: '私有专家', type: 'POSITION' })
+    expect(pos).toMatchObject({ type: 'POSITION', positionId: null, positionCount: 0 })
+    const bound = await createExpert({ name: '私有专家2', type: 'POSITION', positionId: 402 })
+    expect(bound).toMatchObject({ type: 'POSITION', positionId: 402, positionCount: 1 })
+    const plat = await createExpert({ name: '市场专家', type: 'PLATFORM', positionId: 402 })
+    expect(plat).toMatchObject({ type: 'PLATFORM', positionId: null })
+    // 缺省回落市场专家（与连接器三件套 mock 同口径，必选由表单把关）
+    expect((await createExpert({ name: '缺省专家' })).type).toBe('PLATFORM')
+    await expect(createExpert({ name: '坏类型', type: 'WHATEVER' })).rejects.toMatchObject({ field: 'type' })
+    // 创建后不可改：updateExpert 带 type/positionId 也忽略
+    const d = await updateExpert(bound.id, { type: 'PLATFORM', positionId: 401, intro: 'x' })
+    expect(d).toMatchObject({ type: 'POSITION', positionId: 402, intro: 'x' })
+  })
+
   it('详情：含职责描述 / 3 条示例问题 / 引用技能明细（实时取市场技能本体）与时间元信息', async () => {
     const d = await getExpert(201)
     expect(d.roleDesc).toContain('经营分析专家')

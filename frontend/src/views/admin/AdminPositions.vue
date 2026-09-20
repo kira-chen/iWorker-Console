@@ -147,7 +147,7 @@ const COUNT_TIPS = {
 
 /* ---------- 新建：居中弹窗填【岗位名称】+【岗位描述】，创建成功后进岗位详情页（原型 npOpen / md §一.1） ----------
  * 2026-09-08 原型复刻批次 2A · B2：字段构成照原型 L2319（岗位名称* + 岗位描述*，「岗位定位」字段原型无 → 删）；
- * 岗位描述必填（原型 npCreate 校验 + 字段一览表 ✅），上限按负责人决议统一 500（不照原型 2000）；
+ * 岗位描述必填（原型 npCreate 校验 + 字段一览表 ✅），上限 DESCRIPTION_MAX_LEN=2000（一览表描述类统一规则；09-08 曾定 500，09-16 随一览表放宽）；
  * 校验提示走表单内联红框（代码约定；原型是红框 + toast）。 */
 const createVisible = ref(false)
 const creating = ref(false)
@@ -749,8 +749,8 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
             @keyup.enter="submitCreate"
           />
         </el-form-item>
-        <!-- 岗位描述必填（原型 npCreate「请填写岗位描述」）；上限 500 = 2026-09-08 决议第 5 项（原型 maxlength=2000 不取），
-             与人格页签 DESCRIPTION_MAX_LEN / mock 校验全链同口径 -->
+        <!-- 岗位描述必填（原型 npCreate「请填写岗位描述」）；上限 DESCRIPTION_MAX_LEN=2000，
+             与人格页签 / mock 校验全链同口径（2026-09-20 待办 yuepu#8 三处对齐） -->
         <el-form-item label="岗位描述" prop="description">
           <el-input
             v-model="createForm.description"
