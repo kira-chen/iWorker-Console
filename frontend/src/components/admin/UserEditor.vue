@@ -99,9 +99,11 @@ const rules = computed(() => {
     email: [{ type: 'email', message: '请输入有效邮箱', trigger: 'blur' }]
   }
   if (!isEdit.value) {
+    // transform 先 trim 再校验，与 adminUserMock.createUser 的 trim 后判长同口径（2026-09-20 待办 yuepu#8）
+    const trim = (v) => String(v ?? '').trim()
     r.username = [
-      { required: true, message: '请输入 3–32 个字符', trigger: 'blur' },
-      { min: 3, max: 32, message: '请输入 3–32 个字符', trigger: 'blur' }
+      { required: true, transform: trim, message: '请输入 3–32 个字符', trigger: 'blur' },
+      { min: 3, max: 32, transform: trim, message: '请输入 3–32 个字符', trigger: 'blur' }
     ]
   }
   return r
@@ -113,8 +115,6 @@ const updatedText = computed(() => (props.user?.updatedAt ? fmtTime(props.user.u
 
 async function onSubmit() {
   if (!formRef.value) return
-  // 用户名先 trim 再校验，与 adminUserMock.createUser 同口径：页面若按原值校验，「  ab  」（6 位）会放行到数据层才被拒
-  form.username = form.username.trim()
   await formRef.value.validate(async (valid) => {
     // 角色必选校验独立于 el-form（卡片复选非表单项）：与表单校验并行亮起，任一不过即不提交
     if (!isEdit.value && !form.roleCodes.length) roleError.value = '请至少选择一个角色'
@@ -123,7 +123,7 @@ async function onSubmit() {
     try {
       if (!isEdit.value) {
         await createUser({
-          username: form.username,
+          username: String(form.username ?? '').trim(),
           displayName: form.displayName,
           email: form.email,
           roleCodes: form.roleCodes

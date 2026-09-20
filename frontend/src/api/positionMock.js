@@ -27,9 +27,6 @@ import * as skillMock from './unifiedSkillMock'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
-// 字数上限与输入框 maxlength / 表单规则同一常量源（待办 yuepu#8）：此前 mock 自写 500 / 100，UI 放宽到 2000 / 300 后
-// 出现「计数显示 600/2000，保存却被 mock 以 500 拒绝」。utils/positionModel.js 无任何 import，引入无循环依赖风险。
-import { DESCRIPTION_MAX_LEN, CLAIM_NOTE_MAX, CLAIM_NOTE_LEN, EXAMPLE_Q_MAX_LEN } from '@/utils/positionModel'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 
@@ -297,8 +294,10 @@ export async function createPosition(payload = {}) {
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写岗位名称', 'name')
   if (positions.some((p) => p.name === name)) throw err('已存在同名岗位', 'name', 1005)
-  // 岗位描述上限：新建弹窗 / 人格页签 / mock 兜底同一常量（一览表描述类统一规则）
-  if (String(payload.description || '').trim().length > DESCRIPTION_MAX_LEN) throw err(`岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`, 'description')
+  // 2000 = utils/positionModel.js DESCRIPTION_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
+  // 2026-09-20 待办 yuepu#8：09-16 217ce1f 只把页面/md 放宽到 2000（一览表描述类统一规则），这里还卡在 09-08 的 500，
+  // 填 600 字计数显示 600/2000、保存却被拒，活 bug）
+  if (String(payload.description || '').trim().length > 2000) throw err('岗位描述最多 2000 个字符', 'description')
   const now = nowIso()
   const p = {
     positionId: posSeq++,
@@ -711,7 +710,8 @@ export async function updatePosition(id, payload = {}) {
   }
   if ('description' in payload) {
     const description = String(payload.description || '').trim()
-    if (description.length > DESCRIPTION_MAX_LEN) throw err(`岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`, 'description')
+    // 2000 = utils/positionModel.js DESCRIPTION_MAX_LEN 同口径（2026-09-20 待办 yuepu#8，原 500，见 createPosition 注释）
+    if (description.length > 2000) throw err('岗位描述最多 2000 个字符', 'description')
     p.description = description
   }
   if ('intro' in payload) wb.intro = String(payload.intro || '').trim()
@@ -721,16 +721,17 @@ export async function updatePosition(id, payload = {}) {
   // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）
   if ('claimDescriptions' in payload) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
-    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3），可选、条数与单条字数上限见 positionModel 常量
-    if (notes.length > CLAIM_NOTE_MAX) throw err(`领用页文案最多 ${CLAIM_NOTE_MAX} 条`, 'claimDescriptions')
-    if (notes.some((s) => s.length > CLAIM_NOTE_LEN)) throw err(`领用页文案每条最多 ${CLAIM_NOTE_LEN} 个字符`, 'claimDescriptions')
+    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3），可选、≤6 条；
+    // 每条 300 = utils/positionModel.js CLAIM_NOTE_LEN 同口径（2026-09-20 待办 yuepu#8，原 100 与 UI/一览表不同源）
+    if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')
+    if (notes.some((s) => s.length > 300)) throw err('领用页文案每条最多 300 个字符', 'claimDescriptions')
     wb.claimDescriptions = notes
   }
   if ('exampleQuestions' in payload) {
     const qs = normEq(payload.exampleQuestions)
-    // 2026-09-18 待办 yuepu#5⑥：此前卡在 60，输入框已放宽到 300，保存被这里拒绝（活 bug）；
-    // 待办 yuepu#8 起数值改直接引用 EXAMPLE_Q_MAX_LEN，不再靠「数值对齐」。
-    if (qs.some((q) => q.trim().length > EXAMPLE_Q_MAX_LEN)) throw err(`示例问题每条最多 ${EXAMPLE_Q_MAX_LEN} 个字符`, 'exampleQuestions')
+    // 300 = utils/positionModel.js EXAMPLE_Q_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
+    // 2026-09-18 待办 yuepu#5⑥：此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
+    if (qs.some((q) => q.trim().length > 300)) throw err('示例问题每条最多 300 个字符', 'exampleQuestions')
     wb.exampleQuestions = qs
   }
   if ('positionSop' in payload) {

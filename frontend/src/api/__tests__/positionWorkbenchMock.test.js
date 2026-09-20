@@ -15,8 +15,6 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { _getRaw, _reset } from '../unifiedSkillMock'
-// 字数上限以 UI 同一常量源为边界（待办 yuepu#8）：mock 与输入框 maxlength 不能各写各的数字
-import { DESCRIPTION_MAX_LEN, CLAIM_NOTE_LEN, EXAMPLE_Q_MAX_LEN } from '@/utils/positionModel'
 
 beforeEach(() => __resetPositionMock())
 
@@ -87,26 +85,19 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(after.claimDescriptions).toEqual(['第一条说明'])
   })
 
-  // 边界一律取 UI 同一常量（utils/positionModel.js）：输入框 maxlength / 表单规则 / mock 校验必须同一个数字，
-  // 否则出现「输入框计数 600/2000，保存却被 mock 以 500 拒绝」（待办 yuepu#8；2026-09-16 217ce1f 只改了 UI 与 md）。
-  it('mock 校验：描述 >DESCRIPTION_MAX_LEN / 领用页文案 >6 条或单条 >CLAIM_NOTE_LEN / 示例问题单条 >EXAMPLE_Q_MAX_LEN / SOP >4000 均被拦；上限值本身放行', async () => {
-    await expect(updatePosition(404, { description: 'x'.repeat(DESCRIPTION_MAX_LEN) })).resolves.toBeTruthy()
-    await expect(updatePosition(404, { description: 'x'.repeat(DESCRIPTION_MAX_LEN + 1) })).rejects.toMatchObject({
-      field: 'description',
-      message: `岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`
-    })
-    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(CLAIM_NOTE_LEN)] })).resolves.toBeTruthy()
-    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(CLAIM_NOTE_LEN + 1)] })).rejects.toMatchObject({
-      field: 'claimDescriptions',
-      message: `领用页文案每条最多 ${CLAIM_NOTE_LEN} 个字符`
-    })
+  it('mock 校验：描述 >2000（2026-09-20 待办 yuepu#8，原 500 与 UI/一览表不同源）/ 领用页文案 >6 条或单条 >300（同上，原 100）/ 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {
+    // 描述 2000 以内放行、2001 拦（人格页 DESCRIPTION_MAX_LEN / 新建弹窗同口径）
+    await expect(updatePosition(404, { description: 'x'.repeat(2000) })).resolves.toBeTruthy()
+    await expect(updatePosition(404, { description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
     await expect(updatePosition(404, { claimDescriptions: Array.from({ length: 7 }, (_, i) => `条${i}`) })).rejects.toMatchObject({ field: 'claimDescriptions' })
-    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(EXAMPLE_Q_MAX_LEN), '', ''] })).resolves.toBeTruthy()
-    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(EXAMPLE_Q_MAX_LEN + 1), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
+    // 领用页文案 300 放行 / 301 拦（CLAIM_NOTE_LEN 同口径）
+    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(300)] })).resolves.toBeTruthy()
+    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(301)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
+    await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(301), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
-    // createPosition 同口径校验描述（md 岗位 §2.1 L175）：上限放行 / 超 1 拦
-    await expect(createPosition({ name: '描述恰上限岗', description: 'x'.repeat(DESCRIPTION_MAX_LEN) })).resolves.toMatchObject({ name: '描述恰上限岗' })
-    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(DESCRIPTION_MAX_LEN + 1) })).rejects.toMatchObject({ field: 'description' })
+    // createPosition 同口径校验描述 2000（一览表 L14）：2000 放行 / 2001 拦
+    await expect(createPosition({ name: '描述恰 2000 岗', description: 'x'.repeat(2000) })).resolves.toMatchObject({ name: '描述恰 2000 岗' })
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
   })
 })
 
