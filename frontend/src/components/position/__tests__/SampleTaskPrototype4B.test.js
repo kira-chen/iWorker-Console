@@ -124,7 +124,9 @@ const stubs = {
   },
   'el-checkbox-group': { template: '<div><slot /></div>' },
   'el-checkbox-button': { template: '<label><slot /></label>' },
-  'el-radio-group': { template: '<div><slot /></div>' },
+  // 执行动作单选：把当前值与各项 value 暴露成 data-value，供断言「默认选中谁」
+  'el-radio-group': { props: ['modelValue'], template: '<div :data-value="modelValue"><slot /></div>' },
+  'el-radio': { props: ['value'], template: '<label class="stub-radio" :data-value="value"><slot /></label>' },
   'el-radio-button': { template: '<label><slot /></label>' },
   'el-tooltip': { template: '<span><slot /></span>' },
   'el-switch': {
@@ -374,7 +376,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     SampleTaskEditor = (await import('@/components/position/SampleTaskEditor.vue')).default
   })
 
-  it('#18 七个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 执行动作 / 引用平台技能 / 执行模型」', async () => {
+  it('#18 七个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 执行动作 / 执行模型 / 引用平台技能」', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     const heads = [...container.querySelectorAll('.te-card-title')].map((n) => n.textContent.trim())
@@ -383,9 +385,59 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(heads[2]).toContain('提示词')
     expect(heads[3]).toContain('引用工具')
     expect(heads[4]).toContain('执行动作')
-    expect(heads[5]).toContain('引用平台技能')
-    expect(heads[6]).toContain('执行模型')
+    expect(heads[5]).toContain('执行模型')
+    expect(heads[6]).toContain('引用平台技能')
     expect(container.querySelectorAll('.te-card-body').length).toBe(7)
+  })
+
+  // md §7.6 / §7.7：执行动作、执行模型两卡紧跟引用工具、排在引用平台技能之前；引导文案关键词加粗，单选默认「技能」
+  it('执行动作 / 执行模型：引导文案与加粗词、单选「技能 / Agent」默认选「技能」且技能态无额外提示（md §7.6 / §7.7）', async () => {
+    mountComp(SampleTaskEditor, { positionId: 1, sample: null })
+    await flush()
+    const cards = [...container.querySelectorAll('.te-card')]
+    const card = (title) => cards.find((c) => c.querySelector('.te-card-title').textContent.includes(title))
+    const guideOf = (title) => card(title).querySelector('.te-card-guide')
+    const boldOf = (title) => [...guideOf(title).querySelectorAll('b')].map((b) => b.textContent)
+
+    expect(guideOf('执行动作').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      '触发时由谁来办：整个交给某个 Agent，或按下面指定的技能执行。'
+    )
+    expect(boldOf('执行动作')).toEqual(['Agent', '技能'])
+    expect(guideOf('执行模型').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      '这条任务用哪个模型跑。不选 = 跟随平台默认模型；领用者后续可自行调整，不影响下次下发。'
+    )
+    expect(boldOf('执行模型')).toEqual(['不选 = 跟随平台默认模型'])
+
+    const group = card('执行动作').querySelector('.te-exec-type-group')
+    expect([...group.querySelectorAll('.stub-radio')].map((r) => r.textContent.trim())).toEqual(['技能', 'Agent'])
+    expect(group.getAttribute('data-value')).toBe('SKILL')
+    // 技能态：只有引导文案一段，不出 Agent 下拉，也没有「将使用下方…」之类的追加提示
+    expect(card('执行动作').querySelectorAll('.te-card-guide').length).toBe(1)
+    expect(card('执行动作').querySelector('.te-exec-agent')).toBeNull()
+  })
+
+  it('执行动作默认「技能」：新建保存 payload.execType = SKILL 且不带 execAgentId；存量样例无该字段也回填「技能」', async () => {
+    const { createSampleTask } = await import('@/api/sampleTask')
+    mountComp(SampleTaskEditor, { positionId: 1, sample: null })
+    await flush()
+    const name = container.querySelector('.stub-el-input[placeholder="如：每日经营分析报告"]')
+    name.value = '每日经营分析报告'
+    name.dispatchEvent(new Event('input'))
+    const prompt = container.querySelector('.stub-el-input[placeholder="描述任务目标，如：分析昨日核心指标并生成周报"]')
+    prompt.value = '分析昨日核心指标'
+    prompt.dispatchEvent(new Event('input'))
+    await flush()
+    ;[...container.querySelectorAll('.meta-actions button')].pop().click()
+    await flush()
+    const payload = createSampleTask.mock.calls[0][1]
+    expect(payload.execType).toBe('SKILL')
+    expect(payload.execAgentId).toBeUndefined()
+
+    app.unmount()
+    container.remove()
+    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
+    await flush()
+    expect(container.querySelector('.te-exec-type-group').getAttribute('data-value')).toBe('SKILL')
   })
 
   it('#16 右栏内容有限宽居中容器 .ste-inner（J5：embedded 开关退役后即基础形态）', async () => {
