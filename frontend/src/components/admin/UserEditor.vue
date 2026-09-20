@@ -99,9 +99,11 @@ const rules = computed(() => {
     email: [{ type: 'email', message: '请输入有效邮箱', trigger: 'blur' }]
   }
   if (!isEdit.value) {
+    // transform 先 trim 再校验，与 adminUserMock.createUser 的 trim 后判长同口径（2026-09-20 待办 yuepu#8）
+    const trim = (v) => String(v ?? '').trim()
     r.username = [
-      { required: true, message: '请输入 3–32 个字符', trigger: 'blur' },
-      { min: 3, max: 32, message: '请输入 3–32 个字符', trigger: 'blur' }
+      { required: true, transform: trim, message: '请输入 3–32 个字符', trigger: 'blur' },
+      { min: 3, max: 32, transform: trim, message: '请输入 3–32 个字符', trigger: 'blur' }
     ]
   }
   return r
@@ -121,7 +123,7 @@ async function onSubmit() {
     try {
       if (!isEdit.value) {
         await createUser({
-          username: form.username,
+          username: String(form.username ?? '').trim(),
           displayName: form.displayName,
           email: form.email,
           roleCodes: form.roleCodes

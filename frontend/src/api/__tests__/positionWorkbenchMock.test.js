@@ -85,17 +85,19 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(after.claimDescriptions).toEqual(['第一条说明'])
   })
 
-  it('mock 校验：描述 >500（2026-09-08 决议第 5 项：统一 500）/ 领用页文案 >6 条或单条 >100 / 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {
-    // 描述 500 以内放行、501 拦（人格页 / 新建弹窗同口径）
-    await expect(updatePosition(404, { description: 'x'.repeat(500) })).resolves.toBeTruthy()
-    await expect(updatePosition(404, { description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
+  it('mock 校验：描述 >2000（2026-09-20 待办 yuepu#8，原 500 与 UI/一览表不同源）/ 领用页文案 >6 条或单条 >300（同上，原 100）/ 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {
+    // 描述 2000 以内放行、2001 拦（人格页 DESCRIPTION_MAX_LEN / 新建弹窗同口径）
+    await expect(updatePosition(404, { description: 'x'.repeat(2000) })).resolves.toBeTruthy()
+    await expect(updatePosition(404, { description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
     await expect(updatePosition(404, { claimDescriptions: Array.from({ length: 7 }, (_, i) => `条${i}`) })).rejects.toMatchObject({ field: 'claimDescriptions' })
-    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(101)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
+    // 领用页文案 300 放行 / 301 拦（CLAIM_NOTE_LEN 同口径）
+    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(300)] })).resolves.toBeTruthy()
+    await expect(updatePosition(404, { claimDescriptions: ['y'.repeat(301)] })).rejects.toMatchObject({ field: 'claimDescriptions' })
     await expect(updatePosition(404, { exampleQuestions: ['z'.repeat(301), '', ''] })).rejects.toMatchObject({ field: 'exampleQuestions' })
     await expect(updatePosition(404, { positionSop: 's'.repeat(4001) })).rejects.toMatchObject({ field: 'positionSop' })
-    // createPosition 同口径校验描述 500（md 岗位 §2.1 L175；positionMock.js createPosition 500 线）：500 放行 / 501 拦
-    await expect(createPosition({ name: '描述恰 500 岗', description: 'x'.repeat(500) })).resolves.toMatchObject({ name: '描述恰 500 岗' })
-    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(501) })).rejects.toMatchObject({ field: 'description' })
+    // createPosition 同口径校验描述 2000（一览表 L14）：2000 放行 / 2001 拦
+    await expect(createPosition({ name: '描述恰 2000 岗', description: 'x'.repeat(2000) })).resolves.toMatchObject({ name: '描述恰 2000 岗' })
+    await expect(createPosition({ name: '超长描述岗', description: 'x'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
   })
 })
 
