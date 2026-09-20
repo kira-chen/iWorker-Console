@@ -7,7 +7,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * MyApplications.vue（我的申请）列表页单测（2026-09-12 测试审计 T56 新建，此前 407 行零测试）。
  *
  * 对齐 md `prd.我的申请.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型八项、申请类型三项、审核结果四项、【查询】）；
+ * - §一 L8 页面说明；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、审核结果四项、【查询】）；
  * - §3.1 七列；审核结果四态标签，已驳回悬停展示驳回原因；操作列固定【查看】+ 待审核【撤回】+ 已驳回/已撤回【重新提交】；
  * - §四 L47 / §七 L98 对象已删除 → 【查看】置灰；技能走整页只读路由，其余开原生详情抽屉；
  * - §4.1 待审核底栏 关闭|撤回申请，撤回二次确认 → 「申请已撤回」；§4.2 已通过仅 关闭；
@@ -179,13 +179,13 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
   })
 
-  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型八项、申请类型三项、审核结果四项、【查询】', async () => {
+  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型九项（含版本管理）、申请类型三项、审核结果四项、【查询】', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索申请对象名称 / 描述')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型', '全部审核结果'])
     const opts = (i) => [...selects[i].querySelectorAll('.el-option')].map((o) => o.textContent)
-    expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型'])
+    expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
     expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用'])
     expect(opts(2)).toEqual(['待审核', '已通过', '已驳回', '已撤回'])
     expect(toolbarBtn('查询')).toBeTruthy()
