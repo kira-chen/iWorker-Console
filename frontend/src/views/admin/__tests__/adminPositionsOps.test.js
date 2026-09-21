@@ -9,7 +9,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 新口径（对齐 md 岗位管理 §二.3 操作列；历史出处：交互原型 v2 positionActions 约 L1170）：
  * - 编辑恒显，审核中 disabled + title「审核中不可编辑」；
  * - 审核中 → 【撤回】（确认说明撤回后恢复提交审核前状态，toast「已撤回」）；
- * - 未发布 → 【发布】（先跑 md §9.1 八项完整性校验，Q3 不弹确认窗，通过则直接开版本管理侧栏）
+ * - 未发布 → 【发布】（先跑 md §9.1 九项完整性校验，Q3 不弹确认窗，通过则直接开版本管理侧栏）
  *   +【删除】（领用护栏 + 确认文案照新 md）；
  * - 已发布 → 【停用】（领用护栏文案照新 md；否则确认提交停用审核）+【版本管理】（冻结保留）；
  * - 【查看】固定恒显 → 岗位详情页只读态（query.view=1）。
@@ -45,7 +45,7 @@ vi.mock('@/api/position', () => ({
   relistPositionPublication: vi.fn()
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn().mockResolvedValue([]) }))
-// 2026-09-09 PRD 复核·G2（A1）：【发布】门改跑 md §9.1 八项完整性校验，需读岗位详情 + 自动化任务条数。
+// 2026-09-09 PRD 复核·G2（A1）：【发布】门改跑 md §9.1 九项完整性校验，需读岗位详情 + 自动化任务条数。
 // 默认给「全项齐备」的详情，使既有操作列断言（发布 → 开版本侧栏）不变；缺项用例在下方各自覆写。
 const listSampleTasks = vi.fn()
 vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(...a) }))
@@ -126,7 +126,7 @@ function btn(row, text) {
   return btns(row).find((b) => b.textContent.trim() === text)
 }
 
-// md §9.1 八项齐备的岗位详情（A1 发布门入参）：名称/图标/描述/领用页文案/示例问题 3 条/SOP/Agent 与技能/自动化任务
+// md §9.1 九项齐备的岗位详情（A1 发布门入参）：名称/图标/描述/领用页文案/示例问题 3 条/SOP/采集字段/Agent 与技能/自动化任务
 const FULL_DETAIL = {
   name: '可发布草稿岗',
   icon: '▤',
@@ -134,6 +134,7 @@ const FULL_DETAIL = {
   claimDescriptions: ['自动汇总经营数据'],
   exampleQuestions: ['q1', 'q2', 'q3'],
   positionSop: 'sop',
+  intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }],
   agents: [{ name: 'A1', skills: [{ skillId: 1 }] }]
 }
 
@@ -191,11 +192,11 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
   })
 
   // 2026-09-09 PRD 复核·G2（A1 / md §9.1）：列表页【发布】门由「技能数≥1」改为与详情页共用的
-  // 八项完整性校验（computeCompletenessMissing），缺项 toast「请先填写：…」并跳详情页对应页签。
-  // 2026-09-09 负责人拍板：列表页与详情页两个【发布】入口行为一致，八项齐备后统一开
+  // 九项完整性校验（computeCompletenessMissing），缺项 toast「请先填写：…」并跳详情页对应页签。
+  // 2026-09-09 负责人拍板：列表页与详情页两个【发布】入口行为一致，九项齐备后统一开
   // 「发布前检查弹窗」（md §3.3/§9.2）。原断言「直接开版本管理侧栏」是 Q3 旧口径（原型作
   // 基准时的处理），原型已退场故推翻。【版本管理】按钮仍走 VersionDrawer，见 ②e。
-  it('②b 发布（未发布行）：八项齐备 → 开发布前检查弹窗，不开版本侧栏、不弹 confirm', async () => {
+  it('②b 发布（未发布行）：九项齐备 → 开发布前检查弹窗，不开版本侧栏、不弹 confirm', async () => {
     await mount()
     btn(rowByName('可发布草稿岗'), '发布').click()
     await flush()
@@ -203,7 +204,7 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
     expect(listSampleTasks).toHaveBeenCalledWith('ps_draft_ok')
     const dlg = container.querySelector('.pub-check')
     expect(dlg.getAttribute('data-open')).toBe('true')
-    expect(dlg.getAttribute('data-passed')).toBe('true') // 八项齐备 → 可发布
+    expect(dlg.getAttribute('data-passed')).toBe('true') // 九项齐备 → 可发布
     expect(container.querySelector('.ver-dialog').getAttribute('data-open')).not.toBe('true')
     expect(ElMessage.warning).not.toHaveBeenCalled()
     expect(ElMessageBox.confirm).not.toHaveBeenCalled()

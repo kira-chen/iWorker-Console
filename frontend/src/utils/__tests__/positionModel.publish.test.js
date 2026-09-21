@@ -1,6 +1,6 @@
 // 2026-09-12 测试审计 T35：自 positionModel.test.js 拆出「发布」主题（对齐 md 岗位 §3.7 版本号 / §9.1 阻断校验 /
 // §9.2 发布前检查弹窗）：版本号校验 / 发布告警归一 / computePublishCheck / computeCompletenessMissing / agentsWithSkillOk。条目原样迁移，断言不改。
-// 2026-09-21 负责人拍板：领用页文案必填（至少 1 条）、岗位图标必填，阻断项由六项扩为八项，夹具与断言随之补齐。
+// 2026-09-21 负责人拍板：领用页文案必填（至少 1 条）、岗位图标必填、采集字段必填（至少 1 个），阻断项由六项扩为九项，夹具与断言随之补齐。
 import { describe, it, expect } from 'vitest'
 import {
   validateVersionLabel,
@@ -8,6 +8,7 @@ import {
   computePublishCheck,
   computeCompletenessMissing,
   claimNotesComplete,
+  intakeFieldCount,
   agentsWithSkillOk,
   normalizePublishWarnings
 } from '@/utils/positionModel'
@@ -60,27 +61,45 @@ describe('computePublishCheck（发布前检查）', () => {
   // 2026-09-09 PRD 复核·G1（A1 / Q11 负责人新决策）：阻断项由 4 项扩到 md §9.1 六项——
   // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / Agent 与技能（≥1 Agent 且该 Agent ≥1 技能）/
   // 自动化任务（≥1 条）。此前「Agent 与技能仅警告不阻断」的口径已被推翻。
-  // 2026-09-21 负责人拍板再追加岗位图标（已选择）、领用页文案（≥1 条）→ 八项。
+  // 2026-09-21 负责人拍板再追加岗位图标（已选择）、领用页文案（≥1 条）、采集字段（≥1 个）→ 九项。
   const FULL = {
     name: '销售',
     icon: '▤',
     description: '负责销售',
     claimDescriptions: ['自动汇总经营数据'],
     positionSop: '1. 先看数据',
+    intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }],
     exampleQuestions: ['q1', 'q2', 'q3'],
     agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
     sampleTaskCount: 1
   }
-  it('八项全满足 → blockingPassed=true；清单七行标签与文案', () => {
+  it('九项全满足 → blockingPassed=true；清单八行标签与文案', () => {
     const c = computePublishCheck({ ...FULL })
     expect(c.blockingPassed).toBe(true)
     expect(c.doneRatio).toBe(1)
-    expect(c.items.map((i) => i.label)).toEqual(['岗位名称与描述', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', 'Agent 与技能', '自动化任务'])
+    expect(c.items.map((i) => i.label)).toEqual(['岗位名称与描述', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
     expect(c.items.map((i) => i.detail)).toEqual([
-      '必填内容已填写', '岗位图标已选择', '领用页文案已填写', '3 条示例问题已填写', '岗位能力综述已填写', '已配置 Agent 与技能', '已配置 1 条自动化任务'
+      '必填内容已填写', '岗位图标已选择', '领用页文案已填写', '3 条示例问题已填写', '岗位能力综述已填写', '已配置 1 个采集字段', '已配置 Agent 与技能', '已配置 1 条自动化任务'
     ])
     expect(c.warnings).toEqual([]) // 无未验证工具 → 不出「存在告警项」提示行
-    expect(c.items.every((i) => i.blocking)).toBe(true) // 七行全为阻断项
+    expect(c.items.every((i) => i.blocking)).toBe(true) // 八行全为阻断项
+  })
+  it('采集字段缺（空数组 / 未传 / 只有无字段名的行）→ 硬阻断（2026-09-21 负责人拍板：必填至少 1 个，原不参与发布阻断）', () => {
+    for (const intakeSchema of [[], undefined, [{ label: '', key: 'x', type: 'text' }, { label: '   ', type: 'text' }]]) {
+      const c = computePublishCheck({ ...FULL, intakeSchema })
+      const item = c.items.find((i) => i.key === 'intakeSchema')
+      expect(item.blocking).toBe(true)
+      expect(item.ok).toBe(false)
+      expect(item.detail).toBe('至少配置 1 个采集字段')
+      expect(c.blockingPassed).toBe(false)
+    }
+  })
+  it('采集字段只要有 1 个有效字段即通过（不要求填满 10 个），detail 报个数', () => {
+    const c = computePublishCheck({ ...FULL, intakeSchema: [{ label: '区域', type: 'text' }, { label: '业务线', type: 'text' }, { label: '', type: 'text' }] })
+    const item = c.items.find((i) => i.key === 'intakeSchema')
+    expect(item.ok).toBe(true)
+    expect(item.detail).toBe('已配置 2 个采集字段') // 无字段名的行不计
+    expect(c.blockingPassed).toBe(true)
   })
   it('岗位图标缺（空串 / 未传 / 纯空白）→ 硬阻断（2026-09-21 负责人拍板：图标必填）', () => {
     for (const icon of ['', undefined, '   ']) {
@@ -136,7 +155,7 @@ describe('computePublishCheck（发布前检查）', () => {
     expect(c.items.find((i) => i.key === 'sop').ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
-  it('空 Agent / Agent 无技能 → 阻断（md §6.5 / §9.1 第 7 条，2026-09-09 Q11 新决策）', () => {
+  it('空 Agent / Agent 无技能 → 阻断（md §6.5 / §9.1 第 8 条，2026-09-09 Q11 新决策）', () => {
     for (const agents of [[], undefined, [{ name: '空组', skills: [] }]]) {
       const c = computePublishCheck({ ...FULL, agents })
       expect(c.blockingPassed).toBe(false)
@@ -151,7 +170,7 @@ describe('computePublishCheck（发布前检查）', () => {
     expect(c.items.find((i) => i.key === 'agents').ok).toBe(true)
     expect(c.blockingPassed).toBe(true)
   })
-  it('自动化任务 0 条 → 阻断（md §7.9 / §9.1 第 8 条）', () => {
+  it('自动化任务 0 条 → 阻断（md §7.9 / §9.1 第 9 条）', () => {
     for (const sampleTaskCount of [0, undefined]) {
       const c = computePublishCheck({ ...FULL, sampleTaskCount })
       expect(c.blockingPassed).toBe(false)
@@ -161,7 +180,7 @@ describe('computePublishCheck（发布前检查）', () => {
       expect(item.detail).toBe('至少配置 1 条自动化任务')
     }
   })
-  it('单/多选无选项 → 不再是发布清单项（md §3.4 采集字段不参与发布阻断；抽屉保存时另拦）', () => {
+  it('单/多选无选项 → 不是独立的发布清单项（选项校验在抽屉保存时另拦；发布只看「至少 1 个采集字段」）', () => {
     const c = computePublishCheck({ ...FULL, intakeSchema: [{ type: 'single_select', label: '区域', options: [] }] })
     expect(c.items.find((i) => i.key === 'intake')).toBeUndefined()
     expect(c.blockingPassed).toBe(true)
@@ -181,28 +200,31 @@ describe('computePublishCheck（发布前检查）', () => {
   })
 })
 
-describe('computeCompletenessMissing（md §9.1 八项完整性校验 · 保存与发布共用）', () => {
+describe('computeCompletenessMissing（md §9.1 九项完整性校验 · 保存与发布共用）', () => {
   // 2026-09-09 PRD 复核·G1（A1 / Q11）：【发布岗位】按此数组硬阻断并定位页签；【保存】按同一数组出提示条不阻断。
-  // 2026-09-21 负责人拍板：追加岗位图标（第 2 项）、领用页文案（第 4 项），均在人格页签。
+  // 2026-09-21 负责人拍板：追加岗位图标（第 2 项）、领用页文案（第 4 项，均在人格页签）、采集字段（第 7 项，采集字段页签）。
   const FULL = {
     name: '销售', icon: '▤', description: '负责销售', claimDescriptions: ['自动汇总经营数据'], positionSop: '1. 先看数据',
+    intakeSchema: [{ label: '负责区域', key: 'region', type: 'text' }],
     exampleQuestions: ['q1', 'q2', 'q3'],
     agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
     sampleTaskCount: 2
   }
-  it('八项齐备 → 空数组', () => {
+  it('九项齐备 → 空数组', () => {
     expect(computeCompletenessMissing(FULL)).toEqual([])
   })
-  it('全空 → 八项按 md 列举顺序全部返回，且各带所在页签', () => {
+  it('全空 → 九项按 md 列举顺序全部返回，且各带所在页签', () => {
     const miss = computeCompletenessMissing({})
-    expect(miss.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '岗位描述', '领用页文案', '3 条示例问题', '岗位 SOP', 'Agent 与技能', '自动化任务'])
-    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'persona', 'persona', 'agents', 'tasks'])
+    expect(miss.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '岗位描述', '领用页文案', '3 条示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
+    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'persona', 'persona', 'intake', 'agents', 'tasks'])
   })
   it('逐项缺失只报该项', () => {
     expect(computeCompletenessMissing({ ...FULL, name: '  ' }).map((i) => i.key)).toEqual(['name'])
     expect(computeCompletenessMissing({ ...FULL, icon: '' }).map((i) => i.key)).toEqual(['icon'])
     expect(computeCompletenessMissing({ ...FULL, icon: '  ' }).map((i) => i.key)).toEqual(['icon'])
     expect(computeCompletenessMissing({ ...FULL, description: '' }).map((i) => i.key)).toEqual(['description'])
+    expect(computeCompletenessMissing({ ...FULL, intakeSchema: [] }).map((i) => i.key)).toEqual(['intakeSchema'])
+    expect(computeCompletenessMissing({ ...FULL, intakeSchema: [{ label: '  ' }] }).map((i) => i.key)).toEqual(['intakeSchema'])
     expect(computeCompletenessMissing({ ...FULL, claimDescriptions: [] }).map((i) => i.key)).toEqual(['claimDescriptions'])
     expect(computeCompletenessMissing({ ...FULL, claimDescriptions: ['  '] }).map((i) => i.key)).toEqual(['claimDescriptions'])
     expect(computeCompletenessMissing({ ...FULL, exampleQuestions: ['q1', '', 'q3'] }).map((i) => i.key)).toEqual(['exampleQuestions'])
@@ -227,7 +249,17 @@ describe('claimNotesComplete（领用页文案必填：至少 1 条非空）', (
   })
 })
 
-describe('agentsWithSkillOk（md §9.1 第 7 条）', () => {
+describe('intakeFieldCount（采集字段必填：至少 1 个有字段名的字段）', () => {
+  it('非数组 / 空数组 / 无字段名行 → 0；只数有字段名的行', () => {
+    expect(intakeFieldCount()).toBe(0)
+    expect(intakeFieldCount(null)).toBe(0)
+    expect(intakeFieldCount([])).toBe(0)
+    expect(intakeFieldCount([{ label: '' }, { label: '  ' }, {}, null])).toBe(0)
+    expect(intakeFieldCount([{ label: '区域' }, { label: '' }, { label: '业务线' }])).toBe(2)
+  })
+})
+
+describe('agentsWithSkillOk（md §9.1 第 8 条）', () => {
   it('无 Agent / 非数组 / Agent 全无技能 → false；任一 Agent 有技能 → true', () => {
     expect(agentsWithSkillOk()).toBe(false)
     expect(agentsWithSkillOk([])).toBe(false)

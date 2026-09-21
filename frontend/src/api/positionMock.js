@@ -174,14 +174,14 @@ function buildWorkbenchSeed() {
       positionSop: '1. 接收报销材料并逐项核验。\n2. 标记风险项并给出风险等级。\n3. 输出核验结论与整改建议。',
       businessSystemIds: [],
       persona: '严谨、克制。逐项核验，结论给出依据与风险等级。',
-      intakeSchema: [],
+      intakeSchema: [{ label: '所属部门', key: 'department', type: 'text', required: true, options: [] }],
       agents: [
         { agentId: 506, name: '单据核验', description: '核验报销材料与财务单据，输出风险提示', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] }
       ]
     },
     // 2026-09-09 负责人要求补全：原为全空的「空白岗位」样本，每次发布校验都被报 4 项缺失，
     // 且新做的「发布前检查弹窗」在种子数据下永远点不到（唯一的未发布岗位恰好不完整）。
-    // 补齐后：市场研究岗成为「未发布 + 六项齐备」的可演示样本，点【发布】即弹检查窗。
+    // 补齐后：市场研究岗成为「未发布 + 阻断项齐备」的可演示样本，点【发布】即弹检查窗（2026-09-21 起阻断项含采集字段 ≥1 个，故补 1 个）。
     404: {
       intro: '负责行业资料整理与竞品跟踪的研究 AI 同事',
       iconSource: 'library',
@@ -192,7 +192,7 @@ function buildWorkbenchSeed() {
         '1. 明确研究主题与范围，收集公开行业资料。\n2. 调用竞品跟踪 Agent 汇总竞品动作与市场变化。\n3. 区分事实与推断，标注待验证信息。\n4. 输出结构化研究结论并沉淀到工作档案。',
       businessSystemIds: [],
       persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
-      intakeSchema: [],
+      intakeSchema: [{ label: '关注行业', key: 'industry', type: 'text', required: false, options: [] }],
       agents: [
         { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_303', sortOrder: 0 }] }
       ]

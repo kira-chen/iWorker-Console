@@ -4,7 +4,7 @@ import { createApp, h, nextTick, reactive, computed, inject, unref } from 'vue'
 
 /**
  * PositionIntakeTab（岗位详情「采集字段」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §3.1 / §3.2 / §3.3：
- *  - 已有 10 个 → 【＋ 新增采集字段】置灰；卡头副题「员工领用时填写，最多 10 个」；
+ *  - 已有 10 个 → 【＋ 新增采集字段】置灰；卡头带必填红星（2026-09-21 负责人拍板必填至少 1 个），副题「员工领用时填写，至少 1 个，最多 10 个」；
  *  - 抽屉标题：新增「新增采集字段」/ 编辑「编辑采集字段」；字段名 maxlength 40 + 占位「如：客户公司名称」；
  *  - 单/多选全空选项 → toast「请至少填写一个选项」且不落库；
  *  - 保存 → 「采集字段已保存」+ 列表新增一行（key 留空自动生成）；
@@ -122,9 +122,10 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); container?.remove() })
 
 describe('采集字段页签 · 列表与上限（md §3.1）', () => {
-  it('卡头副题「员工领用时填写，最多 10 个」；1 条时【＋ 新增采集字段】可点；空态文案「暂无采集字段，点「新增采集字段」添加」', async () => {
+  it('卡头带必填红星、副题「员工领用时填写，至少 1 个，最多 10 个」；1 条时【＋ 新增采集字段】可点；空态文案「暂无采集字段，点「新增采集字段」添加」', async () => {
     await mount()
-    expect(container.querySelector('.pd-card-sub').textContent.trim()).toBe('员工领用时填写，最多 10 个')
+    expect(container.querySelector('.pd-card-title .pd-req')?.textContent).toBe('*')
+    expect(container.querySelector('.pd-card-sub').textContent.trim()).toBe('员工领用时填写，至少 1 个，最多 10 个')
     expect(headBtn().disabled).toBe(false)
     expect(container.querySelector('.el-table').getAttribute('data-empty-text')).toBe('暂无采集字段，点「新增采集字段」添加')
     expect([...col('字段名').querySelectorAll('.cell')].map((c) => c.textContent.trim())).toEqual(['客户公司名称'])

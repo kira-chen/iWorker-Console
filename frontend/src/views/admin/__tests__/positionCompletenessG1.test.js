@@ -10,9 +10,9 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  * 二轮补充确认走 B 方案 —— 保存时只提示不拦，提交发布时才硬拦。
  *
  * 本组钉三件事：
- *  ① 【发布岗位】八项任一缺失 → 不开发布弹窗、toast「请先填写：…」、自动切到第一个缺失项所在页签；
- *  ② 【保存】执行同一套八项校验但**不阻断**：保存照常完成，顶部提示条列出未完成项（可关、可点跳页签）；
- *  ③ 八项齐备时保存不出提示条、发布放行到发布前检查弹窗。
+ *  ① 【发布岗位】九项任一缺失 → 不开发布弹窗、toast「请先填写：…」、自动切到第一个缺失项所在页签；
+ *  ② 【保存】执行同一套九项校验但**不阻断**：保存照常完成，顶部提示条列出未完成项（可关、可点跳页签）；
+ *  ③ 九项齐备时保存不出提示条、发布放行到发布前检查弹窗。
  *
  * 另钉 A19（Q455）：知识页签【检索测试】原地开弹窗、不 router.push。
  */
@@ -24,7 +24,7 @@ const basicFull = () => ({
   claimDesc: [], claimDescriptions: ['自动汇总经营数据'],
   exampleQuestions: ['q1', 'q2', 'q3'],
   description: '负责销售线索跟进', positionSop: '1. 理解意图',
-  businessSystemIds: [], intakeSchema: []
+  businessSystemIds: [], intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }]
 })
 const agentsFull = () => [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 1, name: 's' }] }]
 
@@ -72,7 +72,7 @@ vi.mock('@/api/position', () => ({
   listSkills: vi.fn(() => Promise.resolve({ list: [] }))
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn(() => Promise.resolve([])) }))
-// 自动化任务条数：md §9.1 第 8 条的入参，详情页挂载即独立预取（不依赖是否访问过该页签）
+// 自动化任务条数：md §9.1 第 9 条的入参，详情页挂载即独立预取（不依赖是否访问过该页签）
 const listSampleTasksSpy = vi.fn(() => Promise.resolve({ list: [{ id: 1 }] }))
 vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasksSpy(...a) }))
 // 知识页签一条已发布知识库，供 A19【检索测试】用例点
@@ -171,8 +171,8 @@ beforeEach(() => {
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('A1 · 【发布岗位】按 md §9.1 八项硬阻断', () => {
-  it('八项齐备 → 放行到发布前检查弹窗，无 toast', async () => {
+describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
+  it('九项齐备 → 放行到发布前检查弹窗，无 toast', async () => {
     await mount()
     expect(banner()).toBeNull()
     await clickTop('发布岗位')
@@ -208,7 +208,16 @@ describe('A1 · 【发布岗位】按 md §9.1 八项硬阻断', () => {
     expect(activeTab()).toBe('persona')
   })
 
-  it('第 7 项：无 Agent / Agent 无技能 → 阻断并定位「Agent 与技能」页签', async () => {
+  it('第 7 项：采集字段为空 → 阻断、不开弹窗、toast 点名、定位「采集字段」页签（2026-09-21 负责人拍板必填至少 1 个，原不参与阻断）', async () => {
+    store.basic.intakeSchema = []
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeNull()
+    expect(lastWarn()).toBe('请先填写：采集字段')
+    expect(activeTab()).toBe('intake')
+  })
+
+  it('第 8 项：无 Agent / Agent 无技能 → 阻断并定位「Agent 与技能」页签', async () => {
     store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }]
     await mount()
     await clickTop('发布岗位')
@@ -217,7 +226,7 @@ describe('A1 · 【发布岗位】按 md §9.1 八项硬阻断', () => {
     expect(activeTab()).toBe('agents')
   })
 
-  it('第 8 项：自动化任务 0 条 → 阻断并定位「自动化任务」页签', async () => {
+  it('第 9 项：自动化任务 0 条 → 阻断并定位「自动化任务」页签', async () => {
     listSampleTasksSpy.mockResolvedValue({ list: [] })
     await mount()
     await clickTop('发布岗位')
@@ -267,7 +276,7 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
     expect(banner()).toBeNull()
   })
 
-  it('八项齐备保存 → 不出提示条', async () => {
+  it('九项齐备保存 → 不出提示条', async () => {
     await mount()
     await clickTop('保存')
     expect(store.saveBasic).toHaveBeenCalled()
