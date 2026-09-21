@@ -37,11 +37,13 @@ const mkBiz = (over) => ({
   id: over.id,
   name: '',
   icon: '',
-  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）+
-  // 所属岗位（仅 POSITION 时有意义）。两者创建后不可改，applyBizPayload 不碰这两个字段，只在
-  // createBizSystem 里从 payload 落一次（2026-09-18 待办 yuepu#1）。
+  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）。
+  // 创建后不可改，applyBizPayload 不碰该字段，只在 createBizSystem 里从 payload 落一次。
+  // 岗位私有连接器不绑定具体岗位：由岗位侧「连接器」页签引用，同一个可被多个岗位重复引用。
   type: 'PLATFORM',
-  positionId: null,
+  // 被哪些岗位引用（反向引用清单 [{ positionId, positionName }]，仅 POSITION 类型有意义）：
+  // 引用关系在岗位侧产生，连接器侧只读展示（列表「N 个岗位引用」）；新建默认无引用。
+  referencedByPositions: [],
   description: '',
   loginUrl: '',
   connType: 'login_session',
@@ -65,7 +67,11 @@ let bizRows = [
   mkBiz({
     id: 'biz_2101',
     type: 'POSITION',
-    positionId: 402,
+    // 与 positionMock.js 工作台种子同源：经营分析岗（401）与客户成功岗（402）都引用了本业务系统
+    referencedByPositions: [
+      { positionId: 401, positionName: '经营分析岗' },
+      { positionId: 402, positionName: '客户成功岗' }
+    ],
     name: '客户管理系统 CRM',
     icon: '◎',
     description: '管理客户资料、商机与销售跟进',
@@ -119,10 +125,12 @@ let bizRows = [
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=新建/编辑/删除、
 // 发布/撤回/停用/审核通过/驳回、专属技能增删。restore 做最小形状校验，快照不合法即抛错 → 兜底回种子。
-// version 2（2026-09-18 待办 yuepu#1）：行新增 `type` / `positionId`（连接器类型/所属岗位），
-//   旧快照没有这两个字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
+// version 2（2026-09-18 待办 yuepu#1）：行新增 `type`（连接器类型），
+//   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
+// version 3：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
+//   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 const persist = attachPersist('bizSystem', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ bizSeq, skillSeq, bizRows }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.bizSeq) || !Number.isFinite(d.skillSeq) || !Array.isArray(d.bizRows)) {
@@ -147,8 +155,9 @@ function toRow(b) {
     referencedBySkillCount: (b.referencedBySkills || []).length,
     refs: (b.referencedBySkills || []).map((s) => s.skillName),
     bizPagesCount: (b.bizPages || []).length,
-    // 岗位私有类型的引用数：单 positionId 绑定 → 已绑定即 1（列表「N 个岗位引用」按钮态用）
-    positionCount: b.positionId ? 1 : 0
+    // 岗位私有类型的引用数：取岗位侧反向引用清单长度（列表「N 个岗位引用」按钮态用）
+    referencedByPositions: (b.referencedByPositions || []).map((p) => ({ ...p })),
+    positionCount: (b.referencedByPositions || []).length
   }
 }
 
@@ -225,11 +234,10 @@ function applyBizPayload(b, payload) {
 export async function createBizSystem(payload) {
   await delay(250)
   validateBizPayload(payload)
-  // 类型 + 所属岗位创建后不可更改（PRD），只在这里从 payload 落一次；applyBizPayload 不碰这两个字段
+  // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyBizPayload 不碰该字段
   const b = mkBiz({
     id: `biz_${bizSeq++}`,
     type: payload.type || 'PLATFORM',
-    positionId: payload.type === 'POSITION' ? (payload.positionId ?? null) : null,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })

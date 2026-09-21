@@ -56,7 +56,7 @@ import SchemaFieldEditor from './SchemaFieldEditor.vue'
 import ParamRowsEditor from './ParamRowsEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
-import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
+import { CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -77,8 +77,7 @@ const form = reactive({
   code: '', // 系统生成；编辑/查看态只读展示（如 api_1101），新建为空
   name: '',
   description: '',
-  type: '',
-  positionId: null,
+  type: '', // 连接器类型（创建后不可改；岗位私有不在此绑定岗位，由岗位侧引用）
   providerSystemId: null,
   url: '',
   method: 'GET',
@@ -138,18 +137,6 @@ async function loadProviderSystems() {
   }
 }
 
-// 已发布岗位列表（用于岗位私有类型绑定）
-const publishedPositions = ref([])
-async function loadPublishedPositions() {
-  try {
-    const { listPositions } = await import('@/api/position')
-    const res = await listPositions({ status: 'published' })
-    publishedPositions.value = res.list || []
-  } catch (err) {
-    console.warn('加载已发布岗位失败:', err)
-    publishedPositions.value = []
-  }
-}
 
 // 鉴权（提案 20260831-2 · B 节）：authType=NONE|API_KEY|BEARER。
 // API_KEY 多参数行（ParamRowsEditor，列序拍板：参数名/描述/客户端填写/位置/参数值）：
@@ -227,7 +214,6 @@ function resetForm() {
   form.name = ''
   form.icon = ''
   form.type = ''
-  form.positionId = null
   form.description = ''
   form.providerSystemId = props.defaultProviderSystemId != null ? props.defaultProviderSystemId : null
   form.url = ''
@@ -252,7 +238,6 @@ function resetForm() {
 
 async function load() {
   clearErrors()
-  loadPublishedPositions()
   if (!isEdit.value) {
     resetForm()
     return
@@ -265,7 +250,6 @@ async function load() {
     form.name = d.name || ''
     form.icon = d.icon || ''
     form.type = d.type || ''
-    form.positionId = d.positionId || null
     form.description = d.description || ''
     form.url = d.url || ''
     form.method = d.method || 'GET'
@@ -370,7 +354,6 @@ function buildPayload() {
     name: form.name.trim(),
     icon: form.icon,
     type: form.type,
-    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     description: form.description.trim(),
     providerSystemId: form.providerSystemId,
     url: form.url.trim(),
@@ -494,42 +477,18 @@ async function save() {
               </div>
             </el-form-item>
           </div>
-          <!-- 类型和所属岗位同行 -->
-          <div class="ad-form-row">
-            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="ad-row-item">
-              <el-select
-                v-model="form.type"
-                placeholder="请选择连接器类型"
-                :disabled="isEdit"
-                style="width: 100%"
-              >
-                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-              </el-select>
-              <div v-if="isEdit" class="ad-type-hint">连接器类型创建后不可更改</div>
-            </el-form-item>
-            <el-form-item
-              v-if="form.type === CONNECTOR_TYPE.POSITION"
-              label="所属岗位"
-              :error="fieldErrors.positionId"
-              class="ad-row-item"
+          <!-- 连接器类型：只选类型，不绑定具体岗位（岗位私有连接器由岗位侧「连接器」页签引用，可被多个岗位重复引用） -->
+          <el-form-item label="连接器类型" :error="fieldErrors.type" required>
+            <el-select
+              v-model="form.type"
+              placeholder="请选择连接器类型"
+              :disabled="isEdit"
+              style="width: 100%"
             >
-              <el-select
-                v-model="form.positionId"
-                placeholder="选择已发布的岗位"
-                clearable
-                :disabled="isEdit"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="pos in publishedPositions"
-                  :key="pos.positionId"
-                  :label="pos.name"
-                  :value="pos.positionId"
-                />
-              </el-select>
-              <div v-if="isEdit" class="ad-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
-            </el-form-item>
-          </div>
+              <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+            </el-select>
+            <div v-if="isEdit" class="ad-type-hint">连接器类型创建后不可更改</div>
+          </el-form-item>
           <!-- 图标（md §三.2 L106「图标：必填」；原型最终层 L2181 把它删了属原型缺陷，
                Q101 负责人已确认以 md 为准，故保留）。S3：预览块 + 并排两个 plain 按钮 -->
           <div class="ad-row2">
@@ -833,17 +792,6 @@ async function save() {
 }
 .ad-row2 > .el-form-item {
   flex: 1;
-  min-width: 0;
-}
-
-/* 类型和所属岗位同行布局 */
-.ad-form-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 22px;
-}
-.ad-form-row .ad-row-item {
-  margin-bottom: 0;
   min-width: 0;
 }
 
