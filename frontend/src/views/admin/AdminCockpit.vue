@@ -1,13 +1,19 @@
 <script setup>
 /**
  * 驾驶舱（01 总览）—— 全局概览：资产发布率、岗位领用、待办、点踩反馈统计。
- * 数据全部静态 mock，对应原型 renderDashboard 内容（2026-09-17 负责人裁决：删去本月成本卡，
+ * 数据静态 mock，对应原型 renderDashboard 内容（2026-09-17 负责人裁决：删去本月成本卡，
  * 点赞/点踩统计模块收窄为「点踩统计 + 点踩上下文明细」，不再展示点赞相关数据）。
+ * 唯一例外是「用户端当前下发版本」面板：取自版本管理（api/version 的 getVersionOverview，与版本管理页
+ * 概览条同一数据源），版本管理里发布 / 停用经审核通过后，这里随之变化。
  */
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import { getVersionOverview } from '@/api/version'
+import { fmtTime } from '@/utils/docMeta'
+import { TERMINAL_OPTIONS } from '@/utils/versionMeta'
 import '@/assets/admin-dialog.css'
 
 const router = useRouter()
@@ -74,6 +80,25 @@ const posTop = [
 ]
 const publishedPosTop = computed(() => posTop.filter((p) => p.status === '已发布'))
 const maxUsers = 48
+
+// 用户端当前下发版本：各终端「下发中版本」（含停用审核期间仍在下发的）+ 更新说明，只读展示。
+// verOverview 为 null = 尚未取回（骨架屏）；{ WINDOWS: 版本行|null, MAC: 版本行|null }，null 表示该终端暂无下发版本。
+const verOverview = ref(null)
+const verError = ref(false)
+const verLoading = computed(() => refreshing.value || !verOverview.value)
+const verCards = computed(() =>
+  TERMINAL_OPTIONS.map((t) => ({ ...t, row: verOverview.value?.[t.value] ?? null }))
+)
+
+async function loadVerOverview() {
+  verError.value = false
+  try {
+    verOverview.value = await getVersionOverview()
+  } catch {
+    verError.value = true
+  }
+}
+onMounted(loadVerOverview)
 
 // 点踩统计（2026-09-17 裁决：模块收窄为点踩，不再展示点赞数据；按岗位分布及其筛选项一并删去）
 const fbTotal = { dislikes: 1031, dislikeRate: 12.2, trend: -3.1 }
@@ -191,6 +216,7 @@ function openConvModal(rec) {
 
 function doRefresh() {
   refreshing.value = true
+  loadVerOverview()
   setTimeout(() => {
     refreshing.value = false
     const now = new Date()
@@ -229,7 +255,7 @@ function openAlertAction(item) {
       >
         <span class="metric-head">
           <span class="metric-label">{{ m.label }}</span>
-          <span class="status-tag">{{ m.tag }}</span>
+          <span class="metric-tag">{{ m.tag }}</span>
         </span>
         <span class="metric-main">
           <span class="metric-value">{{ m.value }}<small>{{ m.unit }}</small></span>
@@ -242,7 +268,7 @@ function openAlertAction(item) {
       <button class="metric wide" @click="tip('知识库')">
         <span class="metric-head">
           <span class="metric-label">知识资产</span>
-          <span class="status-tag">资产构成</span>
+          <span class="metric-tag">资产构成</span>
         </span>
         <span class="metric-main">
           <span class="dual-stat">
@@ -257,7 +283,7 @@ function openAlertAction(item) {
       <button class="metric danger wide" @click="tip('待处理事项')">
         <span class="metric-head">
           <span class="metric-label">{{ pendingMetric.label }}</span>
-          <span class="status-tag">{{ pendingMetric.tag }}</span>
+          <span class="metric-tag">{{ pendingMetric.tag }}</span>
         </span>
         <span class="metric-main">
           <span class="metric-value">{{ pendingMetric.value }}<small>{{ pendingMetric.unit }}</small></span>
@@ -364,6 +390,33 @@ function openAlertAction(item) {
         </table>
       </section>
     </div>
+
+    <!-- 用户端当前下发版本：Windows / Mac 各一张只读卡片，版本号 + 发布时间 + 更新说明（数据同版本管理概览条） -->
+    <section class="dash-panel" aria-label="用户端当前下发版本">
+      <div class="dash-panel-head">
+        <h2 class="dash-panel-title">用户端当前下发版本</h2>
+        <span class="dash-panel-count">用户端检测更新时将提示升级到该版本</span>
+      </div>
+      <div v-if="verError" class="ver-error">
+        加载失败
+        <el-button link type="primary" @click="loadVerOverview">重试</el-button>
+      </div>
+      <div v-else class="ver-grid">
+        <div v-for="c in verCards" :key="c.value" class="ver-card" :data-terminal="c.value">
+          <StatusTag type="accent">{{ c.label }}</StatusTag>
+          <div v-if="verLoading" class="ver-skeleton"></div>
+          <template v-else-if="c.row">
+            <div class="ver-line">
+              <span class="ver-version">{{ c.row.version }}</span>
+              <span class="ver-time">发布于 {{ fmtTime(c.row.publishedAt) }}</span>
+            </div>
+            <div class="ver-notes-label">更新说明</div>
+            <div class="ver-notes">{{ c.row.releaseNotes }}</div>
+          </template>
+          <div v-else class="ver-empty">暂无下发版本</div>
+        </div>
+      </div>
+    </section>
 
     <!-- 点踩统计（2026-09-17 裁决：精简为点踩统计 + 点踩上下文明细两件事，不再展示点赞数据） -->
     <section class="dash-panel fb-panel">
@@ -530,7 +583,7 @@ function openAlertAction(item) {
 .metric.danger::before {
   background: var(--c-danger);
 }
-.metric.danger .status-tag {
+.metric.danger .metric-tag {
   border-color: #f0c7c4;
   background: var(--c-danger-soft, #fdebea);
   color: var(--c-danger);
@@ -546,7 +599,7 @@ function openAlertAction(item) {
   font-size: 13px;
   font-weight: 600;
 }
-.status-tag {
+.metric-tag {
   display: inline-flex;
   align-items: center;
   height: 20px;
@@ -867,6 +920,53 @@ function openAlertAction(item) {
   text-align: right;
 }
 
+/* 用户端当前下发版本 */
+.ver-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+}
+.ver-card {
+  min-height: 150px;
+  padding: 15px 16px;
+  border: 1px solid var(--border-base);
+  border-left: 4px solid var(--c-accent);
+  border-radius: 6px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.ver-line { display: flex; align-items: baseline; gap: 10px; margin-top: 11px; }
+.ver-version {
+  color: #26312b;
+  font: 700 24px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.ver-time { color: #7f8984; font-size: 12px; }
+.ver-notes-label { margin-top: 10px; color: #68736d; font-size: 12px; font-weight: 600; }
+.ver-notes {
+  width: 100%;
+  max-height: 132px;
+  margin-top: 4px;
+  overflow: auto;
+  color: #455049;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-line; /* 更新说明保留换行 */
+}
+.ver-empty { margin-top: 11px; color: #94a09a; font-size: 13px; line-height: 32px; }
+.ver-skeleton {
+  width: 100%;
+  height: 88px;
+  margin-top: 11px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f3f1 25%, #f7f9f8 50%, #f0f3f1 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1s linear infinite;
+}
+.ver-error { padding: 14px 18px; color: #68736d; font-size: 13px; }
+
 /* 点赞/点踩 */
 .fb-panel { }
 .fb-overview-wrap { padding: 16px 18px 0; }
@@ -944,6 +1044,7 @@ function openAlertAction(item) {
 @media (max-width: 900px) {
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .metric.wide { grid-column: span 2; }
+  .ver-grid { grid-template-columns: 1fr; }
 }
 
 /* ---- 点踩明细弹窗 ---- */
