@@ -263,6 +263,57 @@ describe('传输方式切换清空对侧内容（md §三.3.1 L248-250）', () =
   })
 })
 
+/* ================= sse 传输方式（旧版 HTTP+SSE，2026-09-21 起支持） ================= */
+describe('sse 传输方式：与 streamable-http 共用「服务地址 + 鉴权」，仅多一条旧版提示', () => {
+  const optionValues = () => [...selectOf('传输方式').options].map((o) => o.value)
+
+  it('下拉三项 stdio / streamable-http / sse，新建默认仍是 streamable-http', async () => {
+    await mount()
+    expect(optionValues()).toEqual(['stdio', 'streamable-http', 'sse'])
+    expect(selectOf('传输方式').value).toBe('streamable-http')
+  })
+
+  it('选 sse：展示服务地址（占位示例为 /sse）与鉴权，不展示 Command；「旧版」提示只在选 sse 时出现', async () => {
+    await mount()
+    expect(item('传输方式').textContent).not.toContain('旧版')
+    await setSelect(selectOf('传输方式'), 'sse')
+    expect(item('MCP 服务地址')).toBeTruthy()
+    expect(inputOf('MCP 服务地址').placeholder).toBe('如 https://example.com/sse（内网）')
+    expect(item('鉴权方式')).toBeTruthy()
+    expect(item('Command')).toBeUndefined()
+    expect(item('传输方式').textContent).toContain('旧版 HTTP+SSE')
+    await setSelect(selectOf('传输方式'), 'streamable-http')
+    expect(inputOf('MCP 服务地址').placeholder).toBe('如 https://example.com/mcp（内网）')
+    expect(item('传输方式').textContent).not.toContain('旧版')
+  })
+
+  it('streamable-http ↔ sse 互切：已填地址与鉴权原样保留（两者字段相同）；切到 stdio 才清空', async () => {
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, authInfo: { type: 'bearer', valueMasked: 'ab***yz' } })
+    await mount({ mcpId: 'mcp_1' })
+    await setSelect(selectOf('传输方式'), 'sse')
+    expect(inputOf('MCP 服务地址').value).toBe('https://expense.intra/mcp')
+    expect(selectOf('鉴权方式').value).toBe('bearer')
+    await setSelect(selectOf('传输方式'), 'streamable-http')
+    expect(inputOf('MCP 服务地址').value).toBe('https://expense.intra/mcp')
+    expect(selectOf('鉴权方式').value).toBe('bearer')
+    await setSelect(selectOf('传输方式'), 'sse')
+    await setSelect(selectOf('传输方式'), 'stdio')
+    expect(item('MCP 服务地址')).toBeUndefined()
+    expect(item('鉴权方式')).toBeUndefined()
+    await setSelect(selectOf('传输方式'), 'sse')
+    expect(inputOf('MCP 服务地址').value).toBe('')
+    expect(selectOf('鉴权方式').value).toBe('none')
+  })
+
+  it('编辑已存的 sse MCP：传输方式与服务地址正确回填', async () => {
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, transport: 'sse', endpoint: 'https://weather.intra/sse' })
+    await mount({ mcpId: 'mcp_1' })
+    expect(selectOf('传输方式').value).toBe('sse')
+    expect(inputOf('MCP 服务地址').value).toBe('https://weather.intra/sse')
+    expect(item('Command')).toBeUndefined()
+  })
+})
+
 /* ================= §三.4.1 鉴权方式切换（K39，2026-09-12） ================= */
 describe('鉴权方式切换（md §三.4.1 L266 / L272）', () => {
   it('Bearer Token 占位「粘贴 Bearer Token（不含 Bearer 前缀）」；填了 Token / Header 名后切「无鉴权」→ 本次填写的凭证清空，再切回为空', async () => {
@@ -336,6 +387,17 @@ describe('从配置粘贴导入（md §三.2 L216-228）', () => {
     expect(selectOf('传输方式').value).toBe('streamable-http')
     expect(inputOf('MCP 服务地址').value).toBe('https://maps.example.com/mcp')
     expect(inputOf('名称').value).toBe('我的地图')
+  })
+
+  it('type=sse 的配置 → 切 sse（不再悄悄转成 streamable-http）并填服务地址', async () => {
+    await mount()
+    btnByText('粘贴配置导入').click()
+    await flush(2)
+    await setInput(importTextarea(), JSON.stringify({ mcpServers: { 'legacy-sse': { type: 'sse', url: 'https://legacy.example.com/sse' } } }))
+    btnByText('解析并填充').click()
+    await flush()
+    expect(selectOf('传输方式').value).toBe('sse')
+    expect(inputOf('MCP 服务地址').value).toBe('https://legacy.example.com/sse')
   })
 
   it('无法识别的配置 → 提示具体原因，表单内容保留、导入区不收起（L228）', async () => {
@@ -445,6 +507,38 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
     expect(msg.success).toHaveBeenCalledWith('已登记')
     expect(emitted.saved).toEqual([{ id: 'mcp_new' }])
     expect(emitted.visible).toEqual([false])
+  })
+
+  it('登记 sse：createMcp payload 带 transport=sse 与 endpoint 与鉴权，不带 command / env（与 streamable-http 同分流）', async () => {
+    adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
+    await mount()
+    await fillValidNew()
+    await setSelect(selectOf('传输方式'), 'sse')
+    await setInput(inputOf('MCP 服务地址'), 'https://new.example.com/sse')
+    await setSelect(selectOf('鉴权方式'), 'bearer')
+    await setInput(inputOf('Token'), 'sk-live-abc')
+    footerBtn('登记').click()
+    await flush()
+    expect(adminApi.createMcp).toHaveBeenCalledTimes(1)
+    const payload = adminApi.createMcp.mock.calls[0][0]
+    expect(payload).toMatchObject({
+      transport: 'sse',
+      endpoint: 'https://new.example.com/sse',
+      authConfig: { type: 'bearer', token: 'sk-live-abc' }
+    })
+    expect(payload).not.toHaveProperty('command')
+    expect(payload).not.toHaveProperty('env')
+  })
+
+  it('sse 缺服务地址点【登记】→ 标红「Endpoint 必填」，不调 createMcp（不会掉进 stdio 的 Command 校验）', async () => {
+    await mount()
+    await fillValidNew()
+    await setSelect(selectOf('传输方式'), 'sse')
+    await setInput(inputOf('MCP 服务地址'), '')
+    footerBtn('登记').click()
+    await flush()
+    expect(item('MCP 服务地址').dataset.error).toBe('Endpoint 必填')
+    expect(adminApi.createMcp).not.toHaveBeenCalled()
   })
 
   it('鉴权方式为必填（一览表 §五 5.2）：streamable-http 下标红星；空值点【登记】被拦并标红「请选择鉴权方式」，不调 createMcp', async () => {
