@@ -354,7 +354,7 @@
 
 ### 2. 直接填写 — 传输方式
 
-直接填写时需选择传输方式：streamable-http 或 stdio。
+直接填写时需选择传输方式：streamable-http、stdio 或 sse。
 
 #### 2.1 streamable-http
 
@@ -395,6 +395,13 @@
 | 平台值 | 条件必填 | 未勾选”客户端填写”时必填；按敏感信息处理，保存后遮罩。 |
 
 - 点击【添加变量】新增一行；点击行尾【删除】移除该行。
+
+#### 2.3 sse
+
+- MCP 旧版远程传输方式（HTTP+SSE，已被 streamable-http 取代），仅为兼容只提供 SSE 端点的服务而保留。
+- 字段、必填规则和鉴权（无鉴权、Bearer Token、API Key）与 2.1 streamable-http 完全一致，不再重复；唯一区别是 Endpoint 的占位提示为“Endpoint，如 https://example.com/sse”。
+- 选中“sse”后，传输方式下方提示“旧版 HTTP+SSE；服务方支持 streamable-http 时建议优先使用”。
+- 在 streamable-http 与 sse 之间切换时，已填写的 Endpoint 与鉴权内容保留；切换到 stdio 则按各自字段清空。
 
 ### 3. 检索工具
 

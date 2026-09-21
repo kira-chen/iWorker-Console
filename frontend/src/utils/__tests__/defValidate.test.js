@@ -8,6 +8,7 @@ import {
   BIZ_CONN_TYPES,
   API_BODY_METHODS,
   MCP_TRANSPORTS,
+  isHttpTransport,
   MCP_COMMAND_OPTIONS,
   API_METHODS
 } from '@/utils/defValidate'
@@ -21,8 +22,15 @@ import {
  */
 
 describe('常量', () => {
-  it('MCP transports', () => {
-    expect(MCP_TRANSPORTS).toEqual(['stdio', 'streamable-http'])
+  it('MCP transports（sse 为旧版 HTTP+SSE，2026-09-21 起支持）', () => {
+    expect(MCP_TRANSPORTS).toEqual(['stdio', 'streamable-http', 'sse'])
+  })
+  it('isHttpTransport：streamable-http 与 sse 同属 http 类，stdio 与未知值不是', () => {
+    expect(isHttpTransport('streamable-http')).toBe(true)
+    expect(isHttpTransport('sse')).toBe(true)
+    expect(isHttpTransport('stdio')).toBe(false)
+    expect(isHttpTransport('ws')).toBe(false)
+    expect(isHttpTransport(undefined)).toBe(false)
   })
   it('API methods', () => {
     expect(API_METHODS).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
@@ -130,6 +138,27 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
       expect(r.errors.command).toBeUndefined()
       expect(r.errors.args).toBeUndefined()
       expect(r.errors.env).toBeUndefined()
+    })
+    // sse（旧版 HTTP+SSE）与 streamable-http 共用「地址 + 鉴权」这一套：不能掉进 stdio 的 command 校验分支
+    describe('sse 与 streamable-http 同规则', () => {
+      const sse = { ...valid, transport: 'sse', endpoint: 'https://intranet.example/sse' }
+      it('合法 sse 表单通过，且不要求 command', () => {
+        const r = validateMcpForm({ ...sse, command: '' })
+        expect(r.ok).toBe(true)
+        expect(r.errors.command).toBeUndefined()
+      })
+      it('sse 必填 endpoint 且需 http(s):// 开头', () => {
+        expect(validateMcpForm({ ...sse, endpoint: '' }).errors.endpoint).toBe('Endpoint 必填')
+        expect(validateMcpForm({ ...sse, endpoint: 'ftp://x/sse' }).errors.endpoint).toBeTruthy()
+      })
+      it('sse 同样校验鉴权：API Key 缺 Header 名 / Bearer 缺密钥被拦，选无鉴权通过', () => {
+        expect(
+          validateMcpForm({ ...sse, authType: 'header', authHeaderName: '', authValue: 'k' }).errors.authConfig
+        ).toBe('鉴权 Header 名必填')
+        expect(validateMcpForm({ ...sse, authType: 'bearer', authValue: '' }).errors.authConfig).toBeTruthy()
+        expect(validateMcpForm({ ...sse, authType: 'none' }).ok).toBe(true)
+        expect(validateMcpForm({ ...sse, authType: '' }).errors.authType).toBe('请选择鉴权方式')
+      })
     })
     it('stdio 合法表单通过', () => {
       expect(validateMcpForm(validStdio).ok).toBe(true)

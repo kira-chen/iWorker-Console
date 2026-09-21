@@ -51,7 +51,7 @@ import {
   validateResponseMap,
   validateMcpResponseMap
 } from '@/utils/knowledgeBaseMeta'
-import { MCP_TRANSPORTS, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
+import { MCP_TRANSPORTS, isHttpTransport, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let seq = 100
@@ -123,7 +123,7 @@ const mcpSrc = (id, name, over = {}) =>
     'MCP',
     name,
     {
-      transport: 'streamable-http', // streamable-http | stdio（md §七.2）
+      transport: 'streamable-http', // streamable-http | stdio | sse（md §七.2）
       endpoint: 'https://knowledge.intra/mcp',
       authType: 'bearer', // none | bearer | header（md §七.2.1）
       authHeaderName: '',
@@ -532,7 +532,7 @@ function validateSourceConfig(payload, prev) {
     if (respErr) bad(respErr, 'responseMap')
   } else if (type === 'MCP') {
     if (!MCP_TRANSPORTS.includes(cfg.transport)) bad('请选择传输方式', 'transport')
-    if (cfg.transport === 'streamable-http') {
+    if (isHttpTransport(cfg.transport)) {
       const ep = String(cfg.endpoint || '').trim()
       if (!ep) bad('请填写 MCP 服务地址', 'endpoint')
       if (ep.length > 500) bad('MCP 服务地址最多 500 个字符', 'endpoint')
@@ -586,7 +586,7 @@ function mergeConfig(prev, payload) {
       cfg.authType === 'BEARER' ? (payload.authValue ? maskSecret(payload.authValue) : prev?.config?.bearerMasked || '') : ''
   } else if (type === 'MCP') {
     cfg.envVars = cfg.transport === 'stdio' ? maskParamRows(cfg.envVars, prev?.config?.envVars, false) : []
-    const needsCred = cfg.transport === 'streamable-http' && cfg.authType && cfg.authType !== 'none'
+    const needsCred = isHttpTransport(cfg.transport) && cfg.authType && cfg.authType !== 'none'
     cfg.credentialMasked = needsCred ? (payload.authValue ? maskSecret(payload.authValue) : prev?.config?.credentialMasked || '') : ''
   }
   return cfg

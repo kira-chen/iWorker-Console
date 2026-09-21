@@ -15,8 +15,8 @@
  *   → 鉴权配置（无鉴权 / API KEY 多参数表[ParamRowsEditor] / Bearer Token）
  *   → 请求参数映射 + 响应字段映射（SourceMappingEditor variant='api'，预设行不可删；新建时注入
  *   filters→rules→field/value 示例组）→ 测试连接。
- * 【MCP】（md §七）仅直接填写（「引用现有 MCP」模式已删除）：传输方式 streamable-http（Endpoint + 鉴权
- *   无鉴权/Bearer/API Key）或 stdio（Command 下拉 + Arguments 多行 + 环境变量表[ParamRowsEditor]）；
+ * 【MCP】（md §七）仅直接填写（「引用现有 MCP」模式已删除）：传输方式 streamable-http / sse（旧版；两者同为
+ *   Endpoint + 鉴权 无鉴权/Bearer/API Key）或 stdio（Command 下拉 + Arguments 多行 + 环境变量表[ParamRowsEditor]）；
  *   检索工具多选复选框 ≥1（清单由连接测试成功返回，未测试前展示引导文案）→ 请求参数映射 + 响应字段
  *   （SourceMappingEditor variant='mcp'，不注入 API 侧的三级示例组）→ 超时必填默认 10000 范围 1000~120000
  *   （md §七.6）→ 测试连接（md §七.7）。
@@ -71,6 +71,7 @@ import {
   validateApiAuthParams,
   validateMcpEnv,
   MCP_TRANSPORTS,
+  isHttpTransport,
   MCP_COMMAND_OPTIONS,
   MCP_AUTH_TYPES
 } from '@/utils/defValidate'
@@ -91,8 +92,8 @@ const TYPE_DESC = {
   MCP: '通过 MCP 协议从第三方 RAG 平台取回切片'
 }
 const ARGS_PLACEHOLDER = '每行一个参数，如\n-y\n@modelcontextprotocol/server-foo'
-/** 传输方式展示顺序照 md §七.2：streamable-http 或 stdio。 */
-const TRANSPORT_OPTIONS = ['streamable-http', 'stdio']
+/** 传输方式展示顺序照 md §七.2：streamable-http、stdio、sse（sse 为旧版兼容项，排末位）。 */
+const TRANSPORT_OPTIONS = ['streamable-http', 'stdio', 'sse']
 const HEADER_NAME_RE = /^[A-Za-z0-9-]{1,128}$/
 
 const formRef = ref(null)
@@ -167,7 +168,7 @@ const rules = computed(() => ({
         ]
       : [],
   'mcp.endpoint':
-    form.sourceType === 'MCP' && form.mcp.transport === 'streamable-http'
+    form.sourceType === 'MCP' && isHttpTransport(form.mcp.transport)
       ? [
           { required: true, message: '请填写 MCP 服务地址', trigger: 'blur' },
           {
@@ -499,7 +500,7 @@ function validateTyped() {
     const respErr = validateResponseMap(cleanResponseRows(apiResponseRows.value))
     if (respErr) errors.apiResponseMap = respErr
   } else if (form.sourceType === 'MCP') {
-    if (form.mcp.transport === 'streamable-http') {
+    if (isHttpTransport(form.mcp.transport)) {
       if (form.mcp.authType === 'header') {
         const hn = (form.mcp.authHeaderName || '').trim()
         if (!hn) errors.mcpHeaderName = 'Header 名必填'
@@ -764,10 +765,21 @@ function close() {
               <el-select v-model="form.mcp.transport" class="ksrc-half">
                 <el-option v-for="t in TRANSPORT_OPTIONS" :key="t" :label="t" :value="t" />
               </el-select>
+              <!-- sse 是 MCP 旧版远程传输方式（已被 streamable-http 取代），仅为兼容只提供 /sse 端点的服务而保留 -->
+              <div v-if="form.mcp.transport === 'sse'" class="ksrc-help">
+                旧版 HTTP+SSE；服务方支持 streamable-http 时建议优先使用
+              </div>
             </el-form-item>
-            <template v-if="form.mcp.transport === 'streamable-http'">
+            <!-- streamable-http / sse 字段与鉴权完全一致，仅示例地址不同 -->
+            <template v-if="isHttpTransport(form.mcp.transport)">
               <el-form-item label="MCP 服务地址" prop="mcp.endpoint" required>
-                <el-input v-model="form.mcp.endpoint" maxlength="500" placeholder="Endpoint，如 https://example.com/mcp" />
+                <el-input
+                  v-model="form.mcp.endpoint"
+                  maxlength="500"
+                  :placeholder="
+                    form.mcp.transport === 'sse' ? 'Endpoint，如 https://example.com/sse' : 'Endpoint，如 https://example.com/mcp'
+                  "
+                />
               </el-form-item>
               <el-form-item label="鉴权方式" required>
                 <el-select v-model="form.mcp.authType" class="ksrc-half">
