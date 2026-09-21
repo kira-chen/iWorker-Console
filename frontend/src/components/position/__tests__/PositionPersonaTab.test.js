@@ -163,6 +163,13 @@ describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3
   const claimCard = () => cardByTitle('领用页文案')
   const addBtn = () => [...claimCard().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 新增一条')
 
+  it('卡头带必填红星（2026-09-21 负责人拍板：领用页文案必填至少 1 条、岗位图标必填；与名称 / 描述 / 示例问题 / SOP 同为必填卡）；岗位人格仍无星', async () => {
+    await mount()
+    expect(claimCard().querySelector('.pd-card-title .pd-req')?.textContent).toBe('*')
+    expect(cardByTitle('岗位图标').querySelector('.pd-card-title .pd-req')?.textContent).toBe('*')
+    expect(cardByTitle('岗位人格').querySelector('.pd-card-title .pd-req')).toBeNull()
+  })
+
   it('满 6 条（atLimit）→ 卡头【＋ 新增一条】仍展示不隐藏，点击直调 ClaimNotesEditor.startAdd（由其 toast「领用页文案最多 6 条」）', async () => {
     claimStub.atLimit = true
     await mount()

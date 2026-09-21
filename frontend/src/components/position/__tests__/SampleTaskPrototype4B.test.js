@@ -75,11 +75,17 @@ vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
   ElMessageBox: { confirm: vi.fn(() => Promise.resolve()), prompt: vi.fn() }
 }))
+// 提示词自 2026-09-21 起必填：stub 暴露 emit 句柄（lastSopEmit），供「新建态」用例填提示词后再保存。
+let lastSopEmit = null
 vi.mock('@/components/admin/MarkdownEditor.vue', () => ({
   default: {
     name: 'MarkdownEditor',
-    props: ['modelValue'],
-    setup: (p) => () => h('div', { class: 'stub-md' }, p.modelValue ?? '')
+    props: ['modelValue', 'error'],
+    emits: ['update:modelValue', 'update:model-value'],
+    setup: (p, { emit }) => {
+      lastSopEmit = (v) => emit('update:modelValue', v)
+      return () => h('div', { class: 'stub-md', 'data-err': p.error ?? '' }, p.modelValue ?? '')
+    }
   }
 }))
 vi.mock('@/components/admin/ToolPicker.vue', () => ({
@@ -426,6 +432,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     const prompt = container.querySelector('.stub-el-input[placeholder="描述任务目标，如：分析昨日核心指标并生成周报"]')
     prompt.value = '分析昨日核心指标'
     prompt.dispatchEvent(new Event('input'))
+    lastSopEmit('1. 拉取指标\n2. 汇总')
     await flush()
     ;[...container.querySelectorAll('.meta-actions button')].pop().click()
     await flush()
@@ -468,12 +475,12 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(container.querySelector('.te-card-actions')).toBeNull()
   })
 
-  it('#20 提示词卡（md §7.4 L407/L409）：卡头无必填星号、引导文案逐字、脚部计数「已输入 N / 8000 字」（N = 原文字符数；K7）', async () => {
+  it('#20 提示词卡（md §7.4 L407/L409）：卡头带必填星号（2026-09-21 起必填）、引导文案逐字、脚部计数「已输入 N / 8000 字」（N = 原文字符数；K7）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     const head = [...container.querySelectorAll('.te-card-title')][2]
-    expect(head.textContent.trim()).toBe('提示词')
-    expect(head.querySelector('.req')).toBeNull()
+    expect(head.textContent.replace(/\s+/g, ' ').trim()).toBe('提示词 *')
+    expect(head.querySelector('.req')?.textContent).toBe('*')
     const guide = [...container.querySelectorAll('.te-card-guide')][0]
     expect(guide.textContent.trim()).toBe('使用自然语言描述任务目标、产出格式和推送方式。定时触发时，Agent 读取该内容作为任务指令执行业务。')
     const counter = container.querySelector('.te-editor-counter')
@@ -500,15 +507,15 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(updateSampleTask.mock.calls[0][2].sopDoc).toHaveLength(8000)
   })
 
-  it('J7 提示词留空 → 仍可保存（md §7.7 必填只有任务名称 + 一句话指令），payload.sopDoc 为空串', async () => {
+  it('提示词留空 → 阻断保存、不落 update，MarkdownEditor 收到「请填写提示词」（2026-09-21 负责人拍板必填，原 J7 为「留空仍可保存」）', async () => {
     const { updateSampleTask } = await import('@/api/sampleTask')
     mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, sopDoc: '' } })
     await flush()
     ;[...container.querySelectorAll('.meta-actions button')].pop().click()
     await flush()
-    expect(updateSampleTask).toHaveBeenCalled()
-    expect(updateSampleTask.mock.calls[0][2].sopDoc).toBe('')
-    expect(container.textContent).not.toContain('请填写详细说明')
+    expect(updateSampleTask).not.toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
+    expect(container.textContent).not.toContain('请填写详细说明') // 旧文案不回潮
   })
 
   it('K6 编辑态保存 → toast「样例任务已保存」；新建态创建 → toast「样例任务已创建」（md §7.7 L431-432）', async () => {
@@ -528,6 +535,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     const prompt = container.querySelector('.stub-el-input[placeholder="描述任务目标，如：分析昨日核心指标并生成周报"]')
     prompt.value = '做点事'
     prompt.dispatchEvent(new Event('input'))
+    lastSopEmit('1. 做点事')
     await flush()
     ;[...container.querySelectorAll('.meta-actions button')].pop().click()
     await flush()
@@ -904,6 +912,7 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
     const prompt = container.querySelector('.stub-el-input[placeholder="描述任务目标，如：分析昨日核心指标并生成周报"]')
     prompt.value = '汇总上周经营数据'
     prompt.dispatchEvent(new Event('input'))
+    lastSopEmit('1. 汇总上周经营数据')
     container.querySelectorAll('.sp-seg-preset .sp-seg-btn')[1].click()
     await flush()
     container.querySelector('.sp-add-time-link').click()

@@ -558,7 +558,7 @@ async function save() {
         <div class="connector-basic-subsection" :class="{ 'ad-eq-error': !!fieldErrors.exampleQuestions }">
           <div class="section-title ad-eq-title">
             <span>
-              示例问题
+              <em class="req">*</em> 示例问题
               <span class="section-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
             </span>
             <el-button
@@ -850,6 +850,11 @@ async function save() {
 }
 .ad-auth-masked code {
   font-family: var(--font-mono);
+}
+/* 必填红星（示例问题区标题前缀，与 McpEditor / BizSystemEditor 的 .req 同款） */
+.req {
+  color: var(--c-danger);
+  font-style: normal;
 }
 /* 请求配置：请求方式|API 地址同行，方式下拉收窄（与地址输入框同高对齐） */
 .ad-req-row {

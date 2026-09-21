@@ -531,7 +531,7 @@ function cardFieldCount(t) {
             <div class="wd-sec-body">
               <div class="wd-basic-fields">
                 <div class="wd-field">
-                  <label>档案名称</label>
+                  <label>档案名称<i v-if="!readonly" class="wd-req">*</i></label>
                   <el-input
                     v-if="!readonly"
                     v-model="meta.label"
@@ -811,6 +811,11 @@ function cardFieldCount(t) {
   gap: var(--space-2);
   align-content: start;
   min-width: 0;
+}
+.wd-req {
+  color: var(--c-danger);
+  font-style: normal;
+  margin-left: 2px;
 }
 .wd-field label {
   font-size: var(--fs-sm);

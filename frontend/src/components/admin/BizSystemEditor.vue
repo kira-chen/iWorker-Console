@@ -524,7 +524,7 @@ async function save() {
         <div class="connector-basic-subsection" :class="{ 'eq-error': !!fieldErrors.exampleQuestions }">
           <div class="section-title ad-eq-title">
             <span>
-              示例问题
+              <em class="req">*</em> 示例问题
               <span class="section-sub">必填，固定 3 条，用于帮助用户理解如何使用该连接器</span>
             </span>
             <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中文案「生成中…」 -->
@@ -733,7 +733,7 @@ async function save() {
       append-to-body
     >
       <el-form @submit.prevent>
-        <el-form-item label="技能名">
+        <el-form-item label="技能名" required>
           <el-input
             v-model="createName"
             placeholder="给这个专属技能起个名字，建后进编辑器继续配置"

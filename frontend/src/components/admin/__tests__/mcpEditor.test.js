@@ -449,6 +449,13 @@ describe('从配置粘贴导入（md §三.2 L216-228）', () => {
 })
 
 /* ================= 保存：校验 / 登记 / 保存 ================= */
+describe('必填红星统一标注（2026-09-21 负责人拍板）', () => {
+  it('示例问题区标题带必填红星（前缀星，与名称 / 图标 / 服务描述同为必填）', async () => {
+    await mount()
+    expect(container.querySelector('.md-eq-title .req')?.textContent).toBe('*')
+  })
+})
+
 describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保存】）', () => {
   async function fillValidNew() {
     await setInput(inputOf('名称'), '新 MCP')

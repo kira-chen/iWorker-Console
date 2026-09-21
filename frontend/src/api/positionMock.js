@@ -174,14 +174,14 @@ function buildWorkbenchSeed() {
       positionSop: '1. 接收报销材料并逐项核验。\n2. 标记风险项并给出风险等级。\n3. 输出核验结论与整改建议。',
       businessSystemIds: [],
       persona: '严谨、克制。逐项核验，结论给出依据与风险等级。',
-      intakeSchema: [],
+      intakeSchema: [{ label: '所属部门', key: 'department', type: 'text', required: true, options: [] }],
       agents: [
         { agentId: 506, name: '单据核验', description: '核验报销材料与财务单据，输出风险提示', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] }
       ]
     },
     // 2026-09-09 负责人要求补全：原为全空的「空白岗位」样本，每次发布校验都被报 4 项缺失，
     // 且新做的「发布前检查弹窗」在种子数据下永远点不到（唯一的未发布岗位恰好不完整）。
-    // 补齐后：市场研究岗成为「未发布 + 六项齐备」的可演示样本，点【发布】即弹检查窗。
+    // 补齐后：市场研究岗成为「未发布 + 阻断项齐备」的可演示样本，点【发布】即弹检查窗（2026-09-21 起阻断项含采集字段 ≥1 个，故补 1 个）。
     404: {
       intro: '负责行业资料整理与竞品跟踪的研究 AI 同事',
       iconSource: 'library',
@@ -192,7 +192,7 @@ function buildWorkbenchSeed() {
         '1. 明确研究主题与范围，收集公开行业资料。\n2. 调用竞品跟踪 Agent 汇总竞品动作与市场变化。\n3. 区分事实与推断，标注待验证信息。\n4. 输出结构化研究结论并沉淀到工作档案。',
       businessSystemIds: [],
       persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
-      intakeSchema: [],
+      intakeSchema: [{ label: '关注行业', key: 'industry', type: 'text', required: false, options: [] }],
       agents: [
         { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_303', sortOrder: 0 }] }
       ]
@@ -304,7 +304,9 @@ export async function createPosition(payload = {}) {
     name,
     description: String(payload.description || '').trim(),
     intro: String(payload.intro || '').trim(),
-    icon: payload.icon || '♟',
+    // 2026-09-21 起岗位图标必填（发布阻断，见 utils/positionModel.js COMPLETENESS_ITEMS）：新建时不再静默补默认图标
+    // （原 '♟' 兜底会让必填形同虚设），由配置者在人格页签自行选择；列表 / 抽屉对空图标走各自占位。
+    icon: payload.icon || '',
     skillIds: [],
     agentCount: 0,
     claimedUserCount: 0,
@@ -721,7 +723,8 @@ export async function updatePosition(id, payload = {}) {
   // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）
   if ('claimDescriptions' in payload) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
-    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3），可选、≤6 条；
+    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3）、≤6 条；
+    // 2026-09-21 起必填（至少 1 条）但只在发布时拦（md §9.1），保存仍允许空列表，故此处不校验最少条数；
     // 每条 300 = utils/positionModel.js CLAIM_NOTE_LEN 同口径（2026-09-20 待办 yuepu#8，原 100 与 UI/一览表不同源）
     if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')
     if (notes.some((s) => s.length > 300)) throw err('领用页文案每条最多 300 个字符', 'claimDescriptions')
