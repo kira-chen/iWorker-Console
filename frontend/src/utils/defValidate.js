@@ -236,6 +236,12 @@ export function validateMcpForm(form) {
     if (envErr) errors.env = envErr
   }
 
+  // 鉴权方式必选（一览表 §五 5.2：无鉴权 / Bearer Token / API Key，默认无鉴权）。
+  // authType 为 undefined = 鉴权录入区未开放，不校验（编辑器传 undefined 跳过）；开放时空值 / 非法值拦下。
+  if (form.transport === 'streamable-http' && form.authType !== undefined) {
+    if (!MCP_AUTH_TYPES.some((t) => t.value === form.authType)) errors.authType = '请选择鉴权方式'
+  }
+
   // 鉴权（仅 streamable-http；与后端 applyAuth 校验对齐，错误键 authConfig 对齐后端 data.field）：
   // - header：Header 名必填且合法；
   // - bearer/header：密钥新建必填；编辑态同类型已配置（authConfigured）可留空=保留原值。

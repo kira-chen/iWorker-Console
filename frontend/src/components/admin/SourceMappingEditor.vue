@@ -56,7 +56,7 @@ function sourceFieldPlaceholder(row) {
   <!-- 请求参数映射（原型 kmcp-card 骨架；两种 variant 结构完全一致，仅副注文案不同） -->
   <section class="sme-card">
     <div class="sme-card-title">
-      <strong>请求参数映射</strong>
+      <strong>请求参数映射 <em class="req">*</em></strong>
       <span>{{ isMcp ? '平台调用工具时的入参结构' : '下游 API 入参 ← 客户端字段映射' }}</span>
     </div>
     <SourceMapParamRows :rows="requestRows" :readonly="readonly" @update:rows="emit('update:requestRows', $event)" @interact="emit('interact')" />
@@ -71,7 +71,7 @@ function sourceFieldPlaceholder(row) {
   <!-- 响应字段映射（md §六.3 / §七.5 同一套显式改名机制）：variant='mcp' 额外多卡内「结果数组路径」 -->
   <section class="sme-card">
     <div class="sme-card-title">
-      <strong>{{ isMcp ? '响应字段' : '响应字段映射' }}</strong>
+      <strong>{{ isMcp ? '响应字段' : '响应字段映射' }} <em class="req">*</em></strong>
       <span>{{ isMcp ? '工具返回数组 → 标准知识检索结果' : '下游 API 返回 → 标准知识检索结果' }}</span>
     </div>
     <el-form-item v-if="isMcp" label="结果数组路径" required class="sme-array-path">
@@ -131,6 +131,11 @@ function sourceFieldPlaceholder(row) {
 .sme-card-title strong {
   font-size: var(--fs-sm);
   color: var(--c-text-strong);
+}
+/* 必填红星（与 McpEditor / BizSystemEditor 的 .req 同款） */
+.req {
+  color: var(--c-danger);
+  font-style: normal;
 }
 .sme-card-title span {
   font-size: var(--fs-xs);

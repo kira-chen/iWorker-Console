@@ -72,8 +72,8 @@ const stubs = {
   'el-form': { props: ['disabled'], template: '<form class="el-form" :data-disabled="disabled ? 1 : 0"><slot /></form>' },
   // error prop 渲染成 data-error 供断言字段级红框回显
   'el-form-item': {
-    props: ['error', 'label'],
-    template: '<div class="el-form-item" :data-label="label" :data-error="error"><slot name="label" /><slot /></div>'
+    props: { error: String, label: String, required: Boolean },
+    template: '<div class="el-form-item" :data-label="label" :data-required="required ? \'1\' : \'\'" :data-error="error"><slot name="label" /><slot /></div>'
   },
   'el-input': {
     props: ['modelValue', 'placeholder', 'type', 'disabled'],
@@ -340,6 +340,14 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
   it('新建从分组头带入 defaultProviderSystemId → 所属系统已预选', async () => {
     const el = await mountEditor(null, { defaultProviderSystemId: 'pv_1' })
     expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
+  })
+
+  it('请求方式 / 鉴权类型 / 操作性质（读写）/ 状态（启用停用）均标必填红星（一览表 §六 6.2 #6 #7 #11 #12）', async () => {
+    const el = await mountEditor(null)
+    expect(itemByLabel(el, '请求方式').dataset.required).toBe('1')
+    expect(itemByLabel(el, '鉴权类型').dataset.required).toBe('1')
+    expect(itemByLabel(el, '状态').dataset.required).toBe('1')
+    expect(readWriteItem(el).dataset.required).toBe('1')
   })
 
   it('连接器类型=岗位私有 → 不出现「所属岗位」：配置页只选类型，岗位私有连接器由岗位侧引用，不在此绑定具体岗位', async () => {

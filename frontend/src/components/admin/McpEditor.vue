@@ -614,8 +614,8 @@ async function save() {
     ...form,
     args: parseArgs(),
     env: envRows.value,
-    // 鉴权校验视图：录入区未开放时不校验（authType 置空跳过）；同类型已配置可留空=保留原值
-    authType: authEnabled ? form.authType : '',
+    // 鉴权校验视图：录入区未开放时不校验（authType 置 undefined 跳过）；开放时鉴权方式必选；同类型已配置可留空=保留原值
+    authType: authEnabled ? form.authType : undefined,
     authConfigured: authConfigured.value
   }
   const { ok, errors } = validateMcpForm(validateView)
@@ -894,7 +894,7 @@ async function save() {
               <el-input disabled :placeholder="form.authConfigMasked ? '已配置（脱敏，不回显明文）' : '暂未开放录入'" />
             </el-form-item>
             <template v-else>
-              <el-form-item label="鉴权方式">
+              <el-form-item label="鉴权方式" required :error="fieldErrors.authType">
                 <el-select v-model="form.authType" class="md-w">
                   <el-option v-for="t in authTypes" :key="t.value" :value="t.value" :label="t.label" />
                 </el-select>
