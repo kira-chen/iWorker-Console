@@ -35,7 +35,7 @@ const store = usePositionStore()
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-// 领用页文案（原「岗位认领说明」；纯文本动态列表，可选，≤6 条 × 300 字，md §2.3）
+// 领用页文案（原「岗位认领说明」；纯文本动态列表，必填至少 1 条、≤6 条 × 300 字，md §2.5）
 const claimNotesModel = computed({
   get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
   set: (v) => patchBasic('claimDescriptions', v)
@@ -145,10 +145,10 @@ function aiGenSop() {
       </div>
     </section>
 
-    <!-- 3. 领用页文案（md §2.3：可选、不参与阻断；卡片头/副标题/按钮照原型领用页文案卡 L4240） -->
+    <!-- 3. 领用页文案（md §2.5：必填至少 1 条、发布阻断；卡片头/副标题/按钮照原型领用页文案卡 L4240） -->
     <section class="pd-card">
       <div class="pd-card-head">
-        <span class="pd-card-title">领用页文案</span>
+        <span class="pd-card-title">领用页文案<i class="pd-req">*</i></span>
         <span class="pd-card-sub">员工领用时看到的卖点，可多条，最多 6 条</span>
         <span class="pd-card-spacer"></span>
         <!-- 满 6 条不隐藏按钮，点击由 ClaimNotesEditor.startAdd toast「领用页文案最多 6 条」

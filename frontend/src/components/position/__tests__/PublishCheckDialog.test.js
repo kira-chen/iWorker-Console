@@ -92,7 +92,7 @@ afterEach(() => {
   container?.remove()
 })
 
-// 组件只消费上游 check（清单条目数由 computePublishCheck 决定，2026-09-09 起为 md §9.1 六项 / 清单五行），
+// 组件只消费上游 check（清单条目数由 computePublishCheck 决定，2026-09-09 起为 md §9.1 七项 / 清单六行），
 // 本组穷举的是「提交门」四个必要条件：无硬阻断 + 版本号合法 + 升级说明非空 + 未在提交中。
 describe('PublishCheckDialog · 发布提交门穷举（四个条件缺一不可）', () => {
   it('全部满足 → 发布按钮可点，点击 emit publish', () => {

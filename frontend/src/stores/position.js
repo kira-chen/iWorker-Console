@@ -60,6 +60,7 @@ export const usePositionStore = defineStore('position', () => {
     name: basic.value?.name,
     intro: basic.value?.intro,
     description: basic.value?.description,
+    claimDescriptions: basic.value?.claimDescriptions || [],
     positionSop: basic.value?.positionSop,
     intakeSchema: basic.value?.intakeSchema || [],
     exampleQuestions: basic.value?.exampleQuestions || [],
