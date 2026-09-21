@@ -70,7 +70,7 @@ const stubs = {
       }
     }
   },
-  'el-form-item': { props: ['label'], template: '<div class="el-form-item"><label>{{ label }}</label><slot /></div>' },
+  'el-form-item': { props: { label: String, required: Boolean }, template: '<div class="el-form-item" :data-required="required ? \'1\' : \'\'"><label>{{ label }}</label><slot /></div>' },
   'el-input': {
     props: ['modelValue', 'disabled', 'placeholder'],
     emits: ['update:modelValue'],
@@ -157,6 +157,10 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
     expect(placeholders).toEqual(['3–32 个字符', '用于展示的姓名', 'name@example.com'])
     expect([...el.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).toEqual(['用户名', '显示名', '邮箱（选填）', '初始角色'])
     expect(el.textContent).toContain('初始密码为 wemate123，用户首次登录后可修改。')
+    // 初始角色必选（一览表 §九 新建 #4），表单项标红星；邮箱选填不带星
+    const requiredOf = (label) => [...el.querySelectorAll('.el-form-item')].find((it) => it.querySelector('label').textContent === label).dataset.required
+    expect(requiredOf('初始角色')).toBe('1')
+    expect(requiredOf('邮箱（选填）')).toBe('')
   })
 
   it('新建态「初始角色」区带提示文字「选择一个或多个角色」，位于卡片之前；编辑态无此提示（md §三.2 L149；审计 K14）', async () => {

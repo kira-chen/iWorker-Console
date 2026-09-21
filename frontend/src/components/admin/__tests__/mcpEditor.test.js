@@ -52,9 +52,9 @@ const stubs = {
   },
   'el-form': { props: ['disabled'], template: '<form class="el-form" @submit.prevent><slot /></form>' },
   'el-form-item': {
-    props: ['label', 'error', 'required'],
+    props: { label: String, error: String, required: Boolean },
     template:
-      '<div class="el-form-item" :data-label="label" :data-error="error || \'\'"><span class="fi-label"><slot name="label" />{{ label }}</span><slot /><span v-if="error" class="fi-error">{{ error }}</span></div>'
+      '<div class="el-form-item" :data-label="label" :data-required="required ? \'1\' : \'\'" :data-error="error || \'\'"><span class="fi-label"><slot name="label" />{{ label }}</span><slot /><span v-if="error" class="fi-error">{{ error }}</span></div>'
   },
   'el-input': {
     props: ['modelValue', 'placeholder', 'type', 'disabled', 'maxlength'],
@@ -438,6 +438,18 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
     expect(msg.success).toHaveBeenCalledWith('已登记')
     expect(emitted.saved).toEqual([{ id: 'mcp_new' }])
     expect(emitted.visible).toEqual([false])
+  })
+
+  it('鉴权方式为必填（一览表 §五 5.2）：streamable-http 下标红星；空值点【登记】被拦并标红「请选择鉴权方式」，不调 createMcp', async () => {
+    await mount()
+    await fillValidNew()
+    expect(item('鉴权方式').dataset.required).toBe('1')
+    await setSelect(selectOf('鉴权方式'), '') // 真 el-select 无法清空，桩里模拟数据异常
+    footerBtn('登记').click()
+    await flush()
+    expect(msg.warning).toHaveBeenCalledWith('请先修正标红项')
+    expect(item('鉴权方式').dataset.error).toBe('请选择鉴权方式')
+    expect(adminApi.createMcp).not.toHaveBeenCalled()
   })
 
   it('登记岗位私有 MCP → 直接保存成功，createMcp payload 只带 type: POSITION、不带 positionId', async () => {

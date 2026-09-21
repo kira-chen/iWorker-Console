@@ -486,6 +486,8 @@ describe('RoleEditor · 分区卡片与校验态（历史出处：2026-09-08 原
     expect(cards[0].querySelector('input')).toBeTruthy()
     expect(cards[0].querySelector('.re-hint')).toBeTruthy()
     expect(cards[1].querySelector('.section-title').textContent).toContain('页面权限')
+    // 页面权限必填（一览表 §八 #2）：卡标题带必填红星
+    expect(cards[1].querySelector('.section-title .re-req')?.textContent).toBe('*')
     expect(cards[1].querySelector('.section-sub').textContent.trim()).toBe('勾中哪些页面，持该角色的用户就能进入哪些页面')
     expect(cards[1].querySelector('.re-perm-area')).toBeTruthy()
     expect(cards[1].querySelector('.re-perm-summary')).toBeTruthy()

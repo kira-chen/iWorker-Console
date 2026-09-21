@@ -333,6 +333,11 @@ function validate() {
     errors.url = 'API 地址必须为合法的 HTTP 或 HTTPS URL'
   }
   if (!methods.includes(form.method)) errors.method = '请选择请求方式'
+  // 鉴权类型 / 读写标记 / 启用停用状态均为必填（一览表 §六 6.2 #7 #11 #12）：都有默认值，
+  // 控件也无法清空，这里仍显式校验，把「必填」落成代码规则（数据异常时不放行）。
+  if (!authTypes.some((t) => t.value === authType.value)) errors.authType = '请选择鉴权类型'
+  if (form.readWrite !== 'read' && form.readWrite !== 'write') errors.readWrite = '请选择这个操作是读还是写'
+  if (typeof form.enabled !== 'boolean') errors.enabled = '请选择启用或停用'
   if (isApiKey.value) {
     // 多参数行整体校验（去重/互斥/必值；已配置行留空=保留原值由 row.configured 承接）
     const authErr = validateApiAuthParams(authRows.value)
@@ -502,7 +507,7 @@ async function save() {
               />
             </el-form-item>
             <!-- 操作性质（PRD §三.2）：写操作在客户端实际执行前必须经用户确认，读操作直接执行。 -->
-            <el-form-item :error="fieldErrors.readWrite">
+            <el-form-item :error="fieldErrors.readWrite" required>
               <template #label>
                 <span>这个操作会改动数据吗？</span>
               </template>
@@ -611,7 +616,7 @@ async function save() {
           <span class="section-sub">凭证会静态附加到每次请求</span>
         </div>
         <el-form label-position="top" :disabled="readonly">
-          <el-form-item label="鉴权类型">
+          <el-form-item label="鉴权类型" :error="fieldErrors.authType" required>
             <el-radio-group v-model="authType">
               <el-radio v-for="t in authTypes" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
             </el-radio-group>

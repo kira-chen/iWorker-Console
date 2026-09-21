@@ -165,7 +165,7 @@ async function onSubmit() {
 
       <!-- 新建：初始角色卡片复选 + 初始密码提示 -->
       <template v-if="!isEdit">
-        <el-form-item label="初始角色" class="ue-full ue-roles" :class="{ 'is-error': roleError }">
+        <el-form-item label="初始角色" required class="ue-full ue-roles" :class="{ 'is-error': roleError }">
           <!-- 2026-09-12 对齐 md 用户 §三.2 L149（审计 K14；Q439 裁按 md）：初始角色提示文字「选择一个或多个角色」，只在新建态出现 -->
           <div class="ue-role-hint">选择一个或多个角色</div>
           <RoleCheckCards v-model="form.roleCodes" :options="roleOptionList" :error="roleError" />

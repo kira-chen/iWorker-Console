@@ -480,7 +480,7 @@ export async function getSource(id) {
 }
 function validateSource(payload, selfId) {
   if (!payload.name?.trim()) throw new ApiError({ message: '数据源名称不能为空', code: 400, field: 'name' })
-  if (payload.name.trim().length > 50) throw new ApiError({ message: '数据源名称最多 50 个字符', code: 400, field: 'name' })
+  if (payload.name.trim().length > 64) throw new ApiError({ message: '数据源名称最多 64 个字符', code: 400, field: 'name' })
   const dup = sources.find((s) => s.id !== selfId && s.sourceType === payload.sourceType && s.name.trim().toLowerCase() === payload.name.trim().toLowerCase())
   if (dup) throw new ApiError({ message: '同类型下已存在同名数据源', code: 409, field: 'name' })
 }

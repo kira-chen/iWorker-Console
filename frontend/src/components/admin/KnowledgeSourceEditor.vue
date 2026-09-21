@@ -142,8 +142,16 @@ const testing = ref(false)
 const embeddingModels = ref([])
 let muteVerifyReset = false
 
+/** 超时时间必填且须在区间内（md §六.1 API 1000～60000 / §七.6 MCP 1000～120000）；清空后 el-input-number 回 null，一并拦。 */
+const timeoutRule = (min, max) => ({
+  validator: (r, v, cb) => (Number.isInteger(v) && v >= min && v <= max ? cb() : cb(new Error(`请输入 ${min}～${max} 之间的整数`))),
+  trigger: 'change'
+})
+
 const rules = computed(() => ({
   name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
+  'api.timeoutMs': form.sourceType === 'API' ? [timeoutRule(1000, 60000)] : [],
+  'mcp.timeoutMs': form.sourceType === 'MCP' ? [timeoutRule(1000, 120000)] : [],
   embeddingModelId:
     form.sourceType === 'UPLOAD'
       ? [{ required: true, message: '请选择向量模型', trigger: 'change' }]
@@ -594,7 +602,7 @@ function close() {
           <div class="ksrc-help">创建后不可修改</div>
         </el-form-item>
         <el-form-item label="数据源名称" prop="name" required>
-          <el-input v-model="form.name" maxlength="50" show-word-limit :placeholder="form.sourceType === 'UPLOAD' ? '如 产品资料、案例集' : form.sourceType === 'API' ? '如 国标检索接口' : '如 法规库 MCP'" />
+          <el-input v-model="form.name" maxlength="64" show-word-limit :placeholder="form.sourceType === 'UPLOAD' ? '如 产品资料、案例集' : form.sourceType === 'API' ? '如 国标检索接口' : '如 法规库 MCP'" />
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
@@ -673,7 +681,7 @@ function close() {
             <el-form-item label="检索地址" prop="api.url" class="ksrc-req-full" required>
               <el-input v-model="form.api.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
             </el-form-item>
-            <el-form-item label="超时时间" required>
+            <el-form-item label="超时时间" prop="api.timeoutMs" required>
               <el-input-number v-model="form.api.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" class="ksrc-full" />
               <div class="ksrc-help">单位毫秒，默认 8000，范围 1000～60000</div>
             </el-form-item>
@@ -837,7 +845,7 @@ function close() {
               <div v-if="fieldErrors.mcpEnv" class="ksrc-err">{{ fieldErrors.mcpEnv }}</div>
             </template>
             <!-- 原型 .kmcp-grid 单独一格 + help 下置 -->
-            <el-form-item label="超时时间" required>
+            <el-form-item label="超时时间" prop="mcp.timeoutMs" required>
               <el-input-number v-model="form.mcp.timeoutMs" :min="1000" :max="120000" :step="1000" controls-position="right" class="ksrc-half" />
               <div class="ksrc-help">单位毫秒，默认 10000，范围 1000～120000</div>
             </el-form-item>
@@ -846,7 +854,7 @@ function close() {
           <!-- 检索工具：多选复选框 ≥1；清单来自连接测试成功返回（md §七.3） -->
           <div class="ksrc-card">
             <div class="ksrc-card-title">
-              <strong>检索工具</strong>
+              <strong>检索工具 <em class="req">*</em></strong>
               <span>从该 MCP 服务暴露的全部工具中，选择用于知识检索的工具（可多选）</span>
             </div>
             <template v-if="availableTools.length">
@@ -994,6 +1002,11 @@ function close() {
 .ksrc-card-title strong {
   font-size: var(--fs-sm);
   color: var(--c-text-strong);
+}
+/* 必填红星（与 McpEditor / BizSystemEditor 的 .req 同款） */
+.req {
+  color: var(--c-danger);
+  font-style: normal;
 }
 .ksrc-card-title span {
   font-size: var(--fs-xs);

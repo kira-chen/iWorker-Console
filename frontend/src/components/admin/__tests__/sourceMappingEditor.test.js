@@ -230,6 +230,12 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     expect(responseRows.value.length).toBe(4)
     expect(responseRows.value[3].sourceField).toBe('')
     expect(cards()[1].querySelector('.sme-x')).toBeTruthy()
+    // 请求参数映射 / 响应字段映射两张卡的标题都带必填红星（一览表 §十：预设行必填，阻断保存）
+    const [reqCardApi] = cards()
+    expect(reqCardApi.querySelector('.sme-card-title strong').textContent.replace(/\s+/g, '')).toBe('请求参数映射*')
+    expect(respCard.querySelector('.sme-card-title strong').textContent.replace(/\s+/g, '')).toBe('响应字段映射*')
+    expect(reqCardApi.querySelector('.sme-card-title .req')).toBeTruthy()
+    expect(respCard.querySelector('.sme-card-title .req')).toBeTruthy()
     // 副注为 API 专用文案，不提「结果数组路径」「工具」等 MCP 概念
     expect(respCard.textContent).toContain('content / source / score 均为必填映射')
     expect(container.textContent).not.toContain('MCP')
@@ -241,8 +247,9 @@ describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
     const [reqCard, respCard] = cards()
     // 请求映射结构与 API 完全一致，仅副标题文案不同
     expect(reqCard.textContent).toContain('平台调用工具时的入参结构')
-    // 卡标题改「响应字段」（非「响应字段映射」）
-    expect(respCard.querySelector('.sme-card-title strong').textContent).toBe('响应字段')
+    // 卡标题改「响应字段」（非「响应字段映射」），带必填红星（md §七.5 预设行须填、结果数组路径必填）
+    expect(respCard.querySelector('.sme-card-title strong').textContent.replace(/\s+/g, '')).toBe('响应字段*')
+    expect(respCard.querySelector('.sme-card-title .req')).toBeTruthy()
     // 结果数组路径：必填输入，绑定 resultArrayPath
     const pathInput = respCard.querySelector('.el-form-item input')
     expect(pathInput).toBeTruthy()

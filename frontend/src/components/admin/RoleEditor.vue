@@ -180,7 +180,7 @@ async function onSubmit() {
       <!-- ② 页面权限卡（原型 section-card「页面权限」+ section-sub；卡内 permission-tree → error-text → summary） -->
       <section class="section-card re-card" :class="{ 'is-invalid': permError }">
         <h3 class="section-title">
-          页面权限
+          页面权限 <em class="re-req">*</em>
           <span class="section-sub">勾中哪些页面，持该角色的用户就能进入哪些页面</span>
         </h3>
 
@@ -263,6 +263,11 @@ async function onSubmit() {
 /* 权限卡整体校验态（原型 [data-role-field="permissions"].invalid） */
 .re-card.is-invalid {
   border-color: var(--c-danger);
+}
+/* 页面权限卡标题的必填红星（与 el-form-item 必填星同色） */
+.re-req {
+  color: var(--c-danger);
+  font-style: normal;
 }
 .re-hint {
   width: 100%;

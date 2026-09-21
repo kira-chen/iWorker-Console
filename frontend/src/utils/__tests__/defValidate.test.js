@@ -59,6 +59,16 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
   it('合法表单通过', () => {
     expect(validateMcpForm(valid).ok).toBe(true)
   })
+  it('鉴权方式必选（一览表 §五 5.2）：streamable-http 下空值 / 非法值拦下；undefined=录入区未开放不校验；stdio 无此项', () => {
+    expect(validateMcpForm({ ...valid, authType: 'none' }).ok).toBe(true)
+    expect(validateMcpForm({ ...valid, authType: '' }).errors.authType).toBe('请选择鉴权方式')
+    expect(validateMcpForm({ ...valid, authType: null }).errors.authType).toBe('请选择鉴权方式')
+    expect(validateMcpForm({ ...valid, authType: 'oauth' }).errors.authType).toBe('请选择鉴权方式')
+    // 不传 authType（undefined）= 鉴权录入区未开放，跳过
+    expect(validateMcpForm(valid).errors.authType).toBeUndefined()
+    // stdio 鉴权走 Environment 注入，没有鉴权方式这一项
+    expect(validateMcpForm({ ...validStdio, authType: '' }).errors.authType).toBeUndefined()
+  })
   it('code 不再校验（系统生成、不展示不填写）', () => {
     expect(validateMcpForm({ ...valid, code: '' }).errors.code).toBeUndefined()
     expect(validateMcpForm({ ...valid, code: 'Bad-Code' }).errors.code).toBeUndefined()
