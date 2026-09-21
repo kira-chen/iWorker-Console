@@ -107,16 +107,29 @@ const elInput = {
   },
   template: '<input class="el-input" :disabled="disabled" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
 }
+// 单选：原生 select 的 value；multiple：读全部已选 option，并按 data-num 还原数字值（真 el-select 回吐原始值，
+// 而 option 元素上只有字符串），当前选中值同时写到 data-values 供断言回填结果。
 const elSelect = {
   name: 'el-select',
-  props: { modelValue: { default: '' }, disabled: Boolean },
+  props: { modelValue: { default: '' }, disabled: Boolean, multiple: Boolean },
   emits: ['update:modelValue', 'change'],
-  template: '<select class="el-select" :disabled="disabled" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
+  methods: {
+    onChange(e) {
+      const v = this.multiple
+        ? [...e.target.selectedOptions].map((o) => (o.dataset.num ? Number(o.value) : o.value))
+        : e.target.value
+      this.$emit('update:modelValue', v)
+      this.$emit('change', v)
+    }
+  },
+  template:
+    '<select class="el-select" :multiple="multiple" :disabled="disabled" :data-values="multiple ? JSON.stringify(modelValue) : undefined"' +
+    ' v-bind="multiple ? {} : { value: modelValue }" @change="onChange"><slot /></select>'
 }
 const elOption = {
   name: 'el-option',
   props: ['label', 'value'],
-  template: '<option :value="value">{{ label }}</option>'
+  template: '<option :value="value" :data-num="typeof value === \'number\' ? \'1\' : undefined">{{ label }}</option>'
 }
 const elButton = {
   name: 'el-button',
@@ -343,7 +356,7 @@ describe('ExpertEditor — 新建', () => {
       name: '新专家',
       category: '通用',
       type: 'PLATFORM',
-      positionId: null,
+      positionIds: [],
       avatar: '🧑',
       backgroundColor: '#DCF5E4', // 背景色默认色随建落库
       intro: '一句话简介',
@@ -376,7 +389,7 @@ describe('ExpertEditor — 新建', () => {
     expect(errTexts()).not.toContain('岗位')
     btn('创建专家').click()
     await flush()
-    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionId: null }))
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [] }))
     expect(ElMessage.success).toHaveBeenCalledWith('专家已创建')
   })
 
@@ -430,24 +443,90 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
   })
 
-  it('专家类型=岗位私有 → 「所属岗位」下拉展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
+  /** 所属岗位下拉（第 3 个 select）；loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms
+   *  setTimeout（非微任务），需要真实等待——轮询而非固定 sleep，机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。 */
+  async function positionSelectReady() {
+    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    expect(positionSelect).toBeTruthy()
+    const deadline = Date.now() + 3000
+    while (Date.now() < deadline && ![...positionSelect.querySelectorAll('option')].some((o) => o.textContent === '经营分析岗')) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return positionSelect
+  }
+  async function pickPositions(positionSelect, ...values) {
+    for (const o of positionSelect.querySelectorAll('option')) o.selected = values.includes(o.value)
+    positionSelect.dispatchEvent(new Event('change'))
+    await flush(2)
+  }
+
+  it('专家类型=岗位私有 → 「所属岗位」为多选下拉，展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
     await mount({ expertId: null })
     await selectCategory('通用')
     await selectType('POSITION')
-    const positionSelect = container.querySelectorAll('select.el-select')[2]
-    expect(positionSelect).toBeTruthy()
-    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout（非微任务），
-    // 需要真实等待；轮询而非固定 sleep——机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。
-    const deadline = Date.now() + 3000
-    let optionLabels = []
-    while (Date.now() < deadline) {
-      optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
-      if (optionLabels.includes('经营分析岗')) break
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
+    const positionSelect = await positionSelectReady()
+    expect(positionSelect.multiple).toBe(true)
+    const optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
     expect(optionLabels).toContain('经营分析岗')
     const optionValues = [...positionSelect.querySelectorAll('option')].map((o) => o.value)
     expect(optionValues).toContain('401')
+  })
+
+  it('所属岗位可多选绑定不同岗位 → 创建时 payload.positionIds 带全部所选岗位 id（数字）', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 208, name: '新专家' })
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    await selectType('POSITION')
+    const positionSelect = await positionSelectReady()
+    await pickPositions(positionSelect, '401', '402')
+    expect(positionSelect.dataset.values).toBe('[401,402]')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [401, 402] }))
+    expect(createExpert.mock.calls[0][0]).not.toHaveProperty('positionId')
+  })
+
+  it('已选岗位后把类型改回非岗位私有 → 所属岗位清空，payload.positionIds 为空（不带脏数据）', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 209, name: '新专家' })
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    await selectType('POSITION')
+    await pickPositions(await positionSelectReady(), '401')
+    await selectType('PLATFORM')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'PLATFORM', positionIds: [] }))
+  })
+
+  it('编辑态：岗位私有专家回填已绑定的多个岗位；类型置灰不可改、所属岗位仍可增减；未绑定时提示「未绑定岗位」', async () => {
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
+    await mount({ expertId: 201 })
+    const [, typeSelect, positionSelect] = container.querySelectorAll('select.el-select')
+    expect(typeSelect.disabled).toBe(true)
+    expect(container.textContent).toContain('专家类型创建后不可更改')
+    expect(positionSelect.disabled).toBe(false)
+    expect(positionSelect.dataset.values).toBe('[401,402]')
+    expect(container.textContent).not.toContain('未绑定岗位')
+    // 增减：减到只剩 401，保存 → updateExpert 带 positionIds [401]
+    updateExpert.mockResolvedValueOnce({ ...DETAIL })
+    await pickPositions(await positionSelectReady(), '401')
+    btn('保存').click()
+    await flush()
+    expect(updateExpert).toHaveBeenCalledWith(201, expect.objectContaining({ type: 'POSITION', positionIds: [401] }))
+    // 未绑定任何岗位 → 提示「未绑定岗位」
+    app.unmount()
+    container.remove()
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [] })
+    await mount({ expertId: 201 })
+    expect(container.textContent).toContain('未绑定岗位')
+  })
+
+  it('查看态（readonly）：所属岗位多选下拉置灰，仅展示已绑定岗位', async () => {
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
+    await mount({ expertId: 201, readonly: true })
+    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    expect(positionSelect.disabled).toBe(true)
+    expect(positionSelect.dataset.values).toBe('[401,402]')
   })
 
   it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {
@@ -687,7 +766,7 @@ describe('ExpertEditor — 编辑', () => {
       name: '改名后',
       category: '投资',
       type: 'PLATFORM',
-      positionId: null,
+      positionIds: [],
       avatar: '▤',
       backgroundColor: '#DCF5E4',
       intro: '汇总经营数据',
