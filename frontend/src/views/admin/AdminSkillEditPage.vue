@@ -593,7 +593,8 @@ async function saveConfig() {
   if (!s || s.skillId == null) return
   const id = s.skillId
   // 2026-09-01 保存门（清单20 对齐原型 skill-editor-save 校验链）：
-  // 名称必填 ≤64 / 分类必选 / 描述必填 ≤2000 / 示例问题必填 ≤300（一览表示例类统一规则）。
+  // 名称必填 ≤64 / 分类必选 / 图标必选（2026-09-21 负责人拍板，原仅发布置灰、保存不拦）/
+  // 描述必填 ≤2000 / 示例问题必填 ≤300（一览表示例类统一规则）。
   const nameText = String(s.name || '').trim()
   if (!nameText || nameText.length > 64) {
     ElMessage.warning('请填写最多 64 个字符的技能名称')
@@ -602,6 +603,10 @@ async function saveConfig() {
   const catRequired = !isBizSystem.value
   if (catRequired && !(s.displayCategoryId ?? null)) {
     ElMessage.warning('请选择技能分类')
+    return
+  }
+  if (!isBizSystem.value && !String(s.icon || '').trim()) {
+    ElMessage.warning('请选择技能图标')
     return
   }
   const descText = String(s.description || '').trim()

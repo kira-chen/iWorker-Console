@@ -44,7 +44,7 @@ const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b
 /** 可见范围表单项（按标签文字定位，不依赖顺序） */
 const scopeItem = () => [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === '可见范围')
 
-async function mountCreate() {
+async function mountCreate({ withIcon = true } = {}) {
   api.listKnowledgeSources.mockResolvedValue({ list: [] })
   api.listExpertOptions.mockResolvedValue([{ id: 'ex_1', name: '售前专家' }])
   api.listPositionOptions.mockResolvedValue([{ id: 'pos_1', name: '销售顾问' }])
@@ -59,8 +59,40 @@ async function mountCreate() {
     el.value = v
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }
+  // 图标自 2026-09-21 负责人拍板起必填：默认选好，图标用例传 { withIcon: false }
+  if (withIcon) formModel().icon = '📦'
   await flushAll(4)
 }
+
+describe('KnowledgeBaseEditor · 图标必填（2026-09-21 负责人拍板，原选填）', () => {
+  const iconItem = () => [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === '图标')
+
+  it('「图标」标签带必填星标（与名称 / 类型 / 可见范围 / 描述同为必填）', async () => {
+    await mountCreate()
+    expect(iconItem().classList.contains('is-required')).toBe(true)
+  })
+
+  it('未选图标点【保存】：红字「请选择或上传图标」、不调 createKnowledgeBase；选好图标后放行', async () => {
+    await mountCreate({ withIcon: false })
+    expect(formModel().icon).toBe('')
+
+    clickBtn('保存')
+    await flushAll(10)
+    await new Promise((r) => setTimeout(r, 250)) // ElFormItem 红字过 100ms 防抖才渲染
+    await flushAll(4)
+    expect(errorTexts()).toContain('请选择或上传图标')
+    expect(api.createKnowledgeBase).not.toHaveBeenCalled()
+
+    formModel().icon = '📦'
+    await flushAll(6)
+    clickBtn('保存')
+    await flushAll(10)
+    await new Promise((r) => setTimeout(r, 250)) // 与其余用例同：等异步校验落定再断言，避免调用漏到下一个用例
+    await flushAll(4)
+    expect(api.createKnowledgeBase).toHaveBeenCalledTimes(1)
+    expect(api.createKnowledgeBase.mock.calls[0][0]).toMatchObject({ icon: '📦' })
+  })
+})
 
 describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1 L86）', () => {
   it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefId is required`', async () => {

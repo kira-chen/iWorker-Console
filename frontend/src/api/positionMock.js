@@ -304,7 +304,9 @@ export async function createPosition(payload = {}) {
     name,
     description: String(payload.description || '').trim(),
     intro: String(payload.intro || '').trim(),
-    icon: payload.icon || '♟',
+    // 2026-09-21 起岗位图标必填（发布阻断，见 utils/positionModel.js COMPLETENESS_ITEMS）：新建时不再静默补默认图标
+    // （原 '♟' 兜底会让必填形同虚设），由配置者在人格页签自行选择；列表 / 抽屉对空图标走各自占位。
+    icon: payload.icon || '',
     skillIds: [],
     agentCount: 0,
     claimedUserCount: 0,

@@ -32,7 +32,7 @@
  *   无新建 / 编辑入口（md §5.1–§5.3）。
  *
  * 2026-09-09 PRD 复核（G1 · Q11/Q455）：
- * - 完整性校验统一为 md §9.1 七项（名称 / 描述 / 领用页文案 / 示例问题 3 条 / SOP / Agent 与技能 / 自动化任务）：
+ * - 完整性校验统一为 md §9.1 八项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 3 条 / SOP / Agent 与技能 / 自动化任务）：
  *   【发布岗位】任一缺失即阻断并定位到缺失项所在页签；【保存】执行同一套校验但**不阻断**，
  *   改以顶部提示条（.pd-complete-banner）列出未完成项。口径实现在 utils/positionModel.js
  *   的 computeCompletenessMissing / computePublishCheck，两处共用同一份。
@@ -122,7 +122,7 @@ onMounted(async () => {
       await store.load(route.params.id)
       // 岗位详情就绪后轻量预取数据表数量，供身份卡「数据底座」入口徽标显示
       prefetchDtCount()
-      // 完整性校验（md §9.1 第 7 条）依赖自动化任务条数，未访问该页签时也需要，故此处独立预取
+      // 完整性校验（md §9.1 第 8 条）依赖自动化任务条数，未访问该页签时也需要，故此处独立预取
       refreshSampleTaskCount()
       loadCurrentVersion()
     } catch {
@@ -324,7 +324,7 @@ async function onOpenDataTable() {
 const sampleStageOpen = ref(false)
 const sampleTaskCount = ref(0)
 
-// 2026-09-09 PRD 复核（A1 / md §9.1 第 7 条）：自动化任务条数进入完整性校验，
+// 2026-09-09 PRD 复核（A1 / md §9.1 第 8 条）：自动化任务条数进入完整性校验，
 // 但 PositionSampleTaskStage 只在切到该页签时才挂载并 emit 计数 —— 未访问过页签时计数恒 0，
 // 会把「已配置任务」的岗位误判为缺失。故在详情页层独立拉一次条数（与页签 emit 同源，后者仍会覆盖为最新值）。
 async function refreshSampleTaskCount() {
@@ -383,7 +383,7 @@ const publishing = ref(false)
 const completenessInput = computed(() => ({ ...store.checkInput, sampleTaskCount: sampleTaskCount.value }))
 const publishCheck = computed(() => computePublishCheck(completenessInput.value))
 
-/* ---------- md §9.1 完整性校验 6 项（保存提示 / 发布阻断共用同一口径） ---------- */
+/* ---------- md §9.1 完整性校验 8 项（保存提示 / 发布阻断共用同一口径） ---------- */
 const completenessMissing = computed(() => computeCompletenessMissing(completenessInput.value))
 // 保存后才展示提示条：避免新建岗位一进页面就满屏红字（md §9.1 末段的语义是「保存时列出未完成项」）。
 const showCompletenessBanner = ref(false)
@@ -409,7 +409,7 @@ async function explicitSave() {
   // 技能整页化后白板无聚焦态，技能保存在整页编辑器自管；此处只存身份卡基本信息。
   if (!(await ensurePersisted())) return
   await doSaveBasic(false)
-  // md §9.1 末段（2026-09-09 Q11 决策）：保存时同样执行 7 项完整性校验，但**不阻断保存**——
+  // md §9.1 末段（2026-09-09 Q11 决策）：保存时同样执行 8 项完整性校验，但**不阻断保存**——
   // 保存已正常完成，这里只把未完成项以顶部提示条列出，便于配置者分次补齐。
   await refreshSampleTaskCount()
   showCompletenessBanner.value = completenessMissing.value.length > 0
@@ -511,7 +511,7 @@ function backToList() {
         </div>
       </header>
 
-      <!-- md §9.1 末段（2026-09-09 Q11 决策）：【保存】时执行同一套 7 项完整性校验，但不阻断保存，
+      <!-- md §9.1 末段（2026-09-09 Q11 决策）：【保存】时执行同一套 8 项完整性校验，但不阻断保存，
            改以顶部提示条列出尚未完成的项，便于配置者分次补齐；只读态不展示。
            点条目文字可直接跳到该项所在页签。 -->
       <div v-if="showCompletenessBanner && !isReadonly && completenessMissing.length" class="pd-complete-banner">

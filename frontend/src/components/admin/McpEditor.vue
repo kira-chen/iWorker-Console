@@ -763,7 +763,7 @@ async function save() {
         <div class="connector-basic-subsection" :class="{ 'md-eq-error': !!fieldErrors.exampleQuestions }">
           <div class="section-title md-eq-title">
             <span>
-              示例问题
+              <em class="req">*</em> 示例问题
               <span class="section-sub">必填，固定 3 条</span>
             </span>
             <el-button

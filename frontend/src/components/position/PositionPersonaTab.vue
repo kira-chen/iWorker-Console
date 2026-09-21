@@ -108,8 +108,8 @@ function aiGenSop() {
     <!-- 1. 岗位图标（原型 position-icon-section：预览 + 从图标库选择 / 上传图标） -->
     <section class="pd-card">
       <div class="pd-card-head">
-        <!-- 一览表 §一 第 7 行：岗位图标为「选填」，不挂必填星（校验里本就不拦） -->
-        <span class="pd-card-title">岗位图标</span>
+        <!-- 2026-09-21 负责人拍板：岗位图标必填（发布阻断，一览表 §一 第 8 行）；卡头挂必填红星，与名称 / 描述等同 -->
+        <span class="pd-card-title">岗位图标<i class="pd-req">*</i></span>
         <span class="pd-card-sub">用于岗位列表与员工端展示</span>
       </div>
       <div class="pd-card-body">

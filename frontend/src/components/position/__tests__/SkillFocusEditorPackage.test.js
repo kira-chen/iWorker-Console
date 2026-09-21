@@ -447,6 +447,8 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     expect(onBack).toHaveBeenCalled()
     // #3：技能名前固定 label「技能名称：」
     expect(topline.querySelector('.eh-name-label')?.textContent).toContain('技能名称')
+    // 2026-09-21 统一标注红星：技能名称必填，与同页图标 / 描述 / 示例问题的 ib-req 同款
+    expect(topline.querySelector('.eh-name-label .ib-req')?.textContent).toBe('*')
     // 保存灯（2026-07-08 反馈 #3）：不在顶栏（避免与「保存配置」歧义），移入文件标签条文件名右侧
     expect(topline.querySelector('.save-ind')).toBeNull()
     const filebar = container.querySelector('.ed-filebar')

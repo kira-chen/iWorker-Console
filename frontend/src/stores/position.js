@@ -58,6 +58,7 @@ export const usePositionStore = defineStore('position', () => {
   // 2026-09-08 PRD-20260908 对齐：清单改 md §9.2 四项（名称与描述 / 示例问题 / SOP / Agent 与技能警告），补 description、positionSop。
   const checkInput = computed(() => ({
     name: basic.value?.name,
+    icon: basic.value?.icon,
     intro: basic.value?.intro,
     description: basic.value?.description,
     claimDescriptions: basic.value?.claimDescriptions || [],

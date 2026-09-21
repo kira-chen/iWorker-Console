@@ -11,7 +11,7 @@
  * - 操作列（照原型 positionActions）：编辑（审核中 disabled）+ 按状态给 发布/删除、撤回、停用/版本管理；
  *   【查看】暂不实现（Q4 待拍板）；测试按钮维持 EFFECT_TEST_ENABLED flag 现状。
  * - 强确认降级（Q5）：停用/删除改普通二次确认（文案照原型 modal）。
- * - 发布：先跑 md §9.1 七项完整性校验（与详情页共用 computeCompletenessMissing），缺项 →
+ * - 发布：先跑 md §9.1 八项完整性校验（与详情页共用 computeCompletenessMissing），缺项 →
  *   toast「请先填写：…」并跳详情页对应页签；全通过才打开**发布前检查弹窗**（md §3.3/§9.2，
  *   与详情页【发布岗位】同一组件 PublishCheckDialog、同一 useVersionPublish 编排）。
  *   2026-09-09 负责人拍板两个【发布】入口行为一致——原 Q3「照原型不弹确认窗」是原型作基准
@@ -655,7 +655,7 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
                   撤回
                 </el-button>
 
-                <!-- 未发布：发布（先跑 md §9.1 七项完整性校验，Q3 不弹确认窗）+ 删除。
+                <!-- 未发布：发布（先跑 md §9.1 八项完整性校验，Q3 不弹确认窗）+ 删除。
                      2026-09-08 PRD-20260908 对齐：md §3.1 已删发布悬停提示，原型 L1194 发布键亦无 title → 删；
                      删除键 title「删除前需二次确认」原型 L1194 有 → 保留（Q375 挂账） -->
                 <template v-else-if="row.status === 'draft'">

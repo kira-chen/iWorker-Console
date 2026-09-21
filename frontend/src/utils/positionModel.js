@@ -484,7 +484,7 @@ export const POSITION_BUMP_OPTIONS = [
 
 /* ============================ 完整性校验（md §9.1，2026-09-09 Q11 新决策） ============================ */
 /**
- * md §9.1 第 6 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
+ * md §9.1 第 7 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
  * 口径取「存在某个 Agent 其技能数 ≥ 1」（不要求每个 Agent 都有技能——md 用的是「该 Agent」单数指代）。
  */
 export function agentsWithSkillOk(agents) {
@@ -493,7 +493,7 @@ export function agentsWithSkillOk(agents) {
 }
 
 /**
- * md §9.1 完整性校验 7 项（2026-09-21 负责人拍板新增「领用页文案」）：返回未完成项的文案数组（按 md 列举顺序）。
+ * md §9.1 完整性校验 8 项（2026-09-21 负责人拍板新增「岗位图标」「领用页文案」）：返回未完成项的文案数组（按 md 列举顺序）。
  * 【保存】与【发布岗位】共用同一份口径：
  * - 【发布岗位】：数组非空即阻断（toast「请先填写：…」+ 定位到第一个缺失项所在页签）；
  * - 【保存】：数组非空不阻断，仅在页面顶部提示条列出（md §9.1 末段）。
@@ -503,6 +503,7 @@ export function agentsWithSkillOk(agents) {
  */
 export const COMPLETENESS_ITEMS = [
   { key: 'name', label: '岗位名称', tab: 'persona' },
+  { key: 'icon', label: '岗位图标', tab: 'persona' },
   { key: 'description', label: '岗位描述', tab: 'persona' },
   { key: 'claimDescriptions', label: '领用页文案', tab: 'persona' },
   { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
@@ -516,6 +517,7 @@ export function computeCompletenessMissing(detail) {
   const d = detail || {}
   const okMap = {
     name: !!String(d.name || '').trim(),
+    icon: !!String(d.icon || '').trim(),
     description: !!String(d.description || '').trim(),
     claimDescriptions: claimNotesComplete(d.claimDescriptions),
     exampleQuestions: exampleQuestionsComplete(d.exampleQuestions),
@@ -535,9 +537,10 @@ export function computeCompletenessMissing(detail) {
  * 2026-09-09 PRD 复核（A1 / Q11 负责人新决策，推翻 2026-09-08 的「阻断四项」口径）：
  * md §9.1 阻断 6 项 = 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP /
  * Agent 与技能（至少 1 个 Agent 且该 Agent 至少引用 1 个技能）/ 自动化任务（至少 1 条）。
- * 2026-09-21 负责人拍板追加第 7 项：领用页文案（至少 1 条）。
+ * 2026-09-21 负责人拍板追加：岗位图标（已选择）、领用页文案（至少 1 条）→ 共 8 项。
  * 清单条目对应 md §9.2：
  * - 岗位名称与描述（硬）——「必填内容已填写」；
+ * - 岗位图标（硬，2026-09-21 新增）——已选择图标；
  * - 领用页文案（硬，2026-09-21 新增）——至少 1 条；
  * - 示例问题（硬）——「3 条示例问题已填写」；
  * - 岗位 SOP（硬）——「岗位能力综述已填写」；
@@ -552,6 +555,7 @@ export function computePublishCheck(detail) {
   const eqComplete = exampleQuestionsComplete(d.exampleQuestions)
   const nameOk = !!String(d.name || '').trim()
   const descOk = !!String(d.description || '').trim()
+  const iconOk = !!String(d.icon || '').trim()
   const claimOk = claimNotesComplete(d.claimDescriptions)
   const sopOk = !!String(d.positionSop || '').trim()
   const agentsOk = agentsWithSkillOk(d.agents)
@@ -569,7 +573,16 @@ export function computePublishCheck(detail) {
     detail: nameOk && descOk ? '必填内容已填写' : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
   })
 
-  // 2. 领用页文案（硬，2026-09-21 负责人拍板：至少 1 条）
+  // 2. 岗位图标（硬，2026-09-21 负责人拍板：必填）
+  items.push({
+    key: 'icon',
+    label: '岗位图标',
+    ok: iconOk,
+    blocking: true,
+    detail: iconOk ? '岗位图标已选择' : '请先选择岗位图标'
+  })
+
+  // 3. 领用页文案（硬，2026-09-21 负责人拍板：至少 1 条）
   items.push({
     key: 'claimDescriptions',
     label: '领用页文案',
@@ -578,7 +591,7 @@ export function computePublishCheck(detail) {
     detail: claimOk ? '领用页文案已填写' : '请先填写领用页文案（至少 1 条）'
   })
 
-  // 3. 示例问题 3 条（硬）
+  // 4. 示例问题 3 条（硬）
   items.push({
     key: 'exampleQuestions',
     label: '示例问题',
@@ -587,7 +600,7 @@ export function computePublishCheck(detail) {
     detail: eqComplete ? '3 条示例问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
-  // 4. 岗位 SOP（硬）
+  // 5. 岗位 SOP（硬）
   items.push({
     key: 'sop',
     label: '岗位 SOP',
@@ -596,7 +609,7 @@ export function computePublishCheck(detail) {
     detail: sopOk ? '岗位能力综述已填写' : '请先填写岗位 SOP'
   })
 
-  // 5. Agent 与技能（硬，md §6.5 / §9.1 第 6 条）
+  // 6. Agent 与技能（硬，md §6.5 / §9.1 第 7 条）
   const hasUnhealthy = unhealthyTools.length > 0
   items.push({
     key: 'agents',
@@ -613,7 +626,7 @@ export function computePublishCheck(detail) {
       : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
   })
 
-  // 6. 自动化任务（硬，md §7.6 / §9.1 第 7 条）
+  // 7. 自动化任务（硬，md §7.6 / §9.1 第 8 条）
   items.push({
     key: 'sampleTasks',
     label: '自动化任务',
