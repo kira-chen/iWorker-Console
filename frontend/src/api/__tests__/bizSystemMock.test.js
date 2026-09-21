@@ -79,25 +79,28 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     expect(byState.list.map((b) => b.id)).not.toContain('biz_2103')
   })
 
-  it('type 只留该连接器类型；行带 type/positionId/positionCount（2026-09-18 待办 yuepu#1；种子 biz_2101 会被其它用例删，只查稳定的 biz_2102/2103 + 自建行）', async () => {
+  it('type 只留该连接器类型；行带 type/referencedByPositions/positionCount，不再有 positionId（种子 biz_2101 会被其它用例删，只查稳定的 biz_2102/2103 + 自建行）', async () => {
     const hr = await getBizSystem('biz_2102')
-    expect(hr).toMatchObject({ type: 'PLATFORM', positionId: null, positionCount: 0 })
+    expect(hr).toMatchObject({ type: 'PLATFORM', positionCount: 0, referencedByPositions: [] })
+    expect(hr).not.toHaveProperty('positionId')
     const contract = await getBizSystem('biz_2103')
-    expect(contract).toMatchObject({ type: 'SYSTEM_DEFAULT', positionId: null, positionCount: 0 })
+    expect(contract).toMatchObject({ type: 'SYSTEM_DEFAULT', positionCount: 0, referencedByPositions: [] })
+    // 岗位私有新建后没有任何岗位引用（引用关系在岗位侧产生），payload 带 positionId 也被忽略
     const created = await createBizSystem({ ...VALID, name: `类型筛选-${Date.now()}`, type: 'POSITION', positionId: 402 })
-    expect(created).toMatchObject({ type: 'POSITION', positionId: 402, positionCount: 1 })
+    expect(created).toMatchObject({ type: 'POSITION', positionCount: 0, referencedByPositions: [] })
+    expect(created).not.toHaveProperty('positionId')
     const { list: pos } = await listBizSystems({ type: 'POSITION' })
     expect(pos.map((b) => b.id)).toContain(created.id)
     expect(pos.every((b) => b.type === 'POSITION')).toBe(true)
   })
 
-  it('type/positionId 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；未传 type 落 PLATFORM 默认值', async () => {
-    const created = await createBizSystem({ ...VALID, name: `岗位私有-${Date.now()}`, type: 'POSITION', positionId: 401 })
-    expect(created).toMatchObject({ type: 'POSITION', positionId: 401 })
-    const updated = await updateBizSystem(created.id, { ...VALID, name: created.name, description: '改描述', type: 'PLATFORM', positionId: null })
-    expect(updated).toMatchObject({ type: 'POSITION', positionId: 401, description: '改描述' })
+  it('type 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；未传 type 落 PLATFORM 默认值', async () => {
+    const created = await createBizSystem({ ...VALID, name: `岗位私有-${Date.now()}`, type: 'POSITION' })
+    expect(created).toMatchObject({ type: 'POSITION' })
+    const updated = await updateBizSystem(created.id, { ...VALID, name: created.name, description: '改描述', type: 'PLATFORM' })
+    expect(updated).toMatchObject({ type: 'POSITION', description: '改描述' })
     const noType = await createBizSystem({ ...VALID, name: `无类型-${Date.now()}` })
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionId: null })
+    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0 })
   })
 
   it('列表按最近更新时间排序（默认由近到远；sort=asc 反向）（md §二.1 L30）', async () => {
@@ -286,7 +289,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=2 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=3 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -311,7 +314,7 @@ describe('bizSystemMock —— 持久化', () => {
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 2)
     }
-    expect(harness.options.version).toBe(2)
+    expect(harness.options.version).toBe(3)
     const snap = harness.options.snapshot()
     expect(Number.isFinite(snap.bizSeq)).toBe(true)
     expect(Number.isFinite(snap.skillSeq)).toBe(true)

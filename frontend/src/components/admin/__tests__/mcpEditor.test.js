@@ -434,9 +434,22 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
     expect(payload).not.toHaveProperty('command')
     expect(payload).not.toHaveProperty('env')
     expect(payload).not.toHaveProperty('code') // md §三.3 L243：code 系统生成，前端不提交
+    expect(payload).not.toHaveProperty('positionId') // 岗位私有连接器不绑定具体岗位，只提交类型
     expect(msg.success).toHaveBeenCalledWith('已登记')
     expect(emitted.saved).toEqual([{ id: 'mcp_new' }])
     expect(emitted.visible).toEqual([false])
+  })
+
+  it('登记岗位私有 MCP → 直接保存成功，createMcp payload 只带 type: POSITION、不带 positionId', async () => {
+    adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
+    await mount()
+    await fillValidNew()
+    await setSelect(selectOf('连接器类型'), 'POSITION')
+    footerBtn('登记').click()
+    await flush()
+    const payload = adminApi.createMcp.mock.calls[0][0]
+    expect(payload).toMatchObject({ type: 'POSITION' })
+    expect(payload).not.toHaveProperty('positionId')
   })
 
   it('编辑态改描述后【保存】→ updateMcp(id, payload) → toast「已保存」→ emit saved({id}) → 关闭', async () => {
@@ -468,23 +481,14 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
   })
 })
 
-/* ================= 连接器类型 / 所属岗位（2026-09-18 修坏链） ================= */
-describe('连接器类型=岗位私有 → 所属岗位下拉（2026-09-18 修坏链：@/api/position 动态 import 解构错误 + status 大小写 + positionId 非 id）', () => {
-  it('选「岗位私有」后展示真实已发布岗位', async () => {
+/* ================= 连接器类型：只选类型，不绑定具体岗位 ================= */
+describe('连接器类型：配置页只选类型，岗位私有连接器不绑定具体岗位（由岗位侧「连接器」页签引用）', () => {
+  it('选「岗位私有」后也不出现「所属岗位」表单项', async () => {
     await mount()
+    expect(item('所属岗位')).toBeUndefined()
     await setSelect(selectOf('连接器类型'), 'POSITION')
-    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout，需真实等待；
-    // 轮询而非固定 sleep——机器负载高（并发跑很多测试文件）时固定 500ms 也可能不够，轮询到 3s 上限更稳。
-    const positionSelect = selectOf('所属岗位')
-    expect(positionSelect).toBeTruthy()
-    const deadline = Date.now() + 3000
-    let optionLabels = []
-    while (Date.now() < deadline) {
-      optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
-      if (optionLabels.includes('经营分析岗')) break
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    expect(optionLabels).toContain('经营分析岗')
+    expect(item('所属岗位')).toBeUndefined()
+    expect(container.textContent).not.toContain('所属岗位')
   })
 })
 

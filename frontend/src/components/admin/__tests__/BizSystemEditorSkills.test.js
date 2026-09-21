@@ -25,7 +25,6 @@ const admin = {
     Promise.resolve({
       name: 'CRM',
       type: 'PLATFORM',
-      positionId: null,
       icon: '◎',
       description: '客户管理',
       loginUrl: 'https://crm.example.com/login',
@@ -174,7 +173,6 @@ function typeName(el, value) {
 const DETAIL = {
   name: 'CRM',
   type: 'PLATFORM',
-  positionId: null,
   icon: '◎',
   description: '客户管理',
   loginUrl: 'https://crm.example.com/login',
@@ -213,8 +211,8 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('连接器类型 / 所属岗位（2026-09-18 待办 yuepu#1；比照 ApiEditor/ExpertEditor/McpEditor）', () => {
-  it('新建态默认无类型；选「岗位私有」后展示「所属岗位」下拉，走真实 listPositions', async () => {
+describe('连接器类型（只选类型，不绑定具体岗位；比照 ApiEditor/McpEditor）', () => {
+  it('新建态默认无类型；选「岗位私有」后也不出现「所属岗位」——岗位私有连接器由岗位侧引用，不在此绑定', async () => {
     const el = await mountEditor(null)
     const typeSelect = itemByLabel(el, '连接器类型').querySelector('select')
     expect(typeSelect.value).toBe('')
@@ -222,20 +220,11 @@ describe('连接器类型 / 所属岗位（2026-09-18 待办 yuepu#1；比照 Ap
     typeSelect.value = 'POSITION'
     typeSelect.dispatchEvent(new Event('change'))
     await flush()
-    const positionItem = itemByLabel(el, '所属岗位')
-    expect(positionItem).toBeTruthy()
-    // loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms setTimeout；轮询到 3s 上限更稳
-    const deadline = Date.now() + 3000
-    let optionLabels = []
-    while (Date.now() < deadline) {
-      optionLabels = [...positionItem.querySelectorAll('option')].map((o) => o.textContent)
-      if (optionLabels.includes('经营分析岗')) break
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    expect(optionLabels).toContain('经营分析岗')
+    expect(itemByLabel(el, '所属岗位')).toBeUndefined()
+    expect(el.textContent).not.toContain('所属岗位')
   })
 
-  it('岗位私有但不绑定岗位 → 仍可创建成功，payload positionId 为 null（按 PRD 字面松绑必填）', async () => {
+  it('岗位私有 → 直接创建成功，payload 只带 type、不带 positionId', async () => {
     const el = await mountEditor(null)
     setInput(inputOf(el, '系统名称'), '新系统')
     const typeSelect = itemByLabel(el, '连接器类型').querySelector('select')
@@ -248,17 +237,19 @@ describe('连接器类型 / 所属岗位（2026-09-18 待办 yuepu#1；比照 Ap
     await nextTick()
     findBtn(el, '保存').click()
     await flush()
-    expect(admin.createBizSystem).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionId: null }))
+    expect(admin.createBizSystem).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION' }))
+    expect(admin.createBizSystem.mock.calls[0][0]).not.toHaveProperty('positionId')
     expect(msg.warning).not.toHaveBeenCalled()
   })
 
-  it('编辑态类型/所属岗位下拉禁用（创建后不可改）；未绑定时提示「未绑定岗位」', async () => {
-    admin.getBizSystem.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionId: null })
+  it('编辑态类型下拉禁用（创建后不可改），且不展示「所属岗位」/「未绑定岗位」', async () => {
+    admin.getBizSystem.mockResolvedValue({ ...DETAIL, type: 'POSITION' })
     const el = await mountEditor('biz_1')
-    expect(itemByLabel(el, '连接器类型').querySelector('select').disabled).toBe(true)
-    const positionItem = itemByLabel(el, '所属岗位')
-    expect(positionItem.querySelector('select').disabled).toBe(true)
-    expect(positionItem.textContent).toContain('未绑定岗位')
+    const typeItem = itemByLabel(el, '连接器类型')
+    expect(typeItem.querySelector('select').disabled).toBe(true)
+    expect(typeItem.textContent).toContain('连接器类型创建后不可更改')
+    expect(itemByLabel(el, '所属岗位')).toBeUndefined()
+    expect(el.textContent).not.toContain('未绑定岗位')
   })
 })
 
@@ -532,7 +523,6 @@ describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', 
     expect(admin.createBizSystem).toHaveBeenCalledWith({
       name: '新系统',
       type: 'PLATFORM',
-      positionId: null,
       icon: '✓',
       description: '一句话描述',
       loginUrl: 'https://new.example.com/login',
