@@ -672,7 +672,29 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
     expect((await createSource({ sourceType: 'MCP', name: uniq('MCP超时120000'), config: mcpConfig({ timeoutMs: 120000 }) })).config.timeoutMs).toBe(120000)
     await expect(createSource({ sourceType: 'MCP', name: uniq('MCP长地址'), config: mcpConfig({ endpoint: `https://m.example.com/${'p'.repeat(490)}` }) })).rejects.toMatchObject({ field: 'endpoint', message: 'MCP 服务地址最多 500 个字符' })
     await expect(createSource({ sourceType: 'MCP', name: uniq('MCP坏协议'), config: mcpConfig({ endpoint: 'ws://m.example.com/mcp' }) })).rejects.toMatchObject({ field: 'endpoint', message: 'MCP 服务地址需以 http:// 或 https:// 开头' })
-    await expect(createSource({ sourceType: 'MCP', name: uniq('MCP坏传输'), config: mcpConfig({ transport: 'sse' }) })).rejects.toMatchObject({ field: 'transport' })
+    await expect(createSource({ sourceType: 'MCP', name: uniq('MCP坏传输'), config: mcpConfig({ transport: 'websocket' }) })).rejects.toMatchObject({ field: 'transport' })
+  })
+
+  // 2026-09-21：MCP 数据源新增 sse（旧版 HTTP+SSE）传输方式，字段与规则同 streamable-http（md §七.2.3）
+  it('MCP 数据源 sse：同样校验服务地址与鉴权凭证，保存后凭证脱敏', async () => {
+    const sse = (over = {}) => mcpConfig({ transport: 'sse', endpoint: 'https://m.example.com/sse', ...over })
+    await expect(createSource({ sourceType: 'MCP', name: uniq('SSE缺地址'), config: sse({ endpoint: '' }) })).rejects.toMatchObject({ field: 'endpoint', message: '请填写 MCP 服务地址' })
+    await expect(createSource({ sourceType: 'MCP', name: uniq('SSE坏协议'), config: sse({ endpoint: 'ws://m.example.com/sse' }) })).rejects.toMatchObject({ field: 'endpoint' })
+    await expect(
+      createSource({ sourceType: 'MCP', name: uniq('SSE缺凭证'), config: sse({ authType: 'bearer' }) })
+    ).rejects.toMatchObject({ field: 'authValue', message: '访问凭证必填' })
+    const created = await createSource({
+      sourceType: 'MCP',
+      name: uniq('SSE成功'),
+      config: sse({ authType: 'bearer' }),
+      authValue: 'tok-0123456789'
+    })
+    expect(created.config.transport).toBe('sse')
+    expect(created.config.endpoint).toBe('https://m.example.com/sse')
+    // 与 streamable-http 一致：明文不落库，只留掩码；且不带 stdio 的环境变量
+    expect(created.config.credentialMasked).toBeTruthy()
+    expect(created.config.credentialMasked).not.toContain('tok-0123456789')
+    expect(created.config.envVars).toEqual([])
   })
 })
 
