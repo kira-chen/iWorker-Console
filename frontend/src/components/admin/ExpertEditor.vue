@@ -100,7 +100,7 @@ const detail = ref(null)
 // 专家分类选项：同源字段字典（8 类），不本组件硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
 
-// 已发布岗位列表（用于岗位私有类型绑定）
+// 已发布岗位列表（用于岗位私有类型绑定，多选）
 const publishedPositions = ref([])
 
 async function loadPublishedPositions() {
@@ -127,7 +127,7 @@ const form = reactive({
   name: '',
   category: '',
   type: '',
-  positionId: null,
+  positionIds: [], // 所属岗位（多选，仅岗位私有类型；一个专家可绑定多个不同岗位）
   avatar: '',
   backgroundColor: BACKGROUND_FALLBACK,
   intro: '',
@@ -146,7 +146,7 @@ function resetForm(d) {
   form.name = d?.name || ''
   form.category = d?.category || ''
   form.type = d?.type || ''
-  form.positionId = d?.positionId || null
+  form.positionIds = Array.isArray(d?.positionIds) ? [...d.positionIds] : []
   form.avatar = d?.avatar || ''
   form.backgroundColor = safeBackground(d?.backgroundColor)
   form.intro = d?.intro || ''
@@ -420,7 +420,7 @@ function buildPayload() {
     name: String(form.name).trim(),
     category: form.category,
     type: form.type,
-    positionId: form.type === EXPERT_TYPE.POSITION ? form.positionId : null,
+    positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
     avatar: form.avatar,
     backgroundColor: safeBackground(form.backgroundColor),
     intro: form.intro,
@@ -609,25 +609,27 @@ const metaItems = computed(() => {
                   placeholder="请选择专家类型"
                   :disabled="disabled || isEdit"
                   style="width: 100%"
-                  @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionId = null"
+                  @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
                 >
                   <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
                 </el-select>
                 <div v-if="isEdit" class="ee-type-hint">专家类型创建后不可更改</div>
               </el-form-item>
+              <!-- 所属岗位：多选，一个专家可绑定多个不同岗位；不强制必选，编辑时可增减（审核中锁定期间置灰） -->
               <el-form-item
                 v-if="form.type === EXPERT_TYPE.POSITION"
                 label="所属岗位"
-                :error="errors.positionId"
                 class="ee-row-item"
               >
                 <el-select
-                  v-model="form.positionId"
-                  placeholder="选择已发布的岗位"
+                  v-model="form.positionIds"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择已发布的岗位（可多选）"
                   clearable
-                  :disabled="disabled || isEdit"
+                  :disabled="disabled"
                   style="width: 100%"
-                  @change="errors.positionId = ''"
                 >
                   <el-option
                     v-for="pos in publishedPositions"
@@ -636,7 +638,7 @@ const metaItems = computed(() => {
                     :value="pos.positionId"
                   />
                 </el-select>
-                <div v-if="isEdit" class="ee-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
+                <div v-if="isEdit && !form.positionIds.length" class="ee-type-hint">未绑定岗位</div>
               </el-form-item>
             </div>
             <el-form-item label="图标" required :error="errors.avatar">

@@ -71,7 +71,7 @@ function seedExperts() {
       avatar: '▤',
       backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       type: EXPERT_TYPE.PLATFORM, // 2026-09-20 yuepu#6②：市场专家（被应用引用）
-      positionId: null,
+      positionIds: [],
       category: '投资',
       roleDesc: '你是一名经营分析专家。围绕收入、成本、效率和风险提供可追溯的分析结论。',
       exampleQuestions: ['帮我生成一份行业调研报告', '帮我分析本月经营数据中的异常', '帮我整理一份管理层决策建议'],
@@ -90,7 +90,7 @@ function seedExperts() {
       avatar: '⌕',
       backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       type: EXPERT_TYPE.SYSTEM_DEFAULT, // 通用专家：引用情况列显「—」
-      positionId: null,
+      positionIds: [],
       category: '通用',
       roleDesc: '你负责准确回答企业知识问题，引用知识来源，并在信息不足时说明限制。',
       exampleQuestions: ['帮我查一下公司的差旅报销制度', '帮我解释这个业务流程', '帮我整理相关制度依据'],
@@ -108,8 +108,8 @@ function seedExperts() {
       intro: '辅助审阅合同条款并提示风险',
       avatar: '§',
       backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
-      type: EXPERT_TYPE.POSITION, // 岗位私有：绑已发布岗位 401 经营分析岗（positionMock 种子）
-      positionId: 401,
+      type: EXPERT_TYPE.POSITION, // 岗位私有：可多选绑定岗位，这里同时绑 401 经营分析岗 + 402 客户成功岗（positionMock 已发布种子）
+      positionIds: [401, 402],
       category: '法律',
       roleDesc: '你是一名严谨的合同审阅专家，按风险等级说明问题并给出修改建议。',
       exampleQuestions: ['帮我审阅这份合同的风险条款', '帮我生成一份合同修改建议', '帮我解释这条违约责任'],
@@ -130,7 +130,7 @@ function seedExperts() {
       avatar: '◎',
       backgroundColor: '#DCF5E4', // 2026-09-04 新增：原型种子无值，归一化结果=默认色
       type: EXPERT_TYPE.PLATFORM,
-      positionId: null,
+      positionIds: [],
       category: '投资',
       roleDesc: '你负责完成结构化研究，区分事实、推断和待验证信息。',
       exampleQuestions: ['帮我生成一份行业调研报告', '帮我对比三家主要竞品', '帮我整理一份投资研究摘要'],
@@ -184,7 +184,8 @@ const persist = attachPersist('domainExpert', {
   // （2026-09-12 审计 K25：原注释描述的「203 改 published+DELIST 并补 v2.0.0」从未落地，改为与种子一致。）
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
-  version: 4,
+  // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
+  version: 5,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
@@ -216,6 +217,9 @@ function parseVersion(label) {
 
 const normQuestions = (qs) => [0, 1, 2].map((i) => String((qs || [])[i] || ''))
 
+/** 所属岗位 id 列表归一：非数组当空、去掉空值、去重（多选下拉理论上不会重复，兜底防脏数据）。 */
+const normPositionIds = (ids) => (Array.isArray(ids) ? [...new Set(ids.filter((id) => id != null))] : [])
+
 /** 出参行（浅拷贝防组件误改内存种子） */
 function toRow(e) {
   return {
@@ -224,11 +228,12 @@ function toRow(e) {
     intro: e.intro,
     avatar: e.avatar,
     backgroundColor: safeBackground(e.backgroundColor), // 读路径归一化（旧快照无此字段 → 默认色）
-    // 专家类型 / 所属岗位（yuepu#6②）：创建后不可改；列表「引用情况」按 type 分支——
-    // 岗位私有显 positionCount（绑了岗位即 1，未绑 0）、市场专家显 skillCount、通用专家显「—」
+    // 专家类型 / 所属岗位：类型创建后不可改；所属岗位仅岗位私有有值，可多选（一个专家可绑定多个岗位），
+    // 编辑时可增减。列表「引用情况」按 type 分支——岗位私有显 positionCount（绑定的岗位数，未绑 0）、
+    // 市场专家显 skillCount、通用专家显「—」
     type: e.type || EXPERT_TYPE.PLATFORM,
-    positionId: e.type === EXPERT_TYPE.POSITION ? (e.positionId ?? null) : null,
-    positionCount: e.type === EXPERT_TYPE.POSITION && e.positionId != null ? 1 : 0,
+    positionIds: e.type === EXPERT_TYPE.POSITION ? normPositionIds(e.positionIds) : [],
+    positionCount: e.type === EXPERT_TYPE.POSITION ? normPositionIds(e.positionIds).length : 0,
     category: e.category,
     skillIds: [...e.skillIds],
     skillCount: e.skillIds.length,
@@ -290,7 +295,7 @@ export async function getExpert(id) {
   return toDetail(e)
 }
 
-// 新建（payload: { name, type, positionId, category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
+// 新建（payload: { name, type, positionIds[], category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
 export async function createExpert(payload = {}) {
   await delay()
   const name = String(payload.name || '').trim()
@@ -298,8 +303,8 @@ export async function createExpert(payload = {}) {
   if (name.length > 64) throw err('专家名最多 64 个字符', 'name')
   if (experts.some((e) => e.name === name)) throw err('专家名已存在', 'name', 1005)
   // 专家类型（md 专家 §三 L167 必选，由表单把关；mock 与连接器三件套同口径——缺省回落市场专家，
-  // 传了非法值才按字段级报错）。所属岗位仅岗位私有时落值，按 PRD 字面允许先不绑（4229ae6 拍板）。
-  // 类型 + 所属岗位创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰。
+  // 传了非法值才按字段级报错）。所属岗位（多选）仅岗位私有时落值，按 PRD 字面允许先不绑（4229ae6 拍板）。
+  // 类型创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰；所属岗位可在编辑时增减（见 updateExpert）。
   const type = payload.type ? String(payload.type) : EXPERT_TYPE.PLATFORM
   if (!Object.values(EXPERT_TYPE).includes(type)) throw err('请选择专家类型', 'type')
   const now = nowIso()
@@ -307,7 +312,7 @@ export async function createExpert(payload = {}) {
     id: expertSeq++,
     name,
     type,
-    positionId: type === EXPERT_TYPE.POSITION ? (payload.positionId ?? null) : null,
+    positionIds: type === EXPERT_TYPE.POSITION ? normPositionIds(payload.positionIds) : [],
     intro: String(payload.intro || '').trim(),
     avatar: String(payload.avatar || '').trim(),
     backgroundColor: safeBackground(payload.backgroundColor),
@@ -328,7 +333,8 @@ export async function createExpert(payload = {}) {
   return toDetail(e)
 }
 
-// 编辑（部分更新：只传的字段才改；type / positionId 创建后不可改，payload 里带了也忽略）。审核中锁定（审核对象=提交那刻的快照）。
+// 编辑（部分更新：只传的字段才改；type 创建后不可改，payload 里带了也忽略；positionIds 仅岗位私有专家可增减，
+// 其它类型带了也忽略）。审核中锁定（审核对象=提交那刻的快照）。
 export async function updateExpert(id, payload = {}) {
   await delay()
   const e = findExpert(id)
@@ -344,6 +350,7 @@ export async function updateExpert(id, payload = {}) {
   if (payload.avatar !== undefined) e.avatar = String(payload.avatar || '').trim()
   if (payload.backgroundColor !== undefined) e.backgroundColor = safeBackground(payload.backgroundColor)
   if (payload.category !== undefined) e.category = String(payload.category || '').trim()
+  if (payload.positionIds !== undefined && e.type === EXPERT_TYPE.POSITION) e.positionIds = normPositionIds(payload.positionIds)
   if (payload.roleDesc !== undefined) e.roleDesc = String(payload.roleDesc || '')
   if (payload.exampleQuestions !== undefined) e.exampleQuestions = normQuestions(payload.exampleQuestions)
   if (payload.skillIds !== undefined) e.skillIds = Array.isArray(payload.skillIds) ? [...payload.skillIds] : []

@@ -53,30 +53,45 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
   })
 
   // 2026-09-20 待办 yuepu#6②：专家类型 / 所属岗位落数据层（md 专家 §一 类型筛选、§二.1 类型列与引用情况、§三 L167-168）
-  it('专家类型：种子三型齐全且列表出参带 type/positionId/positionCount；type 筛选生效', async () => {
+  it('专家类型：种子三型齐全且列表出参带 type/positionIds/positionCount（岗位私有可多选绑定，种子 203 绑 2 个岗位）；type 筛选生效', async () => {
     const { list } = await listExperts()
     const byName = Object.fromEntries(list.map((e) => [e.name, e]))
-    expect(byName['经营分析专家']).toMatchObject({ type: 'PLATFORM', positionId: null, positionCount: 0 })
-    expect(byName['企业知识助手']).toMatchObject({ type: 'SYSTEM_DEFAULT', positionId: null, positionCount: 0 })
-    expect(byName['法务审阅专家']).toMatchObject({ type: 'POSITION', positionId: 401, positionCount: 1 })
+    expect(byName['经营分析专家']).toMatchObject({ type: 'PLATFORM', positionIds: [], positionCount: 0 })
+    expect(byName['企业知识助手']).toMatchObject({ type: 'SYSTEM_DEFAULT', positionIds: [], positionCount: 0 })
+    expect(byName['法务审阅专家']).toMatchObject({ type: 'POSITION', positionIds: [401, 402], positionCount: 2 })
+    expect(byName['法务审阅专家']).not.toHaveProperty('positionId')
     expect((await listExperts({ type: 'POSITION' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
     expect((await listExperts({ type: 'PLATFORM' })).list.map((e) => e.name)).toEqual(['经营分析专家', '研究报告专家'])
     expect((await listExperts({ type: 'SYSTEM_DEFAULT' })).total).toBe(1)
   })
 
-  it('专家类型：新建落 type，岗位私有可先不绑岗位（4229ae6）、非岗位私有丢弃 positionId；非法 type 字段级报错；编辑不可改', async () => {
+  it('专家类型：新建落 type，岗位私有可先不绑岗位（4229ae6）、可多选绑定多个岗位（去空去重）、非岗位私有丢弃 positionIds；非法 type 字段级报错', async () => {
     const pos = await createExpert({ name: '私有专家', type: 'POSITION' })
-    expect(pos).toMatchObject({ type: 'POSITION', positionId: null, positionCount: 0 })
-    const bound = await createExpert({ name: '私有专家2', type: 'POSITION', positionId: 402 })
-    expect(bound).toMatchObject({ type: 'POSITION', positionId: 402, positionCount: 1 })
-    const plat = await createExpert({ name: '市场专家', type: 'PLATFORM', positionId: 402 })
-    expect(plat).toMatchObject({ type: 'PLATFORM', positionId: null })
+    expect(pos).toMatchObject({ type: 'POSITION', positionIds: [], positionCount: 0 })
+    const bound = await createExpert({ name: '私有专家2', type: 'POSITION', positionIds: [402, 401] })
+    expect(bound).toMatchObject({ type: 'POSITION', positionIds: [402, 401], positionCount: 2 })
+    const dirty = await createExpert({ name: '私有专家3', type: 'POSITION', positionIds: [401, 401, null, 402] })
+    expect(dirty).toMatchObject({ positionIds: [401, 402], positionCount: 2 })
+    const plat = await createExpert({ name: '市场专家', type: 'PLATFORM', positionIds: [402] })
+    expect(plat).toMatchObject({ type: 'PLATFORM', positionIds: [], positionCount: 0 })
     // 缺省回落市场专家（与连接器三件套 mock 同口径，必选由表单把关）
     expect((await createExpert({ name: '缺省专家' })).type).toBe('PLATFORM')
     await expect(createExpert({ name: '坏类型', type: 'WHATEVER' })).rejects.toMatchObject({ field: 'type' })
-    // 创建后不可改：updateExpert 带 type/positionId 也忽略
-    const d = await updateExpert(bound.id, { type: 'PLATFORM', positionId: 401, intro: 'x' })
-    expect(d).toMatchObject({ type: 'POSITION', positionId: 402, intro: 'x' })
+  })
+
+  it('专家类型创建后不可改；所属岗位（多选）编辑时可增减，仅岗位私有生效、其它类型带了也忽略', async () => {
+    const bound = await createExpert({ name: '可改岗位专家', type: 'POSITION', positionIds: [402] })
+    // 类型不可改：带 type 也忽略；岗位可改：增到两个、再减回一个、再清空
+    const added = await updateExpert(bound.id, { type: 'PLATFORM', positionIds: [401, 402], intro: 'x' })
+    expect(added).toMatchObject({ type: 'POSITION', positionIds: [401, 402], positionCount: 2, intro: 'x' })
+    expect(await updateExpert(bound.id, { positionIds: [401] })).toMatchObject({ positionIds: [401], positionCount: 1 })
+    expect(await updateExpert(bound.id, { positionIds: [] })).toMatchObject({ positionIds: [], positionCount: 0 })
+    // 不传 positionIds 则不动
+    await updateExpert(bound.id, { positionIds: [402] })
+    expect(await updateExpert(bound.id, { intro: 'y' })).toMatchObject({ positionIds: [402] })
+    // 市场专家带 positionIds 也忽略
+    const plat = await createExpert({ name: '不可绑岗位的市场专家', type: 'PLATFORM' })
+    expect(await updateExpert(plat.id, { positionIds: [401] })).toMatchObject({ type: 'PLATFORM', positionIds: [], positionCount: 0 })
   })
 
   it('详情：含职责描述 / 3 条示例问题 / 引用技能明细（实时取市场技能本体）与时间元信息', async () => {
