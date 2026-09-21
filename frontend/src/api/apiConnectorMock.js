@@ -47,17 +47,22 @@ let providerSystems = [
 ]
 
 /* ---------------- API 定义 ---------------- */
+// 种子里的岗位引用（401=经营分析岗 / 402=客户成功岗，取自 positionMock.js 已发布岗位种子）
+const POS_401 = { positionId: 401, positionName: '经营分析岗' }
+const POS_402 = { positionId: 402, positionName: '客户成功岗' }
 // 时间统一带 +08:00（北京时间），fmtTime 展示精确到分钟
 const mkApi = (over) => ({
   id: over.code,
   code: over.code,
   name: '',
   icon: '',
-  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）+
-  // 所属岗位（仅 POSITION 时有意义）。两者创建后不可改，applyApiPayload 不碰这两个字段，只在
-  // createApi 里从 payload 落一次（2026-09-18 待办 yuepu#1）。
+  // 连接器类型（PRD §三.3：POSITION 岗位私有 / PLATFORM 市场连接器 / SYSTEM_DEFAULT 通用连接器）。
+  // 创建后不可改，applyApiPayload 不碰该字段，只在 createApi 里从 payload 落一次。
+  // 岗位私有连接器不绑定具体岗位：由岗位侧「连接器」页签引用，同一个可被多个岗位重复引用。
   type: 'PLATFORM',
-  positionId: null,
+  // 被哪些岗位引用（反向引用清单 [{ positionId, positionName }]，仅 POSITION 类型有意义）：
+  // 引用关系在岗位侧产生，连接器侧只读展示（列表「N 个岗位引用」）；新建默认无引用。
+  referencedByPositions: [],
   description: '',
   providerSystemId: null,
   method: 'GET',
@@ -88,7 +93,7 @@ let apis = [
   mkApi({
     code: 'api_1101',
     type: 'POSITION',
-    positionId: 401,
+    referencedByPositions: [POS_401],
     name: '报销单查询',
     icon: '📄',
     description: '按报销单号查询审批状态与金额',
@@ -148,7 +153,7 @@ let apis = [
   mkApi({
     code: 'api_1103',
     type: 'POSITION',
-    positionId: 402,
+    referencedByPositions: [POS_402],
     name: '客户资料查询',
     icon: '👤',
     description: '按客户编号读取客户基础信息',
@@ -199,7 +204,7 @@ let apis = [
   mkApi({
     code: 'api_1104',
     type: 'POSITION',
-    positionId: 402,
+    referencedByPositions: [POS_402],
     name: '新增客户跟进',
     icon: '✅',
     description: '写入客户跟进记录和下次联系时间',
@@ -458,10 +463,12 @@ let apis = [
 // version 2（2026-09-10 E8）：星火系列种子描述改「大白话首句 + 接入说明」措辞，旧快照弃用回种子。
 // version 3（2026-09-12 审计 J16）：种子 api_1104 的 lastCheckError 改为 mcpVerify 目录 key「连接失败」
 //   （旧值 'CONN_REFUSED: …' 悬浮显 UNKNOWN），旧快照弃用回种子。
-// version 4（2026-09-18 待办 yuepu#1）：行新增 `type` / `positionId`（连接器类型/所属岗位），
-//   旧快照没有这两个字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
+// version 4（2026-09-18 待办 yuepu#1）：行新增 `type`（连接器类型），
+//   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
+// version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
+//   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -514,8 +521,9 @@ function toRow(a) {
     authConfig: sanitizeAuth(a),
     providerSystemName: findPs(a.providerSystemId)?.name || '',
     referencedBySkillCount: a.referencedBySkills.length,
-    // 岗位私有类型的引用数：单 positionId 绑定 → 已绑定即 1（列表「N 个岗位引用」按钮态用）
-    positionCount: a.positionId ? 1 : 0
+    // 岗位私有类型的引用数：取岗位侧反向引用清单长度（列表「N 个岗位引用」按钮态用）
+    referencedByPositions: (a.referencedByPositions || []).map((p) => ({ ...p })),
+    positionCount: (a.referencedByPositions || []).length
   }
 }
 
@@ -694,11 +702,10 @@ function applyApiPayload(a, payload) {
 export async function createApi(payload) {
   await delay(250)
   validateApiPayload(payload)
-  // 类型 + 所属岗位创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰这两个字段
+  // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰该字段
   const a = mkApi({
     code: `api_${apiSeq++}`,
     type: payload.type || 'PLATFORM',
-    positionId: payload.type === 'POSITION' ? (payload.positionId ?? null) : null,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })

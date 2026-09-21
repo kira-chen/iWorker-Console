@@ -47,7 +47,7 @@ import { MCP_AUTH_CONFIG_ENABLED } from '@/utils/featureFlags'
 import { schemaToRows } from '@/utils/schema'
 import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
-import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
+import { CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 
 const props = defineProps({
@@ -71,8 +71,7 @@ const saving = ref(false)
 const form = reactive({
   name: '', // 必填 ≤64（PRD §三.3）
   description: '', // 服务描述（必填 ≤2000，PRD §三.3）
-  type: '', // 连接器类型：岗位私有/市场连接器/通用连接器
-  positionId: null, // 所属岗位（仅岗位私有类型）
+  type: '', // 连接器类型：岗位私有/市场连接器/通用连接器（创建后不可改；岗位私有不在此绑定岗位，由岗位侧引用）
   icon: '', // 图标（必填，PRD §三.3）：emoji 字符 或 /api/public/icons/<文件名>
   timeoutMs: 10000, // 超时（必填，PRD §三.4）：默认 10000 ms，1000～120000
   transport: 'streamable-http',
@@ -103,19 +102,6 @@ const authConfigured = computed(
     authInfoLoaded.value.type === form.authType
 )
 
-// 已发布岗位列表（用于岗位私有类型绑定）
-const publishedPositions = ref([])
-
-async function loadPublishedPositions() {
-  try {
-    const { listPositions } = await import('@/api/position')
-    const res = await listPositions({ status: 'published' })
-    publishedPositions.value = res.list || []
-  } catch (err) {
-    console.warn('加载已发布岗位失败:', err)
-    publishedPositions.value = []
-  }
-}
 // Env 声明式行（V110 弹窗改造 B 节）：[{ key, description, clientFill, value, configured }]。
 // 行列表 = 完整期望集（提交后端按 KEY merge，缺 KEY=删除）；value 永不回显（留空=保留旧密文）。
 // 行编辑交互收口在公共组件 ParamRowsEditor（API KEY 鉴权同款，B.3 抽象）。
@@ -204,7 +190,6 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.type = ''
-  form.positionId = null
   form.icon = ''
   form.timeoutMs = 10000
   form.transport = 'streamable-http'
@@ -276,7 +261,6 @@ async function doImport() {
 async function load() {
   clearErrors()
   testResult.value = null
-  loadPublishedPositions()
   if (!isEdit.value) {
     resetForm()
     return
@@ -288,7 +272,6 @@ async function load() {
     form.name = d.name || ''
     form.description = d.description || ''
     form.type = d.type || ''
-    form.positionId = d.positionId || null
     form.icon = d.icon || ''
     form.timeoutMs = d.timeoutMs ?? 10000
     form.transport = d.transport || 'streamable-http'
@@ -590,9 +573,8 @@ const {
 
 function buildPayload() {
   const payload = {
-    // 连接器类型 + 所属岗位（创建后不可改；mock 只在 createMcp 落一次，编辑态即使传了也会被忽略）
+    // 连接器类型（创建后不可改；mock 只在 createMcp 落一次，编辑态即使传了也会被忽略）
     type: form.type,
-    positionId: form.type === CONNECTOR_TYPE.POSITION ? form.positionId : null,
     name: form.name.trim(),
     description: form.description.trim() || null, // 空串归 null，与后端 blank→null 一致
     icon: form.icon || null, // V97：空串归 null（未配置）
@@ -748,42 +730,18 @@ async function save() {
               />
             </el-form-item>
           </div>
-          <!-- 类型和所属岗位同行 -->
-          <div class="md-form-row">
-            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="md-row-item">
-              <el-select
-                v-model="form.type"
-                placeholder="请选择连接器类型"
-                :disabled="isEdit"
-                style="width: 100%"
-              >
-                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-              </el-select>
-              <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
-            </el-form-item>
-            <el-form-item
-              v-if="form.type === CONNECTOR_TYPE.POSITION"
-              label="所属岗位"
-              :error="fieldErrors.positionId"
-              class="md-row-item"
+          <!-- 连接器类型：只选类型，不绑定具体岗位（岗位私有连接器由岗位侧「连接器」页签引用，可被多个岗位重复引用） -->
+          <el-form-item label="连接器类型" :error="fieldErrors.type" required>
+            <el-select
+              v-model="form.type"
+              placeholder="请选择连接器类型"
+              :disabled="isEdit"
+              style="width: 100%"
             >
-              <el-select
-                v-model="form.positionId"
-                placeholder="选择已发布的岗位"
-                clearable
-                :disabled="isEdit"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="pos in publishedPositions"
-                  :key="pos.positionId"
-                  :label="pos.name"
-                  :value="pos.positionId"
-                />
-              </el-select>
-              <div v-if="isEdit" class="md-type-hint">{{ form.positionId ? '所属岗位创建后不可更改' : '未绑定岗位' }}</div>
-            </el-form-item>
-          </div>
+              <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+            </el-select>
+            <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
+          </el-form-item>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>
             <el-input
               v-model="form.description"
@@ -1234,17 +1192,6 @@ async function save() {
   display: flex;
   gap: var(--space-4);
   align-items: flex-start;
-}
-
-/* 类型和所属岗位同行布局 */
-.md-form-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 22px;
-}
-.md-form-row .md-row-item {
-  margin-bottom: 0;
-  min-width: 0;
 }
 
 .md-name-item {
