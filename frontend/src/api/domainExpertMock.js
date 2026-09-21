@@ -303,7 +303,8 @@ export async function createExpert(payload = {}) {
   if (name.length > 64) throw err('专家名最多 64 个字符', 'name')
   if (experts.some((e) => e.name === name)) throw err('专家名已存在', 'name', 1005)
   // 专家类型（md 专家 §三 L167 必选，由表单把关；mock 与连接器三件套同口径——缺省回落市场专家，
-  // 传了非法值才按字段级报错）。所属岗位（多选）仅岗位私有时落值，按 PRD 字面允许先不绑（4229ae6 拍板）。
+  // 传了非法值才按字段级报错）。所属岗位（多选）仅岗位私有时落值；「岗位私有必须至少绑 1 个岗位」由
+  // ExpertEditor 表单把关（与图标、简介等必填项同口径），mock 只做归一不重复校验。
   // 类型创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰；所属岗位可在编辑时增减（见 updateExpert）。
   const type = payload.type ? String(payload.type) : EXPERT_TYPE.PLATFORM
   if (!Object.values(EXPERT_TYPE).includes(type)) throw err('请选择专家类型', 'type')

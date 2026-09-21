@@ -50,6 +50,9 @@
  * - E6 抽屉宽 min(780px,88vw)：DrawerEditor 默认已是 780（批次 1 落地），本文件不额外传 size；
  *   遮罩点击 toast 属 DrawerEditor 共用行为 → 记「需共享层跟进」，本批不改。
  * - E7 示例问题【AI 生成】保持区级一枚（md §三.3 写"每行一个" ↔ 原型/代码区级一枚，按口径保持 md 现状不动）。
+ *
+ * 【2026-09-21 岗位私有专家的「所属岗位」】多选、必填（至少 1 个）、创建后可增减但不能清空；
+ * 只在专家类型=岗位私有时出现。校验在 validate()，保存与【发布】共用。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -136,10 +139,19 @@ const form = reactive({
   skillIds: []
 })
 
-const errors = reactive({ name: '', category: '', type: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
+const errors = reactive({ name: '', category: '', type: '', positionIds: '', avatar: '', backgroundColor: '', intro: '', roleDesc: '', examples: '', skills: '' })
 
 function clearErrors() {
   for (const k of Object.keys(errors)) errors[k] = ''
+}
+
+// 类型只有新建时能选；改成非岗位私有就丢掉已选岗位（不带脏数据进 payload），连带清掉岗位的红字
+function onTypeChange() {
+  errors.type = ''
+  if (form.type !== EXPERT_TYPE.POSITION) {
+    form.positionIds = []
+    errors.positionIds = ''
+  }
 }
 
 function resetForm(d) {
@@ -381,6 +393,11 @@ function validate() {
     errors.type = '请选择专家类型'
     ok = false
   }
+  // 岗位私有专家必须绑定至少 1 个岗位（编辑时同样：不能把已绑的岗位全部删掉）
+  if (form.type === EXPERT_TYPE.POSITION && !form.positionIds.length) {
+    errors.positionIds = '请选择所属岗位'
+    ok = false
+  }
   if (!String(form.avatar || '').trim()) {
     errors.avatar = '请选择图标'
     ok = false
@@ -609,16 +626,19 @@ const metaItems = computed(() => {
                   placeholder="请选择专家类型"
                   :disabled="disabled || isEdit"
                   style="width: 100%"
-                  @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
+                  @change="onTypeChange"
                 >
                   <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
                 </el-select>
                 <div v-if="isEdit" class="ee-type-hint">专家类型创建后不可更改</div>
               </el-form-item>
-              <!-- 所属岗位：多选，一个专家可绑定多个不同岗位；不强制必选，编辑时可增减（审核中锁定期间置灰） -->
+              <!-- 所属岗位：仅岗位私有类型出现，必填，多选（一个专家可绑定多个不同岗位）；
+                   创建后仍可增减、但至少留 1 个（审核中锁定期间置灰） -->
               <el-form-item
                 v-if="form.type === EXPERT_TYPE.POSITION"
                 label="所属岗位"
+                required
+                :error="errors.positionIds"
                 class="ee-row-item"
               >
                 <el-select
@@ -630,6 +650,7 @@ const metaItems = computed(() => {
                   clearable
                   :disabled="disabled"
                   style="width: 100%"
+                  @change="errors.positionIds = ''"
                 >
                   <el-option
                     v-for="pos in publishedPositions"
@@ -638,7 +659,6 @@ const metaItems = computed(() => {
                     :value="pos.positionId"
                   />
                 </el-select>
-                <div v-if="isEdit && !form.positionIds.length" class="ee-type-hint">未绑定岗位</div>
               </el-form-item>
             </div>
             <el-form-item label="图标" required :error="errors.avatar">

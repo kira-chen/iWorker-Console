@@ -137,7 +137,8 @@ const elButton = {
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
-const elFormItem = { name: 'el-form-item', props: ['label', 'error'], template: '<div class="el-form-item"><label>{{ label }}</label><slot /><span class="fi-err">{{ error }}</span></div>' }
+// required 桩成 data-required，供「所属岗位带必填红星」断言（真 el-form-item 的 required 只是画红星）
+const elFormItem = { name: 'el-form-item', props: { label: String, error: String, required: Boolean }, template: '<div class="el-form-item" :data-required="required ? \'1\' : undefined"><label>{{ label }}</label><slot /><span class="fi-err">{{ error }}</span></div>' }
 const elAlert = { name: 'el-alert', props: ['title', 'description', 'type'], template: '<div class="el-alert">{{ title }}{{ description }}</div>' }
 
 let app, container, visibleSpy, savedSpy, publishSpy
@@ -369,28 +370,31 @@ describe('ExpertEditor — 新建', () => {
     expect(visibleSpy).toHaveBeenCalledWith(false)
   })
 
-  it('专家类型=岗位私有但不绑定岗位 → 仍可创建成功（2026-09-18 按 PRD 字面松绑「必须绑定」强校验）', async () => {
-    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
+  // 2026-09-21：岗位私有专家「所属岗位」必填（反转 2026-09-18 4229ae6 的「允许先不绑」）
+  it('专家类型=岗位私有但不绑定岗位 → 「所属岗位」就地红字「请选择所属岗位」+ toast「请先补齐必填项」，不打接口', async () => {
     await mount({ expertId: null })
-    await type(inputs()[0], '新专家')
-    await selectCategory('通用')
-    await selectType('POSITION') // 不选「所属岗位」，留空
-    container.querySelector('.icon-picker').click()
-    await flush(2)
-    await type(inputs()[1], '一句话简介')
-    const mde = container.querySelector('.soul-mde')
-    mde.value = '我是新专家'
-    mde.dispatchEvent(new Event('input'))
-    await flush(2)
-    await type(inputs()[2], '问题一')
-    await type(inputs()[3], '问题二')
-    await type(inputs()[4], '问题三')
-    await checkSkill(0)
-    expect(errTexts()).not.toContain('岗位')
+    await fillRequired('新专家')
+    await selectType('POSITION') // 其余必填都填满，只是不选「所属岗位」
     btn('创建专家').click()
     await flush()
-    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [] }))
-    expect(ElMessage.success).toHaveBeenCalledWith('专家已创建')
+    expect(createExpert).not.toHaveBeenCalled()
+    expect(errTexts()).toContain('请选择所属岗位')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+  })
+
+  it('岗位私有未选岗位报错后，把类型改回非岗位私有 → 岗位红字一并清掉，可正常创建', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 210, name: '新专家' })
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    await selectType('POSITION')
+    btn('创建专家').click()
+    await flush()
+    expect(errTexts()).toContain('请选择所属岗位')
+    await selectType('PLATFORM')
+    expect(errTexts()).not.toContain('请选择所属岗位')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'PLATFORM', positionIds: [] }))
   })
 
   // 2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制（取代旧「固定文案即填」断言）
@@ -498,7 +502,27 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'PLATFORM', positionIds: [] }))
   })
 
-  it('编辑态：岗位私有专家回填已绑定的多个岗位；类型置灰不可改、所属岗位仍可增减；未绑定时提示「未绑定岗位」', async () => {
+  // 2026-09-21：岗位私有专家「所属岗位」必填（多选、创建后可增减、不能清空）
+  it('新建：选了岗位 → 「所属岗位」红字随即消失，创建成功；该表单项带必填标记，市场专家无此项也不受约束', async () => {
+    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
+    await mount({ expertId: null })
+    await fillRequired('新专家')
+    expect(container.textContent).not.toContain('所属岗位')
+    await selectType('POSITION')
+    const positionItem = [...container.querySelectorAll('.el-form-item')].find((f) => f.querySelector('label')?.textContent === '所属岗位')
+    expect(positionItem.dataset.required).toBe('1')
+    btn('创建专家').click()
+    await flush()
+    expect(errTexts()).toContain('请选择所属岗位')
+    await pickPositions(await positionSelectReady(), '401')
+    expect(errTexts()).not.toContain('请选择所属岗位')
+    btn('创建专家').click()
+    await flush()
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [401] }))
+    expect(ElMessage.success).toHaveBeenCalledWith('专家已创建')
+  })
+
+  it('编辑态：岗位私有专家回填已绑定的多个岗位；类型置灰不可改、所属岗位仍可增减（减到 1 个可保存）', async () => {
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
     await mount({ expertId: 201 })
     const [, typeSelect, positionSelect] = container.querySelectorAll('select.el-select')
@@ -506,19 +530,38 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(container.textContent).toContain('专家类型创建后不可更改')
     expect(positionSelect.disabled).toBe(false)
     expect(positionSelect.dataset.values).toBe('[401,402]')
-    expect(container.textContent).not.toContain('未绑定岗位')
     // 增减：减到只剩 401，保存 → updateExpert 带 positionIds [401]
     updateExpert.mockResolvedValueOnce({ ...DETAIL })
     await pickPositions(await positionSelectReady(), '401')
     btn('保存').click()
     await flush()
     expect(updateExpert).toHaveBeenCalledWith(201, expect.objectContaining({ type: 'POSITION', positionIds: [401] }))
-    // 未绑定任何岗位 → 提示「未绑定岗位」
-    app.unmount()
-    container.remove()
+  })
+
+  it('编辑态：把已绑定的岗位全部移除 → 【保存】【发布】都被拦下，红字「请选择所属岗位」，不打接口、不转交', async () => {
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
+    await mount({ expertId: 201 })
+    await pickPositions(await positionSelectReady()) // 不传值 = 全部取消选中
+    expect(container.querySelectorAll('select.el-select')[2].dataset.values).toBe('[]')
+    btn('保存').click()
+    await flush()
+    expect(updateExpert).not.toHaveBeenCalled()
+    expect(errTexts()).toContain('请选择所属岗位')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先补齐必填项')
+    btn('发布').click()
+    await flush()
+    expect(updateExpert).not.toHaveBeenCalled()
+    expect(publishSpy).not.toHaveBeenCalled()
+  })
+
+  it('编辑态：历史数据里岗位私有专家没绑岗位 → 保存时同样要求补选，不再提示「未绑定岗位」', async () => {
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [] })
     await mount({ expertId: 201 })
-    expect(container.textContent).toContain('未绑定岗位')
+    expect(container.textContent).not.toContain('未绑定岗位')
+    btn('保存').click()
+    await flush()
+    expect(updateExpert).not.toHaveBeenCalled()
+    expect(errTexts()).toContain('请选择所属岗位')
   })
 
   it('查看态（readonly）：所属岗位多选下拉置灰，仅展示已绑定岗位', async () => {

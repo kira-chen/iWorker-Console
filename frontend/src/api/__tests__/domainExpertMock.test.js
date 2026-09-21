@@ -65,7 +65,7 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect((await listExperts({ type: 'SYSTEM_DEFAULT' })).total).toBe(1)
   })
 
-  it('专家类型：新建落 type，岗位私有可先不绑岗位（4229ae6）、可多选绑定多个岗位（去空去重）、非岗位私有丢弃 positionIds；非法 type 字段级报错', async () => {
+  it('专家类型：新建落 type，可多选绑定多个岗位（去空去重）、非岗位私有丢弃 positionIds；非法 type 字段级报错（mock 不校验岗位必填，由编辑器表单把关）', async () => {
     const pos = await createExpert({ name: '私有专家', type: 'POSITION' })
     expect(pos).toMatchObject({ type: 'POSITION', positionIds: [], positionCount: 0 })
     const bound = await createExpert({ name: '私有专家2', type: 'POSITION', positionIds: [402, 401] })
