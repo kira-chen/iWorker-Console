@@ -37,7 +37,7 @@ import {
 //   别名保留本页原名，调用点零改动）
 import { getSkill } from '@/api/position'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
-// 技能分类选项统一同源 fieldDict（固定 8 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 后端接口。
+// 技能分类选项统一同源 fieldDict（固定 11 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 后端接口。
 import { listFieldDict } from '@/api/fieldDict'
 import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
       <el-select v-model="query.type" placeholder="全部技能类型" clearable class="lt-filter">
         <el-option v-for="t in SKILL_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
-      <!-- 分类筛选：固定 8 类（fieldDict 同源），对全部技能类型开放 -->
+      <!-- 分类筛选：固定 11 类（fieldDict 同源），对全部技能类型开放 -->
       <el-select
         v-model="query.categoryId"
         placeholder="全部技能分类"

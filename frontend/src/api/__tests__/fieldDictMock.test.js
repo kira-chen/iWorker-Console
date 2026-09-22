@@ -12,7 +12,7 @@ describe('fieldDictMock —— 字段字典（2026-09-01 PRD 对齐轮：草稿�
     expect(dict.riskType).toBeUndefined()
     expect(dict.riskLevel).toBeUndefined()
     expect(dict.skillCategory.map((o) => o.name)).toEqual([
-      '办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他'
+      'AI Agent', 'IT 运维与安全', '办公效率', '行业专业', '教育学习', '开发编程', '内容创作', '商业运营', '设计多媒体', '数据分析', '知识管理'
     ])
     expect(dict.expertCategory.map((o) => o.name)).toEqual([
       '通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'
@@ -77,7 +77,7 @@ describe('fieldDictMock · 持久化 restore 形状守卫', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../fieldDictMock')
     const dict = await fresh.listFieldDict()
-    expect(dict.skillCategory.map((o) => o.name)).toEqual(['办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他'])
+    expect(dict.skillCategory.map((o) => o.name)).toEqual(['AI Agent', 'IT 运维与安全', '办公效率', '行业专业', '教育学习', '开发编程', '内容创作', '商业运营', '设计多媒体', '数据分析', '知识管理'])
     expect(dict.expertCategory.map((o) => o.name)).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('fieldDict 存量数据不可用'), expect.any(Error))

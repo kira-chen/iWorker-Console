@@ -132,7 +132,7 @@ const props = defineProps({
    * 审核详情页不传，现状表现零变化）。启用后：
    * - 信息区首行加「图标」必填字段（2026-09-09 批次 3C · C5 起由 IconField 渲染显式双按钮）；
    * - 描述 2000 字计数 + 新占位（疑点6）；示例问题必填 + 新占位 +【AI 生成】按钮（疑点5）；
-   * - 技能分类三类技能均显示（固定 8 类 fieldDict 同源，必选，疑点8）；
+   * - 技能分类三类技能均显示（固定 11 类 fieldDict 同源，必选，疑点8）；
    * - 顶栏按钮改【发布】+ 完整发布门（publishReadiness）；只读态顶行加「只读查看」标记；
    * - ToolDock 页签收敛 MCP / API / 业务系统 + 空态「去连接器接入」链接；插入 toast「已插入工具引用」。
    */
@@ -325,7 +325,7 @@ async function onSaveConfigClick() {
 // 后续若 FDE 技能确需分类，另起一套 FDE 侧分类，不复用本控件与本端点。
 // 2026-08-24：去掉「分类选项非空才渲染」——库里一个分类都没有时选择器整个消失，用户以为控件丢了；
 // 现与「默认安装」同条件常驻，选项为空就是空下拉（Element 自带"无数据"），提示先去字段字典建分类。
-// 2026-09-01（疑点8）：技能编辑器语境三类技能均显示分类（固定 8 类 fieldDict 同源、必选，
+// 2026-09-01（疑点8）：技能编辑器语境三类技能均显示分类（固定 11 类 fieldDict 同源、必选，
 // 只读态改禁用而非隐藏）；岗位工作台等旧语境判据不变。
 const showCategorySelect = computed(() =>
   props.adminContext ? true : !ro.value && isPlatformSkill.value && !props.hideMarketFields
