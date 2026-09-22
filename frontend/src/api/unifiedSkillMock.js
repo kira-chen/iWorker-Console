@@ -21,7 +21,7 @@
  * 【三类技能一体】岗位私有（POSITION）自本轮起接入同构发布/版本状态机（PRD 对齐清单 6/29：
  * 旧「发布/撤回草稿」本体开关废弃），三类行都携带 publications 与版本快照。
  *
- * 【技能分类同源】8 类固定分类从 fieldDictMock（skillCategory 字段）取；demo 用「分类名」
+ * 【技能分类同源】11 类固定分类从 fieldDictMock（skillCategory 字段）取；demo 用「分类名」
  * 同时充当 categoryId（displayCategoryId === displayCategoryName），保持前端交互闭环即可。
  *
  * 【版本历史】启用某历史版本 = 互斥启用（其余启用版本自动禁用，对齐原型 toggleHistory）；
@@ -161,7 +161,7 @@ const skills = [
   }),
   seed({
     id: 'sk_306', type: 'SYSTEM_DEFAULT', name: '公文润色', icon: '◈',
-    description: '', category: '智能创作',
+    description: '', category: '内容创作',
     status: 'published', version: 'v3.0.2',
     createdAt: '2026-08-18 10:42', updatedAt: '2026-08-19 09:40', publishedAt: '2026-08-19 09:40',
     exampleQuestion: '帮我把这段通知润色得正式一些',
@@ -193,7 +193,7 @@ const skills = [
   }),
   seed({
     id: 'sk_309', type: 'PLATFORM', name: '行业研究助手', icon: '◎',
-    description: '汇总行业资料、竞品动态并生成结构化研究结论', category: '知识与学习',
+    description: '汇总行业资料、竞品动态并生成结构化研究结论', category: '知识管理',
     status: 'published', version: 'v1.0.0',
     pendingAction: 'stop',
     createdAt: '2026-08-17 09:12', updatedAt: '2026-08-25 11:26', publishedAt: '2026-08-18 10:00',

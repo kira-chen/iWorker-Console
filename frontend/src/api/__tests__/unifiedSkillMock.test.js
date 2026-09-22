@@ -25,7 +25,7 @@ async function mkSkill(over = {}) {
 }
 
 describe('创建 / 导入（分类必选，fieldDict 同源校验）', () => {
-  it('手动创建：缺名/缺类型/缺分类均拒绝；成功返回 skillId 且落 8 类之一', async () => {
+  it('手动创建：缺名/缺类型/缺分类均拒绝；成功返回 skillId 且落 11 类之一', async () => {
     await expect(mock.createSkill({ name: '', type: 'PLATFORM', categoryName: CAT })).rejects.toThrow('请填写技能名')
     await expect(mock.createSkill({ name: 'x', type: '', categoryName: CAT })).rejects.toThrow('请选择技能类型')
     await expect(mock.createSkill({ name: 'x', type: 'PLATFORM', categoryName: '' })).rejects.toThrow('请选择技能分类')

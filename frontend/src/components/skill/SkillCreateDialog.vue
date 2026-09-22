@@ -5,7 +5,7 @@
  * 【2026-09-01 PRD 对齐改造（对齐交互原型 v2 最终覆写态 openSkillCreate/saveSkillCreate）】
  * 技能页语境（传 typeOptions 启用内置类型选择）下：
  * - zip 模式：上传区文案「拖拽技能包 .zip 到此 · 或点击选择」/「支持一次选择多个 .zip · 每个包上传后
- *   分别选择技能分类」；每个技能包**独立必选**技能分类（固定 8 类，fieldDict 同源，占位「请选择技能分类」，
+ *   分别选择技能分类」；每个技能包**独立必选**技能分类（固定 11 类，fieldDict 同源，占位「请选择技能分类」，
  *   三类技能均显示）；确认按钮【导入技能包】（疑点2 处置）；未选拦截红字
  *   「请选择技能类型、上传技能包，并为每个技能包选择分类」（疑点3 处置）。
  *   导入完成统一返回列表（emit created-batch，不自动进编辑页；toast 由父级发）。
@@ -32,7 +32,7 @@ import { ref, watch, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { importSkillZip } from '@/api/skillFiles'
-// 技能分类选项统一同源 fieldDict（固定 8 类，2026-09-01 疑点8 处置）
+// 技能分类选项统一同源 fieldDict（固定 11 类，2026-09-01 疑点8 处置）
 import { listFieldDict } from '@/api/fieldDict'
 
 const props = defineProps({
@@ -91,7 +91,7 @@ const zipImporting = ref(false)
 const zipError = ref('') // 批级回显（含疑点3 的 zip 场景拦截文案）；单包导入失败红字在各自行内
 const zipUploadRef = ref(null)
 
-/* ---------- 技能分类（2026-09-01：固定 8 类 fieldDict 同源；三类技能均显示、每包独立必选） ---------- */
+/* ---------- 技能分类（2026-09-01：固定 11 类 fieldDict 同源；三类技能均显示、每包独立必选） ---------- */
 const categoryOptions = ref([])
 const showCategorySelect = computed(() => typeEnabled.value)
 async function loadCategoryOptions() {

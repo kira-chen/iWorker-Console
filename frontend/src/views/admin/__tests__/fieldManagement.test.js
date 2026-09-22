@@ -91,7 +91,7 @@ const setInput = (input, value) => {
   input.dispatchEvent(new Event('input'))
 }
 const mk = (names) => names.map((n, i) => ({ id: i + 1, name: n }))
-const SKILL = ['办公效率', '智能创作', '数据分析', '开发编程', 'IT运维与安全', '行业专业', '知识与学习', '其他']
+const SKILL = ['AI Agent', 'IT 运维与安全', '办公效率', '行业专业', '教育学习', '开发编程', '内容创作', '商业运营', '设计多媒体', '数据分析', '知识管理']
 const EXPERT = ['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权']
 
 beforeEach(() => {
@@ -121,7 +121,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
   it('字段卡片：名称、当前选项数量、选项值预览（顿号连接，md §2.2 顺序）、【编辑】（md §二）', async () => {
     await mount()
     const card = cards(groupNamed('平台技能'))[0]
-    expect(card.querySelector('.fm-count').textContent).toBe('8 个选项')
+    expect(card.querySelector('.fm-count').textContent).toBe('11 个选项')
     expect(card.querySelector('.fm-preview').textContent.trim()).toBe(SKILL.join('、'))
     expect([...card.querySelectorAll('.conn-ops .el-button')].map((b) => b.textContent.trim())).toEqual(['编辑'])
     const expertCard = cards(groupNamed('专家'))[0]
@@ -163,8 +163,8 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(dialog().dataset.title).toBe('编辑技能分类')
     expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('客户端市场技能的展示分类')
     const rows = [...dialog().querySelectorAll('.fm-opt-row')]
-    expect(rows).toHaveLength(8)
-    expect(rows.map((r) => r.querySelector('.fm-opt-idx').textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8'])
+    expect(rows).toHaveLength(11)
+    expect(rows.map((r) => r.querySelector('.fm-opt-idx').textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'])
     expect(draftInputs().map((i) => i.value)).toEqual(SKILL)
     for (const i of draftInputs()) expect(i.getAttribute('maxlength')).toBe('30')
     for (const r of rows) expect(r.querySelector('.fm-opt-del')).toBeTruthy()

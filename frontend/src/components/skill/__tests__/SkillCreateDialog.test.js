@@ -17,7 +17,7 @@ vi.mock('@/api/skillFiles', () => ({ importSkillZip: vi.fn() }))
 vi.mock('@/api/skillCategory', () => ({
   listSkillCategories: vi.fn(() => Promise.resolve([{ id: 'cat_1', name: '工作' }, { id: 'cat_2', name: '效率' }]))
 }))
-// 2026-09-01 PRD 对齐改造取代旧口径：分类选项改走 fieldDict 同源字典（固定 8 类）
+// 2026-09-01 PRD 对齐改造取代旧口径：分类选项改走 fieldDict 同源字典（固定 11 类）
 vi.mock('@/api/fieldDict', () => ({
   listFieldDict: vi.fn(() => Promise.resolve({ skillCategory: [{ name: '工作' }, { name: '效率' }] }))
 }))
@@ -307,7 +307,7 @@ describe('SkillCreateDialog · 多包批量上传（2026-08-17）', () => {
  *   1) 传 typeOptions 才启用内置类型选择；不传时行为与改造前一致（岗位白板调用方不受影响）。
  *   2) 类型不预选，未选前提交被兜底拦截（类型建后不可改，绝不能落空；md L152）。
  *   3) source / createFn / hint 全部随所选类型切换。
- *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 8 类（md L152）。
+ *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 11 类（md L152）。
  *   5) created-batch 回传 skillType，父级据此刷新列表。
  */
 describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）', () => {

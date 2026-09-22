@@ -24,7 +24,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - 旧「本体状态开关 toggleStatus / 下架 offlineSkill / 上架 onlineSkill / canRemove 删除门控」全部废弃：
  *   操作列按三态出按钮（固定 查看/编辑；未发布 发布+删除；审核中 撤回；已发布 停用+版本管理）；
  * - 停用 = 提交停用审核（stopSkill，被引用拦截 alert）；删除确认文案统一、被引用拦截 alert；
- * - 分类筛选固定 8 类（fieldDict 同源）对全部类型开放，类型切换不再清分类（只清引用筛选）；
+ * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类（只清引用筛选）；
  * - 查看/编辑同标签路由跳转（router.push；查看 = 编辑路由 + ?view=1），不再 window.open 新标签；
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
  */
@@ -53,7 +53,7 @@ vi.mock('@/api/unifiedSkillMock', async (importOriginal) => {
 })
 const skillMock = await import('@/api/unifiedSkillMock')
 
-// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 8 类）；skillCategory.js 列表接口不再被本页调用。
+// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）；skillCategory.js 列表接口不再被本页调用。
 const listSkillCategoriesSpy = vi.fn(() => Promise.resolve([]))
 vi.mock('@/api/skillCategory', () => ({ listSkillCategories: (...a) => listSkillCategoriesSpy(...a) }))
 const listFieldDictSpy = vi.fn(() => Promise.resolve({ skillCategory: [{ name: '办公效率' }] }))
@@ -190,7 +190,7 @@ describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端
     expect([...times].sort().reverse()).toEqual(times) // desc
   })
 
-  // 分类固定 8 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；被清的是「引用状态」筛选。
+  // 分类固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；被清的是「引用状态」筛选。
   it('类型切换 → 列表只剩该类型行且回第 1 页；分类保留（并生效）、引用筛选被清', async () => {
     const vm = await mountLoaded()
     vm.query.type = 'POSITION'

@@ -11,12 +11,12 @@ import request from './request'
  * 与运行时「操作类/查询类」两套独立数据源，互不串扰——本层只读写展示分类与技能挂分类。
  */
 const W = { skipGlobalError: true }
-// 2026-09-01 PRD 对齐：技能分类选项统一同源 fieldDict（skillCategory 字段，固定 8 类）。
+// 2026-09-01 PRD 对齐：技能分类选项统一同源 fieldDict（skillCategory 字段，固定 11 类）。
 // demo mock 下本文件的读/挂分类走 fieldDictMock / unifiedSkillMock（VITE_SKILL_MOCK=0 关闭）。
 const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_SKILL_MOCK !== '0'
 
 // 分类列表（存活，sort 升序）+ 每类已发布到用户端技能数 count。
-// mock：从 fieldDict 同源取 8 类，demo 用分类名充当 id（与 unifiedSkillMock 口径一致）。
+// mock：从 fieldDict 同源取 11 类，demo 用分类名充当 id（与 unifiedSkillMock 口径一致）。
 export function listSkillCategories() {
   if (USE_MOCK) {
     return import('./fieldDictMock').then((m) =>

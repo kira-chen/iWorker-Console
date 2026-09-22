@@ -25,7 +25,7 @@ import {
   updateBizSystemOwnedSkill
 } from '@/api/admin'
 import { setSkillCategory } from '@/api/skillCategory'
-// 技能分类选项统一同源 fieldDict（固定 8 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 列表接口。
+// 技能分类选项统一同源 fieldDict（固定 11 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 列表接口。
 import { listFieldDict } from '@/api/fieldDict'
 import {
   apiFor,
@@ -344,7 +344,7 @@ const activeFileContent = computed({
   set: (v) => onUpdateActiveContent(v)
 })
 
-/* ---------- 技能分类选项（2026-09-01 疑点8：三类技能均显示，固定 8 类 fieldDict 同源）----------
+/* ---------- 技能分类选项（2026-09-01 疑点8：三类技能均显示，固定 11 类 fieldDict 同源）----------
  * 不再调 skillCategory.js 后端接口取选项；demo 用「分类名」充当 id（与 unifiedSkillMock 口径一致）。
  * 业务系统技能无分类概念，不拉。 */
 const categoryOptions = ref([])
