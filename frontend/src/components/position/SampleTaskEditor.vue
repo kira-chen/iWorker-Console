@@ -28,7 +28,8 @@
  * - J5：退役 `embedded` 开关——本组件只在岗位「自动化任务」页签内联使用，无浮层态消费方，样式只留内联形态；
  * - K4：buildSchedule() 带 scheduleMode / periodicPreset / intervalCount / intervalUnit（§7.3）；
  * - K1 / K2：空闲时段提前准备默认开启，勾选 / 关闭两态提示分开（§7.3 L398-400）；
- * - J7 / K7 / K9：提示词非必填、8000 字上限、引导文案与「已输入 N / 8000 字」计数（§7.4 / §7.7）；
+ * - J7 / K7 / K9：8000 字上限、引导文案与「已输入 N / 8000 字」计数（§7.4 / §7.7）；
+ *   其中「提示词非必填」已被 2026-09-21 负责人拍板推翻——提示词现为必填（与任务名称 / 一句话指令同为保存必填）；
  * - K6 / K8 / J6：保存与创建 toast、搜索占位与空态、基本信息三处占位逐字照 md（§7.2 / §7.5 / §7.6 / §7.7）。
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
@@ -438,9 +439,12 @@ function validate() {
     }
   }
 
-  // 提示词非必填（md §7.7 必填只有任务名称 + 一句话指令；2026-09-12 审计 J7 / K9 删原「详细说明」必填门），
-  // 仅守 md §7.4「最多 8000 字符」上限（K7）。
-  if (form.sopDoc.length > SOP_MAX) {
+  // 提示词必填（2026-09-21 负责人拍板，推翻 2026-09-12 审计 J7 / K9「提示词非必填」）；
+  // 另守 md §7.4「最多 8000 字符」上限（K7）。
+  if (!form.sopDoc.trim()) {
+    errors.sopDoc = '请填写提示词'
+    ok = false
+  } else if (form.sopDoc.length > SOP_MAX) {
     errors.sopDoc = `提示词最多 ${SOP_MAX} 个字符`
     ok = false
   }
@@ -705,10 +709,10 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 分区 3：提示词（md §7.4：非必填、最多 8000 字符；2026-09-12 审计 J7 / K7 / K9） -->
+      <!-- 分区 3：提示词（md §7.4：必填、最多 8000 字符；2026-09-21 负责人拍板改必填，原 2026-09-12 审计 J7 / K7 / K9 为非必填） -->
       <section class="te-card">
         <div class="te-card-title">
-          <span class="te-card-dot"></span> 提示词
+          <span class="te-card-dot"></span> 提示词 <span class="req">*</span>
         </div>
         <div class="te-card-body">
           <!-- 引导文案逐字照 md §7.4 L407 -->

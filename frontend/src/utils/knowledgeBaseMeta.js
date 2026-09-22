@@ -288,8 +288,8 @@ export const API_DEFAULTS = Object.freeze({
   timeoutMs: 8000 // 1000～60000ms，默认 8000ms（md §六.1）
 })
 export const MCP_DEFAULTS = Object.freeze({
-  transport: 'streamable-http', // streamable-http | stdio（md §七.2）
-  endpoint: '', // streamable-http：≤500，http(s):// 开头（md §七.2.1）
+  transport: 'streamable-http', // streamable-http | stdio | sse（md §七.2）
+  endpoint: '', // streamable-http / sse：≤500，http(s):// 开头（md §七.2.1、§七.2.3）
   authType: 'none', // none | bearer | header（md §七.2.1：无鉴权、Bearer Token、API Key，默认无鉴权）
   authHeaderName: '', // API Key 模式 Header 名：≤128，仅字母数字连字符（md §七.2.1）
   command: 'npx', // stdio：npx | uvx | node | python3 | docker（md §七.2.2）

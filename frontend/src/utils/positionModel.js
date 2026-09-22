@@ -133,7 +133,8 @@ export function exampleQuestionSoftHint(text) {
 // 岗位描述：必填，最多 2000 字（一览表描述类统一规则；2026-09-16 与其余描述类字段对齐）。
 export const DESCRIPTION_MAX_LEN = 2000
 // 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.3 改名）：动态文本列表，
-// 可选、不参与发布阻断；最多 6 条、每条 300 字（一览表示例类统一规则）。底层字段仍为 claimDescriptions。
+// 必填（2026-09-21 负责人拍板：至少 1 条，参与发布阻断；保存不阻断）；最多 6 条、每条 300 字
+// （一览表示例类统一规则）。底层字段仍为 claimDescriptions。
 export const CLAIM_NOTE_MAX = 6
 export const CLAIM_NOTE_LEN = 300
 // 示例问题：固定 3 条，每条不超过 300 字（一览表示例类统一规则）。
@@ -156,6 +157,17 @@ export function exampleQuestionsComplete(list) {
 // 归一领用页文案（claimDescriptions）为字符串数组（去 null、截 6 条上限交由交互层控制，这里只清洗类型）。
 export function normalizeClaimNotes(list) {
   return Array.isArray(list) ? list.map((s) => (s == null ? '' : String(s))) : []
+}
+
+// 领用页文案是否已填（至少 1 条去空白后非空）。发布前置校验用。
+export function claimNotesComplete(list) {
+  return normalizeClaimNotes(list).some((s) => s.trim().length > 0)
+}
+
+// 采集字段有效个数（2026-09-21 负责人拍板：至少 1 个）：字段名去空白后非空才算一个有效字段。
+// 保存时 normalizeIntakeForSubmit 本就会丢掉无字段名的行，这里与之同口径。
+export function intakeFieldCount(schema) {
+  return (Array.isArray(schema) ? schema : []).filter((f) => String(f?.label || '').trim()).length
 }
 
 /* ---------- 本地 AI 生成（demo：无后端，纯前端拟真；原型 questionSet / SOP 模板口径） ---------- */
@@ -478,7 +490,7 @@ export const POSITION_BUMP_OPTIONS = [
 
 /* ============================ 完整性校验（md §9.1，2026-09-09 Q11 新决策） ============================ */
 /**
- * md §9.1 第 5 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
+ * md §9.1 第 8 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
  * 口径取「存在某个 Agent 其技能数 ≥ 1」（不要求每个 Agent 都有技能——md 用的是「该 Agent」单数指代）。
  */
 export function agentsWithSkillOk(agents) {
@@ -487,7 +499,7 @@ export function agentsWithSkillOk(agents) {
 }
 
 /**
- * md §9.1 完整性校验 6 项：返回未完成项的文案数组（按 md 列举顺序）。
+ * md §9.1 完整性校验 9 项（2026-09-21 负责人拍板新增「岗位图标」「领用页文案」「采集字段」）：返回未完成项的文案数组（按 md 列举顺序）。
  * 【保存】与【发布岗位】共用同一份口径：
  * - 【发布岗位】：数组非空即阻断（toast「请先填写：…」+ 定位到第一个缺失项所在页签）；
  * - 【保存】：数组非空不阻断，仅在页面顶部提示条列出（md §9.1 末段）。
@@ -497,9 +509,12 @@ export function agentsWithSkillOk(agents) {
  */
 export const COMPLETENESS_ITEMS = [
   { key: 'name', label: '岗位名称', tab: 'persona' },
+  { key: 'icon', label: '岗位图标', tab: 'persona' },
   { key: 'description', label: '岗位描述', tab: 'persona' },
+  { key: 'claimDescriptions', label: '领用页文案', tab: 'persona' },
   { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
   { key: 'positionSop', label: '岗位 SOP', tab: 'persona' },
+  { key: 'intakeSchema', label: '采集字段', tab: 'intake' },
   { key: 'agents', label: 'Agent 与技能', tab: 'agents' },
   // tab 标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③；key 为完整性内部键不随之改）
   { key: 'sampleTasks', label: '自动化任务', tab: 'tasks' }
@@ -509,9 +524,12 @@ export function computeCompletenessMissing(detail) {
   const d = detail || {}
   const okMap = {
     name: !!String(d.name || '').trim(),
+    icon: !!String(d.icon || '').trim(),
     description: !!String(d.description || '').trim(),
+    claimDescriptions: claimNotesComplete(d.claimDescriptions),
     exampleQuestions: exampleQuestionsComplete(d.exampleQuestions),
     positionSop: !!String(d.positionSop || '').trim(),
+    intakeSchema: intakeFieldCount(d.intakeSchema) > 0,
     agents: agentsWithSkillOk(d.agents),
     sampleTasks: Number(d.sampleTaskCount || 0) > 0
   }
@@ -527,10 +545,14 @@ export function computeCompletenessMissing(detail) {
  * 2026-09-09 PRD 复核（A1 / Q11 负责人新决策，推翻 2026-09-08 的「阻断四项」口径）：
  * md §9.1 阻断 6 项 = 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP /
  * Agent 与技能（至少 1 个 Agent 且该 Agent 至少引用 1 个技能）/ 自动化任务（至少 1 条）。
+ * 2026-09-21 负责人拍板追加：岗位图标（已选择）、领用页文案（至少 1 条）、采集字段（至少 1 个）→ 共 9 项。
  * 清单条目对应 md §9.2：
  * - 岗位名称与描述（硬）——「必填内容已填写」；
+ * - 岗位图标（硬，2026-09-21 新增）——已选择图标；
+ * - 领用页文案（硬，2026-09-21 新增）——至少 1 条；
  * - 示例问题（硬）——「3 条示例问题已填写」；
  * - 岗位 SOP（硬）——「岗位能力综述已填写」；
+ * - 采集字段（硬，2026-09-21 新增）——至少 1 个有效字段（原「采集字段不参与发布阻断」已被推翻）；
  * - Agent 与技能（硬，md §6.5）——至少 1 个 Agent 且该 Agent 至少引用 1 个技能；
  *   未验证工具降级为该条目上的附注（不影响 ok），仍计入 warnings 供弹窗提示行使用；
  * - 自动化任务（硬，md §7.6）——至少 1 条。
@@ -542,7 +564,11 @@ export function computePublishCheck(detail) {
   const eqComplete = exampleQuestionsComplete(d.exampleQuestions)
   const nameOk = !!String(d.name || '').trim()
   const descOk = !!String(d.description || '').trim()
+  const iconOk = !!String(d.icon || '').trim()
+  const claimOk = claimNotesComplete(d.claimDescriptions)
   const sopOk = !!String(d.positionSop || '').trim()
+  const intakeCount = intakeFieldCount(d.intakeSchema)
+  const intakeOk = intakeCount > 0
   const agentsOk = agentsWithSkillOk(d.agents)
   const taskCount = Number(d.sampleTaskCount || 0)
   const tasksOk = taskCount > 0
@@ -558,7 +584,25 @@ export function computePublishCheck(detail) {
     detail: nameOk && descOk ? '必填内容已填写' : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
   })
 
-  // 2. 示例问题 3 条（硬）
+  // 2. 岗位图标（硬，2026-09-21 负责人拍板：必填）
+  items.push({
+    key: 'icon',
+    label: '岗位图标',
+    ok: iconOk,
+    blocking: true,
+    detail: iconOk ? '岗位图标已选择' : '请先选择岗位图标'
+  })
+
+  // 3. 领用页文案（硬，2026-09-21 负责人拍板：至少 1 条）
+  items.push({
+    key: 'claimDescriptions',
+    label: '领用页文案',
+    ok: claimOk,
+    blocking: true,
+    detail: claimOk ? '领用页文案已填写' : '请先填写领用页文案（至少 1 条）'
+  })
+
+  // 4. 示例问题 3 条（硬）
   items.push({
     key: 'exampleQuestions',
     label: '示例问题',
@@ -567,7 +611,7 @@ export function computePublishCheck(detail) {
     detail: eqComplete ? '3 条示例问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
-  // 3. 岗位 SOP（硬）
+  // 5. 岗位 SOP（硬）
   items.push({
     key: 'sop',
     label: '岗位 SOP',
@@ -576,7 +620,16 @@ export function computePublishCheck(detail) {
     detail: sopOk ? '岗位能力综述已填写' : '请先填写岗位 SOP'
   })
 
-  // 4. Agent 与技能（硬，md §6.5 / §9.1 第 5 条）
+  // 6. 采集字段（硬，2026-09-21 负责人拍板：至少 1 个）
+  items.push({
+    key: 'intakeSchema',
+    label: '采集字段',
+    ok: intakeOk,
+    blocking: true,
+    detail: intakeOk ? `已配置 ${intakeCount} 个采集字段` : '至少配置 1 个采集字段'
+  })
+
+  // 7. Agent 与技能（硬，md §6.5 / §9.1 第 8 条）
   const hasUnhealthy = unhealthyTools.length > 0
   items.push({
     key: 'agents',
@@ -593,7 +646,7 @@ export function computePublishCheck(detail) {
       : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
   })
 
-  // 5. 自动化任务（硬，md §7.6 / §9.1 第 6 条）
+  // 8. 自动化任务（硬，md §7.6 / §9.1 第 9 条）
   items.push({
     key: 'sampleTasks',
     label: '自动化任务',

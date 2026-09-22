@@ -535,7 +535,7 @@ async function remove(row) {
           </template>
         </el-table-column>
 
-        <!-- 传输方式：展示完整枚举值（stdio / streamable-http），无内容显示 — -->
+        <!-- 传输方式：展示完整枚举值（stdio / streamable-http / sse），无内容显示 — -->
         <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <el-tag size="small" type="info" effect="plain">{{ row.transport || '—' }}</el-tag>

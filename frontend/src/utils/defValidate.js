@@ -4,7 +4,13 @@
  * 后端校验仍是唯一权威，前端仅做必填/格式提前拦截。
  */
 
-export const MCP_TRANSPORTS = ['stdio', 'streamable-http']
+export const MCP_TRANSPORTS = ['stdio', 'streamable-http', 'sse']
+/**
+ * 远程（HTTP）类传输方式：streamable-http 与旧版 sse（HTTP+SSE）共用「服务地址 + 鉴权」同一套表单与校验，
+ * 与本地进程的 stdio（Command / Args / Env）二分。凡按传输方式分流一律用它，别再直接写 === 'streamable-http'，
+ * 否则 sse 会掉进 stdio 的 else 分支。
+ */
+export const isHttpTransport = (t) => t === 'streamable-http' || t === 'sse'
 // stdio Command 纯下拉枚举（拍板 2026-08-31）：覆盖主流分发形态。
 // 存量非枚举值（如绝对路径）由编辑器动态追加为选项回显，后端不收紧校验（兼容存量）。
 export const MCP_COMMAND_OPTIONS = ['npx', 'uvx', 'node', 'python3', 'docker']
@@ -88,7 +94,7 @@ export function validateApiAuthParams(rows) {
   return hasRow ? '' : '已选 API KEY 鉴权，至少配置一条参数'
 }
 
-// MCP 鉴权方式（仅 streamable-http；value 与后端 AUTH_TYPE_* 对齐，小写）。
+// MCP 鉴权方式（仅 http 类传输方式：streamable-http / sse；value 与后端 AUTH_TYPE_* 对齐，小写）。
 // label 按 PRD（prd-连接器-MCP.md）§三.4.1：无鉴权 / Bearer Token / API Key（API Key = Header 名 + 访问凭证，即原自定义 Header）
 export const MCP_AUTH_TYPES = [
   { value: 'none', label: '无鉴权' },
@@ -220,9 +226,9 @@ export function validateMcpForm(form) {
   if (!MCP_TRANSPORTS.includes(form.transport)) errors.transport = '请选择传输方式'
 
   // 连接字段按 transport 分流（设计 §6.3）：
-  // - streamable-http：endpoint 必填（须 http(s):// 开头）；不校验 command/args/env。
+  // - streamable-http / sse：endpoint 必填（须 http(s):// 开头）；不校验 command/args/env。
   // - stdio：command 必填；args 每项非空；env KEY 合法且不重复（env 仅 stdio）。
-  if (form.transport === 'streamable-http') {
+  if (isHttpTransport(form.transport)) {
     const endpoint = (form.endpoint || '').trim()
     if (!endpoint) errors.endpoint = 'Endpoint 必填'
     else if (!URL_RE.test(endpoint)) errors.endpoint = 'Endpoint 需以 http:// 或 https:// 开头'
@@ -238,14 +244,14 @@ export function validateMcpForm(form) {
 
   // 鉴权方式必选（一览表 §五 5.2：无鉴权 / Bearer Token / API Key，默认无鉴权）。
   // authType 为 undefined = 鉴权录入区未开放，不校验（编辑器传 undefined 跳过）；开放时空值 / 非法值拦下。
-  if (form.transport === 'streamable-http' && form.authType !== undefined) {
+  if (isHttpTransport(form.transport) && form.authType !== undefined) {
     if (!MCP_AUTH_TYPES.some((t) => t.value === form.authType)) errors.authType = '请选择鉴权方式'
   }
 
-  // 鉴权（仅 streamable-http；与后端 applyAuth 校验对齐，错误键 authConfig 对齐后端 data.field）：
+  // 鉴权（仅 http 类传输方式；与后端 applyAuth 校验对齐，错误键 authConfig 对齐后端 data.field）：
   // - header：Header 名必填且合法；
   // - bearer/header：密钥新建必填；编辑态同类型已配置（authConfigured）可留空=保留原值。
-  if (form.transport === 'streamable-http' && form.authType && form.authType !== 'none') {
+  if (isHttpTransport(form.transport) && form.authType && form.authType !== 'none') {
     if (form.authType === 'header') {
       const hn = (form.authHeaderName || '').trim()
       if (!hn) errors.authConfig = '鉴权 Header 名必填'

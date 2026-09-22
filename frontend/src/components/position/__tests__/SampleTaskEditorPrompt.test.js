@@ -15,7 +15,8 @@ async function flush(n = 6) {
  * - 详情回填 SampleTaskVO.prompt；
  * - 空 prompt（启用样例）阻断保存并标红，不落 create；
  * - 填了 prompt → createSampleTask payload 含 prompt；
- * - 2026-09-12 审计 J7 / K7 / K9：提示词非必填（留空可建），仅 8000 字上限拦截（错误文案「提示词最多 8000 个字符」）。
+ * - 2026-09-12 审计 K7：8000 字上限拦截（错误文案「提示词最多 8000 个字符」）；
+ * - 2026-09-21 负责人拍板：提示词必填（推翻 2026-09-12 审计 J7 / K9「非必填、留空可建」），留空阻断保存（文案「请填写提示词」）。
  */
 const createSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
 const updateSpy = vi.fn(() => Promise.resolve({ id: 't1' }))
@@ -113,9 +114,10 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
   it('空 prompt → 阻断保存，不落 create（其余必填齐备，证明归因到 prompt 门）', async () => {
     mount({ positionId: 1, sample: null })
     await flush()
-    // 填齐除 prompt 外全部必填：name（输入框 0）；schedule 创建态默认 DAILY + ['09:00'] 本就合法（blankSchedule），
-    // 提示词非必填（J7）留空，仅 prompt 留空。
+    // 填齐除 prompt 外全部必填：name（输入框 0）、提示词（2026-09-21 起必填）；schedule 创建态默认 DAILY + ['09:00']
+    // 本就合法（blankSchedule），仅 prompt 留空。
     setInput(0, '样例B')
+    lastSopEmit('1. 拉取工单\n2. 汇总')
     await flush()
     // 点击保存（最后一个按钮为主保存）。
     const btns = [...container.querySelectorAll('button')]
@@ -126,20 +128,47 @@ describe('SampleTaskEditor · 一句话指令(prompt)', () => {
     // 归因：标红错误仅 prompt 一条（name/sopDoc/schedule 均已通过校验）。
     const errs = [...container.querySelectorAll('.te-err')].map((e) => e.textContent)
     expect(errs).toEqual(['请填写一句话指令（启用样例必填）'])
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('')
   })
 
-  it('J7 提示词留空 + 名称 / 指令齐备 → 直接落 create，payload.sopDoc 为空串（md §7.7 必填只有名称 + 一句话指令）', async () => {
+  it('提示词留空 / 纯空白 + 名称 / 指令齐备 → 阻断 create，MarkdownEditor 收到「请填写提示词」（2026-09-21 负责人拍板必填）', async () => {
     mount({ positionId: 1, sample: null })
     await flush()
     setInput(0, '样例D')
     setInput(1, '到点汇总昨日工单')
     await flush()
-    const btns = [...container.querySelectorAll('button')]
+    // 留空
+    let btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
+    // 纯空白同样视同未填
+    lastSopEmit('   \n  ')
+    await flush()
+    btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
+    // 填了提示词 → 放行，payload 带上
+    lastSopEmit('1. 拉取昨日工单\n2. 汇总成待办')
+    await flush()
+    btns = [...container.querySelectorAll('button')]
     btns[btns.length - 1].click()
     await flush()
     expect(createSpy).toHaveBeenCalled()
-    expect(createSpy.mock.calls[0][1].sopDoc).toBe('')
-    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('')
+    expect(createSpy.mock.calls[0][1].sopDoc).toBe('1. 拉取昨日工单\n2. 汇总成待办')
+  })
+
+  it('提示词红星：卡头带必填 * 标（与任务名称 / 一句话指令同为必填）', async () => {
+    mount({ positionId: 1, sample: null })
+    await flush()
+    const titles = [...container.querySelectorAll('.te-card-title')]
+    const promptCard = titles.find((t) => t.textContent.includes('提示词'))
+    expect(promptCard).toBeTruthy()
+    expect(promptCard.querySelector('.req')?.textContent).toBe('*')
   })
 
   it('K7 提示词 8001 字 → 阻断 create，MarkdownEditor 收到错误「提示词最多 8000 个字符」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过 8000 字」）；8000 字放行（md §7.4 L405）', async () => {
