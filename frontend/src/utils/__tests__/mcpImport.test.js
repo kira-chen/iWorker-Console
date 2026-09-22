@@ -43,9 +43,24 @@ describe('parseMcpConfig — http / transport 推断', () => {
     expect(r.endpoint).toBe('https://x/mcp')
   })
 
-  it('显式 type=sse 归一为 streamable-http', () => {
+  it('显式 type=sse 保持为 sse（旧版 HTTP+SSE），不再悄悄转成 streamable-http', () => {
     const r = parseMcpConfig(JSON.stringify({ mcpServers: { foo: { type: 'sse', url: 'https://x/sse' } } }))
-    expect(r.transport).toBe('streamable-http')
+    expect(r.ok).toBe(true)
+    expect(r.transport).toBe('sse')
+    expect(r.endpoint).toBe('https://x/sse')
+  })
+
+  it('type 大小写不敏感：SSE → sse；http / streamablehttp 仍归一为 streamable-http', () => {
+    const parse = (type) => parseMcpConfig(JSON.stringify({ mcpServers: { foo: { type, url: 'https://x/y' } } })).transport
+    expect(parse('SSE')).toBe('sse')
+    expect(parse('http')).toBe('streamable-http')
+    expect(parse('streamablehttp')).toBe('streamable-http')
+  })
+
+  it('sse 带 command 时不被当成 stdio 的 command 分支处理（type 显式声明优先）', () => {
+    const r = parseMcpConfig(JSON.stringify({ mcpServers: { foo: { type: 'sse', url: 'https://x/sse', command: 'npx' } } }))
+    expect(r.transport).toBe('sse')
+    expect(r.warnings.some((w) => w.includes('command'))).toBe(true)
   })
 
   it('http 带 headers → 告警提示手动配鉴权', () => {

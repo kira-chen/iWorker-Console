@@ -504,6 +504,20 @@ describe('业务页（md §三.3 L105-111）', () => {
   })
 })
 
+describe('必填红星统一标注（2026-09-21 负责人拍板）', () => {
+  it('示例问题区标题带必填红星（前缀星，与系统名称 / 图标 / 系统描述同为必填）', async () => {
+    const el = await mountEditor(null)
+    expect(el.querySelector('.ad-eq-title .req')?.textContent).toBe('*')
+  })
+
+  it('【新建专属技能】弹窗「技能名」标必填（el-form-item required）', async () => {
+    const el = await mountEditor('biz_1')
+    findBtn(el, '＋ 新建专属技能').click()
+    await nextTick()
+    expect(itemByLabel(el, '技能名')?.hasAttribute('required')).toBe(true)
+  })
+})
+
 describe('保存与三态（md §三.1 L68-76 / §三.5 / §三.7 L146-147）', () => {
   it('新建态：标题「新建业务系统」、底部【取消】【保存】；填齐后保存 → createBizSystem + 「业务系统已创建」+ saved + 关抽屉', async () => {
     const el = await mountEditor(null)

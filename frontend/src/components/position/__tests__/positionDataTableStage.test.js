@@ -253,6 +253,17 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(api.updateDataTable).not.toHaveBeenCalled()
   })
 
+  it('基本信息「档案名称」标必填红星（编辑态；与新建弹窗的必填一致，2026-09-21 统一标注红星）；只读态不显示星', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    const nameLabel = Array.from(el.querySelectorAll('.wd-field label')).find((l) => l.textContent.includes('档案名称'))
+    expect(nameLabel.querySelector('.wd-req')?.textContent).toBe('*')
+    const ro = mount({ positionId: 'ps_1', embedded: true, readonly: true })
+    await flush()
+    const roLabel = Array.from(ro.querySelectorAll('.wd-field label')).find((l) => l.textContent.includes('档案名称'))
+    expect(roLabel.querySelector('.wd-req')).toBeNull()
+  })
+
   it('只读态：无 取消/保存、无「＋ 新增」、无删除与行内删除', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true, readonly: true })
     await flush()

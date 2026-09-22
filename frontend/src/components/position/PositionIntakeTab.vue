@@ -84,8 +84,9 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
     <section class="pd-card">
       <div class="pd-card-head">
         <!-- 表头副题照原型 intakePane L1854；达 10 个【新增采集字段】置灰（md §3.1） -->
-        <span class="pd-card-title">采集字段</span>
-        <span class="pd-card-sub">员工领用时填写，最多 {{ LIMITS.INTAKE_MAX }} 个</span>
+        <!-- 2026-09-21 负责人拍板：采集字段必填至少 1 个（发布阻断、保存不阻断），卡头挂必填红星 -->
+        <span class="pd-card-title">采集字段<i class="pd-req">*</i></span>
+        <span class="pd-card-sub">员工领用时填写，至少 1 个，最多 {{ LIMITS.INTAKE_MAX }} 个</span>
         <span class="pd-card-spacer"></span>
         <el-button v-if="!isReadonly" type="primary" size="small" :disabled="intakeAtLimit" @click="openIntakeCreate">＋ 新增采集字段</el-button>
       </div>
@@ -201,6 +202,12 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   border-bottom: 1px solid var(--border-admin-card);
   /* 对表：卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射） */
   background: var(--bg-admin-card-head);
+}
+/* 必填红星（与人格页签卡头 .pd-req 同款） */
+.pd-req {
+  color: var(--c-danger);
+  font-style: normal;
+  margin: 0 0 0 2px;
 }
 .pd-card-title {
   display: inline-flex;

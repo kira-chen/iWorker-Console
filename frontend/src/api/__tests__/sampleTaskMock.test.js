@@ -41,14 +41,17 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
     expect((await listSampleTasks(403)).list).toEqual([])
   })
 
-  it('新建/编辑校验与回显：缺名被拦（field 定位）；提示词留空放行、超 8000 字被拦（md §7.4 / §7.7；J7 / K7）；成功回 VO 含摘要', async () => {
+  it('新建/编辑校验与回显：缺名被拦（field 定位）；提示词留空（含纯空白）被拦、超 8000 字被拦（md §7.4；2026-09-21 负责人拍板提示词必填，原 J7 为非必填 / K7）；成功回 VO 含摘要', async () => {
     await expect(createSampleTask(404, validPayload({ name: '' }))).rejects.toMatchObject({ field: 'name' })
+    for (const sopDoc of ['', ' ', undefined]) {
+      await expect(createSampleTask(404, validPayload({ sopDoc }))).rejects.toMatchObject({ field: 'sopDoc', message: '请填写提示词' })
+    }
     await expect(createSampleTask(404, validPayload({ sopDoc: 'x'.repeat(8001) }))).rejects.toMatchObject({ field: 'sopDoc', message: '提示词最多 8000 个字符' })
-    const noSop = await createSampleTask(404, validPayload({ name: '无提示词任务', sopDoc: ' ' }))
-    expect(noSop.name).toBe('无提示词任务')
     const vo = await createSampleTask(404, validPayload())
-    // sortOrder 为 2：404 种子 1 条 + 上面「无提示词任务」1 条
-    expect(vo).toMatchObject({ name: '竞品周报采集', status: 'ENABLED', scheduleSummary: '每天 10:00', sortOrder: 2 })
+    // sortOrder 为 1：404 种子 1 条 + 本条（上面被拦的都没入库）
+    expect(vo).toMatchObject({ name: '竞品周报采集', status: 'ENABLED', scheduleSummary: '每天 10:00', sortOrder: 1 })
+    // 编辑同样必填：把提示词改成空被拦，任务不变
+    await expect(updateSampleTask(404, vo.id, validPayload({ sopDoc: '' }))).rejects.toMatchObject({ field: 'sopDoc', message: '请填写提示词' })
     const upd = await updateSampleTask(404, vo.id, validPayload({ name: '竞品日报采集', schedule: { scheduleType: 'WEEKLY', times: ['09:30'], daysOfWeek: [1, 3] } }))
     expect(upd.scheduleSummary).toBe('每周一、三 09:30')
     expect((await getSampleTask(404, vo.id)).name).toBe('竞品日报采集')

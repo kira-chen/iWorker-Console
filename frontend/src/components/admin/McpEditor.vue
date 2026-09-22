@@ -38,7 +38,14 @@ import {
   fetchMcpTools,
   fetchMcpToolsDraft
 } from '@/api/admin'
-import { validateMcpForm, MCP_TRANSPORTS, MCP_AUTH_TYPES, MCP_COMMAND_OPTIONS, BIZ_QUESTION_MAX } from '@/utils/defValidate'
+import {
+  validateMcpForm,
+  MCP_TRANSPORTS,
+  isHttpTransport,
+  MCP_AUTH_TYPES,
+  MCP_COMMAND_OPTIONS,
+  BIZ_QUESTION_MAX
+} from '@/utils/defValidate'
 import { useAiLiveGenerate, connectorQuestionSet } from '@/utils/aiLiveGenerate'
 import { parseMcpConfig } from '@/utils/mcpImport'
 import { envRowsFromDetail, buildEnvSubmit, buildProbeEnv, emptyEnvRow } from '@/utils/mcpEnv'
@@ -81,7 +88,7 @@ const form = reactive({
   argsText: '', // args 多行文本，每行一个 arg；提交时拆成数组
   status: 'active',
   authConfigMasked: false,
-  // —— 鉴权录入（仅 streamable-http；MCP_AUTH_CONFIG_ENABLED 开放）——
+  // —— 鉴权录入（仅 http 类：streamable-http / sse；MCP_AUTH_CONFIG_ENABLED 开放）——
   authType: 'none', // none | bearer | header（与后端 applyAuth 对齐，小写）
   authHeaderName: '', // 自定义 Header 名（仅 header）
   authValue: '', // 密钥明文（仅提交瞬间存在；永不回显，编辑态留空=保留原值）
@@ -332,12 +339,13 @@ watch(
 )
 
 // 切换 transport 时清理「另一形态」字段值，避免提交脏数据（设计 §6 / 实现要点 5）。
-// http→不再下发 command/args/env，清空；stdio→不再下发 endpoint，清空。
+// http 类（streamable-http / sse）→不再下发 command/args/env，清空；stdio→不再下发 endpoint，清空。
+// streamable-http ↔ sse 之间互切：两者共用 endpoint 与鉴权，已填内容原样保留，不清空。
 // 同步清掉对侧的字段级红框，避免切换后残留无关报错。
 watch(
   () => form.transport,
   (t) => {
-    if (t === 'streamable-http') {
+    if (isHttpTransport(t)) {
       form.command = ''
       form.argsText = ''
       envRows.value = []
@@ -407,11 +415,11 @@ function buildStdioFields() {
   return { command, args, env }
 }
 
-// 保存用鉴权配置（仅 streamable-http 且录入区开放；密钥明文仅提交瞬间存在，后端加密落库）。
+// 保存用鉴权配置（仅 http 类传输方式且录入区开放；密钥明文仅提交瞬间存在，后端加密落库）。
 // 密钥留空 → 不带 token/value 键（后端「留空=保留旧值」）；type=none → 显式清空。
 // 录入区未开放 → 返回 null（不携带，后端整体保留既有配置，含存量别名引用）。
 function buildAuthConfig() {
-  if (!authEnabled || form.transport !== 'streamable-http') return null
+  if (!authEnabled || !isHttpTransport(form.transport)) return null
   if (form.authType === 'bearer') {
     const cfg = { type: 'bearer' }
     const v = form.authValue.trim()
@@ -432,7 +440,7 @@ function buildAuthConfig() {
 // - 选「无鉴权」→ 显式 {type:'none'}（已存对象也按无鉴权试连）；
 // - 留空未填 → 不携带（undefined），已存对象由后端回退库内密文，草稿视为无鉴权。
 function buildProbeAuthConfig() {
-  if (!authEnabled || form.transport !== 'streamable-http') return undefined
+  if (!authEnabled || !isHttpTransport(form.transport)) return undefined
   if (form.authType === 'none') return { type: 'none' }
   const v = form.authValue.trim()
   if (!v) return undefined
@@ -705,7 +713,7 @@ async function save() {
             </el-button>
             <el-button :disabled="!importText" @click="importText = ''">清空</el-button>
             <span class="md-import-hint">
-              支持 stdio（command/args/env）与 http（url）；env 值留空的需手动补全后再保存
+              支持 stdio（command/args/env）与 http / sse（url）；env 值留空的需手动补全后再保存
             </span>
           </div>
         </div>
@@ -763,7 +771,7 @@ async function save() {
         <div class="connector-basic-subsection" :class="{ 'md-eq-error': !!fieldErrors.exampleQuestions }">
           <div class="section-title md-eq-title">
             <span>
-              示例问题
+              <em class="req">*</em> 示例问题
               <span class="section-sub">必填，固定 3 条</span>
             </span>
             <el-button
@@ -803,19 +811,31 @@ async function save() {
           <span class="section-sub">「测试连接」仅做握手探测连通性，不返回工具列表（拉工具见下方）</span>
         </div>
         <el-form label-position="top" :disabled="props.readonly">
-          <el-form-item label="传输方式" :error="fieldErrors.transport" required>
+          <el-form-item :error="fieldErrors.transport" required>
+            <template #label>
+              <span>传输方式</span>
+              <!-- sse 是 MCP 旧版远程传输方式（已被 streamable-http 取代），仅为兼容只提供 /sse 端点的服务而保留 -->
+              <span v-if="form.transport === 'sse'" class="lbl-hint">
+                （旧版 HTTP+SSE；服务方支持 streamable-http 时建议优先使用）
+              </span>
+            </template>
             <el-select v-model="form.transport" class="md-w">
               <el-option v-for="t in transports" :key="t" :value="t" :label="t" />
             </el-select>
           </el-form-item>
-          <!-- streamable-http：Endpoint/URL（必填） -->
+          <!-- streamable-http / sse：Endpoint/URL（必填），两者字段与鉴权完全一致，仅示例地址不同 -->
           <el-form-item
-            v-if="form.transport === 'streamable-http'"
+            v-if="isHttpTransport(form.transport)"
             :error="fieldErrors.endpoint"
             required
           >
             <template #label><span>MCP 服务地址（Endpoint）</span></template>
-            <el-input v-model="form.endpoint" placeholder="如 https://example.com/mcp（内网）" />
+            <el-input
+              v-model="form.endpoint"
+              :placeholder="
+                form.transport === 'sse' ? '如 https://example.com/sse（内网）' : '如 https://example.com/mcp（内网）'
+              "
+            />
           </el-form-item>
 
           <!-- stdio：Command + args + Env（仅 stdio 显示/下发；env 仅 stdio 存储；V110 弹窗改造 B 节） -->
@@ -887,8 +907,8 @@ async function save() {
             </el-form-item>
           </template>
 
-          <!-- 鉴权配置：仅 streamable-http（HTTP 头）。stdio 鉴权走 Environment 注入，无 HTTP 头。 -->
-          <template v-if="form.transport === 'streamable-http'">
+          <!-- 鉴权配置：仅 http 类（streamable-http / sse，HTTP 头）。stdio 鉴权走 Environment 注入，无 HTTP 头。 -->
+          <template v-if="isHttpTransport(form.transport)">
             <!-- 录入区未开放（MCP_AUTH_CONFIG_ENABLED=false）：只读占位，保存不携带 authConfig（后端保留既有配置） -->
             <el-form-item v-if="!authEnabled" label="鉴权配置">
               <el-input disabled :placeholder="form.authConfigMasked ? '已配置（脱敏，不回显明文）' : '暂未开放录入'" />

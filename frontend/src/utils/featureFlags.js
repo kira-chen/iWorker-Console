@@ -17,7 +17,7 @@ export const EFFECT_TEST_ENABLED = false
 
 /**
  * MCP_AUTH_CONFIG_ENABLED —— MCP 连接器「鉴权配置」录入区开关（McpEditor 连接/鉴权区）。
- * 开启后 FDE 可在后台为 streamable-http MCP 录入 Bearer Token / 自定义 Header 密钥
+ * 开启后 FDE 可在后台为 streamable-http / sse MCP 录入 Bearer Token / 自定义 Header 密钥
  * （明文仅提交瞬间存在，后端 AES-256-GCM 加密落库，回显恒脱敏）。
  * 关闭时录入区回落只读占位，保存不携带 authConfig（后端保留既有配置不清空）。
  */
