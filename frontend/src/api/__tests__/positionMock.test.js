@@ -121,6 +121,27 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect(row.claimedUserCount).toBe(0)
     await expect(unpublishPosition(402)).resolves.toEqual({})
   })
+
+  it('删岗级联清理自动化任务 / 工作档案 / 运行规格引用（2026-09-23 待办 yuepu#9⑥）', async () => {
+    const sampleTaskMock = await import('../sampleTaskMock')
+    const dataTableMock = await import('../dataTableMock')
+    const runtimeSpecMock = await import('../runtimeSpecMock')
+    sampleTaskMock.__resetSampleTaskMock()
+    dataTableMock.__resetDataTableMock()
+    runtimeSpecMock.__resetRuntimeSpecMock()
+
+    // 402 种子自带自动化任务 + 工作档案；运行规格种子 id=1 的 positionIds 含 402
+    expect((await sampleTaskMock.listSampleTasks(402)).total).toBeGreaterThan(0)
+    expect((await dataTableMock.listDataTables(402)).total).toBeGreaterThan(0)
+    expect((await runtimeSpecMock.getRuntimeSpec(1)).positionIds).toContain(402)
+
+    await setUserPosition(2, null) // 402 种子被 li.na 领用，先解绑才能删
+    await deletePosition(402)
+
+    expect((await sampleTaskMock.listSampleTasks(402)).total).toBe(0)
+    expect((await dataTableMock.listDataTables(402)).total).toBe(0)
+    expect((await runtimeSpecMock.getRuntimeSpec(1)).positionIds).not.toContain(402)
+  })
 })
 
 describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新后仍在）', () => {

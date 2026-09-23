@@ -32,6 +32,12 @@ import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } fr
 // 2026-09-23 待办 yuepu#9①：领用数改由分配表实时派生，不再是本模块的静态字段（与 positionAssignmentMock
 // 互相 import 属有意的循环依赖——双方都只在函数体内调用对方导出，模块顶层不触发，ESM 环境下安全）
 import { countAssignedUsers } from './positionAssignmentMock'
+// 2026-09-23 待办 yuepu#9⑥：删岗级联清理自动化任务 / 工作档案 / 运行规格里残留的本岗位引用，
+// 否则 posSeq 复用旧 id 时新岗位会「继承」上一轮同 id 岗位遗留的数据（runtimeSpecMock 已反向
+// import 本模块，同属有意的循环依赖，函数体内调用，安全）
+import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef } from './sampleTaskMock'
+import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
+import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -350,6 +356,11 @@ export async function deletePosition(id) {
   delete publications[p.positionId]
   delete workbench[String(p.positionId)]
   delete workbench[p.positionId]
+  // 删岗级联（2026-09-23 待办 yuepu#9⑥）：自动化任务 / 工作档案按 positionId 整份清掉；
+  // 运行规格只清「本岗位」这一条引用，规格本体和其它岗位的配置不受影响
+  deleteAllSampleTasksForPosition(p.positionId)
+  deleteAllDataTablesForPosition(p.positionId)
+  unassignPositionFromAllSpecs(p.positionId)
   persist()
   return {}
 }
@@ -837,6 +848,9 @@ export async function deleteAgent(agentId) {
   const orphaned = agent.skills.map((s) => s.skillId)
   wb.agents = wb.agents.filter((a) => a !== agent)
   orphaned.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
+  // 删 Agent 级联（2026-09-23 待办 yuepu#9⑦）：清掉自动化任务里指向本 Agent 的 execAgentId，
+  // 不然「执行动作」选中 Agent 执行的任务，编辑页会显示裸 agentId
+  clearExecAgentRef(p.positionId, agent.agentId)
   syncCounts(p)
   p.updatedAt = nowIso()
   persist()

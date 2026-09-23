@@ -108,7 +108,7 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
     expect(a1.name).toBe('新 Agent')
     expect(a2.name).toBe('新 Agent 2')
     const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    // 3 = 种子 1 个（竞品跟踪，2026-09-09 补全）+ 本用例新建 2 个
+    // 3 = 种子 1 个（研究纪要整理，2026-09-09 补全）+ 本用例新建 2 个
     expect(row.agentCount).toBe(3)
   })
 
@@ -121,6 +121,20 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
     const row = (await listPositions({ keyword: '经营分析岗' })).list[0]
     expect(row.agentCount).toBe(2)
     expect(row.skillCount).toBe(0)
+  })
+
+  it('deleteAgent 级联清空自动化任务的 execAgentId，不留悬空裸 id（md §7.6，2026-09-23 待办 yuepu#9⑦）', async () => {
+    const sampleTaskMock = await import('../sampleTaskMock')
+    sampleTaskMock.__resetSampleTaskMock()
+    const d = await getPosition(401)
+    const agent = d.agents[0]
+    const created = await sampleTaskMock.createSampleTask(401, {
+      name: '待测任务', execType: 'AGENT', execAgentId: agent.agentId, sopDoc: '执行步骤说明'
+    })
+    expect(created.execAgentId).toBe(agent.agentId)
+    await deleteAgent(agent.agentId)
+    const after = await sampleTaskMock.getSampleTask(401, created.id)
+    expect(after.execAgentId).toBeNull()
   })
 })
 
