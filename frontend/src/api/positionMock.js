@@ -212,6 +212,9 @@ function emptyWorkbench(payload = {}) {
     exampleQuestions: normEq(payload.exampleQuestions),
     positionSop: String(payload.positionSop || ''),
     businessSystemIds: Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : [],
+    // md 岗位 §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，与 businessSystemIds 同型
+    connectorMcpIds: Array.isArray(payload.connectorMcpIds) ? [...payload.connectorMcpIds] : [],
+    connectorApiIds: Array.isArray(payload.connectorApiIds) ? [...payload.connectorApiIds] : [],
     persona: String(payload.persona || ''),
     intakeSchema: Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : [],
     agents: []
@@ -640,6 +643,8 @@ function detailVO(p) {
     exampleQuestions: normEq(wb.exampleQuestions),
     positionSop: wb.positionSop || '',
     businessSystemIds: [...(wb.businessSystemIds || [])],
+    connectorMcpIds: [...(wb.connectorMcpIds || [])],
+    connectorApiIds: [...(wb.connectorApiIds || [])],
     persona: wb.persona || '',
     intakeSchema: (wb.intakeSchema || []).map((r) => ({ ...r, options: [...(r.options || [])] })),
     status: p.status,
@@ -744,6 +749,14 @@ export async function updatePosition(id, payload = {}) {
   }
   if ('businessSystemIds' in payload) {
     wb.businessSystemIds = Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : []
+  }
+  // 2026-09-23 待办 yuepu#7①④：岗位私有 MCP/API 引用此前只写 Pinia store、未透传进保存 payload，
+  // toast「绑定成功」→ 保存 → 刷新即丢；补齐与 businessSystemIds 同型的写点
+  if ('connectorMcpIds' in payload) {
+    wb.connectorMcpIds = Array.isArray(payload.connectorMcpIds) ? [...payload.connectorMcpIds] : []
+  }
+  if ('connectorApiIds' in payload) {
+    wb.connectorApiIds = Array.isArray(payload.connectorApiIds) ? [...payload.connectorApiIds] : []
   }
   if ('persona' in payload) wb.persona = String(payload.persona || '')
   if ('intakeSchema' in payload) {
