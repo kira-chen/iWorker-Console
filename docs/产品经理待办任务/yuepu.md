@@ -10,6 +10,7 @@
 
 | 序号 | 状态 | 发起人 | 问题详述 |
 |---|---|---|---|
+| 15 | 未处理 | 陈森亮（2026-09-23） | **版本管理两份新用例在 Node 26 本机跑红（CI Node 22 绿），11 条失败。** 现状：`frontend/src/utils/__tests__/demoIdentity.test.js`（4 条）与 `frontend/src/api/__tests__/versionMock.test.js`（7 条）在本机 `npm test` 报 `TypeError: Cannot read properties of undefined (reading 'clear')`，位置是 `beforeEach(() => localStorage.clear())`；两文件头注都有 `// @vitest-environment jsdom`，jsdom 29.1.1 也装着。实测探针（jsdom 环境、Node v26.0.0）：`typeof window === 'object'` 但 `window.localStorage`、`globalThis.localStorage` 全是 `undefined`——jsdom 29 把 localStorage 交给 Node 原生实现，而 Node 不带 `--localstorage-file` 时该能力关闭（跑测试时能看到 Node 的 `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`）。CI 用 Node 22（`.github/workflows/ci.yml:58`）没这问题，所以 `9f4c5fe` 在 CI 是绿的，两份用例本身逻辑没错。依据：本仓既有约定是「jsdom 下 localStorage 不可用，要用就自己装桩」——`positionAssignmentMock.test.js:61-80` 已经写明这点并用 `Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), … })` 装桩，其余用到落盘的 mock 用例都照这个模式走，这两份新文件漏了。期望：两份用例照 `positionAssignmentMock.test.js` 的写法自建 storage 桩（或抽一个公共 test helper 给全仓复用，更推荐——现在装桩代码在多份用例里重复），使本机 Node 26 与 CI Node 22 都能跑绿；**不要改成删用例或加 skip**。注：本条只是测试基础设施差异，不影响功能与演示。 |
 
 
 
