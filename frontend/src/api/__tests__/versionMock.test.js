@@ -41,7 +41,26 @@ const MAC_LIVE = 6 // Mac v1.1.0：已发布
 const MAC_PENDING = 7 // Mac v1.2.0：发布审核中
 const WIN_LIVE_NOTES = '1. 对话引用来源支持一键复制\n2. 任务完成后增加桌面通知\n3. 修复长对话滚动偶尔跳到顶部的问题'
 
+// 2026-09-23（待办 yuepu#15）：本仓 jsdom 下 globalThis.localStorage 为 undefined，须自建桩——
+// jsdom 29 把 localStorage 交给 Node 原生实现，而 Node（本机 26）不带 --localstorage-file 时该能力关闭，
+// 于是本机跑红、CI（Node 22，jsdom 自带实现）却绿。下方 asUser 依赖它写登录身份。
+// 写法同 positionAssignmentMock.test.js:61-80。
+const makeStorage = () => {
+  const map = new Map()
+  return {
+    get length() { return map.size },
+    key: (i) => [...map.keys()][i] ?? null,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+    clear: () => map.clear()
+  }
+}
+
 beforeEach(() => {
+  if (!globalThis.localStorage || typeof globalThis.localStorage.getItem !== 'function') {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+  }
   resetVersionMock()
   resetAccessAuditMock()
   resetReviewsMock()
