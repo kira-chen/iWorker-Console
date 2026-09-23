@@ -6,7 +6,11 @@
  * 通过 v-model:schedule 双向绑定。人话回显（summary）与「接下来 N 次」预览由父级调
  * preview-schedule 接口产出后经 props 传入，本组件不在前端硬算周期文案 / nextFire。
  *
- * Schedule 字段（四模式，2026-09-12 对齐 md §7.3 L392-397，审计 J5 / K3；2026-09-23 负责人拍板新增「闲时」）：
+ * Schedule 字段（四模式，2026-09-12 对齐 md §7.3 L392-397，审计 J5 / K3；2026-09-23 负责人拍板新增「闲时」
+ * 与「执行位置」只读展示）：
+ * - execLocations：只读展示字段，不可编辑（2026-09-23 负责人拍板：执行位置无法改变）。由 scheduleMode
+ *   派生——闲时模式为 [CLOUD, WEB]（本地环境不具备负载监测能力，不支持闲时）；其余三个模式固定为
+ *   [CLOUD, WEB, LOCAL]（全部环境可用）。纯计算属性，不写回 schedule，buildSchedule 侧按同一规则派生。
  * - scheduleMode：PERIODIC 按周期 / INTERVAL 每间隔 / ONCE 单次 / IDLE 闲时；
  * - PERIODIC：periodicPreset（每天 / 每周一 / 每周一三五 / 每周五 / 每月 1 日）派生 scheduleType +
  *   daysOfWeek / daysOfMonth；times[] 多个定点时间（【＋ 添加时间】，同一天自动去重）；
@@ -15,7 +19,6 @@
  * - ONCE：onceAt（"YYYY-MM-DDTHH:mm" 无时区）；
  * - IDLE（无定点时间，系统在时段内择机执行）：idleCount + idleCountUnit（DAY / WEEK / MONTH，
  *   如「每天 1 次」）+ idleWindow（NIGHT 夜间闲时 00:00–06:00 / ANYTIME 不限时段按负载调度）。
- *   本模式的显示条件（仅云端运行可选）由上层按「运行位置」控制，本组件不持有该状态。
  * - 起止日期 startDate / endDate（纯日期，不填 = 立即生效 / 一直有效；单次模式仅设起始）。
  * 时间口径：times（"HH:mm"）、onceAt、startDate/endDate 均为「无时区本地墙钟」，入参不拼时区。
  *
@@ -36,6 +39,13 @@ const props = defineProps({
   previewError: { type: String, default: '' }
 })
 const emit = defineEmits(['update:schedule', 'preview'])
+
+// 执行位置：只读展示，不可编辑（md §7.3，2026-09-23 负责人拍板：执行位置无法改变）
+const EXEC_LOCATIONS = [
+  { value: 'CLOUD', label: '云端' },
+  { value: 'WEB', label: 'Web 端' },
+  { value: 'LOCAL', label: '本地' }
+]
 
 /* ---------------- 四模式常量（md §7.3 L392-395；2026-09-23 新增「闲时」） ---------------- */
 const MODES = [
@@ -74,6 +84,8 @@ const DEFAULT_TIME = '09:00'
 
 const mode = computed(() => props.schedule.scheduleMode || 'PERIODIC')
 const times = computed(() => (props.schedule.times?.length ? props.schedule.times : [DEFAULT_TIME]))
+// 执行位置只读展示，由 scheduleMode 派生，不可编辑（md §7.3，2026-09-23）
+const execLocations = computed(() => (mode.value === 'IDLE' ? ['CLOUD', 'WEB'] : ['CLOUD', 'WEB', 'LOCAL']))
 
 // 统一 patch：合并字段后向上抛，附带「变更后需重新预览」信号
 function patch(part) {
@@ -81,10 +93,9 @@ function patch(part) {
   emit('preview')
 }
 
-/* ---------------- 执行频率：模式切换 ---------------- */
-function onMode(next) {
-  if (next === mode.value) return
-  const sc = { ...props.schedule, scheduleMode: next }
+// 把 sc 就地改写成 next 模式对应的字段形态（onMode 与「执行位置切本地时闲时被迫退回」共用）
+function applyModeFields(sc, next) {
+  sc.scheduleMode = next
   if (next === 'ONCE') {
     sc.scheduleType = 'ONCE'
     // md §7.3 L397：单次模式仅设起始时间，结束日期随之清空
@@ -94,7 +105,7 @@ function onMode(next) {
     sc.intervalCount = sc.intervalCount || 1
     sc.intervalUnit = sc.intervalUnit || 'DAY'
     // 每间隔模式只取一个起始时刻
-    sc.times = [times.value[0] || DEFAULT_TIME]
+    sc.times = [(sc.times?.length ? sc.times : [DEFAULT_TIME])[0] || DEFAULT_TIME]
   } else if (next === 'IDLE') {
     // 闲时不设定点时间，只定执行次数 + 执行时段
     sc.scheduleType = 'IDLE'
@@ -111,6 +122,13 @@ function onMode(next) {
     sc.daysOfMonth = preset.daysOfMonth.slice()
     if (!sc.times?.length) sc.times = [DEFAULT_TIME]
   }
+}
+
+/* ---------------- 执行频率：模式切换 ---------------- */
+function onMode(next) {
+  if (next === mode.value) return
+  const sc = { ...props.schedule }
+  applyModeFields(sc, next)
   emit('update:schedule', sc)
   emit('preview')
 }
@@ -190,10 +208,26 @@ function prettyTime(t) {
 
 <template>
   <div class="sp" :class="{ 'sp-error': !!error }">
-    <!-- 执行频率：按周期 / 每间隔 / 单次（md §7.3 L392） -->
+    <!-- 执行位置：云端 / Web 端 / 本地，只读展示，随执行频率派生，不可编辑（md §7.3，2026-09-23） -->
+    <div class="sp-row sp-row-top">
+      <span class="sp-label">执行位置</span>
+      <div class="sp-loc-col">
+        <div class="sp-seg sp-seg-location" role="group" aria-label="执行位置（只读）">
+          <span
+            v-for="l in EXEC_LOCATIONS"
+            :key="l.value"
+            class="sp-seg-btn sp-seg-readonly"
+            :class="{ on: execLocations.includes(l.value) }"
+          >{{ l.label }}</span>
+        </div>
+        <p class="sp-tip">执行位置由执行频率自动决定，不可单独修改；闲时模式仅云端 / Web 端可用。</p>
+      </div>
+    </div>
+
+    <!-- 执行频率：按周期 / 每间隔 / 单次 / 闲时（md §7.3 L392） -->
     <div class="sp-row">
       <span class="sp-label">执行频率</span>
-      <div class="sp-seg" role="group" aria-label="执行频率模式">
+      <div class="sp-seg sp-seg-mode" role="group" aria-label="执行频率模式">
         <button
           v-for="m in MODES"
           :key="m.value"
@@ -300,7 +334,7 @@ function prettyTime(t) {
           >{{ w.label }}</button>
         </div>
       </div>
-      <p class="sp-tip sp-idle-tip">系统会在所选时段内、云端资源负载低于 30% 时择机执行；执行完成即送达，不等时段结束。仅云端运行可选此模式。</p>
+      <p class="sp-tip sp-idle-tip">系统会在所选时段内、云端资源负载低于 30% 时择机执行；执行完成即送达，不等时段结束。</p>
     </template>
 
     <!-- 定点时间（md §7.3 L396）：按周期多时间点 + 【＋ 添加时间】；每间隔模式为单个起始时刻 -->
@@ -468,6 +502,28 @@ function prettyTime(t) {
 /* 预设按钮组宽一些（5 个按钮） */
 .sp-seg-preset .sp-seg-btn {
   min-width: 88px;
+}
+/* 执行位置：按钮组 + 提示文案纵向排列（md §7.3，2026-09-23） */
+.sp-loc-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* 只读展示态：不可点击、未命中项弱化显示（md §7.3，2026-09-23：执行位置无法改变） */
+.sp-seg-readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.sp-seg-readonly:hover {
+  background: var(--bg-surface);
+}
+.sp-seg-readonly.on:hover {
+  background: var(--c-accent);
+}
+.sp-seg-readonly:not(.on) {
+  color: var(--c-text-faint);
 }
 
 /* 定点时间：多行「序号圆 + ⏰ 输入框 + ×」+ 「＋ 添加时间」 */

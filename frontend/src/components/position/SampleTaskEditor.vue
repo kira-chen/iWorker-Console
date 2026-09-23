@@ -31,7 +31,9 @@
  * - K6 / K8 / J6：保存与创建 toast、搜索占位与空态、基本信息三处占位逐字照 md（§7.2 / §7.5 / §7.6 / §7.7）。
  *
  * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（不设定点时间，只定执行次数 + 执行时段，由系统
- * 择机执行），删除原「空闲时段提前准备」勾选框（preKick 字段随之退役，§7.3）。
+ * 择机执行），删除原「空闲时段提前准备」勾选框（preKick 字段随之退役，§7.3）；同日新增「执行位置」
+ * 只读展示（云端 / Web 端 / 本地，无法改变，由 scheduleMode 派生：闲时模式为云端 + Web 端，其余三个
+ * 模式为全部三项），派生逻辑在 SchedulePicker（展示）与本文件 buildSchedule()（提交）各自实现一份。
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -69,6 +71,8 @@ const taskEnabled = computed(() => (props.sample?.status || 'ENABLED') === 'ENAB
 // ---- 表单模型（对齐 TaskEditor.form） ----
 function blankSchedule() {
   return {
+    // 执行位置只读展示、由 scheduleMode 派生（md §7.3，2026-09-23 负责人拍板：执行位置无法改变），
+    // 不存表单状态，见 buildSchedule() 的 execLocations 派生逻辑
     scheduleMode: 'PERIODIC',
     periodicPreset: 'DAILY',
     intervalCount: 1,
@@ -361,7 +365,12 @@ async function doPreview() {
 function buildSchedule() {
   const sc = form.schedule
   const mode = sc.scheduleMode || 'PERIODIC'
-  const out = { scheduleMode: mode, scheduleType: sc.scheduleType }
+  const out = {
+    // 执行位置由模式派生、只读不可编辑（md §7.3，2026-09-23 负责人拍板），与 SchedulePicker 同一规则
+    execLocations: mode === 'IDLE' ? ['CLOUD', 'WEB'] : ['CLOUD', 'WEB', 'LOCAL'],
+    scheduleMode: mode,
+    scheduleType: sc.scheduleType
+  }
   if (mode === 'ONCE') {
     out.scheduleType = 'ONCE'
     out.onceAt = sc.onceAt

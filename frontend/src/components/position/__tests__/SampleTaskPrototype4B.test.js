@@ -660,7 +660,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     const schedule = mountSched({ previewSummary: '每天 09:00', previewTimes: [] })
     await flush()
     // 只选第一行的模式 Tab，不包括预设按钮
-    const modeRow = container.querySelector('.sp-row:first-child .sp-seg')
+    const modeRow = container.querySelector('.sp-seg-mode')
     const modes = [...modeRow.querySelectorAll('.sp-seg-btn')].map((b) => b.textContent.trim())
     expect(modes).toEqual(['按周期', '每间隔', '单次', '闲时'])
     expect(modeRow.querySelector('.sp-seg-btn.on').textContent.trim()).toBe('按周期')
@@ -696,7 +696,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     const schedule = mountSched()
     await flush()
     // 切换到「每间隔」
-    container.querySelectorAll('.sp-seg .sp-seg-btn')[1].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[1].click()
     await flush()
     expect(schedule.value.scheduleMode).toBe('INTERVAL')
     // 数字输入框
@@ -713,7 +713,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     const schedule = mountSched()
     await flush()
     // 切换到「单次」
-    container.querySelectorAll('.sp-seg .sp-seg-btn')[2].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[2].click()
     await flush()
     expect(schedule.value.scheduleMode).toBe('ONCE')
     expect(schedule.value.scheduleType).toBe('ONCE')
@@ -724,7 +724,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     const schedule = mountSched()
     await flush()
     // 切换到「闲时」
-    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[3].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[3].click()
     await flush()
     expect(schedule.value.scheduleMode).toBe('IDLE')
     expect(schedule.value.scheduleType).toBe('IDLE')
@@ -740,7 +740,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
   it('闲时模式：改执行次数单位/数字与执行时段 → 回写 idleCount/idleCountUnit/idleWindow', async () => {
     const schedule = mountSched()
     await flush()
-    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[3].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[3].click()
     await flush()
     // 执行次数：周期单位切到「周」+ 数字改 2
     const unitBtns = [...container.querySelectorAll('.sp-row .sp-seg')].find((seg) =>
@@ -759,6 +759,43 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     windowBtn.click()
     await flush()
     expect(schedule.value.idleWindow).toBe('ANYTIME')
+  })
+
+  /* ---- 2026-09-23 负责人拍板：执行位置——只读展示，无法改变，由执行频率派生 ---- */
+  it('非闲时模式：执行位置三项均展示为「已选中」态（只读，无点击交互）', async () => {
+    const schedule = mountSched()
+    await flush()
+    const locBtns = [...container.querySelectorAll('.sp-seg-location .sp-seg-btn')]
+    expect(locBtns.map((b) => b.tagName)).toEqual(['SPAN', 'SPAN', 'SPAN'])
+    expect(locBtns.map((b) => b.textContent.trim())).toEqual(['云端', 'Web 端', '本地'])
+    expect(locBtns.filter((b) => b.classList.contains('on')).map((b) => b.textContent.trim())).toEqual(['云端', 'Web 端', '本地'])
+    // 四个执行频率 Tab（含闲时）均在位，不受执行位置影响
+    expect([...container.querySelectorAll('.sp-seg-mode .sp-seg-btn')].map((b) => b.textContent.trim())).toEqual(['按周期', '每间隔', '单次', '闲时'])
+    // 只读展示，点击不产生任何 update:schedule
+    locBtns[2].click()
+    await flush()
+    expect(schedule.value.scheduleMode).toBe('PERIODIC')
+  })
+
+  it('切到「闲时」模式 → 执行位置自动只展示云端 / Web 端为选中，本地弱化显示（md §7.3：执行位置无法改变）', async () => {
+    mountSched()
+    await flush()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[3].click() // 闲时
+    await flush()
+    const locBtns = [...container.querySelectorAll('.sp-seg-location .sp-seg-btn')]
+    expect(locBtns.filter((b) => b.classList.contains('on')).map((b) => b.textContent.trim())).toEqual(['云端', 'Web 端'])
+    expect(locBtns[2].classList.contains('on')).toBe(false)
+  })
+
+  it('切回「按周期」→ 执行位置恢复三项全部选中', async () => {
+    mountSched()
+    await flush()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[3].click() // 先切闲时
+    await flush()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[0].click() // 再切回按周期
+    await flush()
+    const locBtns = [...container.querySelectorAll('.sp-seg-location .sp-seg-btn')]
+    expect(locBtns.filter((b) => b.classList.contains('on')).map((b) => b.textContent.trim())).toEqual(['云端', 'Web 端', '本地'])
   })
 
   it('执行预览走绿底框 + 白底药丸，药丸去掉 T 与时区后缀', async () => {
@@ -822,7 +859,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
   it('K3 每间隔模式：出「定点时间」起始时刻输入（单个 time input，改值回写 times[0]），无【＋ 添加时间】（md §7.3 L396）', async () => {
     const schedule = mountSched()
     await flush()
-    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[1].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[1].click()
     await flush()
     expect(schedule.value.scheduleMode).toBe('INTERVAL')
     const labels = [...container.querySelectorAll('.sp-label')].map((n) => n.textContent.trim())
@@ -844,11 +881,11 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     let pickers = [...container.querySelectorAll('.sp-range .stub-date')]
     expect(pickers.map((p) => p.dataset.placeholder)).toEqual(['从哪天开始（不填 = 立即生效）', '到哪天结束（不填 = 一直有效）'])
     // 每间隔同样两个
-    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[1].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[1].click()
     await flush()
     expect(container.querySelectorAll('.sp-range .stub-date')).toHaveLength(2)
     // 单次仅起始
-    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[2].click()
+    container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[2].click()
     await flush()
     pickers = [...container.querySelectorAll('.sp-range .stub-date')]
     expect(pickers.map((p) => p.dataset.placeholder)).toEqual(['从哪天开始（不填 = 立即生效）'])
@@ -870,7 +907,7 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
   beforeEach(async () => {
     SampleTaskEditor = (await import('@/components/position/SampleTaskEditor.vue')).default
   })
-  const modeBtns = () => [...container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')]
+  const modeBtns = () => [...container.querySelectorAll('.sp-seg-mode .sp-seg-btn')]
   const saveBtn = () => [...container.querySelectorAll('.meta-actions button')].pop()
 
   it('编辑态切「每间隔 · 每 3 小时」保存 → payload.schedule = { scheduleMode INTERVAL, intervalCount 3, intervalUnit HOUR, scheduleType INTERVAL_HOUR, times [起始时刻] }', async () => {
@@ -941,7 +978,7 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
       }
     })
     await flush()
-    expect(container.querySelector('.sp-row:first-child .sp-seg .sp-seg-btn.on').textContent.trim()).toBe('每间隔')
+    expect(container.querySelector('.sp-seg-mode .sp-seg-btn.on').textContent.trim()).toBe('每间隔')
     expect(container.querySelector('.sp-interval-input').value).toBe('2')
     expect(container.querySelector('.sp-interval-row .sp-seg .sp-seg-btn.on').textContent.trim()).toBe('天')
     expect(container.querySelector('.sp-time-input input').value).toBe('08:00')
@@ -979,5 +1016,28 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
     await flush()
     expect(modeBtns()[3].classList.contains('on')).toBe(true)
     expect(container.querySelector('.sp-interval-input').value).toBe('2')
+  })
+
+  /* ---- 2026-09-23 负责人拍板：执行位置只读、由 scheduleMode 派生，随 payload.schedule 一并提交 ---- */
+  it('非闲时模式保存 → payload.schedule.execLocations = 全部三项', async () => {
+    const { updateSampleTask } = await import('@/api/sampleTask')
+    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
+    await flush()
+    saveBtn().click()
+    await flush()
+    expect(updateSampleTask.mock.calls[0][2].schedule.execLocations).toEqual(['CLOUD', 'WEB', 'LOCAL'])
+  })
+
+  it('切到「闲时」模式保存 → payload.schedule.execLocations 只剩云端 / Web 端（本地自动排除）', async () => {
+    const { updateSampleTask } = await import('@/api/sampleTask')
+    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
+    await flush()
+    modeBtns()[3].click() // 闲时
+    await flush()
+    saveBtn().click()
+    await flush()
+    const payload = updateSampleTask.mock.calls[0][2]
+    expect(payload.schedule.execLocations).toEqual(['CLOUD', 'WEB'])
+    expect(payload.schedule.scheduleMode).toBe('IDLE')
   })
 })

@@ -337,6 +337,7 @@ function normalizeUpsert(payload = {}) {
     prompt: String(payload.prompt || ''),
     remark: String(payload.remark || ''),
     schedule: {
+      execLocations: payload.schedule?.execLocations?.length ? [...payload.schedule.execLocations] : ['CLOUD', 'WEB', 'LOCAL'],
       scheduleType: payload.schedule?.scheduleType || 'DAILY',
       scheduleMode: payload.schedule?.scheduleMode || 'PERIODIC',
       periodicPreset: payload.schedule?.periodicPreset || 'DAILY',

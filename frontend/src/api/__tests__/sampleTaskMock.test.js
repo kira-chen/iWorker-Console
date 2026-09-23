@@ -82,6 +82,17 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
     expect(back.schedule).toMatchObject({ scheduleMode: 'IDLE', idleCount: 2, idleCountUnit: 'WEEK', idleWindow: 'NIGHT' })
   })
 
+  it('执行位置（2026-09-23 新增，可多选）：payload 不带 execLocations → 默认全选三项；显式传入则原样落地', async () => {
+    const vo = await createSampleTask(404, validPayload())
+    expect(vo.schedule.execLocations).toEqual(['CLOUD', 'WEB', 'LOCAL'])
+    const custom = await createSampleTask(404, validPayload({
+      name: '自定义执行位置任务',
+      schedule: { scheduleType: 'DAILY', times: ['10:00'], execLocations: ['CLOUD'] }
+    }))
+    expect(custom.schedule.execLocations).toEqual(['CLOUD'])
+    expect((await getSampleTask(404, custom.id)).schedule.execLocations).toEqual(['CLOUD'])
+  })
+
   it('调度预览：summary 人话 + 未来触发时间条数正确；ONCE 缺时间被拦', async () => {
     const daily = await previewSampleSchedule(401, { schedule: { scheduleType: 'DAILY', times: ['09:00'] }, count: 3 })
     expect(daily.summary).toBe('每天 09:00')
