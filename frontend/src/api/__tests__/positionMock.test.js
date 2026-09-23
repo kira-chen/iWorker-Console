@@ -16,6 +16,9 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { setUserPosition, __resetPositionAssignmentMock } from '../positionAssignmentMock'
+// positionAssignmentMock 分配表 2026-09-23 待办 yuepu#11③ 起同源自 adminUserMock 真实用户列表，
+// 须一并重置，否则领用数/绑定校验可能读到其它用例改剩的用户状态
+import { __resetOrgMock } from '../adminUserMock'
 // 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
 // 动态 import 在那之后拿到的会是另一个模块实例，跟 positionMock 内部静态 import 的
 // sampleTaskMock/dataTableMock/runtimeSpecMock 对不上，删岗级联的效果就验证不到
@@ -26,6 +29,7 @@ import { getRuntimeSpec, __resetRuntimeSpecMock } from '../runtimeSpecMock'
 
 // vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖
 beforeEach(() => {
+  __resetOrgMock()
   __resetPositionMock()
   __resetPositionAssignmentMock()
 })
@@ -92,9 +96,9 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBeNull()
     expect(row.latestVersion).toBe('v1.4.0') // 撤回后回落已通过的最新快照
-    // 402 种子被 li.na（userId 2）领用，停用前先解绑——本用例测的是发布状态机，不是领用拦截
+    // 402 种子被 li.na（userId 202）领用，停用前先解绑——本用例测的是发布状态机，不是领用拦截
     // （领用拦截见下方专用用例，2026-09-23 待办 yuepu#9①）
-    await setUserPosition(2, null)
+    await setUserPosition(202, null)
     // 停用 → 提交停用审核（展示层审核中）
     await unpublishPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
@@ -117,13 +121,13 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
   })
 
   it('领用数实时派生（md §3.5 L90 / §3.6 L98，2026-09-23 待办 yuepu#9①）：解绑后停用/删除放行，绑定时仍拦', async () => {
-    // 402 种子被 li.na（userId 2）领用：停用 / 删除均应被拦
+    // 402 种子被 li.na（userId 202）领用：停用 / 删除均应被拦
     await expect(unpublishPosition(402)).rejects.toThrow('已被 1 个用户领用')
     await expect(deletePosition(402)).rejects.toThrow('已被 1 个用户领用')
     let row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.claimedUserCount).toBe(1)
     // 解绑后领用数回落到 0，两个操作都放行
-    await setUserPosition(2, null)
+    await setUserPosition(202, null)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.claimedUserCount).toBe(0)
     await expect(unpublishPosition(402)).resolves.toEqual({})
@@ -139,7 +143,7 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect((await listDataTables(402)).total).toBeGreaterThan(0)
     expect((await getRuntimeSpec(1)).positionIds).toContain(402)
 
-    await setUserPosition(2, null) // 402 种子被 li.na 领用，先解绑才能删
+    await setUserPosition(202, null) // 402 种子被 li.na 领用，先解绑才能删
     await deletePosition(402)
 
     expect((await listSampleTasks(402)).total).toBe(0)
