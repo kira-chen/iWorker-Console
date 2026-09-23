@@ -18,16 +18,18 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 const PROCESSOR = 'admin'
 
 // 种子：chenyu / sun.xin 为未绑定用户，已提交申请；li.na 历史已处理样本。
+// userId 对应 adminUserMock 真实用户 id（2026-09-23 待办 yuepu#11③：positionAssignmentMock 改为
+// 同源自 adminUserMock 后，本文件 userId 须与之一致，否则 getPendingApplicationByUserId 联查对不上）。
 const seed = () => [
-  { id: 701, userId: 3, username: 'chenyu',  displayName: '陈宇', status: 'PENDING',  submittedAt: '2026-08-28 10:32', assignedAt: '', assignedBy: '' },
-  { id: 702, userId: 6, username: 'sun.xin', displayName: '孙欣', status: 'PENDING',  submittedAt: '2026-08-27 17:18', assignedAt: '', assignedBy: '' },
-  { id: 703, userId: 2, username: 'li.na',   displayName: '李娜', status: 'ASSIGNED', submittedAt: '2026-08-18 09:03', assignedAt: '2026-08-18 15:47', assignedBy: PROCESSOR }
+  { id: 701, userId: 203, username: 'chenyu',  displayName: '陈宇', status: 'PENDING',  submittedAt: '2026-08-28 10:32', assignedAt: '', assignedBy: '' },
+  { id: 702, userId: 206, username: 'sun.xin', displayName: '孙欣', status: 'PENDING',  submittedAt: '2026-08-27 17:18', assignedAt: '', assignedBy: '' },
+  { id: 703, userId: 202, username: 'li.na',   displayName: '李娜', status: 'ASSIGNED', submittedAt: '2026-08-18 09:03', assignedAt: '2026-08-18 15:47', assignedBy: PROCESSOR }
 ]
 
 let applications = seed()
 
 const persist = attachPersist('positionApplications', {
-  version: 3,
+  version: 4, // v4（2026-09-23 待办 yuepu#11③）：种子 userId 改用 adminUserMock 真实 id，旧快照弃用回种子
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) throw new Error('positionApplications 快照形状不合法')

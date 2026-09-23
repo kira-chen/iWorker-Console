@@ -586,6 +586,14 @@ export async function deleteProviderSystem(id) {
 }
 
 /* ================= API 定义 ================= */
+/**
+ * 全量 API 行（同步，供 unifiedSkillMock 的工具坞候选/已引用工具实时读取，2026-09-23 待办
+ * yuepu#10②）：不能直接复用 listApis——那是 async + delay，技能侧的同步调用链（模块初始化时的
+ * seedReviewSnapshots）用不了 async。
+ */
+export function listApisSync() {
+  return apis.map(toRow)
+}
 export async function listApis(params = {}) {
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()
@@ -678,8 +686,13 @@ function applyApiPayload(a, payload) {
         .filter((p) => (p.name || '').trim())
         .map((p) => {
           const name = p.name.trim()
-          // 留空=保留：同「位置+参数名」旧行的明文继续沿用（掩码口径下编辑器不回传未改的值）
-          const prev = oldParams.find((o) => o.in === p.in && o.name === name)
+          // 留空=保留：优先按编辑器原样回传的 valueMasked 占位串找回旧行（换了位置/参数名也认得出
+          // 是同一行）；没有该占位串（如新增行）再退化按「位置+参数名」匹配（2026-09-23 待办
+          // yuepu#7⑥：原先只按 in+name 匹配，只改位置或参数名、不重填值时会匹配不到旧行，
+          // prev 落空、密钥被静默清空——口径同 knowledgeBaseMock 的 prevParamRow）
+          const prev =
+            (p.valueMasked && oldParams.find((o) => !o.clientFill && maskSecret(o.value) === p.valueMasked)) ||
+            oldParams.find((o) => o.in === p.in && o.name === name)
           return {
             in: p.in || 'HEADER',
             name,
@@ -719,6 +732,9 @@ export async function updateApi(id, payload) {
   await delay(250)
   const a = findApi(id)
   if (!a) throw err('API 不存在')
+  // md-API §2 L52「审核中【编辑】置灰并提示"审核中不可编辑，如需修改请先撤回"」——
+  // UI 已拦，mock 兜底不留后门（同技能 K20 范式）
+  if (a.status === 'PENDING_REVIEW') throw err('审核中不可编辑，如需修改请先撤回')
   validateApiPayload(payload)
   const invalidate = connChanged(a, payload)
   applyApiPayload(a, payload)
@@ -735,6 +751,11 @@ export async function updateApi(id, payload) {
 
 export async function deleteApi(id) {
   await delay(250)
+  const a = findApi(id)
+  // md-API §2 L54-56「删除】仅"未发布"状态展示——审核中/已发布不可删，只靠 UI 藏按钮会被绕过
+  if (a && a.status !== 'NOT_PUBLISHED') {
+    throw err('删除仅适用于未发布状态的 API，审核中请先撤回、已发布请先停用')
+  }
   // PRD §二.4：软引用——无论是否被技能引用，确认后均可删除
   apis = apis.filter((a) => a.id !== id && a.code !== id)
   persist()

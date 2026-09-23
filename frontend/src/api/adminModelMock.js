@@ -332,6 +332,9 @@ export async function updateModel(id, payload) {
   await delay(250)
   const m = findModel(id)
   if (!m) throw err('模型不存在')
+  // md §二.4 L192/L207「审核中的模型仅允许查看和撤回，不允许编辑……」——
+  // UI 已拦，mock 兜底不留后门（同技能 K20 范式）
+  if (displayKey(m) === 'PENDING_REVIEW') throw err('审核中不可编辑，如需修改请先撤回')
   validateModelPayload(payload, m.id)
   const invalidate = connChanged(m, payload)
   // 默认模型改类别 → 不再作为原类别默认（每类别唯一默认；编辑器已弹确认）
@@ -341,6 +344,8 @@ export async function updateModel(id, payload) {
     // 连接字段变更：回未发布 + 清验证态（改完必须重验、重新发布才生效）
     m.status = 'DRAFT'
     m.pendingAction = null
+    // 下架的模型不能继续带「默认」——口径同停用摘默认（approveModel/applyModelReviewResult 的 DELIST 分支）
+    m.isDefault = false
     m.verifyStatus = 'UNVERIFIED'
     m.verifiedAt = null
     m.verifyLatencyMs = null

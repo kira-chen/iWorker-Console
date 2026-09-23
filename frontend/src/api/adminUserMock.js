@@ -48,14 +48,14 @@ const PERMISSION_GROUPS = [
 
 const ALL_PAGES = PERMISSION_GROUPS.flatMap((s) => s.groups.flatMap((g) => g.pages))
 
-/* ---------------- 角色种子（照原型 roleRows；modules=页面名数组） ---------------- */
+/* ---------------- 角色种子（照原型 roleRows；modules=页面名数组；userCount 不落种子，toRoleRow 实时统计） ---------------- */
 function seedRoles() {
   return [
-    { id: 301, code: '系统管理员', name: '系统管理员', modules: [...ALL_PAGES], userCount: 2, createdAt: '2026-06-18T09:30:00+08:00', updatedAt: '2026-08-24T15:02:00+08:00' },
-    { id: 302, code: '系统配置员', name: '系统配置员', modules: ['驾驶舱', '专家', '技能', '知识库', '连接器', '用户技能审核', '字段字典'], userCount: 3, createdAt: '2026-06-18T09:32:00+08:00', updatedAt: '2026-08-23T18:20:00+08:00' },
-    { id: 303, code: 'FDE 工程师', name: 'FDE 工程师', modules: ['驾驶舱', '岗位', '岗位管理', '技能'], userCount: 4, createdAt: '2026-06-18T09:34:00+08:00', updatedAt: '2026-08-22T11:06:00+08:00' },
-    { id: 304, code: '普通用户', name: '普通用户', modules: ['对话', '定时任务', '个人空间', '设置'], userCount: 18, createdAt: '2026-06-18T09:35:00+08:00', updatedAt: '2026-08-21T16:40:00+08:00' },
-    { id: 305, code: '审计观察员', name: '审计观察员', modules: ['驾驶舱', '审核中心', '访问审计', '用户反馈'], userCount: 0, createdAt: '2026-08-20T14:08:00+08:00', updatedAt: '2026-08-20T14:08:00+08:00' }
+    { id: 301, code: '系统管理员', name: '系统管理员', modules: [...ALL_PAGES], createdAt: '2026-06-18T09:30:00+08:00', updatedAt: '2026-08-24T15:02:00+08:00' },
+    { id: 302, code: '系统配置员', name: '系统配置员', modules: ['驾驶舱', '专家', '技能', '知识库', '连接器', '用户技能审核', '字段字典'], createdAt: '2026-06-18T09:32:00+08:00', updatedAt: '2026-08-23T18:20:00+08:00' },
+    { id: 303, code: 'FDE 工程师', name: 'FDE 工程师', modules: ['驾驶舱', '岗位', '岗位管理', '技能'], createdAt: '2026-06-18T09:34:00+08:00', updatedAt: '2026-08-22T11:06:00+08:00' },
+    { id: 304, code: '普通用户', name: '普通用户', modules: ['对话', '定时任务', '个人空间', '设置'], createdAt: '2026-06-18T09:35:00+08:00', updatedAt: '2026-08-21T16:40:00+08:00' },
+    { id: 305, code: '审计观察员', name: '审计观察员', modules: ['驾驶舱', '审核中心', '访问审计', '用户反馈'], createdAt: '2026-08-20T14:08:00+08:00', updatedAt: '2026-08-20T14:08:00+08:00' }
   ]
 }
 
@@ -116,7 +116,10 @@ const findUser = (id) => users.find((u) => String(u.id) === String(id))
 const findRole = (id) => roles.find((r) => String(r.id) === String(id))
 
 const toUserRow = (u) => ({ ...u, roles: [...u.roles] })
-const toRoleRow = (r) => ({ ...r, modules: [...r.modules] })
+// userCount 实时统计（角色页「N 个用户」与删除分流依据，2026-09-23 待办 yuepu#11①：此前读种子静态
+// 字段，用户改绑角色后不回写，删除拦截判断永远读的是种子里的老数字）。
+const roleUserCount = (code) => users.filter((u) => u.roles.includes(code)).length
+const toRoleRow = (r) => ({ ...r, modules: [...r.modules], userCount: roleUserCount(r.code) })
 
 /* ============================ 用户管理 ============================ */
 
@@ -145,6 +148,12 @@ export async function listUsers(params = {}) {
   const page = Number(params.page) > 0 ? Number(params.page) : 1
   const size = Number(params.size) > 0 ? Number(params.size) : 10
   return { list: list.slice((page - 1) * size, page * size).map(toUserRow), total }
+}
+
+// 同步只读全量用户（供 positionAssignmentMock 等跨模块同步链路联查，模式同 unifiedSkillMock.listSkillsSync；
+// 2026-09-23 待办 yuepu#11③：岗位分配表须与用户表同源，不能各自维护一份用户名单）。
+export function listUsersSync() {
+  return users.map(toUserRow)
 }
 
 export async function getUser(id) {
@@ -218,6 +227,11 @@ export async function setUserRoles(id, roleCodes) {
   if (!u) throw err('用户不存在', null, 404)
   const codes = (Array.isArray(roleCodes) ? roleCodes : []).filter(Boolean)
   if (!codes.length) throw err('请至少选择一个角色', null, 40001)
+  // 护栏同 deleteUser：不允许把最后一个系统管理员的管理员角色改没（2026-09-23 待办 yuepu#11④）
+  const ADMIN = '系统管理员'
+  if (u.roles.includes(ADMIN) && !codes.includes(ADMIN) && users.filter((x) => x.roles.includes(ADMIN)).length <= 1) {
+    throw err('不能移除最后一个系统管理员的系统管理员角色', null, 409)
+  }
   u.roles = codes
   u.updatedAt = nowIso()
   persist()
@@ -261,11 +275,13 @@ export async function createRole(payload = {}) {
   await delay()
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写角色名称', 'name')
-  if (roles.some((r) => r.name === name)) throw err('角色名称已存在', 'name', 1005)
+  // code 由 name 派生且创建后不再随改名变化（见 updateRole），故新建须同时查重 code 与 name——
+  // 否则「改名让走→原 code 空出→新建同名」可撞出两个角色共享同一 code（2026-09-23 待办 yuepu#11②）
+  if (roles.some((r) => r.code === name || r.name === name)) throw err('角色名称已存在', 'name', 1005)
   const modules = (Array.isArray(payload.modules) ? payload.modules : []).filter((p) => ALL_PAGES.includes(p))
   if (!modules.length) throw err('请至少开通 1 个页面', 'modules')
   const now = nowIso()
-  const r = { id: roleSeq++, code: name, name, modules, userCount: 0, createdAt: now, updatedAt: now }
+  const r = { id: roleSeq++, code: name, name, modules, createdAt: now, updatedAt: now }
   roles.unshift(r)
   persist()
   return toRoleRow(r)
@@ -278,7 +294,7 @@ export async function updateRole(id, payload = {}) {
   if (!r) throw err('角色不存在', null, 404)
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写角色名称', 'name')
-  if (roles.some((x) => x !== r && x.name === name)) throw err('角色名称已存在', 'name', 1005)
+  if (roles.some((x) => x !== r && (x.code === name || x.name === name))) throw err('角色名称已存在', 'name', 1005)
   r.name = name
   r.updatedAt = nowIso()
   persist()
@@ -303,8 +319,9 @@ export async function deleteRole(id) {
   await delay()
   const r = findRole(id)
   if (!r) throw err('角色不存在', null, 404)
-  if (r.userCount > 0) {
-    throw err(`角色「${r.name}」仍绑定 ${r.userCount} 个用户。请先在用户页完成角色改绑。`, null, 409)
+  const count = roleUserCount(r.code)
+  if (count > 0) {
+    throw err(`角色「${r.name}」仍绑定 ${count} 个用户。请先在用户页完成角色改绑。`, null, 409)
   }
   roles = roles.filter((x) => x !== r)
   persist()

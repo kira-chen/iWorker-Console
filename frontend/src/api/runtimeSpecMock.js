@@ -8,6 +8,8 @@ import { attachPersist } from './mockPersist'
 import { listUsers } from './adminUserMock'
 import { listPositions } from './positionMock'
 import { listPositionAssignments } from './positionAssignmentMock'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
@@ -188,6 +190,8 @@ export async function assignRuntimeSpecUsers(specId, usernames = []) {
     target.directUsers.push(relation(username, user.displayName || username))
   })
   persist()
+  // md 访问审计 §6「运行规格记录」：个人例外确认配置后写入管理端操作
+  appendOpsRecord({ operator: currentDemoUsername(), module: '运行规格', action: '个人配置', target: target.name, detail: `为 ${unique.length} 个用户配置规格「${target.name}」` })
   return { count: unique.length, pending: false }
 }
 
@@ -258,5 +262,16 @@ export async function deleteRuntimeSpec(id) {
 export function __resetRuntimeSpecMock() {
   specs = seedSpecs()
   seq = 10
+  persist()
+}
+
+/**
+ * 删岗级联：把该岗位 id 从所有运行规格的 positionIds 里摘掉（positionMock.deletePosition 调用）。
+ * 不摘会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id 岗位
+ * 遗留的运行规格配置（2026-09-23 待办 yuepu#9⑥）。
+ */
+export function unassignPositionFromAllSpecs(positionId) {
+  const pid = Number(positionId)
+  specs.forEach((s) => { s.positionIds = s.positionIds.filter((id) => id !== pid) })
   persist()
 }

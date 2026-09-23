@@ -230,7 +230,10 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
 
   it('通过 POSITION 停用行 → 岗位变未发布，版本历史保留（md `prd.岗位.md` §3.5 L92/审核中心 §六 L91）', async () => {
     const posMock = await import('../positionMock')
+    const posAssign = await import('../positionAssignmentMock')
     posMock.__resetPositionMock()
+    // 402 种子被 li.na（userId 202）领用，本用例测的是停用审核联动，不是领用拦截（yuepu#9①）
+    await posAssign.setUserPosition(202, null)
     await posMock.unpublishPosition(402)
     const row = enroll({ type: 'POSITION', refId: 402, name: '客户成功岗', requestAction: 'DELIST', version: 'v1.4.0' })
 

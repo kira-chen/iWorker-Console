@@ -14,7 +14,7 @@ import {
   publishPosition,
   __resetPositionMock
 } from '../positionMock'
-import { _getRaw, _reset } from '../unifiedSkillMock'
+import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -60,6 +60,9 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(d.exampleQuestions.every((q) => q.trim())).toBe(true)
     expect(d.positionSop.startsWith('1. ')).toBe(true)
     expect(d.businessSystemIds).toEqual(['biz_2101'])
+    // md §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，种子未绑定，空数组
+    expect(d.connectorMcpIds).toEqual([])
+    expect(d.connectorApiIds).toEqual([])
     // 空态样本改用「新建岗位」：种子 404 市场研究岗已于 2026-09-09 补全为六项齐备，
     // 全套种子里不再有空白岗位；新建态才是这些字段真正的空态来源。
     const empty = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
@@ -67,22 +70,34 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(empty.exampleQuestions).toEqual(['', '', ''])
     expect(empty.positionSop).toBe('')
     expect(empty.businessSystemIds).toEqual([])
+    expect(empty.connectorMcpIds).toEqual([])
+    expect(empty.connectorApiIds).toEqual([])
   })
 
-  it('updatePosition 部分更新新字段并回详情树；businessSystemIds 引用可写', async () => {
+  it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {
     const d = await updatePosition(404, {
       claimDescriptions: ['第一条说明'],
       exampleQuestions: ['q1', 'q2', 'q3'],
       positionSop: '1. 第一步。',
-      businessSystemIds: ['biz_2101']
+      businessSystemIds: ['biz_2101'],
+      connectorMcpIds: ['knowledge_hub'],
+      connectorApiIds: ['api_1101']
     })
     expect(d.claimDescriptions).toEqual(['第一条说明'])
     expect(d.exampleQuestions).toEqual(['q1', 'q2', 'q3'])
     expect(d.positionSop).toBe('1. 第一步。')
     expect(d.businessSystemIds).toEqual(['biz_2101'])
+    expect(d.connectorMcpIds).toEqual(['knowledge_hub'])
+    expect(d.connectorApiIds).toEqual(['api_1101'])
+    // 2026-09-23 待办 yuepu#7①④：此前只写 Pinia store 未上送 payload，保存后刷新即丢——
+    // 验证 getPosition 重新拉取后仍在（真正的持久化回归，不只是 updatePosition 出参回显）
+    const reloaded = await getPosition(404)
+    expect(reloaded.connectorMcpIds).toEqual(['knowledge_hub'])
+    expect(reloaded.connectorApiIds).toEqual(['api_1101'])
     // 未含字段 = 不改
     const after = await updatePosition(404, { persona: 'x' })
     expect(after.claimDescriptions).toEqual(['第一条说明'])
+    expect(after.connectorMcpIds).toEqual(['knowledge_hub'])
   })
 
   it('mock 校验：描述 >2000（2026-09-20 待办 yuepu#8，原 500 与 UI/一览表不同源）/ 领用页文案 >6 条或单条 >300（同上，原 100）/ 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {
@@ -108,7 +123,7 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
     expect(a1.name).toBe('新 Agent')
     expect(a2.name).toBe('新 Agent 2')
     const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    // 3 = 种子 1 个（竞品跟踪，2026-09-09 补全）+ 本用例新建 2 个
+    // 3 = 种子 1 个（研究纪要整理，2026-09-09 补全）+ 本用例新建 2 个
     expect(row.agentCount).toBe(3)
   })
 
@@ -122,23 +137,65 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
     expect(row.agentCount).toBe(2)
     expect(row.skillCount).toBe(0)
   })
+
+  it('deleteAgent 级联清空自动化任务的 execAgentId，不留悬空裸 id（md §7.6，2026-09-23 待办 yuepu#9⑦）', async () => {
+    const sampleTaskMock = await import('../sampleTaskMock')
+    sampleTaskMock.__resetSampleTaskMock()
+    const d = await getPosition(401)
+    const agent = d.agents[0]
+    const created = await sampleTaskMock.createSampleTask(401, {
+      name: '待测任务', execType: 'AGENT', execAgentId: agent.agentId, sopDoc: '执行步骤说明'
+    })
+    expect(created.execAgentId).toBe(agent.agentId)
+    await deleteAgent(agent.agentId)
+    const after = await sampleTaskMock.getSampleTask(401, created.id)
+    expect(after.execAgentId).toBeNull()
+  })
 })
 
 describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同源联动）', () => {
   it('assignSkill 拉入技能：列表技能数 +1，技能 refNames 追加岗位名；detach 反向摘除', async () => {
-    // 404 种子自 2026-09-09 起有 1 个 Agent（竞品跟踪）+ 1 个技能（sk_307），故基线为 1 而非 0
+    // 404 种子自 2026-09-09 起有 1 个 Agent（研究纪要整理）+ 1 个技能（sk_305，故基线为 1 而非 0；
+    // 2026-09-23 待办 yuepu#9⑤：原引用 sk_303 违反 md §6.4 岗位私有类型限制，改引 sk_305）
     const d = await getPosition(404)
     expect(d.agents).toHaveLength(1)
     const agent = await createAgent(404, { name: '研究员' })
     const vo = await assignSkill('sk_301', agent.agentId)
     expect(vo).toMatchObject({ skillId: 'sk_301', name: '日报周报生成' })
     let row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(2) // sk_307（种子）+ sk_301（本用例）
+    expect(row.skillCount).toBe(2) // sk_305（种子）+ sk_301（本用例）
     expect(_getRaw('sk_301').refNames).toContain('市场研究岗')
     await detachSkill(agent.agentId, 'sk_301')
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(1) // 摘除 sk_301 后只剩种子的 sk_307
+    expect(row.skillCount).toBe(1) // 摘除 sk_301 后只剩种子的 sk_305
     expect(_getRaw('sk_301').refNames).not.toContain('市场研究岗')
+  })
+
+  it('assignSkill 拒绝非岗位私有类型技能（md §6.4，2026-09-23 待办 yuepu#9⑤）', async () => {
+    const agent = await createAgent(404, { name: '研究员' })
+    // sk_303 通用（SYSTEM_DEFAULT）、sk_302 市场技能（PLATFORM）均应被拒绝
+    await expect(assignSkill('sk_303', agent.agentId)).rejects.toThrow('岗位私有')
+    await expect(assignSkill('sk_302', agent.agentId)).rejects.toThrow('岗位私有')
+    const after = await getPosition(404)
+    expect(after.agents.find((a) => a.agentId === agent.agentId).skills).toHaveLength(0)
+  })
+
+  it('技能被删除后悬空引用不计入 skillCount，展示仍保留占位提示管理员清理（md §9.1 第 8 条，yuepu#9⑤）', async () => {
+    const empty = await createPosition({ name: `悬空引用岗_${Date.now()}` })
+    const agent = await createAgent(empty.positionId, { name: '研究员' })
+    const { skillId } = await createSkill({ name: `待删技能_${Date.now()}`, type: 'POSITION', categoryName: '办公效率' })
+    await assignSkill(skillId, agent.agentId)
+    let row = (await listPositions({ keyword: empty.name })).list[0]
+    expect(row.skillCount).toBe(1)
+    // 悬空引用要模拟的是「技能本体没了、岗位侧引用还留着」——不能走 detachSkill（那会同步摘掉引用）；
+    // 直接摆脱技能模块自己的引用保护（_reset 清 refNames，同单测惯用法）后再删
+    _reset(skillId, { refNames: [] })
+    await removeSkill(skillId)
+    row = (await listPositions({ keyword: empty.name })).list[0]
+    expect(row.skillCount).toBe(0) // 悬空引用不计数
+    const detail = await getPosition(empty.positionId)
+    const skillVo = detail.agents.find((a) => a.agentId === agent.agentId).skills[0]
+    expect(skillVo).toMatchObject({ name: '（技能已删除）', deleted: true }) // 展示仍保留占位，提示管理员清理
   })
 
   it('本岗位其它 Agent 已引用 → assign 视为跨泳道迁移；不存在的技能/Agent → 404', async () => {

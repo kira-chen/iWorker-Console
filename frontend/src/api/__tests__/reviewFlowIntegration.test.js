@@ -65,7 +65,10 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
 
   it('岗位：停用 → 撤回 → 两张表都没有它、岗位仍已发布；停用 → 通过 → 未发布', async () => {
     const pos = await import('../positionMock')
+    const posAssign = await import('../positionAssignmentMock')
     pos.__resetPositionMock()
+    // 402 种子被 li.na（userId 202）领用，本用例测的是停用状态机，不是领用拦截（yuepu#9①）
+    await posAssign.setUserPosition(202, null)
     await pos.unpublishPosition(402)
     let rows = await pendingRows(t, 'POSITION', 402)
     expect(rows.review.requestAction).toBe('DELIST')

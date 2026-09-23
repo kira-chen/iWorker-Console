@@ -383,8 +383,13 @@ function buildPayload() {
             description: (r.description || '').trim(),
             clientFill: !!r.clientFill
           }
-          const secret = (r.value || '').trim()
-          if (secret && !r.clientFill) p.value = secret
+          if (!r.clientFill) {
+            const secret = (r.value || '').trim()
+            if (secret) p.value = secret
+            // 留空=保留原值：回传掩码占位串，供 mock 认出同一行（即使位置/参数名改了），
+            // 而不是靠改前改后的 in+name 强匹配（2026-09-23 待办 yuepu#7⑥）
+            else if (r.valueMasked) p.valueMasked = r.valueMasked
+          }
           return p
         })
     }

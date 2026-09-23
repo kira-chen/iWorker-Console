@@ -52,6 +52,8 @@ import {
   validateMcpResponseMap
 } from '@/utils/knowledgeBaseMeta'
 import { MCP_TRANSPORTS, isHttpTransport, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
+// 2026-09-23 待办 yuepu#9④：岗位可见范围候选改从 positionMock 实时读，不再自己维护一份脱节的名单
+import { listAllPositions } from './positionMock'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let seq = 100
@@ -60,13 +62,6 @@ const nid = (p) => `${p}_${(seq++).toString(36).padStart(11, 'x')}`
 const EXPERTS = [
   { id: 'ex_1', name: '方案专家' },
   { id: 'ex_2', name: '售后专家' }
-]
-// D3（2026-09-10）：岗位可见范围种子与岗位模块（positionMock 401-404 四岗）对齐——
-// 岗位详情知识页签按「岗位名」关联（PositionDetailTabs 以 scopeRefName === 岗位名过滤），
-// 此前挂「销售顾问 / HR 专员」两个不存在的岗位，页签恒空、无从演示。
-const POSITIONS = [
-  { id: 'ps_1', name: '经营分析岗' }, // = positionMock 401
-  { id: 'ps_2', name: '财务审核岗' } // = positionMock 403
 ]
 const EMBEDDING_MODELS = [
   { id: 'md_emb_1', name: 'text-embedding-3-small' },
@@ -166,9 +161,10 @@ let rows = [
   { id: 'kb_1', name: '产品与解决方案库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
   { id: 'kb_2', name: '报价政策与折扣权限', icon: '💰', kbType: 'ENTERPRISE', scopeRefId: null, description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
   { id: 'kb_3', name: '法规与标准库', icon: '⚖️', kbType: 'ENTERPRISE', scopeRefId: null, description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
-  // D3：两库分别挂经营分析岗（ps_1）与财务审核岗（ps_2），名称/描述随岗位改写，让两岗知识页签都有数据可演示
-  { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefId: 'ps_1', description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
-  { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefId: 'ps_2', description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
+  // D3：两库分别挂经营分析岗（401）与财务审核岗（403），名称/描述随岗位改写，让两岗知识页签都有数据可演示
+  // （2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 的真实 positionId，不再是脱节的 'ps_1'/'ps_2'）
+  { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefId: 401, description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
+  { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefId: 403, description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
   { id: 'kb_6', name: '2026 产品白皮书库', icon: '📄', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
   // kb_7：全套唯一的「无数据源草稿」样本，用于演示发布前校验拦截（sourceIds 为空，勿加数据源）。
   // 2026-09-23：icon / description 原为空串，而两者均已必填（61dbd19 图标改必填、描述早已必填），
@@ -200,8 +196,11 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // version 8（2026-09-18）：①推翻 09-08 决议，MCP 种子加回 requestMap/responseMap/resultArrayPath，
 // API 种子 responseMap 行加 sourceField；②上传预处理删「替换连续空格/换行符/制表符」，UPLOAD 种子去
 // replaceWhitespace 键；旧快照两处结构均不兼容，弃用回种子。
-// version 9（2026-09-23）：kb_7 补 icon / description（原为空串，两者均已必填 → 该种子一编辑就存不回去）；
-// 旧快照里的 kb_7 仍是空值，弃用回种子。
+// version 9（2026-09-23，两处种子改动合并到同一次 bump，双方都需要丢弃旧快照）：
+// ① 待办 yuepu#9④：kb_4/kb_5 的 scopeRefId 由硬编码 'ps_1'/'ps_2' 改为 positionMock 真实 positionId
+//    （401/403）；旧快照仍是 'ps_1'/'ps_2'，在新版 scopeName() 里查无此岗位、静默显示可见范围为空。
+// ② kb_7 补 icon / description（原为空串，而两者均已必填 → 该种子一点编辑就存不回去）；
+//    旧快照里的 kb_7 仍是空值。
 const persist = attachPersist('knowledgeBase', {
   version: 9,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
@@ -266,7 +265,7 @@ function sourceVO(s) {
 }
 function scopeName(r) {
   if (r.kbType === 'EXPERT') return EXPERTS.find((e) => e.id === r.scopeRefId)?.name || ''
-  if (r.kbType === 'POSITION') return POSITIONS.find((p) => p.id === r.scopeRefId)?.name || ''
+  if (r.kbType === 'POSITION') return listAllPositions().find((p) => String(p.id) === String(r.scopeRefId))?.name || ''
   return ''
 }
 function vo(r) {
@@ -721,10 +720,17 @@ export async function testSource(sourceType, payload) {
         latencyMs: 168,
         ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})
       }
-  // 回写：已存在的数据源立即更新验证状态（列表概要随之变为「已连通」/「连接失败」）；
-  // 同时记录本次测试的配置签名，供保存时判定「刚测试过的这份配置」不重置为未验证。
+  // 回写：仅当「本次测的配置」与库内已保存的配置一致时才立即写回该行（列表概要随之变为
+  // 「已连通」/「连接失败」，决议第 9 项要的「测完不用保存就能看到」）；若表单里还带着未保存的
+  // 连接相关改动（地址/鉴权/映射/工具等，含尚未落库的新密钥），只记 lastTest 供保存时判定复用，
+  // 不碰库内行——否则【取消】不会回滚，库内行会被一次针对草稿改动的测试结果污染（2026-09-23
+  // 待办 yuepu#7⑦：改坏地址测试后取消，旧地址那行却被标了新结果，发布校验也跟着被放行/误拦）。
   const prev = payload?.sourceId ? sources.find((x) => x.id === payload.sourceId) : null
-  if (payload?.sourceId && prev) {
+  const draftUnsaved =
+    prev &&
+    (connSignature(sourceType, prev.config) !== connSignature(sourceType, mergeConfig(prev, payload)) ||
+      hasNewSecret(payload))
+  if (prev && !draftUnsaved) {
     Object.assign(prev, pickVerify(result))
     persist()
   }
@@ -782,7 +788,7 @@ export async function experts() {
 }
 export async function positions() {
   await delay(100)
-  return POSITIONS.map((p) => ({ ...p }))
+  return listAllPositions()
 }
 export async function embeddingModels() {
   await delay(100)

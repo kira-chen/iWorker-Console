@@ -68,10 +68,21 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     await expect(deleteUser(201)).rejects.toMatchObject({ message: '不能删除最后一个系统管理员' })
   })
 
-  it('角色列表：5 条种子含 userCount，按最近更新时间倒序；权限=页面名数组', async () => {
+  it('setUserRoles：改绑角色不得把最后一个系统管理员的管理员角色改没（2026-09-23 待办 yuepu#11④，护栏同 deleteUser）', async () => {
+    // 张伟（201）是唯一「系统管理员」——全量替换角色时若不含该角色即拒绝
+    await expect(setUserRoles(201, ['普通用户'])).rejects.toMatchObject({
+      message: '不能移除最后一个系统管理员的系统管理员角色'
+    })
+    // 先给李娜也加上系统管理员，此时张伟不再是唯一一个，改绑放行
+    await setUserRoles(202, ['系统配置员', '审计观察员', '系统管理员'])
+    await expect(setUserRoles(201, ['普通用户'])).resolves.toMatchObject({ roles: ['普通用户'] })
+  })
+
+  it('角色列表：5 条种子，userCount 实时统计自用户表（非种子静态值），按最近更新时间倒序；权限=页面名数组', async () => {
     const roles = await listRoles()
     expect(roles.map((r) => r.name)).toEqual(['系统管理员', '系统配置员', 'FDE 工程师', '普通用户', '审计观察员'])
-    expect(roles[0].userCount).toBe(2)
+    // 张伟是种子里唯一绑「系统管理员」的用户（2026-09-23 待办 yuepu#11①：此前读种子静态字段固定为 2，与实绑不符）
+    expect(roles[0].userCount).toBe(1)
     expect(roles.find((r) => r.name === '普通用户').modules).toEqual(['对话', '定时任务', '个人空间', '设置'])
   })
 
@@ -101,15 +112,24 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     await expect(setRolePermissions(r.id, [])).rejects.toMatchObject({ message: '请至少开通 1 个页面' })
   })
 
-  it('删角色分流：绑定用户 >0 拒删（带改绑指引）；userCount=0 可删', async () => {
+  it('删角色分流：绑定用户 >0 拒删（带改绑指引）；无绑定可删（userCount 实时统计，2026-09-23 待办 yuepu#11①：5 条种子角色实际均有绑定，无绑定须新建角色验证）', async () => {
     const roles = await listRoles()
     const bound = roles.find((r) => r.name === '普通用户')
     await expect(deleteRole(bound.id)).rejects.toMatchObject({
       message: expect.stringContaining('请先在用户页完成角色改绑')
     })
-    const free = roles.find((r) => r.name === '审计观察员')
+    const free = await createRole({ name: '内容运营', modules: ['驾驶舱'] })
     await expect(deleteRole(free.id)).resolves.toEqual({})
-    expect((await listRoles()).some((r) => r.name === '审计观察员')).toBe(false)
+    expect((await listRoles()).some((r) => r.name === '内容运营')).toBe(false)
+  })
+
+  it('createRole 名称/code 双查重：改名腾出旧 code 后，新角色不得沿用该 code（2026-09-23 待办 yuepu#11②）', async () => {
+    const admin = (await listRoles()).find((r) => r.name === '系统管理员')
+    await updateRole(admin.id, { name: '系统管理员（原）' }) // code 建后不变，仍为「系统管理员」
+    await expect(createRole({ name: '系统管理员', modules: ['驾驶舱'] })).rejects.toMatchObject({
+      field: 'name',
+      message: '角色名称已存在'
+    })
   })
 })
 
@@ -186,7 +206,8 @@ describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:ad
   it('createUser + deleteRole 落盘 → 重新 import（模拟刷新）→ 新用户仍在、被删角色不在、新建不撞号', async () => {
     const first = await import('../adminUserMock')
     const u = await first.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
-    const free = (await first.listRoles()).find((r) => r.name === '审计观察员')
+    // 5 条种子角色实际均有用户绑定（userCount 2026-09-23 起实时统计），须新建一个无绑定的角色再删
+    const free = await first.createRole({ name: '内容运营', modules: ['驾驶舱'] })
     await first.deleteRole(free.id)
     vi.resetModules()
     const fresh = await import('../adminUserMock')
@@ -195,8 +216,8 @@ describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:ad
     expect(users.list[0]).toMatchObject({ id: u.id, username: 'newuser' })
     expect((await fresh.listUsers()).total).toBe(14)
     const roles = await fresh.listRoles()
-    expect(roles).toHaveLength(4)
-    expect(roles.some((r) => r.name === '审计观察员')).toBe(false)
+    expect(roles).toHaveLength(5)
+    expect(roles.some((r) => r.name === '内容运营')).toBe(false)
     const again = await fresh.createUser({ username: 'another', displayName: '又一位', roleCodes: ['普通用户'] })
     expect(again.id).toBe(u.id + 1)
   })

@@ -162,6 +162,14 @@ function toRow(b) {
 }
 
 /* ================= 列表 / 详情 ================= */
+/**
+ * 全量业务系统行（同步，供 unifiedSkillMock 的工具坞候选/已引用工具实时读取，2026-09-23 待办
+ * yuepu#10②）：不能直接复用 listBizSystems——那是 async + delay，技能侧的同步调用链（模块初始化
+ * 时的 seedReviewSnapshots）用不了 async。
+ */
+export function listBizSystemsSync() {
+  return bizRows.map(toRow)
+}
 export async function listBizSystems(params = {}) {
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()
@@ -251,6 +259,9 @@ export async function updateBizSystem(id, payload) {
   await delay(250)
   const b = findBiz(id)
   if (!b) throw err('业务系统不存在')
+  // md-业务系统 §2 L41「审核中【编辑】置灰并提示"审核中不可编辑，如需修改请先撤回"」——
+  // UI 已拦，mock 兜底不留后门（同技能 K20 范式）
+  if (b.status === 'PENDING_REVIEW') throw err('审核中不可编辑，如需修改请先撤回')
   validateBizPayload(payload, b.id)
   applyBizPayload(b, payload)
   b.updatedAt = nowIso()
@@ -260,6 +271,11 @@ export async function updateBizSystem(id, payload) {
 
 export async function deleteBizSystem(id) {
   await delay(250)
+  const b = findBiz(id)
+  // md-业务系统 §2 L43-45「删除】仅"未发布"状态展示——审核中/已发布不可删，只靠 UI 藏按钮会被绕过
+  if (b && b.status !== 'NOT_PUBLISHED') {
+    throw err('删除仅适用于未发布状态的业务系统，审核中请先撤回、已发布请先停用')
+  }
   // 软引用（PRD 口径同 API 连接器）：被技能引用亦可删——列表侧已做「确认影响后继续删除」二次确认
   bizRows = bizRows.filter((b) => b.id !== id)
   persist()

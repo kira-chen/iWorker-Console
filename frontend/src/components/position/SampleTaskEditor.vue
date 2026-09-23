@@ -27,10 +27,14 @@
  * 2026-09-12 对齐 md §7（测试审计闭环批）：
  * - J5：退役 `embedded` 开关——本组件只在岗位「自动化任务」页签内联使用，无浮层态消费方，样式只留内联形态；
  * - K4：buildSchedule() 带 scheduleMode / periodicPreset / intervalCount / intervalUnit（§7.3）；
- * - K1 / K2：空闲时段提前准备默认开启，勾选 / 关闭两态提示分开（§7.3 L398-400）；
  * - J7 / K7 / K9：8000 字上限、引导文案与「已输入 N / 8000 字」计数（§7.4 / §7.7）；
  *   其中「提示词非必填」已被 2026-09-21 负责人拍板推翻——提示词现为必填（与任务名称 / 一句话指令同为保存必填）；
  * - K6 / K8 / J6：保存与创建 toast、搜索占位与空态、基本信息三处占位逐字照 md（§7.2 / §7.5 / §7.6 / §7.7）。
+ *
+ * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（不设定点时间，只定执行次数 + 执行时段，由系统
+ * 择机执行），删除原「空闲时段提前准备」勾选框（preKick 字段随之退役，§7.3）；同日新增「执行位置」
+ * 只读展示（云端 / Web 端 / 本地，无法改变，由 scheduleMode 派生：闲时模式为云端 + Web 端，其余三个
+ * 模式为全部三项），派生逻辑在 SchedulePicker（展示）与本文件 buildSchedule()（提交）各自实现一份。
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -68,10 +72,15 @@ const taskEnabled = computed(() => (props.sample?.status || 'ENABLED') === 'ENAB
 // ---- 表单模型（对齐 TaskEditor.form） ----
 function blankSchedule() {
   return {
+    // 执行位置只读展示、由 scheduleMode 派生（md §7.3，2026-09-23 负责人拍板：执行位置无法改变），
+    // 不存表单状态，见 buildSchedule() 的 execLocations 派生逻辑
     scheduleMode: 'PERIODIC',
     periodicPreset: 'DAILY',
     intervalCount: 1,
     intervalUnit: 'DAY',
+    idleCount: 1,
+    idleCountUnit: 'DAY',
+    idleWindow: 'NIGHT',
     scheduleType: 'DAILY',
     daysOfWeek: [],
     daysOfMonth: [],
@@ -92,8 +101,6 @@ const form = reactive({
   remark: '',
   schedule: blankSchedule(),
   sopDoc: '',
-  // 空闲时段提前准备：md §7.3 L398「默认开启」（2026-09-12 审计 K1）
-  preKick: true,
   toolRefs: [], // { type, code, requiresConfirmation }（ToolPicker selected 结构）
   skillRefs: [], // { platformSkillId, name }（引用平台技能）
   // 执行动作：触发时由谁来办（AGENT=整个交给某个 Agent；SKILL=按引用技能执行）
@@ -112,9 +119,6 @@ const SOP_MAX = 8000
 // 说明（备注）上限：计数器与 maxlength 共用它（2026-09-18 待办 yuepu#5⑧，此前两处各写一遍字面量 500，
 // 与 NAME_MAX/PROMPT_MAX 已经在用的「计数器与 maxlength 共用同一常量」模式看齐）
 const REMARK_MAX = 500
-// 空闲时段提前准备两态提示（md §7.3 L399-400，逐字；2026-09-12 审计 K2）
-const PRE_KICK_HINT_ON = '送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。'
-const PRE_KICK_HINT_OFF = '到点才开始执行，结果会晚几分钟。'
 
 const errors = reactive({ name: '', prompt: '', schedule: '', sopDoc: '', tools: '', skills: '' })
 const saving = ref(false)
@@ -324,6 +328,7 @@ function scheduleReady(sc) {
   const mode = sc.scheduleMode || 'PERIODIC'
   if (mode === 'ONCE' || sc.scheduleType === 'ONCE') return !!sc.onceAt
   if (mode === 'INTERVAL') return (sc.intervalCount || 0) > 0
+  if (mode === 'IDLE') return (sc.idleCount || 0) > 0
   if (!sc.times || !sc.times.length || sc.times.some((t) => !t)) return false
   if (sc.scheduleType === 'WEEKLY') return (sc.daysOfWeek || []).length > 0
   if (sc.scheduleType === 'MONTHLY') return (sc.daysOfMonth || []).length > 0
@@ -361,7 +366,12 @@ async function doPreview() {
 function buildSchedule() {
   const sc = form.schedule
   const mode = sc.scheduleMode || 'PERIODIC'
-  const out = { scheduleMode: mode, scheduleType: sc.scheduleType }
+  const out = {
+    // 执行位置由模式派生、只读不可编辑（md §7.3，2026-09-23 负责人拍板），与 SchedulePicker 同一规则
+    execLocations: mode === 'IDLE' ? ['CLOUD', 'WEB'] : ['CLOUD', 'WEB', 'LOCAL'],
+    scheduleMode: mode,
+    scheduleType: sc.scheduleType
+  }
   if (mode === 'ONCE') {
     out.scheduleType = 'ONCE'
     out.onceAt = sc.onceAt
@@ -371,6 +381,12 @@ function buildSchedule() {
     out.scheduleType = `INTERVAL_${out.intervalUnit}`
     // 每间隔模式：times[0] 为起始时刻（md §7.3 L396）
     out.times = dedupeTimes(sc.times).slice(0, 1)
+  } else if (mode === 'IDLE') {
+    // 闲时：不设定点时间，只带执行次数 + 执行时段（md §7.3 闲时模式专属字段）
+    out.scheduleType = 'IDLE'
+    out.idleCount = sc.idleCount || 1
+    out.idleCountUnit = sc.idleCountUnit || 'DAY'
+    out.idleWindow = sc.idleWindow || 'NIGHT'
   } else {
     out.periodicPreset = sc.periodicPreset || 'DAILY'
     out.times = dedupeTimes(sc.times)
@@ -423,6 +439,11 @@ function validate() {
   } else if (mode === 'INTERVAL') {
     if (!(sc.intervalCount > 0)) {
       errors.schedule = '请填写间隔数量'
+      ok = false
+    }
+  } else if (mode === 'IDLE') {
+    if (!(sc.idleCount > 0)) {
+      errors.schedule = '请填写执行次数'
       ok = false
     }
   } else {
@@ -502,7 +523,6 @@ async function save() {
     remark: form.remark.trim() || undefined,
     schedule: buildSchedule(),
     sopDoc: form.sopDoc,
-    preKick: form.preKick,
     toolRefs: buildToolRefs(),
     skillRefs: buildSkillRefs(),
     execType: form.execType || EXEC_TYPE_DEFAULT,
@@ -556,8 +576,6 @@ function fillFrom(sample) {
     form.remark = ''
     form.schedule = blankSchedule()
     form.sopDoc = ''
-    // 新建态复位到默认开启（md §7.3 L398；2026-09-12 审计 K1）
-    form.preKick = true
     form.toolRefs = []
     form.skillRefs = []
     form.execType = EXEC_TYPE_DEFAULT
@@ -573,6 +591,9 @@ function fillFrom(sample) {
       periodicPreset: sample.schedule?.periodicPreset || 'DAILY',
       intervalCount: sample.schedule?.intervalCount || 1,
       intervalUnit: sample.schedule?.intervalUnit || 'DAY',
+      idleCount: sample.schedule?.idleCount || 1,
+      idleCountUnit: sample.schedule?.idleCountUnit || 'DAY',
+      idleWindow: sample.schedule?.idleWindow || 'NIGHT',
       scheduleType: sample.schedule?.scheduleType || 'DAILY',
       daysOfWeek: sample.schedule?.daysOfWeek || [],
       daysOfMonth: sample.schedule?.daysOfMonth || [],
@@ -582,8 +603,6 @@ function fillFrom(sample) {
       endDate: sample.schedule?.endDate || ''
     }
     form.sopDoc = sample.sopDoc || ''
-    // 存量无该字段时按 md §7.3 L398 默认开启（2026-09-12 审计 K1）
-    form.preKick = sample.preKick ?? true
     form.toolRefs = (sample.toolRefs || []).map((t) => ({
       type: t.type,
       code: t.code,
@@ -699,13 +718,6 @@ onMounted(async () => {
             :preview-error="previewError"
             @preview="onScheduleChange"
           />
-          <!-- 空闲时段提前准备：默认开启，勾选 / 关闭两态提示分开（md §7.3 L398-400；2026-09-12 审计 K1 / K2） -->
-          <div class="te-pre-kick">
-            <el-checkbox v-model="form.preKick" @change="markDirty">
-              空闲时段提前准备
-            </el-checkbox>
-            <p class="te-pre-kick-hint">{{ form.preKick ? PRE_KICK_HINT_ON : PRE_KICK_HINT_OFF }}</p>
-          </div>
         </div>
       </section>
 
@@ -1315,19 +1327,6 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 空闲时段提前准备勾选区 */
-.te-pre-kick {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-soft);
-}
-.te-pre-kick-hint {
-  margin: 4px 0 0 24px;
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-  line-height: 1.6;
 }
 
 /* 执行动作：「技能 / Agent」两个单选横排 */

@@ -151,11 +151,12 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
   })
 
   it('已发布改可见范围 → 回未发布重审（md §三.5）；名称描述照常保存不回退', async () => {
-    // 种子 kb_4：岗位知识库（ps_1）已发布。
-    // 2026-09-10 D3：岗位种子对齐岗位模块四岗后，ps_1/ps_2 = 经营分析岗/财务审核岗，名称与断言随种子更新。
-    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_1' })
+    // 种子 kb_4：岗位知识库（positionMock 401 经营分析岗）已发布。
+    // 2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 真实 positionId（401/403），
+    // 不再是脱节的 'ps_1'/'ps_2'。
+    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 401 })
     expect(r.status).toBe('PUBLISHED')
-    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_2' })
+    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 403 })
     expect(r.status).toBe('DRAFT')
     expect(r.scopeRefName).toBe('财务审核岗')
   })
@@ -456,21 +457,25 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
-  it('列表概要（2026-09-08 决议第 9 项 md §八.1 L417）：新建未测试「未验证」→ 测试通过「已连通」(MCP 附工具名) → 失败「连接失败」→ 改配置重置「未验证」', async () => {
+  it('列表概要（2026-09-08 决议第 9 项 md §八.1 L417）：新建未测试「未验证」→ 测试通过「已连通」(MCP 附工具名) → 保存刚测试失败的草稿「连接失败」→ 改配置重置「未验证」', async () => {
     // 新建保存未测试前 → 未验证
     const s = await createSource({ sourceType: 'MCP', name: uniq('概要MCP'), config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
     expect(s.verifyStatus).toBe('UNVERIFIED')
     expect(s.summary).toBe('未验证')
-    // 连接测试通过 → 回写列表概要「已连通 · 所选工具名」
+    // 连接测试通过（测的就是已保存的这份配置）→ 立即回写列表概要「已连通 · 所选工具名」
     await testSource('MCP', { sourceId: s.id, config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
     let cur = (await listSources({ sourceType: 'MCP' })).list.find((x) => x.id === s.id)
     expect(cur.verifyStatus).toBe('SUCCESS')
     expect(cur.summary).toBe('已连通 · search_documents、hybrid_search')
-    // 测试失败 → 连接失败
+    // 测一份尚未保存的草稿改动（换服务地址）失败 → 只记 lastTest、不碰库内行，列表概要仍是刚才的
+    // 「已连通」（2026-09-23 待办 yuepu#7⑦：此前会立即回写，改坏地址测完一取消，库内这行就被污染）
     await testSource('MCP', { sourceId: s.id, config: mcpConfig({ endpoint: 'https://mcp.fail.example.com/mcp', tools: ['search_documents'] }) })
     cur = (await listSources({ sourceType: 'MCP' })).list.find((x) => x.id === s.id)
-    expect(cur.summary).toBe('连接失败')
-    // 修改连接配置（换服务地址）后保存 → 重置未验证
+    expect(cur.summary).toBe('已连通 · search_documents、hybrid_search') // 未被草稿测试污染
+    // 保存刚测试过的这份草稿 → justTested 复用同一测试结果（决议第 9 项）→ 列表变「连接失败」
+    const savedFail = await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ endpoint: 'https://mcp.fail.example.com/mcp', tools: ['search_documents'] }) })
+    expect(savedFail.summary).toBe('连接失败')
+    // 再改连接配置（换服务地址）保存、且没测过这份新配置 → 重置未验证
     const s2 = await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ endpoint: 'https://mcp2.example.com/mcp', tools: ['search_documents'] }) })
     expect(s2.verifyStatus).toBe('UNVERIFIED')
     expect(s2.summary).toBe('未验证')
@@ -498,6 +503,22 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     const saved2 = await updateSource(created.id, { sourceType: 'API', name: created.name, config: apiConfig({ url: 'https://untested.example.com/search' }) })
     expect(saved2.verifyStatus).toBe('UNVERIFIED')
     expect(saved2.summary).toBe('未验证')
+  })
+
+  it('测试未保存的草稿改动后取消（不调 updateSource）→ 库内行原封不动，不留痕（2026-09-23 待办 yuepu#7⑦）', async () => {
+    const cfg = apiConfig({ url: 'https://kept.example.com/search' })
+    await testSource('API', { config: cfg })
+    const s = await createSource({ sourceType: 'API', name: uniq('取消不回滚'), config: cfg })
+    await testSource('API', { sourceId: s.id, config: cfg }) // 测的是已保存的这份 → 立即回写
+    const before = (await listSources({ keyword: s.name })).list[0]
+    expect(before.verifyStatus).toBe('SUCCESS')
+    expect(before.summary).toBe('已连通')
+    // 编辑器里改坏地址后点【测试连接】，但用户随后点了【取消】——不调 updateSource
+    await testSource('API', { sourceId: s.id, config: apiConfig({ url: 'https://mcp.fail.example.com/search' }) })
+    const after = (await listSources({ keyword: s.name })).list[0]
+    expect(after.verifyStatus).toBe('SUCCESS') // 库内仍是「已连通」，未被这次针对草稿的失败测试污染
+    expect(after.summary).toBe('已连通')
+    expect(after.config.url).toBe('https://kept.example.com/search') // 地址也没被草稿改动带偏
   })
 
   it('文档解析流转（md §五.3）：上传后进入等待/解析中，未到时限不会立即解析成功', async () => {
@@ -776,7 +797,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(9)
+    expect(snap.v).toBe(9) // v9：POSITION 型 scopeRefId 改真实 positionId（待办 yuepu#9④）+ kb_7 补 icon/description
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')
