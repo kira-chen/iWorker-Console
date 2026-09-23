@@ -16,6 +16,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
  */
 import * as mock from '@/api/unifiedSkillMock'
 import { derivePlatformState } from '@/utils/skillPublication'
+// 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
+// 动态 import 在那之后拿到的会是另一个模块实例，跟 unifiedSkillMock 内部静态 import 的
+// mcpConnectorMock 对不上（同 positionMock.test.js 排查过的同一类坑，2026-09-23 待办 yuepu#10②）
+import { createMcp, deleteMcp } from '@/api/mcpConnectorMock'
 
 const CAT = '办公效率'
 
@@ -295,6 +299,49 @@ describe('文件层基础能力（编辑页可打开/可改/可存）', () => {
   })
 })
 
+describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L173，2026-09-23 待办 yuepu#10①②）', () => {
+  it('保存 SKILL.md 正文后 toolRefs/toolCount 随 @tool[code] 标记同步；类别标签跟着派生', async () => {
+    const id = await mkSkill({ name: '正文工具联动' })
+    let detail = await mock.getSkillDetail(id)
+    expect(detail.category).toBe('QUERY') // 无工具引用时的默认（未引用写类工具视为查询类）
+    expect(detail.referencedTools).toEqual([])
+
+    await mock.updateSkill(id, { skillMd: '# 正文\n\n引用 @tool[mcp__knowledge_hub] 查资料\n' })
+    detail = await mock.getSkillDetail(id)
+    expect(detail.referencedTools.map((t) => t.code)).toEqual(['mcp__knowledge_hub'])
+    expect(detail.referencedTools[0].bizName).toBe('企业知识库 MCP') // 实时读 mcpConnectorMock 真实种子
+    let row = (await mock.listUnifiedSkills({ keyword: '正文工具联动', size: 10 })).list[0]
+    expect(row.toolCount).toBe(1)
+
+    // 换成写类工具（业务系统）→ 类别标签变操作类
+    await mock.updateSkill(id, { skillMd: '# 正文\n\n@tool[biz__biz_2102]\n' })
+    detail = await mock.getSkillDetail(id)
+    expect(detail.category).toBe('OPERATION')
+
+    // 删光标记 → toolCount 回 0
+    await mock.updateSkill(id, { skillMd: '# 正文\n\n没有工具了\n' })
+    row = (await mock.listUnifiedSkills({ keyword: '正文工具联动', size: 10 })).list[0]
+    expect(row.toolCount).toBe(0)
+  })
+
+  it('新建的 MCP 立即进入工具坞候选；连接器被删除后已引用工具侧回落显示 code', async () => {
+    const created = await createMcp({ name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx' })
+    const candidates = await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })
+    expect(candidates.some((t) => t.code === `mcp__${created.code}` && t.bizName === '测试专用 MCP')).toBe(true)
+
+    const id = await mkSkill({ name: '健康度联动' })
+    await mock.updateSkill(id, { skillMd: `# 正文\n\n@tool[mcp__${created.code}]\n` })
+    let detail = await mock.getSkillDetail(id)
+    expect(detail.referencedTools[0].bizName).toBe('测试专用 MCP')
+
+    // 新建 MCP 未发布态可删（yuepu#7②状态守卫）；删除后技能侧不再假装「连接正常」，回落显示 code
+    await deleteMcp(created.code)
+    detail = await mock.getSkillDetail(id)
+    expect(detail.referencedTools[0].bizName).toBe(`mcp__${created.code}`)
+    expect(detail.referencedTools[0].checkStatus).toBe('UNKNOWN')
+  })
+})
+
 describe('审核锁定写守卫（md §二.2 L120 / §三.1 L141，2026-09-12 审计 K20）', () => {
   it('在审技能（publish / stop 两种 pendingAction）→ updateSkill / setSkillCategory / saveSkillFile / deleteSkillFile / renameSkillFile 一律 40900「技能审核中，已锁定不可修改」，撤回后放行', async () => {
     const id = await mkSkill({ name: '锁定测试' })
@@ -348,14 +395,15 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
     expect(b.question).not.toBe(a.question) // 轮换 → 覆盖可感知
   })
 
-  it('toolPicker 按类型过滤（MCP/API/BIZ_SYSTEM），关键词可搜', async () => {
+  it('toolPicker 按类型过滤（MCP/API/BIZ_SYSTEM），关键词可搜；候选实时读三个连接器 mock（2026-09-23 待办 yuepu#10②）', async () => {
     const mcp = await mock.toolPicker({ type: 'MCP' })
     expect(mcp.length).toBeGreaterThan(0)
     expect(mcp.every((t) => t.code.startsWith('mcp__'))).toBe(true)
+    // 候选取自 bizSystemMock 真实种子（人力资源系统 biz_2102），不再是与之脱钩的静态目录
     const biz = await mock.toolPicker({ type: 'BIZ_SYSTEM' })
-    expect(biz.some((t) => t.bizName === '人事系统')).toBe(true)
-    const kw = await mock.toolPicker({ type: 'API', keyword: '客户' })
-    expect(kw.map((t) => t.bizName)).toEqual(['客户数据 API'])
+    expect(biz.some((t) => t.bizName === '人力资源系统')).toBe(true)
+    const kw = await mock.toolPicker({ type: 'API', keyword: '客户资料' })
+    expect(kw.map((t) => t.bizName)).toEqual(['客户资料查询'])
   })
 })
 
