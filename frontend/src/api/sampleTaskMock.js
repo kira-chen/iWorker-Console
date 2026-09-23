@@ -24,11 +24,19 @@ let sampleSeq = 7101
 /* ---------------- 调度摘要 / 预览（本地纯计算，无时区：按浏览器本地墙钟） ---------------- */
 
 const WEEK_CN = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日' }
+const IDLE_UNIT_CN = { DAY: '天', WEEK: '周', MONTH: '月' }
+const IDLE_WINDOW_CN = { NIGHT: '夜间闲时（00:00–06:00）', ANYTIME: '不限时段，按系统负载调度' }
 
 export function summarizeSchedule(schedule = {}) {
   const times = (schedule.times || []).filter(Boolean)
   const t = times.join('、')
   switch (schedule.scheduleType) {
+    // 闲时（2026-09-23 新增）：无定点时间，人话摘要展示「每 X 次·时段」，触发时刻由系统择机决定
+    case 'IDLE': {
+      const unit = IDLE_UNIT_CN[schedule.idleCountUnit] || '天'
+      const win = IDLE_WINDOW_CN[schedule.idleWindow] || IDLE_WINDOW_CN.NIGHT
+      return `每${unit} ${schedule.idleCount || 1} 次 · ${win} · 系统择机执行`
+    }
     case 'ONCE':
       return schedule.onceAt ? `${String(schedule.onceAt).replace('T', ' ')} 执行一次` : '执行一次'
     case 'WEEKLY': {
@@ -63,6 +71,8 @@ export function computeNextRunTimes(schedule = {}, count = 3) {
   if (schedule.scheduleType === 'ONCE') {
     return schedule.onceAt ? [fmtDt(new Date(schedule.onceAt))] : []
   }
+  // 闲时（2026-09-23 新增）：触发时刻不固定，不产出具体时间点，人话摘要已经说明「系统择机执行」
+  if (schedule.scheduleType === 'IDLE') return []
   const out = []
   const now = new Date()
   const times = (schedule.times || []).filter(Boolean)
@@ -283,7 +293,8 @@ const persist = attachPersist('sampleTask', {
   // v2（2026-09-09）：404 市场研究岗补 1 条自动化任务（种子结构变更须 bump，否则存量快照会
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
   // v5（2026-09-12 审计 K1）：preKick 缺省由 false 改 true（md §7.3 L398「默认开启」），VO 形状变更 bump
-  version: 5,
+  // v6（2026-09-23 负责人拍板）：删除 preKick 字段、执行频率新增「闲时」模式，VO 形状变更 bump
+  version: 6,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {
@@ -307,8 +318,6 @@ function findSample(positionId, sampleId) {
 function toVO(s, warnings) {
   const vo = {
     ...s,
-    // 空闲时段提前准备缺省开启（md §7.3 L398；2026-09-12 审计 K1）
-    preKick: s.preKick ?? true,
     schedule: JSON.parse(JSON.stringify(s.schedule)),
     toolRefs: (s.toolRefs || []).map((t) => ({ ...t })),
     skillRefs: (s.skillRefs || []).map((r) => ({ ...r })),
@@ -328,11 +337,15 @@ function normalizeUpsert(payload = {}) {
     prompt: String(payload.prompt || ''),
     remark: String(payload.remark || ''),
     schedule: {
+      execLocations: payload.schedule?.execLocations?.length ? [...payload.schedule.execLocations] : ['CLOUD', 'WEB', 'LOCAL'],
       scheduleType: payload.schedule?.scheduleType || 'DAILY',
       scheduleMode: payload.schedule?.scheduleMode || 'PERIODIC',
       periodicPreset: payload.schedule?.periodicPreset || 'DAILY',
       intervalCount: payload.schedule?.intervalCount || 1,
       intervalUnit: payload.schedule?.intervalUnit || 'DAY',
+      idleCount: payload.schedule?.idleCount || 1,
+      idleCountUnit: payload.schedule?.idleCountUnit || 'DAY',
+      idleWindow: payload.schedule?.idleWindow || 'NIGHT',
       times: [...(payload.schedule?.times || [])],
       daysOfWeek: [...(payload.schedule?.daysOfWeek || [])],
       daysOfMonth: [...(payload.schedule?.daysOfMonth || [])],
@@ -341,7 +354,6 @@ function normalizeUpsert(payload = {}) {
       endDate: payload.schedule?.endDate || ''
     },
     sopDoc: String(payload.sopDoc || ''),
-    preKick: payload.preKick ?? true,
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' })),
     execType: payload.execType || 'SKILL',

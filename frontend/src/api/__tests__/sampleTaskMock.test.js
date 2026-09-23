@@ -27,7 +27,7 @@ const validPayload = (over = {}) => ({
   ...over
 })
 
-describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock；c40c606 三模式+preKick；2026-09-12 审计 K1/K5/J7 → persist v5；md 岗位 §7）', () => {
+describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock；c40c606 三模式；2026-09-12 审计 K5/J7；2026-09-23 新增闲时模式、删 preKick → persist v6；md 岗位 §7）', () => {
   // 2026-09-09：404 市场研究岗补全为「未发布 + 六项齐备」样本后不再是空态，空态样本改用 403。
   it('种子与岗位同源：401 八条 / 404 一条（含 scheduleSummary/toolRefs/skillRefs），403 空态', async () => {
     const p401 = await listSampleTasks(401)
@@ -76,13 +76,24 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
     await expect(deleteSampleTask(401, list[0].id)).rejects.toThrow('不存在')
   })
 
-  it('K1 preKick 缺省开启：payload 不带 preKick → VO.preKick=true；显式 false 落 false；种子（无该字段）读出 true（md §7.3 L398）', async () => {
+  it('闲时（2026-09-23 新增）：新建 → VO.scheduleSummary 含「每 X 次」「系统择机执行」；详情读回 idleCount/idleCountUnit/idleWindow 三字段', async () => {
+    const vo = await createSampleTask(404, validPayload({
+      schedule: { scheduleMode: 'IDLE', scheduleType: 'IDLE', idleCount: 2, idleCountUnit: 'WEEK', idleWindow: 'NIGHT' }
+    }))
+    expect(vo.scheduleSummary).toBe('每周 2 次 · 夜间闲时（00:00–06:00） · 系统择机执行')
+    const back = await getSampleTask(404, vo.id)
+    expect(back.schedule).toMatchObject({ scheduleMode: 'IDLE', idleCount: 2, idleCountUnit: 'WEEK', idleWindow: 'NIGHT' })
+  })
+
+  it('执行位置（2026-09-23 新增，可多选）：payload 不带 execLocations → 默认全选三项；显式传入则原样落地', async () => {
     const vo = await createSampleTask(404, validPayload())
-    expect(vo.preKick).toBe(true)
-    const off = await createSampleTask(404, validPayload({ name: '关闭提前准备', preKick: false }))
-    expect(off.preKick).toBe(false)
-    expect((await getSampleTask(404, off.id)).preKick).toBe(false)
-    expect((await listSampleTasks(401)).list[0].preKick).toBe(true)
+    expect(vo.schedule.execLocations).toEqual(['CLOUD', 'WEB', 'LOCAL'])
+    const custom = await createSampleTask(404, validPayload({
+      name: '自定义执行位置任务',
+      schedule: { scheduleType: 'DAILY', times: ['10:00'], execLocations: ['CLOUD'] }
+    }))
+    expect(custom.schedule.execLocations).toEqual(['CLOUD'])
+    expect((await getSampleTask(404, custom.id)).schedule.execLocations).toEqual(['CLOUD'])
   })
 
   it('调度预览：summary 人话 + 未来触发时间条数正确；ONCE 缺时间被拦', async () => {
@@ -144,6 +155,11 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
     expect(computeNextRunTimes({ scheduleType: 'ONCE', onceAt: '2027-01-01T09:00' })).toEqual(['2027-01-01 09:00'])
   })
 
+  it('闲时（2026-09-23 新增）：computeNextRunTimes 不产出具体时间点；summarizeSchedule 默认按天 + 不限时段', () => {
+    expect(computeNextRunTimes({ scheduleType: 'IDLE', idleCount: 1, idleCountUnit: 'DAY', idleWindow: 'ANYTIME' }, 3)).toEqual([])
+    expect(summarizeSchedule({ scheduleType: 'IDLE', idleCount: 1, idleWindow: 'ANYTIME' })).toBe('每天 1 次 · 不限时段，按系统负载调度 · 系统择机执行')
+  })
+
   it('试跑（demo 拟真）：回 AttemptResult 口径（success + steps 含模拟工具步）', async () => {
     const { list } = await listSampleTasks(401)
     const r = await testRunSampleTask(401, list[0].id)
@@ -153,7 +169,7 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
   })
 })
 
-describe('sampleTaskMock · 持久化读回（mockPersist v5；2026-09-12 审计 K1 preKick 缺省改 true 后 bump）', () => {
+describe('sampleTaskMock · 持久化读回（mockPersist v6；2026-09-23 删 preKick + 新增闲时模式后 bump）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 mockPersist.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:sampleTask'
@@ -177,10 +193,10 @@ describe('sampleTaskMock · 持久化读回（mockPersist v5；2026-09-12 审计
     vi.resetModules()
   })
 
-  it('createSampleTask 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 404 列表含新建任务', async () => {
+  it('createSampleTask 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 404 列表含新建任务', async () => {
     const first = await import('../sampleTaskMock')
     await first.createSampleTask(404, validPayload({ name: '读回验证任务' }))
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(5)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
     vi.resetModules()
     const fresh = await import('../sampleTaskMock')
     const { list, total } = await fresh.listSampleTasks(404)
@@ -188,8 +204,8 @@ describe('sampleTaskMock · 持久化读回（mockPersist v5；2026-09-12 审计
     expect(list.map((s) => s.name)).toContain('读回验证任务')
   })
 
-  it('存量 v4 快照（preKick 缺省 false 的旧结构）→ 启动时丢弃、回代码种子（401 八条），旧 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 4, data: { sampleSeq: 9999, samplesByPosition: { 401: [] } } }))
+  it('存量 v5 快照（preKick 字段仍在的旧结构）→ 启动时丢弃、回代码种子（401 八条），旧 key 被清掉', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { sampleSeq: 9999, samplesByPosition: { 401: [] } } }))
     const fresh = await import('../sampleTaskMock')
     expect((await fresh.listSampleTasks(401)).total).toBe(8)
     // mockPersist 版本不符即 removeItem；之后尚无写点，key 应为空
