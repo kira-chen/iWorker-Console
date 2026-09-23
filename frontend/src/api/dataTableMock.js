@@ -389,3 +389,13 @@ export function __resetDataTableMock() {
   tablesByPosition = buildSeed()
   persist()
 }
+
+/**
+ * 删岗级联：清掉该岗位名下的全部工作档案（positionMock.deletePosition 调用）。
+ * 不清会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id
+ * 岗位遗留的档案（2026-09-23 待办 yuepu#9⑥）。
+ */
+export function deleteAllForPosition(positionId) {
+  delete tablesByPosition[String(positionId)]
+  persist()
+}

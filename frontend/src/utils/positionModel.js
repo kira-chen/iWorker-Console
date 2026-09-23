@@ -492,10 +492,12 @@ export const POSITION_BUMP_OPTIONS = [
 /**
  * md §9.1 第 8 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
  * 口径取「存在某个 Agent 其技能数 ≥ 1」（不要求每个 Agent 都有技能——md 用的是「该 Agent」单数指代）。
+ * 悬空引用（skillRefVO 标 deleted:true，技能本体已被删除）不算数——否则技能被删后发布门仍放行
+ * （2026-09-23 待办 yuepu#9⑤）。
  */
 export function agentsWithSkillOk(agents) {
   const list = Array.isArray(agents) ? agents : []
-  return list.some((a) => Array.isArray(a?.skills) && a.skills.length > 0)
+  return list.some((a) => Array.isArray(a?.skills) && a.skills.some((s) => !s?.deleted))
 }
 
 /**

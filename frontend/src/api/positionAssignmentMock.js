@@ -10,7 +10,7 @@
  * 依赖方向：本文件 → positionApplicationsMock（单向，原方向已反转）。
  */
 import { ApiError } from './request'
-import { getPositionNameById } from './positionMock'
+import { getPositionNameById, isPositionBindable } from './positionMock'
 import { getPendingApplicationByUserId } from './positionApplicationsMock'
 import { attachPersist } from './mockPersist'
 
@@ -90,6 +90,10 @@ export async function setUserPosition(userId, positionId) {
   if (!row) throw err('用户不存在', null, 404)
   if (positionId != null && positionId !== '') {
     if (!getPositionNameById(positionId)) throw err('岗位不存在或已删除')
+    // md 岗位管理 §六 L89「未发布岗位（含首次发布审核中）不进入下拉选项」——此前只在 UI 按
+    // status==='published' 过滤候选，mock 数据层不拦，绕过 UI 直调可把用户绑到未发布岗位
+    // （2026-09-23 待办 yuepu#9③）
+    if (!isPositionBindable(positionId)) throw err('岗位未发布，暂不可绑定')
     row.positionId = Number(positionId)
   } else {
     row.positionId = null
@@ -105,6 +109,16 @@ export async function setUserPosition(userId, positionId) {
 export function getAssignmentByUserId(userId) {
   const row = assignments.find((r) => String(r.userId) === String(userId))
   return row ? toRow(row) : null
+}
+
+/**
+ * 按岗位 id 统计当前绑定的用户数（岗位侧「领用数」claimedUserCount 派生用，2026-09-23 待办
+ * yuepu#9①：此前岗位侧是静态种子，分配表增减用户不回写，停用/删除的「已被 N 个用户领用」
+ * 拦截永远读的是种子里的老数字）。账号启停是另一回事，此处不按 status 过滤——解绑
+ * （setUserPosition 传 null）才代表解除领用，停用账号不等于解除领用。
+ */
+export function countAssignedUsers(positionId) {
+  return assignments.filter((r) => String(r.positionId) === String(positionId)).length
 }
 
 /** 测试辅助：重置种子。 */

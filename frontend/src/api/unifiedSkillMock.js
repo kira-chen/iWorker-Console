@@ -179,7 +179,10 @@ const skills = [
   seed({
     id: 'sk_305', type: 'POSITION', name: '客户拜访准备', icon: '✦',
     description: '汇总客户资料并生成拜访提纲', category: '办公效率',
-    refNames: ['客户成功岗'], // 与 positionMock 实际引用同源（2026-09-02 种子自洽治理：随治理改为已发布）
+    // 与 positionMock 实际引用同源（2026-09-02 种子自洽治理：随治理改为已发布）；
+    // 2026-09-23 待办 yuepu#9⑤：404 市场研究岗改引本技能（原引用的通用技能 sk_303 违反
+    // md §6.4「Agent 只能引用岗位私有类型的技能」）——同一岗位私有技能允许被多岗位重复引用
+    refNames: ['客户成功岗', '市场研究岗'],
     status: 'published', version: 'v1.0.0',
     createdAt: '2026-08-21 10:40', updatedAt: '2026-08-21 10:40', publishedAt: '2026-08-21 15:00',
     exampleQuestion: '帮我准备明天拜访这家客户的提纲',
@@ -989,8 +992,10 @@ let reviewSnapshots = {}
 // bump 丢弃旧快照重播种子。
 // version 5（2026-09-18 技能同名校验）：新增 skillMdName（SKILL.md 内 name 字段，zip 导入全局唯一校验用）；
 // 旧快照无该键 → bump 丢弃重播种子，避免存量行 skillMdName 缺失导致校验漏判。
+// version 6（2026-09-23 待办 yuepu#9⑤）：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用
+// 的通用技能 sk_303 违反 md §6.4）；旧快照仍是 ['客户成功岗']，bump 丢弃重播种子。
 const persist = attachPersist('unifiedSkill', {
-  version: 5,
+  version: 6,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (

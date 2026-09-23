@@ -260,3 +260,14 @@ export function __resetRuntimeSpecMock() {
   seq = 10
   persist()
 }
+
+/**
+ * 删岗级联：把该岗位 id 从所有运行规格的 positionIds 里摘掉（positionMock.deletePosition 调用）。
+ * 不摘会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id 岗位
+ * 遗留的运行规格配置（2026-09-23 待办 yuepu#9⑥）。
+ */
+export function unassignPositionFromAllSpecs(positionId) {
+  const pid = Number(positionId)
+  specs.forEach((s) => { s.positionIds = s.positionIds.filter((id) => id !== pid) })
+  persist()
+}

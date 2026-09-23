@@ -508,3 +508,30 @@ export function __resetSampleTaskMock() {
   samplesByPosition = buildSeed()
   persist()
 }
+
+/**
+ * 删岗级联：清掉该岗位名下的全部自动化任务（positionMock.deletePosition 调用）。
+ * 不清会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id
+ * 岗位遗留的任务（2026-09-23 待办 yuepu#9⑥）。
+ */
+export function deleteAllForPosition(positionId) {
+  delete samplesByPosition[String(positionId)]
+  persist()
+}
+
+/**
+ * 删 Agent 级联：把引用该 Agent 的自动化任务的 execAgentId 清空（positionMock.deleteAgent 调用）。
+ * 不清会导致「执行动作」选中 Agent 执行时，编辑页下拉框找不到匹配选项、直接显示裸 agentId
+ * （md §7.6「可清空」——清空是合法态，UI 本就能正常呈现「未选择」）（2026-09-23 待办 yuepu#9⑦）。
+ */
+export function clearExecAgentRef(positionId, agentId) {
+  const list = listOf(positionId)
+  let changed = false
+  list.forEach((s) => {
+    if (s.execAgentId != null && String(s.execAgentId) === String(agentId)) {
+      s.execAgentId = null
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
