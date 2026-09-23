@@ -15,9 +15,20 @@ import {
   getPositionNameById,
   __resetPositionMock
 } from '../positionMock'
+import { setUserPosition, __resetPositionAssignmentMock } from '../positionAssignmentMock'
+// 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
+// 动态 import 在那之后拿到的会是另一个模块实例，跟 positionMock 内部静态 import 的
+// sampleTaskMock/dataTableMock/runtimeSpecMock 对不上，删岗级联的效果就验证不到
+// （2026-09-23 待办 yuepu#9⑥，回归排查记录）。
+import { listSampleTasks, __resetSampleTaskMock } from '../sampleTaskMock'
+import { listDataTables, __resetDataTableMock } from '../dataTableMock'
+import { getRuntimeSpec, __resetRuntimeSpecMock } from '../runtimeSpecMock'
 
 // vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖
-beforeEach(() => __resetPositionMock())
+beforeEach(() => {
+  __resetPositionMock()
+  __resetPositionAssignmentMock()
+})
 
 describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）', () => {
   it('种子 4 条照原型：默认按最近更新时间降序，含计数/最新版本字段；市场研究岗无版本', async () => {
@@ -25,7 +36,9 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect(total).toBe(4)
     expect(list.map((p) => p.name)).toEqual(['经营分析岗', '财务审核岗', '客户成功岗', '市场研究岗'])
     const [biz] = list
-    expect(biz).toMatchObject({ skillCount: 1, agentCount: 3, claimedUserCount: 26, latestVersion: 'v2.1.0', status: 'published' })
+    // claimedUserCount 2026-09-23 待办 yuepu#9①起实时派生自 positionAssignmentMock 的分配表
+    // （不再是静态种子）：401 种子绑了 2 人（zhangwei 启用 + zhouming 停用，领用关系不看账号启停）
+    expect(biz).toMatchObject({ skillCount: 1, agentCount: 3, claimedUserCount: 2, latestVersion: 'v2.1.0', status: 'published' })
     expect(list[3].latestVersion).toBe('')
     // 升序排序参数
     const asc = await listPositions({ sort: 'asc' })
@@ -79,6 +92,9 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBeNull()
     expect(row.latestVersion).toBe('v1.4.0') // 撤回后回落已通过的最新快照
+    // 402 种子被 li.na（userId 2）领用，停用前先解绑——本用例测的是发布状态机，不是领用拦截
+    // （领用拦截见下方专用用例，2026-09-23 待办 yuepu#9①）
+    await setUserPosition(2, null)
     // 停用 → 提交停用审核（展示层审核中）
     await unpublishPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
@@ -98,6 +114,37 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     const { total } = await listPositions()
     expect(total).toBe(3)
     expect(getPositionNameById(404)).toBe('')
+  })
+
+  it('领用数实时派生（md §3.5 L90 / §3.6 L98，2026-09-23 待办 yuepu#9①）：解绑后停用/删除放行，绑定时仍拦', async () => {
+    // 402 种子被 li.na（userId 2）领用：停用 / 删除均应被拦
+    await expect(unpublishPosition(402)).rejects.toThrow('已被 1 个用户领用')
+    await expect(deletePosition(402)).rejects.toThrow('已被 1 个用户领用')
+    let row = (await listPositions({ keyword: '客户成功岗' })).list[0]
+    expect(row.claimedUserCount).toBe(1)
+    // 解绑后领用数回落到 0，两个操作都放行
+    await setUserPosition(2, null)
+    row = (await listPositions({ keyword: '客户成功岗' })).list[0]
+    expect(row.claimedUserCount).toBe(0)
+    await expect(unpublishPosition(402)).resolves.toEqual({})
+  })
+
+  it('删岗级联清理自动化任务 / 工作档案 / 运行规格引用（2026-09-23 待办 yuepu#9⑥）', async () => {
+    __resetSampleTaskMock()
+    __resetDataTableMock()
+    __resetRuntimeSpecMock()
+
+    // 402 种子自带自动化任务 + 工作档案；运行规格种子 id=1 的 positionIds 含 402
+    expect((await listSampleTasks(402)).total).toBeGreaterThan(0)
+    expect((await listDataTables(402)).total).toBeGreaterThan(0)
+    expect((await getRuntimeSpec(1)).positionIds).toContain(402)
+
+    await setUserPosition(2, null) // 402 种子被 li.na 领用，先解绑才能删
+    await deletePosition(402)
+
+    expect((await listSampleTasks(402)).total).toBe(0)
+    expect((await listDataTables(402)).total).toBe(0)
+    expect((await getRuntimeSpec(1)).positionIds).not.toContain(402)
   })
 })
 
@@ -130,7 +177,7 @@ describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新�
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(5) // 2026-09-12 决策 6 删 recommendedQuestions 时 bump
+    expect(snap.v).toBe(6) // v6：claimedUserCount 改派生 + 404 改引 sk_305（2026-09-23 待办 yuepu#9①⑤）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')

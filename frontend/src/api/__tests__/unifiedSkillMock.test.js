@@ -359,7 +359,7 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
   })
 })
 
-describe('unifiedSkillMock · 持久化读回（mockPersist v5，2026-09-18 技能同名校验 bump；key iworker-demo-mock:unifiedSkill）', () => {
+describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待办 yuepu#9⑤ bump；key iworker-demo-mock:unifiedSkill）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:unifiedSkill'
@@ -383,10 +383,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v5，2026-09-18 技�
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(5)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

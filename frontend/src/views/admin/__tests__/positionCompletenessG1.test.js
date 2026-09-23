@@ -77,7 +77,9 @@ const listSampleTasksSpy = vi.fn(() => Promise.resolve({ list: [{ id: 1 }] }))
 vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasksSpy(...a) }))
 // 知识页签一条已发布知识库，供 A19【检索测试】用例点
 vi.mock('@/api/knowledgeBase', () => ({
-  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefName: '销售', status: 'PUBLISHED' }], total: 1 }))
+  // scopeRefId 与本文件其它 positionId:5 的夹具同源（2026-09-23 待办 yuepu#9④：知识页签改按
+  // scopeRefId 联查岗位 id，不再按 scopeRefName 字符串匹配岗位名）
+  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefId: 5, scopeRefName: '销售', status: 'PUBLISHED' }], total: 1 }))
 }))
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({

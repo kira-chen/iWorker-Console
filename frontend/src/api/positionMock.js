@@ -29,6 +29,15 @@ import { attachPersist } from './mockPersist'
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
+// 2026-09-23 待办 yuepu#9①：领用数改由分配表实时派生，不再是本模块的静态字段（与 positionAssignmentMock
+// 互相 import 属有意的循环依赖——双方都只在函数体内调用对方导出，模块顶层不触发，ESM 环境下安全）
+import { countAssignedUsers } from './positionAssignmentMock'
+// 2026-09-23 待办 yuepu#9⑥：删岗级联清理自动化任务 / 工作档案 / 运行规格里残留的本岗位引用，
+// 否则 posSeq 复用旧 id 时新岗位会「继承」上一轮同 id 岗位遗留的数据（runtimeSpecMock 已反向
+// import 本模块，同属有意的循环依赖，函数体内调用，安全）
+import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef } from './sampleTaskMock'
+import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
+import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -45,7 +54,6 @@ let positions = [
     icon: '▤',
     skillIds: [301],
     agentCount: 3,
-    claimedUserCount: 26,
     status: 'published',
     pendingAction: null,
     latestVersion: 'v2.1.0',
@@ -59,7 +67,6 @@ let positions = [
     icon: '◎',
     skillIds: [305],
     agentCount: 2,
-    claimedUserCount: 18,
     status: 'published',
     pendingAction: null,
     latestVersion: 'v1.4.0',
@@ -73,7 +80,6 @@ let positions = [
     icon: '¥',
     skillIds: [301],
     agentCount: 1,
-    claimedUserCount: 6,
     status: 'draft',
     pendingAction: 'PUBLISH',
     pendingVersion: 'v1.0.0',
@@ -90,9 +96,9 @@ let positions = [
     icon: '⌁',
     // 2026-09-09 补全为「未发布 + 六项齐备」样本（见 workbench 404 注释）。
     // skillIds 与其余种子同为数值口径（syncCounts 走 numericSkillId 归一，'sk_309'→309）
-    skillIds: [303],
+    // 2026-09-23 待办 yuepu#9⑤：303（会议纪要整理，通用技能）改 305（客户拜访准备，岗位私有）
+    skillIds: [305],
     agentCount: 1,
-    claimedUserCount: 0,
     status: 'draft',
     pendingAction: null,
     latestVersion: '',
@@ -194,7 +200,10 @@ function buildWorkbenchSeed() {
       persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
       intakeSchema: [{ label: '关注行业', key: 'industry', type: 'text', required: false, options: [] }],
       agents: [
-        { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_303', sortOrder: 0 }] }
+        // 2026-09-23 待办 yuepu#9⑤：原引用通用技能 sk_303（会议纪要整理），违反 md §6.4「Agent 只能
+        // 引用岗位私有类型的技能」；sk_305（客户拜访准备）虽主题非完全贴合，但类型正确、已发布，
+        // 同一岗位私有技能允许被多个岗位重复引用（md §6.4），能让 404 继续保持「六项齐备可发布」样本
+        { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_305', sortOrder: 0 }] }
       ]
     }
   }
@@ -250,8 +259,14 @@ function parseVersion(label) {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
-/** 出参行（不带 mock 内部字段裸引用，浅拷贝防组件误改内存种子） */
+/**
+ * 出参行（不带 mock 内部字段裸引用，浅拷贝防组件误改内存种子）。
+ * 读前先 syncCounts 自愈 skillIds/agentCount：技能本体可能在技能模块被直接删除（不经过本模块
+ * 的 assignSkill/detachSkill），那条路径不会主动回写本岗位的缓存计数，skillCount 会一直停在
+ * 删除前的旧值（2026-09-23 待办 yuepu#9⑤）。
+ */
 function toRow(p) {
+  syncCounts(p)
   return {
     positionId: p.positionId,
     name: p.name,
@@ -260,7 +275,7 @@ function toRow(p) {
     skillIds: [...p.skillIds],
     skillCount: p.skillIds.length,
     agentCount: p.agentCount,
-    claimedUserCount: p.claimedUserCount,
+    claimedUserCount: countAssignedUsers(p.positionId),
     status: p.status,
     pendingAction: p.pendingAction,
     pendingVersion: p.pendingVersion || null,
@@ -312,7 +327,6 @@ export async function createPosition(payload = {}) {
     icon: payload.icon || '',
     skillIds: [],
     agentCount: 0,
-    claimedUserCount: 0,
     status: 'draft',
     pendingAction: null,
     latestVersion: '',
@@ -331,6 +345,10 @@ export async function deletePosition(id) {
   await delay()
   const p = findPos(id)
   if (!p) throw err('岗位不存在', null, 404)
+  // md §3.6 L98「有被用户领用时不可删除」；此前只在 AdminPositions.vue 按 claimedUserCount 拦，
+  // mock 数据层不拦，绕过 UI 直调可删掉仍被领用的岗位（2026-09-23 待办 yuepu#9①）
+  const claimed = countAssignedUsers(p.positionId)
+  if (claimed > 0) throw err(`该岗位已被 ${claimed} 个用户领用，需先解除领用后再删除`)
   // 引用联动：删岗前把岗位名从所引用技能的 refNames 摘掉
   const wb = ensureWb(p.positionId)
   const ids = new Set()
@@ -341,6 +359,11 @@ export async function deletePosition(id) {
   delete publications[p.positionId]
   delete workbench[String(p.positionId)]
   delete workbench[p.positionId]
+  // 删岗级联（2026-09-23 待办 yuepu#9⑥）：自动化任务 / 工作档案按 positionId 整份清掉；
+  // 运行规格只清「本岗位」这一条引用，规格本体和其它岗位的配置不受影响
+  deleteAllSampleTasksForPosition(p.positionId)
+  deleteAllDataTablesForPosition(p.positionId)
+  unassignPositionFromAllSpecs(p.positionId)
   persist()
   return {}
 }
@@ -353,7 +376,7 @@ export async function getDeleteImpact(id) {
     positionName: p.name,
     agentCount: p.agentCount,
     skillCount: p.skillIds.length,
-    claimedUserCount: p.claimedUserCount
+    claimedUserCount: countAssignedUsers(p.positionId)
   }
 }
 
@@ -461,6 +484,9 @@ export async function unpublishPosition(id) {
   if (!p) throw err('岗位不存在', null, 404)
   if (p.status !== 'published') throw err('仅已发布岗位可停用')
   if (p.pendingAction) throw err('该岗位已有在途审核，请先撤回')
+  // md §3.5 L90「有被用户领用时不可停用」；同 deletePosition，mock 数据层此前不拦（yuepu#9①）
+  const claimed = countAssignedUsers(p.positionId)
+  if (claimed > 0) throw err(`该岗位已被 ${claimed} 个用户领用，需先解除领用后再停用`)
   p.pendingAction = 'DELIST'
   p.updatedAt = nowIso()
   writeReviewSnapshot(p, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
@@ -589,20 +615,29 @@ function numericSkillId(id) {
   return m ? Number(m[1]) : id
 }
 
-/** Agent/技能引用变化后回写列表行计数（同源联动：agentCount、skillIds→skillCount）。 */
+/**
+ * Agent/技能引用变化后回写列表行计数（同源联动：agentCount、skillIds→skillCount）。
+ * 悬空引用（技能本体已被删除）不计入 skillCount——否则删除技能后列表仍显示旧计数，
+ * 跟展示层的「（技能已删除）」占位对不上（2026-09-23 待办 yuepu#9⑤）。
+ */
 function syncCounts(p) {
   const wb = ensureWb(p.positionId)
   p.agentCount = wb.agents.length
   const ids = new Set()
-  wb.agents.forEach((a) => a.skills.forEach((s) => ids.add(s.skillId)))
+  wb.agents.forEach((a) => a.skills.forEach((s) => { if (skillMock._getRaw(s.skillId)) ids.add(s.skillId) }))
   p.skillIds = [...ids].map(numericSkillId)
 }
 
-/** 技能引用行 → 白板技能卡 summary VO（本体字段从 unifiedSkillMock 同源取）。 */
+/**
+ * 技能引用行 → 白板技能卡 summary VO（本体字段从 unifiedSkillMock 同源取）。
+ * `deleted:true` 标记悬空引用（技能本体已被删除）：展示仍走「（技能已删除）」占位提示管理员清理，
+ * 但不应计入 skillCount / 发布门的「至少引用 1 个技能」判定——见 syncCounts 与
+ * utils/positionModel.js agentsWithSkillOk（2026-09-23 待办 yuepu#9⑤）。
+ */
 function skillRefVO(ref) {
   const raw = skillMock._getRaw(ref.skillId)
   if (!raw) {
-    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0, toolCount: 0 }
+    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0, toolCount: 0, deleted: true }
   }
   // 类别派生口径与后端一致：引用业务系统/数据表 → 操作类，否则查询类
   const isOperation = (raw.toolRefs || []).some((c) => String(c).startsWith('biz__') || String(c).startsWith('table__'))
@@ -617,7 +652,8 @@ function skillRefVO(ref) {
     sortOrder: ref.sortOrder ?? 0,
     // 2026-09-10 D1（md §6.4 技能子行「工具数量」）：summary 形状补工具数——读时派生自
     // 技能本体 toolRefs（unifiedSkillMock 单一真相），非落盘字段，无需 bump persist version。
-    toolCount: (raw.toolRefs || []).length
+    toolCount: (raw.toolRefs || []).length,
+    deleted: false
   }
 }
 
@@ -825,6 +861,9 @@ export async function deleteAgent(agentId) {
   const orphaned = agent.skills.map((s) => s.skillId)
   wb.agents = wb.agents.filter((a) => a !== agent)
   orphaned.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
+  // 删 Agent 级联（2026-09-23 待办 yuepu#9⑦）：清掉自动化任务里指向本 Agent 的 execAgentId，
+  // 不然「执行动作」选中 Agent 执行的任务，编辑页会显示裸 agentId
+  clearExecAgentRef(p.positionId, agent.agentId)
   syncCounts(p)
   p.updatedAt = nowIso()
   persist()
@@ -841,6 +880,9 @@ export async function assignSkill(skillId, targetAgentId) {
   const { p, wb, agent } = hit
   const raw = skillMock._getRaw(skillId)
   if (!raw) throw err('技能不存在或已被删除', null, 404)
+  // md §6.4「Agent 只能引用岗位私有类型的技能」——UI 候选弹窗已按岗位私有过滤，mock 数据层兜底
+  // 不留后门（2026-09-23 待办 yuepu#9⑤：种子 404 曾误引用通用技能 sk_303，即此规则此前无人校验）
+  if (raw.type !== 'POSITION') throw err('Agent 只能引用岗位私有类型的技能')
   // 已挂本 Agent：幂等返回
   const existed = agent.skills.find((s) => String(s.skillId) === String(skillId))
   if (existed) return skillRefVO(existed)
@@ -881,16 +923,35 @@ export function getPositionNameById(id) {
   return findPos(id)?.name || ''
 }
 
+/**
+ * 全量岗位候选（{id, name}，id 用真实 positionId）：供知识库等模块的「岗位」可见范围选择器读取，
+ * 不再各自维护一份脱节的岗位名单（2026-09-23 待办 yuepu#9④：knowledgeBaseMock 此前硬编码
+ * 一份 POSITIONS，id 空间（'ps_1'）与本模块（401）都对不上，新岗位永远选不到、改名也不同步）。
+ */
+export function listAllPositions() {
+  return positions.map((p) => ({ id: p.positionId, name: p.name }))
+}
+
+/**
+ * 岗位是否可被绑定（md 岗位管理 §六 L89「可绑定岗位包括"已发布"及"审核中"岗位；未发布岗位（含首次
+ * 发布审核中）不进入下拉选项」——status='published' 已经同时覆盖「纯已发布」与「已发布上再提交新版本/
+ * 停用审核中」两种情况，草稿态无论是否在审核中都不算；口径与 AdminPositionAssignments.vue 的
+ * `p.status === 'published'` 候选过滤一致，供分配表 mock 侧兜底校验用（2026-09-23 待办 yuepu#9③）。
+ */
+export function isPositionBindable(id) {
+  return findPos(id)?.status === 'published'
+}
+
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位）。 */
 export function __resetPositionMock() {
   posSeq = 405
   agentSeq = 520
   workbench = buildWorkbenchSeed()
   positions = [
-    { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], agentCount: 3, claimedUserCount: 26, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
-    { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], agentCount: 2, claimedUserCount: 18, status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
-    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, claimedUserCount: 6, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
-    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [303], agentCount: 1, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
+    { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], agentCount: 3, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
+    { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], agentCount: 2, status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
+    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
+    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [305], agentCount: 1, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
   ]
   publications = {
     401: [
@@ -925,7 +986,9 @@ const persist = attachPersist('position', {
   // v4（2026-09-09 负责人要求）：市场研究岗（404）由全空补全为「未发布 + 六项齐备」样本。
   // v5（2026-09-12 负责人决策 6）：删除 recommendedQuestions（「推荐问题固定 4 格」）——该字段只存在于
   // 已退役的交互原型，md 全文无此功能，界面早已无入口，仅在数据层静默透传。存量快照带该键 → 丢弃回种子。
-  version: 5,
+  // v6（2026-09-23 待办 yuepu#9①⑤）：claimedUserCount 不再是种子字段（改实时派生，见 toRow）；404
+  // 的 Agent 改引 sk_305（原 sk_303 违反 md §6.4 岗位私有类型限制）。存量快照结构/引用已过期，丢弃回种子。
+  version: 6,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (
