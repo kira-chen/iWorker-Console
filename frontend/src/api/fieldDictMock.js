@@ -29,8 +29,10 @@ const copyList = (list) => list.map((o) => ({ id: o.id, name: o.name }))
 // 同源取值），restore 按 key 就地覆写、不换对象；快照缺任一字段键即视为不合法 → 回种子。
 // version 2（2026-09-08）：风险类型顺序 / 风险等级改 5 档，旧快照丢弃回种子。
 // version 3（2026-09-08 决议第 6 项）：删 riskType / riskLevel 两键，旧快照（多出两键）丢弃回种子。
+// version 4（2026-09-23 补 3318cbb 漏项）：skillCategory 8 类换 11 类，但当时未 bump——旧快照键名齐全、
+// 校验通过，存量浏览器继续吃老 8 类，新分类在下拉里根本选不出来。补 bump 丢弃旧快照回种子。
 const persist = attachPersist('fieldDict', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ seq, store }),
   restore: (d) => {
     const keys = Object.keys(store)

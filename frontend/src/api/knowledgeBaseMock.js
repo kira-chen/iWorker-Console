@@ -166,7 +166,10 @@ let rows = [
   { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefId: 401, description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
   { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefId: 403, description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
   { id: 'kb_6', name: '2026 产品白皮书库', icon: '📄', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
-  { id: 'kb_7', name: '薪酬与绩效制度', icon: '', kbType: 'ENTERPRISE', scopeRefId: null, description: '', status: 'DRAFT', pendingAction: null, sourceIds: [] }
+  // kb_7：全套唯一的「无数据源草稿」样本，用于演示发布前校验拦截（sourceIds 为空，勿加数据源）。
+  // 2026-09-23：icon / description 原为空串，而两者均已必填（61dbd19 图标改必填、描述早已必填），
+  // 导致这条种子一点【编辑】就被必填卡死、存不回去；补齐两字段，「无数据源」这个演示点不受影响。
+  { id: 'kb_7', name: '薪酬与绩效制度', icon: '💰', kbType: 'ENTERPRISE', scopeRefId: null, description: '薪酬结构、绩效考核办法与调薪流程说明，供 HR 与管理者查询。', status: 'DRAFT', pendingAction: null, sourceIds: [] }
 ]
 // 文档按上传类数据源 id 归属；parseReadyAt=解析完成时间戳（listDocs 读到该时刻后 PARSING → PARSED，供轮询示意）
 const docsBySource = {
@@ -193,9 +196,11 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // version 8（2026-09-18）：①推翻 09-08 决议，MCP 种子加回 requestMap/responseMap/resultArrayPath，
 // API 种子 responseMap 行加 sourceField；②上传预处理删「替换连续空格/换行符/制表符」，UPLOAD 种子去
 // replaceWhitespace 键；旧快照两处结构均不兼容，弃用回种子。
-// v9（2026-09-23 待办 yuepu#9④）：kb_4/kb_5 的 scopeRefId 由硬编码 'ps_1'/'ps_2' 改为 positionMock
-// 真实 positionId（401/403）；旧快照仍是 'ps_1'/'ps_2' 会在新版 scopeName() 里查无此岗位，静默显示
-// 可见范围为空，bump 丢弃重播种子。
+// version 9（2026-09-23，两处种子改动合并到同一次 bump，双方都需要丢弃旧快照）：
+// ① 待办 yuepu#9④：kb_4/kb_5 的 scopeRefId 由硬编码 'ps_1'/'ps_2' 改为 positionMock 真实 positionId
+//    （401/403）；旧快照仍是 'ps_1'/'ps_2'，在新版 scopeName() 里查无此岗位、静默显示可见范围为空。
+// ② kb_7 补 icon / description（原为空串，而两者均已必填 → 该种子一点编辑就存不回去）；
+//    旧快照里的 kb_7 仍是空值。
 const persist = attachPersist('knowledgeBase', {
   version: 9,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
