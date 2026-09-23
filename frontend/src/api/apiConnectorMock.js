@@ -678,8 +678,13 @@ function applyApiPayload(a, payload) {
         .filter((p) => (p.name || '').trim())
         .map((p) => {
           const name = p.name.trim()
-          // 留空=保留：同「位置+参数名」旧行的明文继续沿用（掩码口径下编辑器不回传未改的值）
-          const prev = oldParams.find((o) => o.in === p.in && o.name === name)
+          // 留空=保留：优先按编辑器原样回传的 valueMasked 占位串找回旧行（换了位置/参数名也认得出
+          // 是同一行）；没有该占位串（如新增行）再退化按「位置+参数名」匹配（2026-09-23 待办
+          // yuepu#7⑥：原先只按 in+name 匹配，只改位置或参数名、不重填值时会匹配不到旧行，
+          // prev 落空、密钥被静默清空——口径同 knowledgeBaseMock 的 prevParamRow）
+          const prev =
+            (p.valueMasked && oldParams.find((o) => !o.clientFill && maskSecret(o.value) === p.valueMasked)) ||
+            oldParams.find((o) => o.in === p.in && o.name === name)
           return {
             in: p.in || 'HEADER',
             name,
