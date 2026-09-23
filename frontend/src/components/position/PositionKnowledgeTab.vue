@@ -3,7 +3,8 @@
  * 岗位详情 · 「知识」页签（md §5，2026-09-08 PRD-20260908 对齐）。
  *
  * 页签内只做只读列表（走现有 api/knowledgeBase.js，不改函数签名）：
- * 取岗位知识库（kbType=POSITION）并按可见范围 = 当前岗位名过滤；
+ * 取岗位知识库（kbType=POSITION）并按可见范围 scopeRefId = 当前岗位 id 过滤
+ * （2026-09-23 待办 yuepu#9④：此前按岗位名字符串匹配，改名或未保存的草稿改名都会导致页签失联）；
  * 工具栏（搜索名称 / 状态 / 查询）照原型 knowledgePane L1871 本地过滤；
  * 行内仅【查看】【检索测试】（md §5.3），无新建 / 编辑入口（md §5.2 已删、原型 L4021 移除按钮），
  * 两动作跳知识库模块（query 携带岗位上下文，md §11）。
@@ -52,8 +53,9 @@ async function loadPositionKbs() {
   try {
     const data = await listKnowledgeBases({ kbType: 'POSITION', page: 1, size: 200 })
     const list = Array.isArray(data) ? data : data?.list || []
-    const posName = String(store.basic?.name || '').trim()
-    kbRows.value = list.filter((r) => (r.scopeRefName || '') === posName)
+    // 按岗位 id 联查，不按岗位名字符串（2026-09-23 待办 yuepu#9④）：改岗位名（甚至只是表单里
+    // 还没保存的草稿改动）不应影响知识页签的关联结果，id 才是稳定的关联键
+    kbRows.value = list.filter((r) => String(r.scopeRefId ?? '') === String(store.positionId ?? ''))
     kbLoaded.value = true
   } catch {
     kbError.value = true

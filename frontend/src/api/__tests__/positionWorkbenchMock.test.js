@@ -14,7 +14,7 @@ import {
   publishPosition,
   __resetPositionMock
 } from '../positionMock'
-import { _getRaw, _reset } from '../unifiedSkillMock'
+import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -126,19 +126,47 @@ describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
 
 describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同源联动）', () => {
   it('assignSkill 拉入技能：列表技能数 +1，技能 refNames 追加岗位名；detach 反向摘除', async () => {
-    // 404 种子自 2026-09-09 起有 1 个 Agent（竞品跟踪）+ 1 个技能（sk_307），故基线为 1 而非 0
+    // 404 种子自 2026-09-09 起有 1 个 Agent（研究纪要整理）+ 1 个技能（sk_305，故基线为 1 而非 0；
+    // 2026-09-23 待办 yuepu#9⑤：原引用 sk_303 违反 md §6.4 岗位私有类型限制，改引 sk_305）
     const d = await getPosition(404)
     expect(d.agents).toHaveLength(1)
     const agent = await createAgent(404, { name: '研究员' })
     const vo = await assignSkill('sk_301', agent.agentId)
     expect(vo).toMatchObject({ skillId: 'sk_301', name: '日报周报生成' })
     let row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(2) // sk_307（种子）+ sk_301（本用例）
+    expect(row.skillCount).toBe(2) // sk_305（种子）+ sk_301（本用例）
     expect(_getRaw('sk_301').refNames).toContain('市场研究岗')
     await detachSkill(agent.agentId, 'sk_301')
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    expect(row.skillCount).toBe(1) // 摘除 sk_301 后只剩种子的 sk_307
+    expect(row.skillCount).toBe(1) // 摘除 sk_301 后只剩种子的 sk_305
     expect(_getRaw('sk_301').refNames).not.toContain('市场研究岗')
+  })
+
+  it('assignSkill 拒绝非岗位私有类型技能（md §6.4，2026-09-23 待办 yuepu#9⑤）', async () => {
+    const agent = await createAgent(404, { name: '研究员' })
+    // sk_303 通用（SYSTEM_DEFAULT）、sk_302 市场技能（PLATFORM）均应被拒绝
+    await expect(assignSkill('sk_303', agent.agentId)).rejects.toThrow('岗位私有')
+    await expect(assignSkill('sk_302', agent.agentId)).rejects.toThrow('岗位私有')
+    const after = await getPosition(404)
+    expect(after.agents.find((a) => a.agentId === agent.agentId).skills).toHaveLength(0)
+  })
+
+  it('技能被删除后悬空引用不计入 skillCount，展示仍保留占位提示管理员清理（md §9.1 第 8 条，yuepu#9⑤）', async () => {
+    const empty = await createPosition({ name: `悬空引用岗_${Date.now()}` })
+    const agent = await createAgent(empty.positionId, { name: '研究员' })
+    const { skillId } = await createSkill({ name: `待删技能_${Date.now()}`, type: 'POSITION', categoryName: '办公效率' })
+    await assignSkill(skillId, agent.agentId)
+    let row = (await listPositions({ keyword: empty.name })).list[0]
+    expect(row.skillCount).toBe(1)
+    // 悬空引用要模拟的是「技能本体没了、岗位侧引用还留着」——不能走 detachSkill（那会同步摘掉引用）；
+    // 直接摆脱技能模块自己的引用保护（_reset 清 refNames，同单测惯用法）后再删
+    _reset(skillId, { refNames: [] })
+    await removeSkill(skillId)
+    row = (await listPositions({ keyword: empty.name })).list[0]
+    expect(row.skillCount).toBe(0) // 悬空引用不计数
+    const detail = await getPosition(empty.positionId)
+    const skillVo = detail.agents.find((a) => a.agentId === agent.agentId).skills[0]
+    expect(skillVo).toMatchObject({ name: '（技能已删除）', deleted: true }) // 展示仍保留占位，提示管理员清理
   })
 
   it('本岗位其它 Agent 已引用 → assign 视为跨泳道迁移；不存在的技能/Agent → 404', async () => {

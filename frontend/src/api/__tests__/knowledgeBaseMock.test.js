@@ -151,11 +151,12 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
   })
 
   it('已发布改可见范围 → 回未发布重审（md §三.5）；名称描述照常保存不回退', async () => {
-    // 种子 kb_4：岗位知识库（ps_1）已发布。
-    // 2026-09-10 D3：岗位种子对齐岗位模块四岗后，ps_1/ps_2 = 经营分析岗/财务审核岗，名称与断言随种子更新。
-    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_1' })
+    // 种子 kb_4：岗位知识库（positionMock 401 经营分析岗）已发布。
+    // 2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 真实 positionId（401/403），
+    // 不再是脱节的 'ps_1'/'ps_2'。
+    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 401 })
     expect(r.status).toBe('PUBLISHED')
-    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 'ps_2' })
+    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 403 })
     expect(r.status).toBe('DRAFT')
     expect(r.scopeRefName).toBe('财务审核岗')
   })
@@ -771,7 +772,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(8)
+    expect(snap.v).toBe(9) // v9：POSITION 型 scopeRefId 改用 positionMock 真实 id（2026-09-23 待办 yuepu#9④）
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')
@@ -794,7 +795,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
 
   it('坏形状快照（rows 不是数组）→ restore 抛「knowledgeBase 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     expect((await m.list()).total).toBe(7)
     const call = warn.mock.calls.find((c) => String(c[0]).includes('knowledgeBase'))
