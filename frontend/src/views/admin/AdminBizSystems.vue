@@ -49,7 +49,7 @@ const editorReadonly = ref(false)
 const busy = ref({})
 
 // 引用清单弹窗（B3：点「N 个技能引用」弹出，标题「被技能引用」）
-const refsDialog = reactive({ visible: false, skills: [] })
+const refsDialog = reactive({ visible: false, title: '被技能引用', names: [] })
 
 // 状态选项（B4 顺序：未发布 / 审核中 / 已发布）
 const STATE_OPTIONS = [
@@ -170,9 +170,15 @@ function onSaved() {
   fetchList()
 }
 
-/* ---------------- 引用清单（B3） ---------------- */
+/* ---------------- 引用清单（B3） ----------------
+ * 2026-09-23：按行类型分流——岗位私有取 referencedByPositions 的岗位名、市场连接器取技能名，
+ * 标题随之切换（原来一律弹「被技能引用」+ 技能名，而按钮写的是「N 个岗位引用」，三方对不上）。 */
 function openRefs(row) {
-  refsDialog.skills = row.referencedBySkills || []
+  const byPosition = row.type === CONNECTOR_TYPE.POSITION
+  refsDialog.title = byPosition ? '被岗位引用' : '被技能引用'
+  refsDialog.names = byPosition
+    ? (row.referencedByPositions || []).map((p) => p.positionName)
+    : (row.referencedBySkills || []).map((s) => s.skillName)
   refsDialog.visible = true
 }
 
@@ -456,10 +462,10 @@ async function remove(row) {
     />
 
     <!-- 引用清单弹窗（B3：标题「被技能引用」，正文技能名列表，按钮【关闭】） -->
-    <el-dialog v-model="refsDialog.visible" title="被技能引用" width="420px">
-      <div v-if="refsDialog.skills.length" class="refs-list">
-        <div v-for="s in refsDialog.skills" :key="s.skillId" class="refs-item">
-          <el-tag type="info" size="small">{{ s.skillName }}</el-tag>
+    <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="420px">
+      <div v-if="refsDialog.names.length" class="refs-list">
+        <div v-for="n in refsDialog.names" :key="n" class="refs-item">
+          <el-tag type="info" size="small">{{ n }}</el-tag>
         </div>
       </div>
       <div v-else class="cell-na">暂无引用</div>
