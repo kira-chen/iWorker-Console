@@ -30,6 +30,16 @@
 import { ApiError } from './request'
 import { getFieldOptionNames } from './fieldDictMock'
 import { attachPersist } from './mockPersist'
+// 2026-09-23 待办 yuepu#10①：toolRefs/技能类别标签改由 SKILL.md 正文实时解析，不再是编辑正文
+// 不影响的静态字段（与 Milkdown 编辑器 chip 共用同一套 @tool[code] 标记解析口径）
+import { splitTextToToolRefNodes } from '@/utils/skillToolRef'
+// 2026-09-23 待办 yuepu#10②（技能→连接器方向）：工具坞候选/已引用工具改从三个连接器 mock 实时读，
+// 不再是与它们完全脱钩的静态 TOOL_DIRECTORY；用各自的同步导出（不能用 listMcp/listApis/
+// listBizSystems——那三个是 async + delay，本文件的 seedReviewSnapshots 在模块初始化时同步调用
+// referencedToolsOf，用不了 async）
+import { listMcpSync } from './mcpConnectorMock'
+import { listApisSync } from './apiConnectorMock'
+import { listBizSystemsSync } from './bizSystemMock'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相（mock 引 utils 为既有范式）
 import { nowMinuteText as nowText } from '@/utils/datetime'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
@@ -56,8 +66,28 @@ export function bumpVersion(current, bump = 'NONE') {
 let idSeq = 400
 const newId = () => `sk_${idSeq++}`
 
-const SKILL_MD_TPL = (name, desc) =>
-  `# ${name}\n\n${desc || '请填写技能说明。'}\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n`
+const SKILL_MD_TPL = (name, desc, toolRefs = []) =>
+  `# ${name}\n\n${desc || '请填写技能说明。'}\n\n## 使用方法\n\n1. 描述用户目标\n2. 调用所需工具\n3. 返回清晰结果\n` +
+  (toolRefs.length ? `\n## 引用工具\n\n${toolRefs.map((c) => `- @tool[${c}]`).join('\n')}\n` : '')
+
+/**
+ * 从 SKILL.md 正文解析工具引用（@tool[code] / :::tool{code=x}），去重按首次出现顺序返回。
+ * md §二.1 L45「工具数=当前引用的工具数量」、§三.3 L173「类别由工具引用自动派生」——toolRefs
+ * 此前是与正文脱节的静态字段，插入/删光正文里的标记都不会同步（2026-09-23 待办 yuepu#10①）。
+ */
+function deriveToolRefsFromMd(md) {
+  const nodes = splitTextToToolRefNodes(md)
+  if (!nodes) return []
+  const seen = new Set()
+  const out = []
+  for (const n of nodes) {
+    if (n.type === 'toolRef' && !seen.has(n.code)) {
+      seen.add(n.code)
+      out.push(n.code)
+    }
+  }
+  return out
+}
 
 /* ============================ 种子数据（对齐原型 skillRows 301~307 + 补态 308/309） ============================ */
 
@@ -91,9 +121,9 @@ const skills = [
     status: 'published', version: 'v1.2.0',
     createdAt: '2026-08-23 17:20', updatedAt: '2026-08-23 17:20', publishedAt: '2026-08-23 18:10',
     exampleQuestion: '帮我把这周的工作记录整理成周报',
-    toolRefs: ['mcp__baoxiao', 'api__customer', 'mcp__zhishiku'],
+    toolRefs: ['mcp__expense_mcp', 'api__api_1103', 'mcp__knowledge_hub'],
     files: {
-      'SKILL.md': SKILL_MD_TPL('日报周报生成', '根据工作记录自动整理日报与周报'),
+      'SKILL.md': SKILL_MD_TPL('日报周报生成', '根据工作记录自动整理日报与周报', ['mcp__expense_mcp', 'api__api_1103', 'mcp__knowledge_hub']),
       'references/写作规范.md': '# 写作规范\n\n日报三段式：进展 / 风险 / 明日计划。'
     },
     snapshots: [
@@ -113,8 +143,8 @@ const skills = [
     pendingAction: 'publish', pendingVersion: 'v1.5.0', pendingReleaseNotes: '补充经营异常归因说明',
     createdAt: '2026-08-24 09:18', updatedAt: '2026-08-24 09:18', publishedAt: '2026-08-24 16:18',
     exampleQuestion: '帮我分析上个月的经营数据异常',
-    toolRefs: ['mcp__zhishiku', 'api__customer', 'api__search', 'mcp__baoxiao', 'biz__renshi'],
-    files: { 'SKILL.md': SKILL_MD_TPL('经营数据分析', '读取经营数据并生成趋势分析和异常说明') },
+    toolRefs: ['mcp__knowledge_hub', 'api__api_1103', 'api__api_1107', 'mcp__expense_mcp', 'biz__biz_2102'],
+    files: { 'SKILL.md': SKILL_MD_TPL('经营数据分析', '读取经营数据并生成趋势分析和异常说明', ['mcp__knowledge_hub', 'api__api_1103', 'api__api_1107', 'mcp__expense_mcp', 'biz__biz_2102']) },
     snapshots: [
       { version: 'v1.4.0', status: 'ACTIVE', size: '22.4 KB', publisher: '管理员', publishedAt: '2026-08-24 16:18', disabledAt: '', notes: '当前线上版本' },
       { version: 'v1.3.0', status: 'DELISTED', size: '21.8 KB', publisher: '管理员', publishedAt: '2026-08-20 16:30', disabledAt: '2026-08-23 10:15', notes: '历史稳定版本' }
@@ -126,8 +156,8 @@ const skills = [
     status: 'published', version: 'v2.1.0',
     createdAt: '2026-08-22 15:36', updatedAt: '2026-08-22 15:36', publishedAt: '2026-08-22 16:05',
     exampleQuestion: '帮我整理今天例会的会议纪要',
-    toolRefs: ['mcp__zhishiku', 'api__search'],
-    files: { 'SKILL.md': SKILL_MD_TPL('会议纪要整理', '提取会议结论、待办事项与责任人') },
+    toolRefs: ['mcp__knowledge_hub', 'api__api_1107'],
+    files: { 'SKILL.md': SKILL_MD_TPL('会议纪要整理', '提取会议结论、待办事项与责任人', ['mcp__knowledge_hub', 'api__api_1107']) },
     snapshots: [
       { version: 'v2.1.0', status: 'ACTIVE', size: '12.1 KB', publisher: '管理员', publishedAt: '2026-08-22 16:05', disabledAt: '', notes: '当前线上版本' }
     ]
@@ -140,8 +170,8 @@ const skills = [
     pendingAction: 'publish', pendingVersion: 'v1.1.1', pendingReleaseNotes: '补充违约条款识别规则',
     createdAt: '2026-08-20 11:08', updatedAt: '2026-08-25 10:12', publishedAt: '2026-08-20 15:30',
     exampleQuestion: '帮我检查这份采购合同的风险条款',
-    toolRefs: ['api__search', 'mcp__zhishiku', 'api__customer', 'mcp__baoxiao'],
-    files: { 'SKILL.md': SKILL_MD_TPL('合同风险检查', '识别合同条款中的风险点并给出说明') },
+    toolRefs: ['api__api_1107', 'mcp__knowledge_hub', 'api__api_1103', 'mcp__expense_mcp'],
+    files: { 'SKILL.md': SKILL_MD_TPL('合同风险检查', '识别合同条款中的风险点并给出说明', ['api__api_1107', 'mcp__knowledge_hub', 'api__api_1103', 'mcp__expense_mcp']) },
     snapshots: [
       { version: 'v1.1.0', status: 'ACTIVE', size: '19.3 KB', publisher: '管理员', publishedAt: '2026-08-20 15:30', disabledAt: '', notes: '当前线上版本' }
     ]
@@ -156,8 +186,8 @@ const skills = [
     status: 'published', version: 'v1.0.0',
     createdAt: '2026-08-21 10:40', updatedAt: '2026-08-21 10:40', publishedAt: '2026-08-21 15:00',
     exampleQuestion: '帮我准备明天拜访这家客户的提纲',
-    toolRefs: ['api__customer', 'mcp__baoxiao'],
-    files: { 'SKILL.md': SKILL_MD_TPL('客户拜访准备', '汇总客户资料并生成拜访提纲') },
+    toolRefs: ['api__api_1103', 'mcp__expense_mcp'],
+    files: { 'SKILL.md': SKILL_MD_TPL('客户拜访准备', '汇总客户资料并生成拜访提纲', ['api__api_1103', 'mcp__expense_mcp']) },
     snapshots: [
       { version: 'v1.0.0', status: 'ACTIVE', size: '10.3 KB', publisher: '管理员', publishedAt: '2026-08-21 15:00', disabledAt: '', notes: '首个版本' }
     ]
@@ -168,8 +198,8 @@ const skills = [
     status: 'published', version: 'v3.0.2',
     createdAt: '2026-08-18 10:42', updatedAt: '2026-08-19 09:40', publishedAt: '2026-08-19 09:40',
     exampleQuestion: '帮我把这段通知润色得正式一些',
-    toolRefs: ['api__search'],
-    files: { 'SKILL.md': SKILL_MD_TPL('公文润色', '对公文进行语言润色') },
+    toolRefs: ['api__api_1107'],
+    files: { 'SKILL.md': SKILL_MD_TPL('公文润色', '对公文进行语言润色', ['api__api_1107']) },
     snapshots: [
       { version: 'v3.0.2', status: 'ACTIVE', size: '8.6 KB', publisher: '管理员', publishedAt: '2026-08-19 09:40', disabledAt: '', notes: '当前线上版本' }
     ]
@@ -181,8 +211,8 @@ const skills = [
     status: 'draft', version: '',
     createdAt: '2026-08-19 14:26', updatedAt: '2026-08-19 14:26', publishedAt: '',
     exampleQuestion: '帮我汇总本周主要竞品的产品动态',
-    toolRefs: ['api__search', 'mcp__zhishiku', 'api__customer'],
-    files: { 'SKILL.md': SKILL_MD_TPL('竞品信息汇总', '汇总公开渠道的竞品动态') }
+    toolRefs: ['api__api_1107', 'mcp__knowledge_hub', 'api__api_1103'],
+    files: { 'SKILL.md': SKILL_MD_TPL('竞品信息汇总', '汇总公开渠道的竞品动态', ['api__api_1107', 'mcp__knowledge_hub', 'api__api_1103']) }
   }),
   seed({
     id: 'sk_308', type: 'POSITION', name: '报销单智能填报', icon: '⌕',
@@ -191,8 +221,8 @@ const skills = [
     pendingAction: 'publish', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首次发布',
     createdAt: '2026-08-24 14:02', updatedAt: '2026-08-25 09:30', publishedAt: '',
     exampleQuestion: '帮我把这张发票录成报销单',
-    toolRefs: ['mcp__baoxiao', 'biz__renshi'],
-    files: { 'SKILL.md': SKILL_MD_TPL('报销单智能填报', '按发票信息自动填写并提交报销单') }
+    toolRefs: ['mcp__expense_mcp', 'biz__biz_2102'],
+    files: { 'SKILL.md': SKILL_MD_TPL('报销单智能填报', '按发票信息自动填写并提交报销单', ['mcp__expense_mcp', 'biz__biz_2102']) }
   }),
   seed({
     id: 'sk_309', type: 'PLATFORM', name: '行业研究助手', icon: '◎',
@@ -201,8 +231,8 @@ const skills = [
     pendingAction: 'stop',
     createdAt: '2026-08-17 09:12', updatedAt: '2026-08-25 11:26', publishedAt: '2026-08-18 10:00',
     exampleQuestion: '帮我生成一份行业调研报告提纲',
-    toolRefs: ['api__search', 'mcp__zhishiku'],
-    files: { 'SKILL.md': SKILL_MD_TPL('行业研究助手', '汇总行业资料、竞品动态并生成结构化研究结论') },
+    toolRefs: ['api__api_1107', 'mcp__knowledge_hub'],
+    files: { 'SKILL.md': SKILL_MD_TPL('行业研究助手', '汇总行业资料、竞品动态并生成结构化研究结论', ['api__api_1107', 'mcp__knowledge_hub']) },
     snapshots: [
       { version: 'v1.0.0', status: 'ACTIVE', size: '15.2 KB', publisher: '管理员', publishedAt: '2026-08-18 10:00', disabledAt: '', notes: '首个版本' }
     ]
@@ -286,6 +316,15 @@ function toListItem(s) {
 }
 
 /**
+ * 全量技能行（同步，供 domainExpertMock 的市场技能候选/已引用技能详情实时读取，2026-09-23 待办
+ * yuepu#10③）：domainExpertMock 的 toDetail 在模块初始化阶段的 seedReviewSnapshots 会同步调用，
+ * 用不了 async（同 mcpConnectorMock 等三个连接器 mock 加 xxxSync 导出的同一类约束，yuepu#10②）。
+ */
+export function listSkillsSync() {
+  return skills.map(toListItem)
+}
+
+/**
  * 合并列表：keyword（名称/描述）/ type / categoryId（=分类名）/ status（三态）
  * + page/size。默认按最近更新时间由近到远。
  */
@@ -312,21 +351,45 @@ export async function listUnifiedSkills(params = {}) {
 
 /* ============================ 详情 / 创建 / 编辑 / 删除 ============================ */
 
-const TOOL_DIRECTORY = {
-  mcp__baoxiao: { bizName: '报销系统 MCP', description: '查询和提交员工报销单', checkStatus: 'HEALTHY', type: 'MCP' },
-  mcp__zhishiku: { bizName: '知识库 MCP', description: '检索企业知识库文档', checkStatus: 'HEALTHY', type: 'MCP' },
-  api__customer: { bizName: '客户数据 API', description: '查询客户与商机信息', checkStatus: 'HEALTHY', type: 'API' },
-  api__search: { bizName: '联网搜索 API', description: '搜索公开信息', checkStatus: 'HEALTHY', type: 'API' },
-  biz__renshi: { bizName: '人事系统', description: '查询员工及组织信息', checkStatus: 'UNKNOWN', type: 'BIZ_SYSTEM' }
+/**
+ * 工具目录：code 格式 `${前缀}__${连接器 code/id}`（前缀 mcp/api/biz），实时汇总三个连接器 mock
+ * 的全量行——取代原来与它们完全脱钩的静态 TOOL_DIRECTORY（新建的连接器永远进不了工具坞、
+ * 连接器删除/停用后技能侧仍显示「连接正常」）。code 字符集需满足 utils/skillToolRef.js 的
+ * `[a-z][a-z0-9_]*`，三个连接器的 code/id 种子均为小写字母数字下划线，天然兼容。
+ */
+function loadToolDirectory() {
+  const dir = {}
+  for (const m of listMcpSync()) {
+    dir[`mcp__${m.code}`] = { bizName: m.name, description: m.description || '', checkStatus: m.displayStatus || 'UNKNOWN', type: 'MCP' }
+  }
+  for (const a of listApisSync()) {
+    dir[`api__${a.code}`] = { bizName: a.name, description: a.description || '', checkStatus: a.displayStatus || 'UNKNOWN', type: 'API' }
+  }
+  for (const b of listBizSystemsSync()) {
+    // 业务系统走登录态托管，无连通性验证概念（无 displayStatus），沿用旧口径 UNKNOWN
+    dir[`biz__${b.id}`] = { bizName: b.name, description: b.description || '', checkStatus: 'UNKNOWN', type: 'BIZ_SYSTEM' }
+  }
+  return dir
 }
 
 function referencedToolsOf(s) {
+  const dir = loadToolDirectory()
   return s.toolRefs.map((code) => ({
     code,
-    bizName: TOOL_DIRECTORY[code]?.bizName || code,
-    checkStatus: TOOL_DIRECTORY[code]?.checkStatus || 'UNKNOWN',
+    bizName: dir[code]?.bizName || code,
+    checkStatus: dir[code]?.checkStatus || 'UNKNOWN',
     requiresConfirmation: false
   }))
+}
+
+/**
+ * 技能类别标签派生（md §三.3「操作类/查询类，由工具引用自动派生」）：引用业务系统/数据表等
+ * 写类工具 → 操作类，否则查询类。口径与 positionMock.skillRefVO 的同名派生一致（utils/skillCategory.js
+ * 的 SKILL_CATEGORY 枚举同值，mock 层不 import utils，数值对齐即可）。
+ */
+function operationCategoryOf(s) {
+  const isOperation = (s.toolRefs || []).some((c) => String(c).startsWith('biz__') || String(c).startsWith('table__'))
+  return isOperation ? 'OPERATION' : 'QUERY'
 }
 
 export async function getSkillDetail(id) {
@@ -347,7 +410,9 @@ export async function getSkillDetail(id) {
     referencedTools: referencedToolsOf(s),
     agentId: null,
     positionId: null,
-    category: null,
+    // md §三.3「技能类别标签：只读展示操作类/查询类，由工具引用自动派生」——此前硬编码 null，
+    // 编辑页永远不显示标签（2026-09-23 待办 yuepu#10①）；派生口径与 positionMock.skillRefVO 一致
+    category: operationCategoryOf(s),
     displayCategoryId: s.category || null,
     displayCategoryName: s.category || '',
     publications: publicationsOf(s),
@@ -446,7 +511,9 @@ export async function updateSkill(id, payload = {}) {
     s.category = payload.displayCategoryId || ''
   }
   if ('skillMd' in payload) {
-    ensureFiles(s)['SKILL.md'] = String(payload.skillMd ?? '')
+    const md = String(payload.skillMd ?? '')
+    ensureFiles(s)['SKILL.md'] = md
+    s.toolRefs = deriveToolRefsFromMd(md) // yuepu#10①：工具数/类别标签同步正文，不再是脱节的静态字段
   }
   s.updatedAt = nowText()
   persist()
@@ -758,7 +825,7 @@ export async function toolPicker(params = {}) {
   await delay(80)
   const { type = 'MCP', keyword = '' } = params
   const q = String(keyword).trim().toLowerCase()
-  return Object.entries(TOOL_DIRECTORY)
+  return Object.entries(loadToolDirectory())
     .filter(([, t]) => t.type === type)
     .map(([code, t]) => ({
       code,
@@ -828,9 +895,12 @@ export async function saveSkillFile(id, { path, content } = {}) {
   const files = ensureFiles(s)
   const isNew = !(path in files)
   files[path] = String(content ?? '')
+  // 入口文件才承载工具引用标记；改其它文件不影响 toolRefs（yuepu#10①）
+  const isEntry = path === 'SKILL.md'
+  if (isEntry) s.toolRefs = deriveToolRefsFromMd(files[path])
   s.updatedAt = nowText()
   persist()
-  return saveVO(s, { treeChanged: isNew, refsChanged: false })
+  return saveVO(s, { treeChanged: isNew, refsChanged: isEntry })
 }
 
 export async function deleteSkillFile(id, path) {
