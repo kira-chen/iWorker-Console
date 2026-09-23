@@ -10,6 +10,9 @@ frontend/dist/
 .DS_Store
 *.local
 .claude/settings.local.json
+# Office 编辑锁文件（本地打开 docx/md 等文件时生成，与内容无关；曾被 post-commit 钩子的
+# 目录级 `git add` 误纳入过一次提交，见 2026-09-23 commit 说明）
+~$*
 
 # 日志与临时
 *.log

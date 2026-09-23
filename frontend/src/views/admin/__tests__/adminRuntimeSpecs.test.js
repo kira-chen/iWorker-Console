@@ -17,6 +17,8 @@ import { mountReal, flushAll } from './helpers/smokeMount'
 const api = { listRuntimeSpecs: vi.fn(), deleteRuntimeSpec: vi.fn(), getRuntimeSpec: vi.fn(), getRuntimeSpecLimits: vi.fn(), createRuntimeSpec: vi.fn(), updateRuntimeSpec: vi.fn(), listRuntimeSpecUsers: vi.fn(), assignRuntimeSpecUsers: vi.fn(), applyRuntimeSpecForUser: vi.fn(), unassignRuntimeSpecUser: vi.fn() }
 vi.mock('@/api/runtimeSpec', () => api)
 vi.mock('@/api/position', () => ({ listPositions: vi.fn().mockResolvedValue({ list: [], total: 0 }) }))
+// 访问审计「查看」跳转会注入 ?keyword=；本文件不测该跳转本身（见 adminLoginLogsOps.test.js），只需 useRoute() 不炸。
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
 const AdminRuntimeSpecs = (await import('@/views/admin/AdminRuntimeSpecs.vue')).default
 

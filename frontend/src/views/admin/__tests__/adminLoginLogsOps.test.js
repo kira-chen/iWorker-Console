@@ -12,6 +12,13 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * - §6.3 【查看】跳转「版本管理页」并注入操作对象名称作关键词；
  * - §6.4 模块标签「版本管理」灰色、动作「发布」绿 / 「停用」橙。
  *
+ * 2026-09-23 补运行规格记录（见 prd.访问审计.md §6「运行规格记录」）：只记「个人配置」一类动作，
+ * 规格删除不记（是否记审计留待与其余模块统一规则，本轮不单独收窄到运行规格）：
+ * - §6.1 模块筛选选项含「运行规格」；
+ * - §6.2 变更内容记录「为 N 个用户配置规格「规格名称」」，操作对象为规格名称，不附版本号小标签；
+ * - §6.3 【查看】跳转「运行规格列表页」并注入规格名称作关键词；
+ * - §6.4 模块标签「运行规格」灰色、动作「个人配置」绿。
+ *
  * 真实挂载（真 Element Plus 标签页 / 表格 / 下拉），只 mock 数据层。记录时间取「今天」，
  * 避免被页面默认的「近 90 天」时间范围滤掉。「登录访问」页签的用例见 adminLoginLogs.test.js。
  */
@@ -26,7 +33,8 @@ vi.mock('@/api/accessAuditMock', () => {
     opsRecords: [
       { id: 1, time: `${day} 09:00`, operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
       { id: 2, time: `${day} 10:00`, operator: 'xiaomei', module: '版本管理', action: '发布', target: 'Windows v1.2.0', detail: '1. 新增记忆管理\n2. 修复若干问题' },
-      { id: 3, time: `${day} 11:00`, operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: '' }
+      { id: 3, time: `${day} 11:00`, operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: '' },
+      { id: 4, time: `${day} 12:00`, operator: 'demo', module: '运行规格', action: '个人配置', target: '标准', detail: '为 2 个用户配置规格「标准」' }
     ]
   }
 })
@@ -49,7 +57,8 @@ beforeEach(async () => {
     routes: [
       { path: '/admin/login-logs', name: 'AdminLoginLogs', component: { template: '<div />' } },
       { path: '/admin/versions', name: 'AdminVersions', component: { template: '<div />' } },
-      { path: '/admin/positions', name: 'AdminPositions', component: { template: '<div />' } }
+      { path: '/admin/positions', name: 'AdminPositions', component: { template: '<div />' } },
+      { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: { template: '<div />' } }
     ]
   })
   await router.push('/admin/login-logs')
@@ -68,8 +77,8 @@ afterEach(() => {
 })
 
 describe('访问审计 · 管理端操作 · 版本管理记录', () => {
-  it('三条记录都在默认时间范围内展示', () => {
-    expect(rows()).toHaveLength(3)
+  it('四条记录都在默认时间范围内展示', () => {
+    expect(rows()).toHaveLength(4)
   })
 
   it('模块标签：版本管理灰色（§6.4）；动作标签：发布绿、停用橙', () => {
@@ -130,5 +139,43 @@ describe('访问审计 · 管理端操作 · 版本管理记录', () => {
     ;[...position.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminPositions'))
     expect(router.currentRoute.value.query.keyword).toBe('销售顾问')
+  })
+})
+
+describe('访问审计 · 管理端操作 · 运行规格记录（2026-09-23）', () => {
+  it('模块标签：运行规格灰色（§6.4）；动作标签：个人配置绿', () => {
+    const assign = rowOf('标准', '个人配置')
+    expect(tagOf(assign, '运行规格').className).toContain('tag-gray')
+    expect(tagOf(assign, '个人配置').className).toContain('tag-green')
+  })
+
+  it('操作对象为规格名称，不附版本号小标签（§6.2）', () => {
+    const assign = rowOf('标准', '个人配置')
+    expect(assign.querySelector('.ops-target-name').textContent).toBe('标准')
+    expect(assign.querySelector('.ops-version')).toBeNull()
+  })
+
+  it('变更内容：个人配置记录「为 N 个用户配置规格「规格名称」」（§6.2）', () => {
+    const assign = rowOf('标准', '个人配置')
+    expect(assign.textContent).toContain('为 2 个用户配置规格「标准」')
+  })
+
+  it('模块筛选含「运行规格」，选中后只剩运行规格记录（§6.1）', async () => {
+    const select = pane().querySelectorAll('.lt-filter')[0]
+    select.querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    const items = [...document.body.querySelectorAll('.el-select-dropdown__item')]
+    expect(items.map((i) => i.textContent.trim())).toContain('运行规格')
+    items.find((i) => i.textContent.trim() === '运行规格').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(1)
+    expect(rows().every((tr) => tr.textContent.includes('demo'))).toBe(true)
+  })
+
+  it('【查看】跳转到运行规格列表页，并把规格名称作为关键词带过去（§6.3）', async () => {
+    const assign = rowOf('标准', '个人配置')
+    ;[...assign.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminRuntimeSpecs'))
+    expect(router.currentRoute.value.query.keyword).toBe('标准')
   })
 })

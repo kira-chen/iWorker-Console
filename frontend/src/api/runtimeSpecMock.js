@@ -8,6 +8,8 @@ import { attachPersist } from './mockPersist'
 import { listUsers } from './adminUserMock'
 import { listPositions } from './positionMock'
 import { listPositionAssignments } from './positionAssignmentMock'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
@@ -188,6 +190,8 @@ export async function assignRuntimeSpecUsers(specId, usernames = []) {
     target.directUsers.push(relation(username, user.displayName || username))
   })
   persist()
+  // md 访问审计 §6「运行规格记录」：个人例外确认配置后写入管理端操作
+  appendOpsRecord({ operator: currentDemoUsername(), module: '运行规格', action: '个人配置', target: target.name, detail: `为 ${unique.length} 个用户配置规格「${target.name}」` })
   return { count: unique.length, pending: false }
 }
 
