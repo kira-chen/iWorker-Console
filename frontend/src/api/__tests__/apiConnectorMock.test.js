@@ -332,7 +332,9 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       () => m.publishApi('api_1106'),
       () => m.withdrawApi('api_1106'),
       () => m.deactivateApi('api_1101'),
-      () => m.deleteApi('api_1102')
+      // 删除仅未发布态可用（md-API §2 L54-56，2026-09-23 待办 yuepu#7②）：api_1102 是 PENDING_REVIEW 种子，
+      // 改用未发布的 api_1104 验证这一写点
+      () => m.deleteApi('api_1104')
     ]
     for (let i = 0; i < steps.length; i++) {
       await run(steps[i]())
@@ -341,7 +343,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
     expect(harness.options.version).toBe(5) // v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
-    expect(snap.apis.some((a) => a.id === 'api_1102')).toBe(false)
+    expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
     expect(snap.providerSystems.some((p) => p.id === 'pv_3')).toBe(false)
   })
 
