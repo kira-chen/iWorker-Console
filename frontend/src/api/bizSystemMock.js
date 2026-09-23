@@ -162,6 +162,14 @@ function toRow(b) {
 }
 
 /* ================= 列表 / 详情 ================= */
+/**
+ * 全量业务系统行（同步，供 unifiedSkillMock 的工具坞候选/已引用工具实时读取，2026-09-23 待办
+ * yuepu#10②）：不能直接复用 listBizSystems——那是 async + delay，技能侧的同步调用链（模块初始化
+ * 时的 seedReviewSnapshots）用不了 async。
+ */
+export function listBizSystemsSync() {
+  return bizRows.map(toRow)
+}
 export async function listBizSystems(params = {}) {
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()

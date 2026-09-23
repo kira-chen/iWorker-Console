@@ -586,6 +586,14 @@ export async function deleteProviderSystem(id) {
 }
 
 /* ================= API 定义 ================= */
+/**
+ * 全量 API 行（同步，供 unifiedSkillMock 的工具坞候选/已引用工具实时读取，2026-09-23 待办
+ * yuepu#10②）：不能直接复用 listApis——那是 async + delay，技能侧的同步调用链（模块初始化时的
+ * seedReviewSnapshots）用不了 async。
+ */
+export function listApisSync() {
+  return apis.map(toRow)
+}
 export async function listApis(params = {}) {
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()

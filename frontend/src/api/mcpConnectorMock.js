@@ -342,6 +342,16 @@ function aggStateKey(id) {
 }
 
 /**
+ * 全量 MCP 行（同步、不脱敏 code/name/health，供 unifiedSkillMock 的工具坞候选/已引用工具实时读取，
+ * 2026-09-23 待办 yuepu#10②）：不能直接复用 listMcp——那是 async + delay，而技能侧的
+ * referencedToolsOf 会被 skillSnapshotDetail 同步调用链（模块初始化时的 seedReviewSnapshots）
+ * 用到，不能改造成 async。
+ */
+export function listMcpSync() {
+  return mcps.map(toRow)
+}
+
+/**
  * 列表（2026-09-08 原型复刻批次 2C：种子 11 条后补齐服务端语义）：
  * params = { keyword（名称/描述模糊）, state（三态聚合键 PUBLISHED/PENDING_REVIEW/NOT_PUBLISHED）,
  *            status（启用/停用，另一维度）, sort（asc|desc，按 updatedAt；md §二.5 默认由近到远）, page, size }

@@ -22,6 +22,7 @@ import {
   getExpertKbScopeRefId,
   __resetExpertMock
 } from '../domainExpertMock'
+import { _getRaw as getRawSkill, _reset as resetSkillRaw } from '../unifiedSkillMock'
 
 // vitest 用例随机顺序执行：每例前重置种子（含审核快照表，2026-09-12 T23），杜绝状态顺序依赖
 beforeEach(() => __resetExpertMock())
@@ -118,10 +119,13 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(getExpertKbScopeRefId(203)).toBeNull()
   })
 
-  it('市场技能候选：3 条种子；keyword 覆盖名称/描述/分类', async () => {
-    expect(await listExpertSkillCandidates()).toHaveLength(3)
+  it('市场技能候选：实时读已发布市场技能（2026-09-23 待办 yuepu#10③，此前是脱钩的静态 3 条）', async () => {
+    // 市场技能（PLATFORM）种子 302/304/307/309 中，307 是草稿——候选只算已发布的 302/304/309；
+    // 分类也改为技能模块的真实分类（此前静态候选的分类与技能模块本身对不上）
+    const candidates = await listExpertSkillCandidates()
+    expect(candidates.map((s) => s.id).sort((a, b) => a - b)).toEqual([302, 304, 309])
     expect((await listExpertSkillCandidates({ keyword: '数据分析' })).map((s) => s.id)).toEqual([302])
-    expect((await listExpertSkillCandidates({ keyword: '办公效率' })).map((s) => s.id)).toEqual([304])
+    expect((await listExpertSkillCandidates({ keyword: '行业专业' })).map((s) => s.id)).toEqual([304])
   })
 
   it('新建：落草稿并支持一次性带 skillIds（新建态即可勾选）；重名按 name 字段级报错', async () => {
@@ -162,15 +166,43 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
   })
 
   it('引用/解除/重排（接口保留）：add 幂等、remove 断关联不动本体、reorder 按数组顺序', async () => {
-    await addExpertSkill(203, 307)
-    await addExpertSkill(203, 307) // 幂等
+    // 307 是草稿技能，不再是有效候选（yuepu#10③），改用已发布的 309 验证
+    await addExpertSkill(203, 309)
+    await addExpertSkill(203, 309) // 幂等
     let d = await getExpert(203)
-    expect(d.skillIds).toEqual([304, 307])
-    d = await reorderExpertSkills(203, [307, 304])
-    expect(d.skillIds).toEqual([307, 304])
+    expect(d.skillIds).toEqual([304, 309])
+    d = await reorderExpertSkills(203, [309, 304])
+    expect(d.skillIds).toEqual([309, 304])
     d = await removeExpertSkill(203, 304)
-    expect(d.skillIds).toEqual([307])
+    expect(d.skillIds).toEqual([309])
     expect(await listExpertSkillCandidates()).toHaveLength(3) // 技能本体不受影响
+  })
+
+  it('引用变化回写技能 refNames：add/remove/改名/删专家 都同步（2026-09-23 待办 yuepu#10③）', async () => {
+    // unifiedSkillMock 是模块级共享内存，跨用例不重置（同文件其它用例可能已经改动过 refNames）：
+    // 显式 _reset 建立已知基线，不依赖种子/其它用例的历史状态
+    resetSkillRaw('sk_304', { refNames: ['经营分析专家', '法务审阅专家'] })
+    resetSkillRaw('sk_309', { refNames: [] })
+
+    // add：sk_309 此前未被任何专家引用，引用后 refNames 追加专家名
+    expect(getRawSkill('sk_309').refNames).toEqual([])
+    await addExpertSkill(203, 309)
+    expect(getRawSkill('sk_309').refNames).toEqual(['法务审阅专家'])
+
+    // 改名：sk_304 已引用 203（法务审阅专家），改名后 refNames 里同步换成新名
+    expect(getRawSkill('sk_304').refNames).toContain('法务审阅专家')
+    await updateExpert(203, { name: '法务审阅专家改名' })
+    expect(getRawSkill('sk_304').refNames).toContain('法务审阅专家改名')
+    expect(getRawSkill('sk_304').refNames).not.toContain('法务审阅专家')
+    expect(getRawSkill('sk_309').refNames).toEqual(['法务审阅专家改名'])
+
+    // remove：解除引用摘掉 refNames
+    await removeExpertSkill(203, 309)
+    expect(getRawSkill('sk_309').refNames).toEqual([])
+
+    // 删专家：级联摘掉该专家在所有已引用技能上的 refNames（此前 bug：删专家 203 后 sk_304 引用清单仍列它）
+    await deleteExpert(203)
+    expect(getRawSkill('sk_304').refNames).not.toContain('法务审阅专家改名')
   })
 
   it('发布流：无技能拦发布；提交发布进审核（语义化版本号）；撤回清 pending*', async () => {
