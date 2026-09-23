@@ -136,6 +136,34 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
     expect(upd.apiKeyMasked).toBeTruthy() // 留空保留了原密钥
   })
 
+  it('审核中的模型不可编辑（md §二.4 L192/L207，2026-09-23 待办 yuepu#7③）', async () => {
+    const row = await mk(`审核锁定模型-${Date.now()}`)
+    await verifyModel(row.id)
+    await publishModel(row.id)
+    await expect(
+      updateModel(row.id, {
+        name: row.name, providerName: 'deepseek', category: 'TEXT',
+        baseUrl: row.baseUrl, model: row.model, contextWindow: row.contextWindow
+      })
+    ).rejects.toThrow('审核中不可编辑')
+  })
+
+  it('默认模型改连接字段 → 回未发布同时摘默认标记，不留「未发布还挂默认」的假态（2026-09-23 待办 yuepu#7③）', async () => {
+    // MULTIMODAL 类别种子无默认模型，不影响其它用例
+    const row = await mk(`默认改连接模型-${Date.now()}`, { category: 'MULTIMODAL' })
+    await verifyModel(row.id)
+    await publishModel(row.id)
+    await approveModel(row.id)
+    await setDefaultModel(row.id)
+    expect((await getModel(row.id)).isDefault).toBe(true)
+    const upd = await updateModel(row.id, {
+      name: row.name, providerName: 'deepseek', category: 'MULTIMODAL',
+      baseUrl: 'https://api.changed-default.com/v1', model: row.model, contextWindow: row.contextWindow
+    })
+    expect(upd.status).toBe('DRAFT')
+    expect(upd.isDefault).toBe(false)
+  })
+
   /**
    * 2026-09-09 PRD 复核批次 0 · A20：口径改按 md `prd-模型.md` §二.2——
    * 「提交审核与撤回提交后，按新的最近更新时间重新排列；重新验证、停用或设置默认模型时，不改变最近更新时间」。

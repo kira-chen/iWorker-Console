@@ -60,6 +60,9 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(d.exampleQuestions.every((q) => q.trim())).toBe(true)
     expect(d.positionSop.startsWith('1. ')).toBe(true)
     expect(d.businessSystemIds).toEqual(['biz_2101'])
+    // md §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，种子未绑定，空数组
+    expect(d.connectorMcpIds).toEqual([])
+    expect(d.connectorApiIds).toEqual([])
     // 空态样本改用「新建岗位」：种子 404 市场研究岗已于 2026-09-09 补全为六项齐备，
     // 全套种子里不再有空白岗位；新建态才是这些字段真正的空态来源。
     const empty = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
@@ -67,22 +70,34 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(empty.exampleQuestions).toEqual(['', '', ''])
     expect(empty.positionSop).toBe('')
     expect(empty.businessSystemIds).toEqual([])
+    expect(empty.connectorMcpIds).toEqual([])
+    expect(empty.connectorApiIds).toEqual([])
   })
 
-  it('updatePosition 部分更新新字段并回详情树；businessSystemIds 引用可写', async () => {
+  it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {
     const d = await updatePosition(404, {
       claimDescriptions: ['第一条说明'],
       exampleQuestions: ['q1', 'q2', 'q3'],
       positionSop: '1. 第一步。',
-      businessSystemIds: ['biz_2101']
+      businessSystemIds: ['biz_2101'],
+      connectorMcpIds: ['knowledge_hub'],
+      connectorApiIds: ['api_1101']
     })
     expect(d.claimDescriptions).toEqual(['第一条说明'])
     expect(d.exampleQuestions).toEqual(['q1', 'q2', 'q3'])
     expect(d.positionSop).toBe('1. 第一步。')
     expect(d.businessSystemIds).toEqual(['biz_2101'])
+    expect(d.connectorMcpIds).toEqual(['knowledge_hub'])
+    expect(d.connectorApiIds).toEqual(['api_1101'])
+    // 2026-09-23 待办 yuepu#7①④：此前只写 Pinia store 未上送 payload，保存后刷新即丢——
+    // 验证 getPosition 重新拉取后仍在（真正的持久化回归，不只是 updatePosition 出参回显）
+    const reloaded = await getPosition(404)
+    expect(reloaded.connectorMcpIds).toEqual(['knowledge_hub'])
+    expect(reloaded.connectorApiIds).toEqual(['api_1101'])
     // 未含字段 = 不改
     const after = await updatePosition(404, { persona: 'x' })
     expect(after.claimDescriptions).toEqual(['第一条说明'])
+    expect(after.connectorMcpIds).toEqual(['knowledge_hub'])
   })
 
   it('mock 校验：描述 >2000（2026-09-20 待办 yuepu#8，原 500 与 UI/一览表不同源）/ 领用页文案 >6 条或单条 >300（同上，原 100）/ 示例问题单条 >300（2026-09-18 待办 yuepu#5⑥，原 60）/ SOP >4000 均被拦', async () => {

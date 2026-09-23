@@ -446,13 +446,24 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
   })
 
   // ⑧ 删除（md §二.3.7 软引用）/ 撤回（§二.3.5）/ 发布状态端点 / 审核驳回
-  it('⑧ deleteMcp：被 3 个技能引用的 knowledge_hub 也能删（软引用）；删后详情报「MCP 不存在」、列表 total 减 1', async () => {
-    expect((await m.getMcp('knowledge_hub')).referencedBySkillCount).toBe(3)
-    await m.deleteMcp('knowledge_hub')
-    await expect(m.getMcp('knowledge_hub')).rejects.toThrow('MCP 不存在')
+  it('⑧ deleteMcp：被引用的未发布 mail_center 也能删（软引用）；删后详情报「MCP 不存在」、列表 total 减 1', async () => {
+    // 删除仅在「未发布」态展示（md §三.7 L142），改用未发布态种子验证软引用；
+    // 已发布态的 knowledge_hub 挪到下方状态守卫用例验证「已发布不可删」
+    expect((await m.getMcp('mail_center')).referencedBySkillCount).toBe(1)
+    await m.deleteMcp('mail_center')
+    await expect(m.getMcp('mail_center')).rejects.toThrow('MCP 不存在')
     const { list, total } = await m.listMcp()
     expect(total).toBe(10)
-    expect(list.map((r) => r.code)).not.toContain('knowledge_hub')
+    expect(list.map((r) => r.code)).not.toContain('mail_center')
+  })
+
+  it('删除/编辑状态守卫：已发布/审核中的 MCP 不可删除，审核中不可编辑（md §三.3 L106 / §三.7 L142，2026-09-23 待办 yuepu#7②）', async () => {
+    // knowledge_hub 种子已发布
+    await expect(m.deleteMcp('knowledge_hub')).rejects.toMatchObject({ message: expect.stringContaining('删除仅适用于未发布状态') })
+    const created = await m.createMcp(mkStdioIn('mcp_guard'))
+    await m.publishMcpService(created.id)
+    await expect(m.deleteMcp(created.id)).rejects.toMatchObject({ message: expect.stringContaining('删除仅适用于未发布状态') })
+    await expect(m.updateMcp(created.id, { description: '审核中改描述' })).rejects.toMatchObject({ message: expect.stringContaining('审核中不可编辑') })
   })
 
   it('⑧ 状态机：发布 → 审核中；撤回 → 未发布（不置 publishedAt）；再发布后驳回 → REJECTED（列表归未发布）', async () => {

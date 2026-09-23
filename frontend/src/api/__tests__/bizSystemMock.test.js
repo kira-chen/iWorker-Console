@@ -238,9 +238,18 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(publishBizSystem(row.id)).rejects.toThrow('仅未发布状态可提交发布')
   })
 
-  it('软引用删除：被技能引用亦可删（md §二.3 L52 / §四）', async () => {
+  it('删除状态守卫 + 软引用：已发布不可删；停用审核通过回到未发布后，被引用仍可删（md §2 L43-45 / §二.3 L52 / §四，2026-09-23 待办 yuepu#7②）', async () => {
+    // biz_2101 种子已发布且被 2 个技能引用——此前只靠 UI 藏按钮，直调 mock 能绕过状态限制
     const before = await getBizSystem('biz_2101')
     expect(before.referencedBySkillCount).toBeGreaterThan(0)
+    await expect(deleteBizSystem('biz_2101')).rejects.toMatchObject({ message: expect.stringContaining('删除仅适用于未发布状态') })
+    await expect(getBizSystem('biz_2101')).resolves.toBeTruthy() // 未被误删
+
+    // 走完整停用审核回到未发布态：引用关系不受影响，软引用规则下仍可删除
+    await deactivateBizSystem('biz_2101')
+    const afterApprove = await approveBizSystem('biz_2101')
+    expect(afterApprove.status).toBe('NOT_PUBLISHED')
+    expect((await getBizSystem('biz_2101')).referencedBySkillCount).toBeGreaterThan(0)
     await expect(deleteBizSystem('biz_2101')).resolves.toEqual({})
     await expect(getBizSystem('biz_2101')).rejects.toThrow('不存在')
   })
@@ -305,6 +314,9 @@ describe('bizSystemMock —— 持久化', () => {
       () => m.publishBizSystem(row.id),
       () => m.approveBizSystem(row.id),
       () => m.deactivateBizSystem(row.id),
+      // 停用审核通过 → 未发布（md §2 L43-45「删除仅未发布状态展示」，2026-09-23 待办 yuepu#7②）：
+      // 删除前必须先把行落回未发布态，否则会撞新加的状态守卫
+      () => m.approveBizSystem(row.id),
       () => m.createBizSystemOwnedSkill(row.id, { name: '专属技能' }),
       () => m.deleteBizSystemOwnedSkill(row.id, 'sk_own_3'),
       () => m.deleteBizSystem(row.id)

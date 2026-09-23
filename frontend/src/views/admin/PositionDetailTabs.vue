@@ -238,6 +238,10 @@ function buildBasicPayload() {
     exampleQuestions: normalizeExampleQuestions(b.exampleQuestions),
     positionSop: b.positionSop || '',
     businessSystemIds: Array.isArray(b.businessSystemIds) ? b.businessSystemIds : [],
+    // md 岗位 §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，此前只写 store 未透传进
+    // 保存 payload，toast「绑定成功」→ 保存 → 刷新即丢（2026-09-23 待办 yuepu#7①④）
+    connectorMcpIds: Array.isArray(b.connectorMcpIds) ? b.connectorMcpIds : [],
+    connectorApiIds: Array.isArray(b.connectorApiIds) ? b.connectorApiIds : [],
     persona: b.persona,
     intakeSchema: normalizeIntakeForSubmit(b.intakeSchema)
   }

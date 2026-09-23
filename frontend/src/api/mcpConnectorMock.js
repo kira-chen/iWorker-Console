@@ -470,6 +470,9 @@ export async function updateMcp(id, payload) {
   await delay(250)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
+  // md §三.3 L106「审核中的 MCP，【编辑】置灰，并提示"审核中不可编辑，如需修改请先撤回"」——
+  // UI 已拦，mock 兜底不留后门（同技能 K20 范式）
+  if (pubAgg[m.id] === 'PENDING_REVIEW') throw err('审核中不可编辑，如需修改请先撤回')
   // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
   if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
@@ -481,6 +484,11 @@ export async function updateMcp(id, payload) {
 
 export async function deleteMcp(id) {
   await delay(250)
+  const m = findMcp(id)
+  // md §三.7 L142「仅未发布的 MCP 显示【删除】」——审核中/已发布不可删，只靠 UI 藏按钮会被绕过
+  if (m && aggStateKey(m.id) !== 'NOT_PUBLISHED') {
+    throw err('删除仅适用于未发布状态的 MCP，审核中请先撤回、已发布请先停用')
+  }
   // 软引用（PRD §二.3.7）：被技能引用亦可删——列表侧已做「确认影响后继续删除」二次确认
   mcps = mcps.filter((m) => m.id !== id && m.code !== id)
   persist()
