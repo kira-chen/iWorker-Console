@@ -14,12 +14,16 @@ import {
   listRuntimeSpecs, getRuntimeSpec, getRuntimeSpecLimits, createRuntimeSpec, updateRuntimeSpec, deleteRuntimeSpec,
   listRuntimeSpecUsers, assignRuntimeSpecUsers, applyRuntimeSpecForUser, unassignRuntimeSpecUser, __resetRuntimeSpecMock
 } from '../runtimeSpecMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 
 // 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/04运行/运行规格/prd.运行规格.md §一.4 核心规则 /
 // §二.1 搜索 / §三.2 排序 / §三.3.4 配置范围 / §三.3.6 删除 / §四.3 适用范围 / §四.4 资源上限。
 // 校验文案 2026-09-12 已按 md §四.10 / §三.3.6 逐字对齐（审计 K28 闭环），本文件断言 md 原文。
 describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', () => {
-  beforeEach(() => __resetRuntimeSpecMock())
+  beforeEach(() => {
+    __resetRuntimeSpecMock()
+    resetAccessAuditMock()
+  })
 
   it('始终有且仅有一个默认规格，全部用户都有生效规格', async () => {
     const { list, summary } = await listRuntimeSpecs()
@@ -215,5 +219,40 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     })
     expect((await listRuntimeSpecs()).list[0].id).toBe(created.id)
     expect((await listRuntimeSpecs({ sortOrder: 'ascending' })).list[0].updatedAt).toBe('2026-08-18 11:30')
+  })
+})
+
+// 2026-09-23：接入访问审计「管理端操作」（prd.访问审计.md §6「运行规格记录」）。
+// 只记一类动作——管理员在配置范围里确认个人例外配置；新建/编辑/删除/用户自主申请/撤回解除均不写记录
+// （删除是否记审计留待与其余模块统一规则，本轮不单独收窄到运行规格）。
+describe('写访问审计「管理端操作」（prd.访问审计.md §6「运行规格记录」）', () => {
+  beforeEach(() => {
+    __resetRuntimeSpecMock()
+    resetAccessAuditMock()
+  })
+  const liveOps = () => opsRecords.filter((r) => r.live)
+
+  it('配置范围确认配置后写一条「个人配置」：模块「运行规格」、操作对象为规格名称、变更内容「为 N 个用户配置规格「规格名称」」', async () => {
+    await assignRuntimeSpecUsers(1, ['chenyu', 'zhangwei'])
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({
+      operator: 'demo',
+      module: '运行规格',
+      action: '个人配置',
+      target: '轻',
+      detail: '为 2 个用户配置规格「轻」'
+    })
+  })
+
+  it('新建、编辑、删除、用户自主申请、撤回/解除均不写管理端操作记录', async () => {
+    const created = await createRuntimeSpec({
+      name: '不入审计档', boundaryDesc: '验证范围外动作', cpu: 1, memoryGi: 2, diskGi: 5,
+      readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0, positionIds: [], allowUserApply: true
+    })
+    await updateRuntimeSpec(created.id, { ...created, maxLifetimeHours: 6 })
+    await applyRuntimeSpecForUser(created.id, 'chenyu')
+    await unassignRuntimeSpecUser(created.id, 'chenyu')
+    await deleteRuntimeSpec(created.id)
+    expect(liveOps()).toHaveLength(0)
   })
 })

@@ -12,6 +12,7 @@
  *  ③ §三.1 L123-126 列格式「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」；最大存活 md 未给小时写法，按同款「24 小时」。
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -26,6 +27,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import { COL } from '@/utils/tableLayout'
 import '@/assets/connector.css'
 
+const route = useRoute()
 const query = reactive({ keyword: '', usage: '', sortOrder: 'descending' })
 const list = useAdminList(listRuntimeSpecs, { pageSize: 10, params: () => ({ ...query }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
@@ -79,7 +81,10 @@ function clearFilters() {
 // 默认规格【删除】置灰的悬停提示（md §三.3.6 L222）
 const DEFAULT_DELETE_TIP = '默认运行规格用于平台兜底，不能删除'
 
-onMounted(refresh)
+onMounted(() => {
+  if (route.query.keyword) query.keyword = route.query.keyword
+  refresh()
+})
 
 /* ---------- 抽屉（新建 / 编辑共用 RuntimeSpecEditor） ---------- */
 const editorVisible = ref(false)

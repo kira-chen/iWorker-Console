@@ -185,12 +185,14 @@ const MOD_CLS = {
   API: 'tag-gray',
   业务系统: 'tag-gray',
   模型: 'tag-orange',
+  运行规格: 'tag-gray',
   审核中心: 'tag-green',
   用户技能审核: 'tag-orange',
   版本管理: 'tag-gray',
 }
 const ACT_CLS = {
   发布: 'tag-green',
+  个人配置: 'tag-green',
   停用: 'tag-orange',
   撤回: 'tag-orange',
   删除: 'tag-red',
@@ -210,6 +212,7 @@ const MODULE_ROUTE = {
   API:        { name: 'AdminConnector', extraQuery: { tab: 'api' } },
   业务系统:   { name: 'AdminConnector', extraQuery: { tab: 'bizsystem' } },
   模型:       { name: 'AdminModels' },
+  运行规格:   { name: 'AdminRuntimeSpecs' },
   审核中心:   { name: 'UnifiedReview' },
   用户技能审核: { name: 'SysConfigUserSkillReviews' },
   版本管理:   { name: 'AdminVersions' },
@@ -420,11 +423,11 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','专家','技能','知识库','MCP','API','业务系统','模型','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','停用','撤回','删除','审核通过','审核驳回']"
+          <el-option v-for="a in ['发布','个人配置','停用','撤回','删除','审核通过','审核驳回']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button>查询</el-button>
