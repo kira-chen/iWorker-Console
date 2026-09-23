@@ -211,6 +211,13 @@ afterEach(() => {
   container?.remove()
 })
 
+describe('ApiEditor · 必填红星统一标注（2026-09-21 负责人拍板）', () => {
+  it('示例问题区标题带必填红星（前缀星，与名称 / 图标 / API 描述同为必填）', async () => {
+    const el = await mountEditor(null)
+    expect(el.querySelector('.ad-eq-title .req')?.textContent).toBe('*')
+  })
+})
+
 describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
   it('新建全空点【保存】 → 名称/所属系统/连接器类型/图标/描述/地址 6 个表单项标红 + 示例问题区标红，warning「请先修正标红项」，不调 createApi', async () => {
     const el = await mountEditor(null)

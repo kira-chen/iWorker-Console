@@ -52,7 +52,7 @@ export const MCP_ERROR_CATALOG = {
   },
   'endpoint 未配置': {
     code: 'CONFIG_MISSING',
-    reason: 'streamable-http 缺少接口地址'
+    reason: 'streamable-http / sse 缺少接口地址'
   },
   'command 未配置': {
     code: 'CONFIG_MISSING',

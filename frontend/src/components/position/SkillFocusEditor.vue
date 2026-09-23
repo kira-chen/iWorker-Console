@@ -747,7 +747,7 @@ onBeforeUnmount(() => {
       <span class="topline-div">|</span>
 
       <!-- #3：技能名前固定 label「技能名称：」；技能名仍 inline 可编辑 -->
-      <span class="eh-name-label">技能名称：</span>
+      <span class="eh-name-label">技能名称<em v-if="!ro" class="ib-req">*</em>：</span>
       <!-- 技能名 inline 可编辑：input + ✎（点字或点 ✎ 进编辑），borderless 透明底保持标题感。
            只读态（平台技能 Tab）：写入口 input + ✎ 不渲染，改为纯文本只读展示。 -->
       <span v-if="!ro" class="eh-name-wrap">

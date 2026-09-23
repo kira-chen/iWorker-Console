@@ -96,6 +96,8 @@ const refs = reactive({ UPLOAD: [], API: [], MCP: [] })
 
 const rules = computed(() => ({
   name: [{ required: true, message: '请输入知识库名称', trigger: 'blur' }],
+  // 2026-09-21 负责人拍板：图标必填（原选填）；文案与模型 / 连接器图标同口径
+  icon: [{ required: true, message: '请选择或上传图标', trigger: 'change' }],
   kbType: [{ required: true, message: '请选择类型', trigger: 'change' }],
   // 必填星标放在规则里（required: true + 自定义 validator），不要写在 <el-form-item required> 上：
   // 后者会让 Element 额外塞一条内置必填规则，企业类型固定「全员」、scopeRefId 恒为空 → 永远报 `scopeRefId is required`。
@@ -400,7 +402,7 @@ function close() {
           <el-form-item label="知识库名称" prop="name" required>
             <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="如 产品与解决方案库" />
           </el-form-item>
-          <el-form-item label="图标">
+          <el-form-item label="图标" prop="icon" required>
             <IconField :icon="form.icon" :name="form.name" :readonly="readonlyAll" @pick="({ icon }) => (form.icon = icon)" />
           </el-form-item>
           <!-- 第二行：类型 + 可见范围 -->

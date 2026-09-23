@@ -157,6 +157,14 @@ describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同
 })
 
 describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
+  it('新建岗位不预置默认图标（2026-09-21 负责人拍板岗位图标必填：须由配置者在人格页签自行选择）；显式传入则原样保留', async () => {
+    const bare = await createPosition({ name: '无图标岗_A', description: '图标必填验证' })
+    expect(bare.icon).toBe('')
+    expect((await getPosition(bare.positionId)).icon).toBe('')
+    const withIcon = await createPosition({ name: '有图标岗_B', description: '图标必填验证', icon: '◈' })
+    expect(withIcon.icon).toBe('◈')
+  })
+
   it('createPosition 返回完整详情树，getPosition 立即可用（新建弹窗 → 跳工作台）', async () => {
     const created = await createPosition({ name: '售后支持岗', description: '售后答疑' })
     expect(created).toMatchObject({ name: '售后支持岗', status: 'draft', agents: [] })

@@ -13,10 +13,12 @@
  *  - 裸单服务对象：{ "command": ..., "args": ..., "env": ... } 或 { "url": ... }
  *
  * transport 推断优先级：显式 type/transport 字段 → 有 command 判 stdio → 有 url 判 http。
- * http 归一：http / streamable-http / streamablehttp / sse 一律落到 'streamable-http'（后端合法值）。
+ * http 归一：http / streamable-http / streamablehttp 落到 'streamable-http'；
+ * sse 保持 'sse'（旧版 HTTP+SSE，管理端自 2026-09-21 起作为独立传输方式支持，不再悄悄转成 streamable-http——
+ * 两者握手协议不同，转错了只会在测试连接时才暴露）。仅有 url 而未声明类型时按 streamable-http 处理。
  */
 
-const HTTP_TYPES = new Set(['http', 'streamable-http', 'streamablehttp', 'sse'])
+const HTTP_TYPES = new Set(['http', 'streamable-http', 'streamablehttp'])
 
 /* suggestCodeFromKey（服务别名 → 候选 code）已于 2026-09-12 删除（审计 J13）：零调用方，
    且与 md §三.2 L225「server key 只用于解析，不作为可见或可编辑的 MCP code」相悖。 */
@@ -26,7 +28,7 @@ const HTTP_TYPES = new Set(['http', 'streamable-http', 'streamablehttp', 'sse'])
  * @param {string} text 粘贴的 JSON 文本
  * @returns {{
  *   ok: boolean, error?: string,
- *   key?: string, transport?: 'stdio'|'streamable-http',
+ *   key?: string, transport?: 'stdio'|'streamable-http'|'sse',
  *   command?: string, args?: string[], env?: Array<{key:string,value:string}>,
  *   endpoint?: string, extraKeys?: string[], warnings?: string[]
  * }}
@@ -77,6 +79,7 @@ export function parseMcpConfig(text) {
   let transport = ''
   const rawType = (cfg.type || cfg.transport || '').toString().trim().toLowerCase()
   if (rawType === 'stdio') transport = 'stdio'
+  else if (rawType === 'sse') transport = 'sse'
   else if (HTTP_TYPES.has(rawType)) transport = 'streamable-http'
   if (!transport) {
     if (cfg.command) transport = 'stdio'

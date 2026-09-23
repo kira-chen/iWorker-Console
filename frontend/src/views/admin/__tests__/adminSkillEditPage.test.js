@@ -35,9 +35,11 @@ vi.mock('vue-router', () => ({
 const FDE_DETAIL = () => ({
   skillId: '7',
   name: '客户回访',
+  icon: '▤',
   description: '回访技能',
   triggers: ['回访'],
-  // 示例问题已填 + 分类已选：保存门（一览表 §三）全部通过，便于「保存」类用例只验载荷。
+  // 图标已选 + 示例问题已填 + 分类已选：保存门（一览表 §三）全部通过，便于「保存」类用例只验载荷。
+  // （图标自 2026-09-21 负责人拍板起必填：保存门与名称 / 分类 / 描述 / 示例问题同处拦截。）
   exampleQuestion: '帮我回访一下今天的客户',
   displayCategoryId: '数据分析',
   skillMd: '---\nname: 客户回访\ndescription: 回访技能\n---\n# 正文',
@@ -401,6 +403,19 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       await vi.runOnlyPendingTimersAsync()
       expect(ElMessage.warning).toHaveBeenCalledWith('请选择技能分类')
       expect(patchSkillSpy).not.toHaveBeenCalled()
+    })
+
+    it('技能图标为空 / 纯空白 → warning「请选择技能图标」，不发配置 PUT（2026-09-21 负责人拍板：图标必填，原仅发布置灰、保存不拦）', async () => {
+      mount()
+      await vi.runOnlyPendingTimersAsync()
+      for (const icon of ['', '   ']) {
+        ElMessage.warning.mockClear()
+        focus.updateSkill({ icon })
+        focus.saveConfig()
+        await vi.runOnlyPendingTimersAsync()
+        expect(ElMessage.warning).toHaveBeenCalledWith('请选择技能图标')
+        expect(patchSkillSpy).not.toHaveBeenCalled()
+      }
     })
 
     it('描述超过 2000 字符 → warning「请填写最多 2000 个字符的技能描述」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
