@@ -184,12 +184,25 @@ async function confirmBatchBind() {
   batchBinding.value = true
   try {
     await Promise.all(
-      selectedRows.value.map(row => setUserPosition(row.userId, batchPositionId.value))
+      selectedRows.value.map(async (row) => {
+        await setUserPosition(row.userId, batchPositionId.value)
+        // 与单个分配路径（onSaved）同口径：绑定成功后若该用户有待分配申请，标记为已分配，
+        // 否则待分配标签不消、徽标不减（2026-09-23 待办 yuepu#9②）。单条申请状态更新失败
+        // 不影响本用户的绑定结果（已经绑上了），仅提示，不让 Promise.all 整体判失败。
+        if (row.pendingRequestId) {
+          try {
+            await markApplicationAssigned(row.pendingRequestId)
+          } catch (e) {
+            ElMessage.error(e?.message || `${row.username || row.displayName} 的申请状态更新失败，请刷新重试`)
+          }
+        }
+      })
     )
     ElMessage.success(`已将 ${selectedRows.value.length} 名用户绑定至「${pos?.name || ''}」`)
     batchDialogVisible.value = false
     tableRef.value?.clearSelection?.()
     selectedRows.value = []
+    refreshPendingCount()
     list.reload()
   } catch (e) {
     ElMessage.error(e?.message || '批量绑定失败，请重试')
