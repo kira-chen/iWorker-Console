@@ -259,6 +259,46 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     expect(generate).toHaveBeenCalledWith('汇总经营数据')
   })
 
+  /**
+   * 2026-09-18 待办 yuepu#13·技能 S1：组件随路由参数切换编辑对象而不重新挂载时（如
+   * SkillFocusEditor 随 route.params.id 复用实例），生成中途切到另一个对象，定时器触发时
+   * apply 会把生成结果写进「现在」的对象而非点击那一刻的对象。加 getEntityId 核对，变了就丢弃。
+   */
+  it('getEntityId：生成期间对象切换 → 定时器触发时丢弃结果，不回填、不 toast', () => {
+    const apply = vi.fn()
+    const generate = vi.fn((s) => `生成自：${s}`)
+    const entity = { id: 'sk_1' }
+    const api = useAiLiveGenerate({
+      getSourceText: () => '描述',
+      sourceLabel: '技能描述',
+      generate,
+      apply,
+      getEntityId: () => entity.id
+    })
+    api.run()
+    entity.id = 'sk_2' // 生成期间切到了另一个技能
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(generate).not.toHaveBeenCalled() // 核对不过直接丢弃，不再计算生成结果
+    expect(apply).not.toHaveBeenCalled() // 回填被拦下
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(api.busy.value).toBe(false) // busy 仍正常复位，不卡死按钮
+  })
+
+  it('getEntityId：对象未变 → 正常回填（不传时行为不变，向后兼容）', () => {
+    const apply = vi.fn()
+    const entity = { id: 'sk_1' }
+    const api = useAiLiveGenerate({
+      getSourceText: () => '描述',
+      sourceLabel: '技能描述',
+      generate: (s) => s,
+      apply,
+      getEntityId: () => entity.id
+    })
+    api.run()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).toHaveBeenCalledWith('描述')
+  })
+
   it('delayMs 可注入（接入方/测试可调；默认 500ms，2026-09-06 Q10 拍板全站统一）', () => {
     expect(AI_LIVE_DELAY_MS).toBe(500)
     const apply = vi.fn()

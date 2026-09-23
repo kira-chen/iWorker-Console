@@ -84,7 +84,11 @@ const isNew = computed(() => route.params.id === 'new')
 
 /* ---------- Tab 切换（9 个 sheet 页；改造：白板+弹窗 → Tab 内联） ---------- */
 // 初值可由 ?tab= 指定：技能整页编辑器「← 返回」据此回到来源页签（#15，2026-09-09 批次 4C）。
-const activeTab = ref(typeof route.query.tab === 'string' && route.query.tab ? route.query.tab : 'persona')
+// 七个页签见下方 el-tabs 定义；?tab= 传非法值（如旧深链 sampleTasks，见 L589 注）时 el-tabs
+// 找不到匹配的 el-tab-pane，内容区整块空白——按站内「非法输入回落默认值」口径兜底到 persona
+// （2026-09-18 待办 yuepu#13·岗位 P6）。
+const VALID_TABS = ['persona', 'intake', 'workProfile', 'knowledge', 'agents', 'tasks', 'businessSystems']
+const activeTab = ref(VALID_TABS.includes(route.query.tab) ? route.query.tab : 'persona')
 
 /* ---------- 页签子组件接线（2026-09-10 病 A 拆分） ----------
  * 子组件数据都直接走 usePositionStore、只接 isReadonly 一个 prop；仅以下三条跨层状态经 provide 注入：

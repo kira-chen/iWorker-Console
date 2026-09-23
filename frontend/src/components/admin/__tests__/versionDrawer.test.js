@@ -138,8 +138,11 @@ describe('VersionDrawer · 发布语义', () => {
   })
 
   it('首发：固定 v1.0.0、无更新类型单选；提交 bump=NONE', async () => {
+    // 真首发=发布态 INITIAL 且版本历史为空（2026-09-18 待办 yuepu#13·专家 E1：曾发布过又下架的对象
+    // 同样是 INITIAL 态但历史非空，不该按首发处理，见下一条用例）
     const a = makeAdapter({
-      deriveView: () => ({ state: 'INITIAL', label: '未发布', tagType: 'info', actions: ['submit'] })
+      deriveView: () => ({ state: 'INITIAL', label: '未发布', tagType: 'info', actions: ['submit'] }),
+      listVersions: vi.fn().mockResolvedValue([])
     })
     mount(a); await flush()
     expect(txt()).toContain('v1.0.0')
@@ -164,6 +167,22 @@ describe('VersionDrawer · 发布语义', () => {
     await flush(2)
     btn('提交发布').click(); await flush()
     expect(a.publish).toHaveBeenCalledWith('sk_1', { bump: 'MINOR', releaseNotes: '加功能' })
+  })
+
+  it('下架再发（INITIAL 态但历史非空）：按非首发处理，取建议号而非锁死 v1.0.0（2026-09-18 待办 yuepu#13·专家 E1）', async () => {
+    const a = makeAdapter({
+      deriveView: () => ({ state: 'INITIAL', label: '未发布', tagType: 'info', actions: ['submit'] }),
+      nextVersionLabel: vi.fn().mockResolvedValue('v2.3.1'),
+      listVersions: vi.fn().mockResolvedValue([{ version: 3, versionLabel: 'v2.3.0', status: 'DELISTED' }])
+    })
+    mount(a); await flush()
+    expect(txt()).toContain('v2.3.1')
+    expect(txt()).not.toContain('v1.0.0')
+    container.querySelector('.el-input').value = '重新上架'
+    container.querySelector('.el-input').dispatchEvent(new Event('input'))
+    await flush(2)
+    btn('提交发布').click(); await flush()
+    expect(a.publish).toHaveBeenCalledWith('sk_1', { bump: 'NONE', releaseNotes: '重新上架' })
   })
 
   it('升级说明未填 → 提交禁用且不发请求', async () => {

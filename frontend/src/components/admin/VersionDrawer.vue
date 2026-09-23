@@ -93,9 +93,12 @@ const bumpOptions = computed(() =>
   Array.isArray(a.value.bumpOptions) && a.value.bumpOptions.length ? a.value.bumpOptions : DEFAULT_BUMP_OPTIONS
 )
 const suggestedSegs = ref([1, 0, 0])
-// 首发判定 = 发布态 INITIAL（真·首发信号）。不靠 next-label 字符串比 v1.0.0——
+// 首发判定 = 发布态 INITIAL 且版本历史为空。不靠 next-label 字符串比 v1.0.0——
 // 该法在 next-label 请求失败时会把已发布对象误判成首发、锁死 v1.0.0。
-const isFirstPublish = computed(() => view.value.state === 'INITIAL')
+// 仅凭 state==='INITIAL' 不够：下架对象（曾发布过、现回到未发布）也是 INITIAL，
+// 但历史非空——此前会被误判首发，侧栏显示「提交发布 v1.0.0」而 mock 按历史续号实际提交 v2.3.1
+// 这类号（2026-09-18 待办 yuepu#13·专家 E1，技能/岗位共用本组件同样受影响）。
+const isFirstPublish = computed(() => view.value.state === 'INITIAL' && rows.value.length === 0)
 const bump = ref('NONE')
 const releaseNotes = ref('')
 const nextLoading = ref(false)
