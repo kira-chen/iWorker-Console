@@ -16,6 +16,13 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { setUserPosition, __resetPositionAssignmentMock } from '../positionAssignmentMock'
+// 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
+// 动态 import 在那之后拿到的会是另一个模块实例，跟 positionMock 内部静态 import 的
+// sampleTaskMock/dataTableMock/runtimeSpecMock 对不上，删岗级联的效果就验证不到
+// （2026-09-23 待办 yuepu#9⑥，回归排查记录）。
+import { listSampleTasks, __resetSampleTaskMock } from '../sampleTaskMock'
+import { listDataTables, __resetDataTableMock } from '../dataTableMock'
+import { getRuntimeSpec, __resetRuntimeSpecMock } from '../runtimeSpecMock'
 
 // vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖
 beforeEach(() => {
@@ -123,24 +130,21 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
   })
 
   it('删岗级联清理自动化任务 / 工作档案 / 运行规格引用（2026-09-23 待办 yuepu#9⑥）', async () => {
-    const sampleTaskMock = await import('../sampleTaskMock')
-    const dataTableMock = await import('../dataTableMock')
-    const runtimeSpecMock = await import('../runtimeSpecMock')
-    sampleTaskMock.__resetSampleTaskMock()
-    dataTableMock.__resetDataTableMock()
-    runtimeSpecMock.__resetRuntimeSpecMock()
+    __resetSampleTaskMock()
+    __resetDataTableMock()
+    __resetRuntimeSpecMock()
 
     // 402 种子自带自动化任务 + 工作档案；运行规格种子 id=1 的 positionIds 含 402
-    expect((await sampleTaskMock.listSampleTasks(402)).total).toBeGreaterThan(0)
-    expect((await dataTableMock.listDataTables(402)).total).toBeGreaterThan(0)
-    expect((await runtimeSpecMock.getRuntimeSpec(1)).positionIds).toContain(402)
+    expect((await listSampleTasks(402)).total).toBeGreaterThan(0)
+    expect((await listDataTables(402)).total).toBeGreaterThan(0)
+    expect((await getRuntimeSpec(1)).positionIds).toContain(402)
 
     await setUserPosition(2, null) // 402 种子被 li.na 领用，先解绑才能删
     await deletePosition(402)
 
-    expect((await sampleTaskMock.listSampleTasks(402)).total).toBe(0)
-    expect((await dataTableMock.listDataTables(402)).total).toBe(0)
-    expect((await runtimeSpecMock.getRuntimeSpec(1)).positionIds).not.toContain(402)
+    expect((await listSampleTasks(402)).total).toBe(0)
+    expect((await listDataTables(402)).total).toBe(0)
+    expect((await getRuntimeSpec(1)).positionIds).not.toContain(402)
   })
 })
 

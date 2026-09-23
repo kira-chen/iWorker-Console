@@ -715,10 +715,17 @@ export async function testSource(sourceType, payload) {
         latencyMs: 168,
         ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})
       }
-  // 回写：已存在的数据源立即更新验证状态（列表概要随之变为「已连通」/「连接失败」）；
-  // 同时记录本次测试的配置签名，供保存时判定「刚测试过的这份配置」不重置为未验证。
+  // 回写：仅当「本次测的配置」与库内已保存的配置一致时才立即写回该行（列表概要随之变为
+  // 「已连通」/「连接失败」，决议第 9 项要的「测完不用保存就能看到」）；若表单里还带着未保存的
+  // 连接相关改动（地址/鉴权/映射/工具等，含尚未落库的新密钥），只记 lastTest 供保存时判定复用，
+  // 不碰库内行——否则【取消】不会回滚，库内行会被一次针对草稿改动的测试结果污染（2026-09-23
+  // 待办 yuepu#7⑦：改坏地址测试后取消，旧地址那行却被标了新结果，发布校验也跟着被放行/误拦）。
   const prev = payload?.sourceId ? sources.find((x) => x.id === payload.sourceId) : null
-  if (payload?.sourceId && prev) {
+  const draftUnsaved =
+    prev &&
+    (connSignature(sourceType, prev.config) !== connSignature(sourceType, mergeConfig(prev, payload)) ||
+      hasNewSecret(payload))
+  if (prev && !draftUnsaved) {
     Object.assign(prev, pickVerify(result))
     persist()
   }

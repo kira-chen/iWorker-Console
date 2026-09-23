@@ -470,10 +470,13 @@ function refBlockMessage(s, action) {
   return `该技能被 ${s.refNames.length} 个${subject}引用${names}，需先解除引用后再${action}。`
 }
 
-/** 删除（引用拦截）。 */
+/** 删除（状态守卫 + 引用拦截；md §二.4 L122「删除仅适用于未发布且不在审核中的技能」）。 */
 export async function removeSkill(id) {
   await delay()
   const s = find(id)
+  if (displayStateOf(s) !== 'UNPUBLISHED') {
+    throw new ApiError({ code: 40907, message: '删除仅适用于未发布且不在审核中的技能' })
+  }
   if (s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
     throw new ApiError({ code: 40901, message: refBlockMessage(s, '删除') })
   }
@@ -555,6 +558,10 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   const s = find(id)
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
   if (!String(releaseNotes || '').trim()) throw new ApiError({ code: 40001, message: '升级说明必填，简述本次更新项' })
+  // md §三.3 L79：SKILL.md 不存在/正文为空时不执行发布（UI 已拦，mock 兜底不留后门，同 K20 范式）
+  if (!String(ensureFiles(s)['SKILL.md'] || '').trim()) {
+    throw new ApiError({ code: 40001, message: 'SKILL.md 正文不能为空，请先完善技能包内容再发布' })
+  }
   s.pendingAction = 'publish'
   s.pendingVersion = s.version ? bumpVersion(s.version, bump) : 'v1.0.0'
   s.pendingReleaseNotes = String(releaseNotes).trim()
@@ -586,10 +593,14 @@ export async function withdrawPublish(id) {
   return { skillId: s.id, publications: publicationsOf(s) }
 }
 
-/** 停用（提交停用审核）：被引用拦截；成功后进入「审核中」（PUBLISHED_DELISTING）。 */
+/** 停用（提交停用审核）：状态守卫 + 被引用拦截；成功后进入「审核中」（PUBLISHED_DELISTING）。 */
 export async function delistSkill(id) {
   await delay()
   const s = find(id)
+  // md §三.5「【停用】在"已发布"且无审核中操作时展示」——草稿态无守卫会造出 PUBLISHED+DELIST 假态
+  if (s.status !== 'published' || s.delisted) {
+    throw new ApiError({ code: 40908, message: '停用仅适用于已发布状态的技能' })
+  }
   if (s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
     throw new ApiError({ code: 40901, message: refBlockMessage(s, '停用') })
   }

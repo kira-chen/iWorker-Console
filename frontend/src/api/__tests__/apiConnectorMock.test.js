@@ -290,6 +290,42 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     expect(none.authConfig).toBeNull()
   })
 
+  it('API_KEY 改位置/改参数名不重填值 → 回传 valueMasked 占位串认回旧行，密钥不被静默清空（2026-09-23 待办 yuepu#7⑥）', async () => {
+    const before = await run(m.getApi('api_1101'))
+    const keyRow = before.authConfig.params.find((p) => p.name === 'X-Api-Key')
+    expect(keyRow.valueMasked).toBe('fin***********1d8')
+    // 编辑器行为（ApiEditor.buildPayload）：位置 HEADER→QUERY、改名，不重填 value，
+    // 但把详情页读到的 valueMasked 原样回传
+    const renamedKept = await run(
+      m.updateApi('api_1101', {
+        ...PAYLOAD_1101,
+        authConfig: {
+          params: [
+            { in: 'QUERY', name: 'X-Api-Key-Renamed', description: '', clientFill: false, valueMasked: keyRow.valueMasked },
+            PAYLOAD_1101.authConfig.params[1]
+          ]
+        }
+      })
+    )
+    const renamed = renamedKept.authConfig.params.find((p) => p.name === 'X-Api-Key-Renamed')
+    expect(renamed.valueMasked).toBe('fin***********1d8') // 密钥沿用，不是被清空的空串
+
+    // 防呆对照：不带 valueMasked（旧版行为）时，改位置/改名确实找不到旧行，值按「留空」处理清空
+    const renamedLost = await run(
+      m.updateApi('api_1101', {
+        ...PAYLOAD_1101,
+        authConfig: {
+          params: [
+            { in: 'BODY', name: 'X-Api-Key-Renamed-2', description: '', clientFill: false },
+            PAYLOAD_1101.authConfig.params[1]
+          ]
+        }
+      })
+    )
+    const renamed2 = renamedLost.authConfig.params.find((p) => p.name === 'X-Api-Key-Renamed-2')
+    expect(renamed2.valueMasked).toBe('')
+  })
+
   it('新建校验：名称空 / 名称 65 字（一览表 §6.2 上限 64，K36）/ 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field；名称恰 64 字通过', async () => {
     await expect(run(m.createApi({ ...NEW_API, name: '' }))).rejects.toMatchObject({ field: 'name' })
     await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(65) }))).rejects.toMatchObject({ field: 'name', message: '名称最多 64 个字符' })
@@ -332,7 +368,9 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       () => m.publishApi('api_1106'),
       () => m.withdrawApi('api_1106'),
       () => m.deactivateApi('api_1101'),
-      () => m.deleteApi('api_1102')
+      // 删除仅未发布态可用（md-API §2 L54-56，2026-09-23 待办 yuepu#7②）：api_1102 是 PENDING_REVIEW 种子，
+      // 改用未发布的 api_1104 验证这一写点
+      () => m.deleteApi('api_1104')
     ]
     for (let i = 0; i < steps.length; i++) {
       await run(steps[i]())
@@ -341,7 +379,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
     expect(harness.options.version).toBe(5) // v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
-    expect(snap.apis.some((a) => a.id === 'api_1102')).toBe(false)
+    expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
     expect(snap.providerSystems.some((p) => p.id === 'pv_3')).toBe(false)
   })
 
