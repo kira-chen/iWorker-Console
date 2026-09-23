@@ -5,15 +5,16 @@
  * 2026-09-12 测试审计 T26 修头注（「#20 详细说明」已改名「提示词」、「执行星期按钮条」已删）、T53 补 Stage 组 5 条；
  * 2026-09-12 审计闭环批（J5 / K1-K9 / J6 占位 / J8③）：embedded / prototype 开关退役（两条零回归用例随删），
  *   补三模式多时间点 / 起止日期 / buildSchedule 字段 / preKick 两态 / 提示词上限与计数 / toast 与占位文案用例。
+ * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（四态 Tab），删除「空闲时段提前准备」勾选框
+ *   （原 K1 / K2 preKick 两条用例随删）；补闲时执行次数/执行时段字段与 buildSchedule 用例。
  *
  * 覆盖：
  * - #16 主从容器（md §7.1 双栏）：页签内联形态，右栏内容限宽居中容器在位；
  * - #17 列表项操作精简为「删除」（md §7.1 行内操作），不再有「编辑」按钮；启停移入右侧「基本信息」卡头（md §7.2）；
  * - Stage 组（md §7.1 L371-388 / §7.8）：缺指令红标 / 软上限 20 / 默认选中第一条（09-10 S2）/ 脏检查 confirm / 启停 toast / 删除确认与 toast；
  * - #18 分区卡头（.te-card-title）承担绿条 + 灰底头条，卡体独立 .te-card-body（md §7.1 末条）；
- * - #19 SchedulePicker 三模式：模式 Tab / 按周期预设 / 多时间点去重 / 每间隔起始时刻 / 单次 / 起止日期 / 绿底执行预览（md §7.3）；
- * - K4 buildSchedule：保存 payload.schedule 带 scheduleMode / periodicPreset / intervalCount / intervalUnit；
- * - K1 / K2 空闲时段提前准备：默认勾选 + 两态提示 + payload.preKick；
+ * - #19 SchedulePicker 四模式：模式 Tab / 按周期预设 / 多时间点去重 / 每间隔起始时刻 / 单次 / 闲时 / 起止日期 / 绿底执行预览（md §7.3）；
+ * - K4 buildSchedule：保存 payload.schedule 带 scheduleMode / periodicPreset / intervalCount / intervalUnit / idleCount 等；
  * - #20 提示词卡：非必填、引导文案、「已输入 N / 8000 字」计数（md §7.4）；
  * - #21 引用工具卡：搜索框（占位「搜索工具名称或类型」）+ 平铺行（已验证 tag）+ 空态 + 卡底「+ 添加工具」（md §7.5）；
  * - #22 引用平台技能卡：已选 chips / 空态「暂无引用技能，点击下方添加」+ 搜索（占位「搜索平台技能名称或描述」）+ 卡底「+ 添加技能」（md §7.6）。
@@ -115,7 +116,7 @@ const stubs = {
   // 声明 emits 避免 onClick 透传到根 <button> 造成双触发；带 $event（列表行【删除】用 @click.stop）
   'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
   'el-icon': { template: '<i><slot /></i>' },
-  // 透传 v-model 的勾选框（K1 / K2 需要读默认勾选态与切换）
+  // 透传 v-model 的勾选框（引用平台技能候选行 sk-check 需要读勾选态与切换）
   'el-checkbox': {
     props: ['modelValue'],
     emits: ['update:modelValue', 'change'],
@@ -548,43 +549,6 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(counts[2]).toBe('0 / 500')
   })
 
-  /* ---- K1 / K2：空闲时段提前准备（md §7.3 L398-400） ---- */
-  const preKickBox = () => container.querySelector('.te-pre-kick .stub-checkbox')
-  const preKickHint = () => container.querySelector('.te-pre-kick-hint').textContent.trim()
-
-  it('K1 新建态「空闲时段提前准备」默认勾选 + 勾选态提示逐字（md §7.3 L398-399）', async () => {
-    mountComp(SampleTaskEditor, { positionId: 1, sample: null })
-    await flush()
-    expect(preKickBox().checked).toBe(true)
-    expect(preKickHint()).toBe('送达前系统会在空闲时段先把结果做好，到点直接给你，不占用你工作时的资源。')
-  })
-
-  it('K1 回填无 preKick 字段的存量样例 → 仍默认勾选；回填 preKick=false → 不勾选', async () => {
-    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
-    await flush()
-    expect(preKickBox().checked).toBe(true)
-    app.unmount()
-    container.remove()
-    mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, preKick: false } })
-    await flush()
-    expect(preKickBox().checked).toBe(false)
-  })
-
-  it('K2 取消勾选 → 关闭态提示「到点才开始执行，结果会晚几分钟。」且保存 payload.preKick=false（md §7.3 L400）', async () => {
-    const { updateSampleTask } = await import('@/api/sampleTask')
-    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
-    await flush()
-    const box = preKickBox()
-    box.checked = false
-    box.dispatchEvent(new Event('change'))
-    await flush()
-    expect(preKickHint()).toBe('到点才开始执行，结果会晚几分钟。')
-    expect(container.querySelector('.te-pre-kick').textContent).not.toContain('送达前系统会在空闲时段')
-    ;[...container.querySelectorAll('.meta-actions button')].pop().click()
-    await flush()
-    expect(updateSampleTask.mock.calls[0][2].preKick).toBe(false)
-  })
-
   it('#21 引用工具卡：搜索框 + 平铺行（已验证 tag）+ 卡底「+ 添加工具」，搜索可过滤', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
@@ -692,13 +656,13 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     return schedule
   }
 
-  it('顶层三个模式 Tab（按周期/每间隔/单次），当前项高亮', async () => {
+  it('顶层四个模式 Tab（按周期/每间隔/单次/闲时），当前项高亮（2026-09-23 新增「闲时」）', async () => {
     const schedule = mountSched({ previewSummary: '每天 09:00', previewTimes: [] })
     await flush()
     // 只选第一行的模式 Tab，不包括预设按钮
     const modeRow = container.querySelector('.sp-row:first-child .sp-seg')
     const modes = [...modeRow.querySelectorAll('.sp-seg-btn')].map((b) => b.textContent.trim())
-    expect(modes).toEqual(['按周期', '每间隔', '单次'])
+    expect(modes).toEqual(['按周期', '每间隔', '单次', '闲时'])
     expect(modeRow.querySelector('.sp-seg-btn.on').textContent.trim()).toBe('按周期')
   })
 
@@ -753,6 +717,48 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     await flush()
     expect(schedule.value.scheduleMode).toBe('ONCE')
     expect(schedule.value.scheduleType).toBe('ONCE')
+  })
+
+  /* ---- 2026-09-23 负责人拍板：闲时——不设定点时间，只定执行次数 + 执行时段 ---- */
+  it('闲时模式：无「定点时间」行；出「执行次数」（周期单位 + 数字）与「执行时段」两行，默认每天 1 次 · 夜间闲时', async () => {
+    const schedule = mountSched()
+    await flush()
+    // 切换到「闲时」
+    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[3].click()
+    await flush()
+    expect(schedule.value.scheduleMode).toBe('IDLE')
+    expect(schedule.value.scheduleType).toBe('IDLE')
+    const labels = [...container.querySelectorAll('.sp-label')].map((n) => n.textContent.trim())
+    expect(labels).not.toContain('定点时间')
+    expect(labels).toContain('执行次数')
+    expect(labels).toContain('执行时段')
+    expect(schedule.value.idleCount).toBe(1)
+    expect(schedule.value.idleCountUnit).toBe('DAY')
+    expect(schedule.value.idleWindow).toBe('NIGHT')
+  })
+
+  it('闲时模式：改执行次数单位/数字与执行时段 → 回写 idleCount/idleCountUnit/idleWindow', async () => {
+    const schedule = mountSched()
+    await flush()
+    container.querySelectorAll('.sp-row:first-child .sp-seg .sp-seg-btn')[3].click()
+    await flush()
+    // 执行次数：周期单位切到「周」+ 数字改 2
+    const unitBtns = [...container.querySelectorAll('.sp-row .sp-seg')].find((seg) =>
+      [...seg.querySelectorAll('.sp-seg-btn')].map((b) => b.textContent.trim()).includes('周')
+    )
+    ;[...unitBtns.querySelectorAll('.sp-seg-btn')].find((b) => b.textContent.trim() === '周').click()
+    await flush()
+    expect(schedule.value.idleCountUnit).toBe('WEEK')
+    const numInput = container.querySelector('.sp-interval-input')
+    numInput.value = '2'
+    numInput.dispatchEvent(new Event('input'))
+    await flush()
+    expect(schedule.value.idleCount).toBe(2)
+    // 执行时段：切到「不限时段，按系统负载调度」
+    const windowBtn = [...container.querySelectorAll('.sp-seg-btn')].find((b) => b.textContent.trim() === '不限时段，按系统负载调度')
+    windowBtn.click()
+    await flush()
+    expect(schedule.value.idleWindow).toBe('ANYTIME')
   })
 
   it('执行预览走绿底框 + 白底药丸，药丸去掉 T 与时区后缀', async () => {
@@ -939,5 +945,39 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
     expect(container.querySelector('.sp-interval-input').value).toBe('2')
     expect(container.querySelector('.sp-interval-row .sp-seg .sp-seg-btn.on').textContent.trim()).toBe('天')
     expect(container.querySelector('.sp-time-input input').value).toBe('08:00')
+  })
+
+  /* ---- 2026-09-23 负责人拍板：闲时保存 payload / 回填（§7.3 闲时模式专属字段） ---- */
+  it('切「闲时」保存 → payload.schedule = { scheduleMode IDLE, scheduleType IDLE, idleCount/idleCountUnit/idleWindow }，不带 times', async () => {
+    const { updateSampleTask } = await import('@/api/sampleTask')
+    mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
+    await flush()
+    modeBtns()[3].click()
+    await flush()
+    saveBtn().click()
+    await flush()
+    expect(updateSampleTask).toHaveBeenCalled()
+    const payload = updateSampleTask.mock.calls[0][2]
+    expect(payload.schedule).toMatchObject({
+      scheduleMode: 'IDLE',
+      scheduleType: 'IDLE',
+      idleCount: 1,
+      idleCountUnit: 'DAY',
+      idleWindow: 'NIGHT'
+    })
+    expect(payload.schedule.times).toBeUndefined()
+  })
+
+  it('回填 IDLE 样例（每周 2 次·不限时段）→ 编辑器落在「闲时」模式、字段读回', async () => {
+    mountComp(SampleTaskEditor, {
+      positionId: 1,
+      sample: {
+        ...SAMPLE,
+        schedule: { scheduleMode: 'IDLE', scheduleType: 'IDLE', idleCount: 2, idleCountUnit: 'WEEK', idleWindow: 'ANYTIME' }
+      }
+    })
+    await flush()
+    expect(modeBtns()[3].classList.contains('on')).toBe(true)
+    expect(container.querySelector('.sp-interval-input').value).toBe('2')
   })
 })
