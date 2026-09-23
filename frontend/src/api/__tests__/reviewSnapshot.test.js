@@ -78,10 +78,10 @@ describe('审核版本快照 · A5', () => {
     })
 
     it('提交停用同样存快照（md §四不区分申请类型）', async () => {
-      // 401 种子被 zhangwei（userId 1）+ zhouming（userId 5）领用，先解绑——本用例测的是
+      // 401 种子被 zhangwei（userId 201）+ zhouming（userId 205）领用，先解绑——本用例测的是
       // 快照写入，不是领用拦截（2026-09-23 待办 yuepu#9①）
-      await setUserPosition(1, null)
-      await setUserPosition(5, null)
+      await setUserPosition(201, null)
+      await setUserPosition(205, null)
       await unpublishPosition(401) // 401 经营分析岗已发布
       const snap = getPositionReviewSnapshot(401)
       expect(snap.requestAction).toBe('DELIST')
