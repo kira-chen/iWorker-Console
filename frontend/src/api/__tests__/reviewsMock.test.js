@@ -62,6 +62,8 @@ describe('reviewsMock · 审核中心内存 mock', { timeout: 20000 }, () => {
   it('keyword 过滤域 = 名称/描述/提交人（搜提交人 zhangwei 命中技能行 7）', async () => {
     const { list } = await listReviews({ keyword: 'zhangwei' })
     expect(list.map((r) => r.id)).toEqual([7])
+    // 前后空白不参与匹配（2026-09-18 待办 yuepu#13·治理 G4：此前带空格的关键字什么都搜不到）
+    expect((await listReviews({ keyword: '  zhangwei ' })).list.map((r) => r.id)).toEqual([7])
   })
 
   it('申请类型筛选 + 升序排序', async () => {

@@ -236,6 +236,25 @@ describe('AdminFeedback · 用户反馈（md prd.用户反馈.md）', () => {
     expect(fetchFeedbackImageBlob).toHaveBeenCalledTimes(1)
   })
 
+  it('快速切换：先点 A 反馈的图 1（请求未回）再点 B 反馈的图 1，A 的图后到也不得落进 B 的弹窗（2026-09-18 待办 yuepu#13·治理 G3：各条反馈附图序号都从 1 起，此前只比 seq）', async () => {
+    let releaseA
+    fetchFeedbackImageBlob.mockImplementation((url) =>
+      url === 'mock-fb://1/1'
+        ? new Promise((r) => { releaseA = () => r(new Blob(['A'], { type: 'image/svg+xml' })) })
+        : Promise.resolve(new Blob(['B'], { type: 'image/svg+xml' }))
+    )
+    await mount()
+    rowByUser('zhangwei').querySelector('.fb-thumb').click() // A：反馈 1 的图 1（挂起）
+    await flush()
+    rowByUser('chenyu').querySelector('.fb-thumb').click() // B：反馈 3 的图 1（立即返回，blob:mock/1）
+    await flush()
+    const dlg = dialogByTitle('查看附图')
+    expect(dlg.querySelector('img.fb-image-large-img').getAttribute('src')).toBe('blob:mock/1')
+    releaseA() // A 后到（blob:mock/2）
+    await flush()
+    expect(dialogByTitle('查看附图').querySelector('img.fb-image-large-img').getAttribute('src')).toBe('blob:mock/1')
+  })
+
   it('原图拉取失败 → 弹窗预览区内展示「附图加载失败，请稍后重试。」与序号，不出 img（md §七 L60）', async () => {
     fetchFeedbackImageBlob.mockRejectedValueOnce(new Error('图片加载失败'))
     await mount()

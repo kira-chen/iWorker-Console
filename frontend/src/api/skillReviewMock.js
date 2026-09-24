@@ -47,7 +47,7 @@ function seedReviews() {
       risks: [
         {
           item: '对外动作',
-          level: '中风险',
+          level: '高风险',
           location: 'send_email.py:34',
           code: 'smtp = smtplib.SMTP("smtp.gmail.com", 587)\nsmtp.login(SMTP_USER, SMTP_PASS)\nsmtp.sendmail(SMTP_USER, recipients, msg)',
           detail: '发现对外发送邮件的行为（smtplib），技能直连外部 SMTP 服务器，绕过企业邮件网关，存在数据外泄路径。'
@@ -101,16 +101,16 @@ function seedReviews() {
       submitter: 'wangwu',
       submittedAt: '2026-08-28T09:17:00+08:00',
       status: 'APPROVED',
-      scale: '宽松',
+      scale: '严格',
       skillMd:
         '## 功能\n\n将系统告警实时推送到指定 Slack 频道。\n\n## 参数\n\n| 参数 | 说明 |\n| --- | --- |\n| channel | 目标频道（必填） |\n| message | 推送内容 |\n| level | 告警级别 |\n\n## 示例\n\n```yaml\nname: slack-notify\nchannel: ops-alerts\nmessage: 数据库连接池告警\nlevel: warning\n```\n\n## 约束\n\n仅允许推送至企业内已授权的 Slack 频道，禁止对外群组。',
       risks: [
         {
           item: '对外动作',
-          level: '低风险',
+          level: '中风险',
           location: 'notify.py:21',
           code: 'requests.post(SLACK_WEBHOOK_URL, json={"text": message})',
-          detail: '技能通过 Slack Incoming Webhook 向企业内部频道发送通知，Webhook 地址指向内网，接收方为企业自有 Slack 工作区，属低风险对外调用行为，建议在审计日志中保留调用记录。'
+          detail: '技能通过 Slack Incoming Webhook 向企业内部频道发送通知，Webhook 地址指向内网，接收方为企业自有 Slack 工作区，属中风险对外调用行为，建议在审计日志中保留调用记录。'
         }
       ],
       reviewer: 'audit.admin',
@@ -130,7 +130,7 @@ function seedReviews() {
       risks: [
         {
           item: '权限范围',
-          level: '中风险',
+          level: '高风险',
           location: 'manifest.yml:12',
           code: 'permissions:\n  - file_share_read: "**"   # ← 通配符覆盖所有共享目录\n  - file_share_write: "**"',
           detail: '技能申请对所有共享文件夹的读写权限，未将访问范围限定到业务所需的具体目录，存在越权读取敏感部门文件的风险，建议按最小权限原则缩小路径范围。'
@@ -184,16 +184,16 @@ function seedReviews() {
       submitter: 'zhouba',
       submittedAt: '2026-08-24T08:00:00+08:00',
       status: 'APPROVED',
-      scale: '宽松',
+      scale: '严格',
       skillMd:
         '## 功能\n\n每日自动生成销售日报并发送至管理层。\n\n## 参数\n\n| 参数 | 说明 |\n| --- | --- |\n| recipients | 收件人列表（必填，仅企业域名） |\n| period | 统计周期 |\n\n## 示例\n\n```yaml\nname: sales-report\nrecipients:\n  - mgmt@corp.com\nperiod: yesterday\n```\n\n## 约束\n\n报表数据仅限企业内部使用，收件人须为管理员白名单。',
       risks: [
         {
           item: '对外动作',
-          level: '低风险',
+          level: '中风险',
           location: 'report_mailer.py:44',
           code: 'recipients = ["team-reports@corp.com", "manager@corp.com"]\nsmtp.sendmail(SENDER, recipients, msg.as_string())',
-          detail: '技能通过企业邮件服务器向内部邮件列表发送报告，收件方均为 @corp.com 域名，未发现外部地址，属于低风险对外通信行为，建议保留发件日志供审计。'
+          detail: '技能通过企业邮件服务器向内部邮件列表发送报告，收件方均为 @corp.com 域名，未发现外部地址，属于中风险对外通信行为，建议保留发件日志供审计。'
         }
       ],
       reviewer: 'audit.admin',
@@ -246,8 +246,10 @@ let riskConfig = seedRiskConfig()
 // 【持久化】写点：approve / reject / setCurrentScale / saveRiskTemplate。
 // version 2（2026-09-08）：记录结构由旧口径（reviewStatus/purpose/riskItems）改为新结构 + 新增 riskConfig，
 // 旧快照形状不符即回种子（mockPersist 兜底）。
+// version 3（2026-09-18 待办 yuepu#13·治理 G2）：4 条种子按其审核尺度的默认模板根本不会触发人工审核
+// （宽松模板四项全「不进入审核」、对外动作可选等级里没有「低风险」），改成与尺度一致，旧快照弃用回种子。
 const persist = attachPersist('skillReview', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ reviews, riskConfig }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews) || !d.riskConfig || !d.riskConfig.templates) {

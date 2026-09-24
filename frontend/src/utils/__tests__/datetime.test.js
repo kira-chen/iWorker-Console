@@ -60,7 +60,27 @@ describe('nowMinuteText / nowIsoLocal（mock 层时间戳形态）', () => {
     expect(nowMinuteText()).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
   })
 
-  it('nowIsoLocal → 秒级本地 ISO、固定 +08:00 后缀（mock 存储口径）', () => {
+  // 2026-09-18 待办 yuepu#13·组织 O1：后缀此前硬写 +08:00，非东八区环境墙钟被标错时区，解析回来偏 8 小时。
+  // 现取运行环境真实偏移；这里临时切 TZ 验证任意时区下「串 ↔ 当前时刻」都对得上（vitest 默认 fork 进程，可改 TZ）。
+  it('nowIsoLocal 在非东八区（UTC / 纽约）下后缀取真实偏移，解析回来仍是当前时刻', () => {
+    const orig = process.env.TZ
+    try {
+      for (const tz of ['UTC', 'America/New_York', 'Asia/Kolkata']) {
+        process.env.TZ = tz
+        const out = nowIsoLocal()
+        expect(out, tz).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/)
+        expect(Math.abs(Date.parse(out) - Date.now()), tz).toBeLessThan(2000)
+      }
+      process.env.TZ = 'UTC'
+      expect(nowIsoLocal()).toMatch(/\+00:00$/)
+      process.env.TZ = 'Asia/Kolkata'
+      expect(nowIsoLocal()).toMatch(/\+05:30$/)
+    } finally {
+      process.env.TZ = orig
+    }
+  })
+
+  it('nowIsoLocal → 秒级本地 ISO、东八区后缀 +08:00（vitest.config 固定 TZ=Asia/Shanghai；mock 存储口径）', () => {
     const out = nowIsoLocal()
     expect(out).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
     // 与展示层闭环：nowIsoLocal 产出的串对 fmtMinute 是合法输入（带偏移串按本地时区换算，只校验格式）

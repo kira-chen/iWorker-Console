@@ -144,8 +144,24 @@ async function onSubmit() {
         const before = normModules(props.role.modules).slice().sort()
         const after = modules.slice().sort()
         const modulesChanged = JSON.stringify(before) !== JSON.stringify(after)
+        // 两段写入非原子：改名成功后权限失败，会留下「名称已改、权限没改」的半提交（列表还显示旧名，
+        // 抽屉里却是新名）。权限这步失败时把改名撤回，失败提示照旧抛给下面统一处理
+        // （2026-09-18 待办 yuepu#13·组织 O3）。
         if (nameChanged) await updateRole(props.role.id, { name: form.name })
-        if (modulesChanged) await setRolePermissions(props.role.id, modules)
+        if (modulesChanged) {
+          try {
+            await setRolePermissions(props.role.id, modules)
+          } catch (permErr) {
+            if (nameChanged) {
+              try {
+                await updateRole(props.role.id, { name: props.role.name })
+              } catch {
+                emit('saved') // 撤回也失败：至少刷新列表，让页面反映真实状态
+              }
+            }
+            throw permErr
+          }
+        }
         ElMessage.success('角色与权限已保存')
       }
       dialogVisible.value = false

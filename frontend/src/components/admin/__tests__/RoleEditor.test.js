@@ -256,6 +256,33 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
     expect(updateRole).not.toHaveBeenCalled()
   })
 
+  it('改名 + 改权限：权限这步失败 → 把已落库的改名撤回（updateRole 回旧名），报错、抽屉不关、不 emit saved（2026-09-18 待办 yuepu#13·组织 O3）', async () => {
+    const el = mount({ role: { id: 7, name: '旧名', modules: ['岗位'], userCount: 0 } })
+    await open()
+    inst().setupState.form.name = '新名'
+    await toggle(pageBox(el, '岗位管理'))
+    setRolePermissions.mockRejectedValueOnce(new Error('权限保存失败'))
+    submitBtn(el).click()
+    for (let i = 0; i < 6; i++) await nextTick()
+    expect(updateRole.mock.calls).toEqual([[7, { name: '新名' }], [7, { name: '旧名' }]])
+    expect(ElMessage.error).toHaveBeenCalledWith('权限保存失败')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(savedSpy).not.toHaveBeenCalled()
+  })
+
+  it('改名 + 改权限：权限失败且撤回改名也失败 → 仍报错，并 emit saved 刷新列表反映真实状态', async () => {
+    const el = mount({ role: { id: 7, name: '旧名', modules: ['岗位'], userCount: 0 } })
+    await open()
+    inst().setupState.form.name = '新名'
+    await toggle(pageBox(el, '岗位管理'))
+    setRolePermissions.mockRejectedValueOnce(new Error('权限保存失败'))
+    updateRole.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('撤回失败'))
+    submitBtn(el).click()
+    for (let i = 0; i < 6; i++) await nextTick()
+    expect(ElMessage.error).toHaveBeenCalledWith('权限保存失败')
+    expect(savedSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('编辑态两者都没改 → 一个写请求都不发（空提交不打接口）', async () => {
     const el = mount({ role: { id: 7, name: '角色', modules: ['岗位'], userCount: 0 } })
     await open()
