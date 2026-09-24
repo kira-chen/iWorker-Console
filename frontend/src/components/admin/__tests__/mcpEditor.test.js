@@ -509,6 +509,23 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
     expect(emitted.visible).toEqual([false])
   })
 
+  it('登记态先【拉取工具】再【登记】→ payload.tools 带上 title（2026-09-18 待办 yuepu#13·连接器 C2：此前不带 title，落库后工具卡中文名丢失）', async () => {
+    adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
+    adminApi.fetchMcpToolsDraft.mockResolvedValue({ tools: TOOLS, connStatus: 'ok', protocolVersion: '2025-06-18', serverVersion: '1.4.2' })
+    await mount()
+    await fillValidNew()
+    btnByText('拉取工具').click()
+    await flush()
+    footerBtn('登记').click()
+    await flush()
+    const payload = adminApi.createMcp.mock.calls[0][0]
+    expect(payload.tools.map((t) => [t.name, t.title])).toEqual([
+      ['spark_agent_chat', '智能体对话'],
+      ['spark_scene_run', undefined], // 无 title 的工具不带该键
+      ['spark_knowledge_qa', '知识库问答']
+    ])
+  })
+
   it('登记 sse：createMcp payload 带 transport=sse 与 endpoint 与鉴权，不带 command / env（与 streamable-http 同分流）', async () => {
     adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
     await mount()

@@ -25,6 +25,8 @@ describe('feedbackMock · 用户反馈内存 mock', () => {
     expect(byUser.list.map((r) => r.id)).toEqual([3])
     const byContent = await listFeedbacks({ keyword: '桌面通知' })
     expect(byContent.list.map((r) => r.id)).toEqual([2])
+    // 前后空白不参与匹配（2026-09-18 待办 yuepu#13·治理 G4）
+    expect((await listFeedbacks({ keyword: '  chenyu ' })).list.map((r) => r.id)).toEqual([3])
   })
 
   it('附图形状：[{ seq, thumb_url, url }]，按附件顺序编号、0～N 张（md §六 L51；种子 1 号 2 张、2 号 0 张、4 号 3 张）', async () => {

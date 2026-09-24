@@ -10,6 +10,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { inferPeriodicPreset } from '@/utils/periodicPreset'
 // 2026-09-09 收编：nowIso（带 +08:00 本地 ISO）与 fmtDt（Date→「YYYY-MM-DD HH:mm」）两份本地复制品
 // 改引 utils/datetime 单一真相（fmtMinute 接受 Date 入参，输出同串）
 import { nowIsoLocal as nowIso, fmtMinute as fmtDt } from '@/utils/datetime'
@@ -340,7 +341,7 @@ function normalizeUpsert(payload = {}) {
       execLocations: payload.schedule?.execLocations?.length ? [...payload.schedule.execLocations] : ['CLOUD', 'WEB', 'LOCAL'],
       scheduleType: payload.schedule?.scheduleType || 'DAILY',
       scheduleMode: payload.schedule?.scheduleMode || 'PERIODIC',
-      periodicPreset: payload.schedule?.periodicPreset || 'DAILY',
+      periodicPreset: inferPeriodicPreset(payload.schedule || {}),
       intervalCount: payload.schedule?.intervalCount || 1,
       intervalUnit: payload.schedule?.intervalUnit || 'DAY',
       idleCount: payload.schedule?.idleCount || 1,
@@ -369,6 +370,13 @@ function assertUpsert(data) {
   // 提示词必填（2026-09-21 负责人拍板，推翻 2026-09-12 审计 J7「非必填」），另守 §7.4 8000 字上限（K7）
   if (!data.sopDoc.trim()) throw err('请填写提示词', 'sopDoc')
   if (data.sopDoc.length > 8000) throw err('提示词最多 8000 个字符', 'sopDoc')
+  // 调度校验此前只在 SampleTaskEditor.vue 表单里拦，数据层不拦，绕过 UI 可存下永不触发 / 无执行时间的任务
+  // （2026-09-18 待办 yuepu#13·岗位 P2）
+  const sc = data.schedule
+  if ((sc.scheduleMode === 'ONCE' || sc.scheduleType === 'ONCE') && !sc.onceAt) throw err('请选择执行时间', 'schedule')
+  if (sc.scheduleMode !== 'ONCE' && sc.startDate && sc.endDate && sc.startDate > sc.endDate) {
+    throw err('结束日期不能早于开始日期', 'schedule')
+  }
 }
 
 /* ============================ 查 ============================ */

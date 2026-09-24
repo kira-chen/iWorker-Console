@@ -19,6 +19,9 @@ export default defineConfig({
     // jsdom/node 环境不渲染不合成，跑它们只会假绿 → 此处显式互斥。
     exclude: ['**/node_modules/**', '**/*.browser.test.js'],
     globals: false,
+    // 固定东八区：mock 层「本地 ISO 串」（datetime.nowIsoLocal）与多处 +08:00 断言、按本地时区格式化的用例
+    // 都以东八区为前提，CI（UTC）与本机时区不同会让结果随环境漂（2026-09-18 待办 yuepu#13·组织 O1）。
+    env: { TZ: 'Asia/Shanghai' },
     // 默认随机顺序执行（2026-08-08 质量强化）：靠「写在前面」保证前置条件的隐式顺序依赖
     // 会在此暴露——曾有弹窗 Esc 用例因此翻红（详见 docs/update/2026-08-08.md §11）。
     // 每次运行种子随机，失败时控制台会打印 seed，用 --sequence.seed=<seed> 可精确复现。

@@ -7,7 +7,7 @@
  * 数据直接走 usePositionStore（intakeSchema 挂在 store.basic 上，随顶部【保存】提交）；
  * 保存时的行级校验（validateIntakeRows）仍在父层 doSaveBasic，此处只管列表与抽屉草稿。
  */
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -19,6 +19,11 @@ defineProps({
 })
 
 const store = usePositionStore()
+
+// 父层 doSaveBasic 跑 validateIntakeRows 的结果（下标 → { label/key/options: 提示 }），逐行标在列表里；
+// 此前父层只写入不消费，key 重复等错误保存被拦后页面上看不出是哪一行（2026-09-18 待办 yuepu#13·岗位 P3）。
+const intakeErrors = inject('pdIntakeErrors', ref({}))
+const rowErr = (idx, field) => intakeErrors.value?.[idx]?.[field] || ''
 
 /* ---------- 采集 Tab 内联绑定（搬自 IntakeEditDialog） ---------- */
 function patchBasic(key, value) {
@@ -54,6 +59,10 @@ function saveIntakeDraft() {
   // md §3.2：单选 / 多选保存时校验选项列表，全空则阻断保存并 toast（2026-09-08 PRD-20260908 对齐）
   if (isSelectType(d.type) && !options.length) { ElMessage.warning('请至少填写一个选项'); return }
   const row = { ...d, key: (d.key || '').trim() || genKeyFromLabel(d.label), options }
+  // 字段 key 须唯一（同 validateIntakeRows 口径：显式填的或由字段名自动生成的 key 都算）。抽屉里就拦下，
+  // 不放进列表等保存时才被整体拒绝
+  const dupKey = intakeRows.value.some((r, i) => i !== intakeEditIndex.value && ((r.key || '').trim() || genKeyFromLabel(r.label)) === row.key)
+  if (row.key && dupKey) { ElMessage.warning(`字段 key 重复：${row.key}`); return }
   const next = [...intakeRows.value]
   if (intakeEditIndex.value >= 0) next[intakeEditIndex.value] = row
   else {
@@ -61,6 +70,7 @@ function saveIntakeDraft() {
     next.push(row)
   }
   intakeRows.value = next
+  intakeErrors.value = {} // 行有变动，旧的下标错误作废，下次保存/发布重新校验
   intakeDrawerOpen.value = false
   // md 三.3.2：保存后提示「采集字段已保存」，列表刷新（本地即时）
   ElMessage.success('采集字段已保存')
@@ -70,6 +80,7 @@ async function deleteIntakeRow(index) {
     await ElMessageBox.confirm('删除该采集字段？删除后员工领用时不再采集该项。', '删除字段', { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' })
   } catch { return }
   intakeRows.value = intakeRows.value.filter((_, i) => i !== index)
+  intakeErrors.value = {} // 下标已错位，旧错误作废
   // md 三.3.3：删除后提示「采集字段已删除」
   ElMessage.success('采集字段已删除')
 }
@@ -94,9 +105,17 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
         <!-- 2026-09-10 D2：锁定态（isReadonly）无【新增采集字段】按钮，空态文案不再引导点按钮 -->
         <el-table :data="intakeRows" class="pd-table" :empty-text="isReadonly ? '暂无采集字段' : '暂无采集字段，点「新增采集字段」添加'">
           <el-table-column type="index" label="#" width="52" />
-          <el-table-column prop="label" label="字段名" min-width="160" />
+          <el-table-column label="字段名" min-width="160">
+            <template #default="{ row, $index }">
+              {{ row.label }}
+              <div v-if="rowErr($index, 'label')" class="pd-row-err">{{ rowErr($index, 'label') }}</div>
+            </template>
+          </el-table-column>
           <el-table-column label="字段 key" min-width="140">
-            <template #default="{ row }"><span class="pd-mono">{{ row.key || genKeyFromLabel(row.label) || '—' }}</span></template>
+            <template #default="{ row, $index }">
+              <span class="pd-mono">{{ row.key || genKeyFromLabel(row.label) || '—' }}</span>
+              <div v-if="rowErr($index, 'key')" class="pd-row-err">{{ rowErr($index, 'key') }}</div>
+            </template>
           </el-table-column>
           <el-table-column label="类型" width="120">
             <template #default="{ row }">{{ intakeTypeLabel(row.type) }}</template>
@@ -105,9 +124,10 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
             <template #default="{ row }">{{ row.required ? '是' : '否' }}</template>
           </el-table-column>
           <el-table-column label="选项" min-width="180">
-            <template #default="{ row }">
+            <template #default="{ row, $index }">
               <span v-if="isSelectType(row.type)">{{ (row.options || []).filter(Boolean).join(' / ') || '—' }}</span>
               <span v-else class="pd-faint">—</span>
+              <div v-if="rowErr($index, 'options')" class="pd-row-err">{{ rowErr($index, 'options') }}</div>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="130" fixed="right">
@@ -202,6 +222,12 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   border-bottom: 1px solid var(--border-admin-card);
   /* 对表：卡头灰条走站内 --bg-admin-card-head（浅色 #f8faf9 = 原型同值，暗色有映射） */
   background: var(--bg-admin-card-head);
+}
+/* 行级校验提示（key 重复 / 字段名空 / 选项空），列表单元格内红字 */
+.pd-row-err {
+  color: var(--c-danger);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
 }
 /* 必填红星（与人格页签卡头 .pd-req 同款） */
 .pd-req {

@@ -160,6 +160,14 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     expect(r.status).toBe('DRAFT')
     expect(r.scopeRefName).toBe('财务审核岗')
   })
+
+  it('专家知识库的可见范围创建后不可更改（md §三.3.1 L86，2026-09-18 待办 yuepu#13·连接器 C4：此前只有 UI 置灰）；传相同值放行', async () => {
+    // 种子 kb_6：专家知识库（ex_1），未发布
+    await expect(update('kb_6', { name: '2026 产品白皮书库', description: '换专家', sourceIds: ['ks_6a'], scopeRefId: 'ex_2' }))
+      .rejects.toMatchObject({ field: 'scopeRefId', message: '专家知识库的可见范围创建后不可更改' })
+    const r = await update('kb_6', { name: '2026 产品白皮书库', description: '范围不变', sourceIds: ['ks_6a'], scopeRefId: 'ex_1' })
+    expect(r.scopeRefId).toBe('ex_1')
+  })
 })
 
 describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {

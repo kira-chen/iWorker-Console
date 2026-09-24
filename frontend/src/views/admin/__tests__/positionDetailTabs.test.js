@@ -82,7 +82,7 @@ for (const p of [
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
 // el-tabs / el-tab-pane 轻桩：渲染所有 pane 的 label + 内容（便于断言）
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs"><slot /></div>' }
+const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
 const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
 const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
@@ -130,6 +130,22 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
     expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '连接器'])
     expect(labels).not.toContain('版本')
+  })
+
+  it('?tab= 深链：合法值定位到对应页签；非法值 / 旧深链（如已退役的 sampleTasks）回落默认 persona，不留空白（2026-09-18 待办 yuepu#13·岗位 P6）', async () => {
+    routeMock.query = { tab: 'agents' }
+    await mount()
+    expect(container.querySelector('.el-tabs').dataset.active).toBe('agents')
+    app.unmount(); container.remove()
+
+    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（L589 注），旧深链值不再合法
+    await mount()
+    expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
+    app.unmount(); container.remove()
+
+    routeMock.query = {}
+    await mount()
+    expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
   })
 
   it('「人格」Tab 含 md §2 七区块：岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名；岗位名称从顶栏移入）', async () => {

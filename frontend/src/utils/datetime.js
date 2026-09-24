@@ -26,15 +26,21 @@ export function nowMinuteText() {
 }
 
 /**
- * 当前时刻 → 秒级本地 ISO 串、固定 `+08:00` 后缀（mock 层统一口径：存储带时区 ISO，
- * 展示走 fmtMinute 精确到分钟）。注意与 `new Date().toISOString()`（UTC `Z` 结尾）是两种口径，
+ * 当前时刻 → 秒级本地 ISO 串，后缀为运行环境的真实时区偏移（东八区即 `+08:00`）（mock 层统一口径：
+ * 存储带时区 ISO，展示走 fmtMinute 精确到分钟）。注意与 `new Date().toISOString()`（UTC `Z` 结尾）是两种口径，
  * 后者的使用点不属本函数收编范围。
+ *
+ * 此前后缀硬写 `+08:00` 而日期时间取的是本地墙钟：非东八区环境（如 UTC）下墙钟 10:00 被标成 +08:00，
+ * 解析回来是 02:00 UTC，展示错 8 小时（2026-09-18 待办 yuepu#13·组织 O1）。
  */
 export function nowIsoLocal() {
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
+  const offMin = -d.getTimezoneOffset() // 东区为正；东八区 = 480
+  const sign = offMin >= 0 ? '+' : '-'
+  const abs = Math.abs(offMin)
   return (
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}+08:00`
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
   )
 }

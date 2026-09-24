@@ -26,11 +26,11 @@ beforeEach(() => __resetSkillReviewMock())
 
 describe('skillReviewMock · 审核记录', () => {
   // 2026-09-12 测试审计 T22：种子恒 7 条（与下方分页用例 total=7 一致），「≥7」放宽无意义，改精确值
-  it('种子恒 7 条，覆盖三种状态 × 三种尺度；行含页面消费的关键字段', async () => {
+  it('种子恒 7 条，覆盖三种状态 × 通用 / 严格两种尺度（宽松默认四项均不进入审核，不可能有种子记录）；行含页面消费的关键字段', async () => {
     const { list, total } = await listReviewApplications({ page: 1, size: 50 })
     expect(total).toBe(7)
     expect(new Set(list.map((r) => r.status))).toEqual(new Set(['PENDING', 'APPROVED', 'REJECTED']))
-    expect(new Set(list.map((r) => r.scale))).toEqual(new Set(['宽松', '通用', '严格']))
+    expect(new Set(list.map((r) => r.scale))).toEqual(new Set(['通用', '严格']))
     for (const k of ['id', 'skillName', 'description', 'submitter', 'submittedAt', 'status', 'scale', 'skillMd', 'risks', 'reviewer', 'reviewedAt', 'rejectReason']) {
       expect(list[0]).toHaveProperty(k)
     }
@@ -52,7 +52,7 @@ describe('skillReviewMock · 审核记录', () => {
     expect((await listReviewApplications({ keyword: '邮件' })).total).toBe(1) // 名称
     expect((await listReviewApplications({ keyword: 'Excel' })).total).toBe(1) // 描述
     expect((await listReviewApplications({ keyword: 'LISI' })).total).toBe(1) // 提交人（大小写不敏感）
-    expect((await listReviewApplications({ scale: '严格' })).total).toBe(3)
+    expect((await listReviewApplications({ scale: '严格' })).total).toBe(5)
     expect((await listReviewApplications({ status: 'PENDING' })).total).toBe(3)
     expect((await listReviewApplications({ status: 'PENDING', scale: '通用' })).total).toBe(2)
     expect((await listReviewApplications({ keyword: '不存在的技能' })).total).toBe(0)
@@ -76,13 +76,13 @@ describe('skillReviewMock · 审核记录', () => {
     const full = fullDetectionResults(d.risks)
     expect(full.map((x) => x.item)).toEqual(DETECTION_ITEMS)
     expect(full.map((x) => x.label)).toEqual(['对外动作', '敏感信息', '权限范围', '危险操作'])
-    expect(full[0].level).toBe('中风险')
+    expect(full[0].level).toBe('高风险')
     expect(full[1].level).toBe('高风险')
     expect(full[2]).toMatchObject({ level: '检测通过', detail: PASS_DETAIL, location: '', code: '' })
     expect(full[3].level).toBe('检测通过')
     // 返回值是拷贝，改动不污染内部数据
     d.risks[0].level = '严重风险'
-    expect((await getReviewApplication('usr_1')).risks[0].level).toBe('中风险')
+    expect((await getReviewApplication('usr_1')).risks[0].level).toBe('高风险')
   })
 
   it('通过：记录审核人与时间，状态 APPROVED；重复审核被拒', async () => {
@@ -150,9 +150,20 @@ describe('skillReviewMock · 风险设置', () => {
     expect((await getRiskConfig()).templates['通用']['对外动作']).toBe('中风险')
   })
 
+  it('种子自洽（2026-09-18 待办 yuepu#13·治理 G2）：列表里的记录都是「触发了人工审核」的，每条种子的检测结果按其审核尺度的默认模板必须触发；此前 4/7 条按自己的尺度根本不该进列表', async () => {
+    const { list } = await listReviewApplications({ page: 1, size: 50 })
+    for (const r of list) {
+      const results = fullDetectionResults(r.risks)
+      expect(needsManualAudit(results, DEFAULT_RISK_TEMPLATES[r.scale]), r.id + '（' + r.scale + '）').toBe(true)
+    }
+  })
+
   it('needsManualAudit（md §2.3）：结果严重度 ≥ 配置最低等级即触发，「不进入审核」不参与', async () => {
-    const d = await getReviewApplication('usr_1') // 对外动作 中风险 + 敏感信息 高风险
-    const results = fullDetectionResults(d.risks)
+    // 用内联检测结果而非种子：种子按其尺度都必须触发（见上一条），不适合拿来测「不触发」分支
+    const results = fullDetectionResults([
+      { item: '对外动作', level: '中风险' },
+      { item: '敏感信息明文凭证', level: '高风险' }
+    ])
     expect(needsManualAudit(results, DEFAULT_RISK_TEMPLATES['宽松'])).toBe(false)
     expect(needsManualAudit(results, DEFAULT_RISK_TEMPLATES['通用'])).toBe(false) // 敏感信息阈值 严重风险 > 高风险
     expect(needsManualAudit(results, DEFAULT_RISK_TEMPLATES['严格'])).toBe(true) // 对外动作阈值 中风险 ≤ 中风险
@@ -187,7 +198,7 @@ describe('skillReviewMock · 持久化 restore 形状守卫', () => {
   })
 
   it('存量快照版本对但 riskConfig 缺失 → 启动时抛「快照形状不合法」被兜底：回种子 7 条 + 当前尺度「通用」、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { reviews: [], riskConfig: null } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { reviews: [], riskConfig: null } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../skillReviewMock')
     expect((await fresh.listReviewApplications({ page: 1, size: 50 })).total).toBe(7)

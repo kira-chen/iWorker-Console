@@ -47,6 +47,18 @@ const userLabel = computed(
 
 const changed = computed(() => (selected.value || '') !== (props.row?.positionId || ''))
 
+// 下拉选项按 md §四.1「展示已发布及审核中岗位」过滤——用户当前绑定的岗位若已不在此列（如绑定后
+// 停用/删除），selected 匹配不到任何 el-option，Element Plus 找不到 label 会显示裸 positionId
+// （2026-09-18 待办 yuepu#13·岗位 P7）。补一条用真实岗位名兜底的选项，保证下拉默认值始终显示名称。
+const displayOptions = computed(() => {
+  const opts = props.positionOptions || []
+  const curId = props.row?.positionId
+  if (curId != null && !opts.some((p) => String(p.positionId) === String(curId))) {
+    return [...opts, { positionId: curId, name: props.row?.positionName || `#${curId}` }]
+  }
+  return opts
+})
+
 async function onSubmit() {
   if (!props.row?.userId) return
   if (!changed.value && !props.forceSave) {
@@ -77,7 +89,7 @@ async function onSubmit() {
     <el-select v-model="selected" placeholder="选择岗位" class="upe-select">
       <el-option :value="''" label="未绑定" />
       <el-option
-        v-for="p in positionOptions"
+        v-for="p in displayOptions"
         :key="p.positionId"
         :value="p.positionId"
         :label="p.name"

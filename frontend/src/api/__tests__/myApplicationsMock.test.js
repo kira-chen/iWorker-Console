@@ -47,6 +47,8 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
   it('keyword 过滤域 = 申请对象名称/描述（大小写不敏感）', async () => {
     expect((await app.listMyApplications({ keyword: 'kimi' })).list.map((r) => r.id)).toEqual([507])
     expect((await app.listMyApplications({ keyword: '入转调离' })).list.map((r) => r.id)).toEqual([506])
+    // 前后空白不参与匹配（2026-09-18 待办 yuepu#13·治理 G4）
+    expect((await app.listMyApplications({ keyword: '  kimi ' })).list.map((r) => r.id)).toEqual([507])
   })
 
   it('不存在的 id 抛 404', async () => {

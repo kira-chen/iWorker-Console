@@ -35,7 +35,8 @@ const query = reactive({ terminal: '', keyword: '', sortDir: 'desc' })
 let revokable = []   // 本页已创建的原图 objectURL，换页/卸载统一 revoke
 
 // 「查看附图」弹窗状态：seq = 附件序号（1 起）；url = 原图 objectURL；error = 加载失败（弹窗内提示）
-const viewer = reactive({ visible: false, seq: 0, url: '', loading: false, error: false })
+// key = 反馈 id:序号，标识弹窗当前展示的是哪一张——各条反馈的附图序号都从 1 起，光比 seq 分不出是哪条反馈的图
+const viewer = reactive({ visible: false, seq: 0, key: '', url: '', loading: false, error: false })
 const originalCache = new Map()   // `${feedbackId}:${seq}` -> objectURL（本页内复用，随 revoke 一并清）
 
 // 全文弹窗
@@ -74,11 +75,12 @@ watch(rows, () => {
 
 // 点编号按钮「▧ N」→ 打开「查看附图」弹窗 → 拉该张原图放进预览区；失败在预览区内提示（md §七）。
 async function openViewer(row, img) {
+  const key = `${row.id}:${img.seq}`
   viewer.seq = img.seq
+  viewer.key = key
   viewer.url = ''
   viewer.error = false
   viewer.visible = true
-  const key = `${row.id}:${img.seq}`
   const cached = originalCache.get(key)
   if (cached) {
     viewer.url = cached
@@ -90,12 +92,15 @@ async function openViewer(row, img) {
     const url = URL.createObjectURL(blob)
     revokable.push(url)
     originalCache.set(key, url)
-    // 弹窗仍开着且仍是这张时才落地（快速切换时防串图）
-    if (viewer.visible && viewer.seq === img.seq) viewer.url = url
+    // 弹窗仍开着且仍是这张时才落地（快速切换时防串图）。按 反馈 id:序号 比对而非只比 seq：
+    // 先点 A 反馈的图 1、请求未回时改点 B 反馈的图 1，seq 同为 1，A 的图会落进 B 的弹窗
+    // （2026-09-18 待办 yuepu#13·治理 G3）
+    if (viewer.visible && viewer.key === key) viewer.url = url
   } catch (e) {
-    if (viewer.visible && viewer.seq === img.seq) viewer.error = true
+    if (viewer.visible && viewer.key === key) viewer.error = true
   } finally {
-    viewer.loading = false
+    // 过期请求不动 loading，否则会把新请求正在转的加载态提前关掉
+    if (viewer.key === key) viewer.loading = false
   }
 }
 function closeViewer() {

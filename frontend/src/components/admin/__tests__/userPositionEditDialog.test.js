@@ -86,10 +86,24 @@ describe('UserPositionEditDialog · 弹窗文案（md §3.3 L64-69）', () => {
     expect(container.querySelector('.el-select').dataset.value).toBe('ps_old')
     const opts = [...container.querySelectorAll('.el-option')]
     expect(opts[0].textContent).toBe('未绑定')
-    expect(opts.map((o) => o.textContent)).toEqual(['未绑定', '新岗位'])
+    // 当前绑定岗位（ps_old）不在可选列表（OPTS 只有 ps_new）里也要显示真实岗位名，不能显裸 id
+    // （2026-09-18 待办 yuepu#13·岗位 P7：此前 Element Plus 找不到匹配 el-option 会回退显示 value 本身）
+    expect(opts.map((o) => o.textContent)).toEqual(['未绑定', '新岗位', '旧岗位'])
     expect(container.querySelector('.upe-hint').textContent.trim()).toBe(
       '换绑会清除该用户在原岗位上的个性化（岗位人格 / 搭子名称）；会话、记忆、定时任务保留不变。'
     )
+  })
+
+  it('当前绑定岗位已在可选列表中 → 不重复追加（2026-09-18 待办 yuepu#13·岗位 P7）', async () => {
+    await mount({ visible: true, row: ROW, positionOptions: [...OPTS, { positionId: 'ps_old', name: '旧岗位（仍在选项内）' }] })
+    const opts = [...container.querySelectorAll('.el-option')]
+    expect(opts.map((o) => o.textContent)).toEqual(['未绑定', '新岗位', '旧岗位（仍在选项内）'])
+  })
+
+  it('当前未绑定（positionId 为空）→ 不追加多余选项', async () => {
+    await mount({ visible: true, row: { ...ROW, positionId: null, positionName: null }, positionOptions: OPTS })
+    const opts = [...container.querySelectorAll('.el-option')]
+    expect(opts.map((o) => o.textContent)).toEqual(['未绑定', '新岗位'])
   })
 
   it('显示名为空 → 顶部用用户名', async () => {

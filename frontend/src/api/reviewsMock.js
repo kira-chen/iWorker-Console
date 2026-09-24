@@ -140,7 +140,7 @@ export function resetReviewsMock() {
  */
 export async function listReviews(params = {}) {
   await delay()
-  const q = String(params.keyword || '').toLowerCase()
+  const q = String(params.keyword || '').trim().toLowerCase() // trim：前后空白不参与匹配（2026-09-18 待办 yuepu#13·治理 G4）
   let list = reviews.filter(
     (r) =>
       r.status === 'PENDING_REVIEW' &&

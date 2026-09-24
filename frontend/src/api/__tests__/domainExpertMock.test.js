@@ -205,10 +205,12 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(getRawSkill('sk_304').refNames).not.toContain('法务审阅专家改名')
   })
 
-  it('发布流：无技能拦发布；提交发布进审核（语义化版本号）；撤回清 pending*', async () => {
+  it('发布流：无技能拦发布；升级说明必填（md §二.3.1 L230，2026-09-18 待办 yuepu#13·专家 E4：此前数据层不拦）；提交发布进审核（语义化版本号）；撤回清 pending*', async () => {
     await updateExpert(203, { skillIds: [] })
     await expect(publishExpert(203)).rejects.toMatchObject({ message: expect.stringContaining('至少引用 1 个市场技能') })
     await updateExpert(203, { skillIds: [304] })
+    await expect(publishExpert(203, { bump: 'NONE' })).rejects.toMatchObject({ message: expect.stringContaining('升级说明必填') })
+    await expect(publishExpert(203, { bump: 'NONE', releaseNotes: '   ' })).rejects.toMatchObject({ message: expect.stringContaining('升级说明必填') })
     await publishExpert(203, { bump: 'NONE', releaseNotes: '首发' })
     let row = (await listExperts({ status: 'review' })).list.find((e) => e.id === 203)
     expect(row).toMatchObject({ pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0' })
@@ -249,7 +251,7 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(row.updatedAt).toBe(before)
   })
 
-  it('版本历史：按 publicationId 禁用/启用；启用互斥；最后一个启用版本不可禁用', async () => {
+  it('版本历史：按 publicationId 禁用/启用；启用互斥；最后一个启用版本不可禁用；「最新版本」不受影响（2026-09-18 待办 yuepu#13·专家 E2）', async () => {
     let rows = await listExpertPublications(201)
     expect(rows.map((r) => r.versionLabel)).toEqual(['v2.3.0', 'v2.2.0'])
     const [active, delisted] = rows
@@ -258,6 +260,9 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     rows = await listExpertPublications(201)
     expect(rows.find((r) => r.id === delisted.id).status).toBe('ACTIVE')
     expect(rows.find((r) => r.id === active.id).status).toBe('DELISTED')
+    // md §二.1 L49「最新版本=最近一次审核通过并正式发布的版本号」：启用旧版属版本历史操作，不是
+    // 重新走审核，不应把「最新版本」改写成被启用的旧版本号
+    expect((await getExpert(201)).latestVersionLabel).toBe('v2.3.0')
     // 此刻仅剩一个启用版本 → 护栏拒禁
     await expect(delistExpertPublication(201, delisted.id)).rejects.toMatchObject({
       message: expect.stringContaining('最后一个启用版本')

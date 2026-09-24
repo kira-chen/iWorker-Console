@@ -812,13 +812,12 @@ export async function createAgent(positionId, payload = {}) {
   if (!p) throw err('岗位不存在或已被删除', null, 404)
   const wb = ensureWb(p.positionId)
   if (wb.agents.length >= AGENT_MAX) throw err(`单岗位最多 ${AGENT_MAX} 个 Agent`, null, 1002)
-  let name = String(payload.name || '').trim() || '新 Agent'
-  // 「新 Agent」快捷创建允许重名场景：自动追加序号，避免连点两次「＋ 新 Agent」直接报错
-  if (wb.agents.some((a) => a.name === name)) {
-    let n = 2
-    while (wb.agents.some((a) => a.name === `${name} ${n}`)) n++
-    name = `${name} ${n}`
-  }
+  const name = String(payload.name || '').trim() || '新 Agent'
+  // 新建与编辑现共用同一抽屉表单（PositionAgentSkillTab.vue saveAgentDraft），均要求用户显式填写
+  // 名称——不再是「快捷加号按钮、默认空名」的场景，故与 updateAgent 同口径拒重名，不静默改名
+  // （2026-09-18 待办 yuepu#13·岗位 P4：此前改名静默追加序号，用户不知道保存的其实不是自己填的名字，
+  // 与编辑态「Agent 名已存在」报错互相矛盾）。
+  if (wb.agents.some((a) => a.name === name)) throw err('Agent 名已存在', 'name', 1005)
   const agent = {
     agentId: agentSeq++,
     name,

@@ -545,6 +545,9 @@ export async function publishExpert(id, payload = {}) {
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('该专家已有在途审核，请先撤回')
   if (!e.skillIds.length) throw err('至少引用 1 个市场技能才能发布')
+  // md §二.3.1 L230「升级说明：必填」；此前只在 VersionDrawer.vue 前端拦，数据层不拦
+  // （2026-09-18 待办 yuepu#13·专家 E4，口径同 unifiedSkillMock.publishSkill）
+  if (!String(payload.releaseNotes || '').trim()) throw err('升级说明必填，简述本次更新项', 'releaseNotes')
   const rows = publications[e.id] || []
   const latest = parseVersion(rows[0]?.versionLabel)
   let label = 'v1.0.0'
@@ -695,7 +698,9 @@ export async function relistExpertPublication(expertId, publicationId) {
   })
   row.status = 'ACTIVE'
   row.delistedAt = null
-  if (e) e.latestVersionLabel = rows.find((r) => r.status === 'ACTIVE')?.versionLabel || e.latestVersionLabel
+  // 「最新版本」= 最近一次审核通过并正式发布的版本号（md §二.1 L49），只在审核通过时更新
+  // （applyExpertReviewResult），版本历史区启用/禁用某个历史版本不应改写它
+  // （2026-09-18 待办 yuepu#13·专家 E2：此前启用旧版会把 latestVersionLabel 覆写成该旧版本号）。
   persist()
   return { ...row }
 }

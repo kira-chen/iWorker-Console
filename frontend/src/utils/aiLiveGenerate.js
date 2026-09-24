@@ -136,6 +136,10 @@ export function skillExampleQuestion(ctx) {
  * @param {() => boolean} [options.isReadonly] 只读/锁定态（真 → 按钮禁用、不给「请先填写」title）
  * @param {number} [options.delayMs] 「生成中…」时长，默认 AI_LIVE_DELAY_MS（测试可传 0）
  * @param {string} [options.idleLabel] 空闲态按钮文案，默认「AI 生成」
+ * @param {() => any} [options.getEntityId] 取当前编辑对象 id（每次求值）；组件按路由参数切换对象而不
+ *   重新挂载时（如 SkillFocusEditor 随 route.params.id 复用实例），定时器触发时用它核对对象是否还是
+ *   点击那一刻的对象，变了就丢弃结果、不回填（2026-09-18 待办 yuepu#13·技能 S1）。不传则不做该项校验
+ *   （弹窗式编辑器 visible 切换会整个重新挂载，天然不受影响，无需接入）。
  * @returns {{ busy, sourceEmpty, disabled, title, label, run }} 均为 ref/computed + 触发函数
  */
 export function useAiLiveGenerate({
@@ -146,7 +150,8 @@ export function useAiLiveGenerate({
   apply,
   isReadonly = () => false,
   delayMs = AI_LIVE_DELAY_MS,
-  idleLabel = 'AI 生成'
+  idleLabel = 'AI 生成',
+  getEntityId = null
 }) {
   const busy = ref(false)
   const sourceEmpty = computed(() => !String(getSourceText() || '').trim())
@@ -157,11 +162,13 @@ export function useAiLiveGenerate({
 
   function run() {
     if (disabled.value) return
-    // 源文本/上下文均取点击那刻的值（原型 liveValue(config.source)）
+    // 源文本/上下文/对象 id 均取点击那刻的值（原型 liveValue(config.source)）
     const ctx = getSourceContext ? getSourceContext() : String(getSourceText() || '').trim()
+    const entityAtClick = getEntityId ? getEntityId() : undefined
     busy.value = true
     setTimeout(() => {
       busy.value = false
+      if (getEntityId && getEntityId() !== entityAtClick) return // 生成期间切换了对象，结果作废
       apply(generate(ctx))
       ElMessage.success(AI_LIVE_DONE_TOAST)
     }, delayMs)

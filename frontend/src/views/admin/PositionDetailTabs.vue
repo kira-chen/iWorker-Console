@@ -84,7 +84,11 @@ const isNew = computed(() => route.params.id === 'new')
 
 /* ---------- Tab 切换（9 个 sheet 页；改造：白板+弹窗 → Tab 内联） ---------- */
 // 初值可由 ?tab= 指定：技能整页编辑器「← 返回」据此回到来源页签（#15，2026-09-09 批次 4C）。
-const activeTab = ref(typeof route.query.tab === 'string' && route.query.tab ? route.query.tab : 'persona')
+// 七个页签见下方 el-tabs 定义；?tab= 传非法值（如旧深链 sampleTasks，见 L589 注）时 el-tabs
+// 找不到匹配的 el-tab-pane，内容区整块空白——按站内「非法输入回落默认值」口径兜底到 persona
+// （2026-09-18 待办 yuepu#13·岗位 P6）。
+const VALID_TABS = ['persona', 'intake', 'workProfile', 'knowledge', 'agents', 'tasks', 'businessSystems']
+const activeTab = ref(VALID_TABS.includes(route.query.tab) ? route.query.tab : 'persona')
 
 /* ---------- 页签子组件接线（2026-09-10 病 A 拆分） ----------
  * 子组件数据都直接走 usePositionStore、只接 isReadonly 一个 prop；仅以下三条跨层状态经 provide 注入：
@@ -97,7 +101,10 @@ provide('pdEqShowErrors', eqShowErrors)
 provide('pdEnsurePersisted', ensurePersisted)
 
 /* ---------- 加载 ---------- */
+// doSaveBasic 的采集字段行级校验结果（下标 → { label/key/options: 提示 }），经 pdIntakeErrors 注入
+// 采集字段页签逐行展示——此前只写入、从不消费，校验不过时页面上什么都看不到（2026-09-18 待办 yuepu#13·岗位 P3）
 const intakeErrors = ref({})
+provide('pdIntakeErrors', intakeErrors)
 
 // 延迟骨架屏（闪烁修复）：仅当加载持续 >250ms 才显骨架，避免缓存/快响应时骨架一闪而过的「闪屏」感。
 const showSkeleton = ref(false)
@@ -248,14 +255,17 @@ function buildBasicPayload() {
   return payload
 }
 
+// 返回 'ok' | 'invalid'（采集字段校验不过，未发请求）| 'failed'（请求失败）。
+// silent=true 时（发布前的自动保存）自己不弹成功/失败提示，由调用方按返回值决定是否放行——
+// 此前 openPublish 忽略返回值，保存被拦或失败照样弹出发布窗，发布的是上次落库的旧内容（yuepu#13·岗位 P3）。
 async function doSaveBasic(silent) {
-  if (!hasPositionId.value) return
+  if (!hasPositionId.value) return 'failed'
   // 采集字段前端轻校验
   const { ok, errors } = validateIntakeRows(store.basic.intakeSchema || [])
   intakeErrors.value = errors
   if (!ok) {
     if (!silent) ElMessage.warning('采集字段有误，请修正后保存')
-    return
+    return 'invalid'
   }
   try {
     const { warnings } = await store.saveBasic(buildBasicPayload())
@@ -263,6 +273,7 @@ async function doSaveBasic(silent) {
       // md 三.1：保存成功提示「岗位配置已保存」
       ElMessage.success(warnings.length ? `岗位配置已保存（${warnings.length} 项提示）` : '岗位配置已保存')
     }
+    return 'ok'
   } catch (e) {
     if (e?.field) {
       // 字段级回显（采集 key/name 等）
@@ -270,6 +281,7 @@ async function doSaveBasic(silent) {
     } else if (!silent) {
       ElMessage.error(e?.message || '保存失败')
     }
+    return 'failed'
   }
 }
 
@@ -421,8 +433,17 @@ async function explicitSave() {
 
 async function openPublish() {
   if (!(await ensurePersisted())) return
-  // 先存一遍身份卡当前内容
-  await doSaveBasic(true)
+  // 先存一遍身份卡当前内容；存不进去就不能往下发布（发布的会是上次落库的旧内容）
+  const saved = await doSaveBasic(true)
+  if (saved === 'invalid') {
+    activeTab.value = 'intake' // 行级错误在采集字段页签逐行标出
+    ElMessage.warning('采集字段有误，请修正后再发布')
+    return
+  }
+  if (saved === 'failed') {
+    ElMessage.error('岗位配置保存失败，请稍后重试后再发布')
+    return
+  }
   await refreshSampleTaskCount()
   // 阻断校验六项（md §9.1，2026-09-09 Q11 负责人决策，推翻此前「阻断四项」口径）：
   // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / Agent 与技能（≥1 个 Agent 且该 Agent ≥1 个技能）/
