@@ -169,7 +169,9 @@ export async function createUser(payload = {}) {
   const username = String(payload.username || '').trim()
   // 2026-09-12 对齐 md 用户 §三.3 L157（审计 K15）：文案逐字「请输入 3–32 个字符」
   if (username.length < 3 || username.length > 32) throw err('请输入 3–32 个字符', 'username')
-  if (users.some((u) => u.username === username)) throw err('用户名已存在', 'username', 1005)
+  // 唯一性不区分大小写（2026-09-24 负责人裁定，待办 yuepu#13·组织 O2）：Zhangwei 与 zhangwei 视为重名，
+  // 否则两个肉眼难分的账号可同时存在；存储仍保留用户输入的原大小写
+  if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) throw err('用户名已存在', 'username', 1005)
   if (!String(payload.displayName || '').trim()) throw err('请输入显示名', 'displayName')
   const roleCodes = Array.isArray(payload.roleCodes) ? payload.roleCodes.filter(Boolean) : []
   if (!roleCodes.length) throw err('请至少选择一个角色', 'roleCodes')

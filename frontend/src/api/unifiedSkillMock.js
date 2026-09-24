@@ -462,6 +462,8 @@ export async function importSkillZip({ fileName, type, categoryName }) {
   if (!categoryName) throw new ApiError({ code: 40001, message: '请为技能包选择分类' })
   assertCategory(categoryName)
   const name = String(fileName).replace(/\.zip$/i, '').trim()
+  // 「每个包须含 SKILL.md」由后端解压后校验（架构：前端不引 jszip，见 api/skillFiles.js 头注释）；demo 不真正解包，
+  // 只校验 .zip 后缀，包内是否含 SKILL.md 不在此模拟（2026-09-24 负责人裁定维持，待办 yuepu#13·技能 S2）。
   // skill.md 内 name 全局唯一校验（md §三.2「新建技能弹窗」）：demo 不真正解包 zip，
   // 以包名近似 skill.md 内 name 字段；命中即拒绝导入（批量场景下先导入的包已写入 skills，
   // 后续同名包同样会在此处命中，天然覆盖同批重名）。

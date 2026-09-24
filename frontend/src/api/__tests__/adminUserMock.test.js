@@ -52,6 +52,17 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
       .rejects.toMatchObject({ field: 'username', message: '用户名已存在' })
   })
 
+  it('用户名唯一不区分大小写（2026-09-24 负责人裁定，待办 yuepu#13·组织 O2）：Zhangwei / ZHANGWEI 与已有 zhangwei 重名；新建保留输入的原大小写', async () => {
+    for (const username of ['Zhangwei', 'ZHANGWEI']) {
+      await expect(createUser({ username, displayName: 'x', roleCodes: ['普通用户'] }))
+        .rejects.toMatchObject({ field: 'username', message: '用户名已存在' })
+    }
+    const u = await createUser({ username: 'NewUser', displayName: '新人', roleCodes: ['普通用户'] })
+    expect(u.username).toBe('NewUser')
+    await expect(createUser({ username: 'newuser', displayName: 'x', roleCodes: ['普通用户'] }))
+      .rejects.toMatchObject({ message: '用户名已存在' })
+  })
+
   it('编辑/设置角色/重置密码：状态启停、roleCodes 全量替换、重置走成功链路', async () => {
     const u = await updateUser(203, { displayName: '陈宇宇', status: 'disabled' })
     expect(u).toMatchObject({ displayName: '陈宇宇', status: 'disabled' })
