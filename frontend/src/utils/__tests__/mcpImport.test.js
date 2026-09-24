@@ -104,6 +104,19 @@ describe('parseMcpConfig — 兼容形态与边界', () => {
     expect(parseMcpConfig(JSON.stringify({ mcpServers: {} })).ok).toBe(false)
   })
 
+  it('command 不在 md §三.4.2 五项枚举内（bash / 绝对路径等）→ 不回填并提示手动选择（2026-09-18 待办 yuepu#13·连接器 C1）', () => {
+    const r = parseMcpConfig(JSON.stringify({ mcpServers: { foo: { command: 'bash', args: ['-c', 'x'] } } }))
+    expect(r.ok).toBe(true)
+    expect(r.transport).toBe('stdio')
+    expect(r.command).toBe('')
+    expect(r.args).toEqual(['-c', 'x'])
+    expect(r.warnings.some((w) => w.includes('启动命令「bash」不在可选范围') && w.includes('npx / uvx / node / python3 / docker'))).toBe(true)
+    // 枚举内的照常回填、无该条提示
+    const ok = parseMcpConfig(JSON.stringify({ mcpServers: { foo: { command: 'docker', args: ['run'] } } }))
+    expect(ok.command).toBe('docker')
+    expect(ok.warnings.some((w) => w.includes('不在可选范围'))).toBe(false)
+  })
+
   it('既无 command 也无 url → 报错', () => {
     const r = parseMcpConfig(JSON.stringify({ mcpServers: { foo: { description: 'x' } } }))
     expect(r.ok).toBe(false)

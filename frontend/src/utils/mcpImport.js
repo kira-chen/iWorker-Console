@@ -18,6 +18,8 @@
  * 两者握手协议不同，转错了只会在测试连接时才暴露）。仅有 url 而未声明类型时按 streamable-http 处理。
  */
 
+import { MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
+
 const HTTP_TYPES = new Set(['http', 'streamable-http', 'streamablehttp'])
 
 /* suggestCodeFromKey（服务别名 → 候选 code）已于 2026-09-12 删除（审计 J13）：零调用方，
@@ -103,6 +105,13 @@ export function parseMcpConfig(text) {
 
   if (transport === 'stdio') {
     result.command = typeof cfg.command === 'string' ? cfg.command.trim() : ''
+    // md MCP §三.4.2 L282：Command 限 npx/uvx/node/python3/docker 五项、不支持自由输入。粘贴导入能塞进任意字符串，
+    // 不在枚举内的不回填（留空由管理员在下拉里选），并提示，避免非法命令绕过下拉直接进表单
+    // （2026-09-18 待办 yuepu#13·连接器 C1）
+    if (result.command && !MCP_COMMAND_OPTIONS.includes(result.command)) {
+      warnings.push(`启动命令「${result.command}」不在可选范围（${MCP_COMMAND_OPTIONS.join(' / ')}），未回填，请在下方手动选择`)
+      result.command = ''
+    }
     if (Array.isArray(cfg.args)) {
       result.args = cfg.args.map((a) => String(a)) // 逐项字符串化（保留原样，提交时再 trim/滤空）
     } else if (cfg.args != null) {

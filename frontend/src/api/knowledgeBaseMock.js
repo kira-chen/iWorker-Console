@@ -332,6 +332,11 @@ export async function update(id, payload) {
   await delay()
   const r = find(id)
   if (r.pendingAction) conflict('审核中不可编辑，如需修改请先撤回')
+  // md §三.3.1 L86：专家类型知识库的可见范围（所属专家）创建后不可更改；此前只在 KnowledgeBaseEditor 里置灰，
+  // 数据层照样放行绕过 UI 的改动（2026-09-18 待办 yuepu#13·连接器 C4）。岗位类型可改（改了按 §三.5 回未发布重审）。
+  if (r.kbType === 'EXPERT' && payload.scopeRefId && String(payload.scopeRefId) !== String(r.scopeRefId)) {
+    throw new ApiError({ message: '专家知识库的可见范围创建后不可更改', code: 400, field: 'scopeRefId' })
+  }
   validate({ ...payload, kbType: r.kbType }, id)
   // 关键变更（md §三.5）：数据源引用集合变化 或 可见范围变化 → 已发布库回未发布重审
   const refsChanged = JSON.stringify([...r.sourceIds].sort()) !== JSON.stringify([...(payload.sourceIds || [])].sort())

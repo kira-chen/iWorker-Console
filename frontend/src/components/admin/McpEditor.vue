@@ -592,6 +592,9 @@ function buildPayload() {
       // 只读权威字段原样回传（拉取结果骨架）；writeClass 是唯一可标注字段，
       // 后端按 name merge 局部更新到 tools_cache（bizName/requiresConfirmation 已退役为派生值）。
       name: t.name,
+      // title（server 显示名）也要回传：新登记的 MCP 工具全集来自拉取、库里还没有该工具，此前不带 title
+      // 就落库，刷新后工具卡的中文名丢成只剩代码名（2026-09-18 待办 yuepu#13·连接器 C2）
+      title: t.title || undefined,
       description: t.description,
       writeClass: t.writeClass === 'WRITE' ? 'WRITE' : 'READ',
       inputSchema: t.inputSchema ?? null
