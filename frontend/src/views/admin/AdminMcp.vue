@@ -152,9 +152,16 @@ function refsTip(row) {
 
 // 引用清单弹窗（2026-09-08 原型复刻批次 2C · M2：原型 L171 `button.ref` 点击 → modal('被技能引用', …, '关闭')，
 // 悬停 title 仍列技能名；与 API / 业务系统页同款弹窗。md §二.1 只写悬停，点击弹窗为原型附加，Q157 已记。）
-const refsDialog = reactive({ visible: false, skills: [] })
+// 2026-09-23：27a5aaf 把 positionCount 语义从「绑没绑岗位（0/1）」改成「被 N 个岗位引用」并新造了
+// referencedByPositions 清单，但点击行为没跟着改——岗位私有行点「N 个岗位引用」弹的仍是技能名清单。
+// 现按行类型分流：岗位私有取岗位名、市场连接器取技能名，标题随之切换（md §二.1「展示岗位名或技能名」）。
+const refsDialog = reactive({ visible: false, title: '被技能引用', names: [] })
 function openRefs(row) {
-  refsDialog.skills = row.referencedBySkills || []
+  const byPosition = row.type === CONNECTOR_TYPE.POSITION
+  refsDialog.title = byPosition ? '被岗位引用' : '被技能引用'
+  refsDialog.names = byPosition
+    ? (row.referencedByPositions || []).map((p) => p.positionName)
+    : (row.referencedBySkills || []).map((s) => s.skillName)
   refsDialog.visible = true
 }
 
@@ -741,11 +748,12 @@ async function remove(row) {
       @probed="onProbed"
     />
 
-    <!-- 引用清单弹窗（M2：标题「被技能引用」，正文技能名列表，按钮【关闭】；与 API / 业务系统页同款） -->
-    <el-dialog v-model="refsDialog.visible" title="被技能引用" width="440px">
-      <div v-if="refsDialog.skills.length" class="refs-list">
-        <div v-for="s in refsDialog.skills" :key="s.skillId" class="refs-item">
-          <el-tag type="info" size="small">{{ s.skillName }}</el-tag>
+    <!-- 引用清单弹窗（M2：正文为引用方名称列表，按钮【关闭】；与 API / 业务系统页同款。
+         标题与内容按行类型分流：岗位私有=被岗位引用/岗位名，市场连接器=被技能引用/技能名） -->
+    <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="440px">
+      <div v-if="refsDialog.names.length" class="refs-list">
+        <div v-for="n in refsDialog.names" :key="n" class="refs-item">
+          <el-tag type="info" size="small">{{ n }}</el-tag>
         </div>
       </div>
       <div v-else class="cell-na">暂无引用</div>

@@ -24,7 +24,7 @@ import {
 import { listReviews } from '../reviewsMock'
 import { listMyApplications } from '../myApplicationsMock'
 import { maskSecret } from '@/utils/secretMask'
-import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResponseMapRows, UPLOAD_DEFAULTS } from '@/utils/knowledgeBaseMeta'
+import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResponseMapRows, UPLOAD_DEFAULTS, publishBlockReason } from '@/utils/knowledgeBaseMeta'
 
 /**
  * knowledgeBaseMock 状态机与口径单测。
@@ -613,11 +613,16 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
   })
 
   // A8：md §三.6 发布完整校验第 ①③ 条
-  it('A8 种子 kb_7（描述为空）提交发布 → 拒「请填写知识库描述」，不进审核中（md §三.6 基本信息必填项完整）', async () => {
-    await expect(transition('kb_7', 'publish')).rejects.toMatchObject({ message: '请填写知识库描述', code: 400 })
-    const row = await get('kb_7')
-    expect(row.pendingAction).toBeNull()
-    expect(row.status).toBe('DRAFT')
+  // 2026-09-23：原用例靠种子 kb_7 的空描述触发，而 kb_7 的 icon/description 已补齐（两者均已必填，空值
+  // 让该种子一点编辑就存不回去，见 knowledgeBaseMock 种子注释）。create/update 两个写点都拒空描述，
+  // 已无法经 API 造出空描述的库——改为直接断言发布门本身（publishBlockReason 是 transition 发布前调用的
+  // 同一个判定函数，见 knowledgeBaseMeta.js:384），断言的规则不变、不依赖任何种子的空值。
+  it('A8 描述为空 → 发布门拒「请填写知识库描述」（md §三.6 基本信息必填项完整）', async () => {
+    const enabled = { status: 'ENABLED', verifyStatus: 'SUCCESS' }
+    expect(publishBlockReason({ name: '库', icon: '📘', description: '', kbType: 'ENTERPRISE' }, [enabled])).toBe('请填写知识库描述')
+    expect(publishBlockReason({ name: '库', icon: '📘', description: '   ', kbType: 'ENTERPRISE' }, [enabled])).toBe('请填写知识库描述')
+    // 描述填了就不再被这一条拦（可能被后续条款拦，故只断言不等于本文案）
+    expect(publishBlockReason({ name: '库', icon: '📘', description: '有描述', kbType: 'ENTERPRISE' }, [enabled])).not.toBe('请填写知识库描述')
   })
 
   it('A8 引用的上传数据源没有解析成功文档 → 拒「上传数据源「X」至少要有 1 个解析成功文档」（md §三.6 第 3 条）', async () => {
@@ -796,11 +801,11 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     expect(writes()).toBe(base + 13)
   })
 
-  it('新建知识库落盘（v=7，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
+  it('新建知识库落盘（v=9，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(9) // v9：POSITION 型 scopeRefId 改用 positionMock 真实 id（2026-09-23 待办 yuepu#9④）
+    expect(snap.v).toBe(9) // v9：POSITION 型 scopeRefId 改真实 positionId（待办 yuepu#9④）+ kb_7 补 icon/description
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')

@@ -992,8 +992,12 @@ let reviewSnapshots = {}
 // bump 丢弃旧快照重播种子。
 // version 5（2026-09-18 技能同名校验）：新增 skillMdName（SKILL.md 内 name 字段，zip 导入全局唯一校验用）；
 // 旧快照无该键 → bump 丢弃重播种子，避免存量行 skillMdName 缺失导致校验漏判。
-// version 6（2026-09-23 待办 yuepu#9⑤）：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用
-// 的通用技能 sk_303 违反 md §6.4）；旧快照仍是 ['客户成功岗']，bump 丢弃重播种子。
+// version 6（2026-09-23，两处种子改动合并到同一次 bump，双方都需要丢弃旧快照）：
+// ① 补 3318cbb 漏项：分类改版把 sk_306「智能创作」→「内容创作」、sk_309「知识与学习」→「知识管理」，
+//    但当时未 bump——旧快照结构合法、照常恢复，存量浏览器里这两条仍挂着已删除的分类值（界面选不出来）。
+//    配套 fieldDictMock v4（分类枚举同批）。
+// ② 待办 yuepu#9⑤：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用的通用技能 sk_303
+//    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
 const persist = attachPersist('unifiedSkill', {
   version: 6,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),

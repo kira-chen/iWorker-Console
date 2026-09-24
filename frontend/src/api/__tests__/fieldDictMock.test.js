@@ -73,7 +73,7 @@ describe('fieldDictMock · 持久化 restore 形状守卫', () => {
   })
 
   it('存量快照版本对但缺字段键 / 值非数组 → 启动时抛「快照形状不合法」被兜底：两字段回 md §2.2 种子、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { seq: 1, store: { skillCategory: 'not-an-array' } } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 4, data: { seq: 1, store: { skillCategory: 'not-an-array' } } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../fieldDictMock')
     const dict = await fresh.listFieldDict()
