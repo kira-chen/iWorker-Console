@@ -182,6 +182,28 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
     expect(ElMessage.warning).not.toHaveBeenCalled()
   })
 
+  it('发布前自动保存被采集字段校验拦下（key 重复）→ 不开发布弹窗、不发保存请求、toast 提示并切到采集字段页签（2026-09-18 待办 yuepu#13·岗位 P3：此前静默失败照样弹发布窗）', async () => {
+    store.basic.intakeSchema = [
+      { label: '区域', key: 'region', type: 'text', required: true, options: [] },
+      { label: '大区', key: 'region', type: 'text', required: false, options: [] }
+    ]
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeNull()
+    expect(store.saveBasic).not.toHaveBeenCalled()
+    expect(lastWarn()).toBe('采集字段有误，请修正后再发布')
+    expect(activeTab()).toBe('intake')
+  })
+
+  it('发布前自动保存请求失败 → 不开发布弹窗，toast 提示保存失败（发布的会是上次落库的旧内容）', async () => {
+    // 用 mockRejectedValue 而非 Once：本文件的 el-button 桩未声明 emits，点击会触发两次 openPublish
+    store.saveBasic.mockRejectedValue(new Error('网络异常'))
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeNull()
+    expect(ElMessage.error).toHaveBeenCalledWith('岗位配置保存失败，请稍后重试后再发布')
+  })
+
   it('缺人格必填项 → 阻断、不开弹窗、toast 点名缺项、定位人格页签', async () => {
     store.basic.description = ''
     store.basic.positionSop = '  '

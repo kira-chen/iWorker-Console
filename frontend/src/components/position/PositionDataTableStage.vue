@@ -407,12 +407,16 @@ async function saveFieldsWithConfirm() {
 }
 
 async function saveEdit() {
+  // 三段写入串行：编目字段一步可能弹「确认删除字段」二次确认，用户点「再想想」即中止整个保存。
+  // 因此必须先跑这一步——取消时前面还没写过任何东西；原顺序先写基本信息，取消后基本信息已落库、
+  // 字段和抽取策略没保存，档案处于半提交状态（2026-09-18 待办 yuepu#13·岗位 P5）。
+  // 非强制的首次字段保存遇到需确认的删除会在落库前抛 FIELD_DELETE_NEED_CONFIRM，无副作用。
+  await saveFieldsWithConfirm()
   await updateDataTable(props.positionId, selectedId.value, {
     label: meta.label.trim(),
     description: meta.description.trim() || null,
     status: meta.status
   })
-  await saveFieldsWithConfirm()
   const saved = await saveDossierConfig(props.positionId, selectedId.value, normalizeDossierForSubmit(dossier.value))
   if (saved) dossier.value = hydrateDossierConfig(saved)
 }

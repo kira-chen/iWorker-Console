@@ -52,6 +52,7 @@ import ToolPicker from '@/components/admin/ToolPicker.vue'
 import MarkdownEditor from '@/components/admin/MarkdownEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { categoryLabel, categoryTagType, hasCategory } from '@/utils/skillCategory'
+import { inferPeriodicPreset } from '@/utils/periodicPreset'
 
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
@@ -388,7 +389,7 @@ function buildSchedule() {
     out.idleCountUnit = sc.idleCountUnit || 'DAY'
     out.idleWindow = sc.idleWindow || 'NIGHT'
   } else {
-    out.periodicPreset = sc.periodicPreset || 'DAILY'
+    if (sc.periodicPreset) out.periodicPreset = sc.periodicPreset // 旧数据（每月25日等）无对应预设，不再硬写 DAILY
     out.times = dedupeTimes(sc.times)
     if (sc.scheduleType === 'WEEKLY') out.daysOfWeek = sc.daysOfWeek
     if (sc.scheduleType === 'MONTHLY') out.daysOfMonth = sc.daysOfMonth
@@ -458,6 +459,12 @@ function validate() {
       errors.schedule = '请至少选择一个执行日期'
       ok = false
     }
+  }
+  // 起止日期（md §7.3：起始不填=立即生效，结束不填=一直有效；单次模式仅设起始，endDate 已清空）：
+  // 起始晚于结束这段区间为空，任务永不会触发（2026-09-18 待办 yuepu#13·岗位 P2）
+  if (!errors.schedule && sc.startDate && sc.endDate && sc.startDate > sc.endDate) {
+    errors.schedule = '结束日期不能早于开始日期'
+    ok = false
   }
 
   // 提示词必填（2026-09-21 负责人拍板，推翻 2026-09-12 审计 J7 / K9「提示词非必填」）；
@@ -588,7 +595,7 @@ function fillFrom(sample) {
     form.remark = sample.remark || ''
     form.schedule = {
       scheduleMode: sample.schedule?.scheduleMode || 'PERIODIC',
-      periodicPreset: sample.schedule?.periodicPreset || 'DAILY',
+      periodicPreset: inferPeriodicPreset(sample.schedule || {}),
       intervalCount: sample.schedule?.intervalCount || 1,
       intervalUnit: sample.schedule?.intervalUnit || 'DAY',
       idleCount: sample.schedule?.idleCount || 1,

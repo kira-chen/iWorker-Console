@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick, reactive, computed, inject, unref } from 'vue'
+import { createApp, h, nextTick, reactive, computed, inject, unref, ref } from 'vue'
 
 /**
  * PositionIntakeTab（岗位详情「采集字段」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §3.1 / §3.2 / §3.3：
@@ -78,10 +78,11 @@ const elTableColumn = {
 }
 
 let app, container
-async function mount(props = {}) {
+async function mount(props = {}, provides = {}) {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp({ render: () => h(PositionIntakeTab, props) })
+  for (const [k, v] of Object.entries(provides)) app.provide(k, v)
   app.component('el-button', elButton)
   app.component('el-input', elInput)
   app.component('el-select', elSelect)
@@ -226,6 +227,30 @@ describe('采集字段页签 · 新增 / 编辑抽屉（md §3.2）', () => {
     expect([...col('选项').querySelectorAll('.cell')][1].textContent.trim()).toBe('华东')
   })
 
+  it('字段 key 与已有行重复 → 【保存】被拦 toast「字段 key 重复：xxx」，不落库、抽屉不关（2026-09-18 待办 yuepu#13·岗位 P3）', async () => {
+    const { ElMessage } = await import('element-plus')
+    await mount()
+    headBtn().click()
+    await flush()
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '公司简称')
+    await type(drawer().querySelectorAll('.el-input')[1], 'company') // 第二个输入框是 key（占位随字段名变化，不能按占位取），与种子行的 key 撞
+    await clickFoot('保存')
+    expect(ElMessage.warning).toHaveBeenCalledWith('字段 key 重复：company')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(store.basic.intakeSchema).toHaveLength(1)
+    expect(drawer()).toBeTruthy()
+  })
+
+  it('编辑行时保留自己原来的 key 不算重复', async () => {
+    const { ElMessage } = await import('element-plus')
+    await mount()
+    await clickRowOp(0, '编辑')
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '客户公司名称（改）')
+    await clickFoot('保存')
+    expect(ElMessage.success).toHaveBeenCalledWith('采集字段已保存')
+    expect(store.basic.intakeSchema[0]).toMatchObject({ label: '客户公司名称（改）', key: 'company' })
+  })
+
   it('抽屉【取消】→ 关闭且不落库', async () => {
     await mount()
     headBtn().click()
@@ -234,6 +259,26 @@ describe('采集字段页签 · 新增 / 编辑抽屉（md §3.2）', () => {
     await clickFoot('取消')
     expect(drawer()).toBeNull()
     expect(store.basic.intakeSchema).toHaveLength(1)
+  })
+})
+
+describe('采集字段页签 · 行级校验提示（父层 doSaveBasic 经 pdIntakeErrors 注入，2026-09-18 待办 yuepu#13·岗位 P3）', () => {
+  it('注入的错误按行下标标在对应单元格（key 重复 / 字段名必填 / 选项必填），无错误的行不出现提示', async () => {
+    store.basic = { positionId: 5, name: '经营分析岗', intakeSchema: [row('A', { key: 'dup' }), row('B', { key: 'dup' }), row('', { type: 'single_select' })] }
+    const errs = ref({ 1: { key: '字段 key 重复：dup' }, 2: { label: '显示名必填', options: '单选/多选需至少 1 个选项' } })
+    await mount({}, { pdIntakeErrors: errs })
+    const cellsOf = (label) => [...col(label).querySelectorAll('.cell')]
+    expect(cellsOf('字段 key').map((c) => c.querySelector('.pd-row-err')?.textContent || '')).toEqual(['', '字段 key 重复：dup', ''])
+    expect(cellsOf('字段名').map((c) => c.querySelector('.pd-row-err')?.textContent || '')).toEqual(['', '', '显示名必填'])
+    expect(cellsOf('选项').map((c) => c.querySelector('.pd-row-err')?.textContent || '')).toEqual(['', '', '单选/多选需至少 1 个选项'])
+  })
+
+  it('增删行后旧的下标错误清空（下标已错位）', async () => {
+    store.basic = { positionId: 5, name: '经营分析岗', intakeSchema: [row('A', { key: 'a' }), row('B', { key: 'a' })] }
+    const errs = ref({ 1: { key: '字段 key 重复：a' } })
+    await mount({}, { pdIntakeErrors: errs })
+    await clickRowOp(0, '删除')
+    expect(errs.value).toEqual({})
   })
 })
 

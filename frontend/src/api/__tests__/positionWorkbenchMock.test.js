@@ -117,14 +117,13 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
 })
 
 describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
-  it('createAgent 追加 Agent 并回写列表 agentCount；重名自动加序号', async () => {
+  it('createAgent 追加 Agent 并回写列表 agentCount；重名拒绝 1005（2026-09-18 待办 yuepu#13·岗位 P4：新建与编辑共用同一抽屉表单，均需显式填名，不再静默加序号——此前与 updateAgent 的重名报错口径矛盾）', async () => {
     const a1 = await createAgent(404, { name: '新 Agent' })
-    const a2 = await createAgent(404, { name: '新 Agent' })
     expect(a1.name).toBe('新 Agent')
-    expect(a2.name).toBe('新 Agent 2')
+    await expect(createAgent(404, { name: '新 Agent' })).rejects.toMatchObject({ field: 'name', message: 'Agent 名已存在' })
     const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
-    // 3 = 种子 1 个（研究纪要整理，2026-09-09 补全）+ 本用例新建 2 个
-    expect(row.agentCount).toBe(3)
+    // 2 = 种子 1 个（研究纪要整理，2026-09-09 补全）+ 本用例新建 1 个（重名那次被拒，不计入）
+    expect(row.agentCount).toBe(2)
   })
 
   it('updateAgent 改名重名 1005；deleteAgent 回 orphanedSkillCount 并同步技能数', async () => {

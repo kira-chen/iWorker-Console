@@ -8,7 +8,7 @@ import { createApp, h, nextTick } from 'vue'
  * （md §4 + 原型 pane() L2302 / alignWorkProfile L2706 / L4010），编目与详情改行内网格、不再走弹窗。
  *
  *  1. 已有档案：左栏档案卡 + 「＋ 新增」；右侧三卡标题与 N / 8 计数；基本信息卡头带 取消/保存；
- *  2. 保存 = 元信息 → 卡位 → dossier 三步，dossier payload 已归一化（含 confirmMode / desc），提示「配置已保存到页面草稿」；
+ *  2. 保存 = 卡位 → 元信息 → dossier 三步（卡位在前：其二次确认取消时不留半提交，yuepu#13 P5），dossier payload 已归一化（含 confirmMode / desc），提示「配置已保存到页面草稿」；
  *  3. 无档案：中部空态提示，不渲染档案卡；
  *  4. 本地校验失败不发请求；
  *  5. 只读态：无 取消/保存、无「＋ 新增」、无删除按钮；
@@ -36,6 +36,7 @@ vi.mock('element-plus', () => ({
 }))
 vi.mock('@element-plus/icons-vue', () => ({ Delete: { template: '<i />' } }))
 
+import { ElMessageBox } from 'element-plus'
 import PositionDataTableStage from '@/components/position/PositionDataTableStage.vue'
 
 const passthrough = (tag = 'div') => ({ template: `<${tag}><slot /><slot name="title" /><slot name="label" /></${tag}>` })
@@ -144,7 +145,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(firstRowTypeOpts).toEqual(['日期', '长文本', '短文本', '整数', '小数', '是否'])
   })
 
-  it('保存走 元信息 → 卡位 → dossier 三步，payload 已归一化，提示「配置已保存到页面草稿」', async () => {
+  it('保存走 卡位 → 元信息 → dossier 三步，payload 已归一化，提示「配置已保存到页面草稿」', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     clickSave(el)
@@ -167,6 +168,21 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
       { key: '态势', strategy: 'SUMMARY', params: { n: 3 }, desc: null }
     ])
     expect(msg.success).toHaveBeenCalledWith('配置已保存到页面草稿')
+  })
+
+  it('删除字段的二次确认点「再想想」→ 整个保存中止，基本信息/抽取策略都不落库（2026-09-18 待办 yuepu#13·岗位 P5：此前先写基本信息，取消后半提交）', async () => {
+    const needConfirm = Object.assign(new Error('需确认'), { data: { errorCode: 'FIELD_DELETE_NEED_CONFIRM', affectedRows: 3, deleteFieldCodes: ['f1'] } })
+    api.saveDataTableFields.mockRejectedValueOnce(needConfirm)
+    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    clickSave(el)
+    await flush()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(api.saveDataTableFields).toHaveBeenCalledTimes(1) // 只有非强制的那次试探，没有 force=true 重试
+    expect(api.updateDataTable).not.toHaveBeenCalled()
+    expect(api.saveDossierConfig).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
   })
 
   it('无档案：中部空态提示，不渲染档案卡', async () => {

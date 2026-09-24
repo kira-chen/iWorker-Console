@@ -41,6 +41,17 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
     expect((await listSampleTasks(403)).list).toEqual([])
   })
 
+  it('调度校验下沉数据层（2026-09-18 待办 yuepu#13·岗位 P2）：单次无执行时间被拦；起始日期晚于结束日期被拦；单次模式不查结束日期', async () => {
+    await expect(createSampleTask(404, validPayload({ schedule: { scheduleType: 'ONCE', scheduleMode: 'ONCE', times: ['10:00'] } })))
+      .rejects.toMatchObject({ field: 'schedule', message: '请选择执行时间' })
+    await expect(createSampleTask(404, validPayload({ schedule: { scheduleType: 'DAILY', times: ['10:00'], startDate: '2026-10-10', endDate: '2026-10-01' } })))
+      .rejects.toMatchObject({ field: 'schedule', message: '结束日期不能早于开始日期' })
+    // 起止同日、只填一端都合法；单次模式 endDate 会被清空，不参与比较
+    await expect(createSampleTask(404, validPayload({ schedule: { scheduleType: 'DAILY', times: ['10:00'], startDate: '2026-10-01', endDate: '2026-10-01' } }))).resolves.toBeTruthy()
+    await expect(createSampleTask(404, validPayload({ schedule: { scheduleType: 'DAILY', times: ['10:00'], startDate: '2026-10-01' } }))).resolves.toBeTruthy()
+    await expect(createSampleTask(404, validPayload({ schedule: { scheduleType: 'ONCE', scheduleMode: 'ONCE', times: ['10:00'], onceAt: '2026-12-01T10:00', startDate: '2026-12-01', endDate: '2026-01-01' } }))).resolves.toBeTruthy()
+  })
+
   it('新建/编辑校验与回显：缺名被拦（field 定位）；提示词留空（含纯空白）被拦、超 8000 字被拦（md §7.4；2026-09-21 负责人拍板提示词必填，原 J7 为非必填 / K7）；成功回 VO 含摘要', async () => {
     await expect(createSampleTask(404, validPayload({ name: '' }))).rejects.toMatchObject({ field: 'name' })
     for (const sopDoc of ['', ' ', undefined]) {

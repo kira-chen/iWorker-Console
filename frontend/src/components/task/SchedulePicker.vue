@@ -26,6 +26,7 @@
  * 每月日期）唯一消费方 views/TaskEditor.vue 已被占位页替换，无人再走；组件只留模式 Tab 形态。
  */
 import { computed } from 'vue'
+import { PERIODIC_PRESETS, inferPeriodicPreset } from '@/utils/periodicPreset'
 
 const props = defineProps({
   // Schedule 对象（受控）
@@ -55,13 +56,8 @@ const MODES = [
   { value: 'IDLE', label: '闲时' }
 ]
 
-const PERIODIC_PRESETS = [
-  { value: 'DAILY',              label: '每天',       scheduleType: 'DAILY',   daysOfWeek: [],        daysOfMonth: [] },
-  { value: 'WEEKLY_MON',         label: '每周一',     scheduleType: 'WEEKLY',  daysOfWeek: [1],       daysOfMonth: [] },
-  { value: 'WEEKLY_MON_WED_FRI', label: '每周一三五', scheduleType: 'WEEKLY',  daysOfWeek: [1, 3, 5], daysOfMonth: [] },
-  { value: 'WEEKLY_FRI',         label: '每周五',     scheduleType: 'WEEKLY',  daysOfWeek: [5],       daysOfMonth: [] },
-  { value: 'MONTHLY_1',          label: '每月1日',    scheduleType: 'MONTHLY', daysOfWeek: [],        daysOfMonth: [1] }
-]
+// 5 个周期预设与「按调度形态反推预设」见 utils/periodicPreset.js
+const currentPreset = computed(() => inferPeriodicPreset(props.schedule))
 
 const INTERVAL_UNITS = [
   { value: 'HOUR', label: '小时' },
@@ -115,7 +111,7 @@ function applyModeFields(sc, next) {
     sc.times = []
   } else {
     // PERIODIC：恢复到 periodicPreset 对应的 scheduleType / 星期 / 日期
-    const preset = PERIODIC_PRESETS.find((p) => p.value === (sc.periodicPreset || 'DAILY')) || PERIODIC_PRESETS[0]
+    const preset = PERIODIC_PRESETS.find((p) => p.value === inferPeriodicPreset(sc)) || PERIODIC_PRESETS[0]
     sc.periodicPreset = preset.value
     sc.scheduleType = preset.scheduleType
     sc.daysOfWeek = preset.daysOfWeek.slice()
@@ -135,7 +131,7 @@ function onMode(next) {
 
 /* ---------------- 按周期：固定周期预设 ---------------- */
 function onPreset(preset) {
-  if (preset.value === props.schedule.periodicPreset) return
+  if (preset.value === currentPreset.value) return
   patch({
     scheduleMode: 'PERIODIC',
     periodicPreset: preset.value,
@@ -248,7 +244,7 @@ function prettyTime(t) {
           :key="p.value"
           type="button"
           class="sp-seg-btn"
-          :class="{ on: (schedule.periodicPreset || 'DAILY') === p.value }"
+          :class="{ on: currentPreset === p.value }"
           @click="onPreset(p)"
         >{{ p.label }}</button>
       </div>
