@@ -199,6 +199,24 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(rows[2].textContent).not.toContain('v1.2.0')
   })
 
+  // 引用情况列（2026-09-24 负责人裁定，待办 yuepu#13·专家 E3）：市场专家展示其引用的市场技能数「N 个技能」，
+  // 此前文案写「N个应用引用」而数据是 skillCount，语义相反；岗位私有仍是「N个岗位引用」，通用专家「—」
+  it('引用情况列：市场专家按引用技能数「N个技能」/「暂无技能」，岗位私有「N个岗位引用」，通用专家「—」', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [
+        { ...EXPERTS[0], id: 301, type: 'PLATFORM', skillCount: 2 },
+        { ...EXPERTS[1], id: 302, type: 'PLATFORM', skillCount: 0 },
+        { ...EXPERTS[0], id: 303, type: 'POSITION', positionCount: 3 },
+        { ...EXPERTS[0], id: 304, type: 'SYSTEM_DEFAULT' }
+      ],
+      total: 4
+    })
+    await mount()
+    const cellText = (i) => rowEls()[i].querySelector('.el-table-column[data-label="引用情况"]').textContent.trim()
+    expect([0, 1, 2, 3].map(cellText)).toEqual(['2个技能', '暂无技能', '3个岗位引用', '—'])
+    expect(container.textContent).not.toContain('应用引用')
+  })
+
   // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，写法照 adminMcp.test.js「列结构」用例
   it('列序：状态为独立列且紧跟「专家名」列之后（09-11 拍板 · 审计 J1）', async () => {
     await mount()
