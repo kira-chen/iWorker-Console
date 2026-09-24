@@ -382,8 +382,10 @@ async function stopExpert(row) {
                 <span v-else class="cell-na">暂无引用</span>
               </template>
               <template v-else-if="row.type === EXPERT_TYPE.PLATFORM">
-                <span v-if="row.skillCount > 0">{{ row.skillCount }}个应用引用</span>
-                <span v-else class="cell-na">暂无引用</span>
+                <!-- 市场专家展示其引用的市场技能数：demo 没有「应用」这个引用方的数据源，原文案「N个应用引用」与
+                     skillCount 语义相反（2026-09-24 负责人裁定按引用技能数展示，md 同步，待办 yuepu#13·专家 E3） -->
+                <span v-if="row.skillCount > 0">{{ row.skillCount }}个技能</span>
+                <span v-else class="cell-na">暂无技能</span>
               </template>
               <template v-else>
                 <span class="cell-na">—</span>
