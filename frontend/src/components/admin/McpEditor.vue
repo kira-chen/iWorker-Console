@@ -40,6 +40,7 @@ import {
 } from '@/api/admin'
 import {
   validateMcpForm,
+  CONNECTOR_URL_MAX,
   MCP_TRANSPORTS,
   isHttpTransport,
   MCP_AUTH_TYPES,
@@ -837,6 +838,7 @@ async function save() {
             <template #label><span>MCP 服务地址（Endpoint）</span></template>
             <el-input
               v-model="form.endpoint"
+              :maxlength="CONNECTOR_URL_MAX"
               :placeholder="
                 form.transport === 'sse' ? '如 https://example.com/sse（内网）' : '如 https://example.com/mcp（内网）'
               "

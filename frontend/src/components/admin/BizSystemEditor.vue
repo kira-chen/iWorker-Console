@@ -50,7 +50,8 @@ import {
   BIZ_NAME_MAX,
   BIZ_DESC_MAX,
   BIZ_PAGES_MAX,
-  BIZ_QUESTION_MAX
+  BIZ_QUESTION_MAX,
+  BIZ_URL_MAX
 } from '@/utils/defValidate'
 import { CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
@@ -506,7 +507,7 @@ async function save() {
               <div class="ad-readonly-value">登录态托管</div>
             </el-form-item>
             <el-form-item label="登录地址" :error="fieldErrors.loginUrl" required>
-              <el-input v-model="form.loginUrl" placeholder="https://crm.example.com/login" />
+              <el-input v-model="form.loginUrl" :maxlength="BIZ_URL_MAX" placeholder="https://crm.example.com/login" />
             </el-form-item>
           </div>
           <!-- 自动化操作配置占位（BQ1 保留区块；prd-业务系统.md §三.5「编辑态展示」——

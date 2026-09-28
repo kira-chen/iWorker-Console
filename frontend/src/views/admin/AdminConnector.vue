@@ -59,7 +59,7 @@ const activeComp = computed(() => TABS.find((t) => t.key === activeTab.value)?.c
   <div class="connector-page">
     <PageHeader
       title="连接器"
-      subtitle="为平台配置可用的连接器，同时服务于个人用户和 FDE 工程师"
+      subtitle="平台全部连接器 —— 通用连接器 / 岗位私有 / 市场连接器 统一管理"
     />
 
     <el-tabs v-model="activeTab" class="connector-tabs">

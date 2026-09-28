@@ -503,7 +503,7 @@ async function remove(row) {
       :loading="loading"
       :error="loadError"
       :empty="isEmpty"
-      :empty-text="applied.keyword || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
+      :empty-text="applied.keyword || applied.type || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
     >
       <el-table

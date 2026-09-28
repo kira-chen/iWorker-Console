@@ -48,7 +48,9 @@ import {
   API_AUTH_IN_OPTIONS,
   API_BODY_METHODS,
   validateApiAuthParams,
-  BIZ_QUESTION_MAX
+  BIZ_QUESTION_MAX,
+  CONNECTOR_URL_MAX,
+  API_DESC_MAX
 } from '@/utils/defValidate'
 import { rowsToSchema, schemaToRows, validateRows } from '@/utils/schema'
 import { fmtTime } from '@/utils/docMeta'
@@ -327,12 +329,19 @@ function validate() {
   if (!form.type) errors.type = '请选择连接器类型'
   if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
   if (!form.description.trim()) errors.description = 'API 描述必填'
+  // 描述上限 2000：此前只有输入框 maxlength、保存不校验，粘贴绕过即可超长（待办 yuepu#31③；MCP / 业务系统早有）
+  else if (form.description.trim().length > API_DESC_MAX) errors.description = `API 描述最多 ${API_DESC_MAX} 个字符`
   // 示例问题（2026-09-06 Q1 拍板：需要填写，固定 3 条均非空）
   if (form.exampleQuestions.some((q) => !(q || '').trim())) {
     errors.exampleQuestions = '示例问题必填，请填满 3 条（可点【AI 生成】）'
+  } else if (form.exampleQuestions.some((q) => q.trim().length > QUESTION_MAX)) {
+    // 上限 300 此前只落输入框 maxlength（待办 yuepu#37①；MCP / 业务系统的校验都有该分支）
+    errors.exampleQuestions = `示例问题每条最多 ${QUESTION_MAX} 个字符`
   }
   if (!/^https?:\/\/.+/i.test(form.url.trim())) {
     errors.url = 'API 地址必须为合法的 HTTP 或 HTTPS URL'
+  } else if (form.url.trim().length > CONNECTOR_URL_MAX) {
+    errors.url = `API 地址最多 ${CONNECTOR_URL_MAX} 个字符`
   }
   if (!methods.includes(form.method)) errors.method = '请选择请求方式'
   // 鉴权类型 / 读写标记 / 启用停用状态均为必填（一览表 §六 6.2 #7 #11 #12）：都有默认值，
@@ -552,7 +561,7 @@ async function save() {
               type="textarea"
               :rows="2"
               :autosize="{ minRows: 2, maxRows: 4 }"
-              maxlength="2000"
+              :maxlength="API_DESC_MAX"
               show-word-limit
               placeholder="一句话说明这个 API 是做什么的（如：按报销单号查询报销状态）"
             />
@@ -610,7 +619,7 @@ async function save() {
               </el-select>
             </el-form-item>
             <el-form-item label="API 地址" :error="fieldErrors.url" required class="ad-req-url">
-              <el-input v-model="form.url" placeholder="如 https://finance.example.com/api/expense/status" />
+              <el-input v-model="form.url" :maxlength="CONNECTOR_URL_MAX" placeholder="如 https://finance.example.com/api/expense/status" />
             </el-form-item>
           </div>
         </el-form>

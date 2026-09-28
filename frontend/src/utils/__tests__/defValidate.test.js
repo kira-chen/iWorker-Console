@@ -45,6 +45,7 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     name: '报销系统 MCP',
     description: '对接报销系统，提供报销单查询与提交',
     icon: '🧾',
+    type: 'PLATFORM', // 连接器类型必选（待办 yuepu#35）
     timeoutMs: 10000,
     transport: 'streamable-http',
     endpoint: 'https://intranet.example/mcp',
@@ -56,6 +57,7 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
     name: '文件 MCP',
     description: '本地文件读写',
     icon: '📁',
+    type: 'PLATFORM',
     timeoutMs: 10000,
     transport: 'stdio',
     command: 'npx',
@@ -66,6 +68,20 @@ describe('validateMcpForm（2026-09-01 对齐 PRD §三：code 不校验、名�
   }
   it('合法表单通过', () => {
     expect(validateMcpForm(valid).ok).toBe(true)
+  })
+  it('连接器类型必选（md MCP §三.3 L243 / 一览表 §5.1 #5；待办 yuepu#35）：空 / 缺键 → 「请选择连接器类型」（与 API 侧逐字一致）；三种合法值都放行', () => {
+    expect(validateMcpForm({ ...valid, type: '' }).errors.type).toBe('请选择连接器类型')
+    const { type, ...noType } = valid
+    expect(validateMcpForm(noType).errors.type).toBe('请选择连接器类型')
+    for (const t of ['SYSTEM_DEFAULT', 'POSITION', 'PLATFORM']) expect(validateMcpForm({ ...valid, type: t }).ok).toBe(true)
+  })
+  it('Endpoint 最多 500 字符（md MCP §三.3 L269 / 一览表 §5.1 #7；待办 yuepu#31①）：恰 500 通过、501 拦；先判必填再判长度再判协议头', () => {
+    const url = (n) => 'https://a.example/' + 'x'.repeat(n - 'https://a.example/'.length)
+    expect(url(500)).toHaveLength(500)
+    expect(validateMcpForm({ ...valid, endpoint: url(500) }).ok).toBe(true)
+    expect(validateMcpForm({ ...valid, endpoint: url(501) }).errors.endpoint).toBe('Endpoint 最多 500 个字符')
+    // stdio 不带 endpoint，长度规则不波及
+    expect(validateMcpForm({ ...validStdio, endpoint: url(501) }).ok).toBe(true)
   })
   it('鉴权方式必选（一览表 §五 5.2）：streamable-http 下空值 / 非法值拦下；undefined=录入区未开放不校验；stdio 无此项', () => {
     expect(validateMcpForm({ ...valid, authType: 'none' }).ok).toBe(true)
