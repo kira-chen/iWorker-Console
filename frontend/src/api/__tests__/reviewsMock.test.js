@@ -16,10 +16,10 @@ import {
  * submittedAt 排序默认 desc（§3.1）；通过 / 驳回**先落业务对象再改审核行**，对象无对应在途事项则 409 且审核行不动；
  * 已审结的行不能再审（§七 L101）。
  *
- * 【超时放宽到 20s】approveReview / rejectReview 会动态 import 对应业务 mock 再落态，首次加载千行级模块
+ * 【超时放宽到 60s（原 5s→20s，全量并行下仍偶发顶破 20s，2026-09-28 再放宽）】approveReview / rejectReview 会动态 import 对应业务 mock 再落态，首次加载千行级模块
  * 叠上各 mock 自带的 delay，全量并行跑时会顶破 5s 默认超时翻假红。放宽的是等待上限，断言一个没松。
  */
-describe('reviewsMock · 审核中心内存 mock', { timeout: 20000 }, () => {
+describe('reviewsMock · 审核中心内存 mock', { timeout: 60000 }, () => {
   beforeEach(() => resetReviewsMock())
 
   it('默认列表：13 条全待审，按 submittedAt desc，最新一条是版本管理行 Mac v1.2.0（09-19 16:30）', async () => {
@@ -137,7 +137,7 @@ describe('reviewsMock · 审核中心内存 mock', { timeout: 20000 }, () => {
 // 超时放宽到 20s：本块每条用例都要「摆起点 → 走业务模块提交入口 → 审核 → 回读」跑一串链路，
 // 各业务 mock 的每步都带 delay(150~900) 拟真耗时，叠起来逼近 vitest 5s 默认超时；
 // 全量并行跑（160 个测试文件抢 CPU）时会偶发假红。放宽的是等待上限，不是放宽断言。
-describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）', { timeout: 20000 }, () => {
+describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）', { timeout: 60000 }, () => {
   /** 与业务 mock 同实例的审核中心接口（见上方块注释）。 */
   let gov
   beforeEach(async () => {

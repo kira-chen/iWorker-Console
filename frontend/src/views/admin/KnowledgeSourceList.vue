@@ -28,8 +28,14 @@ const keyword = ref('')
 const typeFilter = ref('')
 const statusFilter = ref('')
 
+// 空态文案据「最近一次取数带的条件」判定，而不是输入框里正在编辑、尚未点查询的值（待办 yuepu#41）
+const hasFilter = ref(false)
 const list = useAdminList(listKnowledgeSources, {
-  params: () => ({ keyword: keyword.value.trim(), sourceType: typeFilter.value, status: statusFilter.value })
+  params: () => {
+    const p = { keyword: keyword.value.trim(), sourceType: typeFilter.value, status: statusFilter.value }
+    hasFilter.value = !!(p.keyword || p.sourceType || p.status)
+    return p
+  }
 })
 const { rows, total, loading, loadError, page, pageSize, isEmpty, reload, search } = list
 
@@ -81,8 +87,10 @@ function summaryClass(row) {
 }
 async function doDelete(row) {
   try {
-    // 删除未被引用的数据源需二次确认（md §四.2）；文案照交互原型 modal
-    await ElMessageBox.confirm('删除后配置无法恢复，确认删除？', '删除数据源', {
+    // 删除未被引用的数据源需二次确认（md §四.2）；上传数据源删除时文档与索引数据一并删除（md §四.2），弹窗如实说明
+    // （待办 yuepu#41：此前所有类型共用「删除后配置无法恢复」，上传源的级联删除没说）
+    const content = row.sourceType === 'UPLOAD' ? '删除后配置及其文档、索引数据无法恢复，确认删除？' : '删除后配置无法恢复，确认删除？'
+    await ElMessageBox.confirm(content, '删除数据源', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消'
@@ -179,7 +187,7 @@ onActivated(reload)
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        :empty-text="keyword || typeFilter || statusFilter ? '暂无符合条件的数据源' : '还没有数据源 · 点「新建数据源」创建第一个'"
+        :empty-text="hasFilter ? '暂无符合条件的数据源' : '还没有数据源 · 点「新建数据源」创建第一个'"
         @retry="reload"
       >
         <el-table v-loading="loading" :data="rows" row-key="id">
