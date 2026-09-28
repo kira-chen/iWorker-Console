@@ -769,6 +769,22 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect(last.page).toBe(1)
     })
 
+    it('三个页签口径统一（待办 yuepu#38②③ 负责人拍板）：状态筛选选项顺序 未发布 / 审核中 / 已发布；搜索框点 × 清空立即刷新（回车才查询，输入不自动刷新）', async () => {
+      await mount()
+      const stateSelect = container.querySelectorAll('select')[1]
+      expect([...stateSelect.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual(['NOT_PUBLISHED', 'PENDING_REVIEW', 'PUBLISHED'])
+      const input = container.querySelector('.lt-search')
+      input.value = '报销'
+      input.dispatchEvent(new Event('input'))
+      await nextTick()
+      const callsBefore = adminApi.listMcp.mock.calls.length
+      await flush()
+      expect(adminApi.listMcp.mock.calls.length).toBe(callsBefore) // 输入不自动刷新
+      input.dispatchEvent(new Event('clear')) // el-input 的 clearable × 触发 clear 事件
+      await flush()
+      expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(callsBefore)
+    })
+
     it('首次暂无数据：空态「还没有 MCP 服务 · 点「新建 MCP」登记第一个」（md §一.3 L33）', async () => {
       adminApi.listMcp.mockResolvedValue({ list: [], total: 0 })
       await mount()

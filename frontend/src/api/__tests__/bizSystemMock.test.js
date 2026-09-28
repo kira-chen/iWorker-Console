@@ -222,6 +222,34 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     expect(done.status).toBe('NOT_PUBLISHED')
   })
 
+  it('状态变更刷新最近更新时间（待办 yuepu#45 负责人拍板）：提交发布 / 撤回 / 审核通过 / 提交停用 / 驳回 / 停用通过都刷新，停用通过后列表时间不再原地不动', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const row = await mk(`状态时间-${Date.now()}`)
+      let last = row.updatedAt
+      const steps = [
+        ['提交发布', () => publishBizSystem(row.id)],
+        ['撤回', () => withdrawBizSystem(row.id)],
+        ['再提交发布', () => publishBizSystem(row.id)],
+        ['审核通过', () => approveBizSystem(row.id)],
+        ['提交停用', () => deactivateBizSystem(row.id)],
+        ['停用被驳回', () => rejectBizSystem(row.id)],
+        ['再提交停用', () => deactivateBizSystem(row.id)],
+        ['停用审核通过', () => approveBizSystem(row.id)]
+      ]
+      for (const [label, step] of steps) {
+        vi.setSystemTime(Date.now() + 2000)
+        await step()
+        const now = (await getBizSystem(row.id)).updatedAt
+        expect(Date.parse(now), label).toBeGreaterThan(Date.parse(last))
+        last = now
+      }
+      expect((await getBizSystem(row.id)).status).toBe('NOT_PUBLISHED')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // 2026-09-12 测试审计 T58（A31）：md §二.3 L49「被拒绝或撤回后恢复"已发布"」
   it('驳回与撤回同向：待审停用被驳回 → 保持已发布；待审发布被驳回 → 未发布；无待审事项驳回报错', async () => {
     const row = await mk(`驳回-${Date.now()}`)

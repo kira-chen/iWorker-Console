@@ -409,6 +409,19 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4 L64-72）'
     expect(msg.success).toHaveBeenCalledWith('已删除')
   })
 
+  it('删除：被 3 个技能引用 → 正文带引用数「该 API 被 3 个技能引用，停用或删除后技能仍可执行……」，确认后仍可删（待办 yuepu#37③ 负责人拍板补齐，与 MCP 页签一致）', async () => {
+    conn.listApis.mockImplementation(async () => ({ list: APIS.map((a) => (a.id === 'a_np' ? { ...a, referencedBySkillCount: 3 } : a)) }))
+    await mount()
+    btn(rowByName('未发布接口'), '删除').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '该 API 被 3 个技能引用，停用或删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「未发布接口」？',
+      '删除 API',
+      expect.objectContaining({ confirmButtonText: '继续删除' })
+    )
+    expect(conn.deleteApi).toHaveBeenCalledWith('a_np')
+  })
+
   it('动作失败：数据层抛 message → ElMessage.error 原文；无 message → 「操作失败」', async () => {
     conn.publishApi.mockRejectedValueOnce({ message: '连通性验证通过后才可提交发布' })
     await mount()
