@@ -23,7 +23,9 @@ import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnrol
 import { maskSecret } from '@/utils/secretMask'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
-const nowIso = () => new Date().toISOString()
+// 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
+// localeCompare 排序会排反；改引 utils/datetime 单一真相 nowIsoLocal（另五个 mock 早已迁完，这里漏了）
+import { nowIsoLocal as nowIso, compareTimeText } from '@/utils/datetime'
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let mcpSeq = 12
@@ -370,7 +372,7 @@ export async function listMcp(params = {}) {
   if (params.state) list = list.filter((m) => aggStateKey(m.id) === params.state)
   if (params.type) list = list.filter((m) => m.type === params.type)
   const dir = params.sort === 'asc' ? 1 : -1
-  list = [...list].sort((a, b) => dir * String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
+  list = [...list].sort((a, b) => dir * compareTimeText(a.updatedAt, b.updatedAt))
   const total = list.length
   if (params.page && params.size) {
     const start = (Number(params.page) - 1) * Number(params.size)

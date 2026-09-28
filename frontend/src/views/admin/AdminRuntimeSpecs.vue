@@ -13,6 +13,7 @@
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -82,7 +83,9 @@ function clearFilters() {
 const DEFAULT_DELETE_TIP = '默认运行规格用于平台兜底，不能删除'
 
 onMounted(() => {
-  if (route.query.keyword) query.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) query.keyword = kw
   refresh()
 })
 

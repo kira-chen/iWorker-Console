@@ -19,6 +19,7 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
 import {
@@ -291,9 +292,11 @@ function onTypeChange() {
 
 const route = useRoute()
 onMounted(() => {
-  if (route.query.keyword) {
-    query.keyword = route.query.keyword
-    applied.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) {
+    query.keyword = kw
+    applied.keyword = kw
   }
   fetchList()
 })

@@ -179,6 +179,15 @@ beforeEach(() => {
   window.open = openSpy
 })
 
+describe('?keyword= 深链归一（2026-09-23 待办 yuepu#22）', () => {
+  it('同名参数重复（数组）→ keyword 取第一个且恒为字符串，页面能正常加载', async () => {
+    routeQuery = { keyword: ['行业', '合同'] }
+    const vm = await mountLoaded()
+    expect(vm.query.keyword).toBe('行业')
+    expect(vm.rows.map((r) => r.name)).toContain('行业研究助手')
+  })
+})
+
 describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端点零调用', () => {
   it('挂载即从 mock 取回种子行（默认按最近更新时间由近到远、切到动态每页条数），/fde/admin-skills 等真实端点零调用（md §二.1 L47）', async () => {
     const vm = await mountLoaded()

@@ -190,9 +190,7 @@ describe('mcpConnectorMock —— 工具双层标题 / 示例问题 / args / pub
  * 每例 vi.resetModules() 后动态 import → 全新种子（11 条），不依赖执行顺序、不污染上一组的共享模块。
  */
 // mock 每个接口都 `await delay(150~900ms)` 模拟网络；下面两组用例把 setTimeout 桩成「立即回调」，
-// 让几十次调用不用真等（真等一轮约 30s）。需要真实时间流逝的地方用 realSleep。
-const realSetTimeout = globalThis.setTimeout
-const realSleep = (ms) => new Promise((r) => realSetTimeout(r, ms))
+// 让几十次调用不用真等（真等一轮约 30s）。需要「时间流逝」的地方冻结 Date 后 vi.setSystemTime 拨表，别真等。
 function stubInstantTimers() {
   vi.stubGlobal('setTimeout', (fn) => { queueMicrotask(fn); return 0 })
 }
@@ -224,6 +222,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     m = await import('../mcpConnectorMock')
   })
   afterEach(() => {
+    vi.useRealTimers() // ② 用例会冻结 Date，中途失败也要还原
     vi.unstubAllGlobals()
     vi.resetModules()
   })
@@ -254,8 +253,12 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 
   // ② md §二.1 L49「最近更新时间 = 基本信息 / 连接配置 / 工具清单最近一次保存成功的时间」→ 检活 / 发布动作不算
   it('② 检活 / 提交发布 / 撤回 / 审核通过不改 updatedAt；updateMcp 保存才刷新', async () => {
+    // 时间戳是秒级 +08:00 串（2026-09-23 待办 yuepu#20 起统一 nowIsoLocal，原毫秒级 UTC 串已退役）：
+    // 只冻结 Date 并手动拨表，让「没刷新」的断言真有区分度（拨过 2s 后若被刷新，updatedAt 必变）
+    vi.useFakeTimers({ toFake: ['Date'] })
     const created = await m.createMcp(mkStdioIn('mcp_upd_rule'))
     const t0 = created.updatedAt
+    vi.setSystemTime(Date.now() + 2000)
     await m.healthCheckMcpTool(created.id)
     expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
     await m.publishMcpService(created.id)
@@ -265,9 +268,12 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     await m.publishMcpService(created.id)
     await m.reviewMcpService(created.id, { approve: true })
     expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
-    await realSleep(5) // 让 updatedAt 真的能跨过 1ms
     await m.updateMcp(created.id, { description: '改了描述' })
     const t1 = (await m.getMcp(created.id)).updatedAt
+    vi.useRealTimers()
+    // +08:00 本地 ISO 而非 UTC「Z」串（2026-09-23 待办 yuepu#20：与种子同格式，字典序排序才不会排反）
+    expect(t0).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
+    expect(t1).toMatch(/\+08:00$/)
     expect(t1).not.toBe(t0)
     expect(Date.parse(t1)).toBeGreaterThan(Date.parse(t0))
   })

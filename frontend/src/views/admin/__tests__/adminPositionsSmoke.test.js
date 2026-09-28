@@ -15,7 +15,9 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *  - listPositions 拒绝 → 「加载失败」+【重试】优先于空态（md §一.3 L29），点【重试】重拉后表格回来。
  */
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
+// query 可按用例改写（访问审计【查看】会注入 ?keyword=；手改地址栏可造出重复同名参数 → 数组）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: routeState.query }) }))
 
 const listPositions = vi.fn()
 vi.mock('@/api/position', () => ({
@@ -57,6 +59,7 @@ const flush = async () => {
 }
 
 beforeEach(() => {
+  routeState.query = {}
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   listPositions.mockReset().mockResolvedValue({ list: ROWS, total: 23 })
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -74,6 +77,18 @@ function mountReal() {
   for (const [key, component] of Object.entries(ElementPlusIconsVue)) app.component(key, component)
   app.mount(container)
 }
+
+describe('AdminPositions · ?keyword= 深链归一（2026-09-23 待办 yuepu#22）', () => {
+  it('同名参数重复（?keyword=a&keyword=b → 数组）不白屏：取第一个作关键字，首拉发出且表格正常渲染', async () => {
+    routeState.query = { keyword: ['经营', '市场'] }
+    expect(() => mountReal()).not.toThrow()
+    await flush()
+    expect(listPositions).toHaveBeenCalledWith(expect.objectContaining({ keyword: '经营' }))
+    expect(errorSpy).not.toHaveBeenCalled()
+    expect(container.querySelector('.el-table')).toBeTruthy()
+    expect(container.textContent).not.toContain('加载失败')
+  })
+})
 
 describe('AdminPositions · 真实 Element Plus 挂载冒烟', () => {
   it('整页真挂载不抛、console.error 零调用；页头 / 行文案 / 分页条「共 23 条数据」+ 跳页框回填 1（md §一.1、§二.1）', async () => {

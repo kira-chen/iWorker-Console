@@ -493,7 +493,9 @@ const persist = attachPersist('apiConnector', {
   }
 })
 
-const nowIso = () => new Date().toISOString()
+// 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
+// localeCompare 排序会排反；改引 utils/datetime 单一真相 nowIsoLocal（另五个 mock 早已迁完，这里漏了）
+import { nowIsoLocal as nowIso } from '@/utils/datetime'
 const findApi = (id) => apis.find((a) => a.id === id || a.code === id)
 const findPs = (id) => providerSystems.find((p) => p.id === id)
 

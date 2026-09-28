@@ -21,6 +21,7 @@
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage } from 'element-plus'
 import { confirmDialog, alertDialog } from '@/composables/useConfirm'
 import { Search } from '@element-plus/icons-vue'
@@ -102,7 +103,9 @@ watch(loading, (v) => {
 })
 onBeforeUnmount(() => clearTimeout(loadingTimer))
 onMounted(() => {
-  if (route.query.keyword) query.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) query.keyword = kw
   fetchList()
 })
 

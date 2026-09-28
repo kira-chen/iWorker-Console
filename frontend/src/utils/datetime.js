@@ -20,6 +20,19 @@ export function fmtMinute(dateLike) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/**
+ * 两个时间串按「时间点」比较（供列表按 updatedAt 排序）。不能直接 localeCompare：串里的时区偏移
+ * 不同（历史遗留的 UTC「Z」串 vs 种子的 +08:00 串）时字典序按字面比小时数，会排反
+ * （2026-09-23 待办 yuepu#20 实测 560 组同日比较里 164 组排反）。任一侧解析不了则退回字典序。
+ * @returns {number} 负 / 0 / 正，同 Array.prototype.sort 比较器
+ */
+export function compareTimeText(a, b) {
+  const ta = Date.parse(a)
+  const tb = Date.parse(b)
+  if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb
+  return String(a || '').localeCompare(String(b || ''))
+}
+
 /** 当前时刻 → `YYYY-MM-DD HH:mm`（mock 层「处理/提交时间戳」惯用形态，与种子串同形）。 */
 export function nowMinuteText() {
   return fmtMinute(new Date())
