@@ -149,6 +149,10 @@ function buildWorkbenchSeed() {
         '1. 理解用户目标并确认所需信息。\n2. 根据任务选择合适的 Agent、技能、知识库与工具。\n3. 执行任务并核对关键结果与数据口径。\n4. 向用户输出结论、依据和后续建议。',
       // 引用的已发布业务系统（bizSystemMock 同源取行；仅 biz_2101 是已发布种子）
       businessSystemIds: ['biz_2101'],
+      // 岗位私有 MCP / API 引用（连接器页签前两个区域）：与 mcp/apiConnectorMock 种子的
+      // referencedByPositions 双向同源——连接器页写「被 401 引用」，这里 401 详情就必须列出它（待办 yuepu#42）
+      connectorMcpIds: ['expense_mcp'],
+      connectorApiIds: ['api_1101'],
       persona: '稳、细、主动。先给结论，再给数据依据；发现异常主动提示影响面与建议动作。',
       intakeSchema: [
         { label: '负责业务线', key: 'biz_line', type: 'text', required: true, options: [] },
@@ -169,6 +173,8 @@ function buildWorkbenchSeed() {
       positionSop:
         '1. 确认拜访对象与目标，收集客户基础资料。\n2. 调用客户洞察 Agent 生成拜访提纲。\n3. 拜访后整理跟进记录，沉淀到工作档案。',
       businessSystemIds: ['biz_2101'],
+      connectorMcpIds: ['mail_center', 'crm'],
+      connectorApiIds: ['api_1103', 'api_1104'],
       persona: '热情、周到。拜访前主动准备资料，拜访后提醒记录跟进事项。',
       intakeSchema: [{ label: '负责客户区域', key: 'region', type: 'text', required: true, options: [] }],
       agents: [
@@ -1001,7 +1007,9 @@ const persist = attachPersist('position', {
   // 已退役的交互原型，md 全文无此功能，界面早已无入口，仅在数据层静默透传。存量快照带该键 → 丢弃回种子。
   // v6（2026-09-23 待办 yuepu#9①⑤）：claimedUserCount 不再是种子字段（改实时派生，见 toRow）；404
   // 的 Agent 改引 sk_305（原 sk_303 违反 md §6.4 岗位私有类型限制）。存量快照结构/引用已过期，丢弃回种子。
-  version: 6,
+  // v7（2026-09-28 待办 yuepu#42）：401/402 种子补 connectorMcpIds / connectorApiIds（与连接器侧
+  // referencedByPositions 同源）；旧快照缺这两个键，不 bump 则演示环境仍显示「暂无绑定」。
+  version: 7,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

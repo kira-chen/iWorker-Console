@@ -229,7 +229,7 @@ describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新�
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(6) // v6：claimedUserCount 改派生 + 404 改引 sk_305（2026-09-23 待办 yuepu#9①⑤）
+    expect(snap.v).toBe(7) // v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')

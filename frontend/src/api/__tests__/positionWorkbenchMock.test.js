@@ -15,6 +15,9 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
+import { listMcpSync } from '../mcpConnectorMock'
+import { listApisSync } from '../apiConnectorMock'
+import { listBizSystemsSync } from '../bizSystemMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -60,9 +63,10 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(d.exampleQuestions.every((q) => q.trim())).toBe(true)
     expect(d.positionSop.startsWith('1. ')).toBe(true)
     expect(d.businessSystemIds).toEqual(['biz_2101'])
-    // md §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，种子未绑定，空数组
-    expect(d.connectorMcpIds).toEqual([])
-    expect(d.connectorApiIds).toEqual([])
+    // md §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单；401 种子绑了报销系统 MCP + 报销单查询 API
+    // （2026-09-28 待办 yuepu#42：此前种子未绑定，连接器页签两个区域即便修好 store 也全空、演示不出绑定态）
+    expect(d.connectorMcpIds).toEqual(['expense_mcp'])
+    expect(d.connectorApiIds).toEqual(['api_1101'])
     // 空态样本改用「新建岗位」：种子 404 市场研究岗已于 2026-09-09 补全为六项齐备，
     // 全套种子里不再有空白岗位；新建态才是这些字段真正的空态来源。
     const empty = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
@@ -72,6 +76,35 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(empty.businessSystemIds).toEqual([])
     expect(empty.connectorMcpIds).toEqual([])
     expect(empty.connectorApiIds).toEqual([])
+  })
+
+  it('私有连接器双向同源：连接器侧 referencedByPositions 里的每个岗位，其详情的 connectorMcpIds / connectorApiIds / businessSystemIds 都必须含该连接器（待办 yuepu#42）', async () => {
+    const pairs = [
+      [listMcpSync(), 'connectorMcpIds'],
+      [listApisSync(), 'connectorApiIds'],
+      [listBizSystemsSync(), 'businessSystemIds']
+    ]
+    let checked = 0
+    for (const [rows, key] of pairs) {
+      for (const r of rows) {
+        for (const ref of r.referencedByPositions || []) {
+          const d = await getPosition(ref.positionId)
+          expect(d[key], `${r.id} 被岗位 ${ref.positionId} 引用，但该岗位详情 ${key} 缺它`).toContain(r.id)
+          checked += 1
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(7) // 401：1+1+1；402：2+2+1
+    // 反向：岗位详情里列出的连接器，连接器侧也必须回引该岗位
+    for (const pid of [401, 402, 403, 404]) {
+      const d = await getPosition(pid)
+      for (const id of d.connectorMcpIds) {
+        expect(listMcpSync().find((m) => m.id === id).referencedByPositions.map((p) => p.positionId)).toContain(pid)
+      }
+      for (const id of d.connectorApiIds) {
+        expect(listApisSync().find((m) => m.id === id).referencedByPositions.map((p) => p.positionId)).toContain(pid)
+      }
+    }
   })
 
   it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {

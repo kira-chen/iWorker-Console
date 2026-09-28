@@ -52,6 +52,29 @@ describe('position store', () => {
     expect(store.positionId).toBeNull()
     expect(store.agents).toEqual([])
     expect(store.basic.name).toBe('')
+    // 连接器页签的三个引用清单都从空数组起步（待办 yuepu#42：此前只有 businessSystemIds，另两个恒 undefined）
+    expect(store.basic.businessSystemIds).toEqual([])
+    expect(store.basic.connectorMcpIds).toEqual([])
+    expect(store.basic.connectorApiIds).toEqual([])
+  })
+
+  it('hydrate 把详情里的 connectorMcpIds / connectorApiIds 灌进 basic；缺键或非数组兜底为空数组（待办 yuepu#42）', async () => {
+    const store = usePositionStore()
+    api.getPosition.mockResolvedValue({
+      ...sampleDetail(),
+      businessSystemIds: ['biz_2101'],
+      connectorMcpIds: ['expense_mcp'],
+      connectorApiIds: ['api_1101']
+    })
+    await store.load(5)
+    expect(store.basic.connectorMcpIds).toEqual(['expense_mcp'])
+    expect(store.basic.connectorApiIds).toEqual(['api_1101'])
+    expect(store.basic.businessSystemIds).toEqual(['biz_2101'])
+
+    api.getPosition.mockResolvedValue({ ...sampleDetail(), connectorMcpIds: 'oops', connectorApiIds: null })
+    await store.load(5)
+    expect(store.basic.connectorMcpIds).toEqual([])
+    expect(store.basic.connectorApiIds).toEqual([])
   })
 
   it('addAgent 追加到泳道', async () => {

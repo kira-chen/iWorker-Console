@@ -195,6 +195,60 @@ describe('连接器页签 · 三区域展示', () => {
   })
 })
 
+describe('连接器页签 · 加载由引用清单驱动（待办 yuepu#42）', () => {
+  it('挂载时 store.basic 还没填好，之后才回填 → 三区域补加载（此前 setup 裸调用会错过首次加载）', async () => {
+    store.basic = null
+    await mount()
+    expect(listMcp).not.toHaveBeenCalled()
+    expect(section('岗位私有 MCP').textContent).toContain('暂无绑定的私有 MCP')
+
+    store.basic = { connectorMcpIds: ['mcp_1'], connectorApiIds: ['api_1'], businessSystemIds: ['biz_1'] }
+    await flush()
+    expect(sectionNames(section('岗位私有 MCP'))).toEqual(['CRM MCP'])
+    expect(sectionNames(section('岗位私有 API'))).toEqual(['报销查询'])
+    expect(sectionNames(section('岗位私有业务系统'))).toEqual(['CRM 系统'])
+  })
+
+  it('详情回填换出「内容相同的新数组」（如保存后 hydrate）不重复请求；内容变了才重载', async () => {
+    await mount()
+    expect(listMcp).toHaveBeenCalledTimes(1)
+    store.basic = { ...store.basic, connectorMcpIds: ['mcp_1'] }
+    await flush()
+    expect(listMcp).toHaveBeenCalledTimes(1)
+    store.basic = { ...store.basic, connectorMcpIds: ['mcp_1', 'mcp_2'] }
+    await flush()
+    expect(listMcp).toHaveBeenCalledTimes(2)
+    expect(sectionNames(section('岗位私有 MCP'))).toEqual(['CRM MCP', 'ERP MCP'])
+  })
+
+  it('弹窗绑定一条 → 只多一次请求（loader 只由 watch 驱动，不再与手动调用叠加）', async () => {
+    await mount()
+    sectionBtn(section('岗位私有 MCP'), '新增').click()
+    await flush()
+    expect(listMcp).toHaveBeenCalledTimes(2) // 挂载加载 1 + 打开弹窗拉候选 1
+    dlg('绑定私有 MCP').querySelector('.el-checkbox').click()
+    await flush()
+    dlgBtn(dlg('绑定私有 MCP'), '确认绑定').click()
+    await flush()
+    expect(listMcp).toHaveBeenCalledTimes(3) // + 绑定后重载 1（此前手动调用是这一次，watch 接管后仍是一次）
+    expect(sectionNames(section('岗位私有 MCP'))).toEqual(['CRM MCP', 'ERP MCP'])
+  })
+
+  it('已绑定行按「时间点」而非字典序排：+08:00 与 UTC「Z」混存时降序不排反（同 #20 的 compareTimeText）', async () => {
+    // 字典序：'2026-08-24T15:40:00Z'(UTC 15:40 = 北京 23:40) 与 '2026-08-24T20:00:00+08:00'(北京 20:00)
+    // 逐字符比 '15' < '20' 会把 Z 那条排后面；按时间点 Z 那条更晚，降序应排第一
+    listMcp.mockResolvedValue({
+      list: [
+        { ...ALL_MCPS[0], id: 'mcp_1', name: '北京晚八点', updatedAt: '2026-08-24T20:00:00+08:00' },
+        { ...ALL_MCPS[1], id: 'mcp_2', name: 'UTC十五点四十', updatedAt: '2026-08-24T15:40:00Z' }
+      ]
+    })
+    store.basic = { ...store.basic, connectorMcpIds: ['mcp_1', 'mcp_2'] }
+    await mount()
+    expect(sectionNames(section('岗位私有 MCP'))).toEqual(['UTC十五点四十', '北京晚八点'])
+  })
+})
+
 describe('连接器页签 · MCP 区域操作', () => {
   it('【查看】→ McpEditor 以 readonly=true、mcpId=该行 id 打开', async () => {
     await mount()

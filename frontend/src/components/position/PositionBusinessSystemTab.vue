@@ -9,13 +9,14 @@
  * API     — 名称+描述 / 请求方式 / 最近更新时间 / 操作
  * 业务系统 — 名称+描述 / 登录地址 / 最近更新时间 / 操作
  */
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
 import { listMcp } from '@/api/admin'
 import { listApis } from '@/api/apiConnector'
 import { listBizSystems } from '@/api/admin'
 import { fmtTime } from '@/utils/docMeta'
+import { compareTimeText } from '@/utils/datetime'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { iconIsUrl } from '@/utils/iconDisplay'
 import ListStates from '@/components/admin/ListStates.vue'
@@ -40,9 +41,8 @@ const mcpSort = ref('desc')
 
 const mcpSorted = computed(() => {
   return [...mcpBound.value].sort((a, b) => {
-    const ta = a.updatedAt || ''
-    const tb = b.updatedAt || ''
-    return mcpSort.value === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb)
+    const d = compareTimeText(a.updatedAt, b.updatedAt)
+    return mcpSort.value === 'desc' ? -d : d
   })
 })
 const mcpSortArrow = computed(() => mcpSort.value === 'desc' ? '↓' : '↑')
@@ -99,7 +99,6 @@ function confirmMcp() {
   const current = store.basic?.connectorMcpIds || []
   store.basic = { ...store.basic, connectorMcpIds: [...current, ...mcpDialogSelected.value] }
   mcpDialogVisible.value = false
-  loadMcpBound()
   ElMessage.success('绑定成功')
 }
 
@@ -110,7 +109,6 @@ async function removeMcp(row) {
     })
   } catch { return }
   store.basic = { ...store.basic, connectorMcpIds: (store.basic?.connectorMcpIds || []).filter(id => id !== row.id) }
-  loadMcpBound()
   ElMessage.success('已移除')
 }
 
@@ -125,9 +123,8 @@ const apiSort = ref('desc')
 
 const apiSorted = computed(() => {
   return [...apiBound.value].sort((a, b) => {
-    const ta = a.updatedAt || ''
-    const tb = b.updatedAt || ''
-    return apiSort.value === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb)
+    const d = compareTimeText(a.updatedAt, b.updatedAt)
+    return apiSort.value === 'desc' ? -d : d
   })
 })
 const apiSortArrow = computed(() => apiSort.value === 'desc' ? '↓' : '↑')
@@ -184,7 +181,6 @@ function confirmApi() {
   const current = store.basic?.connectorApiIds || []
   store.basic = { ...store.basic, connectorApiIds: [...current, ...apiDialogSelected.value] }
   apiDialogVisible.value = false
-  loadApiBound()
   ElMessage.success('绑定成功')
 }
 
@@ -195,7 +191,6 @@ async function removeApi(row) {
     })
   } catch { return }
   store.basic = { ...store.basic, connectorApiIds: (store.basic?.connectorApiIds || []).filter(id => id !== row.id) }
-  loadApiBound()
   ElMessage.success('已移除')
 }
 
@@ -210,9 +205,8 @@ const bizSort = ref('desc')
 
 const bizSorted = computed(() => {
   return [...bizBound.value].sort((a, b) => {
-    const ta = a.updatedAt || ''
-    const tb = b.updatedAt || ''
-    return bizSort.value === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb)
+    const d = compareTimeText(a.updatedAt, b.updatedAt)
+    return bizSort.value === 'desc' ? -d : d
   })
 })
 const bizSortArrow = computed(() => bizSort.value === 'desc' ? '↓' : '↑')
@@ -269,7 +263,6 @@ function confirmBiz() {
   const current = store.basic?.businessSystemIds || []
   store.basic = { ...store.basic, businessSystemIds: [...current, ...bizDialogSelected.value] }
   bizDialogVisible.value = false
-  loadBizBound()
   ElMessage.success('绑定成功')
 }
 
@@ -280,14 +273,17 @@ async function removeBiz(row) {
     })
   } catch { return }
   store.basic = { ...store.basic, businessSystemIds: (store.basic?.businessSystemIds || []).filter(id => id !== row.id) }
-  loadBizBound()
   ElMessage.success('已移除')
 }
 
-// ── 初始加载 ──────────────────────────────────────────────────
-loadMcpBound()
-loadApiBound()
-loadBizBound()
+// ── 加载：由「引用 id 清单」驱动 ────────────────────────────────
+// 不能在 setup 里裸调用：岗位详情异步 hydrate，页签挂载时 store.basic 可能还没填好，裸调用会错过首次加载
+// （待办 yuepu#42）。监听清单内容（而非数组引用），绑定 / 移除 / 详情回填都会触发重载，且 hydrate
+// 换出内容相同的新数组时不重复请求；绑定 / 移除处也因此不必再手动调 loader。
+const idsKey = (getIds) => () => (getIds() || []).join(',')
+watch(idsKey(() => store.basic?.connectorMcpIds), loadMcpBound, { immediate: true })
+watch(idsKey(() => store.basic?.connectorApiIds), loadApiBound, { immediate: true })
+watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: true })
 </script>
 
 <template>
