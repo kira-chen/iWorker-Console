@@ -107,6 +107,10 @@ export const usePositionStore = defineStore('position', () => {
       exampleQuestions: normalizeExample(data.exampleQuestions),
       positionSop: data.positionSop || '',
       businessSystemIds: Array.isArray(data.businessSystemIds) ? data.businessSystemIds : [],
+      // 连接器页签的岗位私有 MCP / API 引用清单（md 岗位 §8.1 L498 / §8.2 L516）。此前漏了这两个键，
+      // 页签读到恒 undefined，四个种子岗位的私有 MCP / API 区域永远是空的（待办 yuepu#42）
+      connectorMcpIds: Array.isArray(data.connectorMcpIds) ? data.connectorMcpIds : [],
+      connectorApiIds: Array.isArray(data.connectorApiIds) ? data.connectorApiIds : [],
       persona: data.persona || '',
       intakeSchema: Array.isArray(data.intakeSchema) ? data.intakeSchema : []
     }
@@ -132,6 +136,8 @@ export const usePositionStore = defineStore('position', () => {
       exampleQuestions: ['', '', ''], // 示例问题固定 3 条
       positionSop: '',
       businessSystemIds: [],
+      connectorMcpIds: [],
+      connectorApiIds: [],
       persona: '',
       intakeSchema: []
     }
