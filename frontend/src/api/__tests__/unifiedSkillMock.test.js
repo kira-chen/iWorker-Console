@@ -25,6 +25,8 @@ const CAT = '办公效率'
 
 async function mkSkill(over = {}) {
   const { skillId } = await mock.createSkill({ name: over.name || '测试技能', type: over.type || 'PLATFORM', categoryName: CAT })
+  // 图标必填、发布前须已选（待办 yuepu#18①）：createSkill 建的是无图标草稿，默认补一个；无图标场景传 icon: null
+  if (over.icon !== null) await mock.updateSkill(skillId, { icon: over.icon || '🧪' })
   return skillId
 }
 
@@ -90,6 +92,22 @@ describe('三态 + pendingAction 状态机', () => {
   it('SKILL.md 正文为空不可提交发布（md §三.3 L79，2026-09-23 待办 yuepu#7①）', async () => {
     const id = await mkSkill() // 手动创建默认 SKILL.md 为空
     await expect(mock.publishSkill(id, { bump: 'NONE', releaseNotes: '首发' })).rejects.toThrow('SKILL.md')
+  })
+
+  it('图标必填（待办 yuepu#18①）：updateSkill 传空 / 空白图标被拦且原图标不变，不带 icon 键不受影响；无图标草稿提交发布被拦、补图标后放行', async () => {
+    const id = await mkSkill({ icon: null }) // createSkill 建的是无图标草稿
+    expect(mock._getRaw(id).icon).toBe('')
+    await mock.updateSkill(id, { skillMd: '# 正文\n\n最小可发布内容。' })
+    await expect(mock.publishSkill(id, { bump: 'NONE', releaseNotes: '首发' })).rejects.toThrow('请选择技能图标后再发布')
+    for (const icon of ['', '   ', null]) {
+      await expect(mock.updateSkill(id, { icon })).rejects.toThrow('请选择或上传图标')
+    }
+    await mock.updateSkill(id, { icon: '📘' })
+    await mock.updateSkill(id, { description: '只改描述，不带 icon 键' })
+    expect(mock._getRaw(id).icon).toBe('📘')
+    await expect(mock.updateSkill(id, { icon: '' })).rejects.toThrow('请选择或上传图标')
+    expect(mock._getRaw(id).icon).toBe('📘') // 被拦的清空不落
+    await expect(mock.publishSkill(id, { bump: 'NONE', releaseNotes: '首发' })).resolves.toMatchObject({ pendingVersion: 'v1.0.0' })
   })
 
   it('撤回：version 空 → 恢复未发布（INITIAL）', async () => {
@@ -325,7 +343,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
   })
 
   it('新建的 MCP 立即进入工具坞候选；连接器被删除后已引用工具侧回落显示 code', async () => {
-    const created = await createMcp({ name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx' })
+    const created = await createMcp({ name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     const candidates = await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })
     expect(candidates.some((t) => t.code === `mcp__${created.code}` && t.bizName === '测试专用 MCP')).toBe(true)
 

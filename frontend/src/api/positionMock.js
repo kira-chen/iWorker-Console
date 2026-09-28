@@ -35,7 +35,8 @@ import { countAssignedUsers } from './positionAssignmentMock'
 // 2026-09-23 待办 yuepu#9⑥：删岗级联清理自动化任务 / 工作档案 / 运行规格里残留的本岗位引用，
 // 否则 posSeq 复用旧 id 时新岗位会「继承」上一轮同 id 岗位遗留的数据（runtimeSpecMock 已反向
 // import 本模块，同属有意的循环依赖，函数体内调用，安全）
-import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef } from './sampleTaskMock'
+import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef, countSampleTasks } from './sampleTaskMock'
+import { computePublishCheck } from '@/utils/positionModel'
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
@@ -447,6 +448,13 @@ export async function publishPosition(id, payload = {}) {
   // 2026-09-08 PRD-20260908 对齐：md §6.5「Agent 与技能没有填写时同样可以发布（不参与发布阻断校验）」、
   // 原型详情页 openPub L2132 无技能数校验 → 删除原「至少关联 1 个岗位私有技能」mock 兜底；
   // 列表页【发布】的技能数前置校验（原型 L1194 链路，底账 Q11 未决）仍由 AdminPositions.onPublish 自持。
+  // 发布前完整性复核（md 岗位 §9.1）：与详情页「发布前检查」同一个 computePublishCheck，UI 拦得住的，绕过 UI 的调用也必须拦得住——
+  // 否则本函数会成为「API 层可发布无图标 / 无领用页文案 / 无采集字段的岗位」的参考实现（待办 yuepu#18②）
+  const check = computePublishCheck({ ...detailVO(p), sampleTaskCount: countSampleTasks(p.positionId) })
+  if (!check.blockingPassed) {
+    const failed = check.items.filter((i) => i.blocking && !i.ok)
+    throw err(`发布前检查未通过：${failed.map((i) => i.detail).join('；')}`)
+  }
   const rows = publications[p.positionId] || []
   const latest = parseVersion(rows[0]?.versionLabel)
   let label = 'v1.0.0'
@@ -778,7 +786,9 @@ export async function updatePosition(id, payload = {}) {
     p.description = description
   }
   if ('intro' in payload) wb.intro = String(payload.intro || '').trim()
-  if ('icon' in payload) p.icon = payload.icon || p.icon
+  // 图标必填只在「发布」时阻断（保存不拦，见 publishPosition）：这里必须允许清空，且与 createPosition 的 `payload.icon || ''` 同口径——
+  // 原 `|| p.icon` 让图标永远清不掉，也让「必填不形同虚设」的去兜底（61dbd19）只做了一半（待办 yuepu#18③）
+  if ('icon' in payload) p.icon = String(payload.icon || '').trim()
   if ('iconSource' in payload) wb.iconSource = payload.iconSource || 'library'
   if ('claimDesc' in payload) wb.claimDesc = Array.isArray(payload.claimDesc) ? payload.claimDesc.map((c) => ({ ...c })) : []
   // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）

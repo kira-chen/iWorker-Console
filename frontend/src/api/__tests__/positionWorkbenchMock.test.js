@@ -279,6 +279,22 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     _reset('sk_301', { refNames: _getRaw('sk_301').refNames.filter((n) => n !== '售后支持岗') })
   })
 
+  it('图标 / 发布前复核（待办 yuepu#18②③）：updatePosition 可清空图标；publishPosition 与详情页同用 computePublishCheck，缺图标 / 领用页文案 / 采集字段都被拦；新建空岗位一次列全缺项', async () => {
+    const cleared = await updatePosition(401, { icon: '' })
+    expect(cleared.icon).toBe('') // 原 `|| p.icon` 让图标永远清不掉
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('请先选择岗位图标')
+    await updatePosition(401, { icon: '▤', claimDescriptions: [], intakeSchema: [] })
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('领用页文案（至少 1 条）；至少配置 1 个采集字段')
+    await __resetPositionMock()
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({}) // 复位后种子齐备，放行
+
+    const blank = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
+    const err = await publishPosition(blank.positionId, { releaseNotes: '首发' }).catch((e) => e)
+    expect(err.message).toContain('发布前检查未通过')
+    for (const part of ['岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', '自动化任务']) expect(err.message).toContain(part)
+    expect((await listPositions({ keyword: blank.name })).list[0].pendingAction).toBeNull() // 被拦的不进审核
+  })
+
   it('publishPosition 显式 versionLabel（工作台 N5 链路）以之为准；列表 bump 口径不受影响', async () => {
     await publishPosition(402, { versionLabel: 'v002', releaseNotes: '工作台发布' })
     const row = (await listPositions({ keyword: '客户成功岗' })).list[0]

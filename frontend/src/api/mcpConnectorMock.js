@@ -21,6 +21,7 @@ import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { maskSecret } from '@/utils/secretMask'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
@@ -448,8 +449,17 @@ function applyMcpPayload(m, payload) {
   }
 }
 
+// 示例问题：固定 3 条均须非空、每条 ≤300（与 defValidate.validateMcpForm / 业务系统 mock 同口径，待办 yuepu#18④：
+// 此前只 trim 不 throw，编辑器里的必填红星是纯视觉）。新建必填；编辑仅在带了该字段时校验（mock 的 payload 是部分更新语义）。
+function assertExampleQuestions(list) {
+  const qs = [0, 1, 2].map((i) => String(list?.[i] || '').trim())
+  if (qs.some((q) => !q)) throw err('示例问题固定 3 条，须全部填写', 'exampleQuestions')
+  if (qs.some((q) => q.length > BIZ_QUESTION_MAX)) throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
+}
+
 export async function createMcp(payload) {
   await delay(250)
+  assertExampleQuestions(payload.exampleQuestions)
   const code = (payload.code || '').trim() || `mcp_${mcpSeq}`
   if (findMcp(code)) throw err('code 已存在', 'code')
   mcpSeq += 1
@@ -492,6 +502,7 @@ export async function updateMcp(id, payload) {
   // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
   if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
+  if ('exampleQuestions' in payload) assertExampleQuestions(payload.exampleQuestions)
   applyMcpPayload(m, payload)
   m.updatedAt = nowIso()
   persist()

@@ -523,6 +523,11 @@ export function __resetSampleTaskMock() {
  * 不清会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id
  * 岗位遗留的任务（2026-09-23 待办 yuepu#9⑥）。
  */
+/** 岗位下自动化任务条数（同步；positionMock 发布前复核用，md 岗位 §7.6：发布至少 1 条）。 */
+export function countSampleTasks(positionId) {
+  return (samplesByPosition[String(positionId)] || []).length
+}
+
 export function deleteAllForPosition(positionId) {
   delete samplesByPosition[String(positionId)]
   persist()
