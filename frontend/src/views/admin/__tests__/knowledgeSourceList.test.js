@@ -163,6 +163,34 @@ describe('KnowledgeSourceList 列表契约（md §四.1-§四.2 / §八.1）', (
     expect(editor.dataset.mode).toBe('edit')
   })
 
+  it('空态文案据「最近一次取数带的条件」判定：输入框里打了字但没点查询不算带条件；点了查询仍无命中才是「暂无符合条件的数据源」（待办 yuepu#41，同 MCP 页 #36 口径）', async () => {
+    api.listKnowledgeSources.mockResolvedValue({ list: [], total: 0 })
+    await mount()
+    const emptyText = () => container.querySelector('[data-testid="list-empty"]')?.textContent.trim()
+    expect(emptyText()).toBe('还没有数据源 · 点「新建数据源」创建第一个')
+    const input = container.querySelector('input')
+    input.value = '不存在'
+    input.dispatchEvent(new Event('input'))
+    await flush()
+    expect(emptyText()).toBe('还没有数据源 · 点「新建数据源」创建第一个') // 还没点查询：最近一次取数没带条件
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
+    await flush()
+    expect(emptyText()).toBe('暂无符合条件的数据源')
+  })
+
+  it('上传数据源删除确认如实说明级联：「删除后配置及其文档、索引数据无法恢复，确认删除？」（md §四.2 上传源删除时文档与索引一并删除；待办 yuepu#41）', async () => {
+    api.listKnowledgeSources.mockResolvedValue({ list: LIST.map((r) => (r.id === 'ks_1' ? { ...r, referencedBy: [] } : r)), total: LIST.length })
+    await mount()
+    opBtns(rowByName('产品资料')).find((b) => b.textContent.includes('删除')).click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '删除后配置及其文档、索引数据无法恢复，确认删除？',
+      '删除数据源',
+      expect.objectContaining({ confirmButtonText: '删除' })
+    )
+    expect(api.deleteKnowledgeSource).toHaveBeenCalledWith('ks_1')
+  })
+
   it('删除二次确认「删除后配置无法恢复，确认删除？」，成功 toast「数据源已删除」', async () => {
     await mount()
     opBtns(rowByName('国标接口')).find((b) => b.textContent.includes('删除')).click()

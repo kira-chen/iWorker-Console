@@ -201,6 +201,21 @@ describe('KnowledgeBaseList 列表契约（md §三.2 / §三.4.3 / §三.8）',
     expect(msg.success).toHaveBeenCalledWith('知识库已删除')
   })
 
+  it('空态文案据「最近一次取数带的条件」判定：输入框里打了字但没点查询不算带条件；点了查询仍无命中才是「暂无符合条件的知识库」（待办 yuepu#41，同 MCP 页 #36 口径）', async () => {
+    api.listKnowledgeBases.mockResolvedValue({ list: [], total: 0 })
+    await mount()
+    const emptyText = () => container.querySelector('[data-testid="list-empty"]')?.textContent.trim()
+    expect(emptyText()).toBe('还没有知识库 · 点「新建知识库」创建第一个')
+    const input = container.querySelector('input')
+    input.value = '不存在'
+    input.dispatchEvent(new Event('input'))
+    await flush()
+    expect(emptyText()).toBe('还没有知识库 · 点「新建知识库」创建第一个') // 还没点查询：最近一次取数没带条件
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
+    await flush()
+    expect(emptyText()).toBe('暂无符合条件的知识库')
+  })
+
   it('取消确认弹窗则不发请求', async () => {
     msgBox.confirm.mockRejectedValue('cancel')
     await mount()

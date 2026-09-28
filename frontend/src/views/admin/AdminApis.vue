@@ -543,11 +543,7 @@ async function removeApi(row) {
               该系统下暂无 API · 点「在本系统下新建 API」添加
             </div>
             <div v-else class="table-wrap aps-table-wrap">
-            <el-table
-              :data="g.apis"
-              empty-text="该系统下暂无 API"
-              row-key="id"
-            >
+            <el-table :data="g.apis" row-key="id">
               <!-- API：图标 + 名称 + 状态标签，名称下方描述（缩略，悬停看全文） -->
               <!-- min-width 220→174（2026-09-11）：状态标签拆出独立列后，名称行不再与标签抢位，
                    收回 46px 让本表回到视口内（拆列前 1166px 不溢出，拆后 1212px 溢出 46px）。 -->

@@ -59,8 +59,14 @@ const statusFilter = ref('')
 /** 岗位上下文（md §三.8）：来自路由 query，锁定新建抽屉的类型与可见范围。 */
 const positionCtx = ref(null)
 
+// 空态文案据「最近一次取数带的条件」判定，而不是输入框里正在编辑、尚未点查询的值（同 MCP 页 #36 的口径；待办 yuepu#41）
+const hasFilter = ref(false)
 const list = useAdminList(listKnowledgeBases, {
-  params: () => ({ keyword: keyword.value.trim(), kbType: typeFilter.value, status: statusFilter.value })
+  params: () => {
+    const p = { keyword: keyword.value.trim(), kbType: typeFilter.value, status: statusFilter.value }
+    hasFilter.value = !!(p.keyword || p.kbType || p.status)
+    return p
+  }
 })
 const { rows, total, loading, loadError, page, pageSize, isEmpty, reload, search } = list
 
@@ -238,7 +244,7 @@ onActivated(reload)
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        :empty-text="keyword || typeFilter || statusFilter ? '暂无符合条件的知识库' : '还没有知识库 · 点「新建知识库」创建第一个'"
+        :empty-text="hasFilter ? '暂无符合条件的知识库' : '还没有知识库 · 点「新建知识库」创建第一个'"
         @retry="reload"
       >
         <el-table v-loading="loading" :data="rows" row-key="id">
