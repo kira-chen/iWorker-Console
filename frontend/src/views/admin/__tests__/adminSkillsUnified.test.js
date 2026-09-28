@@ -188,6 +188,27 @@ describe('?keyword= 深链归一（2026-09-23 待办 yuepu#22）', () => {
   })
 })
 
+describe('空态分两态（待办 yuepu#32⑤：md 补「首次暂无数据」，与专家、模型页一致）', () => {
+  const emptyText = () => mountedHost.querySelector('[data-testid="list-empty"]')?.textContent.trim()
+  // listSpy 的实现会跨用例残留（clearAllMocks 不复位实现）：本组把它换成空列表，结束后必须还原成真 mock
+  let realImpl
+  beforeEach(() => { realImpl = listSpy.getMockImplementation() })
+  afterEach(() => { listSpy.mockImplementation(realImpl) })
+
+  it('没有任何筛选条件而无数据 → 「还没有技能，点击「新建技能」创建第一个」', async () => {
+    listSpy.mockImplementation(async () => ({ list: [], total: 0 }))
+    await mountLoaded()
+    expect(emptyText()).toBe('还没有技能，点击「新建技能」创建第一个')
+  })
+
+  it('带搜索 / 筛选条件而无命中 → 「没有符合条件的技能」', async () => {
+    listSpy.mockImplementation(async () => ({ list: [], total: 0 }))
+    routeQuery = { keyword: '不存在的技能' }
+    await mountLoaded()
+    expect(emptyText()).toBe('没有符合条件的技能')
+  })
+})
+
 describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端点零调用', () => {
   it('挂载即从 mock 取回种子行（默认按最近更新时间由近到远、切到动态每页条数），/fde/admin-skills 等真实端点零调用（md §二.1 L47）', async () => {
     const vm = await mountLoaded()

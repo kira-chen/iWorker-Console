@@ -62,7 +62,16 @@ const route = useRoute()
 const query = reactive({ type: '', keyword: '', status: '', categoryId: '', sort: 'desc' })
 
 // 「引用状态」筛选与 ?referenced 深链已于 2026-09-17 删除（prd.技能.md 无此筛选，负责人裁决按 md 收敛）。
-const list = useAdminList(listUnifiedSkills, { params: () => ({ ...query }) })
+// 空态分两态（md 技能「页面状态与异常场景」：首次暂无数据 / 无查询结果，2026-09-28 待办 yuepu#32⑤ 补齐，与专家、模型页一致）：
+// 据「最近一次取数带的条件」判定，而不是输入框里正在编辑的值
+const hasFilter = ref(false)
+const list = useAdminList(listUnifiedSkills, {
+  params: () => {
+    const p = { ...query }
+    hasFilter.value = !!(p.keyword || p.type || p.status || p.categoryId)
+    return p
+  }
+})
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 
 const categoryOptions = ref([])
@@ -522,7 +531,7 @@ onBeforeUnmount(() => {
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        empty-text="没有符合条件的技能"
+        :empty-text="hasFilter ? '没有符合条件的技能' : '还没有技能，点击「新建技能」创建第一个'"
         @retry="fetchList"
       >
         <el-table

@@ -142,7 +142,7 @@ function buildWorkbenchSeed() {
         { emoji: '📊', content: '每天自动汇总经营数据，异常主动提醒' },
         { emoji: '📝', content: '一句话生成经营分析周报' }
       ],
-      // 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.3 改名；新原型 ensure() 种子口径，纯文本一行一条）
+      // 领用页文案（原「岗位认领说明」，2026-09-08 PRD-20260908 md §2.4 改名；新原型 ensure() 种子口径，纯文本一行一条）
       claimDescriptions: ['自动汇总各业务线经营数据', '识别异常波动并分析原因', '生成周度经营分析报告'],
       // 示例问题（3 条）+ 岗位 SOP（编号步骤式）
       exampleQuestions: ['汇总昨天的经营数据', '本月营收有什么异常', '生成上周的经营周报'],
@@ -794,7 +794,7 @@ export async function updatePosition(id, payload = {}) {
   // 2026-09-04 PRD-20260903 对齐新增字段（部分更新语义：payload 未含即不改）
   if ('claimDescriptions' in payload) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
-    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.3）、≤6 条；
+    // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.4）、≤6 条；
     // 2026-09-21 起必填（至少 1 条）但只在发布时拦（md §9.1），保存仍允许空列表，故此处不校验最少条数；
     // 每条 300 = utils/positionModel.js CLAIM_NOTE_LEN 同口径（2026-09-20 待办 yuepu#8，原 100 与 UI/一览表不同源）
     if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')

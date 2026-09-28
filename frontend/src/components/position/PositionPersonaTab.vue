@@ -71,7 +71,7 @@ function aiGenQuestions() {
   setTimeout(() => {
     patchBasic('exampleQuestions', genExampleQuestions(store.basic?.name, store.basic?.description))
     aiQuestionsBusy.value = false
-    ElMessage.success('已生成示例问题') // md §2.6 逐字
+    ElMessage.success('已生成示例问题') // md §2.5 逐字
   }, 500)
 }
 function aiGenSop() {
@@ -80,7 +80,7 @@ function aiGenSop() {
   setTimeout(() => {
     patchBasic('positionSop', genPositionSop(store.basic?.name, store.basic?.description))
     aiSopBusy.value = false
-    ElMessage.success('已生成岗位 SOP') // md §2.7 逐字
+    ElMessage.success('已生成岗位 SOP') // md §2.6 逐字
   }, 500)
 }
 </script>
@@ -145,14 +145,14 @@ function aiGenSop() {
       </div>
     </section>
 
-    <!-- 3. 领用页文案（md §2.5：必填至少 1 条、发布阻断；卡片头/副标题/按钮照原型领用页文案卡 L4240） -->
+    <!-- 3. 领用页文案（md §2.4：必填至少 1 条、发布阻断；卡片头/副标题/按钮照原型领用页文案卡 L4240） -->
     <section class="pd-card">
       <div class="pd-card-head">
         <span class="pd-card-title">领用页文案<i class="pd-req">*</i></span>
         <span class="pd-card-sub">员工领用时看到的卖点，可多条，最多 6 条</span>
         <span class="pd-card-spacer"></span>
         <!-- 满 6 条不隐藏按钮，点击由 ClaimNotesEditor.startAdd toast「领用页文案最多 6 条」
-             （md §2.3 L188；2026-09-12 审计 J18） -->
+             （md §2.4；2026-09-12 审计 J18） -->
         <el-button
           v-if="!isReadonly && !claimEditorRef?.editing"
           link
