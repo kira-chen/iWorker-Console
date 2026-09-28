@@ -293,7 +293,6 @@ async function save() {
     :readonly="readonly"
     :loading="loading"
     :error="loadError"
-    :submit-disabled="loading || loadError"
     :saving="saving"
     :cancel-disabled="saving"
     :before-close="onBeforeClose"

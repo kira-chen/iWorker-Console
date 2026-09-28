@@ -61,6 +61,7 @@ const props = defineProps({
   createText: { type: String, default: '新建' },
   /** 隐藏提交按钮（如专家审核期锁定：可看不可改，但仍要能关）。 */
   submitHidden: { type: Boolean, default: false },
+  /** 额外禁用提交（业务侧条件）；加载中 / 加载失败由本组件自动并入，见 submitBlocked。 */
   submitDisabled: { type: Boolean, default: false },
   /** 取消按钮禁用（保存在途时防误关丢草稿）。 */
   cancelDisabled: { type: Boolean, default: false },
@@ -82,6 +83,9 @@ const headerText = computed(() => {
 })
 
 const submitLabel = computed(() => (props.isEdit ? props.submitText : props.createText))
+// 加载中 / 加载失败时抽屉主体已被骨架 / 失败态替换，表单里是未回填的默认值：此时点保存要么无反馈（死按钮），
+// 要么把真实配置覆盖成默认值（待办 yuepu#43，#28 是其中后果最重的实例）。收在公共件里，全站编辑器不必各自补判。
+const submitBlocked = computed(() => props.submitDisabled || props.loading || !!props.error)
 const errorText = computed(() =>
   typeof props.error === 'string' && props.error ? props.error : '加载失败'
 )
@@ -131,7 +135,7 @@ function close() {
           v-if="!readonly && !submitHidden"
           type="primary"
           :loading="saving"
-          :disabled="submitDisabled"
+          :disabled="submitBlocked"
           @click="emit('save')"
         >{{ submitLabel }}</el-button>
       </slot>
