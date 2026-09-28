@@ -17,6 +17,9 @@ import { explainMcpError } from '@/utils/mcpVerify'
  * 延时：mock 每个操作 await delay(150~900ms)，用假定时器一次跑完。
  */
 
+// 每条用例都 resetModules + 冷 import 整条 mock 链，全量并发下偶发超过默认 10s 假红（单跑必过，本会话已复现 5 次），放宽本文件的超时
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
+
 const persistHarness = vi.hoisted(() => ({ modules: new Map() }))
 vi.mock('../mockPersist', () => ({
   attachPersist(moduleKey, options) {
