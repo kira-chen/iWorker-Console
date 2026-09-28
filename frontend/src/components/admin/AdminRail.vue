@@ -108,6 +108,8 @@ const allGroups = [
       { index: 'SysConfigUserSkillReviews', label: '用户技能审核', icon: 'Upload', page: 'GOVERNANCE_USER_SKILL_REVIEW' },
       // 访问审计（原「登录明细」，S4 客户端会谈 R2）：用户登录/登出记录。
       { index: 'AdminLoginLogs', label: '访问审计', icon: 'DocumentCopy', page: 'GOVERNANCE_ACCESS_AUDIT' },
+      // 工具调用审计（2026-09-28 PRD 首次落地）：数字员工调用连接器工具的事后审计记录，只读。
+      { index: 'AdminToolCallAudit', label: '工具调用审计', icon: 'Connection', page: 'GOVERNANCE_TOOL_CALL_AUDIT' },
       // 用户反馈（V80）：客户端意见反馈只读列表。
       { index: 'AdminFeedback', label: '用户反馈', icon: 'ChatLineSquare', page: 'GOVERNANCE_FEEDBACK' },
       // 字段字典（原「字段管理」V94）：统一字段字典管理中心（技能分类 / 风险类型 / 风险等级……）。
