@@ -38,6 +38,11 @@ import { countAssignedUsers } from './positionAssignmentMock'
 import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef } from './sampleTaskMock'
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
+// 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
+import { removePositionFromExperts } from './domainExpertMock'
+import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs } from './mcpConnectorMock'
+import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs } from './apiConnectorMock'
+import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs } from './bizSystemMock'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -364,6 +369,11 @@ export async function deletePosition(id) {
   deleteAllSampleTasksForPosition(p.positionId)
   deleteAllDataTablesForPosition(p.positionId)
   unassignPositionFromAllSpecs(p.positionId)
+  // 专家 positionIds / 连接器「被岗位引用」清单同样只清本岗位这一条（待办 yuepu#23⑤⑥）
+  removePositionFromExperts(p.positionId)
+  removeMcpPositionRefs(p.positionId)
+  removeApiPositionRefs(p.positionId)
+  removeBizPositionRefs(p.positionId)
   persist()
   return {}
 }
@@ -749,6 +759,10 @@ export async function updatePosition(id, payload = {}) {
         }
       })
       p.name = name
+      // 连接器「被岗位引用」清单存的是含岗位名的冻结副本，改名后同步，免得三个连接器页显示旧名（待办 yuepu#23⑥）
+      renameMcpPositionRefs(p.positionId, name)
+      renameApiPositionRefs(p.positionId, name)
+      renameBizPositionRefs(p.positionId, name)
     }
   }
   if ('description' in payload) {

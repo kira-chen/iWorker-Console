@@ -92,6 +92,21 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     await expect(deleteRuntimeSpec(created.id)).resolves.toBe(true)
   })
 
+  // 2026-09-23 待办 yuepu#23①：列表显示把已删岗位静默滤掉（0 个岗位），删除守卫却按原始 positionIds 长度报「已配置给 1 个岗位」，
+  // UI 里又没有解除路径 → 规格永久锁死。守卫改与显示同口径：只算仍存在的岗位
+  it('规格上残留已不存在的岗位 id（存量脏数据）→ 显示 0 个岗位、也能删掉，不被悬空引用锁死；仍存在的岗位照常拦', async () => {
+    const base = {
+      name: '悬空引用规格', boundaryDesc: '测试', cpu: 1, memoryGi: 2, diskGi: 5,
+      readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0, allowUserApply: true, requireApproval: true
+    }
+    const dangling = await createRuntimeSpec({ ...base, positionIds: [98765] }) // 98765 不是任何现存岗位
+    expect(dangling.positionCount).toBe(0)
+    await expect(deleteRuntimeSpec(dangling.id)).resolves.toBe(true)
+    // 岗位 402（种子，仍存在）不受影响：先占用再删仍被拦
+    const live = await createRuntimeSpec({ ...base, name: '真实占用规格', positionIds: [402] })
+    await expect(deleteRuntimeSpec(live.id)).rejects.toThrow('已配置给 1 个岗位')
+  })
+
   it('默认规格不可删除，岗位关联和个人关系均形成删除保护', async () => {
     await expect(deleteRuntimeSpec(2)).rejects.toThrow('默认运行规格用于平台兜底，不能删除')
     await expect(deleteRuntimeSpec(1)).rejects.toThrow('已配置给 1 个岗位')

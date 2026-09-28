@@ -408,3 +408,30 @@ export async function deleteBizSystemOwnedSkill(id, skillId) {
   return {}
 }
 
+/**
+ * 岗位被删 / 改名后同步「被岗位引用」清单（2026-09-23 待办 yuepu#23⑥，positionMock.deletePosition / updatePosition 调用）。
+ * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
+ */
+export function removePositionRefs(positionId) {
+  let changed = false
+  bizRows.forEach((r) => {
+    const next = (r.referencedByPositions || []).filter((p) => String(p.positionId) !== String(positionId))
+    if (next.length !== (r.referencedByPositions || []).length) {
+      r.referencedByPositions = next
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
+export function renamePositionRefs(positionId, positionName) {
+  let changed = false
+  bizRows.forEach((r) => {
+    ;(r.referencedByPositions || []).forEach((p) => {
+      if (String(p.positionId) === String(positionId) && p.positionName !== positionName) {
+        p.positionName = positionName
+        changed = true
+      }
+    })
+  })
+  if (changed) persist()
+}

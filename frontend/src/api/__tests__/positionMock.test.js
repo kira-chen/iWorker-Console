@@ -8,6 +8,7 @@ import {
   withdrawPosition,
   unpublishPosition,
   deletePosition,
+  updatePosition,
   getNextVersionLabel,
   listPositionPublications,
   delistPositionPublication,
@@ -26,6 +27,10 @@ import { __resetOrgMock } from '../adminUserMock'
 import { listSampleTasks, __resetSampleTaskMock } from '../sampleTaskMock'
 import { listDataTables, __resetDataTableMock } from '../dataTableMock'
 import { getRuntimeSpec, __resetRuntimeSpecMock } from '../runtimeSpecMock'
+import { listExperts, __resetExpertMock } from '../domainExpertMock'
+import { listMcpSync } from '../mcpConnectorMock'
+import { listApisSync } from '../apiConnectorMock'
+import { listBizSystemsSync } from '../bizSystemMock'
 
 // vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖
 beforeEach(() => {
@@ -149,6 +154,42 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect((await listSampleTasks(402)).total).toBe(0)
     expect((await listDataTables(402)).total).toBe(0)
     expect((await getRuntimeSpec(1)).positionIds).not.toContain(402)
+  })
+})
+
+/**
+ * 2026-09-23 待办 yuepu#23⑤⑥：专家 positionIds、三个连接器的 referencedByPositions（含岗位名的冻结副本）
+ * 在岗位被删 / 改名时无人回写——专家列表「N 个岗位引用」虚高、连接器三页显示已删岗位或旧名。
+ */
+describe('positionMock · 删岗 / 改名回写专家与连接器里的岗位引用（待办 yuepu#23⑤⑥）', () => {
+  const connectorRefs = () => [
+    ...listMcpSync().flatMap((r) => r.referencedByPositions),
+    ...listApisSync().flatMap((r) => r.referencedByPositions),
+    ...listBizSystemsSync().flatMap((r) => r.referencedByPositions)
+  ]
+
+  it('删岗 → 专家 positionIds 摘掉该岗、引用数回落；三个连接器的「被岗位引用」清单也摘掉，其它岗位的引用不动', async () => {
+    __resetExpertMock()
+    expect(connectorRefs().some((p) => p.positionId === 402)).toBe(true) // 前提：种子里确有连接器引用 402
+    const before = (await listExperts()).list.find((e) => e.id === 203)
+    expect(before.positionIds).toEqual([401, 402]) // 种子：岗位私有专家绑 401 + 402
+
+    await setUserPosition(202, null) // 402 被 li.na 领用，先解绑才能删
+    await deletePosition(402)
+
+    const after = (await listExperts()).list.find((e) => e.id === 203)
+    expect(after.positionIds).toEqual([401])
+    expect(after.positionCount).toBe(1)
+    expect(connectorRefs().some((p) => p.positionId === 402)).toBe(false)
+    expect(connectorRefs().some((p) => p.positionId === 401)).toBe(true) // 401 的引用照旧
+  })
+
+  it('岗位改名 → 三个连接器「被岗位引用」清单里的岗位名同步，不再显示旧名', async () => {
+    await updatePosition(401, { name: '经营分析岗（改名）' })
+    const refs401 = connectorRefs().filter((p) => p.positionId === 401)
+    expect(refs401.length).toBeGreaterThan(0)
+    expect(refs401.every((p) => p.positionName === '经营分析岗（改名）')).toBe(true)
+    expect(connectorRefs().some((p) => p.positionName === '经营分析岗')).toBe(false)
   })
 })
 
