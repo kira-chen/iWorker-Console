@@ -627,11 +627,11 @@ export async function getMcpServicePublishStatus(id) {
 
 function setAgg(id, status) {
   pubAgg[id] = status
+  const m = findMcp(id)
+  // 发布状态变更同时刷新最近更新时间（2026-09-28 待办 yuepu#45 负责人拍板；此前只有保存才刷新，停用审核通过后列表时间原地不动）
+  if (m) m.updatedAt = nowIso()
   // 2026-09-04 PRD-20260903 对齐：转入已发布时刷新最近发布时间（publishedAt 出参；从未发布保持 null → 界面显「—」）
-  if (status === 'PUBLISHED') {
-    const m = findMcp(id)
-    if (m) m.publishedAt = nowIso()
-  }
+  if (status === 'PUBLISHED' && m) m.publishedAt = nowIso()
   persist()
   return { affected: (findMcp(id)?.tools || []).length, skipped: 0 }
 }
@@ -643,6 +643,7 @@ export async function publishMcpService(id) {
   if (pubAgg[id] === 'PUBLISHED') throw err('该 MCP 已发布，无需重复提交')
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'PUBLISH'
+  m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: m.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该 MCP 连接器' })
   persist()
   return { mcpId: id, mcpCode: m.code, toolTotal: m.tools.length, results: [] }
@@ -658,6 +659,7 @@ export async function withdrawMcpService(id) {
   if (pubAgg[id] !== 'PENDING_REVIEW') throw err('仅审核中状态可撤回')
   pubAgg[id] = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   m.pendingAction = null
+  m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('MCP', m.id)
   persist()
   return { affected: (m.tools || []).length, skipped: 0 }
@@ -675,6 +677,7 @@ export async function delistMcpService(id) {
   if (pubAgg[id] !== 'PUBLISHED' && pubAgg[id] !== 'PARTIAL') throw err('仅已发布状态可提交停用')
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'DELIST'
+  m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 MCP 对外提供' })
   persist()
   return { affected: (m.tools || []).length, skipped: 0 }
@@ -699,6 +702,7 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
   if (requestAction && !reviewActionMatches(requestAction, m.pendingAction)) return false // 2026-09-18 R1
   const isDelist = m.pendingAction === 'DELIST'
   m.pendingAction = null
+  m.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   if (approved && !isDelist) {
     m.publishedAt = nowIso()
     pubAgg[m.id] = 'PUBLISHED'
@@ -724,6 +728,7 @@ export async function reviewMcpService(id, payload = {}) {
   m.pendingAction = null
   if (wasDelist && !payload.approve) {
     pubAgg[id] = 'PUBLISHED'
+    m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45；其余分支走 setAgg）
     persist()
     return { affected: (m.tools || []).length, skipped: 0 }
   }

@@ -397,6 +397,19 @@ describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-
     expect(msg.success).toHaveBeenCalledWith('已删除')
   })
 
+  it('删除：被 3 个技能引用 → 正文带引用数「该业务系统被 3 个技能引用，停用或删除后技能仍可执行……」，确认后仍可删（待办 yuepu#37③ 负责人拍板补齐，与 MCP 页签一致）', async () => {
+    admin.listBizSystems.mockResolvedValue({ list: LIST.map((b) => (b.id === 'biz_3' ? { ...b, referencedBySkillCount: 3 } : b)), total: LIST.length })
+    await mount()
+    btn(rowByName('合同管理平台'), '删除').click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith(
+      '该业务系统被 3 个技能引用，停用或删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「合同管理平台」？',
+      '删除业务系统',
+      expect.objectContaining({ confirmButtonText: '继续删除' })
+    )
+    expect(admin.deleteBizSystem).toHaveBeenCalledWith('biz_3')
+  })
+
   it('动作失败：数据层抛 message → error 原文；删除失败无 message → 「删除失败」', async () => {
     admin.submitBizSystemPublish.mockRejectedValueOnce({ message: '仅未发布状态可提交发布' })
     admin.deleteBizSystem.mockRejectedValueOnce(new Error(''))

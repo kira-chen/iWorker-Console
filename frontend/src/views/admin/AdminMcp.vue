@@ -82,10 +82,11 @@ const pubAgg = ref({})
 const pendingActions = ref({})
 
 // 列表页状态筛选（三态）——前端按聚合态过滤，后端 listMcp 的 status 是「启用/停用」另一维度，不复用。
+// 选项顺序与 API / 业务系统页签一致：未发布、审核中、已发布（2026-09-28 待办 yuepu#38② 负责人拍板统一，原 MCP md 写反了）
 const STATE_OPTIONS = [
-  { value: 'PUBLISHED', label: '已发布' },
+  { value: 'NOT_PUBLISHED', label: '未发布' },
   { value: 'PENDING_REVIEW', label: '审核中' },
-  { value: 'NOT_PUBLISHED', label: '未发布' }
+  { value: 'PUBLISHED', label: '已发布' }
 ]
 
 /**
@@ -469,13 +470,14 @@ async function remove(row) {
   <div class="list-page">
     <!-- 页头标题已收口至 AdminConnector 容器；此处仅保留工具行 -->
     <ListToolbar>
-      <!-- 搜索框：手动触发（A12）——输入不自动刷新，回车等同点【查询】 -->
+      <!-- 搜索框：输入不自动刷新，回车等同点【查询】；点 × 清空则立即刷新（与 API / 业务系统页签一致，2026-09-28 待办 yuepu#38③ 负责人拍板统一） -->
       <el-input
         v-model="query.keyword"
         placeholder="搜索服务名称或描述"
         clearable
         class="lt-search"
         @keyup.enter="search"
+        @clear="search"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>

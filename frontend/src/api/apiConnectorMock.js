@@ -804,6 +804,7 @@ export async function publishApi(id) {
   if (a.displayStatus !== 'HEALTHY') throw err('连通性验证通过后才可提交发布')
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'PUBLISH'
+  a.updatedAt = nowIso() // 状态变更刷新最近更新时间（2026-09-28 待办 yuepu#45 负责人拍板）
   enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: a.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该 API 连接器' })
   persist()
   return toRow(a)
@@ -817,6 +818,7 @@ export async function withdrawApi(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   a.status = a.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   a.pendingAction = null
+  a.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('API', a.id)
   persist()
   return toRow(a)
@@ -830,6 +832,7 @@ export async function deactivateApi(id) {
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'DEACTIVATE'
+  a.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 API 对外提供' })
   persist()
   return toRow(a)
@@ -859,6 +862,7 @@ export function applyApiReviewResult(refId, requestAction, approved) {
     a.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
   a.pendingAction = null
+  a.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true
 }

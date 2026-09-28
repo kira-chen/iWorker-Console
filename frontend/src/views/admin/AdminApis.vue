@@ -426,9 +426,13 @@ async function deactivate(row) {
 
 /** 删除：软引用——被技能引用也可删，确认影响后继续（PRD §二.4）。 */
 async function removeApi(row) {
+  // 被技能引用时提示引用数（2026-09-28 待办 yuepu#37③ 负责人拍板补齐，与 MCP 页签一致）
+  const refCount = row.referencedBySkillCount || 0
   try {
     await ElMessageBox.confirm(
-      `删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「${row.name}」？`,
+      refCount > 0
+        ? `该 API 被 ${refCount} 个技能引用，停用或删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「${row.name}」？`
+        : `删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「${row.name}」？`,
       '删除 API',
       { type: 'warning', confirmButtonText: '继续删除', confirmButtonClass: 'el-button--danger' }
     )

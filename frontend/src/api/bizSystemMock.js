@@ -295,6 +295,7 @@ export async function publishBizSystem(id) {
   if (b.status !== 'NOT_PUBLISHED') throw err('仅未发布状态可提交发布')
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'PUBLISH'
+  b.updatedAt = nowIso() // 状态变更刷新最近更新时间（2026-09-28 待办 yuepu#45 负责人拍板）
   enrollReview({ businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: b.publishedAt ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', version: '—', versionNotes: '申请发布该业务系统' })
   persist()
   return toRow(b)
@@ -308,6 +309,7 @@ export async function withdrawBizSystem(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
+  b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('BIZ_SYSTEM', b.id)
   persist()
   return toRow(b)
@@ -321,6 +323,7 @@ export async function deactivateBizSystem(id) {
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'DEACTIVATE'
+  b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({ businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该业务系统对外提供' })
   persist()
   return toRow(b)
@@ -338,6 +341,7 @@ export async function approveBizSystem(id) {
     b.publishedAt = nowIso()
   }
   b.pendingAction = null
+  b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
 }
@@ -350,6 +354,7 @@ export async function rejectBizSystem(id) {
   // 驳回与撤回同向：退回操作前原状（待审停用被拒 → 保持已发布）
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
+  b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
 }
@@ -376,6 +381,7 @@ export function applyBizSystemReviewResult(refId, requestAction, approved) {
     b.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
   b.pendingAction = null
+  b.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true
 }

@@ -267,31 +267,40 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     expect(after.updatedAt).toBe(before.updatedAt)
   })
 
-  // ② md §二.1 L49「最近更新时间 = 基本信息 / 连接配置 / 工具清单最近一次保存成功的时间」→ 检活 / 发布动作不算
-  it('② 检活 / 提交发布 / 撤回 / 审核通过不改 updatedAt；updateMcp 保存才刷新', async () => {
-    // 时间戳是秒级 +08:00 串（2026-09-23 待办 yuepu#20 起统一 nowIsoLocal，原毫秒级 UTC 串已退役）：
-    // 只冻结 Date 并手动拨表，让「没刷新」的断言真有区分度（拨过 2s 后若被刷新，updatedAt 必变）
+  // ② 最近更新时间 = 保存成功 或 发布状态发生变化（提交发布 / 提交停用 / 撤回 / 审核通过 / 驳回）；检活不算。
+  // 2026-09-28 待办 yuepu#45 负责人拍板：原 md §二.1 L49 只算「保存」，停用审核通过后状态变了、列表时间却原地不动。
+  it('② 检活不改 updatedAt；提交发布 / 撤回 / 审核通过 / 提交停用 / 驳回（状态变更）与 updateMcp 保存都刷新', async () => {
+    // 时间戳是秒级 +08:00 串：只冻结 Date 并手动拨表（每步拨 2s），让「没刷新 / 刷新了」的断言都有区分度
     vi.useFakeTimers({ toFake: ['Date'] })
     const created = await m.createMcp(mkStdioIn('mcp_upd_rule'))
     const t0 = created.updatedAt
+    const at = async () => (await m.getMcp(created.id)).updatedAt
     vi.setSystemTime(Date.now() + 2000)
     await m.healthCheckMcpTool(created.id)
-    expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
-    await m.publishMcpService(created.id)
-    expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
-    await m.withdrawMcpService(created.id)
-    expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
-    await m.publishMcpService(created.id)
-    await m.reviewMcpService(created.id, { approve: true })
-    expect((await m.getMcp(created.id)).updatedAt).toBe(t0)
-    await m.updateMcp(created.id, { description: '改了描述' })
-    const t1 = (await m.getMcp(created.id)).updatedAt
+    expect(await at()).toBe(t0) // 检活不算
+    let last = t0
+    const steps = [
+      ['提交发布', () => m.publishMcpService(created.id)],
+      ['撤回', () => m.withdrawMcpService(created.id)],
+      ['再次提交发布', () => m.publishMcpService(created.id)],
+      ['审核通过', () => m.reviewMcpService(created.id, { approve: true })],
+      ['提交停用', () => m.delistMcpService(created.id)],
+      ['停用被驳回', () => m.reviewMcpService(created.id, { approve: false })],
+      ['再提交停用', () => m.delistMcpService(created.id)],
+      ['停用审核通过（审核中心落地）', async () => m.applyMcpReviewResult(created.id, undefined, true)],
+      ['保存', () => m.updateMcp(created.id, { description: '改了描述' })]
+    ]
+    for (const [label, step] of steps) {
+      vi.setSystemTime(Date.now() + 2000)
+      await step()
+      const now = await at()
+      expect(Date.parse(now), label).toBeGreaterThan(Date.parse(last))
+      last = now
+    }
     vi.useRealTimers()
     // +08:00 本地 ISO 而非 UTC「Z」串（2026-09-23 待办 yuepu#20：与种子同格式，字典序排序才不会排反）
     expect(t0).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
-    expect(t1).toMatch(/\+08:00$/)
-    expect(t1).not.toBe(t0)
-    expect(Date.parse(t1)).toBeGreaterThan(Date.parse(t0))
+    expect(last).toMatch(/\+08:00$/)
   })
 
   // ③ 出参脱敏（mock 头注：明文绝不出 mock）

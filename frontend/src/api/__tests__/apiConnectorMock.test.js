@@ -164,6 +164,32 @@ describe('③ 状态机双向（md §二.4 L64-69）', () => {
     expect([w.status, w.pendingAction]).toEqual(['PUBLISHED', null])
   })
 
+  it('状态变更刷新最近更新时间（待办 yuepu#45 负责人拍板）：检活不算；提交发布 / 撤回 / 提交停用 / 审核落地都刷新', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }) // 只冻结 Date、手动拨表，其余定时器仍由 run() 推进
+    const at = async (id) => (await run(m.getApi(id))).updatedAt
+    let last = await at('api_1106')
+    vi.setSystemTime(Date.now() + 2000)
+    await run(m.healthCheckApi('api_1106'))
+    expect(await at('api_1106')).toBe(last) // 检活不算
+    const steps = [
+      ['提交发布', () => m.publishApi('api_1106')],
+      ['撤回', () => m.withdrawApi('api_1106')],
+      ['再提交发布', () => m.publishApi('api_1106')],
+      ['审核通过', async () => m.applyApiReviewResult('api_1106', undefined, true)],
+      ['提交停用', () => m.deactivateApi('api_1106')],
+      ['停用审核通过', async () => m.applyApiReviewResult('api_1106', undefined, true)]
+    ]
+    for (const [label, step] of steps) {
+      vi.setSystemTime(Date.now() + 2000)
+      await run(Promise.resolve(step()))
+      const now = await at('api_1106')
+      expect(Date.parse(now), label).toBeGreaterThan(Date.parse(last))
+      last = now
+    }
+    expect((await run(m.getApi('api_1106'))).status).toBe('NOT_PUBLISHED')
+    vi.useFakeTimers()
+  })
+
   it('越界动作各自拒绝：审核中不可停用、未发布不可撤回、审核中不可再发布', async () => {
     await expect(run(m.deactivateApi('api_1102'))).rejects.toThrow('仅已发布状态可停用')
     await expect(run(m.withdrawApi('api_1106'))).rejects.toThrow('仅审核中状态可撤回')
