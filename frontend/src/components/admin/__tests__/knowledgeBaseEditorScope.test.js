@@ -94,6 +94,48 @@ describe('KnowledgeBaseEditor · 图标必填（2026-09-21 负责人拍板，原
   })
 })
 
+describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待办 yuepu#34）', () => {
+  // 查看抽屉不调 formRef.validate()，发布前只靠 publishBlockReason(detail)；此前它不查图标，
+  // 无图标的库在查看态能一路点到提交发布（md §三.6 发布完整校验是独立条款）
+  const viewDetail = (over = {}) => ({
+    id: 'kb_v', name: '查看态库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '有描述',
+    status: 'DRAFT', pendingAction: null,
+    sources: [{ id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 2, parsedDocCount: 2 }],
+    ...over
+  })
+  async function mountView(detail) {
+    api.listKnowledgeSources.mockResolvedValue({ list: [] })
+    api.listExpertOptions.mockResolvedValue([])
+    api.listPositionOptions.mockResolvedValue([])
+    api.getKnowledgeBase.mockResolvedValue(detail)
+    mounted = mountReal(Editor, { visible: true, kbId: 'kb_v', mode: 'view' })
+    await flushAll(10)
+  }
+
+  it('无图标：点【提交发布】→ toast「请选择知识库图标」，不弹确认框、不调 publishKnowledgeBase', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    await mountView(viewDetail({ icon: '' }))
+    clickBtn('提交发布')
+    await flushAll(10)
+    expect(err).toHaveBeenCalledWith('请选择知识库图标')
+    expect(document.querySelector('.el-message-box')).toBeNull()
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it('有图标（其余条件齐备）：不被图标门拦，进入「确认提交发布」二次确认', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    await mountView(viewDetail())
+    clickBtn('提交发布')
+    await flushAll(10)
+    expect(err).not.toHaveBeenCalled()
+    expect(document.querySelector('.el-message-box')).not.toBeNull()
+    err.mockRestore()
+    document.querySelector('.el-message-box .el-button:not(.el-button--primary)')?.click() // 取消，别让确认框漏到下一个用例
+    await flushAll(6)
+  })
+})
+
 describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1 L86）', () => {
   it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefId is required`', async () => {
     await mountCreate()

@@ -373,7 +373,7 @@ export const DOC_PARSE_META = {
 
 /* ---------------- 发布完整校验（md §三.6，5 条） ---------------- */
 /**
- * 提交发布前置校验，入参为知识库行（含 name / description / kbType / scopeRefId / sources）。
+ * 提交发布前置校验，入参为知识库行（含 name / icon / description / kbType / scopeRefId / sources）。
  * 返回 null 表示可发布，否则返回第一条不满足的原因（供 toast / tooltip）。
  * 校验失败时调用方须保留当前编辑内容、就地展示原因，不进入审核中（md §三.6）。
  */
@@ -382,6 +382,8 @@ export function publishBlockReason(row) {
   if (row && ('name' in row || 'description' in row)) {
     if (!String(row.name || '').trim()) return '请填写知识库名称'
     if (!String(row.description || '').trim()) return '请填写知识库描述'
+    // 图标必填（md §三.3.1 / 一览表；待办 yuepu#34：查看态发布不走表单校验，全靠这道门兜住）
+    if (!String(row.icon || '').trim()) return '请选择知识库图标'
   }
   // ⑤ 专家或岗位知识库已选择有效的可见对象（提前判，属基本信息段）
   if (row?.kbType && row.kbType !== 'ENTERPRISE' && !row.scopeRefId) {

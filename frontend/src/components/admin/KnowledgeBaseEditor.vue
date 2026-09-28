@@ -296,6 +296,7 @@ async function onSave() {
 const publishBlock = computed(() =>
   publishBlockReason({
     name: form.name,
+    icon: form.icon,
     description: form.description,
     kbType: form.kbType,
     scopeRefId: form.kbType === 'ENTERPRISE' ? 'ALL' : form.scopeRefId,
