@@ -268,12 +268,16 @@ let mcps = [
   // （utils/mcpVerify MCP_ERROR_CATALOG）而非原型自造码 AUTH_401 / CONNECT_TIMEOUT（原型缺陷不搬）。
   ...PROTO_SEEDS.map(seedToMcp)
 ]
+const MCPS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(mcps))
 
 // 服务级发布聚合态（单目标端 USER_END）：原型 status 已发布 / 审核中 / 未发布 → 三态聚合键
 const pubAgg = {
   spark_bridge_mcp: 'PUBLISHED',
   ...Object.fromEntries(PROTO_SEEDS.map((s) => [s.code, s.agg]))
 }
+// 出厂种子快照（测试重置用；2026-09-23 待办 yuepu#23：deletePosition 级联会真实改写本模块状态，
+// 需要能重置回种子，否则跨用例顺序不同会互相污染 —— positionMock.test.js 就踩过这个坑）
+const PUB_AGG_SEED_SNAPSHOT = { ...pubAgg }
 
 // 【持久化 2026-09-02】状态镜像到 localStorage；写点=下方各 persist() 调用处。
 // pubAgg 为 const 对象 → restore 就地覆写（不换引用）。种子里 tools 与 SPARK_TOOLS 同引用，
@@ -713,4 +717,41 @@ export async function reviewMcpService(id, payload = {}) {
     return { affected: (m.tools || []).length, skipped: 0 }
   }
   return setAgg(id, payload.approve ? (wasDelist ? 'DELISTED' : 'PUBLISHED') : 'REJECTED')
+}
+
+/**
+ * 岗位被删 / 改名后同步「被岗位引用」清单（2026-09-23 待办 yuepu#23⑥，positionMock.deletePosition / updatePosition 调用）。
+ * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
+ */
+export function removePositionRefs(positionId) {
+  let changed = false
+  mcps.forEach((r) => {
+    const next = (r.referencedByPositions || []).filter((p) => String(p.positionId) !== String(positionId))
+    if (next.length !== (r.referencedByPositions || []).length) {
+      r.referencedByPositions = next
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
+export function renamePositionRefs(positionId, positionName) {
+  let changed = false
+  mcps.forEach((r) => {
+    ;(r.referencedByPositions || []).forEach((p) => {
+      if (String(p.positionId) === String(positionId) && p.positionName !== positionName) {
+        p.positionName = positionName
+        changed = true
+      }
+    })
+  })
+  if (changed) persist()
+}
+
+/** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */
+export function __resetMcpMock() {
+  mcps = JSON.parse(JSON.stringify(MCPS_SEED_SNAPSHOT))
+  mcpSeq = 12
+  Object.keys(pubAgg).forEach((k) => delete pubAgg[k])
+  Object.assign(pubAgg, PUB_AGG_SEED_SNAPSHOT)
+  persist()
 }

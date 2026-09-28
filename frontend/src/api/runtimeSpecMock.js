@@ -6,7 +6,7 @@
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 import { listUsers } from './adminUserMock'
-import { listPositions } from './positionMock'
+import { listPositions, getPositionNameById } from './positionMock'
 import { listPositionAssignments } from './positionAssignmentMock'
 import { appendOpsRecord } from './accessAuditMock'
 import { currentDemoUsername } from '@/utils/demoIdentity'
@@ -253,7 +253,11 @@ export async function deleteRuntimeSpec(id) {
   const s = findOr404(id)
   // 2026-09-12 对齐 md §三.3.6 L222（审计 K28）
   if (s.isDefault) throw err('默认运行规格用于平台兜底，不能删除', 40004)
-  if (s.positionIds.length) throw err(`该规格已配置给 ${s.positionIds.length} 个岗位，请先解除岗位配置`, 40004)
+  // 与列表显示同口径：只算仍存在的岗位。此前守卫数原始 positionIds 长度、列表却把已删岗位静默滤掉，
+  // 出现「显示 0 个岗位、点删却报已配置给 1 个岗位」且 UI 无解除路径、规格永久锁死（待办 yuepu#23①；
+  // 新的删岗已级联摘除，这里兜住存量持久化数据里已经悬空的引用）
+  const livePositionIds = s.positionIds.filter((pid) => getPositionNameById(pid))
+  if (livePositionIds.length) throw err(`该规格已配置给 ${livePositionIds.length} 个岗位，请先解除岗位配置`, 40004)
   if (s.directUsers.length) throw err(`该规格存在 ${s.directUsers.length} 个个人配置或待审批申请，请先处理后再删除`, 40004)
   specs.splice(specs.indexOf(s), 1)
   persist()

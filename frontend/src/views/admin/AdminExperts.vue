@@ -378,6 +378,10 @@ async function stopExpert(row) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
+          <!-- 技能数：md §二.1 L47「展示当前引用的市场技能数量」，代码此前缺这一列（待办 yuepu#25），列序照 md：分类 → 技能数 → 引用情况 -->
+          <el-table-column label="技能数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">{{ row.skillCount ?? 0 }}</template>
+          </el-table-column>
           <el-table-column label="引用情况" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <template v-if="row.type === EXPERT_TYPE.POSITION">

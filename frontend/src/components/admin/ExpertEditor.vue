@@ -201,7 +201,9 @@ const {
     form.exampleQuestions = [...questions]
     errors.examples = ''
   },
-  isReadonly: () => disabled.value
+  isReadonly: () => disabled.value,
+  // 抽屉常驻挂载：关闭或切到另一条记录时撤销在途生成，免得 A 的结果写进 B 的表单（待办 yuepu#26，下同）
+  resetOn: () => [props.visible, props.expertId]
 })
 
 /* ==================== 发布态 ==================== */
@@ -335,7 +337,10 @@ function testKnowledge(row) {
 }
 
 /* ==================== 加载 ==================== */
+// 连续切换对象时，先发出的请求可能后返回——序号不是最新的一律丢弃，免得把上一个对象写回表单
+let loadSeq = 0
 async function load() {
+  const seq = ++loadSeq
   loadCandidates()
   loadKnowledge()
   loadPublishedPositions()
@@ -354,14 +359,17 @@ async function load() {
   }
   loading.value = true
   loadError.value = ''
+  detail.value = null // 加载期间 / 加载失败时不留上一个对象的状态标签、时间条、locked 判定
   try {
     const d = await getExpert(props.expertId)
+    if (seq !== loadSeq) return
     detail.value = d
     resetForm(d)
   } catch (e) {
+    if (seq !== loadSeq) return
     loadError.value = e?.message || '加载失败'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -513,9 +521,12 @@ function close() {
 }
 
 // immediate：抽屉若以 visible=true 直接挂载也能触发首次 load。
+// 同时盯 expertId（2026-09-23 待办 yuepu#27）：与同族 McpEditor / ApiEditor / BizSystemEditor 一致。
+// 只盯 visible 时，新建保存后就地切 editingId、或审核中心（GovObjectDetail 常驻渲染）连看两个专家申请，
+// visible 不回落 → 不重新 load，detail 残留上一个对象，审核人对着错的对象点通过 / 驳回。
 watch(
-  () => props.visible,
-  (open) => {
+  () => [props.visible, props.expertId],
+  ([open]) => {
     if (open) {
       load()
     } else {

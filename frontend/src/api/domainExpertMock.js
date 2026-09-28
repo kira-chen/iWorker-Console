@@ -705,6 +705,20 @@ export async function relistExpertPublication(expertId, publicationId) {
   return { ...row }
 }
 
+/**
+ * 岗位被删后把它从岗位私有专家的 positionIds 摘掉（2026-09-23 待办 yuepu#23⑤，positionMock.deletePosition 调用）：
+ * 否则专家列表「N 个岗位引用」虚高，引用的还是已不存在的岗位。专家本体不删，摘空后即「暂无引用」。
+ */
+export function removePositionFromExperts(positionId) {
+  let changed = false
+  experts.forEach((e) => {
+    if (!Array.isArray(e.positionIds) || !e.positionIds.some((id) => String(id) === String(positionId))) return
+    e.positionIds = e.positionIds.filter((id) => String(id) !== String(positionId))
+    changed = true
+  })
+  if (changed) persist()
+}
+
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位）。 */
 export function __resetExpertMock() {
   expertSeq = 205

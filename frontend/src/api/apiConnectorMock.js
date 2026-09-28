@@ -45,6 +45,9 @@ let providerSystems = [
   // E8（2026-09-10）：描述首句用大白话说清「这是干什么的」，协议等技术细节退到句尾括号
   { id: 'pv_4', name: '星火智能体平台', description: '用星火平台上已发布的智能体、任务链和知识库来干活（按 OpenAI 协议 v3 接入）' }
 ]
+// 出厂种子快照（测试重置用；2026-09-23 待办 yuepu#23：deletePosition 级联会真实改写本模块状态，
+// 需要能重置回种子，否则跨用例顺序不同会互相污染 —— positionMock.test.js 就踩过这个坑）
+const PROVIDER_SYSTEMS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(providerSystems))
 
 /* ---------------- API 定义 ---------------- */
 // 种子里的岗位引用（401=经营分析岗 / 402=客户成功岗，取自 positionMock.js 已发布岗位种子）
@@ -455,6 +458,7 @@ let apis = [
     publishedAt: '2026-08-31T16:05:00+08:00'
   })
 ]
+const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 
 // 【持久化 2026-09-02】全部可变状态 = 三个 let 序号（psSeq/apiSeq/skillSeq）+ providerSystems + apis
 // 两个 let 数组（deleteXxx 走整体重赋值，restore 同样直接重赋值即可，不存在跨结构共享引用）。
@@ -862,4 +866,42 @@ export async function aiGenerateExampleQuestion({ name, description, index = 0 }
   const d = (description || '').trim()
   const tpl = QUESTION_TEMPLATES[index % QUESTION_TEMPLATES.length]
   return { question: tpl(n, d).slice(0, 60) }
+}
+
+/**
+ * 岗位被删 / 改名后同步「被岗位引用」清单（2026-09-23 待办 yuepu#23⑥，positionMock.deletePosition / updatePosition 调用）。
+ * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
+ */
+export function removePositionRefs(positionId) {
+  let changed = false
+  apis.forEach((r) => {
+    const next = (r.referencedByPositions || []).filter((p) => String(p.positionId) !== String(positionId))
+    if (next.length !== (r.referencedByPositions || []).length) {
+      r.referencedByPositions = next
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
+export function renamePositionRefs(positionId, positionName) {
+  let changed = false
+  apis.forEach((r) => {
+    ;(r.referencedByPositions || []).forEach((p) => {
+      if (String(p.positionId) === String(positionId) && p.positionName !== positionName) {
+        p.positionName = positionName
+        changed = true
+      }
+    })
+  })
+  if (changed) persist()
+}
+
+/** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */
+export function __resetApiMock() {
+  providerSystems = JSON.parse(JSON.stringify(PROVIDER_SYSTEMS_SEED_SNAPSHOT))
+  apis = JSON.parse(JSON.stringify(APIS_SEED_SNAPSHOT))
+  psSeq = 5
+  apiSeq = 1108
+  skillSeq = 10
+  persist()
 }
