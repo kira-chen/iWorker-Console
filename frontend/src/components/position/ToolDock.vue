@@ -405,52 +405,53 @@ function fieldTypeText(t) {
         @remove-ref="(r) => emit('remove-ref', r)"
       />
     </div>
+    <!-- 弹层放进展开态 aside 内（append-to-body 照样挂到 body）：模板保持单根，父级传入的 class 才能落到 aside 上
+         （原先与 aside 并列成多根，SkillFocusEditor 的 class="ed-dock" 无处挂载，待办 yuepu#47）；只在展开态才会点到「查看表结构」，无需在收起态挂 -->
+    <!-- 查看表结构弹层（需求 #1）：字段名 / 编码 / 类型 / 必填 / 描述 -->
+    <el-dialog
+      v-model="structOpen"
+      :title="structTable ? `表结构 · ${structTable.tableName}` : '表结构'"
+      width="min(640px, 92vw)"
+      append-to-body
+      class="struct-dialog"
+    >
+      <div v-if="structTable" class="struct-head">
+        <span class="struct-code">{{ structTable.tableCode }}</span>
+        <span v-if="structTable.description" class="struct-desc">{{ structTable.description }}</span>
+      </div>
+      <div v-loading="structLoading" class="struct-body">
+        <el-table
+          v-if="structTable && structTable.fields.length"
+          :data="structTable.fields"
+          size="small"
+          border
+          max-height="420"
+        >
+          <el-table-column prop="label" label="字段名" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="fieldCode" label="字段编码" min-width="130" show-overflow-tooltip>
+            <template #default="{ row }">
+              <code class="struct-fcode">{{ row.fieldCode }}</code>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="92">
+            <template #default="{ row }">{{ fieldTypeText(row.fieldType) }}</template>
+          </el-table-column>
+          <el-table-column label="必填" width="62" align="center">
+            <template #default="{ row }">
+              <span :class="row.required ? 'struct-req' : 'struct-opt'">{{ row.required ? '是' : '否' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="fieldDesc" label="描述" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.fieldDesc">{{ row.fieldDesc }}</span>
+              <span v-else class="struct-empty-cell">—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-else-if="!structLoading" class="struct-empty">该表暂无业务字段</div>
+      </div>
+    </el-dialog>
   </aside>
-
-  <!-- 查看表结构弹层（需求 #1）：字段名 / 编码 / 类型 / 必填 / 描述 -->
-  <el-dialog
-    v-model="structOpen"
-    :title="structTable ? `表结构 · ${structTable.tableName}` : '表结构'"
-    width="min(640px, 92vw)"
-    append-to-body
-    class="struct-dialog"
-  >
-    <div v-if="structTable" class="struct-head">
-      <span class="struct-code">{{ structTable.tableCode }}</span>
-      <span v-if="structTable.description" class="struct-desc">{{ structTable.description }}</span>
-    </div>
-    <div v-loading="structLoading" class="struct-body">
-      <el-table
-        v-if="structTable && structTable.fields.length"
-        :data="structTable.fields"
-        size="small"
-        border
-        max-height="420"
-      >
-        <el-table-column prop="label" label="字段名" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="fieldCode" label="字段编码" min-width="130" show-overflow-tooltip>
-          <template #default="{ row }">
-            <code class="struct-fcode">{{ row.fieldCode }}</code>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="92">
-          <template #default="{ row }">{{ fieldTypeText(row.fieldType) }}</template>
-        </el-table-column>
-        <el-table-column label="必填" width="62" align="center">
-          <template #default="{ row }">
-            <span :class="row.required ? 'struct-req' : 'struct-opt'">{{ row.required ? '是' : '否' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="fieldDesc" label="描述" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.fieldDesc">{{ row.fieldDesc }}</span>
-            <span v-else class="struct-empty-cell">—</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-else-if="!structLoading" class="struct-empty">该表暂无业务字段</div>
-    </div>
-  </el-dialog>
 </template>
 
 <style scoped>
