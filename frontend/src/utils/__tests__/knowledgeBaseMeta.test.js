@@ -76,7 +76,7 @@ describe('knowledgeBaseMeta · 行内操作确认弹窗文案（md §三.4.3 L12
 describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.6 五条，按顺序取第一条）', () => {
   const okUpload = { id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 3, parsedDocCount: 2 }
   const okApi = { id: 's2', name: '检索接口', sourceType: 'API', status: 'ENABLED', verifyStatus: 'SUCCESS' }
-  const base = { name: '库', description: '描述', kbType: 'ENTERPRISE', scopeRefId: null, sources: [okUpload, okApi] }
+  const base = { name: '库', icon: '📘', description: '描述', kbType: 'ENTERPRISE', scopeRefId: null, sources: [okUpload, okApi] }
 
   it('全部满足 → null（可发布）', () => {
     expect(publishBlockReason(base)).toBeNull()
@@ -84,6 +84,15 @@ describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.
   it('① 名称 / 描述缺失 → 「请填写知识库名称」/「请填写知识库描述」', () => {
     expect(publishBlockReason({ ...base, name: ' ' })).toBe('请填写知识库名称')
     expect(publishBlockReason({ ...base, description: '' })).toBe('请填写知识库描述')
+  })
+  it('① 图标缺失（含纯空白 / 缺键）→ 「请选择知识库图标」；名称、描述都填了才轮到它（待办 yuepu#34：查看态发布只靠这道门，此前漏查）', () => {
+    expect(publishBlockReason({ ...base, icon: '' })).toBe('请选择知识库图标')
+    expect(publishBlockReason({ ...base, icon: '   ' })).toBe('请选择知识库图标')
+    const { icon, ...noIconKey } = base
+    expect(publishBlockReason(noIconKey)).toBe('请选择知识库图标')
+    expect(publishBlockReason({ ...base, icon: '/api/public/icons/kb.png' })).toBeNull()
+    expect(publishBlockReason({ ...base, name: '', icon: '' })).toBe('请填写知识库名称')
+    expect(publishBlockReason({ ...base, description: '', icon: '' })).toBe('请填写知识库描述')
   })
   it('⑤ 专家 / 岗位库未选可见对象 → 「请选择可见范围专家」/「请选择可见范围岗位」', () => {
     expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefId: '' })).toBe('请选择可见范围专家')

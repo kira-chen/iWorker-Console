@@ -94,6 +94,52 @@ describe('KnowledgeBaseEditor · 图标必填（2026-09-21 负责人拍板，原
   })
 })
 
+describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待办 yuepu#34）', () => {
+  // 查看抽屉不调 formRef.validate()，发布前只靠 publishBlockReason(detail)；此前它不查图标，
+  // 无图标的库在查看态能一路点到提交发布（md §三.6 发布完整校验是独立条款）
+  const viewDetail = (over = {}) => ({
+    id: 'kb_v', name: '查看态库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '有描述',
+    status: 'DRAFT', pendingAction: null,
+    sources: [{ id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 2, parsedDocCount: 2 }],
+    ...over
+  })
+  // 确认框关闭有过渡动画，上一个用例的 .el-message-box 可能还挂在 document 上——只比「点击前后的数量」，不断言绝对为空（shuffle 下曾在 CI 假红）
+  const boxCount = () => document.querySelectorAll('.el-message-box').length
+  async function mountView(detail) {
+    api.listKnowledgeSources.mockResolvedValue({ list: [] })
+    api.listExpertOptions.mockResolvedValue([])
+    api.listPositionOptions.mockResolvedValue([])
+    api.getKnowledgeBase.mockResolvedValue(detail)
+    mounted = mountReal(Editor, { visible: true, kbId: 'kb_v', mode: 'view' })
+    await flushAll(10)
+  }
+
+  it('无图标：点【提交发布】→ toast「请选择知识库图标」，不弹确认框、不调 publishKnowledgeBase', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    await mountView(viewDetail({ icon: '' }))
+    const before = boxCount()
+    clickBtn('提交发布')
+    await flushAll(10)
+    expect(err).toHaveBeenCalledWith('请选择知识库图标')
+    expect(boxCount()).toBe(before)
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it('有图标（其余条件齐备）：不被图标门拦，进入「确认提交发布」二次确认', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    await mountView(viewDetail())
+    const before = boxCount()
+    clickBtn('提交发布')
+    await flushAll(10)
+    expect(err).not.toHaveBeenCalled()
+    expect(boxCount()).toBe(before + 1)
+    err.mockRestore()
+    ;[...document.querySelectorAll('.el-message-box .el-button')].find((b) => b.textContent.trim() === '取消')?.click() // 取消，别让确认框漏到下一个用例
+    await flushAll(6)
+  })
+})
+
 describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1 L86）', () => {
   it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefId is required`', async () => {
     await mountCreate()

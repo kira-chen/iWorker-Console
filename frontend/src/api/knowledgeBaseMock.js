@@ -307,6 +307,9 @@ function validate(payload, selfId) {
   // 代码漏改，2026-09-18 待办 yuepu#5① 一并补上）
   if (!String(payload.description || '').trim()) throw new ApiError({ message: '请输入知识库描述', code: 400, field: 'description' })
   if (String(payload.description).trim().length > 2000) throw new ApiError({ message: '描述最多 2000 个字符', code: 400, field: 'description' })
+  // 图标必填（md §三.3.1，2026-09-21 负责人拍板由「否」改「是」；UI 表单早有 required 规则，数据层此前漏拦，
+  // 绕过表单的调用能存下无图标的库——待办 yuepu#34）
+  if (!String(payload.icon || '').trim()) throw new ApiError({ message: '请选择或上传图标', code: 400, field: 'icon' })
   const dup = rows.find((r) => r.id !== selfId && r.kbType === payload.kbType && r.name.trim().toLowerCase() === payload.name.trim().toLowerCase())
   if (dup) throw new ApiError({ message: '同类型下已存在同名知识库', code: 409, field: 'name' })
   if (payload.kbType !== 'ENTERPRISE' && !payload.scopeRefId) throw new ApiError({ message: '请选择可见范围', code: 400, field: 'scopeRefId' })
@@ -328,7 +331,7 @@ function validate(payload, selfId) {
 export async function create(payload) {
   await delay()
   validate(payload)
-  const r = { id: nid('kb'), name: payload.name.trim(), icon: payload.icon || '', kbType: payload.kbType, scopeRefId: payload.scopeRefId || null, description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
+  const r = { id: nid('kb'), name: payload.name.trim(), icon: String(payload.icon).trim(), kbType: payload.kbType, scopeRefId: payload.scopeRefId || null, description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
   rows = [r, ...rows]
   persist()
   return vo(r)
@@ -349,7 +352,8 @@ export async function update(id, payload) {
   const scopeChanged = nextScope !== r.scopeRefId
   Object.assign(r, {
     name: payload.name.trim(),
-    icon: payload.icon ?? r.icon,
+    // validate 已保证非空；此前 `?? r.icon` 不拦空串，传 icon:'' 会静默清空已有图标（待办 yuepu#34）
+    icon: String(payload.icon).trim(),
     description: String(payload.description || '').trim(),
     scopeRefId: nextScope,
     sourceIds: [...(payload.sourceIds || [])]

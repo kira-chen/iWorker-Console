@@ -78,7 +78,7 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
   })
 
   it('发布完整校验（md §三.6）：无已启用数据源的草稿提交发布被拦、不进审核中', async () => {
-    const kb = await create({ name: uniq('空源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [] })
+    const kb = await create({ name: uniq('空源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({
       message: '至少引用 1 个已启用数据源才能提交发布'
     })
@@ -89,7 +89,7 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
 
   it('发布完整校验：引用连接失败的 API 源被拦，换成验证成功的源后可提交', async () => {
     const bad = await createSource({ sourceType: 'API', name: uniq('未验证接口'), config: apiConfig() })
-    const kb = await create({ name: uniq('接口库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [bad.id] })
+    const kb = await create({ name: uniq('接口库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [bad.id] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({
       message: expect.stringContaining('需最近一次连接测试成功')
     })
@@ -109,13 +109,13 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     const pendingList = await list({ status: 'PENDING_REVIEW' })
     expect(pendingList.list.some((x) => x.id === 'kb_2')).toBe(true)
     // 审核中不可编辑
-    await expect(update('kb_2', { name: r.name, description: r.description, sourceIds: r.sourceIds })).rejects.toMatchObject({ code: 409 })
+    await expect(update('kb_2', { name: r.name, description: r.description, icon: r.icon, sourceIds: r.sourceIds })).rejects.toMatchObject({ code: 409 })
     // 撤回 → 恢复提交前状态（已发布）
     r = await transition('kb_2', 'withdraw')
     expect(r.pendingAction).toBe(null)
     expect(r.status).toBe('PUBLISHED')
     // 已发布改数据源引用 → 回未发布（md §三.5）
-    r = await update('kb_2', { name: r.name, description: r.description, sourceIds: [...r.sourceIds, 'ks_1b'] })
+    r = await update('kb_2', { name: r.name, description: r.description, icon: r.icon, sourceIds: [...r.sourceIds, 'ks_1b'] })
     expect(r.status).toBe('DRAFT')
     // 重新提交发布（引用的上传源都有解析成功文档）→ 审核中；再撤回 → 未发布
     r = await transition('kb_2', 'publish')
@@ -132,7 +132,7 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     // 文末持久化组会 vi.resetModules()，此处若动态 import 会拿到新实例，shuffle 后随机假红（2026-09-12 实测）
     const src = await createSource({ sourceType: 'API', name: uniq('接线接口'), config: apiConfig() })
     await testSource('API', { sourceId: src.id, config: apiConfig() })
-    const kb = await create({ name: uniq('接线库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [src.id] })
+    const kb = await create({ name: uniq('接线库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [src.id] })
 
     await transition(kb.id, 'publish')
     const inReview = (await listReviews({ type: 'KNOWLEDGE_BASE', size: 200 })).list.find((r) => r.refId === kb.id)
@@ -154,18 +154,18 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     // 种子 kb_4：岗位知识库（positionMock 401 经营分析岗）已发布。
     // 2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 真实 positionId（401/403），
     // 不再是脱节的 'ps_1'/'ps_2'。
-    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', sourceIds: ['ks_4a'], scopeRefId: 401 })
+    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefId: 401 })
     expect(r.status).toBe('PUBLISHED')
-    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', sourceIds: ['ks_4a'], scopeRefId: 403 })
+    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefId: 403 })
     expect(r.status).toBe('DRAFT')
     expect(r.scopeRefName).toBe('财务审核岗')
   })
 
   it('专家知识库的可见范围创建后不可更改（md §三.3.1 L86，2026-09-18 待办 yuepu#13·连接器 C4：此前只有 UI 置灰）；传相同值放行', async () => {
     // 种子 kb_6：专家知识库（ex_1），未发布
-    await expect(update('kb_6', { name: '2026 产品白皮书库', description: '换专家', sourceIds: ['ks_6a'], scopeRefId: 'ex_2' }))
+    await expect(update('kb_6', { name: '2026 产品白皮书库', description: '换专家', icon: '🧪', sourceIds: ['ks_6a'], scopeRefId: 'ex_2' }))
       .rejects.toMatchObject({ field: 'scopeRefId', message: '专家知识库的可见范围创建后不可更改' })
-    const r = await update('kb_6', { name: '2026 产品白皮书库', description: '范围不变', sourceIds: ['ks_6a'], scopeRefId: 'ex_1' })
+    const r = await update('kb_6', { name: '2026 产品白皮书库', description: '范围不变', icon: '🧪', sourceIds: ['ks_6a'], scopeRefId: 'ex_1' })
     expect(r.scopeRefId).toBe('ex_1')
   })
 })
@@ -198,16 +198,16 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
   it('知识库引用已停用数据源 → 拒「已停用，不可被引用」并带 field=sourceIds；改回启用后可引用（md §三.3.2 L94，K40）', async () => {
     const off = await createSource({ sourceType: 'API', name: uniq('停用接口'), config: apiConfig() })
     await updateSource(off.id, { sourceType: 'API', name: off.name, status: 'DISABLED', config: apiConfig() })
-    await expect(create({ name: uniq('引停用源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [off.id] })).rejects.toMatchObject({
+    await expect(create({ name: uniq('引停用源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [off.id] })).rejects.toMatchObject({
       field: 'sourceIds',
       message: expect.stringContaining('已停用，不可被引用')
     })
     // 重新启用后可引用
     await updateSource(off.id, { sourceType: 'API', name: off.name, status: 'ENABLED', config: apiConfig() })
-    const kb = await create({ name: uniq('引启用源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [off.id] })
+    const kb = await create({ name: uniq('引启用源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [off.id] })
     expect(kb.sources.map((x) => x.id)).toEqual([off.id])
     // 编辑已有库时同样拦（种子 ks_old 为停用源）
-    await expect(update(kb.id, { name: kb.name, description: '测试用', sourceIds: ['ks_old'] })).rejects.toMatchObject({ field: 'sourceIds' })
+    await expect(update(kb.id, { name: kb.name, description: '测试用', icon: '🧪', sourceIds: ['ks_old'] })).rejects.toMatchObject({ field: 'sourceIds' })
   })
 
   it('UPLOAD 源保存校验（md §五.1 三必填）：缺向量模型 / 检索策略非法 / Top-K 越界或非整数 / 文档类型非法 各回 field；默认值 + 向量模型即可创建', async () => {
@@ -550,63 +550,77 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
   afterEach(() => vi.unstubAllGlobals())
   const uplSrc = (name) => createSource({ sourceType: 'UPLOAD', name: uniq(name), config: { ...UPLOAD_DEFAULTS, embeddingModelId: 'md_emb_1' } })
 
-  // E4：icon（aee4775 v7）md §三.3.1「图标：否；展示于列表名称旁」
-  it('E4 图标：新建落库并可读回；编辑不传 icon 保留；传空串即清除', async () => {
+  // E4：icon（aee4775 v7）。2026-09-21 负责人拍板「图标」由选填改必填（md §三.3.1 / 一览表 L295）；
+  // 2026-09-28 待办 yuepu#34：数据层补拦——此前 create 存 `payload.icon || ''`、update 用 `??`，
+  // 绕过表单的调用能存下无图标的库，也能传 icon:'' 静默清空已有图标。
+  it('E4 图标：新建落库并可读回；图片 URL 形态原样落库', async () => {
     const kb = await create({ name: uniq('带图标库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
     expect(kb.icon).toBe('🧪')
     expect((await get(kb.id)).icon).toBe('🧪')
     expect((await list({ keyword: kb.name })).list[0].icon).toBe('🧪')
-    const kept = await update(kb.id, { name: kb.name, description: '改描述不碰图标', sourceIds: [] })
-    expect(kept.icon).toBe('🧪')
-    const cleared = await update(kb.id, { name: kb.name, description: '清图标', icon: '', sourceIds: [] })
-    expect(cleared.icon).toBe('')
-    expect((await get(kb.id)).icon).toBe('')
     // 图片 URL 形态原样落库（列表侧按 iconIsUrl 渲染 <img>）
     const img = await update(kb.id, { name: kb.name, description: '图片', icon: '/api/public/icons/kb.png', sourceIds: [] })
     expect(img.icon).toBe('/api/public/icons/kb.png')
   })
 
+  it('E4 图标必填（待办 yuepu#34）：create 缺 / 空 / 纯空白 icon → field=icon「请选择或上传图标」，不落行', async () => {
+    const before = (await list({})).total
+    for (const icon of [undefined, '', '   ']) {
+      await expect(create({ name: uniq('无图标库'), kbType: 'ENTERPRISE', description: '测试用', icon, sourceIds: [] }))
+        .rejects.toMatchObject({ code: 400, field: 'icon', message: '请选择或上传图标' })
+    }
+    expect((await list({})).total).toBe(before)
+  })
+
+  it('E4 图标必填（待办 yuepu#34）：update 传空串 / 不传 icon 都被拦，已有图标不被静默清空', async () => {
+    const kb = await create({ name: uniq('防清空库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
+    await expect(update(kb.id, { name: kb.name, description: '清图标', icon: '', sourceIds: [] })).rejects.toMatchObject({ field: 'icon' })
+    await expect(update(kb.id, { name: kb.name, description: '不传图标', sourceIds: [] })).rejects.toMatchObject({ field: 'icon' })
+    expect((await get(kb.id)).icon).toBe('🧪')
+    expect((await get(kb.id)).description).toBe('测试用') // 被拦的改动整体不落
+  })
+
   // A7：md §三.3.1 基本信息表 + §三.3.2 每类 ≤5
   it('A7 名称超 64 字（2026-09-18 待办 yuepu#5① 一览表拍板收窄，原 100） → field=name「知识库名称最多 64 个字符」；描述超 2000 字（2026-09-18 待办 yuepu#5，代码追平 217ce1f 已改的 md，原 500） → field=description', async () => {
-    await expect(create({ name: 'x'.repeat(65), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [] })).rejects.toMatchObject({
+    await expect(create({ name: 'x'.repeat(65), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({
       field: 'name',
       message: '知识库名称最多 64 个字符'
     })
-    await expect(create({ name: uniq('长描述库'), kbType: 'ENTERPRISE', description: 'd'.repeat(2001), sourceIds: [] })).rejects.toMatchObject({
+    await expect(create({ name: uniq('长描述库'), kbType: 'ENTERPRISE', description: 'd'.repeat(2001), icon: '🧪', sourceIds: [] })).rejects.toMatchObject({
       field: 'description',
       message: '描述最多 2000 个字符'
     })
     // 恰好 64 / 2000 放行
-    const ok = await create({ name: `${'y'.repeat(58)}${Math.random().toString(36).slice(2, 8)}`, kbType: 'ENTERPRISE', description: 'd'.repeat(2000), sourceIds: [] })
+    const ok = await create({ name: `${'y'.repeat(58)}${Math.random().toString(36).slice(2, 8)}`, kbType: 'ENTERPRISE', description: 'd'.repeat(2000), icon: '🧪', sourceIds: [] })
     expect(ok.name.length).toBe(64)
     expect(ok.description.length).toBe(2000)
   })
 
   it('A7 专家 / 岗位知识库缺可见范围 → field=scopeRefId「请选择可见范围」；企业库不需要（md §三.3.1 可见范围必填）', async () => {
-    await expect(create({ name: uniq('无专家'), kbType: 'EXPERT', description: '测试用', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId', message: '请选择可见范围' })
-    await expect(create({ name: uniq('无岗位'), kbType: 'POSITION', description: '测试用', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId' })
-    const ent = await create({ name: uniq('企业库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [] })
+    await expect(create({ name: uniq('无专家'), kbType: 'EXPERT', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId', message: '请选择可见范围' })
+    await expect(create({ name: uniq('无岗位'), kbType: 'POSITION', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId' })
+    const ent = await create({ name: uniq('企业库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
     expect(ent.scopeRefId).toBeNull()
     expect(ent.scopeRefName).toBe('')
-    const ex = await create({ name: uniq('专家库'), kbType: 'EXPERT', scopeRefId: 'ex_2', description: '测试用', sourceIds: [] })
+    const ex = await create({ name: uniq('专家库'), kbType: 'EXPERT', scopeRefId: 'ex_2', description: '测试用', icon: '🧪', sourceIds: [] })
     expect(ex.scopeRefName).toBe('售后专家')
   })
 
   it('A7 同类数据源引用第 6 个 → 「上传 数据源最多引用 5 个」；5 个放行（md §三.3.2 每一类最多引用 5 个）', async () => {
     const ids = []
     for (let i = 0; i < 6; i++) ids.push((await uplSrc(`上限源${i}`)).id)
-    await expect(create({ name: uniq('六源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: ids })).rejects.toMatchObject({
+    await expect(create({ name: uniq('六源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: ids })).rejects.toMatchObject({
       message: '上传 数据源最多引用 5 个'
     })
-    const five = await create({ name: uniq('五源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: ids.slice(0, 5) })
+    const five = await create({ name: uniq('五源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: ids.slice(0, 5) })
     expect(five.sources).toHaveLength(5)
     // 重复引用同一源 → 拦
-    await expect(create({ name: uniq('重复源库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [ids[0], ids[0]] })).rejects.toMatchObject({ message: '数据源引用重复' })
+    await expect(create({ name: uniq('重复源库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [ids[0], ids[0]] })).rejects.toMatchObject({ message: '数据源引用重复' })
   })
 
   it('A7 知识库类型创建后不可修改：update 传 kbType 被忽略（md §三.3.1「创建后不可修改」）', async () => {
-    const kb = await create({ name: uniq('类型固定库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [] })
-    const r = await update(kb.id, { name: kb.name, description: '测试用', kbType: 'EXPERT', scopeRefId: 'ex_1', sourceIds: [] })
+    const kb = await create({ name: uniq('类型固定库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
+    const r = await update(kb.id, { name: kb.name, description: '测试用', kbType: 'EXPERT', scopeRefId: 'ex_1', icon: '🧪', sourceIds: [] })
     expect(r.kbType).toBe('ENTERPRISE')
     expect(r.scopeRefId).toBeNull() // 企业库可见范围恒为全员，不吃入参
     expect((await get(kb.id)).kbType).toBe('ENTERPRISE')
@@ -627,7 +641,7 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 
   it('A8 引用的上传数据源没有解析成功文档 → 拒「上传数据源「X」至少要有 1 个解析成功文档」（md §三.6 第 3 条）', async () => {
     const src = await uplSrc('空文档源')
-    const kb = await create({ name: uniq('空文档库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [src.id] })
+    const kb = await create({ name: uniq('空文档库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [src.id] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({
       message: `上传数据源「${src.name}」至少要有 1 个解析成功文档`
     })
@@ -635,7 +649,7 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
   })
 
   it('A8 专家库可见对象失效（scopeRefId 指向不存在的专家）仍按 §三.6 第 5 条以外的规则走：可见范围已选即通过，数据源为空被第 2 条拦', async () => {
-    const kb = await create({ name: uniq('专家空源库'), kbType: 'EXPERT', scopeRefId: 'ex_1', description: '测试用', sourceIds: [] })
+    const kb = await create({ name: uniq('专家空源库'), kbType: 'EXPERT', scopeRefId: 'ex_1', description: '测试用', icon: '🧪', sourceIds: [] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '至少引用 1 个已启用数据源才能提交发布' })
   })
 
@@ -650,7 +664,7 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 
   it('A9 remove：未发布库删除成功 → 列表消失；其引用的数据源仍在且不再被引用（删除知识库不删数据源）', async () => {
     const src = await createSource({ sourceType: 'API', name: uniq('被引用接口'), config: apiConfig() })
-    const kb = await create({ name: uniq('待删库'), kbType: 'ENTERPRISE', description: '测试用', sourceIds: [src.id] })
+    const kb = await create({ name: uniq('待删库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [src.id] })
     expect((await getSource(src.id)).referencedBy.map((r) => r.id)).toContain(kb.id)
     await expect(remove(kb.id)).resolves.toBeNull()
     await expect(get(kb.id)).rejects.toMatchObject({ code: 404 })
@@ -779,9 +793,9 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     expect(writes()).toBe(base + 2)
     await m.testSource('API', { sourceId: src.id, config: apiConfig() })
     expect(writes()).toBe(base + 3)
-    const kb = await m.create({ name: 'P 库', kbType: 'ENTERPRISE', description: 'd', sourceIds: [src.id] })
+    const kb = await m.create({ name: 'P 库', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: [src.id] })
     expect(writes()).toBe(base + 4)
-    await m.update(kb.id, { name: 'P 库改', description: 'd', sourceIds: [src.id] })
+    await m.update(kb.id, { name: 'P 库改', description: 'd', icon: '🧪', sourceIds: [src.id] })
     expect(writes()).toBe(base + 5)
     await m.transition(kb.id, 'publish')
     expect(writes()).toBe(base + 6)
@@ -801,6 +815,24 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     expect(writes()).toBe(base + 13)
   })
 
+  it('图标必填的发布门（待办 yuepu#34）：存量快照里无图标的库（拍板前落下的脏数据）提交发布被拦，补图标后可提交', async () => {
+    const first = await import('../knowledgeBaseMock')
+    // 引用种子里已有解析成功文档的启用上传源，排除「数据源」这条门对本用例的干扰
+    const kb = await first.create({ name: '脏数据库', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
+    // 改快照抹掉图标，再重新 import（模拟刷新）——绕过 create/update 的校验，造出「无图标」存量行
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    snap.data.rows.find((r) => r.id === kb.id).icon = ''
+    globalThis.localStorage.setItem(KEY, JSON.stringify(snap))
+    vi.resetModules()
+    const fresh = await import('../knowledgeBaseMock')
+    expect((await fresh.get(kb.id)).icon).toBe('')
+    await expect(fresh.transition(kb.id, 'publish')).rejects.toMatchObject({ code: 400, message: '请选择知识库图标' })
+    expect((await fresh.get(kb.id)).pendingAction).toBeNull()
+    await fresh.update(kb.id, { name: '脏数据库', description: 'd', icon: '📘', sourceIds: ['ks_1a'] })
+    const done = await fresh.transition(kb.id, 'publish')
+    expect(done.pendingAction).toBe('PUBLISH')
+  })
+
   it('新建知识库落盘（v=9，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
@@ -813,7 +845,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v8）', () => {
     expect(row).toMatchObject({ name: '刷新后还在', icon: '🧪', status: 'DRAFT' })
     expect(row.sources.map((s) => s.id)).toEqual(['ks_1a'])
     expect((await fresh.list()).total).toBe(8)
-    const another = await fresh.create({ name: '再建一个', kbType: 'ENTERPRISE', description: 'd', sourceIds: [] })
+    const another = await fresh.create({ name: '再建一个', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: [] })
     expect(another.id).not.toBe(kb.id)
   })
 
