@@ -30,6 +30,11 @@ const props = defineProps({
 
 const store = usePositionStore()
 
+// 绑定弹窗候选范围（md 岗位 §8.1–§8.3 引用规则）：只能引用「岗位私有」类型且「已发布」的连接器，通用 / 市场连接器
+// 与未发布的都不可选（待办 yuepu#24③：此前弹窗列出全部连接器）。已绑定行的加载不带这个条件——
+// 引用是软引用，连接器事后被停用仍要在岗位侧照常展示。
+const BINDABLE = { type: 'POSITION', state: 'PUBLISHED' }
+
 // ══════════════════════════════════════════════════════════════
 // § 1  私有 MCP
 // ══════════════════════════════════════════════════════════════
@@ -87,7 +92,7 @@ async function openMcpDialog() {
   mcpDialogSelected.value = []
   mcpDialogVisible.value = true
   try {
-    const data = await listMcp({})
+    const data = await listMcp(BINDABLE)
     mcpAll.value = Array.isArray(data) ? data : data?.list || []
   } catch (e) {
     ElMessage.error(e?.message || '加载 MCP 失败')
@@ -169,7 +174,7 @@ async function openApiDialog() {
   apiDialogSelected.value = []
   apiDialogVisible.value = true
   try {
-    const data = await listApis({})
+    const data = await listApis(BINDABLE)
     apiAll.value = Array.isArray(data) ? data : data?.list || []
   } catch (e) {
     ElMessage.error(e?.message || '加载 API 失败')
@@ -251,7 +256,7 @@ async function openBizDialog() {
   bizDialogSelected.value = []
   bizDialogVisible.value = true
   try {
-    const data = await listBizSystems({})
+    const data = await listBizSystems(BINDABLE)
     bizAll.value = Array.isArray(data) ? data : data?.list || []
   } catch (e) {
     ElMessage.error(e?.message || '加载业务系统失败')

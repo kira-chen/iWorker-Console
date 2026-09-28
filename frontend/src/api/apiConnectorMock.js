@@ -638,10 +638,10 @@ function validateApiPayload(payload) {
   }
   // 地址 ≤500（一览表 §6.2 #5；待办 yuepu#31②）
   if (payload.url.trim().length > CONNECTOR_URL_MAX) throw err(`API 地址最多 ${CONNECTOR_URL_MAX} 个字符`, 'url')
-  // 示例问题每条 ≤300（待办 yuepu#37①）；必填性由编辑器负责，这里只拦超长
-  if ((payload.exampleQuestions || []).some((q) => String(q || '').trim().length > BIZ_QUESTION_MAX)) {
-    throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
-  }
+  // 示例问题固定 3 条均须非空、每条 ≤300（待办 yuepu#18④ / #37①；与业务系统 mock 同口径，此前红星是纯视觉）
+  const qs = [0, 1, 2].map((i) => String(payload.exampleQuestions?.[i] || '').trim())
+  if (qs.some((q) => !q)) throw err('示例问题固定 3 条，须全部填写', 'exampleQuestions')
+  if (qs.some((q) => q.length > BIZ_QUESTION_MAX)) throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
   if (payload.authType === 'API_KEY') {
     const params = payload.authConfig?.params || []
     if (!params.some((p) => (p.name || '').trim())) {

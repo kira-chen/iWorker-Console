@@ -249,6 +249,22 @@ describe('连接器页签 · 加载由引用清单驱动（待办 yuepu#42）', 
   })
 })
 
+describe('连接器页签 · 绑定弹窗候选范围（md 岗位 §8.1–§8.3；待办 yuepu#24③）', () => {
+  it.each([
+    ['岗位私有 MCP', '绑定私有 MCP', () => listMcp],
+    ['岗位私有 API', '绑定私有 API', () => listApis],
+    ['岗位私有业务系统', '绑定业务系统', () => listBizSystems]
+  ])('%s 的【＋ 新增】只向接口要「岗位私有 + 已发布」的候选；挂载时加载已绑定行不带该条件（软引用，停用后仍展示）', async (title, dlgTitle, getFn) => {
+    await mount()
+    const fn = getFn()
+    expect(fn).toHaveBeenLastCalledWith({}) // 挂载：已绑定行
+    sectionBtn(section(title), '新增').click()
+    await flush()
+    expect(fn).toHaveBeenLastCalledWith({ type: 'POSITION', state: 'PUBLISHED' })
+    expect(dlg(dlgTitle)).toBeTruthy()
+  })
+})
+
 describe('连接器页签 · MCP 区域操作', () => {
   it('【查看】→ McpEditor 以 readonly=true、mcpId=该行 id 打开', async () => {
     await mount()

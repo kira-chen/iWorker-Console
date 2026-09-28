@@ -45,6 +45,7 @@ beforeEach(() => {
   __resetMcpMock()
   __resetApiMock()
   __resetBizSystemMock()
+  __resetSampleTaskMock() // deletePosition 会级联清自动化任务；publishPosition 的发布前复核要数任务条数
 })
 
 describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）', () => {
@@ -116,8 +117,7 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     await unpublishPosition(402)
     row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('DELIST')
-    // mock 层不做完整性门（原「§6.5 不参与发布阻断」口径已被 09-09 Q11 推翻）：发布门在页面层
-    // computeCompletenessMissing（positionModel.js）；404 种子自 2026-09-09 起六项齐备，故 mock 直接放行提交发布
+    // 发布前复核（待办 yuepu#18②）：mock 与页面同用 positionModel.computePublishCheck；404 种子六项齐备，故放行提交发布
     await publishPosition(404, { releaseNotes: 'x' })
     row = (await listPositions({ keyword: '市场研究岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')

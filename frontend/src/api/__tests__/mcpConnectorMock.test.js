@@ -236,7 +236,23 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     args: ['-y', 'server-foo'],
     env: [],
     timeoutMs: 10000,
+    exampleQuestions: ['问一', '问二', '问三'], // 新建必填（待办 yuepu#18④）
     ...extra
+  })
+
+  it('示例问题必填（待办 yuepu#18④，红星不再是纯视觉）：createMcp 缺 / 空 / 超 300 字被拦并回 field；updateMcp 不带该字段放行，带了必须 3 条非空', async () => {
+    const before = (await m.listMcp()).total
+    for (const exampleQuestions of [undefined, [], ['a', 'b'], ['a', '  ', 'c']]) {
+      await expect(m.createMcp(mkStdioIn('mcp_eq_bad', { exampleQuestions }))).rejects.toMatchObject({ field: 'exampleQuestions', message: '示例问题固定 3 条，须全部填写' })
+    }
+    await expect(m.createMcp(mkStdioIn('mcp_eq_bad', { exampleQuestions: ['a', 'q'.repeat(301), 'c'] }))).rejects.toMatchObject({ field: 'exampleQuestions', message: '示例问题每条最多 300 个字符' })
+    expect((await m.listMcp()).total).toBe(before) // 被拦的都不落行
+    const ok = await m.createMcp(mkStdioIn('mcp_eq_ok', { exampleQuestions: ['a', 'q'.repeat(300), 'c'] }))
+    // 编辑：部分更新（不带 exampleQuestions）放行且不动原值；带了则必须齐全
+    await m.updateMcp(ok.id, { description: '只改描述' })
+    expect((await m.getMcp(ok.id)).exampleQuestions[0]).toBe('a')
+    await expect(m.updateMcp(ok.id, { exampleQuestions: ['a', '', 'c'] })).rejects.toMatchObject({ field: 'exampleQuestions' })
+    expect((await m.getMcp(ok.id)).exampleQuestions[1]).toBe('q'.repeat(300))
   })
 
   // ① md §三.5 L302「测试连接结果仅在当前抽屉内展示」→ 不写库
@@ -622,7 +638,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
     await m.testMcpConn({ id: 'calendar' })
     await m.getMcpServicePublishStatus('calendar')
     expect(writes()).toBe(base)
-    const created = await m.createMcp({ code: 'mcp_persist', name: 'P', transport: 'stdio', command: 'npx' })
+    const created = await m.createMcp({ code: 'mcp_persist', name: 'P', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     expect(writes()).toBe(base + 1)
     await m.updateMcp(created.id, { description: 'd' })
     expect(writes()).toBe(base + 2)
@@ -640,7 +656,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
 
   it('新建落盘（v=8）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
-    const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx' })
+    const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
     expect(snap.v).toBe(8)
@@ -652,7 +668,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
     expect(row.name).toBe('刷新后还在')
     expect((await fresh.getMcpServicePublishStatus('mcp_reload')).targets[0].aggregateStatus).toBe('PENDING_REVIEW')
     expect((await fresh.listMcp()).total).toBe(12)
-    const auto = await fresh.createMcp({ code: '', name: '自动编号', transport: 'stdio', command: 'npx' })
+    const auto = await fresh.createMcp({ code: '', name: '自动编号', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     expect(auto.code).toBe(`mcp_${snap.data.mcpSeq}`)
   })
 

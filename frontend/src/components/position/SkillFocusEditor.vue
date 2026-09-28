@@ -760,6 +760,7 @@ onBeforeUnmount(() => {
         <input
           v-model="skillName"
           class="eh-name"
+          maxlength="64"
           placeholder="技能名"
           aria-label="技能名（点击编辑）"
         />

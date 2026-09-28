@@ -53,6 +53,7 @@ import MarkdownEditor from '@/components/admin/MarkdownEditor.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { categoryLabel, categoryTagType, hasCategory } from '@/utils/skillCategory'
 import { inferPeriodicPreset } from '@/utils/periodicPreset'
+import { SAMPLE_TASK_PROMPT_MAX_LEN } from '@/utils/positionModel'
 
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
@@ -115,8 +116,8 @@ const form = reactive({
 const NAME_MAX = 64
 // 与后端 @Size(max=2000) 对齐（字数提示 + maxlength 双保险）
 const PROMPT_MAX = 2000
-// 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7）
-const SOP_MAX = 8000
+// 提示词上限：md §7.4「最多 8000 字符」（2026-09-12 审计 K7），集中定义在 positionModel
+const SOP_MAX = SAMPLE_TASK_PROMPT_MAX_LEN
 // 说明（备注）上限：计数器与 maxlength 共用它（2026-09-18 待办 yuepu#5⑧，此前两处各写一遍字面量 500，
 // 与 NAME_MAX/PROMPT_MAX 已经在用的「计数器与 maxlength 共用同一常量」模式看齐）
 const REMARK_MAX = 500

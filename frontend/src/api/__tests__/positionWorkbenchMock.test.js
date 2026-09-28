@@ -15,9 +15,9 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
-import { listMcpSync } from '../mcpConnectorMock'
-import { listApisSync } from '../apiConnectorMock'
-import { listBizSystemsSync } from '../bizSystemMock'
+import { listMcpSync, listMcp } from '../mcpConnectorMock'
+import { listApisSync, listApis } from '../apiConnectorMock'
+import { listBizSystemsSync, listBizSystems } from '../bizSystemMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -105,6 +105,18 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
         expect(listApisSync().find((m) => m.id === id).referencedByPositions.map((p) => p.positionId)).toContain(pid)
       }
     }
+  })
+
+  it('连接器页签绑定弹窗的候选条件 { type: POSITION, state: PUBLISHED } 在三个连接器 mock 上都生效：只剩岗位私有且已发布的（md 岗位 §8.1–§8.3；待办 yuepu#24③）', async () => {
+    const cond = { type: 'POSITION', state: 'PUBLISHED' }
+    const mcps = (await listMcp(cond)).list
+    const apis = (await listApis(cond)).list
+    const bizs = (await listBizSystems(cond)).list
+    // 种子里：私有 MCP 只有 expense_mcp 已发布（mail_center 未发布、crm 审核中）；私有 API 与业务系统各有已发布行
+    expect(mcps.map((m) => m.id)).toEqual(['expense_mcp'])
+    expect(apis.length).toBeGreaterThan(0)
+    expect(bizs.map((b) => b.id)).toContain('biz_2101')
+    for (const r of [...mcps, ...apis, ...bizs]) expect(r.type).toBe('POSITION')
   })
 
   it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {
@@ -265,6 +277,22 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     expect(row).toMatchObject({ agentCount: 1, skillCount: 1 })
     // 清理 refNames（unifiedSkillMock 无全量 reset，避免污染同文件其它用例）
     _reset('sk_301', { refNames: _getRaw('sk_301').refNames.filter((n) => n !== '售后支持岗') })
+  })
+
+  it('图标 / 发布前复核（待办 yuepu#18②③）：updatePosition 可清空图标；publishPosition 与详情页同用 computePublishCheck，缺图标 / 领用页文案 / 采集字段都被拦；新建空岗位一次列全缺项', async () => {
+    const cleared = await updatePosition(401, { icon: '' })
+    expect(cleared.icon).toBe('') // 原 `|| p.icon` 让图标永远清不掉
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('请先选择岗位图标')
+    await updatePosition(401, { icon: '▤', claimDescriptions: [], intakeSchema: [] })
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('领用页文案（至少 1 条）；至少配置 1 个采集字段')
+    await __resetPositionMock()
+    await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({}) // 复位后种子齐备，放行
+
+    const blank = await createPosition({ name: `空白岗_${Date.now()}`, description: '空态验证' })
+    const err = await publishPosition(blank.positionId, { releaseNotes: '首发' }).catch((e) => e)
+    expect(err.message).toContain('发布前检查未通过')
+    for (const part of ['岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', '自动化任务']) expect(err.message).toContain(part)
+    expect((await listPositions({ keyword: blank.name })).list[0].pendingAction).toBeNull() // 被拦的不进审核
   })
 
   it('publishPosition 显式 versionLabel（工作台 N5 链路）以之为准；列表 bump 口径不受影响', async () => {

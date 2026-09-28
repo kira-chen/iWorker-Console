@@ -11,6 +11,7 @@
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 import { inferPeriodicPreset } from '@/utils/periodicPreset'
+import { SAMPLE_TASK_PROMPT_MAX_LEN } from '@/utils/positionModel'
 // 2026-09-09 收编：nowIso（带 +08:00 本地 ISO）与 fmtDt（Date→「YYYY-MM-DD HH:mm」）两份本地复制品
 // 改引 utils/datetime 单一真相（fmtMinute 接受 Date 入参，输出同串）
 import { nowIsoLocal as nowIso, fmtMinute as fmtDt } from '@/utils/datetime'
@@ -369,7 +370,7 @@ function assertUpsert(data) {
   if (data.prompt.length > 2000) throw err('一句话指令最多 2000 个字符', 'prompt')
   // 提示词必填（2026-09-21 负责人拍板，推翻 2026-09-12 审计 J7「非必填」），另守 §7.4 8000 字上限（K7）
   if (!data.sopDoc.trim()) throw err('请填写提示词', 'sopDoc')
-  if (data.sopDoc.length > 8000) throw err('提示词最多 8000 个字符', 'sopDoc')
+  if (data.sopDoc.length > SAMPLE_TASK_PROMPT_MAX_LEN) throw err(`提示词最多 ${SAMPLE_TASK_PROMPT_MAX_LEN} 个字符`, 'sopDoc')
   // 调度校验此前只在 SampleTaskEditor.vue 表单里拦，数据层不拦，绕过 UI 可存下永不触发 / 无执行时间的任务
   // （2026-09-18 待办 yuepu#13·岗位 P2）
   const sc = data.schedule
@@ -522,6 +523,11 @@ export function __resetSampleTaskMock() {
  * 不清会导致 posSeq 回种子后新建的第一个岗位复用同一个 id 时，直接「继承」上一轮同 id
  * 岗位遗留的任务（2026-09-23 待办 yuepu#9⑥）。
  */
+/** 岗位下自动化任务条数（同步；positionMock 发布前复核用，md 岗位 §7.6：发布至少 1 条）。 */
+export function countSampleTasks(positionId) {
+  return (samplesByPosition[String(positionId)] || []).length
+}
+
 export function deleteAllForPosition(positionId) {
   delete samplesByPosition[String(positionId)]
   persist()

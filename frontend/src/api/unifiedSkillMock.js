@@ -507,7 +507,13 @@ export async function updateSkill(id, payload = {}) {
     s.exampleQuestion = eq
   }
   if ('defaultInstall' in payload) s.defaultInstall = !!payload.defaultInstall
-  if ('icon' in payload) s.icon = payload.icon || ''
+  if ('icon' in payload) {
+    // 图标必填（2026-09-21 负责人拍板；页面 AdminSkillEditPage.saveConfig 已拦）：数据层同口径拦——
+    // 此前 icon 是本函数里唯一不校验的字段，绕过页面的调用能把已有图标清成空串（待办 yuepu#18①）
+    const ic = String(payload.icon || '').trim()
+    if (!ic) throw new ApiError({ code: 40001, message: '请选择或上传图标' })
+    s.icon = ic
+  }
   if ('displayCategoryId' in payload) {
     assertCategory(payload.displayCategoryId || '')
     s.category = payload.displayCategoryId || ''
@@ -627,6 +633,8 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   const s = find(id)
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
   if (!String(releaseNotes || '').trim()) throw new ApiError({ code: 40001, message: '升级说明必填，简述本次更新项' })
+  // 图标必填、发布前必须已选（同 updateSkill；createSkill / importSkillZip 建的是无图标草稿，走不通页面就发不出去，待办 yuepu#18①）
+  if (!String(s.icon || '').trim()) throw new ApiError({ code: 40001, message: '请选择技能图标后再发布' })
   // md §三.3 L79：SKILL.md 不存在/正文为空时不执行发布（UI 已拦，mock 兜底不留后门，同 K20 范式）
   if (!String(ensureFiles(s)['SKILL.md'] || '').trim()) {
     throw new ApiError({ code: 40001, message: 'SKILL.md 正文不能为空，请先完善技能包内容再发布' })

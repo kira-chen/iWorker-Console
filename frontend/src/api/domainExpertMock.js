@@ -9,9 +9,8 @@
  * 专家 4 条 —— 经营分析专家 v2.3.0 已发布 / 企业知识助手 v1.6.0 已发布 /
  * 法务审阅专家 未发布无版本 / 研究报告专家 已发布 v1.1.0 + 新版审核中。
  *
- * 【市场技能候选自带种子】专家只引用「市场技能」（原型 platformSkillOptions()=skillRows 中
- * type=PLATFORM 的 302/304/307 三条）。候选种子放本文件内，不依赖 platformSkill.js /
- * unifiedSkill.js（技能模块另行改造中，避免交叉耦合）。
+ * 【市场技能候选】专家只引用「市场技能」（md §三.4：已发布的 type=PLATFORM 技能），候选不在本文件另存种子，
+ * 实时读 unifiedSkillMock（名称 / 分类 / 状态与技能模块同源，见 marketSkillCandidates；待办 yuepu#10③、#19①）。
  * 专家分类选项不在本文件重复定义——同源取 fieldDictMock 的 expertCategory（字段字典单一真相源）。
  *
  * 状态口径（与岗位 positionMock 同构，展示层三态映射在页面做）：

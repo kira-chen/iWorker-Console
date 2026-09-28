@@ -343,6 +343,14 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     expect((await run(m.getApi('api_1101'))).description).toBe('按报销单号查询审批状态与金额')
   })
 
+  it('示例问题必填（待办 yuepu#18④，红星不再是纯视觉）：createApi / updateApi 缺 / 空 / 少于 3 条被拦并回 field，恰 3 条非空放行', async () => {
+    for (const exampleQuestions of [undefined, [], ['a', 'b'], ['a', ' ', 'c']]) {
+      await expect(run(m.createApi({ ...NEW_API, exampleQuestions }))).rejects.toMatchObject({ field: 'exampleQuestions', message: '示例问题固定 3 条，须全部填写' })
+    }
+    await expect(run(m.updateApi('api_1101', { ...NEW_API, exampleQuestions: ['', '', ''] }))).rejects.toMatchObject({ field: 'exampleQuestions' })
+    expect((await run(m.getApi('api_1101'))).exampleQuestions[0]).toBe('帮我查询报销单的当前审批状态')
+  })
+
   it('新建校验：名称空 / 名称 65 字（一览表 §6.2 上限 64，K36）/ 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field；名称恰 64 字通过', async () => {
     await expect(run(m.createApi({ ...NEW_API, name: '' }))).rejects.toMatchObject({ field: 'name' })
     await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(65) }))).rejects.toMatchObject({ field: 'name', message: '名称最多 64 个字符' })
