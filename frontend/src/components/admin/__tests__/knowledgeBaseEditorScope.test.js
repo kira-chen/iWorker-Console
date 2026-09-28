@@ -103,6 +103,8 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
     sources: [{ id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 2, parsedDocCount: 2 }],
     ...over
   })
+  // 确认框关闭有过渡动画，上一个用例的 .el-message-box 可能还挂在 document 上——只比「点击前后的数量」，不断言绝对为空（shuffle 下曾在 CI 假红）
+  const boxCount = () => document.querySelectorAll('.el-message-box').length
   async function mountView(detail) {
     api.listKnowledgeSources.mockResolvedValue({ list: [] })
     api.listExpertOptions.mockResolvedValue([])
@@ -115,10 +117,11 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
   it('无图标：点【提交发布】→ toast「请选择知识库图标」，不弹确认框、不调 publishKnowledgeBase', async () => {
     const err = vi.spyOn(ElMessage, 'error')
     await mountView(viewDetail({ icon: '' }))
+    const before = boxCount()
     clickBtn('提交发布')
     await flushAll(10)
     expect(err).toHaveBeenCalledWith('请选择知识库图标')
-    expect(document.querySelector('.el-message-box')).toBeNull()
+    expect(boxCount()).toBe(before)
     expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
     err.mockRestore()
   })
@@ -126,12 +129,13 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
   it('有图标（其余条件齐备）：不被图标门拦，进入「确认提交发布」二次确认', async () => {
     const err = vi.spyOn(ElMessage, 'error')
     await mountView(viewDetail())
+    const before = boxCount()
     clickBtn('提交发布')
     await flushAll(10)
     expect(err).not.toHaveBeenCalled()
-    expect(document.querySelector('.el-message-box')).not.toBeNull()
+    expect(boxCount()).toBe(before + 1)
     err.mockRestore()
-    document.querySelector('.el-message-box .el-button:not(.el-button--primary)')?.click() // 取消，别让确认框漏到下一个用例
+    ;[...document.querySelectorAll('.el-message-box .el-button')].find((b) => b.textContent.trim() === '取消')?.click() // 取消，别让确认框漏到下一个用例
     await flushAll(6)
   })
 })
