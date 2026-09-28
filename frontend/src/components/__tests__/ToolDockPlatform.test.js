@@ -144,3 +144,28 @@ describe('ToolDock 默认页签（不传 tabs 恒四页签，skillSource 只决�
     expect(listPlatformToolPickerMock).not.toHaveBeenCalled()
   })
 })
+
+describe('ToolDock 单根模板：父级传入的 class 落到根 aside（待办 yuepu#47）', () => {
+  beforeEach(() => {
+    listPlatformToolPickerMock.mockReset()
+    listPlatformToolPickerMock.mockResolvedValue([])
+  })
+  afterEach(() => {
+    app?.unmount()
+    container?.remove()
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['展开态', false],
+    ['收起态', true]
+  ])('%s：class="ed-dock" 挂到 aside 上，且不再报 Extraneous non-props attributes 警告', async (_n, collapsed) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const el = mount({ collapsed, class: 'ed-dock' })
+    await nextTick()
+    // 此前查看表结构的 el-dialog 与 aside 并列成多根：class 无处继承，SkillFocusEditor 里
+    // .ed-dock 的 min-width 与窄屏顶部分隔线两段样式都落空
+    expect(el.querySelector('aside.dock.ed-dock')).toBeTruthy()
+    expect(warn.mock.calls.flat().join('\n')).not.toContain('Extraneous non-props attributes')
+  })
+})

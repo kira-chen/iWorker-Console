@@ -152,6 +152,31 @@ describe('DrawerEditor · 底部动作条', () => {
     expect(btn('保存').disabled).toBe(true)
   })
 
+  it('加载失败 / 加载中：保存按钮自动禁用且点不出 save（待办 yuepu#43：全站 17 个编辑器此前都继承一个死按钮）；取消 / 关闭不受影响', async () => {
+    const onSave = vi.fn()
+    mount({ isEdit: true, error: '加载失败，请重试', onSave })
+    expect(btn('保存').disabled).toBe(true)
+    btn('保存').click()
+    await nextTick()
+    expect(onSave).not.toHaveBeenCalled()
+    expect(btn('取消').disabled).toBe(false)
+    app.unmount()
+    container.remove()
+
+    mount({ isEdit: true, loading: true, onSave })
+    expect(btn('保存').disabled).toBe(true)
+    app.unmount()
+    container.remove()
+
+    // error 仅 true（无描述）同样视为失败态；恢复后按钮可用
+    mount({ isEdit: true, error: true })
+    expect(btn('保存').disabled).toBe(true)
+    app.unmount()
+    container.remove()
+    mount({ isEdit: true, error: '', loading: false })
+    expect(btn('保存').disabled).toBe(false)
+  })
+
   it('点保存上抛 save；点取消关抽屉', async () => {
     const onSave = vi.fn()
     const onUpdate = vi.fn()

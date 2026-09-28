@@ -19,6 +19,7 @@
  */
 import { ApiError } from './request'
 import { maskSecret } from '@/utils/secretMask'
+import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
@@ -629,8 +630,17 @@ function validateApiPayload(payload) {
   if (!payload.providerSystemId || !findPs(payload.providerSystemId)) {
     throw err('必须选择所属服务提供系统', 'providerSystemId')
   }
+  // 描述必填 ≤2000（一览表 §6.2；待办 yuepu#31③ / #37②：此前只有 ApiEditor 表单校验，绕过表单的调用能存下空描述 / 超长描述）
+  if (!(payload.description || '').trim()) throw err('API 描述必填', 'description')
+  if (payload.description.trim().length > API_DESC_MAX) throw err(`API 描述最多 ${API_DESC_MAX} 个字符`, 'description')
   if (!/^https?:\/\/.+/i.test((payload.url || '').trim())) {
     throw err('API 地址必须为合法的 HTTP 或 HTTPS URL', 'url')
+  }
+  // 地址 ≤500（一览表 §6.2 #5；待办 yuepu#31②）
+  if (payload.url.trim().length > CONNECTOR_URL_MAX) throw err(`API 地址最多 ${CONNECTOR_URL_MAX} 个字符`, 'url')
+  // 示例问题每条 ≤300（待办 yuepu#37①）；必填性由编辑器负责，这里只拦超长
+  if ((payload.exampleQuestions || []).some((q) => String(q || '').trim().length > BIZ_QUESTION_MAX)) {
+    throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
   }
   if (payload.authType === 'API_KEY') {
     const params = payload.authConfig?.params || []

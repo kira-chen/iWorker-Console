@@ -252,7 +252,7 @@ async function loadPubSummary() {
 // 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）。
 // 发布态摘要（loadPubSummary）依赖列表结果，故作为 mapRow 之后的副作用单独触发。
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7，负责人拍板全站统一；
-// md §二.5「固定 10 条」与之冲突，差异记 02-审查结果，原 pageSize:10 覆盖已移除）
+// md 已同口径改为「按窗口高度动态计算」，原 pageSize:10 覆盖已移除）
 const list = useAdminList(listMcp, { params: () => ({ ...applied }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 
@@ -503,7 +503,7 @@ async function remove(row) {
       :loading="loading"
       :error="loadError"
       :empty="isEmpty"
-      :empty-text="applied.keyword || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
+      :empty-text="applied.keyword || applied.type || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
     >
       <el-table

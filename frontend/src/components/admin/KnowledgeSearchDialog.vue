@@ -46,7 +46,7 @@ const disabledSources = computed(() => (props.kb?.sources || []).filter((s) => s
 const sourceOptions = computed(() =>
   SOURCE_TYPES.flatMap((t) => enabledSources.value.filter((s) => s.sourceType === t).map((s) => ({ value: s.id, label: `${SOURCE_LABELS[t]} · ${s.name || ''}`, disabled: false })))
 )
-/** 已停用数据源列出但不可选（md §三.7） */
+/** 已停用数据源列出但不可选（md §三.7「数据源范围」，2026-09-28 待办 yuepu#39 补进 md：此前 md 写「默认且仅展示全部已启用」，与本实现不符） */
 const disabledOptions = computed(() =>
   disabledSources.value.map((s) => ({ value: s.id, label: `${SOURCE_LABELS[s.sourceType]} · ${s.name || ''}（已停用）`, disabled: true }))
 )

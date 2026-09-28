@@ -159,6 +159,7 @@ const HTTP_DETAIL = {
   id: 'mcp_1',
   name: '报销系统 MCP',
   icon: '¥',
+  type: 'PLATFORM',
   description: '查询和提交员工报销单',
   transport: 'streamable-http',
   endpoint: 'https://expense.intra/mcp',
@@ -175,6 +176,7 @@ const STDIO_DETAIL = {
   id: 'mcp_2',
   name: '本地文件 MCP',
   icon: '▱',
+  type: 'PLATFORM',
   description: '读取工作区文件',
   transport: 'stdio',
   command: 'npx',
@@ -459,6 +461,7 @@ describe('必填红星统一标注（2026-09-21 负责人拍板）', () => {
 describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保存】）', () => {
   async function fillValidNew() {
     await setInput(inputOf('名称'), '新 MCP')
+    await setSelect(selectOf('连接器类型'), 'PLATFORM') // 连接器类型必选（待办 yuepu#35）
     container.querySelector('.icon-pick').click()
     await flush(2)
     await setInput(inputOf('服务描述'), '做点什么')
@@ -475,6 +478,7 @@ describe('保存（McpEditor.save；md §三.1 L199-200 按钮【登记】【保
     expect(adminApi.createMcp).not.toHaveBeenCalled()
     expect(item('名称').dataset.error).toBe('名称必填')
     expect(item('图标').dataset.error).toBe('请选择或上传图标')
+    expect(item('连接器类型').dataset.error).toBe('请选择连接器类型') // 待办 yuepu#35：此前不选会静默落成市场连接器
     expect(item('服务描述').dataset.error).toBe('服务描述必填')
     expect(item('MCP 服务地址').dataset.error).toBe('Endpoint 必填')
     expect(container.querySelector('.md-eq-err-msg').textContent.trim()).toBe('示例问题固定 3 条，须全部填写')

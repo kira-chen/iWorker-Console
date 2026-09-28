@@ -6,7 +6,7 @@
  * - 清单四行（岗位名称与描述 / 示例问题 / 岗位 SOP 硬阻断，Agent 与技能 ! 警告不阻断），
  *   文案由 computePublishCheck 按原型逐字给出；本组件只呈现 + emit('publish')。
  * - 版本号不再手填（md §3.7「系统根据所选类型自动计算并填充下一个版本号，不支持手动输入」）：
- *   改为「更新类型」三选一（文案与顺序照原型 L1224：修订版本 / 功能更新 / 重大更新）+ 只读版本号
+ *   改为「更新类型」三选一（文案与顺序取 POSITION_BUMP_OPTIONS，md §3.7：修复更新 / 功能更新 / 重大更新）+ 只读版本号
  *   + 类型 hint（原型 positionBumpHint）；首个版本无类型可选、hint「首个版本」。算号由父级
  *   useVersionPublish.setBump 承担，本组件经 v-model:bump 回吐类型。
  * - 底部双按钮：「返回修改」/「发布」（硬阻断项未过时「发布」disabled，仅 warning 可强发）。

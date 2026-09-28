@@ -789,6 +789,17 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect(container.querySelector('.lt-search').value).toBe('不存在')
     })
 
+    it('只按「连接器类型」筛选且无命中：空态也是「没有符合条件的 MCP 服务」，不是「还没有 MCP 服务」（待办 yuepu#36：判定曾漏 applied.type）', async () => {
+      adminApi.listMcp.mockImplementation(async ({ type }) => (type ? { list: [], total: 0 } : { list: LIST, total: LIST.length }))
+      await mount()
+      const select = container.querySelectorAll('select')[0]
+      select.value = 'POSITION'
+      select.dispatchEvent(new Event('change'))
+      await flush()
+      expect(adminApi.listMcp.mock.calls.at(-1)[0]).toEqual(expect.objectContaining({ type: 'POSITION' }))
+      expect(container.querySelector('[data-testid="list-empty"]').textContent.trim()).toBe('没有符合条件的 MCP 服务')
+    })
+
     it('工具数为 0：显「—」并悬浮「尚未拉取到工具，请在编辑器内「拉取工具」」（md §二.1 L47）', async () => {
       await mount()
       const cellEl = rowByName('空工具服务').querySelector('.t-cell[data-label="工具数"]')

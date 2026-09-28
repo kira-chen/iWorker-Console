@@ -17,6 +17,9 @@ import { explainMcpError } from '@/utils/mcpVerify'
  * 延时：mock 每个操作 await delay(150~900ms)，用假定时器一次跑完。
  */
 
+// 每条用例都 resetModules + 冷 import 整条 mock 链，全量并发下偶发超过默认 10s 假红（单跑必过，本会话已复现 5 次），放宽本文件的超时
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
+
 const persistHarness = vi.hoisted(() => ({ modules: new Map() }))
 vi.mock('../mockPersist', () => ({
   attachPersist(moduleKey, options) {
@@ -324,6 +327,20 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     )
     const renamed2 = renamedLost.authConfig.params.find((p) => p.name === 'X-Api-Key-Renamed-2')
     expect(renamed2.valueMasked).toBe('')
+  })
+
+  it('新建 / 编辑校验补齐（待办 yuepu#31②③ / #37①②）：描述必填且 ≤2000、地址 ≤500、示例问题每条 ≤300，各回对应 field；恰好在上限通过', async () => {
+    for (const description of ['', '   ', undefined]) {
+      await expect(run(m.createApi({ ...NEW_API, description }))).rejects.toMatchObject({ field: 'description', message: 'API 描述必填' })
+    }
+    await expect(run(m.createApi({ ...NEW_API, description: 'd'.repeat(2001) }))).rejects.toMatchObject({ field: 'description', message: 'API 描述最多 2000 个字符' })
+    const url = (n) => 'https://x.example.com/' + 'p'.repeat(n - 'https://x.example.com/'.length)
+    await expect(run(m.createApi({ ...NEW_API, url: url(501) }))).rejects.toMatchObject({ field: 'url', message: 'API 地址最多 500 个字符' })
+    await expect(run(m.createApi({ ...NEW_API, exampleQuestions: ['a', 'q'.repeat(301), 'c'] }))).rejects.toMatchObject({ field: 'exampleQuestions', message: '示例问题每条最多 300 个字符' })
+    await expect(run(m.createApi({ ...NEW_API, name: 'edge', description: 'd'.repeat(2000), url: url(500), exampleQuestions: ['a', 'q'.repeat(300), 'c'] }))).resolves.toMatchObject({ name: 'edge' })
+    // 编辑同样走这套校验：改成空描述被拦，原描述不变
+    await expect(run(m.updateApi('api_1101', { ...NEW_API, description: '' }))).rejects.toMatchObject({ field: 'description' })
+    expect((await run(m.getApi('api_1101'))).description).toBe('按报销单号查询审批状态与金额')
   })
 
   it('新建校验：名称空 / 名称 65 字（一览表 §6.2 上限 64，K36）/ 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field；名称恰 64 字通过', async () => {

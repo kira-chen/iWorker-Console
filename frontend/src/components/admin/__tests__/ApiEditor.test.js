@@ -234,6 +234,29 @@ describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
     expect(el.querySelector('.el-drawer')).toBeTruthy()
   })
 
+  it('描述 2001 字 / 地址 501 字 / 示例问题某条 301 字 → 各自标红并给出上限文案，不调 createApi（待办 yuepu#31②③ / #37①：此前只有输入框 maxlength，粘贴绕过）', async () => {
+    const el = await mountEditor(null)
+    await fillValidNew(el)
+    setInput(inputOf(el, 'API 描述'), 'd'.repeat(2001))
+    setInput(inputOf(el, 'API 地址'), 'https://x.example.com/' + 'p'.repeat(480))
+    setInput(eqInputs(el)[1], 'q'.repeat(301))
+    await nextTick()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(itemByLabel(el, 'API 描述').dataset.error).toBe('API 描述最多 2000 个字符')
+    expect(itemByLabel(el, 'API 地址').dataset.error).toBe('API 地址最多 500 个字符')
+    expect(el.querySelector('.ad-eq-err-msg').textContent).toContain('示例问题每条最多 300 个字符')
+    expect(conn.createApi).not.toHaveBeenCalled()
+    // 都改回上限内 → 放行
+    setInput(inputOf(el, 'API 描述'), 'd'.repeat(2000))
+    setInput(inputOf(el, 'API 地址'), 'https://x.example.com/ok')
+    setInput(eqInputs(el)[1], 'q'.repeat(300))
+    await nextTick()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(conn.createApi).toHaveBeenCalledTimes(1)
+  })
+
   it('编辑合法详情但把地址改成 ftp:// → 只有「API 地址」标红，不调 updateApi', async () => {
     const el = await mountEditor('api_1')
     setInput(inputOf(el, 'API 地址'), 'ftp://x.example.com')

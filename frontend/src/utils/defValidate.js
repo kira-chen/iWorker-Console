@@ -117,6 +117,10 @@ export const BIZ_PAGE_NAME_MAX = 20 // 业务页名称 ≤20
 export const BIZ_PAGE_DESC_MAX = 100 // 业务页描述 ≤100（行级描述沿用旧上限）
 export const BIZ_PAGES_MAX = 20 // 业务页条目数 ≤20（选项类上限）
 export const BIZ_QUESTION_MAX = 300 // 示例问题每条 ≤300（一览表示例类统一规则）
+// MCP 服务地址（Endpoint）/ API 地址 ≤500（一览表 §5.1 #7 / §6.2 #5；md MCP §三.3、API §三.7 同）
+export const CONNECTOR_URL_MAX = 500
+// API 描述必填 ≤2000（同 MCP 服务描述 / 业务系统描述）
+export const API_DESC_MAX = 2000
 
 /**
  * 业务页行是否「完全空白」（2026-09-09 PRD 复核轮 · G4/A15，Q176/Q342 二轮决策「自动丢弃空行」）。
@@ -135,7 +139,7 @@ export function isBlankBizPage(p) {
 
 // 校验业务系统连接定义表单（2026-09-01 PRD 对齐改造取代旧口径，原型 renderBizEditor 终态）。
 // 变化：名称 ≤64；图标必填；描述必填 ≤2000；登录地址必填 + http(s)；
-// 示例问题固定 3 条均必填（每条 ≤60）；连接方式只读展示、不再校验启用/停用状态。
+// 示例问题固定 3 条均必填（每条 ≤300）；连接方式只读展示、不再校验启用/停用状态。
 // 后端为唯一权威（demo 为 mock），前端仅做必填/格式提前拦截。
 export function validateBizSystemForm(form) {
   const errors = {}
@@ -190,7 +194,7 @@ export function validateBizSystemForm(form) {
       errors[`bizPages.${i}.description`] = `业务页描述最多 ${BIZ_PAGE_DESC_MAX} 个字符`
   })
 
-  // 示例问题（BQ4）：固定 3 条，保存时均须非空且每条 ≤60
+  // 示例问题（BQ4）：固定 3 条，保存时均须非空且每条 ≤300
   const qs = [0, 1, 2].map((i) => (form.exampleQuestions?.[i] || '').trim())
   if (qs.some((q) => !q)) errors.exampleQuestions = '示例问题固定 3 条，须全部填写'
   else if (qs.some((q) => q.length > BIZ_QUESTION_MAX))
@@ -209,8 +213,11 @@ export function validateMcpForm(form) {
   if (!(form.description || '').trim()) errors.description = '服务描述必填'
   else if (form.description.trim().length > 2000) errors.description = '服务描述最多 2000 个字符'
   if (!form.icon) errors.icon = '请选择或上传图标'
+  // 连接器类型必选（md MCP §三.3 L243 / 一览表 §5.1 #5；待办 yuepu#35）：三件套里唯独 MCP 此前两处都没校验，
+  // 不选会被 createMcp 的 `payload.type || 'PLATFORM'` 兜底静默落成「市场连接器」。文案与 API 侧逐字一致。
+  if (!form.type) errors.type = '请选择连接器类型'
   // 示例问题（2026-09-09 PRD 复核轮 · G4，清单第五节第 3 项「拉齐为强制必填」）：
-  // md prd-连接器-MCP.md §三.3 L242「示例问题：必填，固定 3 条输入行……单条示例问题最多 60 字符」，
+  // md prd-连接器-MCP.md §三.3 L247「示例问题：必填，固定 3 条输入行……单条示例问题最多 300 字符」，
   // MCP 编辑器 UI 也一直写着「必填，固定 3 条」，但保存端此前无该分支——UI 说必填、保存却放行，
   // 三件套里只有 MCP 是这样（API 走 ApiEditor.validate、业务系统走 validateBizSystemForm）。
   // 此处补齐，文案与业务系统侧逐字一致。
@@ -231,6 +238,7 @@ export function validateMcpForm(form) {
   if (isHttpTransport(form.transport)) {
     const endpoint = (form.endpoint || '').trim()
     if (!endpoint) errors.endpoint = 'Endpoint 必填'
+    else if (endpoint.length > CONNECTOR_URL_MAX) errors.endpoint = `Endpoint 最多 ${CONNECTOR_URL_MAX} 个字符`
     else if (!URL_RE.test(endpoint)) errors.endpoint = 'Endpoint 需以 http:// 或 https:// 开头'
   } else if (form.transport === 'stdio') {
     // Command 必选下拉（2026-09-04 PRD-20260903 对齐：错误文案照新原型 connFields「请选择启动命令」）
