@@ -135,6 +135,13 @@ const adminChildren = [
     meta: { title: '访问审计', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
+    // 05 治理 → 工具调用审计（2026-09-28 新增，PRD 首次落地）：数字员工调用连接器工具的事后审计记录，只读。
+    path: 'tool-call-audit',
+    name: 'AdminToolCallAudit',
+    component: () => import('@/views/admin/AdminToolCallAudit.vue'),
+    meta: { title: '工具调用审计', roles: ['ADMIN'], module: 'SYSCONFIG' }
+  },
+  {
     // V76 模型配置（仅 ADMIN）：OpenAI 协议第三方模型接入/连通性验证/发布审核。
     path: 'models',
     name: 'AdminModels',
