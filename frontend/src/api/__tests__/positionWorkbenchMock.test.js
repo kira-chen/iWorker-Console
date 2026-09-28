@@ -15,9 +15,9 @@ import {
   __resetPositionMock
 } from '../positionMock'
 import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
-import { listMcpSync } from '../mcpConnectorMock'
-import { listApisSync } from '../apiConnectorMock'
-import { listBizSystemsSync } from '../bizSystemMock'
+import { listMcpSync, listMcp } from '../mcpConnectorMock'
+import { listApisSync, listApis } from '../apiConnectorMock'
+import { listBizSystemsSync, listBizSystems } from '../bizSystemMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -105,6 +105,18 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
         expect(listApisSync().find((m) => m.id === id).referencedByPositions.map((p) => p.positionId)).toContain(pid)
       }
     }
+  })
+
+  it('连接器页签绑定弹窗的候选条件 { type: POSITION, state: PUBLISHED } 在三个连接器 mock 上都生效：只剩岗位私有且已发布的（md 岗位 §8.1–§8.3；待办 yuepu#24③）', async () => {
+    const cond = { type: 'POSITION', state: 'PUBLISHED' }
+    const mcps = (await listMcp(cond)).list
+    const apis = (await listApis(cond)).list
+    const bizs = (await listBizSystems(cond)).list
+    // 种子里：私有 MCP 只有 expense_mcp 已发布（mail_center 未发布、crm 审核中）；私有 API 与业务系统各有已发布行
+    expect(mcps.map((m) => m.id)).toEqual(['expense_mcp'])
+    expect(apis.length).toBeGreaterThan(0)
+    expect(bizs.map((b) => b.id)).toContain('biz_2101')
+    for (const r of [...mcps, ...apis, ...bizs]) expect(r.type).toBe('POSITION')
   })
 
   it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {
