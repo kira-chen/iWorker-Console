@@ -217,6 +217,20 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.textContent).not.toContain('应用引用')
   })
 
+  // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
+  it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的市场技能数，缺省显 0', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 301, type: 'PLATFORM', skillCount: 3 }, { ...EXPERTS[1], id: 302, skillCount: undefined }],
+      total: 2
+    })
+    await mount()
+    const labels = [...rowEls()[0].querySelectorAll('.el-table-column')].map((c) => c.getAttribute('data-label'))
+    expect(labels.indexOf('技能数')).toBe(labels.indexOf('分类') + 1)
+    expect(labels.indexOf('引用情况')).toBe(labels.indexOf('技能数') + 1)
+    const cell = (i) => rowEls()[i].querySelector('.el-table-column[data-label="技能数"]').textContent.trim()
+    expect([cell(0), cell(1)]).toEqual(['3', '0'])
+  })
+
   // 2026-09-12 审计 J1 闭环：09-11 拍板（38c3567）按设计图拆出独立状态列，写法照 adminMcp.test.js「列结构」用例
   it('列序：状态为独立列且紧跟「专家名」列之后（09-11 拍板 · 审计 J1）', async () => {
     await mount()

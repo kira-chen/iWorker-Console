@@ -15,8 +15,8 @@
  *
  * 【导出签名（MCP 批次对接口径）】
  * useAiLiveGenerate({ getSourceText, sourceLabel, getSourceContext?, generate, apply,
- *                     isReadonly?, delayMs?, idleLabel? })
- *   → { busy, sourceEmpty, disabled, title, label, run }
+ *                     isReadonly?, delayMs?, idleLabel?, getEntityId?, resetOn? })
+ *   → { busy, sourceEmpty, disabled, title, label, run, cancel }
  * 生成器（条数内嵌在生成器里）：expertQuestionSet(3 条) / connectorQuestionSet(3 条) /
  * skillExampleQuestion(1 条)；文本工具 shortText / limitLen。
  *
@@ -29,7 +29,7 @@
  * **名称优先做主语、名称为空回落描述**（不做多字段拼串——拼串后会被 18 字截断截没）；
  * 禁用判定仍只看 getSourceText，接入方契约不变。
  */
-import { ref, computed } from 'vue'
+import { ref, computed, watch, getCurrentScope, onScopeDispose } from 'vue'
 import { ElMessage } from 'element-plus'
 
 /** 「生成中…」态时长（2026-09-06 负责人拍板 Q10：全站统一 500ms，原型 420ms 口径废止） */
@@ -138,9 +138,13 @@ export function skillExampleQuestion(ctx) {
  * @param {string} [options.idleLabel] 空闲态按钮文案，默认「AI 生成」
  * @param {() => any} [options.getEntityId] 取当前编辑对象 id（每次求值）；组件按路由参数切换对象而不
  *   重新挂载时（如 SkillFocusEditor 随 route.params.id 复用实例），定时器触发时用它核对对象是否还是
- *   点击那一刻的对象，变了就丢弃结果、不回填（2026-09-18 待办 yuepu#13·技能 S1）。不传则不做该项校验
- *   （弹窗式编辑器 visible 切换会整个重新挂载，天然不受影响，无需接入）。
- * @returns {{ busy, sourceEmpty, disabled, title, label, run }} 均为 ref/computed + 触发函数
+ *   点击那一刻的对象，变了就丢弃结果、不回填（2026-09-18 待办 yuepu#13·技能 S1）。不传则不做该项校验。
+ *   （曾误判「弹窗式编辑器 visible 切换会重新挂载、不受影响」——列表页的编辑器其实是常驻挂载，见 resetOn。）
+ * @param {() => any} [options.resetOn] 侦听源（返回值变化即触发）：变化时撤销在途的「生成中…」——清定时器、
+ *   复位 busy、不回填不弹 toast。传抽屉的 [visible, 对象 id]：列表页的编辑器常驻挂载、关抽屉不卸载，500ms 内
+ *   关抽屉再打开另一条记录，回调照常执行会把 A 的生成结果写进已载入的 B 表单并弹成功 toast
+ *   （2026-09-23 待办 yuepu#26）。组件卸载（scope 销毁）时无论传不传都会清掉在途定时器。
+ * @returns {{ busy, sourceEmpty, disabled, title, label, run, cancel }} 均为 ref/computed + 触发函数
  */
 export function useAiLiveGenerate({
   getSourceText,
@@ -151,7 +155,8 @@ export function useAiLiveGenerate({
   isReadonly = () => false,
   delayMs = AI_LIVE_DELAY_MS,
   idleLabel = 'AI 生成',
-  getEntityId = null
+  getEntityId = null,
+  resetOn = null
 }) {
   const busy = ref(false)
   const sourceEmpty = computed(() => !String(getSourceText() || '').trim())
@@ -160,19 +165,31 @@ export function useAiLiveGenerate({
   const title = computed(() => (sourceEmpty.value && !isReadonly() ? `请先填写${sourceLabel}` : ''))
   const label = computed(() => (busy.value ? AI_LIVE_BUSY_LABEL : idleLabel))
 
+  let timer = null
+  // 撤销在途生成：不回填、不弹 toast，busy 复位（按钮可再点）
+  function cancel() {
+    clearTimeout(timer)
+    timer = null
+    busy.value = false
+  }
+  if (resetOn) watch(resetOn, cancel)
+  if (getCurrentScope()) onScopeDispose(() => clearTimeout(timer))
+
   function run() {
     if (disabled.value) return
     // 源文本/上下文/对象 id 均取点击那刻的值（原型 liveValue(config.source)）
     const ctx = getSourceContext ? getSourceContext() : String(getSourceText() || '').trim()
     const entityAtClick = getEntityId ? getEntityId() : undefined
     busy.value = true
-    setTimeout(() => {
+    timer = setTimeout(() => {
+      timer = null
       busy.value = false
       if (getEntityId && getEntityId() !== entityAtClick) return // 生成期间切换了对象，结果作废
+      if (isReadonly()) return // isReadonly 原先只在 run() 入口判一次，500ms 内进入只读 / 锁定态不能再写表单
       apply(generate(ctx))
       ElMessage.success(AI_LIVE_DONE_TOAST)
     }, delayMs)
   }
 
-  return { busy, sourceEmpty, disabled, title, label, run }
+  return { busy, sourceEmpty, disabled, title, label, run, cancel }
 }

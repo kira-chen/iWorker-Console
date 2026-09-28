@@ -233,7 +233,9 @@ const {
   // 本组件随 route.params.id 切换技能时不重新挂载（AdminSkillEditPage 未 :key 复用实例）：
   // 生成中途切到另一个技能，定时器触发时按当前 skillId 核对，变了就丢弃、不写进新对象
   // （2026-09-18 待办 yuepu#13·技能 S1）。
-  getEntityId: () => props.skill?.skillId
+  getEntityId: () => props.skill?.skillId,
+  // 换对象时立刻撤销在途生成（getEntityId 只是触发时的最后一道核对）；卸载时 composable 自己清定时器
+  resetOn: () => props.skill?.skillId
 })
 
 // 【发布】按钮就绪门（与列表共用同一 readiness 谓词，由页面层传入）。

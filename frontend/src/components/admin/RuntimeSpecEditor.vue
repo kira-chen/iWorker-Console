@@ -255,7 +255,10 @@ async function confirmRuntimeChange() {
 }
 
 async function save() {
-  if (props.readonly || saving.value) return
+  // 加载中 / 加载失败时 form 还是 resetForm() 的默认值（2 核 / 4 Gi / 20 Gi / 未绑岗位）：此时保存会把该规格
+  // 的真实配置整体覆盖成默认值并解绑全部岗位，不可逆；确认框里的「变更前」也因 baseline 为空显示 NaN
+  // （2026-09-23 待办 yuepu#28，askDiscard 早已判了 loadError，这里漏了）
+  if (props.readonly || saving.value || loading.value || loadError.value) return
   if (!validate()) return
   if (!checkPendingBeforeCloseApply()) return
   if (!(await confirmPositionSwitch())) return
@@ -290,6 +293,7 @@ async function save() {
     :readonly="readonly"
     :loading="loading"
     :error="loadError"
+    :submit-disabled="loading || loadError"
     :saving="saving"
     :cancel-disabled="saving"
     :before-close="onBeforeClose"

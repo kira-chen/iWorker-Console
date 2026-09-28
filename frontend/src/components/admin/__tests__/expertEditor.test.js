@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick } from 'vue'
+import { createApp, h, nextTick, reactive } from 'vue'
 
 /**
  * ExpertEditor.vue 单测。
@@ -140,23 +140,23 @@ const elButton = {
 const elFormItem = { name: 'el-form-item', props: ['label', 'error'], template: '<div class="el-form-item"><label>{{ label }}</label><slot /><span class="fi-err">{{ error }}</span></div>' }
 const elAlert = { name: 'el-alert', props: ['title', 'description', 'type'], template: '<div class="el-alert">{{ title }}{{ description }}</div>' }
 
-let app, container, visibleSpy, savedSpy, publishSpy
+let app, container, visibleSpy, savedSpy, publishSpy, propsState
 async function mount(props = {}) {
   container = document.createElement('div')
   document.body.appendChild(container)
   visibleSpy = vi.fn()
   savedSpy = vi.fn()
   publishSpy = vi.fn()
+  // 入参放进 reactive，个别用例要在挂载后改 expertId（模拟列表页编辑器常驻、切换对象）
+  propsState = reactive({ visible: true, expertId: null, ...props })
   app = createApp({
     setup() {
       return () =>
         h(ExpertEditor, {
-          visible: true,
-          expertId: null,
           'onUpdate:visible': visibleSpy,
           onSaved: savedSpy,
           onPublish: publishSpy,
-          ...props
+          ...propsState
         })
     }
   })
@@ -807,6 +807,50 @@ describe('ExpertEditor — 编辑', () => {
     expect(ElMessage.warning).toHaveBeenCalledWith('至少引用 1 个市场技能才能发布')
     expect(updateExpert).not.toHaveBeenCalled()
     expect(publishSpy).not.toHaveBeenCalled()
+  })
+
+  // 2026-09-23 待办 yuepu#27：watch 只盯 visible 时，visible 不回落而 expertId 变了（新建保存后就地切编辑态、
+  // 审核中心 GovObjectDetail 常驻渲染连看两个专家申请）不会重新 load，detail 残留上一个对象。
+  it('抽屉开着时 expertId 变了 → 重新拉新对象并回填，不残留上一个专家的表单与状态', async () => {
+    getExpert.mockImplementation((id) =>
+      Promise.resolve({ ...DETAIL, id, name: id === 201 ? '经营分析专家' : '法务审阅专家', status: id === 201 ? 'published' : 'draft' })
+    )
+    await mount({ expertId: 201 })
+    // 状态标签只认头部那枚 .status-tag（正文里知识库行也有「已发布」，不能用全文包含判断）
+    const tag = () => container.querySelector('.status-tag')?.textContent.trim()
+    expect(inputs()[0].value).toBe('经营分析专家')
+    expect(tag()).toBe('已发布')
+    propsState.expertId = 203
+    await flush()
+    expect(getExpert).toHaveBeenLastCalledWith(203)
+    expect(inputs()[0].value).toBe('法务审阅专家')
+    expect(tag()).toBe('未发布') // 状态标签跟着新对象走，不残留上一个的
+  })
+
+  it('切换对象后加载失败 → 不残留上一个对象的状态标签（detail 被清空）', async () => {
+    await mount({ expertId: 201 })
+    expect(container.querySelector('.status-tag')?.textContent.trim()).toBe('已发布')
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    propsState.expertId = 203
+    await flush()
+    expect(container.textContent).toContain('重试')
+    expect(container.querySelector('.status-tag')).toBeNull()
+  })
+
+  it('快速连切两个对象：先发出的慢请求后返回也不覆盖最新对象（序号守卫）', async () => {
+    let releaseSlow
+    getExpert.mockImplementation((id) =>
+      id === 201
+        ? new Promise((r) => { releaseSlow = () => r({ ...DETAIL, id: 201, name: '慢的旧对象' }) })
+        : Promise.resolve({ ...DETAIL, id, name: '最新对象' })
+    )
+    await mount({ expertId: 201 })
+    propsState.expertId = 203
+    await flush()
+    expect(inputs()[0].value).toBe('最新对象')
+    releaseSlow()
+    await flush()
+    expect(inputs()[0].value).toBe('最新对象')
   })
 
   it('加载失败 → 空态 + 重试', async () => {

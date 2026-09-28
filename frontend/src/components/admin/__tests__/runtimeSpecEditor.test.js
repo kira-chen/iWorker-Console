@@ -203,6 +203,21 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
 })
 
 describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 / §四.7 / §四.9）', () => {
+  // 2026-09-23 待办 yuepu#28：加载失败态下 form 仍是 resetForm() 的默认值，保存会把该规格真实配置整体覆盖成默认值
+  // 并解绑全部岗位（不可逆）；save() 漏判 loadError，DrawerEditor 的保存按钮又没被禁用
+  it('编辑态 getRuntimeSpec 失败 → 加载失败态下【保存】置灰，点了也不发 updateRuntimeSpec、不提示成功', async () => {
+    api.getRuntimeSpec.mockRejectedValue(new Error('spec down'))
+    const d = await open({ specId: 3 })
+    expect(d.textContent).toContain('加载失败')
+    const saveBtn = footBtn(d, '保存')
+    expect(saveBtn.disabled).toBe(true)
+    saveBtn.click() // 按钮已禁用，jsdom 下点击不派发；save() 里的 loadError 判定是第二道保险（见组件注释）
+    await flushAll(8)
+    expect(api.updateRuntimeSpec).not.toHaveBeenCalled()
+    expect(savedSpy).not.toHaveBeenCalled()
+    expect(successSpy).not.toHaveBeenCalled()
+  })
+
   it('编辑非默认规格：标题「编辑规格」+ 回填 + 时间行 + 生效情况（个人配置 / 岗位 · 名 / 待审批数）+ footer【取消】【保存】', async () => {
     api.getRuntimeSpec.mockResolvedValue({ ...HEAVY_SPEC })
     const d = await open({ specId: 3 })

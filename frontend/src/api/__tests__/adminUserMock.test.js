@@ -134,6 +134,23 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     expect((await listRoles()).some((r) => r.name === '内容运营')).toBe(false)
   })
 
+  // 2026-09-23 待办 yuepu#29：原条目称「角色改名后最后管理员护栏失效、删角色只看示意值 userCount」。核对现状：
+  // ① users[].roles 存的是角色 code、code 建后不随改名变化，护栏按 code 字面量比对，改名不影响；
+  // ② userCount 已在 #11①改为实时统计。两条都用用例钉住，防回退。
+  it('#29①：把「系统管理员」角色改名后，最后一个系统管理员的护栏仍生效（护栏按不变的 code 判，不受展示名影响）', async () => {
+    const admin = (await listRoles()).find((r) => r.name === '系统管理员')
+    await updateRole(admin.id, { name: '超级管理员' })
+    await expect(deleteUser(201)).rejects.toMatchObject({ message: '不能删除最后一个系统管理员' })
+    await expect(setUserRoles(201, ['普通用户'])).rejects.toMatchObject({ message: '不能移除最后一个系统管理员的系统管理员角色' })
+  })
+
+  it('#29②：种子里 userCount 曾写 0 的「审计观察员」实绑 3 人 → 删除被拦并报实际人数，删不掉也就不会让三人的角色悬空', async () => {
+    const audit = (await listRoles()).find((r) => r.name === '审计观察员')
+    expect(audit.userCount).toBe(3)
+    await expect(deleteRole(audit.id)).rejects.toMatchObject({ message: expect.stringContaining('仍绑定 3 个用户') })
+    expect((await listRoles()).some((r) => r.name === '审计观察员')).toBe(true)
+  })
+
   it('createRole 名称/code 双查重：改名腾出旧 code 后，新角色不得沿用该 code（2026-09-23 待办 yuepu#11②）', async () => {
     const admin = (await listRoles()).find((r) => r.name === '系统管理员')
     await updateRole(admin.id, { name: '系统管理员（原）' }) // code 建后不变，仍为「系统管理员」
