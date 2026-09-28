@@ -329,7 +329,11 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
   it('新建校验：名称空 / 名称 65 字（一览表 §6.2 上限 64，K36）/ 所属系统不存在 / URL 非 http(s) / API_KEY 零参数 各回 field；名称恰 64 字通过', async () => {
     await expect(run(m.createApi({ ...NEW_API, name: '' }))).rejects.toMatchObject({ field: 'name' })
     await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(65) }))).rejects.toMatchObject({ field: 'name', message: '名称最多 64 个字符' })
-    await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(64) }))).resolves.toMatchObject({ name: 'n'.repeat(64) })
+    // updatedAt 须是 +08:00 本地 ISO 而非 UTC「Z」串（2026-09-23 待办 yuepu#20：两种格式混排字典序会排反）
+    await expect(run(m.createApi({ ...NEW_API, name: 'n'.repeat(64) }))).resolves.toMatchObject({
+      name: 'n'.repeat(64),
+      updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
+    })
     await expect(run(m.createApi({ ...NEW_API, providerSystemId: 'pv_999' }))).rejects.toMatchObject({ field: 'providerSystemId' })
     await expect(run(m.createApi({ ...NEW_API, url: 'ftp://x' }))).rejects.toMatchObject({ field: 'url' })
     await expect(run(m.createApi({ ...NEW_API, authType: 'API_KEY', authConfig: { params: [{ name: ' ' }] } }))).rejects.toMatchObject({

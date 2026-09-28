@@ -312,6 +312,14 @@ describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）'
     const ed = container.querySelector('.stub-biz-editor')
     expect([ed.dataset.visible, ed.dataset.id, ed.dataset.readonly]).toEqual(['1', 'biz_2', '1'])
   })
+
+  it('深链 ?keyword= 同名参数重复（数组）不崩页：取第一个作关键字并生效（2026-09-23 待办 yuepu#22）', async () => {
+    routeState.query = { keyword: ['资源', '合同'] }
+    await mount()
+    expect(admin.listBizSystems).toHaveBeenCalledWith(expect.objectContaining({ keyword: '资源' }))
+    expect(rows().length).toBe(1)
+    expect(rowByName('人力资源系统')).toBeTruthy()
+  })
 })
 
 describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-52）', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMinute, nowMinuteText, nowIsoLocal } from '@/utils/datetime'
+import { fmtMinute, nowMinuteText, nowIsoLocal, compareTimeText } from '@/utils/datetime'
 import { fmtTime } from '@/utils/docMeta'
 
 /**
@@ -85,5 +85,30 @@ describe('nowMinuteText / nowIsoLocal（mock 层时间戳形态）', () => {
     expect(out).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
     // 与展示层闭环：nowIsoLocal 产出的串对 fmtMinute 是合法输入（带偏移串按本地时区换算，只校验格式）
     expect(fmtMinute(out)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  })
+})
+
+/**
+ * compareTimeText（2026-09-23 待办 yuepu#20）：列表按 updatedAt 排序不能直接 localeCompare——
+ * 串里时区偏移不同时字典序按字面比小时数，会排反。
+ */
+describe('compareTimeText（按时间点比较）', () => {
+  it('干净反例：UTC 串 02:00Z（真实 02:00Z）比 +08:00 串 09:00+08:00（真实 01:00Z）晚 1 小时；字典序却排反', () => {
+    const X = '2026-09-23T02:00:00.000Z'
+    const Y = '2026-09-23T09:00:00+08:00'
+    expect(X.localeCompare(Y)).toBeLessThan(0) // 字典序：X 在前（错）
+    expect(compareTimeText(X, Y)).toBeGreaterThan(0) // 按时间点：X 更晚（对）
+    expect([Y, X].sort(compareTimeText)).toEqual([Y, X])
+  })
+
+  it('同一时区格式下与字典序一致；相同时刻返回 0', () => {
+    expect(compareTimeText('2026-09-23T10:00:00+08:00', '2026-09-23T11:00:00+08:00')).toBeLessThan(0)
+    expect(compareTimeText('2026-09-23T10:00:00+08:00', '2026-09-23T02:00:00.000Z')).toBe(0)
+  })
+
+  it('任一侧解析不了 / 为空 → 退回字典序，不抛错', () => {
+    expect(() => compareTimeText(undefined, '2026-09-23T10:00:00+08:00')).not.toThrow()
+    expect(compareTimeText('', '2026-09-23T10:00:00+08:00')).toBeLessThan(0)
+    expect(compareTimeText('abc', 'abd')).toBeLessThan(0)
   })
 })

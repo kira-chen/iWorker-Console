@@ -17,6 +17,7 @@
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listApis,
@@ -44,6 +45,7 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import ListStates from '@/components/admin/ListStates.vue'
 import { useDynPageSize } from '@/composables/useDynPageSize'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { compareTimeText } from '@/utils/datetime'
 
 const loading = ref(true)
 const loadError = ref(false)
@@ -170,9 +172,9 @@ function toggleGroupSort(psId) {
 function sortApis(apis, psId) {
   const order = getGroupSort(psId)
   return [...apis].sort((a, b) => {
-    const timeA = a.updatedAt || ''
-    const timeB = b.updatedAt || ''
-    return order === 'desc' ? timeB.localeCompare(timeA) : timeA.localeCompare(timeB)
+    // 按时间点比较而非字典序：历史遗留的 UTC「Z」串与 +08:00 串混排会排反（待办 yuepu#20）
+    const diff = compareTimeText(a.updatedAt, b.updatedAt)
+    return order === 'desc' ? -diff : diff
   })
 }
 
@@ -251,9 +253,11 @@ function onStateChange() {
 
 const route = useRoute()
 onMounted(() => {
-  if (route.query.keyword) {
-    query.keyword = route.query.keyword
-    applied.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) {
+    query.keyword = kw
+    applied.keyword = kw
   }
   fetchAll()
 })

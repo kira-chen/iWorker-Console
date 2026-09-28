@@ -17,6 +17,7 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listBizSystems,
@@ -34,6 +35,7 @@ import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { compareTimeText } from '@/utils/datetime'
 import { TRI_STATE_META } from '@/utils/publishTriState'
 import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
@@ -99,8 +101,8 @@ const list = useAdminList(listBizSystems, {
   clientPipeline: (all) =>
     [...all].sort((a, b) =>
       sortDir.value === 'desc'
-        ? String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
-        : String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''))
+        ? compareTimeText(b.updatedAt, a.updatedAt)
+        : compareTimeText(a.updatedAt, b.updatedAt)
     )
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
@@ -137,9 +139,11 @@ function onStateChange() {
 // AdminConnector?tab=bizsystem&view=<id> → 本页消费 query.view，进入即只读打开该业务系统详情）。
 const route = useRoute()
 onMounted(async () => {
-  if (route.query.keyword) {
-    query.keyword = route.query.keyword
-    applied.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) {
+    query.keyword = kw
+    applied.keyword = kw
   }
   await fetchList()
   const viewId = route.query.view

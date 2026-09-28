@@ -28,7 +28,9 @@ const api = {
   setDefaultModel: vi.fn()
 }
 vi.mock('@/api/adminModel', () => api)
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+// query 可按用例改写（访问审计【查看】会注入 ?keyword=；手改地址栏可造出重复同名参数 → 数组）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeState.query }), useRouter: () => ({}) }))
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
@@ -247,11 +249,27 @@ async function flush(n = 4) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeState.query = {}
   api.listModels.mockResolvedValue(LIST)
 })
 afterEach(() => {
   app?.unmount()
   container?.remove()
+})
+
+describe('AdminModels · ?keyword= 深链归一（2026-09-23 待办 yuepu#22）', () => {
+  it('同名参数重复（?keyword=a&keyword=b → 数组）不崩页：取第一个作关键字，首拉正常发出', async () => {
+    routeState.query = { keyword: ['DeepSeek', 'Kimi'] }
+    await mount()
+    expect(api.listModels).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'DeepSeek' }))
+    expect(container.querySelector('.list-error, .ls-error')).toBeNull()
+  })
+
+  it('普通字符串 keyword 照常生效', async () => {
+    routeState.query = { keyword: 'Kimi' }
+    await mount()
+    expect(api.listModels).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'Kimi' }))
+  })
 })
 
 describe('AdminModels · 三态 + 发布/停用双向过审（md §二.3.1 三态按钮 + §二.3.4 验证列）', () => {

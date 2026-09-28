@@ -104,8 +104,15 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
   })
 
   it('列表按最近更新时间排序（默认由近到远；sort=asc 反向）（md §二.1 L30）', async () => {
+    // 时间戳是秒级 +08:00 串（2026-09-23 待办 yuepu#20 起统一 nowIsoLocal）：甲乙若落在同一秒就并列、
+    // 靠稳定排序碰运气——只冻结 Date 拨 2s，保证乙确实比甲晚（真实 delay 仍照常走）
+    vi.useFakeTimers({ toFake: ['Date'] })
     const a = await mk(`排序甲-${Date.now()}`)
+    vi.setSystemTime(Date.now() + 2000)
     const b = await mk(`排序乙-${Date.now()}`)
+    vi.useRealTimers()
+    // +08:00 本地 ISO 而非 UTC「Z」串（2026-09-23 待办 yuepu#20）
+    expect(a.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
     const { list } = await listBizSystems({ keyword: '排序' })
     const idx = (id) => list.findIndex((x) => x.id === id)
     expect(idx(b.id)).toBeLessThan(idx(a.id)) // 后建（更近更新）在前

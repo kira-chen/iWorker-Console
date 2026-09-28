@@ -2,7 +2,7 @@
 // （adminModelMock → request.js → router 链路触达 window，故用 jsdom；同 fieldDictMock.test.js）
 // 注意：vitest 全局随机顺序执行——用例间不得有状态顺序依赖：
 // 种子断言只查从不被本文件改写的行；状态机用例各自新建专属行自洽驱动。
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   listModels,
   getModel,
@@ -17,6 +17,9 @@ import {
   rejectModel,
   setDefaultModel
 } from '../adminModelMock'
+
+// 「刷新 updatedAt」用例会冻结 Date 手动拨表，中途失败也要还原，免得污染后续用例
+afterEach(() => vi.useRealTimers())
 
 /**
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md
@@ -178,22 +181,32 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
   })
 
   it('提交审核 / 撤回提交后刷新 updatedAt（md §二.2；停用与设为默认仍不刷新）', async () => {
+    // 时间戳是秒级 +08:00 串（2026-09-23 待办 yuepu#20 起统一 nowIsoLocal，原毫秒级 UTC 串已退役）：
+    // 冻结 Date、每步之前手动拨 2s——「会刷新」的步骤才必然变大，「不改变」的步骤（停用/设默认）拨表后仍相等才有区分度
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const tick = () => vi.setSystemTime(Date.now() + 2000)
     const row = await mk(`时间刷新模型-${Date.now()}`)
+    // +08:00 本地 ISO 而非 UTC「Z」串（与种子同格式，字典序排序才不会排反）
+    expect(row.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/)
     await verifyModel(row.id)
     const beforePublish = (await getModel(row.id)).updatedAt
 
+    tick()
     await publishModel(row.id)
     const afterPublish = (await getModel(row.id)).updatedAt
-    expect(afterPublish > beforePublish).toBe(true) // 提交审核 → 刷新
+    expect(Date.parse(afterPublish) > Date.parse(beforePublish)).toBe(true) // 提交审核 → 刷新
 
+    tick()
     await withdrawModel(row.id)
     const afterWithdraw = (await getModel(row.id)).updatedAt
-    expect(afterWithdraw > afterPublish).toBe(true) // 撤回提交 → 刷新
+    expect(Date.parse(afterWithdraw) > Date.parse(afterPublish)).toBe(true) // 撤回提交 → 刷新
 
     // 停用（提交停用审核）与设为默认：md 明确「不改变」
+    tick()
     await publishModel(row.id)
     await approveModel(row.id)
     const beforeQuiet = (await getModel(row.id)).updatedAt
+    tick()
     await setDefaultModel(row.id)
     await delistModel(row.id)
     expect((await getModel(row.id)).updatedAt).toBe(beforeQuiet)

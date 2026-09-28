@@ -15,6 +15,7 @@
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -215,7 +216,9 @@ const searchList = list.search
 
 const route = useRoute()
 onMounted(() => {
-  if (route.query.keyword) keyword.value = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query.keyword)
+  if (kw) keyword.value = kw
   fetchList()
 })
 

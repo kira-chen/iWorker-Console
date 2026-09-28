@@ -15,6 +15,7 @@
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import {
@@ -454,7 +455,9 @@ function onWindowFocus() {
 }
 
 onMounted(async () => {
-  if (route.query?.keyword) query.keyword = route.query.keyword
+  // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
+  const kw = queryString(route.query?.keyword)
+  if (kw) query.keyword = kw
   fetchList()
   try {
     const dict = await listFieldDict()
