@@ -124,6 +124,9 @@ let bizRows = [
     updatedAt: '2026-08-22T16:18:00+08:00'
   })
 ]
+// 出厂种子快照（测试重置用；2026-09-23 待办 yuepu#23：deletePosition 级联会真实改写本模块状态，
+// 需要能重置回种子，否则跨用例顺序不同会互相污染 —— positionMock.test.js 就踩过这个坑）
+const BIZ_ROWS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(bizRows))
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=新建/编辑/删除、
 // 发布/撤回/停用/审核通过/驳回、专属技能增删。restore 做最小形状校验，快照不合法即抛错 → 兜底回种子。
@@ -434,4 +437,12 @@ export function renamePositionRefs(positionId, positionName) {
     })
   })
   if (changed) persist()
+}
+
+/** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */
+export function __resetBizSystemMock() {
+  bizRows = JSON.parse(JSON.stringify(BIZ_ROWS_SEED_SNAPSHOT))
+  bizSeq = 2104
+  skillSeq = 3
+  persist()
 }
