@@ -576,7 +576,9 @@ const {
   apply: (questions) => {
     form.exampleQuestions = [0, 1, 2].map((i) => String(questions[i] || '').slice(0, QUESTION_MAX))
   },
-  isReadonly: () => props.readonly
+  isReadonly: () => props.readonly,
+  // 抽屉常驻挂载：关闭或切到另一条记录时撤销在途生成，免得 A 的结果写进 B 的表单（待办 yuepu#26，下同）
+  resetOn: () => [props.visible, props.mcpId]
 })
 
 function buildPayload() {

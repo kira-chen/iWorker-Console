@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { reactive } from 'vue'
+import { reactive, effectScope, nextTick } from 'vue'
 
 /**
  * aiLiveGenerate.js 单测（2026-09-04 新增：统一 AI 实况生成机制）。
@@ -297,6 +297,90 @@ describe('useAiLiveGenerate（交互四件套）', () => {
     api.run()
     vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
     expect(apply).toHaveBeenCalledWith('描述')
+  })
+
+  /**
+   * 2026-09-23 待办 yuepu#26：列表页的编辑器常驻挂载、关抽屉不卸载，点【AI 生成】后 500ms 内关抽屉再打开另一条记录，
+   * 定时器回调照常执行 → A 的生成结果写进已载入的 B 表单并弹成功 toast。resetOn 变化即撤销在途生成。
+   */
+  it('resetOn：生成中途侦听源变化（关抽屉 / 换记录）→ 撤销在途生成：不回填、不 toast、busy 复位、按钮可再点', async () => {
+    const apply = vi.fn()
+    const state = reactive({ visible: true, id: 'A' })
+    const api = useAiLiveGenerate({
+      getSourceText: () => '描述',
+      sourceLabel: '描述',
+      generate: (s) => s,
+      apply,
+      resetOn: () => [state.visible, state.id]
+    })
+    api.run()
+    expect(api.busy.value).toBe(true)
+    state.id = 'B' // 关抽屉后立刻打开另一条记录
+    await nextTick()
+    expect(api.busy.value).toBe(false)
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    // 撤销后可正常再点一次，并按新对象正常回填
+    api.run()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).toHaveBeenCalledTimes(1)
+  })
+
+  it('resetOn 侦听源没变 → 不受影响，正常回填', async () => {
+    const apply = vi.fn()
+    const state = reactive({ visible: true, id: 'A' })
+    const api = useAiLiveGenerate({
+      getSourceText: () => '描述',
+      sourceLabel: '描述',
+      generate: (s) => s,
+      apply,
+      resetOn: () => [state.visible, state.id]
+    })
+    api.run()
+    await nextTick()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).toHaveBeenCalledTimes(1)
+  })
+
+  it('组件卸载（effectScope 销毁）→ 在途定时器被清掉，不再回填 / 弹 toast', () => {
+    const apply = vi.fn()
+    const scope = effectScope()
+    const api = scope.run(() =>
+      useAiLiveGenerate({ getSourceText: () => '描述', sourceLabel: '描述', generate: (s) => s, apply })
+    )
+    api.run()
+    scope.stop()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('生成期间进入只读 / 锁定态 → 回调里复判 isReadonly，不再写表单（此前只在 run() 入口判一次）', () => {
+    const apply = vi.fn()
+    const flags = { ro: false }
+    const api = useAiLiveGenerate({
+      getSourceText: () => '描述',
+      sourceLabel: '描述',
+      generate: (s) => s,
+      apply,
+      isReadonly: () => flags.ro
+    })
+    api.run()
+    flags.ro = true
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).not.toHaveBeenCalled()
+    expect(api.busy.value).toBe(false)
+  })
+
+  it('cancel() 可手动撤销；没有在途生成时调用也安全', () => {
+    const apply = vi.fn()
+    const api = useAiLiveGenerate({ getSourceText: () => '描述', sourceLabel: '描述', generate: (s) => s, apply })
+    expect(() => api.cancel()).not.toThrow()
+    api.run()
+    api.cancel()
+    vi.advanceTimersByTime(AI_LIVE_DELAY_MS)
+    expect(apply).not.toHaveBeenCalled()
   })
 
   it('delayMs 可注入（接入方/测试可调；默认 500ms，2026-09-06 Q10 拍板全站统一）', () => {
