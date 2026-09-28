@@ -142,6 +142,9 @@ export const EXAMPLE_Q_COUNT = 3
 export const EXAMPLE_Q_MAX_LEN = 300
 // 岗位 SOP：必填，最多 4000 字。
 export const SOP_MAX_LEN = 4000
+// 自动化任务「提示词」：必填，最多 8000 字（md §7.4）。UI 校验 / 字数计数与 sampleTaskMock 共用这一处，
+// 别再各写裸数字（前科：示例问题 mock 卡 60、UI 放 300，见 待办 yuepu#19②）。
+export const SAMPLE_TASK_PROMPT_MAX_LEN = 8000
 
 // 归一为固定 3 格数组（不足补空、超出截断），编辑器 3 个输入框稳定绑定用。
 export function normalizeExampleQuestions(list) {

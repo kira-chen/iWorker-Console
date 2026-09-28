@@ -16,6 +16,7 @@ import {
   EXAMPLE_Q_COUNT,
   EXAMPLE_Q_MAX_LEN,
   SOP_MAX_LEN,
+  SAMPLE_TASK_PROMPT_MAX_LEN,
   normalizeExampleQuestions,
   exampleQuestionsComplete,
   normalizeClaimNotes,
@@ -71,13 +72,14 @@ describe('N2 技能示例问题（1 个必填 + 20 字软提示）', () => {
 })
 
 describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', () => {
-  it('上限常量与一览表口径一致：描述 2000 / 领用页文案 6×300 / 示例问题 3×300 / SOP 4000', () => {
+  it('上限常量与一览表口径一致：描述 2000 / 领用页文案 6×300 / 示例问题 3×300 / SOP 4000 / 自动化任务提示词 8000', () => {
     expect(DESCRIPTION_MAX_LEN).toBe(2000)
     expect(CLAIM_NOTE_MAX).toBe(6)
     expect(CLAIM_NOTE_LEN).toBe(300)
     expect(EXAMPLE_Q_COUNT).toBe(3)
     expect(EXAMPLE_Q_MAX_LEN).toBe(300)
     expect(SOP_MAX_LEN).toBe(4000)
+    expect(SAMPLE_TASK_PROMPT_MAX_LEN).toBe(8000) // md §7.4；UI 校验 / 字数计数 / sampleTaskMock 共用（待办 yuepu#19②）
   })
   it('示例问题归一为恒 3 格：不足补空、超出截断、null→空串', () => {
     expect(normalizeExampleQuestions(['a'])).toEqual(['a', '', ''])
