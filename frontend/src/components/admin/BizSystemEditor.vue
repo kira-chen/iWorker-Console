@@ -327,7 +327,7 @@ function removePage(idx) {
 
 /** 示例问题 AI 生成（2026-09-04 PRD-20260903 对齐：统一 AI 实况生成机制，取代旧
  * aiGenerateBizExampleQuestions 随机模板即填，该函数已于 2026-09-12 负责人决策 6 连同 api 包装一并删除）：
- * 源=系统描述（空则按钮禁用 + title「请先填写系统描述」），点击进「生成中…」约 420ms，
+ * 源=系统描述（空则按钮禁用 + title「请先填写系统描述」），点击进「生成中…」约 500ms（aiLiveGenerate 的 AI_LIVE_DELAY_MS，全站统一），
  * 按描述本地模板生成 3 条连接器式问题，完成 toast「AI 内容已生成，请确认后保存」。 */
 const {
   disabled: aiDisabled,

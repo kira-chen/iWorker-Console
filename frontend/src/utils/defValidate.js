@@ -139,7 +139,7 @@ export function isBlankBizPage(p) {
 
 // 校验业务系统连接定义表单（2026-09-01 PRD 对齐改造取代旧口径，原型 renderBizEditor 终态）。
 // 变化：名称 ≤64；图标必填；描述必填 ≤2000；登录地址必填 + http(s)；
-// 示例问题固定 3 条均必填（每条 ≤60）；连接方式只读展示、不再校验启用/停用状态。
+// 示例问题固定 3 条均必填（每条 ≤300）；连接方式只读展示、不再校验启用/停用状态。
 // 后端为唯一权威（demo 为 mock），前端仅做必填/格式提前拦截。
 export function validateBizSystemForm(form) {
   const errors = {}
@@ -194,7 +194,7 @@ export function validateBizSystemForm(form) {
       errors[`bizPages.${i}.description`] = `业务页描述最多 ${BIZ_PAGE_DESC_MAX} 个字符`
   })
 
-  // 示例问题（BQ4）：固定 3 条，保存时均须非空且每条 ≤60
+  // 示例问题（BQ4）：固定 3 条，保存时均须非空且每条 ≤300
   const qs = [0, 1, 2].map((i) => (form.exampleQuestions?.[i] || '').trim())
   if (qs.some((q) => !q)) errors.exampleQuestions = '示例问题固定 3 条，须全部填写'
   else if (qs.some((q) => q.length > BIZ_QUESTION_MAX))
@@ -217,7 +217,7 @@ export function validateMcpForm(form) {
   // 不选会被 createMcp 的 `payload.type || 'PLATFORM'` 兜底静默落成「市场连接器」。文案与 API 侧逐字一致。
   if (!form.type) errors.type = '请选择连接器类型'
   // 示例问题（2026-09-09 PRD 复核轮 · G4，清单第五节第 3 项「拉齐为强制必填」）：
-  // md prd-连接器-MCP.md §三.3 L242「示例问题：必填，固定 3 条输入行……单条示例问题最多 60 字符」，
+  // md prd-连接器-MCP.md §三.3 L247「示例问题：必填，固定 3 条输入行……单条示例问题最多 300 字符」，
   // MCP 编辑器 UI 也一直写着「必填，固定 3 条」，但保存端此前无该分支——UI 说必填、保存却放行，
   // 三件套里只有 MCP 是这样（API 走 ApiEditor.validate、业务系统走 validateBizSystemForm）。
   // 此处补齐，文案与业务系统侧逐字一致。

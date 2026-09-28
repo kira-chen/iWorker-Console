@@ -47,7 +47,7 @@ function toggleSort() {
 
 // 取数编排统一走 useAdminList（列表页规范）。mock 返全量（mock 层不动），本页本地筛选 + 排序后
 // 由 useAdminList 的 paged:'client' 切片分页（2026-09-08 原型复刻批次 1 · G#9：负责人拍板
-// 全站所有列表页都分页，角色 md「不分页」与之冲突、差异记 02-审查结果；原 paged:false 废止）。
+// 全站所有列表页都分页；角色 md 现已同口径改为「支持分页…客户端分页」，原 paged:false 废止）。
 const list = useAdminList(listRoles, {
   paged: 'client',
   mapRow: (rows) => rows.map((r) => ({ ...r, modules: (r.modules || []).filter(Boolean) })),

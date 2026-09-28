@@ -112,7 +112,7 @@ async function addOption() {
   optionInputs.value[draft.value.length - 1]?.focus?.()
 }
 
-// 删除仅从当前编辑草稿中移除、不弹确认（2026-09-12 对齐 md §三 L48，审计 J19/K32）；保存在【完成】时统一发生
+// 删除仅从当前编辑草稿中移除，但先弹二次确认说明影响面（2026-09-12 对齐 md §三 L48，审计 J19/K32）；保存在【完成】时统一发生
 async function removeOption(idx) {
   const name = draft.value[idx]?.name?.trim() || '该选项'
   const impact =

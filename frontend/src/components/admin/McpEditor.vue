@@ -96,7 +96,7 @@ const form = reactive({
   // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾示例问题区，固定 3 条）
   exampleQuestions: ['', '', '']
 })
-// 示例问题每条上限（与业务系统连接器同口径 60 字；AI 生成器 connectorQuestionSet 同上限截断）
+// 示例问题每条上限（与业务系统连接器同口径 300 字，一览表示例类统一规则；AI 生成器 connectorQuestionSet 同上限截断）
 const QUESTION_MAX = BIZ_QUESTION_MAX
 // 鉴权录入区开关 + 类型枚举（构建期常量）
 const authEnabled = MCP_AUTH_CONFIG_ENABLED

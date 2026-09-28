@@ -71,7 +71,7 @@ function aiGenQuestions() {
   setTimeout(() => {
     patchBasic('exampleQuestions', genExampleQuestions(store.basic?.name, store.basic?.description))
     aiQuestionsBusy.value = false
-    ElMessage.success('已生成示例问题') // md §2.4 逐字
+    ElMessage.success('已生成示例问题') // md §2.6 逐字
   }, 500)
 }
 function aiGenSop() {
@@ -80,7 +80,7 @@ function aiGenSop() {
   setTimeout(() => {
     patchBasic('positionSop', genPositionSop(store.basic?.name, store.basic?.description))
     aiSopBusy.value = false
-    ElMessage.success('已生成岗位 SOP') // md §2.5 逐字
+    ElMessage.success('已生成岗位 SOP') // md §2.7 逐字
   }, 500)
 }
 </script>

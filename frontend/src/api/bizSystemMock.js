@@ -11,7 +11,7 @@
  * - 列表行内直接带 display 字段（status/pendingAction/refs/时间），
  *   免去旧版每行再拉 publication 的双请求编排。
  * - 字段：icon（必填）/ description（必填 ≤2000）/ loginUrl（必填 http(s)）/
- *   bizPages ≤20 / exampleQuestions 固定 3 条（每条 ≤60，保存须均非空）。
+ *   bizPages ≤20 / exampleQuestions 固定 3 条（每条 ≤300，保存须均非空）。
  *
  * 种子照原型 bizRows（L733-737，3 行覆盖三态）；示例问题种子照 L832、图标照 L842-844。
  */
