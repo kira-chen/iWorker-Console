@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
  * 撤回不摘行、驳回把已发布对象打回未发布、我的申请重提 / 撤回只翻本表——而现有 2200 条用例一条没红，
  * 因为没有任何用例**横跨两个 mock**验证「提交 → 审核中心有行 → 通过 → 对象改态 → 我的申请同步」这条线。
  * 本文件对八类业务各跑一遍完整回路，任何一个模块漏接线、或 reviewsMock / myApplicationsMock 的匹配规则被改坏，这里立刻红。
+ * 版本管理（VERSION，客户端安装包版本）的审核往返不在本文件，见 versionMock.test.js。
  *
  * 每条用例都自己把对象摆到已知起点（vitest 随机序、模块态跨用例共享），走各模块自己的公开入口，不碰内部数组。
  * 所有 mock 一律动态 import：撤回 / 审核内部会动态 import 业务 mock，业务 mock 又静态 import 治理 mock，

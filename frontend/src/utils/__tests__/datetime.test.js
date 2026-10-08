@@ -11,6 +11,7 @@ import { fmtTime } from '@/utils/docMeta'
  * 2026-09-12 负责人决策 3（审计 J2）：员工端整体退役后 utils/taskStatus.js 已删除，
  * 原先两条护栏里对 taskStatus.fmtDateTime 的引用改为不依赖该模块——
  * 「与旧实现等价」改为直接逐字推演旧算法（断言强度不变），re-export 一条只留 docMeta。
+ * 2026-10-08 审计 T10：「逐字推演」改为字面量期望（推演写法与源码同算法，属同义反复）。
  */
 describe('fmtMinute（正本语义钉死）', () => {
   it('空值 → 空串', () => {
@@ -39,14 +40,16 @@ describe('fmtMinute（正本语义钉死）', () => {
 
 describe('护栏：与旧实现等价 / re-export 同一', () => {
   it('合法 ISO 串 → fmtMinute 输出与收编前旧算法（本地墙钟 + padStart）逐字等价', () => {
-    // 旧实现合法值路径的期望值逐字推演（旧 taskStatus.fmtDateTime 已随员工端退役删除，
-    // 但其算法即此处 oldOut，等价护栏照常有效）
-    const legal = ['2026-09-09T18:30:00', '2026-01-02T03:04:05', '2025-12-31T23:59:59+08:00']
-    for (const iso of legal) {
-      const d = new Date(iso)
-      const pad = (n) => String(n).padStart(2, '0')
-      const oldOut = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-      expect(fmtMinute(iso)).toBe(oldOut)
+    // 期望写成字面量（vitest.config.js 已固定 TZ=Asia/Shanghai）。2026-10-08 审计 T10：原写法在用例里
+    // 把源码算法抄了一遍再比较，源码怎么改两边一起变，等于同义反复；改成旧实现在东八区的实际输出。
+    const cases = [
+      ['2026-09-09T18:30:00', '2026-09-09 18:30'],
+      ['2026-01-02T03:04:05', '2026-01-02 03:04'],
+      // 带 +08:00 偏移：东八区墙钟不变；跨年边界不被换算到次日
+      ['2025-12-31T23:59:59+08:00', '2025-12-31 23:59']
+    ]
+    for (const [iso, expected] of cases) {
+      expect(fmtMinute(iso)).toBe(expected)
     }
   })
 

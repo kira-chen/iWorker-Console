@@ -10,9 +10,9 @@ import { useUserStore } from '@/stores/user'
  * AdminRail 共享窄轨（六段分组带序号，2026-08-21 导航改版）渲染/高亮回归保护：
  *
  * 菜单六段（分组标题带序号，仅作类别归属、无真实页面）：
- *   01 总览：驾驶舱（规划中占位）——三后台角色（isBackstage）均见。
+ *   01 总览：驾驶舱（已落地真实页 AdminCockpit）——三后台角色（isBackstage）均见。
  *   02 岗位：岗位 / 岗位管理——随 canFde 显隐。（原「岗位技能」已随三页合一并入 03 能力段的「技能」）
- *   03 能力：专家 / 技能 / 知识库(占位) / 连接器 / 模型——整段随 canSysConfig 显隐，「模型」仅 ADMIN 逐项收窄。
+ *   03 能力：专家 / 技能 / 知识库（已落地真实页 AdminKnowledgeBase） / 连接器 / 模型——整段随 canSysConfig 显隐，「模型」仅 ADMIN 逐项收窄。
  *   「技能」（三页合一，2026-08-23）取代原「岗位技能 / 平台技能 / 系统内置技能」三项，显隐由页面权限 CAPABILITY_SKILL_CONSOLE 治理。
  *   04 运行：实例管理 / 运行规格 / 配额与限流——整段仅 ADMIN。
  *   05 治理：审核中心 / 用户技能审核 / 访问审计 / 工具调用审计(2026-09-28 新增) / 用户反馈 / 字段字典 / 版本管理——整段仅 ADMIN。
@@ -53,6 +53,8 @@ function makeRouter() {
       { path: '/admin/review', name: 'UnifiedReview', component: blank },
       { path: '/admin/user-skill-reviews', name: 'SysConfigUserSkillReviews', component: blank },
       { path: '/admin/login-logs', name: 'AdminLoginLogs', component: blank },
+      // 2026-09-28 新增「工具调用审计」（列于访问审计之后）
+      { path: '/admin/tool-call-audit', name: 'AdminToolCallAudit', component: blank },
       { path: '/admin/feedbacks', name: 'AdminFeedback', component: blank },
       { path: '/admin/field-management', name: 'SysConfigFieldManagement', component: blank },
       // 2026-09-20 新增「版本管理」（列于字段字典之后）
@@ -78,8 +80,8 @@ function makeRouter() {
         name: 'AdminSkillEdit',
         component: blank,
         meta: { activeMenu: 'AdminSkillsUnified' }
-      },
-      { path: '/login', name: 'Login', component: blank }
+      }
+      // 原 { path: '/login', name: 'Login' } 已删：登录页随员工端于 2026-09-12 退役（决策 3 / 审计 J2），真实路由表已无此 name。
     ]
   })
 }
@@ -99,11 +101,12 @@ const elStubs = {
 
 let container
 let app
+let router // 最近一次 mount 用的夹具路由，供点击跳转类用例读 currentRoute
 
 // roles：设置当前账号角色集合（驱动分段显隐）
 // pages：V102 页面权限集；给了就按页逐项显隐，不给则退回 roles 口径（向下兼容分支）
 async function mount(routeTarget, roles = ['ADMIN'], pages = undefined) {
-  const router = makeRouter()
+  router = makeRouter()
   router.push(routeTarget)
   await router.isReady()
 
@@ -250,7 +253,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(labelsOf(el)).toContain('技能')
   })
 
-  it('驾驶舱（占位项 AdminCockpit）三后台角色均可见并可高亮', async () => {
+  it('驾驶舱（AdminCockpit 真实页）三后台角色均可见并可高亮', async () => {
     const el = await mount({ name: 'AdminCockpit' }, ['SYS_CONFIG'])
     expect(labelsOf(el)).toContain('驾驶舱')
     const active = el.querySelector('.rail-item.is-active .rail-label')
@@ -327,5 +330,49 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     const el = await mount({ name: 'AdminPositions' }, ['FDE'])
     expect(groupNamesOf(el)).toEqual(['总览', '岗位'])
     expect(labelsOf(el)).toEqual(['驾驶舱', '岗位', '岗位管理'])
+  })
+
+  // ---------------- 菜单 ↔ 真实路由表一致性（2026-10-08 审计 T11） ----------------
+
+  /**
+   * 夹具路由是手抄的，曾残留已退役的 Login、漏掉新增的 AdminToolCallAudit 而无一条红。
+   * 这里逐个点击 admin 下渲染出的全部菜单项，收集实际跳到的路由 name（=菜单 index），
+   * 再到真实路由表（@/router 默认导出，路由组件均为懒加载、import 不触发页面加载）核对每个都存在；
+   * 同时核对夹具里每个 name 也都在真实路由表里，防夹具再漂移。
+   */
+  it('全部菜单 index 都能在真实路由表中找到（夹具 name 亦然）', async () => {
+    const { default: realRouter } = await import('@/router')
+    // 从一个不在菜单里的沉浸页起步，保证第一个菜单项点击也会真的 push
+    const el = await mount({ name: 'PositionWorkbench', params: { id: '1' } }, ['ADMIN'])
+    const items = [...el.querySelectorAll('.rail-item')]
+    expect(items.length).toBe(labelsOf(el).length)
+    const visited = []
+    for (const btn of items) {
+      btn.click()
+      await new Promise((r) => setTimeout(r, 0))
+      visited.push(router.currentRoute.value.name)
+    }
+    // 每个菜单项都真的跳到了一个不同的路由（夹具缺 name 时 push 抛错、name 不变，此处即红）
+    expect(new Set(visited).size).toBe(items.length)
+    const missingInReal = visited.filter((n) => !realRouter.hasRoute(n))
+    expect(missingInReal).toEqual([])
+    const fixtureOnly = router
+      .getRoutes()
+      .map((r) => r.name)
+      .filter((n) => n && !realRouter.hasRoute(n))
+    expect(fixtureOnly).toEqual([])
+  })
+
+  it('点击「工具调用审计」→ 路由跳到 AdminToolCallAudit 并高亮该项', async () => {
+    const el = await mount({ name: 'AdminPositions' }, ['ADMIN'])
+    const btn = [...el.querySelectorAll('.rail-item')].find(
+      (b) => b.querySelector('.rail-label').textContent.trim() === '工具调用审计'
+    )
+    expect(btn).toBeTruthy()
+    btn.click()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(router.currentRoute.value.name).toBe('AdminToolCallAudit')
+    await Promise.resolve()
+    expect(el.querySelector('.rail-item.is-active .rail-label').textContent.trim()).toBe('工具调用审计')
   })
 })
