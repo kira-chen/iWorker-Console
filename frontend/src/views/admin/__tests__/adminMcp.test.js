@@ -18,7 +18,6 @@ import { fmtTime } from '@/utils/docMeta'
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
  * StatusTag / HealthTag / ListToolbar / ListStates / ListPagination 为组件局部 import 的**真组件**
  * （全局同名桩对其无效），断言直接读它们渲染出的文案 / 类名。
- * 已知不写的用例（审计 K34 待代码修）：mock 层停用直落 DELISTED——本文件 market api 全桩，与之无关。
  */
 
 const adminApi = {
@@ -27,7 +26,7 @@ const adminApi = {
   healthCheckTool: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
 const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
@@ -440,7 +439,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     })
   })
 
-  it('验证列：结果标签 + 相对时间 + 刷新入口（外观对齐模型页）', async () => {
+  it('验证列：结果标签 + 刷新入口均在（外观对齐模型页）', async () => {
     await mount()
     const row = rowByName('已上线服务')
     // 结果标签（复用检活四态）与刷新图标入口都在

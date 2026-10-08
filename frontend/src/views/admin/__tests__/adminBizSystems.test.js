@@ -211,7 +211,24 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
   })
 
   it('关键词 + 状态筛选 + 【查询】 → listBizSystems 收到 keyword/state，并回第 1 页（md §一.2 L18）', async () => {
+    // 防恒真：fixture 扩 2 条同样命中「资源 + 审核中」的旧行（共 5 行），每页 2 条 → 3 页；
+    // 先翻到第 2 页，查询后命中 3 行仍有 2 页——不回第 1 页就会停在第 2 页（不会被越界钳位掩盖）
+    const extra = [
+      mkBiz({ id: 'biz_4', name: '资源档案系统', status: 'PENDING_REVIEW', updatedAt: '2026-08-20T10:00:00+08:00' }),
+      mkBiz({ id: 'biz_5', name: '资源调度平台', status: 'PENDING_REVIEW', updatedAt: '2026-08-19T10:00:00+08:00' })
+    ]
+    admin.listBizSystems.mockImplementation(async (params = {}) => {
+      let list = [...LIST, ...extra]
+      const kw = (params.keyword || '').toLowerCase()
+      if (kw) list = list.filter((b) => b.name.toLowerCase().includes(kw) || b.description.toLowerCase().includes(kw))
+      if (params.state) list = list.filter((b) => b.status === params.state)
+      return { list: list.map((b) => ({ ...b })), total: list.length }
+    })
+    pageSizeState.size = 2
     await mount()
+    pager().querySelector('[aria-label="下一页"]').click()
+    await flush()
+    expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('2')
     const input = container.querySelector('.lt-search')
     input.value = '资源'
     input.dispatchEvent(new Event('input'))
@@ -224,9 +241,13 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(admin.listBizSystems).toHaveBeenLastCalledWith(
       expect.objectContaining({ keyword: '资源', state: 'PENDING_REVIEW' })
     )
-    expect(rows().length).toBe(1)
-    expect(rowByName('人力资源系统')).toBeTruthy()
+    expect(pager().textContent).toContain('共 3 条数据')
     expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('1')
+    // 第 1 页按最近更新倒序：人力资源系统（08-24）+ 资源档案系统（08-20）
+    expect(rows().map((r) => r.querySelector('.biz-cell-name').textContent.trim())).toEqual([
+      '人力资源系统',
+      '资源档案系统'
+    ])
   })
 
   it('查询无结果 → 「没有匹配的业务系统」，输入框保留当前条件（md §一.1 L14 / §四）', async () => {

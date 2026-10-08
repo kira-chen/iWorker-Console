@@ -505,7 +505,7 @@ describe('ApiEditor · 示例问题【AI 生成】（md §三.2 L120）', () => 
     expect(ai.getAttribute('title')).toBe('请先填写API 描述')
   })
 
-  it('填了描述点【AI 生成】 → 「生成中…」→ 500ms 后 3 条回填、每条 ≤60 字、toast「AI 内容已生成，请确认后保存」；再点覆盖', async () => {
+  it('填了描述点【AI 生成】 → 「生成中…」→ 500ms 后 3 条回填、每条 ≤AI_LIVE_QUESTION_MAX（300）字（md prd-API.md「单条示例问题最多 300 字符」）、toast「AI 内容已生成，请确认后保存」；再点覆盖', async () => {
     vi.useFakeTimers()
     try {
       const el = await mountEditor(null)
@@ -522,7 +522,10 @@ describe('ApiEditor · 示例问题【AI 生成】（md §三.2 L120）', () => 
       await nextTick()
       const qs = eqInputs(el).map((i) => i.value)
       expect(qs).toHaveLength(3)
-      expect(qs.every((q) => q.trim() && q.length <= 60)).toBe(true)
+      // 上限常量取自 aiLiveGenerate（动态 import：静态 import 会先于 element-plus 桩的 msg 初始化求值）
+      const { AI_LIVE_QUESTION_MAX } = await import('@/utils/aiLiveGenerate')
+      expect(AI_LIVE_QUESTION_MAX).toBe(300)
+      expect(qs.every((q) => q.trim() && q.length <= AI_LIVE_QUESTION_MAX)).toBe(true)
       expect(qs[0]).toContain('报销查询')
       expect(msg.success).toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
       expect(el.querySelector('.ad-eq-ai').textContent.trim()).toBe('AI 生成')

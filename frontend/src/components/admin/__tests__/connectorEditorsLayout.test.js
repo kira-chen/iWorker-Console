@@ -179,7 +179,7 @@ describe('McpEditor · 抽屉骨架（md MCP §三.3 / §三.4.2 / §三.5）', 
     expect(el.querySelector('.icon-field-stub').dataset.readonly).toBe('1')
   })
 
-  it('示例问题位于「基本信息」卡内作子分区，不是独立分区（md §三.3 L242「位于基本信息卡片内」）', async () => {
+  it('示例问题位于「基本信息」卡内作子分区，不是独立分区（md §三.1 L198「抽屉内容按“基本信息、连接与鉴权、工具清单”等分区卡片展示」；§三.3 L247 示例问题列在基本信息下）', async () => {
     const el = await mountEditor(MCP)
     const sub = el.querySelector('.connector-basic-subsection')
     expect(sub).not.toBeNull()
@@ -189,7 +189,7 @@ describe('McpEditor · 抽屉骨架（md MCP §三.3 / §三.4.2 / §三.5）', 
     expect(titlesOf(el).some((t) => t.startsWith('示例问题'))).toBe(false)
   })
 
-  it('编辑态底部：「被技能引用」区 + 创建时间行（md §三.7 引用与时间信息）', async () => {
+  it('编辑态底部：「被技能引用」区 + 创建时间行（md §三.7 被技能引用 / §三.9 时间信息）', async () => {
     adminApi.getMcp.mockResolvedValue({
       name: 'CRM MCP',
       icon: '◎',

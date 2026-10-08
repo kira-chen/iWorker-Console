@@ -444,13 +444,20 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     ).toBe('业务页名称最多 20 个字符')
   })
 
-  it('业务页逐项：description 选填 ≤100（md 未写上限，代码现状；审计 J15 待补 md）', () => {
+  it('业务页逐项：描述选填，最多 100 个字符（md §三.3 L113「描述（选填，最多 100 个字符）」）', () => {
     expect(
       validateBizSystemForm({
         ...valid,
         bizPages: [{ url: 'https://a.com', name: '工作台', description: 'd'.repeat(101) }]
       }).errors['bizPages.0.description']
-    ).toBeTruthy()
+    ).toBe('业务页描述最多 100 个字符')
+    // 边界：恰 100 字通过
+    expect(
+      validateBizSystemForm({
+        ...valid,
+        bizPages: [{ url: 'https://a.com', name: '工作台', description: 'd'.repeat(100) }]
+      }).errors['bizPages.0.description']
+    ).toBeUndefined()
   })
 
   it('业务页条目数 ≤20（md §三.3 L106）', () => {

@@ -15,7 +15,7 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - §三.1 三态底部按钮：新建【取消】【保存】（3cc4591 起主按钮为「保存」）、查看态仅【关闭】；
  *  - watcher immediate 防回归（5303c7c）。
  * 桩：api/admin、element-plus（ElMessage/ElMessageBox）、vue-router、IconPickerPopover（IconField 真组件套它）、EP 最小桩；
- * defValidate 走 importOriginal（真校验 + 真 isBlankBizPage）。
+ * defValidate 为真实现（未 mock）。
  */
 
 const admin = {
@@ -39,10 +39,6 @@ const admin = {
   deleteBizSystemOwnedSkill: vi.fn(() => Promise.resolve())
 }
 vi.mock('@/api/admin', () => admin)
-
-// defValidate 用真实现（编辑器 import 了 validateBizSystemForm / isBlankBizPage / 四个上限常量；
-// 原桩缺 isBlankBizPage，触碰保存即炸——2026-09-12 测试审计 T14 改 importOriginal 展开）
-vi.mock('@/utils/defValidate', async (importOriginal) => ({ ...(await importOriginal()) }))
 
 // 图标选择 popover（IconField 内部依赖）：桩掉，避免其内部 api/position 链路在 jsdom 里发真实请求；
 // props 补齐 readonly / headless（IconField 透传），点【选图标】回吐 pick
