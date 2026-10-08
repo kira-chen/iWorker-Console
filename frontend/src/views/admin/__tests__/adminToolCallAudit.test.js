@@ -8,9 +8,9 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * AdminToolCallAudit.vue 真实挂载冒烟（2026-09-28 PRD 首次落地，对齐
  * docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md）。
  *
- * 参照 adminRolesSmoke.test.js 的真实挂载写法（只 mock 静态数据源在真实
- * 模块里没有网络层，本页数据本身就是常量数组，无需 mock @/api/toolCallAuditMock）：
- * 断言页头/统计卡片/列表字段/筛选联动/详情抽屉/CSV 导出五块 PRD 行为齐全。
+ * 参照 adminRolesSmoke.test.js 的真实挂载写法：本页数据源 @/api/toolCallAuditMock 是前端常量数组、
+ * 没有网络层，因此不 mock 它，直接读真种子；只替换浏览器侧的 URL.createObjectURL / revokeObjectURL。
+ * 断言页头 / 统计卡片 / 列表字段 / 筛选联动 / 详情抽屉 / CSV 导出六块 PRD 行为齐全。
  */
 const ROWS = (await import('@/api/toolCallAuditMock')).toolCallRecords
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -129,13 +129,29 @@ describe('AdminToolCallAudit · 真实 Element Plus 挂载冒烟', () => {
     expect(drawerText).toContain('实际请求参数')
   })
 
-  it('导出 CSV：生成 objectURL 并成功提示（PRD §三）', async () => {
+  it('导出 CSV 只导当前筛选结果：先点「执行失败」卡片再导出 → 提示「已导出 N 条筛选结果」，文件数据行正好 N 条（PRD §三）', async () => {
     mountReal()
+    await flush()
+    // N = 种子里落在默认 90 天窗口内的执行失败条数（C-1010、C-1001）
+    const failedIds = ROWS.filter((r) => r.result === 'FAILED').map((r) => r.id)
+    const N = failedIds.length
+    expect(N).toBe(2)
+    const failedCard = [...container.querySelectorAll('.metric-card')].find((c) => c.textContent.includes('执行失败'))
+    failedCard.click()
     await flush()
     const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出筛选结果 CSV')
     expect(exportBtn).toBeTruthy()
     exportBtn.click()
     await flush()
     expect(createObjectURL).toHaveBeenCalledTimes(1)
+    expect(document.body.textContent).toContain(`已导出 ${N} 条筛选结果`)
+    // 解析导出的 Blob：去 BOM 后首行为表头，其余为数据行，且每行都是执行失败记录
+    const csv = (await createObjectURL.mock.calls[0][0].text()).replace(/^\uFEFF/, '')
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toContain('"请求编号"')
+    const dataLines = lines.slice(1)
+    expect(dataLines).toHaveLength(N)
+    expect(dataLines.map((l) => l.split(',')[0].replace(/"/g, ''))).toEqual(failedIds)
+    dataLines.forEach((l) => expect(l).toContain('"执行失败"'))
   })
 })

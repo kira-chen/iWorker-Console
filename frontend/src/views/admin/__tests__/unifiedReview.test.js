@@ -160,7 +160,7 @@ const rowBtn = (row, text) => [...row.querySelectorAll('.rev-ops .el-button')].f
 const rowOps = (row) => [...row.querySelectorAll('.rev-ops .el-button')].map((b) => b.textContent.trim())
 const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 
-// 夹具照 reviewsMock 种子形状（id 1 API 首次发布 / 2 技能新版本 / 3 业务系统停用 / 5 岗位新版本）
+// 虚构夹具，字段形状同 reviewsMock 种子（id 1 API 首次发布 / 2 技能新版本 / 3 业务系统停用 / 5 岗位新版本）
 const ROWS = [
   { id: 1, name: '客户资料查询', description: '按客户编号读取客户基础信息', type: 'TOOL', subType: 'API', refId: 'api_1103', submitterName: 'config.admin', submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', requestAction: 'FIRST_PUBLISH', version: '—' },
   { id: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', type: 'SKILL', refId: 'sk_302', submitterName: 'li.na', submittedAt: '2026-08-28 09:18', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' },
@@ -213,7 +213,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(toolbarBtn('查询')).toBeTruthy()
   })
 
-  it('业务类型下拉选中「停用」申请类型 → 即时按 requestAction 重查回第 1 页；【查询】带 keyword 且行随结果变化（md §二 L18）', async () => {
+  it('申请类型下拉选中「停用」 → 即时按 requestAction 重查回第 1 页；【查询】带 keyword 且行随结果变化（md §二 L18）', async () => {
     listReviews.mockImplementation((p = {}) => {
       let list = ROWS
       if (p.requestAction) list = list.filter((r) => r.requestAction === p.requestAction)

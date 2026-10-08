@@ -13,7 +13,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - §4.1 待审核底栏 关闭|撤回申请，撤回二次确认 → 「申请已撤回」；§4.2 已通过仅 关闭；
  *   §4.3/§4.4 已驳回 / 已撤回底栏 关闭|前往修改|重新提交，重新提交 → 「提交成功」提示窗（alertResubmitSuccess）；
  * - §七 L97 空态「暂无申请记录」；L99 撤回时已被审核 → toast 原因并重拉；L100 重新提交失败 → toast 原因。
- * 列表【撤回】走 warning 色档（5585a2b 负责人拍板「与全局色值保持一致」，md 未规定颜色）。
+ * 列表【撤回】走 warning 色档，对齐 md 我的申请 §3.1（【撤回】橙色，与全站「停用/下架/撤回」等状态类操作统一）。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩，
  * GovObjectDetail 桩只验「开没开、带的什么、回传什么」。
  */
@@ -144,7 +144,7 @@ const rowOps = (row) => [...row.querySelectorAll('.ma-ops .el-button')].map((b) 
 const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 const detailBtns = () => [...container.querySelectorAll('.gov-detail .gov-btn')]
 
-// 夹具照 myApplicationsMock 种子形状：四态各一 + 技能行 + 对象已删除行
+// 虚构夹具，字段形状同 myApplicationsMock 种子：四态各一 + 技能行 + 对象已删除行
 const ROWS = [
   { id: 501, objectName: '客户资料查询', description: '按客户编号读取客户基础信息和当前商机状态', businessType: 'API', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 10:30', result: 'PENDING', reviewer: '', reviewedAt: '', rejectReason: '', refId: 'api_1103', objectDeleted: false },
   { id: 502, objectName: '经营分析专家', description: '汇总经营数据，识别异常并形成管理建议', businessType: 'EXPERT', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-27 16:20', result: 'APPROVED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 17:05', rejectReason: '', refId: 201, objectDeleted: false },
@@ -249,7 +249,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(rowOps(rowById(502))).toEqual(['查看'])
   })
 
-  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡；行与六个信息字段照常保留（md §四 L47 / §七 L98）', async () => {
+  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡、操作列只剩【查看】、详情底栏只剩【关闭】；行与六个信息字段照常保留（md §四 L47 / §七 L98）', async () => {
     await mount()
     const row = rowById(510)
     const view = rowBtn(row, '查看')
@@ -266,6 +266,14 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toEqual(['专家', '停用', '已撤回'])
     // 对象仍在的行【查看】可点
     expect(rowBtn(rowById(502), '查看').disabled).toBe(false)
+    // 已撤回但对象已删除：操作列只剩【查看】，不出【重新提交】（同状态对象仍在的 504 有【重新提交】）
+    expect(rowOps(row)).toEqual(['查看'])
+    expect(rowOps(rowById(504))).toEqual(['查看', '重新提交'])
+    // 详情底栏同口径只剩【关闭】（不出【前往修改】【重新提交】）。界面上【查看】已置灰进不来，
+    // 这是防御分支，故直接调页面内 openDetail 打开它来验
+    app._instance.setupState.openDetail(byId(510))
+    await flush()
+    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭'])
   })
 
   it('列表【撤回】→ 二次确认（confirmWithdrawMyApp 收到对象名）→ withdrawMyApplication(id) → toast「申请已撤回」→ 重拉（md §4.1 L51）', async () => {
@@ -289,6 +297,8 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     await flush()
     expect(ElMessage.error).toHaveBeenCalledWith('该申请已被审核，无法撤回，请查看最新审核结果')
     expect(ElMessage.success).not.toHaveBeenCalled()
+    // 挂载 1 次 + 409 后重拉 1 次（取消那次不拉）
+    expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
   it('非技能行【查看】→ 开只读原生详情（readonly=true、不开快照闸门）；待审核底栏 关闭|撤回申请（danger）（md §四 / §4.1）', async () => {

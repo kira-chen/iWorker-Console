@@ -233,13 +233,22 @@ describe('GovObjectDetail · 分发与吸底操作栏（md 审核中心 §四 / 
     expect(editor('BizSystemEditor').dataset.id).toBe('biz_2102')
   })
 
-  it('模型：先用行数据合成最小对象兜底、再按 refId 拉模型行传给 ModelConfigEditDialog（吸底栏 820px 宽 jsdom 不解析 min()，不在此断）', async () => {
+  it('模型：按 refId 取到完整模型行才打开 ModelConfigEditDialog（取到前 visible=false），取不到用行数据合成对象兜底（吸底栏 820px 宽 jsdom 不解析 min()，不在此断）', async () => {
+    // getModel 挂起，先验「没取到不打开」：抽屉只在 visible 变 true 那刻从 props.model 灌表单，提前打开会灌进空字段
+    let resolveModel
+    getModel.mockImplementationOnce(() => new Promise((r) => (resolveModel = r)))
     await mount()
     await open({ kind: 'MODEL', refId: 'md_104', item: { name: 'Kimi K2', description: '长上下文文本生成模型' } })
     await new Promise((r) => setTimeout(r, 0)) // 动态 import('@/api/adminModel') 需一个宏任务
     await flush()
     expect(getModel).toHaveBeenCalledWith('md_104')
-    expect(extra('ModelConfigEditDialog').model).toEqual({ id: 'md_104', name: 'Kimi K2' })
+    expect(editor('ModelConfigEditDialog').dataset.visible).toBe('false')
+    // 取回完整行 → 打开，且 model 就是完整行（不是合成的最小对象）
+    const fullRow = { id: 'md_104', name: 'Kimi K2', provider: 'Moonshot', modelType: 'TEXT', contextWindow: 128000 }
+    resolveModel(fullRow)
+    await flush()
+    expect(editor('ModelConfigEditDialog').dataset.visible).toBe('true')
+    expect(extra('ModelConfigEditDialog').model).toEqual(fullRow)
     // 拉不到（demo 无对应实体）→ 保持合成对象兜底
     getModel.mockRejectedValueOnce(new Error('模型不存在'))
     Object.assign(state, { refId: 'md_999', item: { name: '未知模型', description: 'd' } })
