@@ -213,4 +213,14 @@ describe('myApplicationsMock · 持久化 restore 形状守卫', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('myApplications 存量数据不可用'), expect.any(Error))
     warn.mockRestore()
   })
+
+  // 2026-10-08 /test-audit 补缺口（md 我的申请 §4.1「撤回成功后审核结果更新为『已撤回』」）：撤回后刷新仍是已撤回。
+  it('撤回一条待审申请后刷新 → 该申请审核结果仍是「已撤回」', async () => {
+    const m = await import('../myApplicationsMock')
+    await m.withdrawMyApplication(518) // 版本管理 Mac v1.2.0 发布申请（待审核）
+
+    vi.resetModules()
+    const reloaded = await import('../myApplicationsMock')
+    expect((await reloaded.getMyApplication(518)).result).toBe('WITHDRAWN')
+  })
 })

@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './helpers/listPageStubs'
 
 /**
  * UserSkillReviews.vue 列表页单测（2026-09-08 PRD-20260908 对齐整页重做）。
@@ -95,42 +97,9 @@ vi.mock('@/components/admin/RiskSettingsDrawer.vue', () => ({
 const UserSkillReviews = (await import('@/views/admin/UserSkillReviews.vue')).default
 
 // 2026-09-12 测试审计 T39：el-table-column / 行单元 桩改用共享 helper（表头阶段渲染 header 插槽以验「提交时间 ↓」）。
-// el-table 本地包一层：helper 的 tableStub 按下标 i 作 key，行集合变了（查询 / 筛选后）同下标的 RowCells 会被复用、
-// setup 里 provide 的仍是旧行对象 → 断不出「行内容变化」；这里改用 row.id 作 key（行换了就重建）。
-const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-head' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
-      ])
-  }
-}
-const elInput = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'keyup', 'clear'],
-  template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
-}
+// el-table 也用 helper 的 tableStub（2026-10-08 T16）：它按 row.id 作 key，查询 / 筛选后行换了就重建，能断出「行内容变化」。
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 // 下拉桩：用例经 CustomEvent('pick', { detail }) 模拟用户选中一项 → 同步 v-model 并触发 change（EP 行为）
-const elSelect = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'change'],
-  template:
-    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
-}
-const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
-const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
-const elButton = {
-  props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean },
-  emits: ['click'],
-  template:
-    '<button class="el-button" :disabled="disabled" :data-type="type" :data-link="link" @click="!disabled && $emit(\'click\')"><slot /></button>'
-}
 
 let app, container
 async function mount() {
@@ -157,9 +126,8 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls, toolbarBtn } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
-const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 
 const ROWS = [
   { id: 'usr_1', skillName: '自动发送邮件', description: '批量向外部邮箱发送邮件', submitter: 'zhangsan', submittedAt: '2026-09-01T10:23:00+08:00', status: 'PENDING', scale: '通用' },

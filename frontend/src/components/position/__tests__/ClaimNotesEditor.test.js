@@ -4,7 +4,7 @@ import { createApp, h, ref, nextTick } from 'vue'
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 
 /**
- * 领用页文案编辑器单测（原「岗位认领说明」；2026-09-08 PRD-20260908 对齐 md §2.3 改名，文案逐字照 md / 原型 L4240；
+ * 领用页文案编辑器单测（原「岗位认领说明」；2026-09-08 PRD-20260908 对齐 md §2.4 改名，文案逐字照 md / 原型 L4240；
  * 2026-09-04 PRD-20260903 对齐首建，md 三.2.3；
  * 2026-09-04 卡片化返工同步更新：新增入口移宿主卡片头（defineExpose startAdd / editing / atLimit），
  * 列表行改行内输入框就地编辑并实时回吐，空态/hint 文案照原型排版）。
@@ -56,7 +56,7 @@ afterEach(() => {
 
 const btnByText = (root, text) => [...root.querySelectorAll('.stub-btn')].find((b) => b.textContent.trim() === text)
 
-describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260908 对齐）', () => {
+describe('ClaimNotesEditor · 领用页文案（md §2.4 · 2026-09-08 PRD-20260908 对齐）', () => {
   it('空态文案照原型排版；列表态渲染序号圆点 + 行内输入框 + 删除 + 底部 hint', () => {
     const empty = mount([])
     expect(empty.container.textContent).toContain('暂无领用页文案，点击"新增一条"添加')
@@ -81,7 +81,7 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     expect(emitted[0]).toEqual(['a', 'b改'])
   })
 
-  it('startAdd（宿主卡片头「＋ 新增一条」直调）→ 输入 → 保存：回吐追加后的数组 + toast；输入 100 字上限', async () => {
+  it('startAdd（宿主卡片头「＋ 新增一条」直调）→ 输入 → 保存：回吐追加后的数组 + toast；输入 300 字上限', async () => {
     const { container: c, emitted, editorRef } = mount(['已有'])
     editorRef.value.startAdd()
     await nextTick()
@@ -120,7 +120,7 @@ describe('ClaimNotesEditor · 领用页文案（md §2.3 · 2026-09-08 PRD-20260
     expect(ElMessage.success).toHaveBeenCalledWith('领用页文案已删除')
   })
 
-  it('满 6 条 atLimit=true，startAdd 不展开草稿行、toast「领用页文案最多 6 条」（md §2.3 L188；J18）；只读态无输入框/删除入口且 startAdd 不生效、不 toast', async () => {
+  it('满 6 条 atLimit=true，startAdd 不展开草稿行、toast「领用页文案最多 6 条」（md §2.4；J18）；只读态无输入框/删除入口且 startAdd 不生效、不 toast', async () => {
     const full = mount(['1', '2', '3', '4', '5', '6'])
     expect(full.editorRef.value.atLimit).toBe(true)
     full.editorRef.value.startAdd()

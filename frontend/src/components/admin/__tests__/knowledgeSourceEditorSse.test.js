@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
+import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
  * KnowledgeSourceEditor.vue · MCP 数据源新增 sse（旧版 HTTP+SSE）传输方式（2026-09-21）。
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §七.2：传输方式 streamable-http / stdio / sse；
  * sse 的字段与鉴权同 streamable-http（§七.2.3）。
  *
- * 真挂载 Element Plus（同 knowledgeBaseEditorScope.test.js）。重点盯一个回归：编辑器里凡「非 http 即 stdio」
+ * 真挂载 Element Plus（同 knowledgeBaseEditor.test.js）。重点盯一个回归：编辑器里凡「非 http 即 stdio」
  * 的 else 分支，sse 不能掉进去——否则选 sse 保存会被要求「请选择 Command」。
  */
 
@@ -31,17 +32,19 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const drawer = () => mounted.container.querySelector('.el-drawer')
-const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
+const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
 /** 按标签文字定位表单项，不依赖顺序 */
 const itemByLabel = (label) =>
   [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === label)
-const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
 const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === label).click()
 
 async function mountMcpCreate() {
   api.listEmbeddingModelOptions.mockResolvedValue([])
-  mounted = mountReal(Editor, { visible: true, sourceId: null })
+  // 组件对 visible 的 watch 不带 immediate，visible 由 false→true 时才重置表单并加载（与列表页打开抽屉同路径），故先关后开
+  const p = reactive({ visible: false, sourceId: null })
+  mounted = mountReal(Editor, p)
+  await flushAll(4)
+  p.visible = true
   await flushAll(10)
   formModel().sourceType = 'MCP'
   await flushAll(6)

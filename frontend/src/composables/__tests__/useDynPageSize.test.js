@@ -6,8 +6,8 @@ import { useDynPageSize, computeDynPageSize } from '@/composables/useDynPageSize
 /**
  * useDynPageSize 组件内分支（resize 防抖重算）——2026-09-12 审计 T57 补。
  *
- * 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md L48「根据页面可用高度动态计算每页条数，
- * 最少 5 条、最多 30 条，窗口尺寸变化后按新高度重新计算」。
+ * 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md L37「列表根据页面可用高度动态计算每页条数，
+ * 最少 5 条、最多 30 条」。resize 后重算为 md 未写、前端统筹（见 useDynPageSize.js 头注）。
  * 纯函数分支（computeDynPageSize 夹取 5–30、900 兜底）已在 useAdminList.test.js 钉住；
  * 这里只测需要组件上下文 + window 的那段（useDynPageSize.js:52-66）：
  *  - mounted 后 resize → 200ms 防抖 → 按新高度重算（900→9 变 1080→12）；

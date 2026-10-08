@@ -86,6 +86,35 @@ describe('全局弹窗 Esc 行为（加固后；每条用例自足，不依赖�
     expect(ElDrawer.props.closeOnPressEscape.default).toBe(false)
   })
 
+  // 2026-10-08 审计 T8：上一条只钉 prop 默认值，这条真挂载 Drawer 按 Esc，验证默认值确实传到行为层。
+  it('Drawer 真挂载按 Esc 不关闭', async () => {
+    let closed = false
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    app = createApp({
+      render: () =>
+        h(
+          ElDrawer,
+          {
+            modelValue: true,
+            onClose: () => {
+              closed = true
+            },
+            title: 'D',
+            appendToBody: true
+          },
+          { default: () => h('span', 'drawer body') }
+        )
+    })
+    app.mount(host)
+    await frame()
+    expect(document.querySelector('.el-drawer')).toBeTruthy()
+    pressEsc()
+    await frame()
+    expect(closed).toBe(false)
+    expect(document.querySelector('.el-drawer')).toBeTruthy()
+  })
+
   it('MessageBox.confirm 按 Esc 不关闭（包装层注入生效）', async () => {
     const p = ElMessageBox.confirm('确认吗？', '标题')
     p.catch(() => {}) // 清理阶段 close 触发的 reject 不算失败

@@ -4,14 +4,14 @@ import { createApp, h, nextTick } from 'vue'
 
 /**
  * UserPositionEditDialog.vue（修改绑定岗位弹窗）—— 2026-09-12 对齐
- * docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §3.3（修改绑定）/ §4.3.3（重新绑定）
+ * docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §四.1 单个分配（修改绑定）/ §五 待分配申请处理（重新绑定）
  * （历史出处：提案 20260721-2 岗位分配）。
  *
  * 覆盖：
- *  - §3.3 弹窗文案：顶部「为 显示名 选择绑定岗位，保存后即时生效」、首项「未绑定」、换绑提示；
- *  - §3.3 换绑 / 解绑 → setUserPosition(userId, 新岗位 | null) + 提示「岗位绑定已更新」+ 关窗（update:visible false）+ emit saved；
- *  - 无变化：默认直接关窗，不打接口、不提示；forceSave=true（§4.3.3 重新绑定）未变化仍保存并 emit saved；
- *  - 保存失败：显具体原因或「保存失败，请重试」，窗口保持打开。
+ *  - §四.1 弹窗规则（注：md 弹窗名为「分配岗位」，下方标题断言仍取代码现状「修改绑定岗位」，差异未在本次处置范围）：顶部「为 显示名 选择绑定岗位，保存后即时生效」、首项「未绑定」、换绑提示；
+ *  - §四.1「点击【保存】后更新绑定关系、关闭弹窗…提示岗位绑定已更新」：换绑 / 解绑 → setUserPosition(userId, 新岗位 | null) + 提示「岗位绑定已更新」+ 关窗（update:visible false）+ emit saved；
+ *  - 无变化：默认直接关窗，不打接口、不提示；forceSave=true（§五 待分配申请处理「保存后系统自动标记该申请为已处理」）未变化仍保存并 emit saved；
+ *  - 保存失败（§七「保存失败：弹窗保持打开并展示失败原因」）：显具体原因或「保存失败，请重试」，窗口保持打开。
  */
 
 const api = { setUserPosition: vi.fn() }
@@ -76,7 +76,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('UserPositionEditDialog · 弹窗文案（md §3.3 L64-69）', () => {
+describe('UserPositionEditDialog · 弹窗文案（md §四.1 单个分配·弹窗规则）', () => {
   it('标题「修改绑定岗位」；顶部「为 X 选择绑定岗位，保存后即时生效」；默认选中当前岗位、首项「未绑定」；换绑提示照 md', async () => {
     await mount({ visible: true, row: ROW, positionOptions: OPTS })
     expect(container.querySelector('.el-dialog').dataset.title).toBe('修改绑定岗位')
@@ -112,7 +112,7 @@ describe('UserPositionEditDialog · 弹窗文案（md §3.3 L64-69）', () => {
   })
 })
 
-describe('UserPositionEditDialog · 保存（md §3.3 L70）', () => {
+describe('UserPositionEditDialog · 保存（md §四.1「点击【保存】后更新绑定关系、关闭弹窗…提示岗位绑定已更新」/ §七「保存失败」）', () => {
   it('换绑：选新岗位保存 → setUserPosition(userId, 新岗位) + 提示「岗位绑定已更新」+ 关窗 + emit saved', async () => {
     await mount({ visible: true, row: ROW, positionOptions: OPTS })
     container.querySelector('.__new').click()
@@ -147,7 +147,7 @@ describe('UserPositionEditDialog · 保存（md §3.3 L70）', () => {
     expect(savedSpy).not.toHaveBeenCalled()
   })
 
-  it('forceSave=true（§4.3.3 重新绑定）：未变化也照常保存当前岗位并 emit saved + 提示', async () => {
+  it('forceSave=true（§五 待分配申请处理·重新绑定）：未变化也照常保存当前岗位并 emit saved + 提示', async () => {
     await mount({ visible: true, row: ROW, positionOptions: OPTS, forceSave: true })
     saveBtn().click()
     await flush()

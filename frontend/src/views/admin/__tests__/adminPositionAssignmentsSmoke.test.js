@@ -1,0 +1,63 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mountReal, flushAll } from './helpers/smokeMount'
+
+/**
+ * AdminPositionAssignments.vue 真实挂载冒烟（2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §一 / §二 / §3.1）。
+ *
+ * adminPositionAssignments.test.js 把 el-table / el-dialog / 编辑弹窗全桩，拦不住组件 setup 期错误。
+ * 本文件用 helpers/smokeMount 的 mountReal（真 Element Plus + 真 ListStates / ListPagination / UserPositionEditDialog），
+ * 只 mock api 层，断言：挂载不抛、console.error 零调用；页头「岗位管理」+ 说明；工具栏搜索占位与【批量绑定】；
+ * 行内种子用户 +「待分配」标签；分页条「共 N 条数据」。
+ */
+const listPositionAssignments = vi.fn()
+vi.mock('@/api/positionAssignment', () => ({
+  listPositionAssignments: (...a) => listPositionAssignments(...a),
+  countPendingApplications: vi.fn(() => Promise.resolve({ count: 1 })),
+  markApplicationAssigned: vi.fn(() => Promise.resolve({})),
+  setUserPosition: vi.fn(() => Promise.resolve({}))
+}))
+vi.mock('@/api/position', () => ({
+  listPositions: vi.fn(() => Promise.resolve({ list: [{ positionId: 401, name: '经营分析岗', status: 'published' }], total: 1 }))
+}))
+
+const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssignments.vue')).default
+
+const ROWS = [
+  { userId: 201, username: 'zhangwei', displayName: '张伟', status: 'active', positionId: 401, positionName: '经营分析岗', hasPendingRequest: false, pendingRequestId: null },
+  { userId: 203, username: 'chenyu', displayName: '陈宇', status: 'active', positionId: null, positionName: null, hasPendingRequest: true, pendingRequestId: 801 }
+]
+
+let mounted, errorSpy
+beforeEach(() => {
+  listPositionAssignments.mockReset().mockResolvedValue({ list: ROWS, total: 13 })
+  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+afterEach(() => {
+  mounted?.unmount()
+  mounted = null
+  errorSpy.mockRestore()
+})
+
+describe('AdminPositionAssignments · 真实 Element Plus 挂载冒烟', () => {
+  it('整页真挂载不抛、console.error 零调用；页头「岗位管理」、行文案、分页条「共 13 条数据」齐全（md §一 / §二 / §3.1）', async () => {
+    expect(() => { mounted = mountReal(AdminPositionAssignments) }).not.toThrow()
+    await flushAll(10)
+    expect(errorSpy).not.toHaveBeenCalled()
+
+    const { container } = mounted
+    expect(container.querySelector('.page-header-title').textContent.trim()).toBe('岗位管理')
+    expect(container.textContent).toContain('管理用户岗位绑定，分配岗位或处理待分配申请。')
+    expect(container.querySelector('input[placeholder="搜索用户名 / 显示名"]')).toBeTruthy()
+    expect(container.textContent).toContain('批量绑定')
+
+    expect(container.querySelector('.el-table')).toBeTruthy()
+    expect(container.textContent).toContain('zhangwei')
+    expect(container.textContent).toContain('未绑定')
+    expect(container.textContent).toContain('待分配')
+
+    const pager = container.querySelector('.list-pager')
+    expect(pager).toBeTruthy()
+    expect(pager.textContent).toContain('共 13 条数据')
+  })
+})

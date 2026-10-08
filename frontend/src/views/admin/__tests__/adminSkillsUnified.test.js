@@ -2,10 +2,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * 「技能」页（三类合一）单测。
- * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §一 / §二.1 L47 / §二.2 L54 / §二.3.1 L61-65 / §四；
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §一 / §二.1 列表展示 / §二.2 排序规则 / §二.3.1 操作按钮展示规则 / §四；
  * 文末两个 describe（操作列行渲染 + 右钉列守卫 / 版本管理适配器 + 排序切换）为审计 T49①/T54 新增，
  * 行数据直接注入 rows、适配器为纯函数。
  * 真实 ElementPlus 挂载冒烟见 adminSkillsUnifiedSmoke.test.js。
@@ -13,8 +14,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 【2026-09-12 审计 J4 闭环：去掉 stubEnv('VITE_SKILL_MOCK','0')】
  * 此前 7 条「端点分支」用例断的是 demo 永远不走的真实端点（/fde/admin-skills、三套命名空间的 request 调用），
  * 页面层对 mock 路径零用例。现在数据一律走真 unifiedSkillMock（demo 默认路径），用例改断**用户可见结果**：
- * 删除后行消失 + toast、停用后状态列「审核中」、撤回后恢复、类型切换只剩该类型且回第 1 页、深链只出未被引用的
- * 岗位私有行、翻页切片…；@/api/request 仍换成桩，只用来断言「真实端点零调用」。
+ * 删除后行消失 + toast、停用后状态列「审核中」、撤回后恢复、类型切换只剩该类型且回第 1 页、翻页切片…；@/api/request 仍换成桩，只用来断言「真实端点零调用」。
  * unifiedSkillMock 是模块级共享内存：破坏性用例一律自建技能行；动到种子（sk_302 / sk_303 / sk_308）的用例
  * 在 afterEach 用 _reset 复位，避免随机顺序下互相污染。
  * mock 各写点内置 delay(60~120ms)，用 settle() 真等再冲刷渲染队列。
@@ -24,7 +24,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - 旧「本体状态开关 toggleStatus / 下架 offlineSkill / 上架 onlineSkill / canRemove 删除门控」全部废弃：
  *   操作列按三态出按钮（固定 查看/编辑；未发布 发布+删除；审核中 撤回；已发布 停用+版本管理）；
  * - 停用 = 提交停用审核（stopSkill，被引用拦截 alert）；删除确认文案统一、被引用拦截 alert；
- * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类（只清引用筛选）；
+ * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；
  * - 查看/编辑同标签路由跳转（router.push；查看 = 编辑路由 + ?view=1），不再 window.open 新标签；
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
  */
@@ -53,9 +53,7 @@ vi.mock('@/api/unifiedSkillMock', async (importOriginal) => {
 })
 const skillMock = await import('@/api/unifiedSkillMock')
 
-// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）；skillCategory.js 列表接口不再被本页调用。
-const listSkillCategoriesSpy = vi.fn(() => Promise.resolve([]))
-vi.mock('@/api/skillCategory', () => ({ listSkillCategories: (...a) => listSkillCategoriesSpy(...a) }))
+// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）。
 const listFieldDictSpy = vi.fn(() => Promise.resolve({ skillCategory: [{ name: '办公效率' }] }))
 vi.mock('@/api/fieldDict', () => ({ listFieldDict: (...a) => listFieldDictSpy(...a) }))
 
@@ -95,7 +93,6 @@ vi.mock('@/components/skill/SkillCreateDialog.vue', () => ({
 
 const Page = (await import('@/views/admin/AdminSkillsUnified.vue')).default
 
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const stubs = {
   'el-input': { name: 'el-input', props: ['modelValue'], template: '<div><slot name="prefix" /></div>' },
   'el-select': { name: 'el-select', props: ['modelValue', 'disabled'], template: '<div><slot /></div>' },
@@ -210,7 +207,7 @@ describe('空态分两态（待办 yuepu#32⑤：md 补「首次暂无数据」�
 })
 
 describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端点零调用', () => {
-  it('挂载即从 mock 取回种子行（默认按最近更新时间由近到远、切到动态每页条数），/fde/admin-skills 等真实端点零调用（md §二.1 L47）', async () => {
+  it('挂载即从 mock 取回种子行（默认按最近更新时间由近到远、切到动态每页条数），/fde/admin-skills 等真实端点零调用（md §二.1「每页条数按窗口高度动态计算」/ §二.2「默认按最近更新时间由近到远排列」）', async () => {
     const vm = await mountLoaded()
     expect(realGet).not.toHaveBeenCalled()
     expect(vm.total).toBeGreaterThanOrEqual(9) // 9 条种子（其它用例可能自建行，只断下限）
@@ -220,8 +217,8 @@ describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端
     expect([...times].sort().reverse()).toEqual(times) // desc
   })
 
-  // 分类固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；被清的是「引用状态」筛选。
-  it('类型切换 → 列表只剩该类型行且回第 1 页；分类保留（并生效）、引用筛选被清', async () => {
+  // 分类固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类。
+  it('类型切换 → 只剩该类型行且回第 1 页；分类保留并生效', async () => {
     const vm = await mountLoaded()
     vm.query.type = 'POSITION'
     await settle()
@@ -261,7 +258,7 @@ describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户�
     expect(realPost).not.toHaveBeenCalled()
   })
 
-  it('停用（提交停用审核）：确认文案对齐原型 → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.2 L119 / §二.3.5）', async () => {
+  it('停用（提交停用审核）：确认文案对齐 md §二.3.5「停用「技能名」需提交停用审核。审核通过前客户端仍可使用。」（历史出处：原型） → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.3.4「待审停用撤回后回到已发布」「撤回成功提示已撤回」/ §二.3.5）', async () => {
     const vm = await mountLoaded()
     const row = rowById(vm, 'sk_303') // 种子 303：通用技能 · 已发布 · 无引用
     expect(vm.displayStateLabel(row)).toBe('已发布')
@@ -282,7 +279,7 @@ describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户�
     expect(realDelete).not.toHaveBeenCalled()
   })
 
-  it('撤回在审提交按 version 空/非空恢复：首发在审的岗位私有 308 → 「未发布」；新版在审的市场技能 302 → 「已发布」（md §二.2 L119）', async () => {
+  it('撤回在审提交按 version 空/非空恢复：首发在审的岗位私有 308 → 「未发布」；新版在审的市场技能 302 → 「已发布」（md §二.3.4「撤回后根据 version 字段判断恢复状态」）', async () => {
     const vm = await mountLoaded()
     expect(vm.displayStateLabel(rowById(vm, 'sk_308'))).toBe('审核中')
     await vm.withdraw(rowById(vm, 'sk_308'))
@@ -468,7 +465,7 @@ describe('状态列：V100 停用审核态（回归守护）', () => {
 })
 
 // 2026-09-01 PRD 对齐改造取代旧口径（canRemove 已废弃）：操作列按三态出按钮。
-describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最终覆写态）', () => {
+describe('操作列：三态判定 + 发布就绪门（md §二.3.1 按钮展示规则 / §二.3.3 发布前置条件「任一未完成时不执行发布，【发布】置灰并提示待补齐项」；历史出处：原型 skillActions 最终覆写态）', () => {
   const pub = (status, extra = {}) => [{ target: 'USER_END', status, ...extra }]
 
   it('三态判定：未发布可删可发；审核中只撤回；已发布停用+版本管理', async () => {
@@ -480,7 +477,7 @@ describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最�
     expect(vm.isReviewing({ type: 'PLATFORM', publications: pub('PUBLISHED', { pendingAction: 'DELIST' }) })).toBe(true)
   })
 
-  it('发布就绪门：必填齐 → 就绪提示；缺项 → 「请先补齐必填项：…」按原型同序列出缺项', async () => {
+  it('发布就绪门：必填齐 → 就绪提示；缺项 → 「请先补齐必填项：…」按 md §二.3.3「技能名称、技能类型、技能分类、图标、描述、示例问题或 SKILL.md」同序列出缺项（历史出处：原型同序）', async () => {
     const vm = await mountPage()
     const ready = {
       type: 'PLATFORM', name: 'X', displayCategoryId: '办公效率', icon: '▤',
@@ -560,10 +557,9 @@ describe('最新版本列：展示当前已发布的版本号', () => {
 
 describe('分类选项 / 自动刷新 / 分页', () => {
   // 2026-09-01：分类选项改从 fieldDict（skillCategory 字段）同源取，demo 用「分类名」充当 id。
-  it('挂载从 fieldDict 拉分类选项（名即 id）；skillCategory.js 列表接口零调用', async () => {
+  it('挂载从 fieldDict 拉分类选项（名即 id）', async () => {
     const vm = await mountPage()
     expect(listFieldDictSpy).toHaveBeenCalled()
-    expect(listSkillCategoriesSpy).not.toHaveBeenCalled()
     expect(vm.categoryOptions).toEqual([{ id: '办公效率', name: '办公效率' }])
   })
 
@@ -628,7 +624,7 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(byType.POSITION.source).toBe('fde')
   })
 
-  it('三类 createFn（新签名 { name, categoryName }）→ 真 mock 建出对应类型、带分类的空白技能（md §二.2 L152）', async () => {
+  it('三类 createFn（新签名 { name, categoryName }）→ 真 mock 建出对应类型、带分类的空白技能（md §三.2 手动创建「空白技能仅带入创建弹窗中已填写的技能类型、技能分类和技能名称」）', async () => {
     const vm = await mountPage()
     const byType = Object.fromEntries(vm.createTypeOptions.map((o) => [o.value, o]))
     for (const type of ['POSITION', 'PLATFORM', 'SYSTEM_DEFAULT']) {
@@ -676,9 +672,9 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
 })
 
 /* ====================================================================================== */
-// 2026-09-12 审计 T49①：操作列真正渲染出来的按钮 / 置灰 / title（md §二.3.1 L61-65），此前只断言 isReviewing 等谓词。
+// 2026-09-12 审计 T49①：操作列真正渲染出来的按钮 / 置灰 / title（md §二.3.1 操作按钮展示规则），此前只断言 isReviewing 等谓词。
 // 行数据直接注入 rows（useAdminList 的 ref），不经列表数据源。
-describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+ 右钉列只有「操作」一列（fe11191 防回归）', () => {
+describe('操作列行渲染：三态按钮组合 + 置灰 title（md §二.3.1）+ 右钉列只有「操作」一列（fe11191 防回归）', () => {
   const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
   const rowStubs = {
     ...stubs,
@@ -715,7 +711,7 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
   const btnTexts = (cell) => [...cell.querySelectorAll('button')].map((b) => b.textContent.trim())
   const btn = (cell, t) => [...cell.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
 
-  it('未发布 → 查看 / 编辑 / 发布 / 删除 4 个按钮；【删除】title「删除前需二次确认」；就绪时【发布】可点且 title 为发布说明（md L63）', async () => {
+  it('未发布 → 查看 / 编辑 / 发布 / 删除 4 个按钮；【删除】title「删除前需二次确认」；就绪时【发布】可点且 title 为发布说明（md §二.3.1「未发布：【查看】【编辑】【发布】【删除】，共 4 个按钮」及两处悬停提示）', async () => {
     const { host } = await mountRows([unpublishedReady])
     const cell = opsCellOf(host, '未发布就绪')
     expect(btnTexts(cell)).toEqual(['查看', '编辑', '发布', '删除'])
@@ -725,7 +721,7 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
     expect(btn(cell, '删除').getAttribute('title')).toBe('删除前需二次确认')
   })
 
-  it('未发布缺必填项 → 【发布】置灰，title「请先补齐必填项：…」列出缺项（md L59/L138）', async () => {
+  it('未发布缺必填项 → 【发布】置灰，title「请先补齐必填项：…」列出缺项（md §二.3.3「…任一未完成时不执行发布，【发布】置灰并提示待补齐项」/ §三.3 发布）', async () => {
     const { host } = await mountRows([unpublishedMissing])
     const cell = opsCellOf(host, '—') // 名称空，用占位符行定位
     const pub = btn(cell, '发布')
@@ -735,7 +731,7 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
     expect(pub.getAttribute('title')).toContain('SKILL.md')
   })
 
-  it('审核中 → 查看 / 编辑（置灰，title「审核中不可编辑」）/ 撤回 共 3 个；不出发布/删除/停用/版本管理（md L61/L64/L68）', async () => {
+  it('审核中 → 查看 / 编辑（置灰，title「审核中不可编辑」）/ 撤回 共 3 个；不出发布/删除/停用/版本管理（md §二.3.1「审核中【编辑】置灰并提示审核中不可编辑」「审核中：【查看】【编辑】（置灰）【撤回】，共 3 个按钮」）', async () => {
     const { host } = await mountRows([reviewing])
     const cell = opsCellOf(host, '审核中技能')
     expect(btnTexts(cell)).toEqual(['查看', '编辑', '撤回'])
@@ -744,13 +740,13 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
     expect(edit.getAttribute('title')).toBe('审核中不可编辑')
   })
 
-  it('已发布 → 查看 / 编辑 / 停用 / 版本管理 4 个；【编辑】可点、无 title（md L65）', async () => {
+  it('已发布 → 查看 / 编辑 / 停用 / 版本管理 4 个；【编辑】可点、无 title（md §二.3.1「已发布：【查看】【编辑】【停用】【版本管理】，共 4 个按钮」）', async () => {
     const { host } = await mountRows([published])
     const cell = opsCellOf(host, '已发布技能')
     expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '版本管理'])
     expect(btn(cell, '编辑').disabled).toBe(false)
     expect(btn(cell, '编辑').getAttribute('title') || '').toBe('')
-    // 最新版本列展示当前已发布版本号（md L46）
+    // 最新版本列展示当前已发布版本号（md §二.1「最新版本：展示当前已发布版本号」）
     const row = [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes('已发布技能'))
     expect(row.querySelector('.el-table-column[data-label="最新版本"]').textContent).toContain('v1.0.0')
   })
@@ -779,8 +775,8 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
 
 /* ====================================================================================== */
 // 2026-09-12 审计 T54：版本管理适配器（VersionDrawer 在本文件为桩，此前 versionAdapter 零用例）+ 「最近更新时间」列头排序切换。
-describe('版本管理适配器（md §四）+ 最近更新时间列头排序（md L47/L54）', () => {
-  it('打开版本管理 → 适配器 title「版本管理」、用词 禁用/启用/已启用、最后启用版守卫 tip 逐字（md §四.3 L253-254）', async () => {
+describe('版本管理适配器（md §四）+ 最近更新时间列头排序（md §二.1「最近更新时间…支持点击列头排序」/ §二.2 排序规则）', () => {
+  it('打开版本管理 → 适配器 title「版本管理」、用词 禁用/启用/已启用、最后启用版守卫 tip 逐字（md §四.3「已启用版本展示【禁用】，已禁用版本展示【启用】」「最后一个启用版本不可禁用，提示…」）', async () => {
     const vm = await mountPage()
     const row = { ...rowPlatform, displayCategoryId: '办公效率', publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
     vm.openVersionManage(row)
@@ -801,10 +797,10 @@ describe('版本管理适配器（md §四）+ 最近更新时间列头排序（
     expect(a.submitGate()).toBe('')
   })
 
-  it('市场技能未选分类 → submitGate 给出拦截提示（含 md L231「该技能还未选择「技能分类」，按规则不可提交发布」）；通用/岗位私有不设此门', async () => {
+  it('市场技能未选分类 → submitGate 给出拦截提示（含 md §四.1「该技能还未选择「技能分类」，按规则不可提交发布」）；通用/岗位私有不设此门', async () => {
     const vm = await mountPage()
     vm.openVersionManage({ ...rowPlatform, displayCategoryId: null })
-    // 2026-09-12 审计 K18 闭环：逐字 md L231（原多出的「请到技能编辑页…」一句已删）
+    // 2026-09-12 审计 K18 闭环：逐字 md §四.1 市场技能未选分类拦截提示（原多出的「请到技能编辑页…」一句已删）
     expect(vm.versionAdapter.submitGate()).toBe('该技能还未选择「技能分类」，按规则不可提交发布')
     vm.openVersionManage({ ...rowSystem, displayCategoryId: null })
     expect(vm.versionAdapter.submitGate()).toBe('')
@@ -827,7 +823,7 @@ describe('版本管理适配器（md §四）+ 最近更新时间列头排序（
     expect(vm.versionAdapter).toBe(null)
   })
 
-  it('默认按最近更新时间由近到远（sort=desc、箭头 ↓）；点列头 toggleSort → asc、箭头 ↑；再点回 desc（md L54）', async () => {
+  it('默认按最近更新时间由近到远（sort=desc、箭头 ↓）；点列头 toggleSort → asc、箭头 ↑；再点回 desc（md §二.2「默认按最近更新时间由近到远排列，点击列头切换升降序」）', async () => {
     const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
     const host = document.createElement('div')
     document.body.appendChild(host)

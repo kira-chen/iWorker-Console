@@ -59,6 +59,17 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     expect(restored.list.find((u) => u.username === 'chenyu').currentSpecName).toBe('标准')
   })
 
+  // 2026-10-08 对齐 md 运行规格 §三.3.4「撤销已生效的个人配置后…回退到岗位规格或平台默认规格，不出现无规格」/
+  // §三.4「上层关系解除后自动回退到下一层，不产生未配置状态」
+  it('解除赵敏在「重」上的已生效个人配置 → 来源不再是个人配置，且仍有生效规格（回退到岗位或默认，不出现无规格）', async () => {
+    await unassignRuntimeSpecUser(3, 'zhaomin')
+    const zhaoMin = (await listRuntimeSpecUsers(3)).list.find((u) => u.username === 'zhaomin')
+    expect(zhaoMin.source).not.toBe('USER')
+    expect(['POSITION', 'DEFAULT']).toContain(zhaoMin.source)
+    expect(zhaoMin.currentSpecName).not.toBe('')
+    expect(zhaoMin.currentSpecId).not.toBeNull()
+  })
+
   it('用户自主申请固定进入审批，管理员直接配置立即生效', async () => {
     const created = await createRuntimeSpec({
       name: '申请测试档', boundaryDesc: '测试', cpu: 1, memoryGi: 2, diskGi: 5,

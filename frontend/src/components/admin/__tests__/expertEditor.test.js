@@ -275,6 +275,7 @@ beforeEach(() => {
   getExpertKbScopeRefId.mockReturnValue('ex_1')
 })
 afterEach(() => {
+  vi.useRealTimers() // 2026-10-08：AI 生成用例用 fake timers，失败中断也在此还原，免得串到下一条
   app?.unmount()
   container?.remove()
 })
@@ -301,6 +302,7 @@ describe('ExpertEditor — 新建', () => {
     const errs = errTexts()
     expect(errs).toContain('请填写专家名')
     expect(errs).toContain('请选择专家分类')
+    expect(errs).toContain('请选择专家类型') // 2026-10-08 补：md §三.7「专家类型未选提示"请选择专家类型"」
     expect(errs).toContain('请选择图标')
     expect(errs).toContain('请填写简介')
     expect(errs).toContain('请填写职责描述')
@@ -430,7 +432,7 @@ describe('ExpertEditor — 新建', () => {
 describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () => {
   const swatches = () => [...container.querySelectorAll('input[name="expertBackgroundColor"]')]
 
-  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（md §三.2）', async () => {
+  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（代码现状，md 列举顺序待裁决）', async () => {
     await mount({ expertId: null })
     const radios = swatches()
     expect(radios.map((r) => r.value)).toEqual([
@@ -438,7 +440,7 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
+    // 代码现状顺序（与 md §三.2 列举顺序不同，待裁决）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
     expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
   })
@@ -837,6 +839,33 @@ describe('ExpertEditor — 编辑', () => {
     expect(container.querySelector('.status-tag')).toBeNull()
   })
 
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#49①）：ExpertEditor 自写 #footer，绕开了 DrawerEditor 的 submitBlocked
+  // （#43 只修了默认页脚）；加载失败时【保存】【发布】仍可点。修好后本组会报红——把 it.fails 改回 it 即成正式回归用例。
+  const footerBtn = (text) =>
+    [...container.querySelectorAll('.dr-footer .el-button')].find((b) => b.textContent.trim() === text)
+
+  it.fails('yuepu#49① 加载失败 → 底部【保存】【发布】不可点（不渲染或置灰）', async () => {
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    await mount({ expertId: 201 })
+    expect(container.textContent).toContain('重试') // 前提：确实处于加载失败态
+    for (const text of ['保存', '发布']) {
+      const b = footerBtn(text)
+      expect(!b || b.disabled).toBe(true)
+    }
+  })
+
+  it.fails('yuepu#49① 切换对象后加载失败再点【保存】 → 不得把上一个专家的表单写进当前专家', async () => {
+    await mount({ expertId: 201 })
+    expect(inputs()[0].value).toBe('经营分析专家')
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    propsState.expertId = 203
+    await flush()
+    expect(container.textContent).toContain('重试') // 前提：203 加载失败
+    footerBtn('保存')?.click()
+    await flush()
+    expect(updateExpert).not.toHaveBeenCalled()
+  })
+
   it('快速连切两个对象：先发出的慢请求后返回也不覆盖最新对象（序号守卫）', async () => {
     let releaseSlow
     getExpert.mockImplementation((id) =>
@@ -898,5 +927,41 @@ describe('ExpertEditor — 审核期锁定（兜底）', () => {
     expect(btn('保存')).toBeUndefined()
     expect(btn('发布')).toBeUndefined()
     expect(btn('取消')).toBeTruthy()
+  })
+})
+
+/* ===== 2026-10-08 /test-audit 补缺口：【AI 生成】中途换对象不回填 =====
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.3（【AI 生成】）；待办 yuepu#26：
+ * 抽屉常驻挂载，500ms「生成中…」内切到另一个专家，A 的生成结果不得写进 B 的表单、不弹成功 toast。 */
+describe('ExpertEditor — 【AI 生成】中途换对象（2026-10-08 补缺口 · yuepu#26）', () => {
+  it('点【AI 生成】后 500ms 内改 expertId → 到点不回填新专家的示例问题、不弹「AI 内容已生成」', async () => {
+    vi.useFakeTimers()
+    getExpert.mockImplementation((id) =>
+      Promise.resolve(id === 201
+        ? { ...DETAIL }
+        : { ...DETAIL, id, name: '法务审阅专家', intro: '辅助审阅合同', exampleQuestions: ['问甲', '问乙', '问丙'] })
+    )
+    await mount({ expertId: 201 })
+    btn('AI 生成').click()
+    await flush(2)
+    expect(btn('生成中…')).toBeTruthy()
+    propsState.expertId = 203
+    await flush()
+    expect(inputs()[0].value).toBe('法务审阅专家')
+    vi.advanceTimersByTime(600)
+    await flush(2)
+    expect([inputs()[2], inputs()[3], inputs()[4]].map((i) => i.value)).toEqual(['问甲', '问乙', '问丙'])
+    expect(ElMessage.success).not.toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
+  })
+
+  it('点【AI 生成】后不换对象 → 500ms 到点按当前专家名生成 3 条并回填（对照组）', async () => {
+    vi.useFakeTimers()
+    await mount({ expertId: 201 })
+    btn('AI 生成').click()
+    await flush(2)
+    vi.advanceTimersByTime(500)
+    await flush(2)
+    expect(inputs()[2].value).toBe('请围绕"经营分析专家"给出专业分析')
+    expect(ElMessage.success).toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
   })
 })

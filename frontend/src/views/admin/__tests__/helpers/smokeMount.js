@@ -69,6 +69,25 @@ export function mountReal(Component, props = {}, { plugins = [] } = {}) {
   }
 }
 
+/**
+ * 真挂载抽屉表单的探针（2026-10-08 /test-audit T20 抽出；knowledgeBaseEditor / knowledgeSourceEditor /
+ * knowledgeSourceEditorSse / modelConfigEditDialogSmoke 四份逐字相同）。挂载句柄每条用例重建，故传取值函数：
+ *   const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
+ *
+ * - drawer()：容器内的 .el-drawer 根节点；
+ * - formModel()：真 el-form 的 props.model（即组件的 reactive form），供无法用键盘输入的控件
+ *   （如 el-select allow-create）直接落值。注意：它经 `__vueParentComponent` 取实例——这是 Vue 运行时挂在
+ *   DOM 元素上的**私有字段**，非公开 API，Vue 升级可能失效；集中在此一处，失效时只改这里；
+ * - errorTexts()：抽屉内所有就地红字（真 ElFormItem 渲染的 .el-form-item__error）文案。
+ *   knowledgeSourceEditor.test.js 另收 .ksrc-err / .sme-err，口径不同，仍自定义。
+ */
+export function makeDrawerProbes(getContainer) {
+  const drawer = () => getContainer().querySelector('.el-drawer')
+  const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
+  const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
+  return { drawer, formModel, errorTexts }
+}
+
 /** 连续冲刷微任务 + 渲染队列（mock api 的 resolved promise + 若干 watch 才能落到 DOM）。 */
 export async function flushAll(times = 8) {
   for (let i = 0; i < times; i++) {

@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
+import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
  * AdminConnector.vue（连接器容器页）契约 —— 2026-09-12 测试审计新建（F3，此前零用例）。
  *
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §一：
- * - §一.1 L9-11 页面标题「连接器」/ 说明「平台全部连接器 —— 通用连接器 / 岗位私有 / 市场连接器 统一管理」（2026-09-28 待办 yuepu#31⑤：三份 md 同口径，此前误写成旧文案）/ 三个页签 MCP、API、业务系统；
- * - §一.2 L20 默认打开 MCP；L21 点页签展示对应内容；L22 切走再切回列表 / 搜索 / 筛选状态保持（keep-alive）；
- *   L23 刷新后停留原页签（tab 落 query）；L24 无法识别当前页签时回到 MCP。
+ * - §一.1「页面标题：展示"连接器"」/「页面说明：文案"平台全部连接器 —— 通用连接器 / 岗位私有 / 市场连接器 统一管理"」
+ *   （2026-09-28 待办 yuepu#31⑤：三份 md 同口径，此前误写成旧文案）/「类型页签：展示"MCP、API、业务系统"三个页签」；
+ * - §一.2「进入连接器页面时，默认打开"MCP"页签」「点击不同页签后，页面展示对应的管理内容」
+ *   「切换页签后再返回，原页签中的列表、搜索和筛选状态保持不变」（keep-alive）
+ *   「刷新页面后，仍停留在刷新前所选的页签」（tab 落 query）「页面无法识别当前页签时，自动回到"MCP"页签」。
  *
  * 三个子页以桩替代（各自有独立页面级用例），桩记录 setup 次数用于断言 keep-alive 不重建；
  * vue-router 以响应式 routeMock 注入，router.replace 桩会真的改写 query（模拟路由生效）。
+ *
+ * 2026-10-08 补缺口（/test-audit 连接器组，对齐同一 md §一.1「类型页签」）：末尾新增「真 Element Plus 页签壳」冒烟——
+ * 子页仍为桩，el-tabs / el-tab-pane 用真组件（helpers/smokeMount 的 mountReal），断言挂载不抛、console.error 零调用、三个页签文案在。
  */
 const setupCount = { mcp: 0, api: 0, biz: 0 }
 const mkStub = (key, cls) => ({
@@ -84,7 +90,7 @@ afterEach(() => {
 })
 
 describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
-  it('页头标题「连接器」+ 说明逐字（md §一.1 L9-10）；三个页签 MCP / API / 业务系统（L11）', async () => {
+  it('页头标题「连接器」+ 说明逐字（md §一.1 页面标题 / 页面说明）；三个页签 MCP / API / 业务系统（§一.1 类型页签）', async () => {
     routeMock.query = { tab: 'mcp' }
     await mount()
     expect(container.querySelector('.page-header-title').textContent.trim()).toBe('连接器')
@@ -92,7 +98,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     expect(tabLabels()).toEqual(['MCP', 'API', '业务系统'])
   })
 
-  it('query.tab 缺省 → 默认打开 MCP，并 replace 补全 tab=mcp（md §一.2 L20 / L23）', async () => {
+  it('query.tab 缺省 → 默认打开 MCP，并 replace 补全 tab=mcp（md §一.2「默认打开"MCP"页签」「刷新页面后，仍停留在刷新前所选的页签」）', async () => {
     routeMock.query = {}
     await mount()
     expect(routerMock.replace).toHaveBeenCalledWith({ query: { tab: 'mcp' } })
@@ -101,7 +107,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     expect(container.querySelector('.stub-api')).toBeNull()
   })
 
-  it('query.tab 非法（xxx）→ 自动回到 MCP 页签（md §一.2 L24），其余 query 保留', async () => {
+  it('query.tab 非法（xxx）→ 自动回到 MCP 页签（md §一.2「页面无法识别当前页签时，自动回到"MCP"页签」），其余 query 保留', async () => {
     routeMock.query = { tab: 'xxx', positionId: '5' }
     await mount()
     expect(routerMock.replace).toHaveBeenCalledWith({ query: { tab: 'mcp', positionId: '5' } })
@@ -109,7 +115,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     expect(container.querySelector('.stub-mcp')).toBeTruthy()
   })
 
-  it('query.tab=bizsystem → 直接展示业务系统子页，不再 replace（刷新后停留原页签，md §一.2 L23）', async () => {
+  it('query.tab=bizsystem → 直接展示业务系统子页，不再 replace（刷新后停留原页签，md §一.2「刷新页面后，仍停留在刷新前所选的页签」）', async () => {
     routeMock.query = { tab: 'bizsystem' }
     await mount()
     expect(routerMock.replace).not.toHaveBeenCalled()
@@ -120,7 +126,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     expect(setupCount).toEqual({ mcp: 0, api: 0, biz: 1 })
   })
 
-  it('点 API 页签 → replace 只替换 tab、保留其余 query；页面切到 API 子页（md §一.2 L21）', async () => {
+  it('点 API 页签 → replace 只替换 tab、保留其余 query；页面切到 API 子页（md §一.2「点击不同页签后，页面展示对应的管理内容」）', async () => {
     routeMock.query = { tab: 'mcp', positionId: '5' }
     await mount()
     await clickTab('api')
@@ -137,7 +143,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     expect(routerMock.replace).not.toHaveBeenCalled()
   })
 
-  it('keep-alive：MCP → API → MCP 切走再切回，MCP 子页不重建（setup 仍 1 次）且本地状态保留（md §一.2 L22）', async () => {
+  it('keep-alive：MCP → API → MCP 切走再切回，MCP 子页不重建（setup 仍 1 次）且本地状态保留（md §一.2「切换页签后再返回，原页签中的列表、搜索和筛选状态保持不变」）', async () => {
     routeMock.query = { tab: 'mcp' }
     await mount()
     expect(setupCount.mcp).toBe(1)
@@ -153,5 +159,31 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     // 再切回 API 同样不重建
     await clickTab('api')
     expect(setupCount.api).toBe(1)
+  })
+})
+
+describe('AdminConnector 页签壳 · 真 Element Plus 挂载冒烟（md MCP §一.1 类型页签）', () => {
+  let mounted, errorSpy
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    mounted?.unmount()
+    mounted = null
+    errorSpy.mockRestore()
+  })
+
+  it('真 el-tabs 挂载不抛、console.error 零调用；页签文案 MCP / API / 业务系统，默认展示 MCP 子页', async () => {
+    routeMock.query = { tab: 'mcp' }
+    expect(() => {
+      mounted = mountReal(AdminConnector)
+    }).not.toThrow()
+    await flushAll()
+    expect(errorSpy).not.toHaveBeenCalled()
+    const el = mounted.container
+    expect([...el.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())).toEqual(['MCP', 'API', '业务系统'])
+    expect(el.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('MCP')
+    expect(el.querySelector('.stub-mcp')).toBeTruthy()
+    expect(el.querySelector('.page-header-title').textContent.trim()).toBe('连接器')
   })
 })

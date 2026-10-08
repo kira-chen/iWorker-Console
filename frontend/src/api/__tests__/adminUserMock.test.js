@@ -165,7 +165,7 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
  * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（当前mockPersist v4，写点：用户 CRUD / 设角色 /
  * 角色 CRUD / 改权限 / __resetOrgMock）。与 dataTableMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，
  * 模拟「写入 → 刷新 → 重载」；坏形状 / 旧版本快照须回种子（13 用户 / 5 角色）不白屏。
- * K15（createUser 文案「用户名 3–32 位」≠ md「请输入 3–32 个字符」）为代码缺陷，不写对应用例。
+ * K15（createUser 用户名长度文案对齐 md「请输入 3–32 个字符」）已闭环，见上方「新建用户」用例。
  */
 describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:adminUser）', () => {
   const KEY = 'iworker-demo-mock:adminUser'

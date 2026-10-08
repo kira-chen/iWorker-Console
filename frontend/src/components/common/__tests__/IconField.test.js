@@ -4,11 +4,13 @@ import { createApp, h, nextTick } from 'vue'
 
 /**
  * IconField（图标行：预览块 + 并排【从图标库选择】【上传图标】）契约。
- * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md L166-170「图标库选择 / 上传图标 /
- * 替换规则 / 只读状态 / 异常处理」（技能 prd.技能.md L185-188、模型 prd-模型.md L233-236 同款；
- * 各模块必填选填字段一览表.md L24「岗位图标：从图标库选择或上传，≤5 MB」）。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.2 基本信息「图标：必填」及其下
+ * 「图标配置统一规则」五条（图标库选择 / 上传图标 / 替换规则 / 只读状态 / 异常处理）；技能 prd.技能.md
+ * §三.4 图标、描述与示例问题、模型 prd-模型.md §三.2 基本信息 引同一「图标配置统一规则」；
+ * 各模块必填选填字段一览表.md §一 岗位 · 必填字段「岗位图标：从图标库选择或上传（…≤5 MB）」）。
  * （原头注「2026-09-08 原型复刻批次 1 · S3/S4」——原型已退场，出处改记 md。）
- * 1. 结构照原型 .icon-row：预览块 + 两枚 plain 按钮，文案逐字；不出「AI 生成」；
+ * 1. 结构对齐 md「图标配置统一规则」：预览块 + 【从图标库选择】【上传图标】两枚 plain 按钮，文案逐字；
+ *    不出「AI 生成」（.icon-row 结构沿用原型复刻批次 1，原型仅作历史出处）；
  * 2. 【从图标库选择】直开图标库弹窗（不经 popover），选中回吐 { icon, iconSource:'library' }；
  * 3. 预览：URL/dataURL 按图片渲染，字符按文本，空值显占位；
  * 4. readonly：两按钮 disabled，点击不开弹窗；
@@ -60,7 +62,7 @@ afterEach(() => {
 const flush = async () => { await nextTick(); await Promise.resolve(); await nextTick() }
 const btns = () => [...container.querySelectorAll('.icon-row > .stub-btn')]
 
-describe('IconField · 图标行（原型复刻批次 1）', () => {
+describe('IconField · 图标行（md 图标配置统一规则）', () => {
   it('结构：预览块 + 【从图标库选择】【上传图标】两枚 plain 按钮，无 AI 生成、无 popover 头像块', () => {
     mount()
     expect(container.querySelector('.icon-preview')).toBeTruthy()

@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
-import { currentDemoUserName, currentDemoUsername, DEMO_ADMIN } from '../demoIdentity'
+import { setActivePinia, createPinia } from 'pinia'
+import { currentDemoUserName, currentDemoUsername, ensureDemoIdentity, DEMO_ADMIN, DEMO_TOKEN } from '../demoIdentity'
+import { useUserStore } from '@/stores/user'
 
 /**
  * demoIdentity 的「当前身份」读取。重点是两个函数口径不同、不可混用：
  * - currentDemoUserName：**姓名**口径（审核人等展示用，name → username → 内置管理员姓名）；
  * - currentDemoUsername：**登录用户名**口径（2026-09-20 新增：版本管理的发布人、访问审计的操作人，如 xiaomei）。
+ *
+ * 2026-10-08 补 ensureDemoIdentity（pinia + 真 user store，对齐 CLAUDE.md「纯前端 demo 打开即以内置演示管理员进入」、
+ * demoIdentity.js 头注「启动时 + 每次导航前兜底，logout 清了身份也立即补回」）：未登录补齐、已是管理员不覆盖、登出后补回。
  */
 
 const KEY = 'ai_assistant_user'
@@ -60,5 +65,43 @@ describe('currentDemoUsername（登录用户名）', () => {
     expect(currentDemoUsername()).toBe('demo')
     store('{not json')
     expect(currentDemoUsername()).toBe('demo')
+  })
+})
+
+describe('ensureDemoIdentity（打开即以演示管理员身份进入）', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('未登录 → 写入演示管理员身份与 demo-token，成为管理员', () => {
+    const user = useUserStore()
+    expect(user.isLoggedIn).toBe(false)
+    ensureDemoIdentity(user)
+    expect(user.token).toBe(DEMO_TOKEN)
+    expect(user.token).toBe('demo-token')
+    expect(user.userInfo).toEqual(DEMO_ADMIN)
+    expect(user.isAdmin).toBe(true)
+    // 落盘同步：刷新后 currentDemoUsername 读得到
+    expect(currentDemoUsername()).toBe('demo')
+  })
+
+  it('已是管理员登录态 → 不覆盖原有身份（姓名、用户名、token 都不变）', () => {
+    const user = useUserStore()
+    user.setToken('real-token')
+    user.setUserInfo({ id: 9, username: 'xiaomei', name: '小美', role: 'ADMIN', roles: ['ADMIN'] })
+    ensureDemoIdentity(user)
+    expect(user.token).toBe('real-token')
+    expect(user.userInfo).toMatchObject({ username: 'xiaomei', name: '小美' })
+    expect(currentDemoUserName()).toBe('小美')
+  })
+
+  it('登出清掉身份后再调用 → 演示管理员身份被补回', () => {
+    const user = useUserStore()
+    ensureDemoIdentity(user)
+    user.logout()
+    expect(user.isLoggedIn).toBe(false)
+    expect(user.userInfo).toBeNull()
+    ensureDemoIdentity(user)
+    expect(user.token).toBe('demo-token')
+    expect(user.userInfo).toEqual(DEMO_ADMIN)
+    expect(user.isAdmin).toBe(true)
   })
 })

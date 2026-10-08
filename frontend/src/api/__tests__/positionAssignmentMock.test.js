@@ -61,6 +61,15 @@ describe('positionAssignmentMock —— 岗位分配 mock（2026-09-23 待办 yu
     await expect(setUserPosition(9999, 402)).rejects.toThrow('用户不存在')
   })
 
+  // 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §六「未发布岗位（含首次发布审核中）不进入下拉选项」：
+  // 数据层同口径拦截（yuepu#9③），绕过 UI 直调也绑不上未发布草稿 404
+  it('把用户绑到未发布草稿岗位 404（市场研究岗）→ 被拒「岗位未发布」，该用户仍未绑定', async () => {
+    await expect(setUserPosition(203, 404)).rejects.toThrow('岗位未发布')
+    const row = (await listPositionAssignments()).list.find((r) => r.userId === 203)
+    expect(row.positionId).toBeNull()
+    expect(row.positionName).toBeNull()
+  })
+
   it('focusUserId 置顶（2026-09-04 审批「重新绑定」回跳）：目标用户排第一，其余相对顺序不变', async () => {
     const { list } = await listPositionAssignments({ focusUserId: 204 })
     expect(list[0].username).toBe('wangfang')

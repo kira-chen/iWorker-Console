@@ -11,6 +11,13 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 桩：api/admin（列表 / 发布 / 撤回 / 停用 / 删除）、element-plus（ElMessage/ElMessageBox）、vue-router（useRoute 可配 query）、
  *     BizSystemEditor（露 props）、useDynPageSize（可配每页条数，排序跨页用例钉 2）、el-table 走 RowScope 行渲染桩。
  * 真：ListToolbar / ListPagination / ListStates / StatusTag（页面局部 import）。
+ *
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ *  - §二.1「引用情况」引用清单按类型分流（「岗位私有为"被岗位引用"（列岗位名）」「通用连接器显示"—"」；yuepu#17、负责人 5618381 拍板）；
+ *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
+ *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
+ *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）。
+ * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
 const admin = {
@@ -54,10 +61,11 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
+  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2「切换连接器类型或状态后列表立即刷新」）
   'el-select': {
     props: ['modelValue'],
-    emits: ['update:modelValue'],
-    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>'
+    emits: ['update:modelValue', 'change'],
+    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
   },
   'el-option': { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' },
   'el-tag': { template: '<span class="el-tag"><slot /></span>' },
@@ -211,7 +219,24 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
   })
 
   it('关键词 + 状态筛选 + 【查询】 → listBizSystems 收到 keyword/state，并回第 1 页（md §一.2 L18）', async () => {
+    // 防恒真：fixture 扩 2 条同样命中「资源 + 审核中」的旧行（共 5 行），每页 2 条 → 3 页；
+    // 先翻到第 2 页，查询后命中 3 行仍有 2 页——不回第 1 页就会停在第 2 页（不会被越界钳位掩盖）
+    const extra = [
+      mkBiz({ id: 'biz_4', name: '资源档案系统', status: 'PENDING_REVIEW', updatedAt: '2026-08-20T10:00:00+08:00' }),
+      mkBiz({ id: 'biz_5', name: '资源调度平台', status: 'PENDING_REVIEW', updatedAt: '2026-08-19T10:00:00+08:00' })
+    ]
+    admin.listBizSystems.mockImplementation(async (params = {}) => {
+      let list = [...LIST, ...extra]
+      const kw = (params.keyword || '').toLowerCase()
+      if (kw) list = list.filter((b) => b.name.toLowerCase().includes(kw) || b.description.toLowerCase().includes(kw))
+      if (params.state) list = list.filter((b) => b.status === params.state)
+      return { list: list.map((b) => ({ ...b })), total: list.length }
+    })
+    pageSizeState.size = 2
     await mount()
+    pager().querySelector('[aria-label="下一页"]').click()
+    await flush()
+    expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('2')
     const input = container.querySelector('.lt-search')
     input.value = '资源'
     input.dispatchEvent(new Event('input'))
@@ -224,9 +249,13 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(admin.listBizSystems).toHaveBeenLastCalledWith(
       expect.objectContaining({ keyword: '资源', state: 'PENDING_REVIEW' })
     )
-    expect(rows().length).toBe(1)
-    expect(rowByName('人力资源系统')).toBeTruthy()
+    expect(pager().textContent).toContain('共 3 条数据')
     expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('1')
+    // 第 1 页按最近更新倒序：人力资源系统（08-24）+ 资源档案系统（08-20）
+    expect(rows().map((r) => r.querySelector('.biz-cell-name').textContent.trim())).toEqual([
+      '人力资源系统',
+      '资源档案系统'
+    ])
   })
 
   it('查询无结果 → 「没有匹配的业务系统」，输入框保留当前条件（md §一.1 L14 / §四）', async () => {
@@ -242,7 +271,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(container.querySelector('.lt-search').value).toBe('不存在')
   })
 
-  it('引用情况：「2 个技能引用」点开弹窗「被技能引用」列技能名；无引用显示「暂无引用」（md §二.1 L29）', async () => {
+  it('引用情况：「2 个技能引用」点开弹窗「被技能引用」列技能名；无引用显示「暂无引用」（md §二.1「引用情况：…市场连接器有引用时展示"N 个技能引用"…无引用展示"暂无引用"」）', async () => {
     await mount()
     expect(rowByName('合同管理平台').textContent).toContain('暂无引用')
     btn(rowByName('客户管理系统'), '2 个技能引用').click()
@@ -253,7 +282,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(dlg.textContent).toContain('销售方案生成')
   })
 
-  it('最近更新时间排序跨页：5 行乱序、每页 2 → 首页是最新两条；点列头切升序 → 首页是最旧两条（md §二.1 L30；09-09 P1 aa7d251）', async () => {
+  it('最近更新时间排序跨页：5 行乱序、每页 2 → 首页是最新两条；点列头切升序 → 首页是最旧两条（md §二.1「最近更新时间：…支持点击排序」；09-09 P1 aa7d251）', async () => {
     pageSizeState.size = 2
     const five = ['甲', '乙', '丙', '丁', '戊'].map((n, i) =>
       mkBiz({ id: `b_${i}`, name: `${n}系统`, updatedAt: `2026-08-2${[3, 1, 5, 2, 4][i]}T10:00:00+08:00` })
@@ -270,7 +299,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
   })
 })
 
-describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）', () => {
+describe('AdminBizSystems · 操作按钮按状态组合（md §二.2「各状态按钮组合」）', () => {
   it('未发布：【查看】【编辑】【发布】【删除】共 4 个', async () => {
     await mount()
     expect(btnTexts(rowByName('合同管理平台'))).toEqual(['查看', '编辑', '发布', '删除'])
@@ -322,7 +351,7 @@ describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）'
   })
 })
 
-describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-52）', () => {
+describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3）', () => {
   it('发布：确认窗「将「合同管理平台」提交审核，审核通过后才对客户端开放。」/「发布业务系统」/【提交审核】 → submitBizSystemPublish + 「已提交发布审核」+ 重拉', async () => {
     await mount()
     const before = admin.listBizSystems.mock.calls.length
@@ -420,5 +449,89 @@ describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-
     btn(rowByName('合同管理平台'), '删除').click()
     await flush()
     expect(msg.error).toHaveBeenLastCalledWith('删除失败')
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('AdminBizSystems · 引用情况按类型分流（md §二.1「引用情况」）', () => {
+  const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
+
+  it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
+    admin.listBizSystems.mockResolvedValue({
+      list: [
+        mkBiz({
+          id: 'biz_pos',
+          name: '岗位私有系统',
+          type: 'POSITION',
+          positionCount: 2,
+          referencedByPositions: [{ positionId: 'p_1', positionName: '财务专员' }, { positionId: 'p_2', positionName: '采购助理' }],
+          // 同时带技能引用：弹窗必须取岗位名而不是技能名
+          referencedBySkills: [{ skillId: 'sk_x', skillName: '不该出现的技能' }]
+        })
+      ],
+      total: 1
+    })
+    await mount()
+    btn(rowByName('岗位私有系统'), '2个岗位引用').click()
+    await nextTick()
+    const dlg = container.querySelector('.el-dialog')
+    expect(dlg.dataset.title).toBe('被岗位引用')
+    expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['财务专员', '采购助理'])
+  })
+
+  it('通用连接器：引用情况显「—」，没有可点的引用入口（即使数据里带技能引用数）', async () => {
+    admin.listBizSystems.mockResolvedValue({
+      list: [mkBiz({ id: 'biz_sys', name: '通用系统', type: 'SYSTEM_DEFAULT', referencedBySkillCount: 3 })],
+      total: 1
+    })
+    await mount()
+    expect(refCell('通用系统').textContent.trim()).toBe('—')
+    expect(refCell('通用系统').querySelector('.el-button')).toBeNull()
+  })
+})
+
+describe('AdminBizSystems · 切筛选与清空即刷新（md §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」）', () => {
+  it('改「连接器类型」下拉、不点【查询】→ 立即重拉，listBizSystems 收到 type', async () => {
+    await mount()
+    const before = admin.listBizSystems.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
+    expect(admin.listBizSystems).toHaveBeenLastCalledWith({ type: 'POSITION' })
+  })
+
+  it('改「状态」下拉、不点【查询】→ 立即重拉，listBizSystems 收到 state，列表只剩命中行', async () => {
+    await mount()
+    const before = admin.listBizSystems.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[1]
+    sel.value = 'PUBLISHED'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
+    expect(admin.listBizSystems).toHaveBeenLastCalledWith({ state: 'PUBLISHED' })
+    expect(rows().map((r) => r.querySelector('.biz-cell-name').textContent.trim())).toEqual(['客户管理系统'])
+  })
+
+  it('已按关键词查过，再点搜索框 × 清空 → 立即重拉、不再带 keyword，列表恢复全部 3 行', async () => {
+    await mount()
+    const input = container.querySelector('.lt-search')
+    input.value = '合同'
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    toolbarBtn('查询').click()
+    await flush(6)
+    expect(rows().length).toBe(1)
+    // el-input 点 × ：先把值清成空串，再派发 clear 事件
+    input.value = ''
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    const before = admin.listBizSystems.mock.calls.length
+    input.dispatchEvent(new Event('clear'))
+    await flush(6)
+    expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
+    expect(admin.listBizSystems).toHaveBeenLastCalledWith({})
+    expect(rows().length).toBe(3)
   })
 })
