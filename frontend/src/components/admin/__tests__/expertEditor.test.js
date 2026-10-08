@@ -275,6 +275,7 @@ beforeEach(() => {
   getExpertKbScopeRefId.mockReturnValue('ex_1')
 })
 afterEach(() => {
+  vi.useRealTimers() // 2026-10-08：AI 生成用例用 fake timers，失败中断也在此还原，免得串到下一条
   app?.unmount()
   container?.remove()
 })
@@ -301,6 +302,7 @@ describe('ExpertEditor — 新建', () => {
     const errs = errTexts()
     expect(errs).toContain('请填写专家名')
     expect(errs).toContain('请选择专家分类')
+    expect(errs).toContain('请选择专家类型') // 2026-10-08 补：md §三.7「专家类型未选提示"请选择专家类型"」
     expect(errs).toContain('请选择图标')
     expect(errs).toContain('请填写简介')
     expect(errs).toContain('请填写职责描述')
@@ -925,5 +927,41 @@ describe('ExpertEditor — 审核期锁定（兜底）', () => {
     expect(btn('保存')).toBeUndefined()
     expect(btn('发布')).toBeUndefined()
     expect(btn('取消')).toBeTruthy()
+  })
+})
+
+/* ===== 2026-10-08 /test-audit 补缺口：【AI 生成】中途换对象不回填 =====
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.3（【AI 生成】）；待办 yuepu#26：
+ * 抽屉常驻挂载，500ms「生成中…」内切到另一个专家，A 的生成结果不得写进 B 的表单、不弹成功 toast。 */
+describe('ExpertEditor — 【AI 生成】中途换对象（2026-10-08 补缺口 · yuepu#26）', () => {
+  it('点【AI 生成】后 500ms 内改 expertId → 到点不回填新专家的示例问题、不弹「AI 内容已生成」', async () => {
+    vi.useFakeTimers()
+    getExpert.mockImplementation((id) =>
+      Promise.resolve(id === 201
+        ? { ...DETAIL }
+        : { ...DETAIL, id, name: '法务审阅专家', intro: '辅助审阅合同', exampleQuestions: ['问甲', '问乙', '问丙'] })
+    )
+    await mount({ expertId: 201 })
+    btn('AI 生成').click()
+    await flush(2)
+    expect(btn('生成中…')).toBeTruthy()
+    propsState.expertId = 203
+    await flush()
+    expect(inputs()[0].value).toBe('法务审阅专家')
+    vi.advanceTimersByTime(600)
+    await flush(2)
+    expect([inputs()[2], inputs()[3], inputs()[4]].map((i) => i.value)).toEqual(['问甲', '问乙', '问丙'])
+    expect(ElMessage.success).not.toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
+  })
+
+  it('点【AI 生成】后不换对象 → 500ms 到点按当前专家名生成 3 条并回填（对照组）', async () => {
+    vi.useFakeTimers()
+    await mount({ expertId: 201 })
+    btn('AI 生成').click()
+    await flush(2)
+    vi.advanceTimersByTime(500)
+    await flush(2)
+    expect(inputs()[2].value).toBe('请围绕"经营分析专家"给出专业分析')
+    expect(ElMessage.success).toHaveBeenCalledWith('AI 内容已生成，请确认后保存')
   })
 })

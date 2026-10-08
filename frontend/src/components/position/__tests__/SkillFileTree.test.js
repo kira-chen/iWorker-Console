@@ -648,3 +648,32 @@ describe('SkillFileTree 组③ 查找/过滤', () => {
     expect(el.querySelector('.ft-search input, .ft-search'), '只读态仍应保留按名过滤入口').toBeTruthy()
   })
 })
+
+/* 2026-10-08 /test-audit 补缺口：对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.6（文件树查找）——
+ * 「按内容」查找后端返回零命中 → 结果面板给空态文案，不残留目录树。 */
+describe('按内容查找无结果（2026-10-08 补缺口）', () => {
+  const FILES3 = [
+    { path: 'SKILL.md', name: 'SKILL.md', fileType: 'md', isEntry: true },
+    { path: 'references/policy.md', name: 'policy.md', fileType: 'md', isEntry: false }
+  ]
+
+  it('切「按内容」输入「不存在的词」、后端零命中 → 显示「没有找到包含「不存在的词」的内容」', async () => {
+    vi.useFakeTimers()
+    try {
+      searchSkillFiles.mockResolvedValueOnce({ q: '不存在的词', items: [] })
+      const el = mount({ skillId: 1, files: FILES3, source: 'fde', activePath: 'SKILL.md' })
+      ;[...el.querySelectorAll('.ft-mode')].find((b) => b.textContent.includes('按内容')).click()
+      await Promise.resolve()
+      const input = el.querySelector('.ft-search-input')
+      input.value = '不存在的词'
+      input.dispatchEvent(new Event('input'))
+      await vi.advanceTimersByTimeAsync(400)
+      await Promise.resolve(); await Promise.resolve()
+      expect(searchSkillFiles).toHaveBeenCalledWith(1, '不存在的词', 'all', 'fde')
+      expect(el.querySelector('.ft-search-results .sr-state')?.textContent.trim()).toBe('没有找到包含「不存在的词」的内容')
+      expect(el.querySelector('.sr-list')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

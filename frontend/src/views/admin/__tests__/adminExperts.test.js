@@ -20,7 +20,9 @@ import { makeElTableStubs } from './helpers/elTableStub'
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+// 路由桩：query 可变（每条用例 beforeEach 复位为 {}），供「地址栏带 keyword」类用例改写（yuepu#22 防回归）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => routeState, useRouter: () => ({}) }))
 
 const listExperts = vi.fn()
 const deleteExpert = vi.fn()
@@ -40,17 +42,22 @@ vi.mock('@/api/domainExpert', () => ({
 }))
 
 // 抽屉本体另有独立单测（expertEditor.test.js）；本页只验「开没开、带的哪个 id、是否只读」。
+// 桩内藏一个 .stub-publish 按钮：点它即以 publishDetail.value 发 publish(detail)，模拟抽屉底部【发布】。
 const editorProps = vi.fn()
+const publishDetail = vi.hoisted(() => ({ value: null }))
 vi.mock('@/components/admin/ExpertEditor.vue', () => ({
   default: {
     name: 'ExpertEditor',
     props: { visible: Boolean, expertId: [String, Number, null], readonly: Boolean },
     emits: ['saved', 'publish'],
-    setup(props) {
+    setup(props, { emit }) {
       return () => {
         editorProps(props.visible, props.expertId, props.readonly)
         return props.visible
-          ? h('div', { class: 'expert-editor', 'data-readonly': String(props.readonly) }, String(props.expertId))
+          ? h('div', { class: 'expert-editor', 'data-readonly': String(props.readonly) }, [
+              String(props.expertId),
+              h('button', { class: 'stub-publish', onClick: () => emit('publish', publishDetail.value) })
+            ])
           : null
       }
     }
@@ -115,15 +122,24 @@ const elSelect = {
     '<select class="el-select" :data-placeholder="placeholder" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
 }
 const elOption = { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' }
+// 搜索框桩：原生 input + 清空按钮；页面上的 @keyup.enter 作为透传属性落在根 div，input 上的 keyup 冒泡即可触发
+const elInput = {
+  props: { modelValue: { default: '' }, placeholder: String },
+  emits: ['update:modelValue', 'clear'],
+  template:
+    '<div class="el-input"><input class="el-input__inner" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' +
+    '<button class="el-input__clear" @click="$emit(\'update:modelValue\', \'\'); $emit(\'clear\')"></button><slot name="prefix" /></div>'
+}
 
 let app, container
 async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminExperts)
-  for (const t of ['el-input', 'el-pagination', 'el-icon']) {
+  for (const t of ['el-pagination', 'el-icon']) {
     app.component(t, passthrough(t))
   }
+  app.component('el-input', elInput)
   app.component('el-select', elSelect)
   app.component('el-option', elOption)
   app.component('el-table', tableStub)
@@ -155,6 +171,8 @@ const EXPERTS = [
 ]
 
 beforeEach(() => {
+  routeState.query = {}
+  publishDetail.value = null
   editorProps.mockReset()
   listExperts.mockReset().mockResolvedValue({ list: EXPERTS, total: 3 })
   deleteExpert.mockReset()
@@ -458,5 +476,94 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     rowBtn(rowEls()[1], '删除').click()
     await flush()
     expect(deleteExpert).not.toHaveBeenCalled()
+  })
+})
+
+/* ===== 2026-10-08 /test-audit 补缺口：类型筛选 / 类型列 / 地址栏 keyword / 抽屉【发布】接线 / 搜索框回车与清空 =====
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §一.1（专家类型筛选）/ §一.2（回车、切换即刷新）/
+ * §二.1（专家类型列）/ §二.3.3 + §三.7（抽屉【发布】→ 版本管理侧栏）；yuepu#22（重复 query 参数不白屏）。 */
+describe('AdminExperts 补缺口（2026-10-08）', () => {
+  const selects = () => [...container.querySelectorAll('select.el-select')]
+
+  it('专家类型筛选：占位「全部专家类型」，选项依次为 岗位私有 / 市场专家 / 通用专家（md §一.1）', async () => {
+    await mount()
+    const type = selects()[0]
+    expect(type.dataset.placeholder).toBe('全部专家类型')
+    expect([...type.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['岗位私有', '市场专家', '通用专家'])
+  })
+
+  it('专家类型选「市场专家」→ 立即重拉，listExperts 带 {type: PLATFORM}（md §一.2 切换即刷新）', async () => {
+    await mount()
+    const type = selects()[0]
+    type.value = 'PLATFORM'
+    type.dispatchEvent(new Event('change'))
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'PLATFORM' }))
+  })
+
+  it('「专家类型」列按行类型显示 岗位私有 / 市场专家 / 通用专家（md §二.1）', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [
+        { ...EXPERTS[0], id: 401, type: 'POSITION' },
+        { ...EXPERTS[0], id: 402, type: 'PLATFORM' },
+        { ...EXPERTS[0], id: 403, type: 'SYSTEM_DEFAULT' }
+      ],
+      total: 3
+    })
+    await mount()
+    const cell = (i) => rowEls()[i].querySelector('.el-table-column[data-label="专家类型"]').textContent.trim()
+    expect([0, 1, 2].map(cell)).toEqual(['岗位私有', '市场专家', '通用专家'])
+  })
+
+  it('地址栏带 ?keyword=a 的单值 → 首拉即带 keyword:a，搜索框回显 a', async () => {
+    routeState.query = { keyword: 'a' }
+    await mount()
+    expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'a' }))
+    expect(container.querySelector('.el-input__inner').value).toBe('a')
+  })
+
+  it('地址栏 keyword 重复成数组 [a, b] → 取第一个 a 查询，页面照常出行不崩（yuepu#22 防回归）', async () => {
+    routeState.query = { keyword: ['a', 'b'] }
+    await mount()
+    expect(listExperts).toHaveBeenCalledTimes(1)
+    expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'a' }))
+    expect(container.querySelector('.el-input__inner').value).toBe('a')
+    expect(rowEls()).toHaveLength(3)
+  })
+
+  it('抽屉发 publish(detail) → 列表重拉，并打开版本管理侧栏且带该专家 id（md §二.3.3 / §三.7）', async () => {
+    publishDetail.value = { ...EXPERTS[1], skillCount: 1 }
+    await mount()
+    rowBtn(rowEls()[1], '编辑').click()
+    await nextTick()
+    container.querySelector('.stub-publish').click()
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    const dlg = container.querySelector('.version-dialog')
+    expect(dlg).not.toBeNull()
+    expect(dlg.textContent).toBe('203')
+  })
+
+  it('搜索框输入关键词后按回车 → 按当前条件重拉，listExperts 带该 keyword（md §一.2）', async () => {
+    await mount()
+    const input = container.querySelector('.el-input__inner')
+    input.value = '法务'
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '法务' }))
+  })
+
+  it('搜索框点清空 → 立即重拉，查询不再带 keyword（md §一.2）', async () => {
+    routeState.query = { keyword: '法务' }
+    await mount()
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '法务' }))
+    container.querySelector('.el-input__clear').click()
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts.mock.calls[1][0]).not.toHaveProperty('keyword')
   })
 })

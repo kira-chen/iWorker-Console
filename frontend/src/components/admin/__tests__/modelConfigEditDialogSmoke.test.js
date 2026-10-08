@@ -210,3 +210,44 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
     expect(api.updateModel.mock.calls[0][1]).toMatchObject({ apiKey: null, appSecret: null, appId: 'iw' })
   })
 })
+
+/* 2026-10-08 /test-audit 补缺口：对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md §三.8
+ * 「模型名称重复：提示名称已存在，并定位到模型名称位置」。已登记疑似缺陷 yuepu#63⑦：保存时 updateModel 回
+ * { field:'name' } 后，代码只 `validateField('name')` 走本地规则（名称非空 → 通过）并 toast，名称项不出红字、也不聚焦。
+ * 前提（toast 展示失败原因、接口确被调）拆普通 it；缺陷断言单独 it.fails，修好后改回 it。 */
+describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 · yuepu#63⑦）', () => {
+  const DRAFT = {
+    id: 'md_x', name: '重名模型', providerName: 'deepseek', category: 'TEXT', icon: '▦',
+    baseUrl: 'https://a/v1', model: 'm', contextWindow: 65536,
+    authType: 'API_KEY', apiKeyMasked: 'sk-****0ab', status: 'DRAFT'
+  }
+  // 用完即清调用记录：同文件 A12 鉴权用例断 updateModel 恰好 1 次，乱序时不能被本组的调用串进去
+  afterEach(() => api.updateModel.mockReset())
+  const nameItem = () => [...drawer().querySelectorAll('.el-form-item')]
+    .find((i) => i.querySelector('.el-form-item__label')?.textContent.includes('模型名称'))
+
+  async function saveWithDupName() {
+    api.updateModel.mockReset() // 本文件 afterEach 只 restoreAllMocks，不清 vi.fn 调用记录
+    api.updateModel.mockRejectedValue({ field: 'name', message: '模型名称已存在' })
+    mounted = mountReal(Dialog, { visible: true, model: { ...DRAFT } })
+    await flushAll(10)
+    clickFoot('保存')
+    await settleErrors()
+  }
+
+  it('updateModel 回 {field:name, message} → toast 展示「模型名称已存在」，抽屉不关、名称保留（前提）', async () => {
+    await saveWithDupName()
+    expect(api.updateModel).toHaveBeenCalledTimes(1)
+    expect(document.body.querySelector('.el-message')?.textContent).toContain('模型名称已存在')
+    expect(drawer()).toBeTruthy()
+    expect(nameItem().querySelector('input').value).toBe('重名模型')
+  })
+
+  it.fails('yuepu#63⑦ updateModel 回 {field:name} → 名称项就地红字「…已存在」或焦点定位到名称输入框（疑似缺陷：只 toast 不定位，md 模型 §三.8）', async () => {
+    await saveWithDupName()
+    const input = nameItem().querySelector('input')
+    const red = nameItem().querySelector('.el-form-item__error')?.textContent ?? ''
+    expect(red.includes('已存在') || document.activeElement === input).toBe(true)
+  })
+})
+
