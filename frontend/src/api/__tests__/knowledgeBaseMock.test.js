@@ -19,6 +19,8 @@ import {
   testSource,
   listDocs,
   uploadDoc,
+  deleteDoc,
+  applyKnowledgeBaseReviewResult,
   MCP_TEST_TOOLS
 } from '../knowledgeBaseMock'
 import { listReviews } from '../reviewsMock'
@@ -39,6 +41,9 @@ import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResp
  *   §七.5 改工具重置、§八.1 列表概要（未验证 / 已连通 / 连接失败）、§五.3 文档解析流转。
  * - 持久化（mockPersist v9，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
  * K40（2026-09-12 闭环）：引用已停用数据源被数据层拒绝（md §三.3.2 L94）；UPLOAD 源三必填 + 文档类型校验（md §五.1）。
+ * 2026-10-08 对齐同一 md §三.4（审核结果落地：发布通过→已发布、停用通过→未发布、驳回保持原状、申请方向不符拒绝落地）、
+ *   §三.2 / §八.1（「已发布」筛选不含待停用行）、§四.2（删上传源连带删文档与索引）、§五.3（删文档后计数下降）、
+ *   种子可原样保存（b7ebdc7 防回归）——见「补缺口（2026-10-08）」两组。
  */
 
 const uniq = (p) => `${p}-${Math.random().toString(36).slice(2, 8)}`
@@ -875,5 +880,116 @@ describe('knowledgeBaseMock · 持久化（mockPersist v9）', () => {
     expect(call).toBeTruthy()
     expect(String(call[1]?.message || '')).toContain('knowledgeBase 快照形状不合法')
     warn.mockRestore()
+  })
+})
+
+describe('knowledgeBaseMock —— 补缺口（2026-10-08）：审核落地 / 筛选 / 文档计数', () => {
+  // 引用种子 ks_1a（带解析成功文档 doc_1，本文件不删它）让发布校验能过；名字带随机后缀，用例间互不干扰
+  const mkPublishable = () => create({ name: uniq('审核落地库'), kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
+
+  it('停用申请审核通过 → 知识库变回「未发布」，待审核标记清空（md §三.4 L130）', async () => {
+    const kb = await mkPublishable()
+    await transition(kb.id, 'publish')
+    expect(applyKnowledgeBaseReviewResult(kb.id, 'FIRST_PUBLISH', true)).toBe(true)
+    await transition(kb.id, 'delist')
+    expect(applyKnowledgeBaseReviewResult(kb.id, 'DELIST', true)).toBe(true)
+    expect(await get(kb.id)).toMatchObject({ status: 'DRAFT', pendingAction: null })
+  })
+
+  it('发布申请被驳回 → 仍是「未发布」，待审核标记清空，可再次提交', async () => {
+    const kb = await mkPublishable()
+    await transition(kb.id, 'publish')
+    expect(applyKnowledgeBaseReviewResult(kb.id, 'FIRST_PUBLISH', false)).toBe(true)
+    expect(await get(kb.id)).toMatchObject({ status: 'DRAFT', pendingAction: null })
+    expect((await transition(kb.id, 'publish')).pendingAction).toBe('PUBLISH')
+  })
+
+  it('发布申请审核通过（对照）→ 变为「已发布」', async () => {
+    const kb = await mkPublishable()
+    await transition(kb.id, 'publish')
+    expect(applyKnowledgeBaseReviewResult(kb.id, 'FIRST_PUBLISH', true)).toBe(true)
+    expect(await get(kb.id)).toMatchObject({ status: 'PUBLISHED', pendingAction: null })
+  })
+
+  it('审核行的申请方向与库里在途事项不符（拿停用结果落到待发布的库）→ 返回 false，库原封不动', async () => {
+    const kb = await mkPublishable()
+    await transition(kb.id, 'publish')
+    expect(applyKnowledgeBaseReviewResult(kb.id, 'DELIST', true)).toBe(false)
+    expect(await get(kb.id)).toMatchObject({ status: 'DRAFT', pendingAction: 'PUBLISH' })
+  })
+
+  it('筛「已发布」→ 不含已发布但正在审核停用的库（待停用统一归「审核中」，md §三.2 / §八.1）', async () => {
+    const kb = await mkPublishable()
+    await transition(kb.id, 'publish')
+    applyKnowledgeBaseReviewResult(kb.id, 'FIRST_PUBLISH', true)
+    expect((await list({ status: 'PUBLISHED', size: 200 })).list.map((r) => r.id)).toContain(kb.id)
+    await transition(kb.id, 'delist')
+    expect((await list({ status: 'PUBLISHED', size: 200 })).list.map((r) => r.id)).not.toContain(kb.id)
+    expect((await list({ status: 'PENDING_REVIEW', size: 200 })).list.map((r) => r.id)).toContain(kb.id)
+  })
+
+  it('删除一篇已解析成功的文档 → 数据源的文档数与解析成功数各减 1（md §五.3）', async () => {
+    const s = await createSource({ sourceType: 'UPLOAD', name: uniq('计数源'), config: { ...UPLOAD_DEFAULTS, embeddingModelId: 'md_emb_1' } })
+    const d1 = await uploadDoc(s.id, { name: 'a.pdf', size: 1024 })
+    await uploadDoc(s.id, { name: 'b.pdf', size: 2048 })
+    await listDocs(s.id) // 等待解析 → 解析中
+    const realNow = Date.now()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(realNow + 60000) // 越过解析完成时刻
+    await listDocs(s.id) // 解析中 → 解析成功
+    now.mockRestore()
+    expect(await getSource(s.id)).toMatchObject({ docCount: 2, parsedDocCount: 2 })
+    await deleteDoc(s.id, d1.id)
+    expect(await getSource(s.id)).toMatchObject({ docCount: 1, parsedDocCount: 1 })
+    expect((await listDocs(s.id)).map((d) => d.fileName)).toEqual(['b.pdf'])
+  })
+})
+
+/**
+ * 2026-10-08 补缺口 · 隔离组：需要读快照或依赖未被改写的种子 → 内存版 localStorage + vi.resetModules 拿全新模块实例
+ * （同上方持久化组的写法；mock 接口都 await delay()，把 setTimeout 桩成立即回调）。
+ */
+describe('knowledgeBaseMock —— 补缺口（2026-10-08）隔离组：删源连带删文档 / 种子可原样保存', () => {
+  const KEY = 'iworker-demo-mock:knowledgeBase'
+  beforeEach(() => {
+    const map = new Map()
+    const storage = {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+    Object.defineProperty(globalThis, 'localStorage', { value: storage, writable: true, configurable: true })
+    vi.resetModules()
+    vi.stubGlobal('setTimeout', (fn) => { queueMicrotask(fn); return 0 })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('删除上传数据源 → 其文档一并删除，快照里不再有该源的文档（md §四.2）', async () => {
+    const m = await import('../knowledgeBaseMock')
+    const s = await m.createSource({ sourceType: 'UPLOAD', name: '待删文档源', config: { ...UPLOAD_DEFAULTS, embeddingModelId: 'md_emb_1' } })
+    await m.uploadDoc(s.id, { name: 'a.pdf', size: 1024 })
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).data.docsBySource[s.id]).toHaveLength(1)
+    await m.removeSource(s.id)
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.data.docsBySource[s.id]).toBeUndefined()
+    expect(snap.data.sources.map((x) => x.id)).not.toContain(s.id)
+  })
+
+  it('种子里每个不在审核中的知识库，用原字段原样保存都不报错、状态不变（b7ebdc7 防回归：种子曾因必填缺值存不回去）', async () => {
+    const m = await import('../knowledgeBaseMock')
+    const seeds = (await m.list({ size: 200 })).list.filter((r) => !r.pendingAction)
+    expect(seeds.length).toBeGreaterThanOrEqual(6)
+    for (const r of seeds) {
+      const payload = { name: r.name, icon: r.icon, description: r.description, scopeRefId: r.scopeRefId, sourceIds: r.sourceIds }
+      const saved = await m.update(r.id, payload).catch((e) => ({ error: `${r.id}：${e.message}` }))
+      expect(saved.error).toBeUndefined()
+      expect(saved.status).toBe(r.status)
+    }
   })
 })
