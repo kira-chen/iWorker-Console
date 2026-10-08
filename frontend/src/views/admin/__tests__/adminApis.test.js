@@ -293,6 +293,26 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
+  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    APIS.find((a) => a.id === 'a_last').type = 'POSITION' // 末组唯一的 API 改成岗位私有，筛「市场连接器」时 ps_9 应整组消失
+    try {
+      await mount()
+      const sel = container.querySelectorAll('.lt-filter')[0]
+      sel.value = 'PLATFORM'
+      sel.dispatchEvent(new Event('change'))
+      await flush(6)
+      expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'PLATFORM' }) // 前提：类型确实下发了
+      expect(groupNames()).toEqual(['系统1号', '系统2号'])
+    } finally {
+      APIS.find((a) => a.id === 'a_last').type = 'PLATFORM'
+    }
+  })
+
   it('无筛选条件时空分组也展示，且给「该系统下暂无 API · 点「在本系统下新建 API」添加」（md §二.1 L42）', async () => {
     await mount()
     const g3 = groupByName('系统3号')

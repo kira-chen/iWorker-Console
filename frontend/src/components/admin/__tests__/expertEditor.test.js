@@ -837,6 +837,33 @@ describe('ExpertEditor — 编辑', () => {
     expect(container.querySelector('.status-tag')).toBeNull()
   })
 
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#49①）：ExpertEditor 自写 #footer，绕开了 DrawerEditor 的 submitBlocked
+  // （#43 只修了默认页脚）；加载失败时【保存】【发布】仍可点。修好后本组会报红——把 it.fails 改回 it 即成正式回归用例。
+  const footerBtn = (text) =>
+    [...container.querySelectorAll('.dr-footer .el-button')].find((b) => b.textContent.trim() === text)
+
+  it.fails('yuepu#49① 加载失败 → 底部【保存】【发布】不可点（不渲染或置灰）', async () => {
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    await mount({ expertId: 201 })
+    expect(container.textContent).toContain('重试') // 前提：确实处于加载失败态
+    for (const text of ['保存', '发布']) {
+      const b = footerBtn(text)
+      expect(!b || b.disabled).toBe(true)
+    }
+  })
+
+  it.fails('yuepu#49① 切换对象后加载失败再点【保存】 → 不得把上一个专家的表单写进当前专家', async () => {
+    await mount({ expertId: 201 })
+    expect(inputs()[0].value).toBe('经营分析专家')
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    propsState.expertId = 203
+    await flush()
+    expect(container.textContent).toContain('重试') // 前提：203 加载失败
+    footerBtn('保存')?.click()
+    await flush()
+    expect(updateExpert).not.toHaveBeenCalled()
+  })
+
   it('快速连切两个对象：先发出的慢请求后返回也不覆盖最新对象（序号守卫）', async () => {
     let releaseSlow
     getExpert.mockImplementation((id) =>

@@ -176,3 +176,23 @@ describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1 L86）', () =
     expect(api.createKnowledgeBase).not.toHaveBeenCalled()
   })
 })
+
+// 已知缺陷钉桩（2026-10-08 待办 yuepu#49②）：KnowledgeBaseEditor 自写 #footer，绕开了 DrawerEditor 的 submitBlocked
+// （#43 只修了默认页脚）。加载失败时表单不渲染、formRef 为 null，【保存】点下去会在 formRef.value.validate() 抛 TypeError；
+// 又因 isOffline(null) 为 true，失败态还多出【删除】【提交发布】。只断言按钮状态、不真点——点了会产生未捕获的
+// TypeError，污染整轮运行。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+describe('KnowledgeBaseEditor · 加载失败态（yuepu#49②）', () => {
+  it.fails('yuepu#49② 编辑态加载失败 → 底部不出现可点的【保存】【删除】【提交发布】', async () => {
+    api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
+    api.listKnowledgeSources.mockResolvedValue({ list: [] })
+    api.listExpertOptions.mockResolvedValue([])
+    api.listPositionOptions.mockResolvedValue([])
+    mounted = mountReal(Editor, { visible: true, kbId: 'kb_1' })
+    await flushAll(10)
+    expect(drawer().querySelector('form.el-form')).toBeNull() // 前提：加载失败，表单未渲染
+    const clickable = [...drawer().querySelectorAll('.el-button')]
+      .filter((b) => !b.disabled && !b.classList.contains('is-disabled'))
+      .map((b) => b.textContent.trim())
+    for (const text of ['保存', '删除', '提交发布']) expect(clickable).not.toContain(text)
+  })
+})

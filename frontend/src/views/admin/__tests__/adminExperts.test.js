@@ -217,6 +217,20 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.textContent).not.toContain('应用引用')
   })
 
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#56）：md prd.专家.md:48「岗位私有点击弹出引用清单（展示岗位名）」，
+  // 页面只渲染普通 span 点不开。断言按三个连接器页同款写法（引用数是可点的链接按钮）。
+  // 修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+  it.fails('yuepu#56 岗位私有专家的「N个岗位引用」应可点击（打开引用清单）', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionCount: 3 }],
+      total: 1
+    })
+    await mount()
+    const cell = rowEls()[0].querySelector('.el-table-column[data-label="引用情况"]')
+    expect(cell.textContent.trim()).toBe('3个岗位引用') // 前提：渲染的就是岗位引用数
+    expect(cell.querySelector('.el-button')).not.toBeNull()
+  })
+
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
   it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的市场技能数，缺省显 0', async () => {
     listExperts.mockResolvedValueOnce({

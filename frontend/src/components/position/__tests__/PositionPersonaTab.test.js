@@ -159,6 +159,29 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5�
   })
 })
 
+// 已知缺陷钉桩（2026-10-08 待办 yuepu#54）：aiGenQuestions / aiGenSop 是手写 500ms setTimeout，没走 useAiLiveGenerate——
+// 无撤销、不核对对象，回调直接写 Pinia 全局 store。#26 同类问题在这里仍在。
+// 修好后本组会报红——把 it.fails 改回 it 即成正式回归用例。
+describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54）', () => {
+  it.fails('yuepu#54 点【AI 生成】后 500ms 内切到另一个岗位 → 生成结果不得写进新岗位、不弹成功提示', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
+    await mount()
+    aiBtns()[0].click()
+    await flush()
+    expect(aiBtns()[0].textContent.trim()).toBe('生成中…') // 前提：生成已发起
+    // 工作台切到另一个岗位（store.basic 整体换成新对象）
+    store.positionId = 6
+    store.basic = { positionId: 6, name: '客户成功岗', description: '负责客户跟进', icon: '◎', claimDescriptions: [], exampleQuestions: ['原问题一', '原问题二', '原问题三'], positionSop: '', persona: '' }
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.exampleQuestions).toEqual(['原问题一', '原问题二', '原问题三'])
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+})
+
 describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3 L188；2026-09-12 审计 J18）', () => {
   const claimCard = () => cardByTitle('领用页文案')
   const addBtn = () => [...claimCard().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 新增一条')
