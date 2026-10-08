@@ -132,11 +132,17 @@ describe('KnowledgeSearchDialog · 默认态与表单字段（md §三.7）', ()
     expect(api.searchKnowledgeBase).not.toHaveBeenCalled()
   })
 
+  it('前提：问题为空时【开始测试】置灰（md §三.7）', async () => {
+    await mountDialog()
+    typeInto(queryInput(), '')
+    await flushAll(4)
+    expect(btn('开始测试').disabled).toBe(true)
+  })
+
   it.fails('未输入问题时不再另设空状态页（疑似缺陷：问题为空时仍渲染「输入问题后点击“开始测试”」空态文案；md §三.7「未输入问题时【开始测试】置灰不可点（按钮禁用本身即为引导，不再另设空状态页）」）', async () => {
     await mountDialog()
     typeInto(queryInput(), '')
     await flushAll(4)
-    expect(btn('开始测试').disabled).toBe(true) // 前提：问题为空、按钮已置灰
     expect(dlg().querySelector('.ks-body').textContent).not.toContain('输入问题后点击')
   })
 

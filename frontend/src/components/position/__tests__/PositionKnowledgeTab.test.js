@@ -193,12 +193,14 @@ describe('知识页签 · 行内操作（md §三.5.2 / §三.11）', () => {
     expect(btnByText(rowByName('财务口径库'), '检索测试')).toBeUndefined()
   })
 
+  it('前提：已发布且停用审核在途的「审批中库」状态列展示「审核中」（知识库 md §三.2）', async () => {
+    await mount()
+    expect(cellTexts(rowByName('审批中库'))[4]).toBe('审核中')
+  })
+
   it.fails('已发布但停用审核在途（列表显示「审核中」）的知识库不出【检索测试】（疑似缺陷：页签按 row.status===PUBLISHED 判定，未排除 pendingAction；md 岗位 §三.5.2「已发布知识库可用」+ 知识库 md §三.2「待发布和待停用统一展示审核中」「审核中追加【撤回】；已发布追加【停用】【检索测试】」）', async () => {
     await mount()
-    const row = rowByName('审批中库')
-    // 前提：该行状态列确为「审核中」
-    expect(cellTexts(row)[4]).toBe('审核中')
-    expect(btnByText(row, '检索测试')).toBeUndefined()
+    expect(btnByText(rowByName('审批中库'), '检索测试')).toBeUndefined()
   })
 
   it('点【查看】→ 跳知识库模块，query 带 action=view、kbId、岗位上下文（positionId / positionName）', async () => {

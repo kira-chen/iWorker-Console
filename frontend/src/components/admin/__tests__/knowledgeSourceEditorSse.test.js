@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
 
@@ -41,7 +42,11 @@ const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b
 
 async function mountMcpCreate() {
   api.listEmbeddingModelOptions.mockResolvedValue([])
-  mounted = mountReal(Editor, { visible: true, sourceId: null })
+  // 组件对 visible 的 watch 不带 immediate，visible 由 false→true 时才重置表单并加载（与列表页打开抽屉同路径），故先关后开
+  const p = reactive({ visible: false, sourceId: null })
+  mounted = mountReal(Editor, p)
+  await flushAll(4)
+  p.visible = true
   await flushAll(10)
   formModel().sourceType = 'MCP'
   await flushAll(6)

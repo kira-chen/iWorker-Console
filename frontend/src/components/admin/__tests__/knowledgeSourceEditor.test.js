@@ -351,11 +351,22 @@ describe('KnowledgeSourceEditor · API 数据源（md §六）', () => {
 })
 
 describe('KnowledgeSourceEditor · API KEY 默认预置参数行（md §六.1 / §六.1.1）', () => {
+  it('前提：新建切到 API 时鉴权方式默认 API KEY（md §六.1）', async () => {
+    await mountEditor()
+    await pickType('API')
+    expect(formModel().api.authType).toBe('API_KEY')
+  })
   it.fails('新建切到 API（鉴权默认 API KEY）时参数表应已预置一行可填（疑似缺陷：预置行只挂在 authType 变化的 watch 上，默认即 API_KEY 时不触发，表格为空；md §六.1「鉴权方式默认 API KEY」+ §六.1.1「至少保留一行有效参数」）', async () => {
     await mountEditor()
     await pickType('API')
-    expect(formModel().api.authType).toBe('API_KEY') // 前提：默认 API KEY
     expect(drawer().querySelectorAll('input[placeholder="如 X-Api-Key"]').length).toBe(1)
+  })
+  it('前提：API KEY 参数表有参数行时，行内存在参数值输入框（md §六.1.1）', async () => {
+    await mountEditor()
+    await pickType('API')
+    if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数')
+    await flushAll(4)
+    expect(drawer().querySelector('.pr-row:not(.pr-row-head) input[placeholder="必填"]')).toBeTruthy()
   })
   it.fails('API KEY 参数值输入框应为密码形式（疑似缺陷：未给 ParamRowsEditor 传 secret-value，参数值以明文 text 输入；md §六.1.1 参数值「按敏感信息处理，以密码形式输入，保存后遮罩」）', async () => {
     await mountEditor()
@@ -363,7 +374,6 @@ describe('KnowledgeSourceEditor · API KEY 默认预置参数行（md §六.1 / 
     if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数')
     await flushAll(4)
     const valueInput = drawer().querySelector('.pr-row:not(.pr-row-head) input[placeholder="必填"]')
-    expect(valueInput).toBeTruthy() // 前提：参数值输入框存在
     expect(valueInput.type).toBe('password')
   })
 })
@@ -624,6 +634,31 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     })
   })
 
+  it('前提：先在 streamable-http 下填服务地址与 Bearer，再切 stdio 并补齐必填后保存 → 调到 create（stdio 保存放行）', async () => {
+    api.createKnowledgeSource.mockResolvedValue(undefined)
+    api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', tools: ['search_documents'], toolCount: 1 })
+    await mountMcp()
+    typeInto(itemByLabel('数据源名称').querySelector('input'), '本地 MCP')
+    formModel().mcp.endpoint = 'https://mcp.example.com/mcp'
+    formModel().mcp.authType = 'bearer'
+    await flushAll(6)
+    typeInto(itemByLabel('Bearer Token').querySelector('input'), 'secret-tok')
+    await flushAll(4)
+
+    formModel().mcp.transport = 'stdio'
+    await flushAll(6)
+    clickBtn('测试连接')
+    await flushAll(10)
+    toolBoxes()[0].querySelector('input').click()
+    const respRows = [...drawer().querySelectorAll('.sme-resp-row')]
+    typeInto(respRows[0].querySelectorAll('input')[0], 'title')
+    typeInto(respRows[1].querySelectorAll('input')[0], 'content')
+    await flushAll(6)
+    await save()
+
+    expect(api.createKnowledgeSource).toHaveBeenCalledTimes(1)
+  })
+
   it.fails('切到 stdio 后保存，载荷不应再带 streamable-http 下填过的服务地址与 Bearer 凭证（疑似缺陷：切换传输方式不清空 http 侧字段，凭证仍经 authValue 下发；md §七.2.3「切换到 stdio 则按各自字段清空」）', async () => {
     api.createKnowledgeSource.mockResolvedValue(undefined)
     api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', tools: ['search_documents'], toolCount: 1 })
@@ -646,7 +681,6 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     await flushAll(6)
     await save()
 
-    expect(api.createKnowledgeSource).toHaveBeenCalledTimes(1) // 前提：stdio 保存放行
     const payload = api.createKnowledgeSource.mock.calls[0][0]
     expect(payload.authValue).toBeNull()
     expect(payload.config.endpoint).toBe('')
@@ -728,10 +762,15 @@ describe('KnowledgeSourceEditor · 编辑回填与敏感信息遮罩（md §四.
     expect(itemByLabel('Bearer Token').textContent).toContain('当前：tok-****89')
   })
 
+  it('前提：编辑打开最近测试成功的 API 源，表单已按详情回填（md §四.3）', async () => {
+    api.getKnowledgeSource.mockResolvedValue(apiDetail())
+    await mountEditor({ sourceId: 'ks_api' })
+    expect(formModel().api.url).toBe('https://rag.example.com/search')
+  })
+
   it.fails('编辑打开一个最近测试成功的 API 源（未做任何修改）：应展示「连接正常」验证结果，而不是「修改连接配置后需要重新测试」（疑似缺陷：回填改变 connSig，watch 在 loading 已复位后才触发，把刚回填的 SUCCESS 重置为未验证；md §六.4「成功后记录最近验证结果与时间；修改请求地址、鉴权或映射后，验证状态重置为未验证」——未修改不应重置）', async () => {
     api.getKnowledgeSource.mockResolvedValue(apiDetail())
     await mountEditor({ sourceId: 'ks_api' })
-    expect(formModel().api.url).toBe('https://rag.example.com/search') // 前提：已回填
     expect(drawer().querySelector('.ksrc-test').textContent).toContain('连接正常')
     expect(btn('重新测试')).toBeTruthy()
   })
