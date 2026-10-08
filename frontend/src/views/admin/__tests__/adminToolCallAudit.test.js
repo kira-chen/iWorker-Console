@@ -30,7 +30,13 @@ const flush = async () => {
   }
 }
 
+// 固定「今天」（2026-10-08 /test-audit 治理组 T10）：种子是 2026-09-20～09-27 的固定日期，页面默认查近 90 天；
+// 不固定的话约 2026-12-19 起首条掉出窗口、12-26 起全部掉出，用例到期自动变红。只假 Date，不假定时器。
+const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(FIXED_NOW)
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -47,6 +53,7 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
+  vi.useRealTimers()
 })
 
 function mountReal() {

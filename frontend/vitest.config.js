@@ -14,7 +14,11 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/__tests__/**/*.{test,spec}.js', 'tests/**/*.{test,spec}.js'],
+    include: ['src/**/__tests__/**/*.{test,spec}.js'],
+    // 单条用例超时统一放宽到 20s（2026-10-08 /test-audit 横向组 T1）：真实挂载 Element Plus 与 vi.resetModules 冷导入
+    // 在全量并行或机器负载高时单条可达 5–7s，默认 5s 会随机红（审计中 5 个分组都复现过，单跑全绿、非顺序依赖）。
+    // 只放宽等待上限，不改任何断言；个别文件原有的 30s/60s 放宽保持不动。
+    testTimeout: 20000,
     // *.browser.test.js 是真浏览器用例（视觉/布局效果层），归 vitest.browser.config.js 跑，
     // jsdom/node 环境不渲染不合成，跑它们只会假绿 → 此处显式互斥。
     exclude: ['**/node_modules/**', '**/*.browser.test.js'],
@@ -34,7 +38,7 @@ export default defineConfig({
     server: { deps: { inline: ['element-plus', 'async-validator'] } },
     // 覆盖率（2026-10-08）：只在 `npm run test:coverage` 时采集，日常 `npm test` 不受影响。
     // 报告写 frontend/coverage/（不入库）；口径为 src 下全部 js/vue（测试文件除外），
-    // 未被任何用例加载的文件也计入，便于看出「零测试」的盲区。基线：行 81.9% / 分支 72.3%。
+    // 未被任何用例加载的文件也计入，便于看出「零测试」的盲区。基线数字见最近一条 test(coverage) / chore(test) 提交说明。
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,vue}'],
