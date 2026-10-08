@@ -13,8 +13,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 【2026-09-12 审计 J4 闭环：去掉 stubEnv('VITE_SKILL_MOCK','0')】
  * 此前 7 条「端点分支」用例断的是 demo 永远不走的真实端点（/fde/admin-skills、三套命名空间的 request 调用），
  * 页面层对 mock 路径零用例。现在数据一律走真 unifiedSkillMock（demo 默认路径），用例改断**用户可见结果**：
- * 删除后行消失 + toast、停用后状态列「审核中」、撤回后恢复、类型切换只剩该类型且回第 1 页、深链只出未被引用的
- * 岗位私有行、翻页切片…；@/api/request 仍换成桩，只用来断言「真实端点零调用」。
+ * 删除后行消失 + toast、停用后状态列「审核中」、撤回后恢复、类型切换只剩该类型且回第 1 页、翻页切片…；@/api/request 仍换成桩，只用来断言「真实端点零调用」。
  * unifiedSkillMock 是模块级共享内存：破坏性用例一律自建技能行；动到种子（sk_302 / sk_303 / sk_308）的用例
  * 在 afterEach 用 _reset 复位，避免随机顺序下互相污染。
  * mock 各写点内置 delay(60~120ms)，用 settle() 真等再冲刷渲染队列。
@@ -24,7 +23,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - 旧「本体状态开关 toggleStatus / 下架 offlineSkill / 上架 onlineSkill / canRemove 删除门控」全部废弃：
  *   操作列按三态出按钮（固定 查看/编辑；未发布 发布+删除；审核中 撤回；已发布 停用+版本管理）；
  * - 停用 = 提交停用审核（stopSkill，被引用拦截 alert）；删除确认文案统一、被引用拦截 alert；
- * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类（只清引用筛选）；
+ * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；
  * - 查看/编辑同标签路由跳转（router.push；查看 = 编辑路由 + ?view=1），不再 window.open 新标签；
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
  */
@@ -53,9 +52,7 @@ vi.mock('@/api/unifiedSkillMock', async (importOriginal) => {
 })
 const skillMock = await import('@/api/unifiedSkillMock')
 
-// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）；skillCategory.js 列表接口不再被本页调用。
-const listSkillCategoriesSpy = vi.fn(() => Promise.resolve([]))
-vi.mock('@/api/skillCategory', () => ({ listSkillCategories: (...a) => listSkillCategoriesSpy(...a) }))
+// 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）。
 const listFieldDictSpy = vi.fn(() => Promise.resolve({ skillCategory: [{ name: '办公效率' }] }))
 vi.mock('@/api/fieldDict', () => ({ listFieldDict: (...a) => listFieldDictSpy(...a) }))
 
@@ -220,8 +217,8 @@ describe('读：数据走真 unifiedSkillMock（demo 默认路径），真实端
     expect([...times].sort().reverse()).toEqual(times) // desc
   })
 
-  // 分类固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；被清的是「引用状态」筛选。
-  it('类型切换 → 列表只剩该类型行且回第 1 页；分类保留（并生效）、引用筛选被清', async () => {
+  // 分类固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类。
+  it('类型切换 → 只剩该类型行且回第 1 页；分类保留并生效', async () => {
     const vm = await mountLoaded()
     vm.query.type = 'POSITION'
     await settle()
@@ -261,7 +258,7 @@ describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户�
     expect(realPost).not.toHaveBeenCalled()
   })
 
-  it('停用（提交停用审核）：确认文案对齐原型 → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.2 L119 / §二.3.5）', async () => {
+  it('停用（提交停用审核）：确认文案对齐 md §二.3.5 L97（历史出处：原型） → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.2 L119 / §二.3.5）', async () => {
     const vm = await mountLoaded()
     const row = rowById(vm, 'sk_303') // 种子 303：通用技能 · 已发布 · 无引用
     expect(vm.displayStateLabel(row)).toBe('已发布')
@@ -468,7 +465,7 @@ describe('状态列：V100 停用审核态（回归守护）', () => {
 })
 
 // 2026-09-01 PRD 对齐改造取代旧口径（canRemove 已废弃）：操作列按三态出按钮。
-describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最终覆写态）', () => {
+describe('操作列：三态判定 + 发布就绪门（md §二.3.1 按钮展示规则 / §二.3.3 L80 发布前置条件；历史出处：原型 skillActions 最终覆写态）', () => {
   const pub = (status, extra = {}) => [{ target: 'USER_END', status, ...extra }]
 
   it('三态判定：未发布可删可发；审核中只撤回；已发布停用+版本管理', async () => {
@@ -480,7 +477,7 @@ describe('操作列：三态判定 + 发布就绪门（原型 skillActions 最�
     expect(vm.isReviewing({ type: 'PLATFORM', publications: pub('PUBLISHED', { pendingAction: 'DELIST' }) })).toBe(true)
   })
 
-  it('发布就绪门：必填齐 → 就绪提示；缺项 → 「请先补齐必填项：…」按原型同序列出缺项', async () => {
+  it('发布就绪门：必填齐 → 就绪提示；缺项 → 「请先补齐必填项：…」按 md §二.3.3 L80 同序列出缺项（历史出处：原型同序）', async () => {
     const vm = await mountPage()
     const ready = {
       type: 'PLATFORM', name: 'X', displayCategoryId: '办公效率', icon: '▤',
@@ -560,10 +557,9 @@ describe('最新版本列：展示当前已发布的版本号', () => {
 
 describe('分类选项 / 自动刷新 / 分页', () => {
   // 2026-09-01：分类选项改从 fieldDict（skillCategory 字段）同源取，demo 用「分类名」充当 id。
-  it('挂载从 fieldDict 拉分类选项（名即 id）；skillCategory.js 列表接口零调用', async () => {
+  it('挂载从 fieldDict 拉分类选项（名即 id）', async () => {
     const vm = await mountPage()
     expect(listFieldDictSpy).toHaveBeenCalled()
-    expect(listSkillCategoriesSpy).not.toHaveBeenCalled()
     expect(vm.categoryOptions).toEqual([{ id: '办公效率', name: '办公效率' }])
   })
 

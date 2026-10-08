@@ -584,6 +584,7 @@ describe('SkillFileTree 组③ 查找/过滤', () => {
     typeSearch(el, 'zzz不存在')
     await Promise.resolve(); await Promise.resolve()
     expect(el.querySelector('.ft-empty-filter')).toBeTruthy()
+    expect(el.querySelector('.ft-empty-filter').textContent.trim()).toBe('没有名字含「zzz不存在」的文件')
   })
 
   it('按内容查找：切到「按内容」+ 输入 → debounce 后调 searchSkillFiles，列命中行', async () => {

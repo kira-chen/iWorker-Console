@@ -89,12 +89,14 @@ describe('审核锁定 × 通道矩阵（穷举：漏归类通道 = 在审仍可
   it('platform + 在审 → 锁定条常驻，写入口（保存配置等）不渲染', () => {
     const el = mount({ skillSource: 'platform', publications: REVIEWING })
     expect(lockNotice(el)).toBeTruthy()
+    expect(lockNotice(el).textContent).toContain('技能审核中，已锁定不可修改')
     expect(saveCfgBtn(el)).toBeNull()
   })
 
   it('system（V89 平台族）+ 在审 → 同样锁定（守 isPlatformSkill 通道归类）', () => {
     const el = mount({ skillSource: 'system', publications: REVIEWING, hideMarketFields: true })
     expect(lockNotice(el)).toBeTruthy()
+    expect(lockNotice(el).textContent).toContain('技能审核中，已锁定不可修改')
     expect(saveCfgBtn(el)).toBeNull()
   })
 
@@ -104,6 +106,7 @@ describe('审核锁定 × 通道矩阵（穷举：漏归类通道 = 在审仍可
   it('fde + 在审 → 同样锁定（三类技能规则一致，md §二.3.2 L66）', () => {
     const el = mount({ skillSource: 'fde', publications: REVIEWING })
     expect(lockNotice(el)).toBeTruthy()
+    expect(lockNotice(el).textContent).toContain('技能审核中，已锁定不可修改')
     expect(saveCfgBtn(el)).toBeNull()
   })
 

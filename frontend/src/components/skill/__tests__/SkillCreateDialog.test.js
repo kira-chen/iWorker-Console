@@ -13,10 +13,6 @@ import { createApp, h, ref, nextTick } from 'vue'
  */
 
 vi.mock('@/api/skillFiles', () => ({ importSkillZip: vi.fn() }))
-// 技能分类（2026-08-17）：上传弹窗对平台技能拉分类选项；必须 mock，否则真实模块拉 @/api/request → @/router。
-vi.mock('@/api/skillCategory', () => ({
-  listSkillCategories: vi.fn(() => Promise.resolve([{ id: 'cat_1', name: '工作' }, { id: 'cat_2', name: '效率' }]))
-}))
 // 2026-09-01 PRD 对齐改造取代旧口径：分类选项改走 fieldDict 同源字典（固定 11 类）
 vi.mock('@/api/fieldDict', () => ({
   listFieldDict: vi.fn(() => Promise.resolve({ skillCategory: [{ name: '工作' }, { name: '效率' }] }))
@@ -178,7 +174,7 @@ describe('SkillCreateDialog · zip 主 + 手动次入口就地切换', () => {
   })
 })
 
-describe('SkillCreateDialog · 技能分类下拉（2026-08-17，仅市场通道平台技能）', () => {
+describe('SkillCreateDialog · 技能分类下拉（技能页语境 typeOptions 下三类技能均显示，选项走 fieldDict）', () => {
   // 2026-09-01 PRD 对齐改造取代旧口径：分类下拉不再由 source 决定，而是技能页语境
   //（传 typeOptions）下三类均显示、每包独立必选；选项改走 fieldDict 同源字典。
   it('技能页语境（typeOptions）→ 拉 fieldDict 分类并按包渲染下拉；每包选中值随 importSkillZip 独立透传 displayCategoryId', async () => {
@@ -220,14 +216,12 @@ describe('SkillCreateDialog · 技能分类下拉（2026-08-17，仅市场通道
   })
 
   it('source=fde → 不拉分类、不渲染下拉（FDE 技能无分类概念）', async () => {
-    const { listSkillCategories } = await import('@/api/skillCategory')
     const el = mount({ source: 'fde' })
     const ss = app._instance.setupState
     await ss.loadCategoryOptions()
     await Promise.resolve()
     ss.onZipChange({ name: 'p.zip', raw: new Blob(['z']) })
     await nextTick()
-    expect(listSkillCategories).not.toHaveBeenCalled()
     expect(ss.showCategorySelect).toBe(false)
     expect(el.querySelector('.zip-item-cat')).toBeNull()
   })

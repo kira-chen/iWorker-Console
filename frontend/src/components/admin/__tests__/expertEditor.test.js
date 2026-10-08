@@ -430,7 +430,7 @@ describe('ExpertEditor — 新建', () => {
 describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () => {
   const swatches = () => [...container.querySelectorAll('input[name="expertBackgroundColor"]')]
 
-  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（md §三.2）', async () => {
+  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（代码现状，md 列举顺序待裁决）', async () => {
     await mount({ expertId: null })
     const radios = swatches()
     expect(radios.map((r) => r.value)).toEqual([
@@ -438,7 +438,7 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 字段顺序（md §三.2 列举顺序）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
+    // 代码现状顺序（与 md §三.2 列举顺序不同，待裁决）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
     expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
   })

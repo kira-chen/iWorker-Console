@@ -6,7 +6,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
 /**
  * AdminExperts.vue 单测。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md
- *   §一.1 导航栏（分类 8 项同源字段字典 / 状态三态）/ §一.3 加载失败【重试】/ §二.1 列表展示 / §二.2 排序 /
+ *   §一.1 导航栏（专家类型筛选 / 分类 8 项同源字段字典 / 状态三态）/ §一.3 加载失败【重试】/ §二.1 列表展示 / §二.2 排序 /
  *   §二.3.1 三态按钮 / §二.3.2 查看编辑 / §二.3.3 发布 / §二.3.4 撤回 / §二.3.5 停用 / §二.3.7 删除。
  * el-table 用共享桩（helpers/elTableStub，T39）；真实挂载冒烟见 adminExpertsSmoke.test.js。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：二态状态列 / 「版本发布」单入口 /
@@ -316,12 +316,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(avatarBg(rows[2])).toBe('')
   })
 
-  it('加载失败 → 「加载失败」；无数据 → 「还没有专家，点击「新建专家」创建第一个」', async () => {
-    listExperts.mockRejectedValueOnce(new Error('x'))
-    await mount()
-    expect(container.querySelector('.el-empty').textContent).toContain('加载失败')
-    app.unmount(); container.remove()
-
+  it('无数据 → 「还没有专家，点击「新建专家」创建第一个」（加载失败态见上方【重试】用例）', async () => {
     listExperts.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     // 2026-09-08 原型复刻批次 1 对齐：空态改纯文字（ListStates .ls-empty），不再走 el-empty 插图
