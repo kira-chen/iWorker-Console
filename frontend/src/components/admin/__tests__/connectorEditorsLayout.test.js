@@ -5,15 +5,16 @@ import { createApp, h, nextTick, ref } from 'vue'
 /**
  * 连接器三编辑器（MCP / API / 业务系统）抽屉静态骨架与控件文案（原 connectorEditorsPrototypeLayout.test.js，
  * 2026-09-12 测试审计 T31 改名；原型已退场，对齐基准改为各模块 md）：
- *  - MCP：docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §三.3（示例问题在基本信息卡内）/
+ *  - MCP：docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §三.3 基本信息（「示例问题：必填，固定 3 条输入行」；
+ *    MCP md 未写「位于基本信息卡片内」，该说法出自 API / 业务系统 md §三.2）/
  *    §三.4.2（stdio Environment 四列）/ §三.5（测试连接结果）；
  *  - API：…/API/prd-API.md §三.2（图标 / 示例问题 / 操作性质）/ §三.3（鉴权三选一、API KEY 五列、Bearer 前缀）/
- *    §三.4 L153（启用 / 停用状态，默认启用）/ §三.5（请求参数子字段）；
- *  - 业务系统：…/业务系统/prd-业务系统.md §三.2（示例问题 / 连接方式）/ §三.3 L105（【展开业务页】↔【收起业务页】）/ §三.6。
+ *    §三.4「启用 / 停用状态：必填，默认启用」/ §三.5（请求参数子字段）；
+ *  - 业务系统：…/业务系统/prd-业务系统.md §三.2（示例问题 / 连接方式）/ §三.3「点击展开，按钮变为【收起业务页（N）】，再次点击收起」/ §三.6。
  *
- * 只盯静态布局与控件名称 / 文案；逻辑与校验各自的单测已覆盖（mcpEditor.test.js / ApiEditor.test.js / BizSystemEditorSkills.test.js）。
+ * 只盯静态布局与控件名称 / 文案；逻辑与校验各自的单测已覆盖（mcpEditor.test.js / ApiEditor.test.js / bizSystemEditor.test.js）。
  * 纯原型视觉断言（is-card / caret ▶ / .pr-add 位置 / 「同行」包装类）已于 T6/T7 删除，jsdom 不验布局。
- * K35（2026-09-12 闭环）：ApiEditor 抽屉顶部提示行按 md §三.1 L102 三态常显，A6 用例已反转为「三态均含」。
+ * K35（2026-09-12 闭环）：ApiEditor 抽屉顶部提示行按 md §三.1「抽屉顶部提示："1 个 API 对应 1 个可被技能引用的工具…"」三态常显，A6 用例已反转为「三态均含」。
  */
 
 /* ---------------- 共用桩 ---------------- */
@@ -303,7 +304,7 @@ describe('ApiEditor · 抽屉骨架（md API §三.2 ~ §三.5）', () => {
     }
   })
 
-  it('基本信息卡有「状态」启用 / 停用 radio，附「停用后技能不再可引用该 API」提示（md §三.4 L153 必填、默认启用）', async () => {
+  it('基本信息卡有「状态」启用 / 停用 radio，附「停用后技能不再可引用该 API」提示（md §三.4「启用 / 停用状态：必填，默认启用」）', async () => {
     const el = await mountEditor(API)
     const basic = cardOfTitle(el, '基本信息')
     const item = [...basic.querySelectorAll('.el-form-item')].find((f) => f.dataset.label === '状态')
@@ -314,7 +315,7 @@ describe('ApiEditor · 抽屉骨架（md API §三.2 ~ §三.5）', () => {
     expect(item.textContent).toContain('停用后技能不再可引用该 API')
   })
 
-  it('图标行与示例问题都在基本信息卡内，示例问题不是独立分区（md §三.2 L108 / L120）', async () => {
+  it('图标行与示例问题都在基本信息卡内，示例问题不是独立分区（md API §三.2「示例问题：必填，固定 3 条输入行，位于基本信息卡片内」）', async () => {
     const el = await mountEditor(API)
     const basic = cardOfTitle(el, '基本信息')
     expect(basic.querySelector('.icon-field-stub')).not.toBeNull()

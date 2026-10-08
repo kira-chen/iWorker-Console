@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref, reactive } from 'vue'
 
 /**
- * BizSystemEditor.vue 单测（2026-09-12 测试审计 T58 扩写；对齐
+ * BizSystemEditor.vue 单测（2026-09-12 测试审计 T58 扩写；2026-10-08 /test-audit T8 由 BizSystemEditorSkills.test.js
+ * 改名，与 mcpEditor.test.js / ApiEditor.test.js 对齐——本文件覆盖编辑器全部功能，不只专属技能；对齐
  * docs/PRD/数字员工管理端PRD/03能力/连接器/业务系统/prd-业务系统.md）：
  *  - §三.4 业务系统专属技能：仅编辑态展示（查看态不拉列表，K45 2026-09-12）；打开时拉取列表；
  *    【＋ 新建专属技能】（全角＋ 逐字照 md L124，K41 2026-09-12）弹窗取名 → 创建 → 重拉 + 新标签开编辑器；

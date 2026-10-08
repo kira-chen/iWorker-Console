@@ -4,10 +4,18 @@ import { ElMessage } from 'element-plus'
 import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
- * KnowledgeBaseEditor.vue「可见范围」必填校验（待办 yuepu#7⑤）。
- * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §三.3.1（L86）：
- *   可见范围必填；企业类型固定为「全员」（无需选择）；专家 / 岗位类型必须选中一项。
+ * KnowledgeBaseEditor.vue 编辑 / 查看抽屉单测（2026-10-08 /test-audit T4 由 knowledgeBaseEditorScope.test.js 改名，
+ * 名实对齐：本文件早已不只管可见范围）。底部按钮矩阵另见同目录 knowledgeBaseEditorFooter.test.js。
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md，共四组：
+ *   1. 图标必填——§三.3.1「图标 | 是 | 支持从图标库选择或上传」（2026-09-21 负责人拍板由「否」改「是」）：
+ *      标签带星标；未选图标点【保存】红字「请选择或上传图标」且不调 createKnowledgeBase，选好后放行。
+ *   2. 查看态【提交发布】的图标门（待办 yuepu#34）——§三.6 发布完整校验：无图标 toast「请选择知识库图标」、
+ *      不弹确认框；有图标进入二次确认。
+ *   3. 可见范围必填（待办 yuepu#7⑤）——§三.3.1「可见范围 | 是 | 企业类型固定为全员；专家类型选择专家…；岗位类型选择岗位」：
+ *      企业类型免选可保存且不出 `scopeRefId is required`；专家类型未选红字「请选择可见范围」。
+ *   4. 加载失败态（yuepu#49②）——编辑态详情加载失败表单不渲染；底部仍出现可点按钮为已知缺陷，it.fails 钉桩。
  *
+ * 第 3 组背景：
  * 真挂载 Element Plus（桩 el-form-item 拦不住这个 bug）：`<el-form-item required>` 会让 Element 额外塞一条
  * 内置 `{ required: true }` 规则，企业类型的 scopeRefId 恒为 '' → 报英文 `scopeRefId is required`，
  * 企业知识库永远存不下来。修法是把必填星标放进 rules 里（`required: true` + 自定义 validator），
@@ -138,7 +146,7 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
   })
 })
 
-describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1 L86）', () => {
+describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1）', () => {
   it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefId is required`', async () => {
     await mountCreate()
     expect(formModel().kbType).toBe('ENTERPRISE')

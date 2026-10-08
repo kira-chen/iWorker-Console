@@ -331,6 +331,7 @@ describe('KnowledgeSourceEditor · API 数据源（md §六）', () => {
     typeInto(itemByLabel('数据源名称').querySelector('input'), '国标检索')
     formModel().api.url = 'https://rag.example.com/search'
     await flushAll(4)
+    // yuepu#62① 修好后删掉这个分支（届时新建切 API 已预置一行，直接填即可）
     if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数') // 预置行缺陷见下方 it.fails
     await flushAll(4)
     const row = drawer().querySelector('input[placeholder="如 X-Api-Key"]').closest('.pr-row')
@@ -360,17 +361,20 @@ describe('KnowledgeSourceEditor · API KEY 默认预置参数行（md §六.1 / 
     await pickType('API')
     expect(drawer().querySelectorAll('input[placeholder="如 X-Api-Key"]').length).toBe(1)
   })
+})
+
+describe('KnowledgeSourceEditor · API KEY 参数值遮罩（§六.1.1）', () => {
   it('前提：API KEY 参数表有参数行时，行内存在参数值输入框（md §六.1.1）', async () => {
     await mountEditor()
     await pickType('API')
-    if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数')
+    if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数') // yuepu#62① 修好后删掉这个分支
     await flushAll(4)
     expect(drawer().querySelector('.pr-row:not(.pr-row-head) input[placeholder="必填"]')).toBeTruthy()
   })
   it.fails('API KEY 参数值输入框应为密码形式（疑似缺陷：未给 ParamRowsEditor 传 secret-value，参数值以明文 text 输入；md §六.1.1 参数值「按敏感信息处理，以密码形式输入，保存后遮罩」）', async () => {
     await mountEditor()
     await pickType('API')
-    if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数')
+    if (!drawer().querySelector('input[placeholder="如 X-Api-Key"]')) clickBtn('+ 添加参数') // yuepu#62① 修好后删掉这个分支
     await flushAll(4)
     const valueInput = drawer().querySelector('.pr-row:not(.pr-row-head) input[placeholder="必填"]')
     expect(valueInput.type).toBe('password')

@@ -15,10 +15,12 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 真：ListToolbar / ListPagination / ListStates / StatusTag / HealthTag（页面局部 import，全局桩无效）。
  *
  * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
- *  - §二.1 L39 引用清单按类型分流（岗位私有「被岗位引用」列岗位名 / 通用连接器「—」；yuepu#17、负责人 5618381 拍板）；
- *  - §一.2 L19 / L21 切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
+ *  - §二.1「引用情况」引用清单按类型分流（「岗位私有为"被岗位引用"（列岗位名）」「通用连接器显示"—"」；yuepu#17、负责人 5618381 拍板）；
+ *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
+ *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
  *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
+ * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
 // 路由 query 由各用例改写（深链 ?keyword=，写法同 adminBizSystems.test.js）
@@ -68,7 +70,7 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
-  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2 L21）
+  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2「切换连接器类型或状态后列表立即刷新」）
   'el-select': {
     props: ['modelValue'],
     emits: ['update:modelValue', 'change'],
@@ -237,7 +239,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务提供系统分页，不按 API 分页」）', () => {
+describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「本页按服务提供系统分页，不按 API 分页」）', () => {
   it('9 个系统、每页 3 个 → 首屏只有 3 个分组，分页条计数单位是「个」：「共 9 个数据」', async () => {
     await mount()
     expect(groupNames()).toEqual(['系统1号', '系统2号', '系统3号'])
@@ -330,7 +332,7 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务�
   })
 })
 
-describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () => {
+describe('AdminApis · 操作按钮按状态组合（md §二.2「各状态按钮组合」）', () => {
   it('未发布：【查看】【编辑】【发布】【删除】', async () => {
     await mount()
     expect(btnTexts(rowByName('未发布接口'))).toEqual(['查看', '编辑', '发布', '删除'])
@@ -367,7 +369,7 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () =
   })
 })
 
-describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4 L64-72）', () => {
+describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4）', () => {
   it('发布：确认窗「将「未发布接口」提交审核，审核通过后才对客户端开放。」/ 标题「发布 API」/【提交审核】 → publishApi + 「已提交发布审核」+ 重拉', async () => {
     await mount()
     const before = conn.listApis.mock.calls.length
@@ -465,7 +467,7 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4 L64-72）'
   })
 })
 
-describe('AdminApis · 服务提供系统分组头（md §二.1 L28 / §二.5 L81）', () => {
+describe('AdminApis · 服务提供系统分组头（md §二.1「分组头」/ §二.5「删除：系统下存在 API 时【删除系统】置灰」）', () => {
   it('分组头：名称 + 描述 + 「N 个 API」 + 三个操作【在本系统下新建 API】【编辑系统】【删除系统】', async () => {
     await mount()
     const g1 = groupByName('系统1号')
@@ -529,7 +531,7 @@ describe('AdminApis · 服务提供系统分组头（md §二.1 L28 / §二.5 L8
   })
 })
 
-describe('AdminApis · 空态（md §一.1 L14 / §四）', () => {
+describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹配的 API"」/ §四）', () => {
   it('没有任何服务提供系统 → 「还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API」+【新建服务提供系统】', async () => {
     conn.listProviderSystems.mockResolvedValue({ list: [] })
     conn.listApis.mockResolvedValue({ list: [] })
@@ -554,7 +556,7 @@ describe('AdminApis · 空态（md §一.1 L14 / §四）', () => {
   })
 })
 
-describe('AdminApis · 验证列与引用情况（md §二.1 L35-37 / §二.3 L58）', () => {
+describe('AdminApis · 验证列与引用情况（md §二.1「最近更新时间」「验证」/ §二.3 连通性验证）', () => {
   it('点【↻】重新验证 → healthCheckApi(id)，成功「检活完成 · 连接正常」且行内标签「连接正常」', async () => {
     conn.healthCheckApi.mockResolvedValue({ displayStatus: 'HEALTHY', checkedAt: '2026-08-25T10:00:00+08:00' })
     await mount()
@@ -618,7 +620,7 @@ describe('AdminApis · 验证列与引用情况（md §二.1 L35-37 / §二.3 L5
 })
 
 /* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
-describe('AdminApis · 引用情况按类型分流（md §二.1 L39）', () => {
+describe('AdminApis · 引用情况按类型分流（md §二.1「引用情况」）', () => {
   const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
 
   it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
@@ -654,7 +656,7 @@ describe('AdminApis · 引用情况按类型分流（md §二.1 L39）', () => {
   })
 })
 
-describe('AdminApis · 切筛选与清空即刷新（md §一.2 L19 / L21）', () => {
+describe('AdminApis · 切筛选与清空即刷新（md §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」）', () => {
   it('改「连接器类型」下拉、不点【查询】→ 立即重拉，listApis 收到 type', async () => {
     await mount()
     const before = conn.listApis.mock.calls.length

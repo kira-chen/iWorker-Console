@@ -13,9 +13,11 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 真：ListToolbar / ListPagination / ListStates / StatusTag（页面局部 import）。
  *
  * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
- *  - §二.1 L33 引用清单按类型分流（岗位私有「被岗位引用」列岗位名 / 通用连接器「—」；yuepu#17、负责人 5618381 拍板）；
- *  - §一.2 L19-20 切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
+ *  - §二.1「引用情况」引用清单按类型分流（「岗位私有为"被岗位引用"（列岗位名）」「通用连接器显示"—"」；yuepu#17、负责人 5618381 拍板）；
+ *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
+ *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）。
+ * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
 const admin = {
@@ -59,7 +61,7 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
-  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2 L20）
+  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2「切换连接器类型或状态后列表立即刷新」）
   'el-select': {
     props: ['modelValue'],
     emits: ['update:modelValue', 'change'],
@@ -269,7 +271,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(container.querySelector('.lt-search').value).toBe('不存在')
   })
 
-  it('引用情况：「2 个技能引用」点开弹窗「被技能引用」列技能名；无引用显示「暂无引用」（md §二.1 L29）', async () => {
+  it('引用情况：「2 个技能引用」点开弹窗「被技能引用」列技能名；无引用显示「暂无引用」（md §二.1「引用情况：…市场连接器有引用时展示"N 个技能引用"…无引用展示"暂无引用"」）', async () => {
     await mount()
     expect(rowByName('合同管理平台').textContent).toContain('暂无引用')
     btn(rowByName('客户管理系统'), '2 个技能引用').click()
@@ -280,7 +282,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
     expect(dlg.textContent).toContain('销售方案生成')
   })
 
-  it('最近更新时间排序跨页：5 行乱序、每页 2 → 首页是最新两条；点列头切升序 → 首页是最旧两条（md §二.1 L30；09-09 P1 aa7d251）', async () => {
+  it('最近更新时间排序跨页：5 行乱序、每页 2 → 首页是最新两条；点列头切升序 → 首页是最旧两条（md §二.1「最近更新时间：…支持点击排序」；09-09 P1 aa7d251）', async () => {
     pageSizeState.size = 2
     const five = ['甲', '乙', '丙', '丁', '戊'].map((n, i) =>
       mkBiz({ id: `b_${i}`, name: `${n}系统`, updatedAt: `2026-08-2${[3, 1, 5, 2, 4][i]}T10:00:00+08:00` })
@@ -297,7 +299,7 @@ describe('AdminBizSystems · 列表与查询（md §一.1 / §二.1）', () => {
   })
 })
 
-describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）', () => {
+describe('AdminBizSystems · 操作按钮按状态组合（md §二.2「各状态按钮组合」）', () => {
   it('未发布：【查看】【编辑】【发布】【删除】共 4 个', async () => {
     await mount()
     expect(btnTexts(rowByName('合同管理平台'))).toEqual(['查看', '编辑', '发布', '删除'])
@@ -349,7 +351,7 @@ describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）'
   })
 })
 
-describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-52）', () => {
+describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3）', () => {
   it('发布：确认窗「将「合同管理平台」提交审核，审核通过后才对客户端开放。」/「发布业务系统」/【提交审核】 → submitBizSystemPublish + 「已提交发布审核」+ 重拉', async () => {
     await mount()
     const before = admin.listBizSystems.mock.calls.length
@@ -451,7 +453,7 @@ describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3 L45-
 })
 
 /* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
-describe('AdminBizSystems · 引用情况按类型分流（md §二.1 L33）', () => {
+describe('AdminBizSystems · 引用情况按类型分流（md §二.1「引用情况」）', () => {
   const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
 
   it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
@@ -488,7 +490,7 @@ describe('AdminBizSystems · 引用情况按类型分流（md §二.1 L33）', (
   })
 })
 
-describe('AdminBizSystems · 切筛选与清空即刷新（md §一.2 L19-20）', () => {
+describe('AdminBizSystems · 切筛选与清空即刷新（md §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」）', () => {
   it('改「连接器类型」下拉、不点【查询】→ 立即重拉，listBizSystems 收到 type', async () => {
     await mount()
     const before = admin.listBizSystems.mock.calls.length

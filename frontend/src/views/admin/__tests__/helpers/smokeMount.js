@@ -70,7 +70,7 @@ export function mountReal(Component, props = {}, { plugins = [] } = {}) {
 }
 
 /**
- * 真挂载抽屉表单的探针（2026-10-08 /test-audit T20 抽出；knowledgeBaseEditorScope / knowledgeSourceEditor /
+ * 真挂载抽屉表单的探针（2026-10-08 /test-audit T20 抽出；knowledgeBaseEditor / knowledgeSourceEditor /
  * knowledgeSourceEditorSse / modelConfigEditDialogSmoke 四份逐字相同）。挂载句柄每条用例重建，故传取值函数：
  *   const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
  *

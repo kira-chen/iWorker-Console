@@ -10,7 +10,7 @@ import { mountReal, flushAll } from '@/views/admin/__tests__/helpers/smokeMount'
  *  - API/prd-API.md §三.1（新建 / 编辑底部【取消】【保存】）；
  *  - 业务系统/prd-业务系统.md §三.1（新建 / 编辑底部【取消】【保存】）。
  *
- * 编辑器级单测（mcpEditor / ApiEditor / BizSystemEditorSkills）把 el-drawer / el-form 等桩掉，拦不住
+ * 编辑器级单测（mcpEditor / ApiEditor / bizSystemEditor）把 el-drawer / el-form 等桩掉，拦不住
  * 真组件 setup 期报错、子组件 props 形状不对这类故障。本文件只 mock api 层与 vue-router，其余用真 Element Plus，
  * 以 visible=true 打开抽屉，新建与编辑各一次，断言：挂载不抛、console.error 零调用、抽屉标题与底部按钮。
  * 标题以组件现状为准：新建 API / 业务系统由 DrawerEditor 拼「新建」+ entity（「新建API」无空格、「新建业务系统」），

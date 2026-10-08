@@ -6,7 +6,7 @@ import { createApp, h, nextTick } from 'vue'
  * KnowledgeSourceList.vue（数据源管理子页，AdminKnowledgeBase 容器 ?tab=source）列表契约。
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
- * - §四.2 列表字段：概要（上传=文档数 / API·MCP=未验证·已连通·连接失败，md §八.1 L417）/ 状态（启用·停用）/ 被引用；
+ * - §四.2 列表字段：概要（上传=文档数 / API·MCP=未验证·已连通·连接失败，md §八.1「数据源列表概要按验证状态展示」）/ 状态（启用·停用）/ 被引用；
  * - §四.2 操作矩阵：查看·编辑固定；上传类+文档管理；被引用时删除置灰并提示「正被知识库引用，请先解除引用」（逐字）；
  *   删除二次确认「删除后配置无法恢复，确认删除？」与 toast「数据源已删除」；
  * - §四.1 状态筛选（启用 / 停用）随查询下发；
@@ -204,7 +204,7 @@ describe('KnowledgeSourceList 列表契约（md §四.1-§四.2 / §八.1）', (
     expect(msg.success).toHaveBeenCalledWith('数据源已删除')
   })
 
-  it('状态筛选（启用 / 停用，后置精修层）随查询下发', async () => {
+  it('状态筛选（md §四.1「全部状态、启用、停用」）随查询下发', async () => {
     await mount()
     const selects = [...container.querySelectorAll('select')]
     const statusSelect = selects[1] // 顺序：类型、状态

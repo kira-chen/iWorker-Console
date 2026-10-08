@@ -9,7 +9,7 @@ import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__te
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md §七.2：传输方式 streamable-http / stdio / sse；
  * sse 的字段与鉴权同 streamable-http（§七.2.3）。
  *
- * 真挂载 Element Plus（同 knowledgeBaseEditorScope.test.js）。重点盯一个回归：编辑器里凡「非 http 即 stdio」
+ * 真挂载 Element Plus（同 knowledgeBaseEditor.test.js）。重点盯一个回归：编辑器里凡「非 http 即 stdio」
  * 的 else 分支，sse 不能掉进去——否则选 sse 保存会被要求「请选择 Command」。
  */
 

@@ -5,7 +5,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
 
 /**
  * KnowledgeBaseEditor.vue 底栏按钮 / 关键变更确认 / 数据源候选 / 上下文锁 / 发布与保存失败 ——
- * 2026-10-08 测试审计补缺口（真挂载 Element Plus，只 mock api 层；同目录 knowledgeBaseEditorScope.test.js 管必填）。
+ * 2026-10-08 测试审计补缺口（真挂载 Element Plus，只 mock api 层；同目录 knowledgeBaseEditor.test.js 管必填）。
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
  * - §三.4.1 编辑抽屉底部按钮（新建 / 未发布 / 审核中 / 已发布）与 §三.4.2 查看抽屉底部按钮（审核中 / 未发布 / 已发布）；
  *   §三.3「审核中配置锁定，仅允许查看或撤回」；
