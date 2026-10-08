@@ -207,4 +207,20 @@ describe('skillReviewMock · 持久化 restore 形状守卫', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('skillReview 存量数据不可用'), expect.any(Error))
     warn.mockRestore()
   })
+
+  // 2026-10-08 /test-audit 补缺口（md 用户技能审核 §7.2「保存当前 Tab 的模板配置……只有保存才视为生效」）：保存的风险模板刷新后仍生效。
+  it('保存「严格」尺度的风险模板后刷新 → 读回的是新模板，不是种子', async () => {
+    const m = await import('../skillReviewMock')
+    const before = (await m.getRiskConfig()).templates['严格']
+    // 挑第一个检测项，换成它可选集合里另一个触发等级
+    const item = DETECTION_ITEMS[0]
+    const other = ITEM_RISK_OPTIONS[item].find((v) => v !== before[item])
+    await m.saveRiskTemplate('严格', { ...before, [item]: other })
+
+    vi.resetModules()
+    const reloaded = await import('../skillReviewMock')
+    const after = (await reloaded.getRiskConfig()).templates['严格']
+    expect(after[item]).toBe(other)
+    expect(after).toEqual({ ...before, [item]: other })
+  })
 })

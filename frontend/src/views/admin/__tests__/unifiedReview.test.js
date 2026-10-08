@@ -11,6 +11,8 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - §3.1 七列（名称+描述 / 业务类型 / 申请类型 / 申请版本「—」/ 提交人 / 提交时间 ↓↑ / 操作【查看】【驳回】【通过】）；
  * - §四 【查看】：技能走整页只读路由，其余开原生详情抽屉（GovObjectDetail），底部 关闭|驳回|通过；
  * - §5.1 驳回弹窗 → 「已驳回审核」；§5.2 通过确认 → 发布类「已通过审核」/ 停用「已通过停用申请」，记录离开列表（重拉）；
+ * - 2026-10-08 补：夹具加一行版本管理（VERSION）——名称「终端 + 版本号」、业务类型「版本管理」、申请类型「新版本发布」，
+ *   【查看】开原生详情抽屉（GovObjectDetail 桩收到 kind=VERSION），不查快照（md §四：版本管理不生成快照）。
  * - §七 L99 空态「暂无审核数据」；L102 快照缺失（岗位 / 专家 / 技能）阻止审核（aa7d251：列表行动作也过闸门）。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩，
  * 子组件 GovObjectDetail / ReviewRejectDialog 桩（各有独立单测），只验「开没开、带的什么、回传什么」。
@@ -165,7 +167,9 @@ const ROWS = [
   { id: 1, name: '客户资料查询', description: '按客户编号读取客户基础信息', type: 'TOOL', subType: 'API', refId: 'api_1103', submitterName: 'config.admin', submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', requestAction: 'FIRST_PUBLISH', version: '—' },
   { id: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', type: 'SKILL', refId: 'sk_302', submitterName: 'li.na', submittedAt: '2026-08-28 09:18', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' },
   { id: 3, name: '人力资源系统', description: '员工、组织、请假和入转调离管理', type: 'BIZ_SYSTEM', refId: 'biz_2102', submitterName: 'config.admin', submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW', requestAction: 'DELIST', version: 'v2.0.0' },
-  { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', refId: 403, submitterName: 'wangfang', submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' }
+  { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', refId: 403, submitterName: 'wangfang', submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' },
+  // 2026-10-08：版本管理行（md §3.1 名称 =「终端 + 版本号」、下一行 = 更新说明；申请类型只有新版本发布 / 停用）
+  { id: 13, name: 'Mac v1.2.0', description: '新增记忆管理 修复若干问题', type: 'VERSION', refId: 7, submitterName: 'xiaomei', submittedAt: '2026-08-26 16:30', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' }
 ]
 const byId = (id) => ROWS.find((r) => r.id === id)
 const rowById = (id) => rowEls().find((el) => el.textContent.includes(byId(id).name))
@@ -221,7 +225,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
       return Promise.resolve({ list, total: list.length })
     })
     await mount()
-    expect(rowEls()).toHaveLength(4)
+    expect(rowEls()).toHaveLength(ROWS.length)
     listReviews.mockClear()
     pick(container.querySelectorAll('.el-select')[1], 'DELIST')
     await flush()
@@ -415,5 +419,33 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(rejectReview).toHaveBeenCalledWith(byId(1), 'x')
     expect(container.querySelector('.reject-dialog')).toBeNull()
     expect(container.querySelector('.gov-detail')).toBeNull()
+  })
+
+  it('版本管理行（md §3.1）：名称为「终端 + 版本号」、下一行为更新说明；业务类型「版本管理」、申请类型「新版本发布」', async () => {
+    await mount()
+    const row = rowById(13)
+    expect(row.querySelector('.rev-name').textContent).toBe('Mac v1.2.0')
+    expect(row.querySelector('.rev-desc').textContent).toBe('新增记忆管理 修复若干问题')
+    expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toEqual(['版本管理', '新版本发布'])
+  })
+
+  it('版本管理行【查看】→ 打开原生详情抽屉，kind=VERSION、带版本 id，底部 关闭|驳回|通过（md §四：版本管理复用版本管理页的只读查看抽屉）', async () => {
+    await mount()
+    rowBtn(rowById(13), '查看').click()
+    await flush()
+    const detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.kind).toBe('VERSION')
+    expect(detail.dataset.ref).toBe('7')
+    expect([...detail.querySelectorAll('.gov-btn')].map((b) => b.textContent)).toEqual(['关闭', '驳回', '通过'])
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('版本管理行【通过】→ 不查快照直接进审核流程（md §四：版本管理不生成快照）', async () => {
+    await mount()
+    rowBtn(rowById(13), '通过').click()
+    await flush()
+    expect(loadReviewSnapshot).not.toHaveBeenCalled()
+    expect(approveReview).toHaveBeenCalledWith(byId(13))
+    expect(ElMessage.success).toHaveBeenCalledWith('已通过审核')
   })
 })

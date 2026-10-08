@@ -13,6 +13,8 @@ import { createApp, h, nextTick } from 'vue'
  *   选项 ≤30 字、【完成】统一保存 → 「字段选项已保存」、【取消】放弃未保存修改；
  * - §五 空值「选项值不能为空」/ 重复「选项值不能重复」阻止保存、保存失败弹窗保持打开并展示原因。
  * - §三 L48 删除需二次确认（ad4abbe）：确认后仅从当前编辑草稿中移除，【完成】时才统一保存。
+ * - 2026-10-08 对齐 §2.2 末段：分组说明「平台技能相关的可配置字段」「专家相关的可配置字段」，
+ *   专家分类卡说明「专家列表与编辑页使用的业务分类」（字段卡说明在【编辑】弹窗顶部展示，同技能分类）。
  * ListStates / PageHeader 真挂载；EP 控件桩（el-dialog / el-input / el-button / el-icon）。
  */
 
@@ -170,6 +172,20 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     for (const r of rows) expect(r.querySelector('.fm-opt-del')).toBeTruthy()
     expect(dialog().querySelector('.fm-opt-add .el-button').textContent.trim()).toBe('＋ 添加选项')
     expect([...dialog().querySelectorAll('.dlg-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '完成'])
+  })
+
+  it('分组头说明：平台技能「平台技能相关的可配置字段」、专家「专家相关的可配置字段」（md §2.2）', async () => {
+    await mount()
+    expect(groupNamed('平台技能').querySelector('.aps-group-desc').textContent).toBe('平台技能相关的可配置字段')
+    expect(groupNamed('专家').querySelector('.aps-group-desc').textContent).toBe('专家相关的可配置字段')
+  })
+
+  it('专家分类的说明为「专家列表与编辑页使用的业务分类」（【编辑】弹窗顶部展示，md §2.2）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    expect(dialog().dataset.title).toBe('编辑专家分类')
+    expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('专家列表与编辑页使用的业务分类')
   })
 
   it('【＋ 添加选项】→ 末尾新增一空行并聚焦该输入框（md §三 L47）', async () => {

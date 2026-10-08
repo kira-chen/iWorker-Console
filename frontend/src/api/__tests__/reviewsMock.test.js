@@ -531,4 +531,18 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     expect(total).toBe(1)
     expect(list[0].name).toBe('快照里的唯一行')
   })
+
+  // 2026-10-08 /test-audit 补缺口（md 审核中心 §5.2「确认后记录审核人和审核时间，记录离开审核列表」）：
+  // 通过后刷新页面，这条记录不能又冒回待审列表——审核行状态须落盘。
+  it('通过一条待审申请后刷新 → 该记录已离开待审列表，再取详情是「已通过」', async () => {
+    const m = await import('../reviewsMock')
+    await m.approveReview(13) // 版本管理 Mac v1.2.0 发布申请
+
+    vi.resetModules()
+    const reloaded = await import('../reviewsMock')
+    const { list, total } = await reloaded.listReviews({ size: 50 })
+    expect(total).toBe(12)
+    expect(list.some((r) => r.id === 13)).toBe(false)
+    expect((await reloaded.getReview(13)).status).toBe('PUBLISHED')
+  })
 })

@@ -13,6 +13,8 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * - §4.1 待审核底栏 关闭|撤回申请，撤回二次确认 → 「申请已撤回」；§4.2 已通过仅 关闭；
  *   §4.3/§4.4 已驳回 / 已撤回底栏 关闭|前往修改|重新提交，重新提交 → 「提交成功」提示窗（alertResubmitSuccess）；
  * - §七 L97 空态「暂无申请记录」；L99 撤回时已被审核 → toast 原因并重拉；L100 重新提交失败 → toast 原因。
+ * - 2026-10-08 补：夹具加一行版本管理（VERSION）——【查看】开原生详情抽屉（GovObjectDetail 桩收到 kind=VERSION）；
+ *   §七「重新提交失败 → 保留当前状态并提示具体原因」：详情不关、不弹「提交成功」、不重拉。
  * 列表【撤回】走 warning 色档，对齐 md 我的申请 §3.1（【撤回】橙色，与全站「停用/下架/撤回」等状态类操作统一）。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩，
  * GovObjectDetail 桩只验「开没开、带的什么、回传什么」。
@@ -151,7 +153,9 @@ const ROWS = [
   { id: 503, objectName: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', businessType: 'POSITION', applicationType: 'VERSION_PUBLISH', version: 'v2.2.0', submittedAt: '2026-08-27 15:10', result: 'REJECTED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 16:02', rejectReason: '岗位说明未明确数据使用范围，请补充后重新提交。', refId: 401, objectDeleted: false },
   { id: 504, objectName: '行业研究助手', description: '汇总行业资料、竞品动态并生成结构化研究结论', businessType: 'SKILL', applicationType: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-27 11:42', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-27 12:10', rejectReason: '', refId: 'sk_309', objectDeleted: false },
   { id: 507, objectName: 'Kimi K2', description: '支持长上下文分析和文本生成的通用模型', businessType: 'MODEL', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-26 15:08', result: 'REJECTED', reviewer: 'model.audit', reviewedAt: '2026-08-26 16:30', rejectReason: '连通性验证未通过。', refId: 'md_104', objectDeleted: false },
-  { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-24 10:46', rejectReason: '', refId: 203, objectDeleted: true }
+  { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-24 10:46', rejectReason: '', refId: 203, objectDeleted: true },
+  // 2026-10-08：版本管理行（md §3.1 申请对象 =「终端 + 版本号」、下一行 = 更新说明）
+  { id: 518, objectName: 'Mac v1.2.0', description: '新增记忆管理 修复若干问题', businessType: 'VERSION', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-23 16:30', result: 'PENDING', reviewer: '', reviewedAt: '', rejectReason: '', refId: 7, objectDeleted: false }
 ]
 const byId = (id) => ROWS.find((r) => r.id === id)
 const rowById = (id) => rowEls().find((el) => el.querySelector('.ma-name').textContent === byId(id).objectName)
@@ -422,5 +426,38 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     await mount()
     expect(container.querySelector('.el-empty').textContent).toContain('加载失败')
     expect([...container.querySelectorAll('.el-empty .el-button')].map((b) => b.textContent.trim())).toContain('重试')
+  })
+
+  it('版本管理行（md §3.1）：申请对象为「终端 + 版本号」、下一行为更新说明，业务类型「版本管理」', async () => {
+    await mount()
+    const row = rowById(518)
+    expect(row.querySelector('.ma-name').textContent).toBe('Mac v1.2.0')
+    expect(row.textContent).toContain('新增记忆管理 修复若干问题')
+    expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toContain('版本管理')
+  })
+
+  it('版本管理行【查看】→ 打开原生详情抽屉，kind=VERSION、带版本 id；待审核底栏 关闭|撤回申请（md §四 / §4.1）', async () => {
+    await mount()
+    rowBtn(rowById(518), '查看').click()
+    await flush()
+    const detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.kind).toBe('VERSION')
+    expect(detail.dataset.ref).toBe('7')
+    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭', '撤回申请'])
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('详情里【重新提交】失败 → toast 具体原因；详情不关、不弹「提交成功」、不重拉列表（md §七「重新提交失败 → 保留当前状态并提示具体原因」）', async () => {
+    resubmitMyApplication.mockRejectedValueOnce(new Error('该对象已有待审核申请，请勿重复提交'))
+    await mount()
+    rowBtn(rowById(503), '查看').click()
+    await flush()
+    detailBtns()[2].click()
+    await flush()
+    expect(resubmitMyApplication).toHaveBeenCalledWith(503)
+    expect(ElMessage.error).toHaveBeenCalledWith('该对象已有待审核申请，请勿重复提交')
+    expect(container.querySelector('.gov-detail')).toBeTruthy()
+    expect(alertResubmitSuccess).not.toHaveBeenCalled()
+    expect(listMyApplications).toHaveBeenCalledTimes(1)
   })
 })
