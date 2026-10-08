@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { ElMessage } from 'element-plus'
-import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
+import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
  * ModelConfigEditDialog.vue 真实挂载冒烟 + 表单校验规则（2026-09-12 测试审计 T50 / T55·A12）。
@@ -29,12 +29,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const drawer = () => mounted.container.querySelector('.el-drawer')
+const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
 const footBtns = () => [...drawer().querySelectorAll('.el-drawer__footer .el-button')].map((b) => b.textContent.trim())
-/** 真 el-form 实例挂在 form.el-form 元素的 __vueParentComponent 上，props.model 即组件的 reactive form（供无法用键盘输入的 el-select allow-create 项直接落值） */
-const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
-/** 页内所有就地红字（真 ElFormItem 渲染的 .el-form-item__error） */
-const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
 /** 某输入框所在表单项的红字（无则空串） */
 const errorOf = (el) => el.closest('.el-form-item').querySelector('.el-form-item__error')?.textContent.trim() ?? ''
 /** 真输入：改 value → input 事件（v-model）→ blur（触发 trigger:'blur' 校验） */

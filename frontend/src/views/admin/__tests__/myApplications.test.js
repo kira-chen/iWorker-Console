@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './helpers/listPageStubs'
 
 /**
  * MyApplications.vue（我的申请）列表页单测（2026-09-12 测试审计 T56 新建，此前 407 行零测试）。
@@ -77,41 +79,9 @@ vi.mock('@/components/admin/GovObjectDetail.vue', () => ({
 
 const MyApplications = (await import('@/views/admin/MyApplications.vue')).default
 
-const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-head' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
-      ])
-  }
-}
-const elInput = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'keyup', 'clear'],
-  template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
-}
-const elSelect = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'change'],
-  template:
-    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
-}
-const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
-const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 // tooltip 桩：把 content 落到 data-tip 上，好断「已驳回悬停展示驳回原因」
 const elTooltip = { props: ['content', 'placement'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' }
-const elButton = {
-  props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean },
-  emits: ['click'],
-  template:
-    '<button class="el-button" :disabled="disabled" :data-type="type" :data-link="link" @click="!disabled && $emit(\'click\')"><slot /></button>'
-}
 
 let app, container
 async function mount() {
@@ -140,10 +110,9 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls, toolbarBtn } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.ma-ops .el-button')].find((b) => b.textContent.trim() === text)
 const rowOps = (row) => [...row.querySelectorAll('.ma-ops .el-button')].map((b) => b.textContent.trim())
-const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 const detailBtns = () => [...container.querySelectorAll('.gov-detail .gov-btn')]
 
 // 虚构夹具，字段形状同 myApplicationsMock 种子：四态各一 + 技能行 + 对象已删除行

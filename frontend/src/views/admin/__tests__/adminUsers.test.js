@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, render, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
 import { COL, COL_NOWRAP } from '@/utils/tableLayout'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * AdminUsers.vue（用户列表页）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/用户/prd-用户.md
@@ -55,7 +56,6 @@ const AdminUsers = (await import('@/views/admin/AdminUsers.vue')).default
 
 // 表格桩渲染 header 插槽：最近登录时间列的排序按钮（真实入口）才能被点到
 const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elInput = {
   name: 'el-input',
   props: ['modelValue', 'placeholder'],

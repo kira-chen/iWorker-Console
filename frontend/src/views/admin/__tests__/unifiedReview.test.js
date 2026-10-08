@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './helpers/listPageStubs'
 
 /**
  * UnifiedReview.vue（审核中心）列表页单测（2026-09-12 测试审计 T56 新建，此前 368 行零测试）。
@@ -96,40 +98,8 @@ vi.mock('@/components/admin/ReviewRejectDialog.vue', () => ({
 const UnifiedReview = (await import('@/views/admin/UnifiedReview.vue')).default
 const { SNAPSHOT_MISSING_HINT } = await import('@/utils/reviewSnapshot')
 
-// el-table-column / 行单元用共享 helper；el-table 本地包一层按 row.id 作 key（行集合变化后不复用旧行，见 userSkillReviews.test）
-const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-head' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
-      ])
-  }
-}
-const elInput = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'keyup', 'clear'],
-  template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
-}
-const elSelect = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'change'],
-  template:
-    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
-}
-const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
-const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
-const elButton = {
-  props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean },
-  emits: ['click'],
-  template:
-    '<button class="el-button" :disabled="disabled" :data-type="type" :data-link="link" @click="!disabled && $emit(\'click\')"><slot /></button>'
-}
+// el-table / el-table-column 用共享 helper（helper 按 row.id 作 key，行集合变化后不复用旧行）
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 
 let app, container
 async function mount() {
@@ -157,10 +127,9 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls, toolbarBtn } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.rev-ops .el-button')].find((b) => b.textContent.trim() === text)
 const rowOps = (row) => [...row.querySelectorAll('.rev-ops .el-button')].map((b) => b.textContent.trim())
-const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 
 // 虚构夹具，字段形状同 reviewsMock 种子（id 1 API 首次发布 / 2 技能新版本 / 3 业务系统停用 / 5 岗位新版本）
 const ROWS = [

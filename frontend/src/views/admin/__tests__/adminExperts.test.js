@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { makeListProbes } from './helpers/listPageStubs'
 
 /**
  * AdminExperts.vue 单测。
@@ -106,8 +108,6 @@ const { getFieldOptionNames } = await import('@/api/fieldDictMock')
 
 // 共享 el-table 桩（renderHeader：时间列自定义表头的排序按钮要能点到）
 const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elButton = {
   props: { disabled: Boolean, loading: Boolean, type: String, title: String },
   emits: ['click'],
@@ -158,7 +158,7 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 // 三行覆盖三态：已发布 / 未发布（0 技能）/ 审核中。

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { ElMessage } from 'element-plus'
-import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
+import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
  * KnowledgeBaseEditor.vue「可见范围」必填校验（待办 yuepu#7⑤）。
@@ -37,9 +37,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const drawer = () => mounted.container.querySelector('.el-drawer')
-const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
-const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
+const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
 const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === label).click()
 /** 可见范围表单项（按标签文字定位，不依赖顺序） */
 const scopeItem = () => [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === '可见范围')

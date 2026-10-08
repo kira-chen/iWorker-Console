@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * AdminPositions.vue 操作列回归 —— 2026-09-01 PRD 对齐改造取代旧口径（原「以技能为标准」五项操作断言）。
@@ -81,7 +82,6 @@ const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).defaul
 
 // 共用 el-table 桩（T39）：renderHeader 开 → 表头阶段渲染 header 插槽，供「最近更新时间」排序按钮断言
 const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 // 编辑按钮审核中 disabled + title 断言需要真实透传 disabled/title
 const elButton = {
   props: { disabled: { type: Boolean, default: false }, title: { type: String, default: undefined } },

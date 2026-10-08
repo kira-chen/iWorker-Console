@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, provide, inject, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { passthrough, elEmpty } from './helpers/commonStubs'
 
 /**
  * AdminPositionAssignments.vue 单测（2026-09-15 合并改版：双页签→单页面）。
@@ -105,7 +106,6 @@ const tableColStub = {
     return () => h('div', { class: 'el-table-column' }, [row ? slots.default?.({ row }) : slots.header?.()])
   }
 }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elButton = {
   emits: ['click'],
   template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>'
@@ -121,7 +121,6 @@ const elSelect = {
   template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
 }
 const elOption = { props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const pager = { name: 'el-pagination', template: '<div class="el-pagination" />' }
 const elDialog = {
   props: ['modelValue', 'title'],

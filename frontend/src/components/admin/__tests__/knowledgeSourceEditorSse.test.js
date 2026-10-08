@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
+import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
  * KnowledgeSourceEditor.vue · MCP 数据源新增 sse（旧版 HTTP+SSE）传输方式（2026-09-21）。
@@ -32,12 +32,10 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const drawer = () => mounted.container.querySelector('.el-drawer')
-const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
+const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
 /** 按标签文字定位表单项，不依赖顺序 */
 const itemByLabel = (label) =>
   [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === label)
-const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error')].map((e) => e.textContent.trim())
 const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === label).click()
 
 async function mountMcpCreate() {

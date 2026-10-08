@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { elEmpty, elDrawer } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * UserSkillAuditDrawer.vue 单测（2026-09-08 PRD-20260908 对齐 · md §五「查看技能」抽屉）。
@@ -16,22 +17,11 @@ vi.mock('@/api/skillReview', () => ({ getReviewApplication: (...a) => getReviewA
 
 const Drawer = (await import('@/components/admin/UserSkillAuditDrawer.vue')).default
 
-const elDrawer = {
-  name: 'el-drawer',
-  props: ['modelValue', 'size'],
-  emits: ['update:modelValue'],
-  template:
-    '<div class="el-drawer" v-if="modelValue" :data-size="size">' +
-    '<div class="dr-header"><slot name="header" /></div>' +
-    '<div class="dr-body"><slot /></div>' +
-    '<div class="dr-footer"><slot name="footer" /></div></div>'
-}
 const elButton = {
   props: { disabled: Boolean, loading: Boolean, type: String },
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" :data-loading="loading" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elSkeleton = { props: ['rows'], template: '<div class="el-skeleton" />' }
 
 let app, container

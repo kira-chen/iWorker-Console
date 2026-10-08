@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
+import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * PositionAgentSkillTab（岗位详情「Agent 与技能」页签）组件级单测 —— 2026-10-08 补测新建。
@@ -79,7 +80,6 @@ const { ElMessage, ElMessageBox } = await import('element-plus')
 const PositionAgentSkillTab = (await import('@/components/position/PositionAgentSkillTab.vue')).default
 
 /* ---------------- Element Plus 最小桩 ---------------- */
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 const elButton = {
   name: 'el-button',
   props: ['disabled', 'type', 'link', 'size', 'loading'],

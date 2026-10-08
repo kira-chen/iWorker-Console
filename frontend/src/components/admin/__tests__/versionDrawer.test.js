@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
+import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * VersionDrawer.vue 单测 —— 技能 / 专家 / 岗位统一的版本管理抽屉。
@@ -71,7 +72,6 @@ const elRadioButton = {
   inject: ['pick'],
   template: '<button class="el-radio-btn" :data-v="value" @click="pick(value)"><slot /></button>'
 }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container, visibleRef
 function mount(adapter, opts = {}) {

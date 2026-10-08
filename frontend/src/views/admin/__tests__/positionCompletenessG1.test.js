@@ -22,6 +22,7 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  */
 
 import { ElMessage } from 'element-plus'
+import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 
 const basicFull = () => ({
   positionId: 5, name: '销售', icon: '▤', status: 'draft', persona: '',
@@ -117,9 +118,6 @@ vi.doMock('@/components/admin/KnowledgeSearchDialog.vue', () => visProbe('kb-sea
 
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
-const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container
 async function mount() {

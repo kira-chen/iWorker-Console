@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
+import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
  * KnowledgeSourceEditor.vue（数据源新建 / 编辑 / 查看抽屉）· SSE 以外的主路径。
@@ -53,8 +53,7 @@ afterEach(async () => {
   vi.clearAllMocks()
 })
 
-const drawer = () => mounted.container.querySelector('.el-drawer')
-const formModel = () => drawer().querySelector('form.el-form').__vueParentComponent.props.model
+const { drawer, formModel } = makeDrawerProbes(() => mounted.container)
 const itemByLabel = (label) =>
   [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === label)
 const errorTexts = () => [...drawer().querySelectorAll('.el-form-item__error, .ksrc-err, .sme-err')].map((e) => e.textContent.trim())

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { passthrough, elEmpty } from './helpers/commonStubs'
 
 /**
  * FieldManagement.vue（字段字典）单测（2026-09-12 测试审计 T56 新建，此前 393 行零测试）。
@@ -55,8 +56,6 @@ const elButton = {
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 
 let app, container
 async function mount() {

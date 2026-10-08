@@ -23,6 +23,7 @@ import { createApp, h, nextTick } from 'vue'
  */
 
 import { LIMITS } from '@/utils/positionModel'
+import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 
 const defaultAgents = () => [
   { agentId: 'ag_1', name: '经营分析 Agent', description: '汇总经营指标并识别异常', skills: [{ skillId: 302, name: '客户画像分析', category: 'QUERY', referencedTools: [] }] }
@@ -111,9 +112,6 @@ vi.doMock('@/components/admin/DrawerEditor.vue', () => ({
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
 // modelValue 落到 data-active 上：便于断言初始激活页签（#15 返回落点）
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
-const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container, vm
 async function mount() {

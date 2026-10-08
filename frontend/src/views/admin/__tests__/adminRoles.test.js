@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
 import { COL, COL_NOWRAP } from '@/utils/tableLayout'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * AdminRoles.vue（角色与权限列表）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/角色/prd.角色.md
@@ -56,7 +57,6 @@ const tableStub = {
       ])
   }
 }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elInput = {
   name: 'el-input',
   props: ['modelValue', 'placeholder'],

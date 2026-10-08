@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
+import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 
 /**
  * PositionDetailTabs · 页签信息架构契约（对齐 md 岗位 §1.2 顶栏 / §1.3 页签；2026-09-12 审计 T26/T53 修头注、补顶栏用例）。
@@ -86,9 +87,6 @@ for (const p of [
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
 // el-tabs / el-tab-pane 轻桩：渲染所有 pane 的 label + 内容（便于断言）
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
-const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container
 async function mount() {

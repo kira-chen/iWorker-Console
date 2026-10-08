@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * 「技能」页（三类合一）单测。
@@ -92,7 +93,6 @@ vi.mock('@/components/skill/SkillCreateDialog.vue', () => ({
 
 const Page = (await import('@/views/admin/AdminSkillsUnified.vue')).default
 
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const stubs = {
   'el-input': { name: 'el-input', props: ['modelValue'], template: '<div><slot name="prefix" /></div>' },
   'el-select': { name: 'el-select', props: ['modelValue', 'disabled'], template: '<div><slot /></div>' },
