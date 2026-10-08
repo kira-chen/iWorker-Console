@@ -157,7 +157,7 @@ describe('mockPersist', () => {
 
   /**
    * 2026-09-12 审计 T57 补：URL 带 ?resetMock=1 打开 → 模块首次 import 时清空全部 mock 存储回出厂态
-   * （mockPersist.js:88-100；文件头注「重置」段）。node 环境无 window，这里临时挂一个只带 location 的 window。
+   * （mockPersist.js 模块级「?resetMock=1 清空回出厂态」段调 clearAllMockState()；文件头注「重置」段）。node 环境无 window，这里临时挂一个只带 location 的 window。
    */
   it('URL 带 ?resetMock=1 → 模块加载即清空本工具前缀的全部存量（站点其它 key 不动），并 console.info 提示', async () => {
     globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))

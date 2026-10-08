@@ -173,7 +173,7 @@ describe.each(['light', 'dark'])('固定列不透底 · %s 主题', (theme) => {
 describe.each(['light', 'dark'])('固定列不透底 · admin-scope（后台列表页实际规则）· %s 主题', (theme) => {
   beforeEach(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    document.body.classList.add('admin-scope') // router.afterEach 在 /admin 路由下挂的类（router/index.js:441）
+    document.body.classList.add('admin-scope') // router.afterEach 在 /admin 路由下挂的类（router/index.js「管理后台作用域标记」段 classList.toggle('admin-scope', …)）
   })
 
   it('悬浮行固定列：不透明表面底色 + inset 叠色，叠色 == 非固定列 hover 背景色（--bg-admin-row-hover，合成一致）', async () => {
