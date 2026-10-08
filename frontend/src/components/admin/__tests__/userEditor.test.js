@@ -29,6 +29,7 @@ vi.mock('element-plus', () => ({
 }))
 const { ElMessage } = await import('element-plus')
 const UserEditor = (await import('@/components/admin/UserEditor.vue')).default
+const { fmtTime } = await import('@/utils/docMeta') // 组件同一个时间格式化函数（按本机时区，到分钟）
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const stubs = {
@@ -309,8 +310,12 @@ describe('UserEditor · 编辑态（md §三.4 / §三.5）', () => {
     expect(halves[1].querySelector('label').textContent).toBe('最近登录时间')
     expect(halves[1].querySelector('.ue-readonly').textContent.trim()).toBe('从未登录')
     const pt = el.querySelector('.page-time')
-    expect(pt.textContent).toContain('创建时间：')
-    expect(pt.textContent).toContain('最近更新时间：')
+    // 值是格式化后的「YYYY-MM-DD HH:mm」（东八区即 2026-08-01 10:00 / 2026-08-20 12:30），不是原始 ISO 串
+    expect([...pt.querySelectorAll('span')].map((s) => s.textContent.trim())).toEqual([
+      `创建时间：${fmtTime(USER.createdAt)}`,
+      `最近更新时间：${fmtTime(USER.updatedAt)}`
+    ])
+    expect(fmtTime(USER.createdAt)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
     expect(el.querySelector('.check-card')).toBeNull()
     expect(el.textContent).not.toContain('初始密码')
     expect(footBtn('保存')).toBeTruthy()

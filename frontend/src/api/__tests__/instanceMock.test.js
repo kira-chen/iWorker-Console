@@ -5,6 +5,13 @@ vi.mock('../mockPersist', () => ({ attachPersist: () => vi.fn() }))
 
 import { __resetInstanceMock, getInstance, listInstances, operateInstance } from '../instanceMock'
 
+/**
+ * instanceMock（实例管理 mock 层）单测。
+ * 2026-10-08 对齐 04运行/实例管理/prd.实例管理.md §五 / §七 / §九：只维护实例对象与运行处置（重启 / 按最新规格重建 / 回收），
+ * 不引入任务 / 会话对象；筛选与 operable 拦截规则见各用例。
+ * 状态机缺边（启动中→运行中/空闲、回收中→移除）见待办 clcao#2，此处不覆盖。
+ */
+
 describe('instanceMock —— 只管理实例，不引入任务/会话对象', () => {
   beforeEach(() => __resetInstanceMock())
 

@@ -75,7 +75,8 @@ describe('AdminUsers · 真实 Element Plus 挂载冒烟', () => {
     expect(errorSpy).not.toHaveBeenCalled()
 
     const text = container.textContent
-    expect(text).toContain('用户')
+    // 页头标题元素文本正好是「用户」（整页 toContain('用户') 恒真——列名「用户名」已含）
+    expect(container.querySelector('.page-header-title').textContent.trim()).toBe('用户')
     expect(text).toContain('管理平台账号、角色分配与密码重置')
     expect(container.querySelector('input[placeholder="搜索用户名、显示名或邮箱"]')).toBeTruthy()
     expect(text).toContain('＋ 新建用户')
