@@ -87,7 +87,7 @@ describe('position store', () => {
     expect(store.agents[2].agentId).toBe(13)
   })
 
-  it('removeAgent 删 Agent 后其技能彻底脱离白板（新口径：不再进收纳区/不在白板任何位置）', async () => {
+  it('removeAgent 删 Agent 后其技能子行一并移除（新口径：不转挂、不残留在任何 Agent 行下）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.deleteAgent.mockResolvedValue({ orphanedSkillCount: 2 })
     const store = usePositionStore()
@@ -122,7 +122,7 @@ describe('position store', () => {
     expect(store.agents.find((a) => a.agentId === 12).skills.map((s) => s.skillId)).toContain(101)
   })
 
-  it('收纳区退役：store 无 orphan 派生，allSkills 仅含挂载技能', async () => {
+  it('无游离技能：store 无 orphan 派生，allSkills 仅含挂在 Agent 行下的技能子行', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     const store = usePositionStore()
     await store.load(5)
@@ -135,7 +135,7 @@ describe('position store', () => {
     expect(store.allSkills.every((x) => x.agentId != null)).toBe(true)
   })
 
-  it('saveBasic 的 PUT 详情 hydrate 后白板技能正常，不引入任何 orphan 幻影', async () => {
+  it('saveBasic 的 PUT 详情 hydrate 后 Agent 行 / 技能子行正常，不引入任何 orphan 幻影', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.updatePosition.mockResolvedValue({ ...sampleDetail(), name: '销售-改' })
     const store = usePositionStore()
@@ -157,7 +157,7 @@ describe('position store', () => {
     expect(store.agents[0].skills.find((s) => s.skillId === 101).name).toBe('s1-改')
   })
 
-  it('detachSkillFromAgent 从指定 Agent 移除引用 → 该泳道消失（V84 可逆：技能本体留库，白板本地移除）', async () => {
+  it('detachSkillFromAgent 从指定 Agent 移除引用 → 该 Agent 行下的技能子行消失（V84 可逆：技能本体留库，仅本地移除）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.detachSkill.mockResolvedValue(undefined)
     const store = usePositionStore()

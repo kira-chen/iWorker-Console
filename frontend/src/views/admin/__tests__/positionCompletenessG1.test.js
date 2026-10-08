@@ -125,7 +125,7 @@ async function mount() {
   for (const t of ['el-skeleton', 'el-empty', 'el-form', 'el-form-item', 'el-select', 'el-option',
     'el-switch', 'el-tag', 'el-icon', 'el-dialog', 'el-tooltip', 'el-checkbox']) app.component(t, passthrough(t))
   app.component('el-button', {
-    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'],
+    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'], emits: ['click'],
     template: '<button class="el-button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
   })
   app.component('el-input', {
@@ -196,8 +196,7 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
   })
 
   it('发布前自动保存请求失败 → 不开发布弹窗，toast 提示保存失败（发布的会是上次落库的旧内容）', async () => {
-    // 用 mockRejectedValue 而非 Once：本文件的 el-button 桩未声明 emits，点击会触发两次 openPublish
-    store.saveBasic.mockRejectedValue(new Error('网络异常'))
+    store.saveBasic.mockRejectedValueOnce(new Error('网络异常'))
     await mount()
     await clickTop('发布岗位')
     expect(container.querySelector('.publish-check-dialog')).toBeNull()
@@ -277,8 +276,7 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
     await mount()
     expect(banner()).toBeNull() // 保存前不打扰
     await clickTop('保存')
-    // 注：el-button 桩既 emit click 又让原生事件穿透，一次点击会打到处理器两次，故只断言「确实保存了」
-    expect(store.saveBasic).toHaveBeenCalled() // 保存真的执行了
+    expect(store.saveBasic).toHaveBeenCalledTimes(1) // 一次点击只保存一次（el-button 桩已声明 emits）
     expect(ElMessage.success).toHaveBeenCalledWith('岗位配置已保存')
     const b = banner()
     expect(b).toBeTruthy()
@@ -342,11 +340,15 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）
     expect(routerPushSpy).not.toHaveBeenCalled()
   })
 
-  it('【查看】跳知识库模块（md §11 L519 跳转；与 §5.2 L315「抽屉」口径相互矛盾，记待裁决，本条钉现状）', async () => {
+  it('【查看】跳知识库模块并带深链打开查看抽屉（md §5.2 / §11）：name=AdminKnowledgeBase，query 带 action=view + kbId + 岗位上下文', async () => {
     await mountOnKnowledge()
     kbOpBtn('查看').click()
     await flush()
-    expect(routerPushSpy).toHaveBeenCalled()
+    expect(routerPushSpy).toHaveBeenCalledTimes(1)
+    expect(routerPushSpy).toHaveBeenCalledWith({
+      name: 'AdminKnowledgeBase',
+      query: { tab: 'kb', action: 'view', kbId: 'kb_1', positionId: '5', positionName: '销售' }
+    })
     expect(container.querySelector('.kb-search-dialog')).toBeNull()
   })
 })

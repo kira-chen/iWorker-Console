@@ -194,7 +194,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(api.getDataTable).not.toHaveBeenCalled()
   })
 
-  it('新建档案弹窗：底部【取消】【下一步】，确认后提示继续配置（md §4.2）', async () => {
+  it('新建档案弹窗：底部【取消】【下一步】，确认后提示继续配置（钉现状，md §4.1/§4.2 无此弹窗，代码缺陷待登记）', async () => {
     api.listDataTables.mockResolvedValue({ list: [] })
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()

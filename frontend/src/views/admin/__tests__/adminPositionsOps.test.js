@@ -6,10 +6,10 @@ import { makeElTableStubs } from './helpers/elTableStub'
 /**
  * AdminPositions.vue 操作列回归 —— 2026-09-01 PRD 对齐改造取代旧口径（原「以技能为标准」五项操作断言）。
  *
- * 新口径（对齐 md 岗位管理 §二.3 操作列；历史出处：交互原型 v2 positionActions 约 L1170）：
+ * 新口径（对齐 md 02岗位/岗位/prd.岗位.md §二.3 操作列；历史出处：交互原型 v2 positionActions 约 L1170）：
  * - 编辑恒显，审核中 disabled + title「审核中不可编辑」；
  * - 审核中 → 【撤回】（确认说明撤回后恢复提交审核前状态，toast「已撤回」）；
- * - 未发布 → 【发布】（先跑 md §9.1 九项完整性校验，Q3 不弹确认窗，通过则直接开版本管理侧栏）
+ * - 未发布 → 【发布】（先跑 md §9.1 九项完整性校验，Q3 不弹确认窗，通过则打开发布前检查弹窗 md §三.9.2）
  *   +【删除】（领用护栏 + 确认文案照新 md）；
  * - 已发布 → 【停用】（领用护栏文案照新 md；否则确认提交停用审核）+【版本管理】（冻结保留）；
  * - 【查看】固定恒显 → 岗位详情页只读态（query.view=1）。
@@ -53,7 +53,6 @@ vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 const ElMessageBox = { prompt: vi.fn(), confirm: vi.fn(), alert: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage, ElMessageBox }))
-vi.mock('@/assets/connector.css', () => ({}))
 vi.mock('@/components/PageHeader.vue', () => ({ default: { template: '<div class="page-header"><slot name="actions" /></div>' } }))
 vi.mock('@/components/StatusTag.vue', () => ({ default: { props: ['type'], template: '<span class="status-tag"><slot /></span>' } }))
 vi.mock('@/components/admin/ListStates.vue', () => ({ default: { template: '<div class="list-states"><slot /></div>' } }))
@@ -70,7 +69,7 @@ vi.mock('@/components/position/PublishCheckDialog.vue', () => ({
 vi.mock('@/components/test/EffectTestStage.vue', () => ({ default: { template: '<div />' } }))
 // featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
 // 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
-vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false }))
+vi.mock('@/utils/featureFlags', () => ({ EFFECT_TEST_ENABLED: false, MCP_AUTH_CONFIG_ENABLED: true }))
 
 const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).default
 
@@ -154,7 +153,7 @@ beforeEach(() => {
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
+describe('AdminPositions 操作列（md §二.3；历史出处：原型 positionActions）', () => {
   it('① 编辑 → 跳岗位配置台（PositionWorkbench）；审核中行编辑 disabled + title 提示', async () => {
     await mount()
     btn(rowByName('销售'), '编辑').click()
@@ -358,7 +357,7 @@ describe('AdminPositions 操作列（原型 positionActions 口径）', () => {
  * 2026-09-08 原型复刻批次 2A（B2 新建弹窗 / B4 提交后关侧栏 / B6 名称格图标 / B7 列宽）。
  * el-dialog / el-form 在本文件按需 stub（上方 mount 未注册），此处单独挂。
  */
-describe('AdminPositions · 原型复刻批次 2A', () => {
+describe('AdminPositions · 新建弹窗 / 版本侧栏 / 名称格（md §一.1 新建入口、§二.1、§二.3.7；历史出处：原型复刻批次 2A）', () => {
   const elDialog = {
     name: 'el-dialog',
     props: ['modelValue', 'title', 'width', 'closeOnClickModal'],

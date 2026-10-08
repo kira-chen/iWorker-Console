@@ -14,7 +14,7 @@ import { createApp, h, nextTick } from 'vue'
  *  #14 新建与编辑走同一抽屉（680px），抽屉内含「引用技能」勾选区，Agent 行不再有【＋技能】；
  *      技能上限 LIMITS.SKILL_MAX（Q378 决议 100），达上限未勾选项置灰 + 计数「已勾选：N/100」；
  *  #15 技能行【编辑】= 同页路由跳转（不开新标签），并带来源岗位/页签 query；
- *      字段上限按 md §6.2：名称 64、职责描述必填 ≤500（Q25④⑤）。
+ *      字段上限按 md §6.2：名称 64、职责描述必填 ≤2000（Q25④⑤）。
  *
  * 2026-09-12 测试审计（T24 / T53）对齐 md 岗位 §6.1-§6.4：
  *  - SKILL_MAX 钉字面 100 + 文案「每个 Agent 最多引用 100 个技能」（md §6.4 L354；09-08 裁决），不再只对常量断言；
@@ -175,7 +175,7 @@ async function clickNewAgent() {
   btn.click()
   await flush()
 }
-// 抽屉里按 maxlength 定位输入框（64=Agent 名称，500=职责描述）
+// 抽屉里按 maxlength 定位输入框（64=Agent 名称，2000=职责描述）
 const drawerInput = (maxlength) =>
   [...container.querySelectorAll('.drawer .el-input')].find((i) => i.getAttribute('maxlength') === maxlength)
 async function type(input, value) {
