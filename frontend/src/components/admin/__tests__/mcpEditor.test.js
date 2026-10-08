@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick, ref } from 'vue'
+import { createApp, h, nextTick, ref, reactive } from 'vue'
 
 /**
  * McpEditor.vue（MCP 编辑抽屉）编辑器级行为 —— 2026-09-12 测试审计新建（A20 / E6；D9 由 mcpMeta.test 迁入）。
@@ -17,6 +17,11 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 切断 api/admin、element-plus；el-* 轻桩（select / input / textarea 支持 v-model）；DrawerEditor / ParamRowsEditor 真组件。
  * 2026-09-12 闭环：J17（测试失败红卡「标题 + 正文」两段，md §三.5 L295）、K39（Command 占位「npx」/ Bearer 占位 /
  * 切「无鉴权」清空本次凭证，md §三.4.1-4.2 L266/L272/L276）、K44（登记态抽屉标题「登记 MCP」，md §三.1 L199）。
+
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ * - §三.3 L247【AI 生成】：生成中… → 500ms 回填 3 条 → 再点覆盖；500ms 内切记录 / 关抽屉 → 不回填不弹 toast（67d2fc1 / yuepu#26）；
+ * - §三.4.1 L277 编辑态已配置凭证：Token / 访问凭证不显示必填星、留空保存不带新密钥、不触发必填校验（提示文案待 J1 裁决，不断言）；
+ * - §三.6 L315 / §三.6.2 L345 重新进入（切 mcpId 或关开抽屉）后工具清单收起、入参恢复折叠。
  */
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: { confirm: vi.fn() } }))
@@ -807,5 +812,200 @@ describe('失败提示脱敏 — 渲染层不应拼出 endpoint（D9 自 mcpMeta
     // 模板侧的结果框也只吐 computed 结果，不拼 endpoint
     const resultBlock = src.slice(src.indexOf('class="md-conn-result"'))
     expect(resultBlock.slice(0, resultBlock.indexOf('</div>'))).not.toMatch(/form\.endpoint/)
+  })
+})
+
+/* ================= 2026-10-08 补缺口（/test-audit 连接器组） ================= */
+/**
+ * 受控挂载：props 用 reactive 承载，用例可在挂载后改 mcpId / visible（模拟列表页常驻抽屉切记录、关开）。
+ * 返回 props 对象本身。
+ */
+async function mountLive(initial = {}) {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  emitted = { saved: [], visible: [], probed: [] }
+  const p = reactive({ visible: true, mcpId: null, readonly: false, ...initial })
+  app = createApp({
+    render: () =>
+      h(McpEditor, {
+        visible: p.visible,
+        mcpId: p.mcpId,
+        readonly: p.readonly,
+        'onUpdate:visible': (v) => { p.visible = v; emitted.visible.push(v) },
+        onSaved: (x) => emitted.saved.push(x),
+        onProbed: (x) => emitted.probed.push(x)
+      })
+  })
+  for (const [n, c] of Object.entries(stubs)) app.component(n, c)
+  app.mount(container)
+  await flush()
+  return p
+}
+const AI_TOAST = 'AI 内容已生成，请确认后保存'
+const aiBtn = () => container.querySelector('.md-eq-ai')
+const eqValues = () => [...container.querySelectorAll('.md-eq-row .el-input')].map((i) => i.value)
+// 两条已存 MCP：mcp_1 / mcp_9，示例问题不同，用于判断「生成结果有没有写进 B」
+const OTHER_DETAIL = { ...HTTP_DETAIL, id: 'mcp_9', name: '另一个 MCP', exampleQuestions: ['B一', 'B二', 'B三'] }
+const detailById = (id) => Promise.resolve(id === 'mcp_9' ? { ...OTHER_DETAIL } : { ...HTTP_DETAIL })
+
+describe('示例问题【AI 生成】（md §三.3 L247）', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('填了名称与服务描述点【AI 生成】→ 按钮「生成中…」且不可点 → 500ms 后 3 条回填并提示「AI 内容已生成，请确认后保存」；手改后再点 → 覆盖当前内容', async () => {
+    vi.useFakeTimers()
+    await mountLive()
+    await setInput(inputOf('名称'), '报销系统 MCP')
+    await setInput(inputOf('服务描述'), '查询和提交员工报销单')
+    expect(aiBtn().disabled).toBe(false)
+    aiBtn().click()
+    await flush(2)
+    expect(aiBtn().textContent.trim()).toBe('生成中…')
+    expect(aiBtn().disabled).toBe(true)
+    expect(eqValues()).toEqual(['', '', ''])
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    const first = eqValues()
+    expect(first.every((q) => q.includes('报销系统 MCP'))).toBe(true)
+    expect(msg.success).toHaveBeenCalledWith(AI_TOAST)
+    expect(aiBtn().textContent.trim()).toBe('AI 生成')
+    // 重复点击可重新生成，覆盖当前内容
+    await setInput(container.querySelector('.md-eq-row .el-input'), '手改的')
+    aiBtn().click()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(eqValues()).toEqual(first)
+  })
+
+  it('点【AI 生成】后不到 500ms 切到另一条 MCP → 不把生成结果写进新记录、不弹成功提示（yuepu#26）', async () => {
+    vi.useFakeTimers()
+    adminApi.getMcp.mockImplementation(detailById)
+    const p = await mountLive({ mcpId: 'mcp_1' })
+    aiBtn().click()
+    await flush(2)
+    expect(aiBtn().textContent.trim()).toBe('生成中…')
+    await vi.advanceTimersByTimeAsync(200)
+    p.mcpId = 'mcp_9'
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(inputOf('名称').value).toBe('另一个 MCP')
+    expect(eqValues()).toEqual(['B一', 'B二', 'B三'])
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    expect(aiBtn().textContent.trim()).toBe('AI 生成')
+  })
+
+  it('点【AI 生成】后不到 500ms 关掉抽屉 → 不弹成功提示；再打开仍是原内容', async () => {
+    vi.useFakeTimers()
+    adminApi.getMcp.mockImplementation(detailById)
+    const p = await mountLive({ mcpId: 'mcp_1' })
+    aiBtn().click()
+    await flush(2)
+    await vi.advanceTimersByTimeAsync(200)
+    p.visible = false
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    p.visible = true
+    await flush()
+    expect(eqValues()).toEqual(['问一', '问二', '问三'])
+    expect(aiBtn().textContent.trim()).toBe('AI 生成')
+  })
+})
+
+describe('编辑态已配置访问凭证（md §三.4.1 L277「保持原鉴权方式且访问凭证留空，表示继续保留原内容」）', () => {
+  const BEARER_DETAIL = { ...HTTP_DETAIL, authInfo: { type: 'bearer', valueMasked: 'ab***yz' } }
+  const HEADER_DETAIL = { ...HTTP_DETAIL, authInfo: { type: 'header', headerName: 'X-Api-Key', valueMasked: 'ab***yz' } }
+
+  it('已配置 Bearer Token：Token 项不显示必填星（新登记时选 Bearer 才有星）', async () => {
+    await mount()
+    await setSelect(selectOf('鉴权方式'), 'bearer')
+    expect(item('Token').querySelector('.req')).toBeTruthy() // 对照：新配置必填
+    app.unmount()
+    container.remove()
+    adminApi.getMcp.mockResolvedValue(BEARER_DETAIL)
+    await mount({ mcpId: 'mcp_1' })
+    expect(selectOf('鉴权方式').value).toBe('bearer')
+    expect(inputOf('Token').value).toBe('')
+    expect(item('Token').querySelector('.req')).toBeNull()
+  })
+
+  it('已配置 Bearer Token 留空直接【保存】→ 不标红、保存成功，payload 的 authConfig 只有 type 不带 token', async () => {
+    adminApi.getMcp.mockResolvedValue(BEARER_DETAIL)
+    adminApi.updateMcp.mockResolvedValue({})
+    await mount({ mcpId: 'mcp_1' })
+    footerBtn('保存').click()
+    await flush()
+    // 未被必填校验拦下：没有「请先修正标红项」，保存成功后抽屉关闭
+    expect(msg.warning).not.toHaveBeenCalledWith('请先修正标红项')
+    expect(emitted.visible).toEqual([false])
+    expect(adminApi.updateMcp).toHaveBeenCalledTimes(1)
+    expect(adminApi.updateMcp.mock.calls[0][1].authConfig).toEqual({ type: 'bearer' })
+    expect(msg.success).toHaveBeenCalledWith('已保存')
+  })
+
+  it('已配置 API Key：访问凭证项不显示必填星', async () => {
+    adminApi.getMcp.mockResolvedValue(HEADER_DETAIL)
+    await mount({ mcpId: 'mcp_1' })
+    expect(selectOf('鉴权方式').value).toBe('header')
+    expect(inputOf('Header 名').value).toBe('X-Api-Key')
+    expect(inputOf('访问凭证').value).toBe('')
+    expect(item('访问凭证').querySelector('.req')).toBeNull()
+  })
+
+  it('已配置 API Key 留空直接【保存】→ 不标红、保存成功，payload 的 authConfig 带 Header 名但不带 value', async () => {
+    adminApi.getMcp.mockResolvedValue(HEADER_DETAIL)
+    adminApi.updateMcp.mockResolvedValue({})
+    await mount({ mcpId: 'mcp_1' })
+    footerBtn('保存').click()
+    await flush()
+    expect(msg.warning).not.toHaveBeenCalledWith('请先修正标红项')
+    expect(emitted.visible).toEqual([false])
+    expect(adminApi.updateMcp).toHaveBeenCalledTimes(1)
+    expect(adminApi.updateMcp.mock.calls[0][1].authConfig).toEqual({ type: 'header', headerName: 'X-Api-Key' })
+  })
+})
+
+describe('重新进入后工具清单与入参恢复默认折叠（md §三.6 L315 / §三.6.2 L345）', () => {
+  /** 展开工具清单 + 展开第 1 个工具的入参，并确认确实展开了 */
+  async function expandAll() {
+    btnByText('▶ 展开工具清单').click()
+    await flush(2)
+    container.querySelector('.md-tool .md-schema-toggle').click()
+    await flush(2)
+    expect(btnByText('▶ 收起工具清单')).toBeTruthy()
+    expect(container.querySelector('.md-schema-ro')).toBeTruthy()
+  }
+  /** 断言：清单收起；手动展开清单后，入参仍是折叠的 */
+  async function expectCollapsed() {
+    expect(btnByText('▶ 展开工具清单')).toBeTruthy()
+    expect(container.querySelector('.md-tool')).toBeNull()
+    btnByText('▶ 展开工具清单').click()
+    await flush(2)
+    expect(container.querySelector('.md-tool .md-schema-toggle').textContent.replace(/\s+/g, ' ').trim()).toBe('▶ 查看入参')
+    expect(container.querySelector('.md-schema-ro')).toBeNull()
+  }
+
+  it('展开清单与某工具入参后切到另一条 MCP → 清单收起、入参折叠', async () => {
+    adminApi.getMcp.mockImplementation((id) => Promise.resolve({ ...(id === 'mcp_9' ? OTHER_DETAIL : HTTP_DETAIL), tools: TOOLS }))
+    const p = await mountLive({ mcpId: 'mcp_1' })
+    await expandAll()
+    p.mcpId = 'mcp_9'
+    await flush()
+    expect(inputOf('名称').value).toBe('另一个 MCP')
+    await expectCollapsed()
+  })
+
+  it('展开清单与某工具入参后关掉抽屉再打开同一条 → 清单收起、入参折叠', async () => {
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, tools: TOOLS })
+    const p = await mountLive({ mcpId: 'mcp_1' })
+    await expandAll()
+    p.visible = false
+    await flush()
+    p.visible = true
+    await flush()
+    await expectCollapsed()
   })
 })

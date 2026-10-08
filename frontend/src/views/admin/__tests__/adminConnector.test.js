@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
+import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
  * AdminConnector.vue（连接器容器页）契约 —— 2026-09-12 测试审计新建（F3，此前零用例）。
@@ -12,6 +13,9 @@ import { createApp, h, nextTick, reactive } from 'vue'
  *
  * 三个子页以桩替代（各自有独立页面级用例），桩记录 setup 次数用于断言 keep-alive 不重建；
  * vue-router 以响应式 routeMock 注入，router.replace 桩会真的改写 query（模拟路由生效）。
+ *
+ * 2026-10-08 补缺口（/test-audit 连接器组，对齐同一 md §一.1 L11）：末尾新增「真 Element Plus 页签壳」冒烟——
+ * 子页仍为桩，el-tabs / el-tab-pane 用真组件（helpers/smokeMount 的 mountReal），断言挂载不抛、console.error 零调用、三个页签文案在。
  */
 const setupCount = { mcp: 0, api: 0, biz: 0 }
 const mkStub = (key, cls) => ({
@@ -153,5 +157,31 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     // 再切回 API 同样不重建
     await clickTab('api')
     expect(setupCount.api).toBe(1)
+  })
+})
+
+describe('AdminConnector 页签壳 · 真 Element Plus 挂载冒烟（md MCP §一.1 L11）', () => {
+  let mounted, errorSpy
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    mounted?.unmount()
+    mounted = null
+    errorSpy.mockRestore()
+  })
+
+  it('真 el-tabs 挂载不抛、console.error 零调用；页签文案 MCP / API / 业务系统，默认展示 MCP 子页', async () => {
+    routeMock.query = { tab: 'mcp' }
+    expect(() => {
+      mounted = mountReal(AdminConnector)
+    }).not.toThrow()
+    await flushAll()
+    expect(errorSpy).not.toHaveBeenCalled()
+    const el = mounted.container
+    expect([...el.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())).toEqual(['MCP', 'API', '业务系统'])
+    expect(el.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('MCP')
+    expect(el.querySelector('.stub-mcp')).toBeTruthy()
+    expect(el.querySelector('.page-header-title').textContent.trim()).toBe('连接器')
   })
 })

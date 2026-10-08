@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick, ref } from 'vue'
+import { createApp, h, nextTick, ref, reactive } from 'vue'
 
 /**
  * ApiEditor.vue 单测（原 ApiEditorReadWriteError.test.js，2026-09-12 测试审计 T58 改名扩写）。
@@ -13,6 +13,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *   + 数据层 field 级错误回显（readWrite 等）、watcher immediate 防回归（5303c7c）。
  *   2026-09-12 闭环：K36（§三.2 L120 API ID 编辑 / 查看态只读展示、新建不展示；名称上限 64 · 一览表 §6.2）、
  *   K38（§三.5 L170 查看态 SchemaFieldEditor 隐藏新增 / 删除 / 子字段入口，经 readonly 透传）。
+ *   2026-10-08 对齐 prd-API.md §三.2 L126 补缺口：【AI 生成】点击后不到 500ms 切记录 / 关抽屉 → 不回填、不弹 toast
+ *   （67d2fc1 / yuepu#26 防回归）。
  *
  * 桩：api/apiConnector、element-plus（ElMessage）、IconField（露【选图标】按钮 emit pick）、EP 控件最小桩
  *（el-radio 点击即回写 v-model，el-select 走原生 select）。SchemaFieldEditor / ParamRowsEditor / DrawerEditor 为真组件。
@@ -549,5 +551,63 @@ describe('ApiEditor · watcher immediate 防回归（5303c7c）', () => {
     expect(inputOf(el, '名称').value).toBe('报销查询')
     expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
     expect(el.textContent).not.toContain('当前没有任何服务提供系统')
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('ApiEditor · 【AI 生成】在途撤销（67d2fc1 / yuepu#26 防回归；md §三.2 L126）', () => {
+  const AI_TOAST = 'AI 内容已生成，请确认后保存'
+  /** 受控挂载：apiId / visible 挂在 reactive 上，用例可在挂载后改（模拟列表页常驻抽屉切记录、关开） */
+  async function mountLive(initial = {}) {
+    const { default: Editor } = await import('@/components/admin/ApiEditor.vue')
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    const p = reactive({ visible: true, apiId: null, ...initial })
+    app = createApp({
+      render: () => h(Editor, { visible: p.visible, apiId: p.apiId, 'onUpdate:visible': (v) => (p.visible = v) })
+    })
+    for (const [n, c] of Object.entries(stubs)) app.component(n, c)
+    app.mount(container)
+    await flush()
+    return p
+  }
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('新建态点【AI 生成】后不到 500ms 切去编辑另一条 API → 已载入的示例问题不被覆盖、不弹成功提示', async () => {
+    vi.useFakeTimers()
+    const p = await mountLive()
+    setInput(inputOf(container, '名称'), '草稿接口')
+    setInput(inputOf(container, 'API 描述'), '按单号查报销状态')
+    await nextTick()
+    container.querySelector('.ad-eq-ai').click()
+    await nextTick()
+    expect(container.querySelector('.ad-eq-ai').textContent.trim()).toBe('生成中…')
+    await vi.advanceTimersByTimeAsync(200)
+    p.apiId = 'api_1'
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush()
+    expect(inputOf(container, '名称').value).toBe('报销查询')
+    expect(eqInputs(container).map((i) => i.value)).toEqual(['问题一', '问题二', '问题三'])
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    expect(container.querySelector('.ad-eq-ai').textContent.trim()).toBe('AI 生成')
+  })
+
+  it('编辑态点【AI 生成】后不到 500ms 关掉抽屉 → 不弹成功提示；再打开仍是原内容', async () => {
+    vi.useFakeTimers()
+    const p = await mountLive({ apiId: 'api_1' })
+    container.querySelector('.ad-eq-ai').click()
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(200)
+    p.visible = false
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush()
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    p.visible = true
+    await flush()
+    expect(eqInputs(container).map((i) => i.value)).toEqual(['问题一', '问题二', '问题三'])
   })
 })

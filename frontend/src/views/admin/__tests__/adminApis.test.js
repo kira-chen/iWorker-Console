@@ -13,9 +13,17 @@ import { createApp, h, nextTick, ref } from 'vue'
  *     ApiEditor / ProviderSystemEditor（露 props）、useDynPageSize → ref(3)（每页 3 个系统）、
  *     el-table 走 RowScope 行渲染桩（同 adminMcp.test.js）。
  * 真：ListToolbar / ListPagination / ListStates / StatusTag / HealthTag（页面局部 import，全局桩无效）。
+ *
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ *  - §二.1 L39 引用清单按类型分流（岗位私有「被岗位引用」列岗位名 / 通用连接器「—」；yuepu#17、负责人 5618381 拍板）；
+ *  - §一.2 L19 / L21 切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
+ *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
+ *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
  */
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+// 路由 query 由各用例改写（深链 ?keyword=，写法同 adminBizSystems.test.js）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeState.query }) }))
 
 const conn = {
   listApis: vi.fn(),
@@ -60,10 +68,11 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
+  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2 L21）
   'el-select': {
     props: ['modelValue'],
-    emits: ['update:modelValue'],
-    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>'
+    emits: ['update:modelValue', 'change'],
+    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
   },
   'el-option': { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' },
   'el-tag': { template: '<span class="el-tag"><slot /></span>' },
@@ -207,6 +216,7 @@ const toolbarBtn = (text) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeState.query = {}
   conn.listProviderSystems.mockImplementation(async () => ({ list: psWithCounts() }))
   conn.listApis.mockImplementation(async (params = {}) => {
     let list = APIS
@@ -604,5 +614,98 @@ describe('AdminApis · 验证列与引用情况（md §二.1 L35-37 / §二.3 L5
     await nextTick()
     expect(names()).toEqual(['未发布接口', '在审接口'])
     expect(groupByName('系统1号').querySelector('.time-sort-arrow').textContent).toBe('↑')
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('AdminApis · 引用情况按类型分流（md §二.1 L39）', () => {
+  const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
+
+  it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
+    conn.listApis.mockResolvedValue({
+      list: [
+        mkApi({
+          id: 'a_pos',
+          name: '岗位私有接口',
+          ps: 'ps_1',
+          type: 'POSITION',
+          positionCount: 2,
+          referencedByPositions: [{ positionId: 'p_1', positionName: '财务专员' }, { positionId: 'p_2', positionName: '采购助理' }],
+          // 同时带技能引用：弹窗必须取岗位名而不是技能名
+          referencedBySkills: [{ skillId: 'sk_x', skillName: '不该出现的技能' }]
+        })
+      ]
+    })
+    await mount()
+    btn(rowByName('岗位私有接口'), '2个岗位引用').click()
+    await nextTick()
+    const dlg = container.querySelector('.el-dialog')
+    expect(dlg.dataset.title).toBe('被岗位引用')
+    expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['财务专员', '采购助理'])
+  })
+
+  it('通用连接器：引用情况显「—」，没有可点的引用入口（即使数据里带技能引用数）', async () => {
+    conn.listApis.mockResolvedValue({
+      list: [mkApi({ id: 'a_sys', name: '通用接口', ps: 'ps_1', type: 'SYSTEM_DEFAULT', referencedBySkillCount: 3 })]
+    })
+    await mount()
+    expect(refCell('通用接口').textContent.trim()).toBe('—')
+    expect(refCell('通用接口').querySelector('.el-button')).toBeNull()
+  })
+})
+
+describe('AdminApis · 切筛选与清空即刷新（md §一.2 L19 / L21）', () => {
+  it('改「连接器类型」下拉、不点【查询】→ 立即重拉，listApis 收到 type', async () => {
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' })
+  })
+
+  it('改「状态」下拉、不点【查询】→ 立即重拉，listApis 收到 state，列表只剩命中分组', async () => {
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[1]
+    sel.value = 'PUBLISHED'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ state: 'PUBLISHED' })
+    expect(groupNames()).toEqual(['系统2号'])
+  })
+
+  it('已按关键词查过，再点搜索框 × 清空 → 立即重拉、不再带 keyword，分组恢复全部', async () => {
+    await mount()
+    const input = container.querySelector('.lt-search')
+    input.value = '尾巴'
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    toolbarBtn('查询').click()
+    await flush(6)
+    expect(groupNames()).toEqual(['系统9号'])
+    // el-input 点 × ：先把值清成空串，再派发 clear 事件
+    input.value = ''
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    const before = conn.listApis.mock.calls.length
+    input.dispatchEvent(new Event('clear'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({})
+    expect(groupNames()).toEqual(['系统1号', '系统2号', '系统3号'])
+  })
+})
+
+describe('AdminApis · 深链 ?keyword=（yuepu#22 防回归）', () => {
+  it('?keyword=尾巴&keyword=报销（数组）→ 挂载不抛，首次请求 keyword 取第一个「尾巴」，搜索框回填「尾巴」', async () => {
+    routeState.query = { keyword: ['尾巴', '报销'] }
+    await expect(mount()).resolves.toBeTruthy()
+    expect(conn.listApis.mock.calls[0][0]).toEqual({ keyword: '尾巴' })
+    expect(container.querySelector('.lt-search').value).toBe('尾巴')
+    expect(groupNames()).toEqual(['系统9号'])
   })
 })

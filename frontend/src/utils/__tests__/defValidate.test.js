@@ -19,6 +19,7 @@ import {
  *  - MCP：docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §三.3 / §三.4.1 / §三.4.2 + 一览表 §5.1/§5.2；
  *  - API 鉴权参数行：prd-API.md §三.3 + 一览表 §6.2；
  *  - 业务系统：prd-业务系统.md §三.2 / §三.3 / §三.7 + 一览表 §七（原散在 bizSystemMeta.test.js，T36 搬入并去重）。
+ *  - 2026-10-08 对齐 prd-业务系统.md §三.2 L103 / §三.3 L113 + 一览表 §七 #4 / #6 补缺口：登录地址、业务页 URL 最多 1024 字符边界。
  */
 
 describe('常量', () => {
@@ -481,5 +482,36 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(r.errors['bizPages.0.url']).toBeUndefined()
     expect(r.errors['bizPages.1.url']).toBeTruthy()
     expect(r.errors['bizPages.1.name']).toBeTruthy()
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('validateBizSystemForm · URL 长度上限 1024（md 业务系统 §三.2 L103 / §三.3 L113；一览表 §七 #4 / #6）', () => {
+  const valid = {
+    name: '客户管理系统 CRM',
+    type: 'PLATFORM',
+    icon: '◎',
+    description: '销售办事主系统，记录与查询客户',
+    loginUrl: 'https://crm.example.com/login',
+    connType: 'login_session',
+    bizPages: [],
+    exampleQuestions: ['问题一', '问题二', '问题三']
+  }
+  /** 合法 https 地址，总长恰为 n 个字符 */
+  const urlOfLen = (n) => {
+    const head = 'https://crm.example.com/'
+    return head + 'p'.repeat(n - head.length)
+  }
+
+  it('登录地址恰 1024 字符 → 通过；1025 字符 → 「登录地址最多 1024 个字符」', () => {
+    expect(urlOfLen(1024)).toHaveLength(1024)
+    expect(validateBizSystemForm({ ...valid, loginUrl: urlOfLen(1024) }).errors.loginUrl).toBeUndefined()
+    expect(validateBizSystemForm({ ...valid, loginUrl: urlOfLen(1025) }).errors.loginUrl).toBe('登录地址最多 1024 个字符')
+  })
+
+  it('业务页 URL 恰 1024 字符 → 通过；1025 字符 → 「业务页 URL 最多 1024 个字符」', () => {
+    const page = (url) => ({ ...valid, bizPages: [{ url, name: '工作台', description: '' }] })
+    expect(validateBizSystemForm(page(urlOfLen(1024))).errors['bizPages.0.url']).toBeUndefined()
+    expect(validateBizSystemForm(page(urlOfLen(1025))).errors['bizPages.0.url']).toBe('业务页 URL 最多 1024 个字符')
   })
 })

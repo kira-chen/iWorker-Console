@@ -14,6 +14,10 @@ import { fmtTime } from '@/utils/docMeta'
  * - §二.3（操作：三态按钮集合逐字 §二.3.1 L83-86；审核中【编辑】置灰提示 §二.3.3 L103；
  *   发布 / 撤回 / 停用 / 删除的确认窗标题·正文·按钮·toast §二.3.4-§二.3.7；状态变化即时替换按钮 L87-92）；
  * - §二.4（状态规则：DELISTED / REJECTED / PARTIAL 归「未发布」）。
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ * - §二.1 L51 引用清单按类型分流（岗位私有「被岗位引用」列岗位名 / 通用连接器「—」；yuepu#17 修复、负责人 5618381 拍板）；
+ * - §一.2 L26 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）；
+ * - §三.8 L365-366 登记 / 编辑成功回列表第 1 页刷新；§三.6 L322 拉取成功后列表行工具数随之更新（编辑器桩 emit saved / probed）。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
  * StatusTag / HealthTag / ListToolbar / ListStates / ListPagination 为组件局部 import 的**真组件**
@@ -26,7 +30,9 @@ const adminApi = {
   healthCheckTool: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+// 路由 query 由各用例改写（深链 ?keyword=，写法同 adminBizSystems.test.js）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeState.query }) }))
 
 const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
@@ -44,8 +50,13 @@ vi.mock('@/components/admin/McpEditor.vue', () => ({
   default: {
     name: 'McpEditor',
     props: ['visible', 'mcpId', 'readonly'],
+    emits: ['saved', 'probed'],
+    // 两个按钮模拟编辑器回传：保存成功（saved）/ 拉取工具成功（probed，带新工具数）
     template:
-      '<div class="stub-mcp-editor" :data-visible="visible" :data-id="mcpId" :data-readonly="readonly ? 1 : 0" />'
+      '<div class="stub-mcp-editor" :data-visible="visible" :data-id="mcpId" :data-readonly="readonly ? 1 : 0">' +
+      '<button type="button" class="stub-emit-saved" @click="$emit(\'saved\', { id: mcpId })">saved</button>' +
+      '<button type="button" class="stub-emit-probed" @click="$emit(\'probed\', { id: mcpId, toolCount: 7, displayStatus: \'HEALTHY\' })">probed</button>' +
+      '</div>'
   }
 }))
 
@@ -182,6 +193,7 @@ async function flush(n = 4) {
 describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeState.query = {}
     AGG = { ...AGG_SEED }
     PENDING = { ...PENDING_SEED }
     // 页面会就地改写行对象（检活回写 displayStatus / lastCheckedAt），故每次调用都给夹具的浅拷贝，用例间不串
@@ -856,6 +868,100 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       await flush()
       expect(adminApi.listMcp.mock.calls.at(-1)[0].sort).toBe('asc')
       expect(container.querySelector('.time-sort').textContent).toContain('↑')
+    })
+  })
+
+  /**
+   * 2026-10-08 补缺口：引用清单按连接器类型分流（md §二.1 L51；yuepu#17 修复时未带用例，负责人 5618381 拍板）。
+   */
+  describe('引用情况按类型分流（md §二.1 L51）', () => {
+    const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
+
+    it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{
+          ...LIST[0],
+          type: 'POSITION',
+          positionCount: 2,
+          referencedByPositions: [{ positionId: 'p_1', positionName: '财务专员' }, { positionId: 'p_2', positionName: '采购助理' }],
+          // 同时带技能引用：弹窗必须取岗位名而不是技能名
+          referencedBySkills: [{ skillId: 'sk_x', skillName: '不该出现的技能' }]
+        }],
+        total: 1
+      })
+      await mount()
+      const refBtn = refCell('未发布服务').querySelector('.mc-refs')
+      expect(refBtn.textContent.trim()).toBe('2个岗位引用')
+      refBtn.click()
+      await flush()
+      const dlg = container.querySelector('.el-dialog')
+      expect(dlg.getAttribute('data-title')).toBe('被岗位引用')
+      expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['财务专员', '采购助理'])
+    })
+
+    it('通用连接器：引用情况显「—」，没有可点的引用入口（即使数据里带技能引用数）', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{ ...LIST[0], type: 'SYSTEM_DEFAULT', referencedBySkillCount: 3 }],
+        total: 1
+      })
+      await mount()
+      expect(refCell('未发布服务').textContent.trim()).toBe('—')
+      expect(refCell('未发布服务').querySelector('.mc-refs')).toBeNull()
+    })
+  })
+
+  /**
+   * 2026-10-08 补缺口：深链 ?keyword= 同名参数重复（数组）不崩页（yuepu#22 防回归；md §一.2 L26 搜索口径）。
+   */
+  describe('深链 ?keyword=（yuepu#22）', () => {
+    it('?keyword=报销&keyword=合同（数组）→ 挂载不抛，首次请求 keyword 取第一个「报销」，搜索框回填「报销」', async () => {
+      routeState.query = { keyword: ['报销', '合同'] }
+      await expect(mount()).resolves.toBeTruthy()
+      expect(adminApi.listMcp.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: '报销', page: 1 }))
+      expect(container.querySelector('.lt-search').value).toBe('报销')
+    })
+  })
+
+  /**
+   * 2026-10-08 补缺口：编辑器回传事件（md §三.8 L365-366 登记 / 编辑成功「返回列表第 1 页并刷新列表」；
+   * §三.6 L322 拉取成功刷新工具清单 → 列表该行工具数同步）。编辑器为桩，按钮直接 emit saved / probed。
+   */
+  describe('编辑器回传：saved 回第 1 页 / probed 更新工具数', () => {
+    it('先翻到第 2 页，编辑器保存成功（saved）→ 重拉列表且 page=1，分页高亮回到 1', async () => {
+      adminApi.listMcp.mockImplementation(async ({ page, size }) => {
+        if (page === 2) return { list: [{ ...LIST[0], id: 'mc_p2', name: '第二页服务' }], total: size + 1 }
+        return {
+          list: Array.from({ length: size }, (_, i) => ({ ...LIST[0], id: `mc_p1_${i}`, name: `首页服务${i}` })),
+          total: size + 1
+        }
+      })
+      await mount()
+      container.querySelector('.list-pager [aria-label="下一页"]').click()
+      await flush()
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('2')
+      btn(rowByName('第二页服务'), '编辑').click()
+      await nextTick()
+      const before = adminApi.listMcp.mock.calls.length
+      container.querySelector('.stub-emit-saved').click()
+      await flush()
+      expect(adminApi.listMcp.mock.calls.length).toBe(before + 1)
+      expect(adminApi.listMcp.mock.calls.at(-1)[0].page).toBe(1)
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('1')
+      expect(rowByName('首页服务0')).toBeTruthy()
+    })
+
+    it('编辑器里拉取工具成功（probed，工具数 7）→ 该行工具数由「—」变「7」，其它行不变，不重拉整表', async () => {
+      await mount()
+      const toolCell = (name) => rowByName(name).querySelector('.t-cell[data-label="工具数"]').textContent.trim()
+      expect(toolCell('空工具服务')).toBe('—')
+      btn(rowByName('空工具服务'), '编辑').click()
+      await nextTick()
+      const before = adminApi.listMcp.mock.calls.length
+      container.querySelector('.stub-emit-probed').click()
+      await flush()
+      expect(toolCell('空工具服务')).toBe('7')
+      expect(toolCell('已上线服务')).toBe('4')
+      expect(adminApi.listMcp.mock.calls.length).toBe(before)
     })
   })
 })
