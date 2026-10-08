@@ -17,6 +17,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { queryString } from '@/utils/routeQuery'
 import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -74,7 +75,9 @@ const reload = list.search
 
 onMounted(() => {
   // 访问审计【查看】等跨模块跳转带 query.keyword，作初始搜索词（与其余列表页同一范式）
-  if (route.query?.keyword) query.keyword = String(route.query.keyword)
+  // 同名参数重复时 route.query.keyword 是数组，统一经 queryString 取第一个（与其余列表页同口径，待办 yuepu#22）
+  const kw = queryString(route.query?.keyword)
+  if (kw) query.keyword = kw
   fetchList()
 })
 

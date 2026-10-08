@@ -19,6 +19,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
+import { queryString } from '@/utils/routeQuery'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListStates from '@/components/admin/ListStates.vue'
@@ -50,7 +51,7 @@ const { UNPUBLISHED, PENDING_REVIEW, PUBLISHED } = VERSION_STATUS
 // 关键字入口：访问审计「管理端操作」的【查看】跳过来时带 query.keyword（操作对象名称，如 Windows v1.2.0），
 // 与其余列表页同款（首次进入还原到搜索框，之后以搜索框为准）。
 const route = useRoute()
-const query = reactive({ keyword: String(route?.query?.keyword || ''), terminal: '', status: '', sortDir: 'desc' })
+const query = reactive({ keyword: queryString(route?.query?.keyword), terminal: '', status: '', sortDir: 'desc' })
 
 // 取数编排统一走 useAdminList（四态 / 分页 / 竞态防护），本页只描述「取什么」
 const list = useAdminList(listVersions, { params: () => ({ ...query }) })
