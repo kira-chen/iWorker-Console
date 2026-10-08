@@ -722,6 +722,30 @@ describe('保存门 · 必填为空（md 技能 §三.3：名称 / 描述 / 示�
     expect(patchSkillSpy).not.toHaveBeenCalled()
   })
 
+  // md §三.3【保存】「保存前先校验必填项（表单层拦截，2026-09-21 负责人拍板图标也必填）」——10-08 审计收尾补（原只测名称 / 分类 / 描述 / 示例问题）
+  it('图标清空 → warning「请选择技能图标」，不发配置 PUT', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ icon: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请选择技能图标')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  it('业务系统专属技能：没有图标行，图标为空也照样保存（md §三.3「业务系统专属技能…只校验技能名称」）', async () => {
+    routeState.meta = { skillSource: 'bizSystem' }
+    routeState.params = { id: 'sk_1', bizId: 'bs_1' }
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ icon: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+    expect(bizUpdate).toHaveBeenCalled()
+    expect(ElMessage.success).toHaveBeenCalledWith('技能配置已保存')
+  })
+
   it('业务系统专属技能：描述 / 示例问题为空 → 照样保存（走业务系统端点）并提示「技能配置已保存」', async () => {
     routeState.meta = { skillSource: 'bizSystem' }
     routeState.params = { id: 'sk_1', bizId: 'bs_1' }
