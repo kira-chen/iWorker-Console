@@ -13,6 +13,10 @@ import { createApp, h, nextTick, reactive } from 'vue'
  * - 顶栏（md §1.2 L144-145）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
  * - 只读态（query.view=1）/ 审核中：顶部隐藏【保存】【发布岗位】。
  * 只钉页面这一层，不测子组件内部（全桩）。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §12「加载失败」补：
+ *  store.error 非空 → 不出页签、出【重试】，点【重试】按当前路由 id 重新 store.load。
+ *  失败文案（md「加载失败」vs 代码显示原始错误）与是否另给【返回】待 J19 裁决，此处只钉重试行为。
  */
 
 // reactive：顶栏脏检查 isDirty 是 computed，store.basic 被 patchBasic 整体替换后须能触发重算
@@ -111,6 +115,7 @@ beforeEach(() => {
   store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null
   store.isPublished = false
   store.loading = false
+  store.error = ''
   store.detail = { positionId: 5, status: 'draft', pendingAction: null }
   store.basic = { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] }
   listPublicationsSpy.mockClear()
@@ -254,5 +259,26 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(panes.find((p) => p.getAttribute('data-name') === 'businessSystems')).toBeTruthy()
     expect(panes.find((p) => p.getAttribute('data-name') === 'runtime')).toBeUndefined()
     expect(panes.find((p) => p.getAttribute('data-name') === 'effectTest')).toBeUndefined()
+  })
+})
+
+describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文案待 J19）', () => {
+  const retryBtn = () => [...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '重试')
+
+  it('详情加载失败（store.error 非空）→ 不渲染页签，出【重试】按钮', async () => {
+    store.error = '网络异常'
+    await mount()
+    expect(container.querySelector('.el-tabs')).toBeNull()
+    expect(retryBtn()).toBeTruthy()
+  })
+
+  it('点【重试】→ 按当前路由的岗位 id 重新加载详情（store.load("5")）', async () => {
+    store.error = '网络异常'
+    await mount()
+    const before = store.load.mock.calls.length
+    retryBtn().click()
+    await nextTick()
+    expect(store.load.mock.calls.length).toBe(before + 1)
+    expect(store.load.mock.calls.at(-1)[0]).toBe('5')
   })
 })

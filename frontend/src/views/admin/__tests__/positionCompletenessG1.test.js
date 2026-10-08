@@ -15,6 +15,10 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  *  ③ 九项齐备时保存不出提示条、发布放行到发布前检查弹窗。
  *
  * 另钉 A19（Q455）：知识页签【检索测试】原地开弹窗、不 router.push。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §8.1–§8.3 / §9.1 第 5 项补：
+ *  - 【保存】载荷带连接器页签三份引用清单 connectorMcpIds / connectorApiIds / businessSystemIds（yuepu#7①④ 回归）；
+ *  - 第 5 项「示例问题」缺一条 → 阻断、toast 点名「3 条示例问题」、切人格页签，且空着的那一格标红（pd-eq-err）。
  */
 
 import { ElMessage } from 'element-plus'
@@ -231,6 +235,26 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
     expect(activeTab()).toBe('persona')
   })
 
+  it('第 5 项：3 条示例问题缺第 2 条 → 阻断、不开弹窗、toast 点名「3 条示例问题」、定位人格页签', async () => {
+    store.basic.exampleQuestions = ['q1', '', 'q3']
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeNull()
+    expect(lastWarn()).toContain('3 条示例问题')
+    expect(lastWarn()).toBe('请先填写：3 条示例问题')
+    expect(activeTab()).toBe('persona')
+  })
+
+  it('第 5 项阻断后 → 人格页签里空着的那格示例问题标红（pd-eq-err），已填的两格不标', async () => {
+    store.basic.exampleQuestions = ['q1', '', 'q3']
+    await mount()
+    const eqInputs = () => [...container.querySelectorAll('.pd-eq-row .el-input')]
+    expect(eqInputs()).toHaveLength(3)
+    expect(eqInputs().some((i) => i.classList.contains('pd-eq-err'))).toBe(false) // 发布前不标红
+    await clickTop('发布岗位')
+    expect(eqInputs().map((i) => i.classList.contains('pd-eq-err'))).toEqual([false, true, false])
+  })
+
   it('第 7 项：采集字段为空 → 阻断、不开弹窗、toast 点名、定位「采集字段」页签（2026-09-21 负责人拍板必填至少 1 个，原不参与阻断）', async () => {
     store.basic.intakeSchema = []
     await mount()
@@ -296,6 +320,21 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
     expect(activeTab()).toBe('agents')
     banner().querySelector('.pd-cb-close').click(); await flush()
     expect(banner()).toBeNull()
+  })
+
+  it('【保存】载荷带上连接器页签的三份引用清单：岗位私有 MCP / API / 业务系统（md §8.1–§8.3；yuepu#7①④ 回归，此前保存即丢）', async () => {
+    store.basic.connectorMcpIds = ['expense_mcp']
+    store.basic.connectorApiIds = ['api_1101', 'api_1102']
+    store.basic.businessSystemIds = ['biz_2101']
+    await mount()
+    await clickTop('保存')
+    expect(store.saveBasic).toHaveBeenCalledTimes(1)
+    expect(store.saveBasic).toHaveBeenCalledWith(expect.objectContaining({
+      connectorMcpIds: ['expense_mcp'],
+      connectorApiIds: ['api_1101', 'api_1102'],
+      businessSystemIds: ['biz_2101']
+    }))
+    expect(ElMessage.success).toHaveBeenCalledWith('岗位配置已保存')
   })
 
   it('九项齐备保存 → 不出提示条', async () => {

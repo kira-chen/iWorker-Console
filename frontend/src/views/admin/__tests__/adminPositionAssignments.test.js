@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, provide, inject, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 /**
  * AdminPositionAssignments.vue 单测（2026-09-15 合并改版：双页签→单页面）。
@@ -13,21 +13,32 @@ import { ElMessage } from 'element-plus'
  * 【分配岗位】弹窗打开与关闭；
  * 有待分配申请的用户分配后自动 markApplicationAssigned + 刷新计数 + 置顶高亮；
  * 无待分配申请的普通用户分配后直接 reload（不调 markApplicationAssigned）。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §二.5 / §4.2（批量绑定，此前零用例）：
+ * 未勾选点【批量绑定】→ warning；勾选后按钮带已选数徽标、弹窗「已选 N 名用户」；未选岗位 →「请选择要绑定的岗位」；
+ * 二次确认文案「将 N 名用户（…）统一绑定至「X」？」；取消确认不绑定；确认后逐个 setUserPosition；
+ * 有 pendingRequestId 的用户补调 markApplicationAssigned（待办 yuepu#9② 回归）；
+ * 成功 toast「已将 N 名用户绑定至「X」」、关弹窗、清勾选、重拉列表与待分配计数；失败 → 错误提示、弹窗保持。
+ * 注：「未勾选时按钮置灰」现状不符 md，已登记 yuepu#60②，此处不钉。
  */
 
 const listPositionAssignments = vi.fn()
 const countPendingApplications = vi.fn()
 const markApplicationAssignedApi = vi.fn()
 const listPositions = vi.fn(() => Promise.resolve({ list: [], total: 0 }))
+const setUserPositionApi = vi.fn()
+const clearSelectionSpy = vi.fn()
 
 vi.mock('@/api/positionAssignment', () => ({
   listPositionAssignments: (...a) => listPositionAssignments(...a),
   countPendingApplications: (...a) => countPendingApplications(...a),
-  markApplicationAssigned: (...a) => markApplicationAssignedApi(...a)
+  markApplicationAssigned: (...a) => markApplicationAssignedApi(...a),
+  setUserPosition: (...a) => setUserPositionApi(...a)
 }))
 vi.mock('@/api/position', () => ({ listPositions: (...a) => listPositions(...a) }))
 vi.mock('element-plus', () => ({
-  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
+  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }),
+  ElMessageBox: { confirm: vi.fn() }
 }))
 vi.mock('@/components/PageHeader.vue', () => ({
   default: { props: ['title', 'subtitle'], template: '<div class="page-header">{{ title }}|{{ subtitle }}</div>' }
@@ -51,19 +62,39 @@ const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssig
 
 // —— el-table 逐行注入 row 存根 ——
 const ROW_KEY = Symbol('row')
+// 每行前置一个 .row-check 勾选框模拟 type="selection" 列；勾选变化按行序 emit selection-change；
+// 暴露 clearSelection（页面批量绑定成功后经 tableRef 调用）
 const tableStub = {
   name: 'el-table',
   props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
+  emits: ['selection-change'],
+  setup(props, { slots, emit, expose }) {
+    const picked = new Set()
+    const toggle = (row, on) => {
+      if (on) picked.add(row)
+      else picked.delete(row)
+      emit('selection-change', props.data.filter((r) => picked.has(r)))
+    }
+    expose({
+      clearSelection() {
+        clearSelectionSpy()
+        picked.clear()
+      }
+    })
     return () =>
-      h('div', { class: 'el-table' }, props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: i })))
+      h('div', { class: 'el-table' }, props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, onToggle: (on) => toggle(row, on), key: i })))
   }
 }
 const RowCells = {
   props: { row: { type: Object, required: true }, colSlot: { type: Function, required: true } },
-  setup(props) {
+  emits: ['toggle'],
+  setup(props, { emit }) {
     provide(ROW_KEY, props.row)
-    return () => h('div', { class: 'el-row' }, props.colSlot?.())
+    return () =>
+      h('div', { class: 'el-row' }, [
+        h('input', { type: 'checkbox', class: 'row-check', onChange: (e) => emit('toggle', e.target.checked) }),
+        props.colSlot?.()
+      ])
   }
 }
 const tableColStub = {
@@ -92,6 +123,12 @@ const elSelect = {
 const elOption = { props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
 const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const pager = { name: 'el-pagination', template: '<div class="el-pagination" />' }
+const elDialog = {
+  props: ['modelValue', 'title'],
+  emits: ['update:modelValue'],
+  template:
+    '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><div class="el-dialog__footer"><slot name="footer" /></div></div>'
+}
 
 let app, container
 
@@ -115,6 +152,7 @@ async function mount() {
   app.component('el-button', elButton)
   app.component('el-empty', elEmpty)
   app.component('el-pagination', pager)
+  app.component('el-dialog', elDialog)
   app.component('Search', { template: '<i />' })
   app.directive('loading', {})
   app.mount(container)
@@ -133,6 +171,8 @@ beforeEach(() => {
   listPositionAssignments.mockResolvedValue({ list: ROWS, total: 2 })
   countPendingApplications.mockResolvedValue({ count: 1 })
   markApplicationAssignedApi.mockResolvedValue({})
+  setUserPositionApi.mockResolvedValue({})
+  ElMessageBox.confirm.mockResolvedValue('confirm')
   listPositions.mockResolvedValue({
     list: [
       { positionId: 'ps_1', name: '销售', status: 'published', pendingAction: null },
@@ -314,5 +354,139 @@ describe('AdminPositionAssignments —— 单页面（2026-09-15 合并改版）
     pendingBtn.click()
     await flush()
     expect(container.querySelector('.ls-empty')?.textContent).toContain('暂无待分配申请')
+  })
+})
+
+// —— 批量绑定小工具 ——
+const btnByText = (root, text) => [...root.querySelectorAll('.el-button')].find((b) => b.textContent.trim().startsWith(text))
+const batchBtn = () => btnByText(container.querySelector('.list-toolbar') || container, '批量绑定')
+async function tick(row) {
+  const box = container.querySelectorAll('.row-check')[row]
+  box.checked = true
+  box.dispatchEvent(new Event('change'))
+  await flush()
+}
+async function openBatchWith(rowIdxs) {
+  for (const i of rowIdxs) await tick(i)
+  batchBtn().click()
+  await flush()
+  return container.querySelector('.el-dialog[data-title="批量绑定岗位"]')
+}
+async function pickPosition(dlg, positionId) {
+  const sel = dlg.querySelector('select.el-select')
+  sel.value = positionId
+  sel.dispatchEvent(new Event('change'))
+  await flush()
+}
+const confirmBind = async (dlg) => {
+  btnByText(dlg, '确认绑定').click()
+  await flush()
+}
+
+describe('AdminPositionAssignments —— 批量绑定（2026-10-08 对齐岗位管理 md §二.5 / §4.2）', () => {
+  it('未勾选任何用户就点【批量绑定】→ 提示「请先勾选要批量绑定的用户」，不弹批量绑定弹窗', async () => {
+    await mount()
+    batchBtn().click()
+    await flush()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先勾选要批量绑定的用户')
+    expect(container.querySelector('.el-dialog[data-title="批量绑定岗位"]')).toBeNull()
+  })
+
+  it('勾选 2 名用户 →【批量绑定】按钮右侧徽标显示 2；打开弹窗顶部写「已选 2 名用户」', async () => {
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    expect(batchBtn().querySelector('.pm-count')?.textContent).toBe('2')
+    expect(dlg).toBeTruthy()
+    expect(dlg.querySelector('.batch-tip').textContent.replace(/\s+/g, '')).toBe('已选2名用户，请选择要统一绑定的岗位：')
+  })
+
+  it('批量弹窗岗位下拉只列已发布岗位（销售），不列未发布草稿（草稿岗）', async () => {
+    listPositions.mockResolvedValue({
+      list: [
+        { positionId: 'ps_1', name: '销售', status: 'published' },
+        { positionId: 'ps_9', name: '草稿岗', status: 'draft' }
+      ],
+      total: 2
+    })
+    await mount()
+    const dlg = await openBatchWith([0])
+    const labels = [...dlg.querySelectorAll('option')].map((o) => o.textContent)
+    expect(labels).toEqual(['销售'])
+  })
+
+  it('弹窗里没选岗位就点【确认绑定】→ 提示「请选择要绑定的岗位」，不弹二次确认、不绑定', async () => {
+    await mount()
+    const dlg = await openBatchWith([0])
+    await confirmBind(dlg)
+    expect(ElMessage.warning).toHaveBeenCalledWith('请选择要绑定的岗位')
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(setUserPositionApi).not.toHaveBeenCalled()
+  })
+
+  it('选了岗位点【确认绑定】→ 二次确认写明人数、涉及用户与目标岗位：「将 2 名用户（alice、bob）统一绑定至「销售」？」', async () => {
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    await confirmBind(dlg)
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    const [msg, title] = ElMessageBox.confirm.mock.calls[0]
+    expect(msg).toBe('将 2 名用户（alice、bob）统一绑定至「销售」？')
+    expect(title).toBe('批量绑定确认')
+  })
+
+  it('二次确认点【取消】→ 一个用户都不绑定，批量弹窗仍开着', async () => {
+    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    await confirmBind(dlg)
+    expect(setUserPositionApi).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(container.querySelector('.el-dialog[data-title="批量绑定岗位"]')).toBeTruthy()
+  })
+
+  it('确认后逐个更新绑定：每名勾选用户各调一次 setUserPosition(用户 ID, 所选岗位)', async () => {
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    await confirmBind(dlg)
+    expect(setUserPositionApi).toHaveBeenCalledTimes(2)
+    expect(setUserPositionApi).toHaveBeenCalledWith(11, 'ps_1')
+    expect(setUserPositionApi).toHaveBeenCalledWith(12, 'ps_1')
+  })
+
+  it('勾选里有待分配申请的用户（bob）→ 绑定后把他的申请标记为已分配；无申请的 alice 不标记（yuepu#9② 回归）', async () => {
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    await confirmBind(dlg)
+    expect(markApplicationAssignedApi).toHaveBeenCalledTimes(1)
+    expect(markApplicationAssignedApi).toHaveBeenCalledWith(801)
+  })
+
+  it('全部绑完 → 提示「已将 2 名用户绑定至「销售」」，弹窗关闭，勾选清空（徽标消失），列表与待分配计数重拉', async () => {
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    const listCallsBefore = listPositionAssignments.mock.calls.length
+    const countCallsBefore = countPendingApplications.mock.calls.length
+    await confirmBind(dlg)
+    expect(ElMessage.success).toHaveBeenCalledWith('已将 2 名用户绑定至「销售」')
+    expect(container.querySelector('.el-dialog[data-title="批量绑定岗位"]')).toBeNull()
+    expect(clearSelectionSpy).toHaveBeenCalledTimes(1)
+    expect(batchBtn().querySelector('.pm-count')).toBeNull()
+    expect(listPositionAssignments.mock.calls.length).toBe(listCallsBefore + 1)
+    expect(countPendingApplications.mock.calls.length).toBe(countCallsBefore + 1)
+  })
+
+  it('某个用户绑定失败 → 弹出失败原因，不提示成功，批量弹窗保持打开', async () => {
+    setUserPositionApi.mockImplementation((uid) => (uid === 12 ? Promise.reject(new Error('岗位未发布')) : Promise.resolve({})))
+    await mount()
+    const dlg = await openBatchWith([0, 1])
+    await pickPosition(dlg, 'ps_1')
+    await confirmBind(dlg)
+    expect(ElMessage.error).toHaveBeenCalledWith('岗位未发布')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(container.querySelector('.el-dialog[data-title="批量绑定岗位"]')).toBeTruthy()
   })
 })

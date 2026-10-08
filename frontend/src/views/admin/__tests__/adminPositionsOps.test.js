@@ -18,6 +18,12 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 2026-09-12 测试审计：T39 el-table 桩改用 helpers/elTableStub（renderHeader 开，供列头排序按钮断言）；
  *   T53 补「最近更新时间」toggleSort（md §二.2 L53）、草稿【删除】title「删除前需二次确认」（md §二.3.1 L62）；
  *   T48 真实 ListPagination/ListStates 挂载 + 「加载失败 + 重试」在单独文件 adminPositionsSmoke.test.js（vi.mock 文件级）。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §一.1 / §一.2 / §二.5 补：
+ *  - 工具栏：关键字只在回车 / 【查询】时生效（打字不刷新）；清空搜索框即按剩余条件刷新；
+ *    状态筛选切换立即刷新，清空状态回落「全部状态」(all)；
+ *  - 新建弹窗：岗位名称必填（空着点【创建岗位】不建）、输入框最多 64 个字符、超 64 被规则拦；
+ *  - 防重复点击：停用提交中【停用】按钮 loading，再点不重复提交（unpublishPosition 只调一次）。
  */
 
 const push = vi.fn()
@@ -438,5 +444,226 @@ describe('AdminPositions · 新建弹窗 / 版本侧栏 / 名称格（md §一.1
     expect(row.querySelector('.status-tag')).toBeTruthy()
     expect(row.querySelector('.pos-desc').textContent).toBe('卖货')
     expect(row.querySelector('.pos-time')).toBeTruthy()
+  })
+})
+
+describe('AdminPositions · 工具栏 / 新建弹窗必填 / 防重复点击（2026-10-08 对齐 md §一.1 / §一.2 / §二.5）', () => {
+  // 工具栏桩：输入框 input 回写、带清空按钮（emit clear）；@keyup.enter 未声明 emits → 作原生监听透传到 <input>
+  const tbInput = {
+    name: 'el-input',
+    props: ['modelValue', 'placeholder', 'maxlength', 'type'],
+    emits: ['update:modelValue', 'clear', 'input'],
+    template:
+      '<span class="el-input-wrap"><input class="el-input" :placeholder="placeholder" :maxlength="maxlength" :value="modelValue" ' +
+      '@input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />' +
+      '<button type="button" class="el-input-clear" @click="$emit(\'update:modelValue\', \'\'); $emit(\'clear\')" /></span>'
+  }
+  const tbSelect = {
+    name: 'el-select',
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue', 'change'],
+    template:
+      '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><option value="" /><slot /></select>'
+  }
+  const tbOption = { name: 'el-option', props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
+  const tbButton = {
+    name: 'el-button',
+    props: { disabled: { type: Boolean, default: false }, loading: { type: Boolean, default: false }, title: { type: String, default: undefined } },
+    emits: ['click'],
+    template: '<button class="el-button" :disabled="disabled" :data-loading="String(loading)" :title="title" @click="!disabled && $emit(\'click\')"><slot /></button>'
+  }
+  const tbDialog = {
+    name: 'el-dialog',
+    props: ['modelValue', 'title'],
+    template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><div class="dlg-footer"><slot name="footer" /></div></div>'
+  }
+  // 简易表单桩：validate 按传入 rules 的 required / max 真校（jsdom 下真 ElForm 校验跑不通，见 J22 记录）
+  const tbForm = {
+    name: 'el-form',
+    props: ['model', 'rules'],
+    template: '<form class="el-form"><slot /></form>',
+    methods: {
+      validate() {
+        for (const [field, rules] of Object.entries(this.rules || {})) {
+          const v = String(this.model?.[field] ?? '')
+          for (const r of rules) {
+            if (r.required && !v.trim()) return Promise.reject({ [field]: [{ message: r.message }] })
+            if (r.max != null && v.length > r.max) return Promise.reject({ [field]: [{ message: r.message }] })
+          }
+        }
+        return Promise.resolve(true)
+      },
+      clearValidate() {}
+    }
+  }
+  const tbFormItem = { name: 'el-form-item', props: ['label', 'prop', 'error'], template: '<div class="el-form-item" :data-prop="prop"><label>{{ label }}</label><slot /></div>' }
+
+  async function mountTb() {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    app = createApp(AdminPositions)
+    app.component('el-input', tbInput)
+    app.component('el-select', tbSelect)
+    app.component('el-option', tbOption)
+    app.component('el-icon', passthrough('el-icon'))
+    app.component('el-table', tableStub)
+    app.component('el-table-column', tableColStub)
+    app.component('el-button', tbButton)
+    app.component('el-dialog', tbDialog)
+    app.component('el-form', tbForm)
+    app.component('el-form-item', tbFormItem)
+    app.directive('loading', {})
+    app.mount(container)
+    await flush()
+    return container
+  }
+  const searchInput = () => container.querySelector('.list-toolbar input[placeholder="搜索岗位名称或岗位描述"]')
+  const typeKeyword = async (v) => {
+    const el = searchInput()
+    el.value = v
+    el.dispatchEvent(new Event('input'))
+    await flush()
+  }
+  const statusSelect = () => container.querySelector('.list-toolbar select.el-select')
+  const pickStatus = async (v) => {
+    statusSelect().value = v
+    statusSelect().dispatchEvent(new Event('change'))
+    await flush()
+  }
+  const lastParams = () => listPositions.mock.calls.at(-1)[0]
+  const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
+  // 文件级 beforeEach 不重置 createPosition（B2 用例会留调用记录），本组自清
+  beforeEach(() => { createPosition.mockReset() })
+
+  it('只在搜索框里打字、不回车也不点【查询】→ 列表不刷新', async () => {
+    await mountTb()
+    expect(listPositions).toHaveBeenCalledTimes(1)
+    await typeKeyword('销售')
+    expect(listPositions).toHaveBeenCalledTimes(1)
+  })
+
+  it('输入关键字后按回车 → 立即按关键字刷新（状态条件一并带上）', async () => {
+    await mountTb()
+    await typeKeyword('销售')
+    searchInput().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    expect(listPositions).toHaveBeenCalledTimes(2)
+    expect(lastParams()).toEqual(expect.objectContaining({ keyword: '销售', page: 1, status: 'all' }))
+  })
+
+  it('输入关键字后点【查询】→ 按关键字刷新', async () => {
+    await mountTb()
+    await typeKeyword('卖货')
+    toolbarBtn('查询').click()
+    await flush()
+    expect(listPositions).toHaveBeenCalledTimes(2)
+    expect(lastParams()).toEqual(expect.objectContaining({ keyword: '卖货' }))
+  })
+
+  it('点搜索框的清空 → 立即按剩余条件刷新（关键字为空、状态筛选保留）', async () => {
+    await mountTb()
+    await pickStatus('draft')
+    await typeKeyword('销售')
+    searchInput().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    const before = listPositions.mock.calls.length
+    container.querySelector('.list-toolbar .el-input-clear').click()
+    await flush()
+    expect(listPositions.mock.calls.length).toBe(before + 1)
+    // 空关键字由取数层省略不下发（useAdminList 丢空参），只认「不再带上次的关键字」
+    expect(lastParams().keyword ?? '').toBe('')
+    expect(lastParams()).toEqual(expect.objectContaining({ status: 'draft' }))
+    expect(searchInput().value).toBe('')
+  })
+
+  it('状态筛选选「未发布」→ 立即刷新（不需要点【查询】），下发 status=draft', async () => {
+    await mountTb()
+    await pickStatus('draft')
+    expect(listPositions).toHaveBeenCalledTimes(2)
+    expect(lastParams()).toEqual(expect.objectContaining({ status: 'draft' }))
+  })
+
+  it('状态筛选被清成空值 → 立即刷新并回落「全部状态」：下拉显示全部状态、下发 status=all', async () => {
+    await mountTb()
+    await pickStatus('published')
+    expect(lastParams()).toEqual(expect.objectContaining({ status: 'published' }))
+    const before = listPositions.mock.calls.length
+    await pickStatus('')
+    expect(listPositions.mock.calls.length).toBe(before + 1)
+    expect(lastParams()).toEqual(expect.objectContaining({ status: 'all' }))
+    expect(statusSelect().value).toBe('all')
+  })
+
+  it('状态筛选下拉四项：全部状态 / 未发布 / 审核中 / 已发布', async () => {
+    await mountTb()
+    const labels = [...statusSelect().querySelectorAll('option')].map((o) => o.textContent.trim()).filter(Boolean)
+    expect(labels).toEqual(['全部状态', '未发布', '审核中', '已发布'])
+  })
+
+  it('新建弹窗：岗位名称输入框最多 64 个字符', async () => {
+    await mountTb()
+    toolbarBtn('＋ 新建岗位').click()
+    await flush()
+    const dlg = container.querySelector('.el-dialog[data-title="新建岗位"]')
+    const nameInput = dlg.querySelector('.el-form-item[data-prop="name"] input')
+    expect(nameInput.getAttribute('maxlength')).toBe('64')
+  })
+
+  it('新建弹窗：岗位名称空着（只填描述）点【创建岗位】→ 不建岗位、弹窗不关', async () => {
+    await mountTb()
+    toolbarBtn('＋ 新建岗位').click()
+    await flush()
+    const dlg = () => container.querySelector('.el-dialog[data-title="新建岗位"]')
+    const desc = dlg().querySelector('.el-form-item[data-prop="description"] input')
+    desc.value = '负责经营分析'
+    desc.dispatchEvent(new Event('input'))
+    await flush()
+    ;[...dlg().querySelectorAll('.dlg-footer .el-button')].find((b) => b.textContent.trim() === '创建岗位').click()
+    await flush()
+    expect(createPosition).not.toHaveBeenCalled()
+    expect(dlg()).toBeTruthy()
+  })
+
+  it('新建弹窗：岗位名称超过 64 个字符（绕过输入框上限，如粘贴进模型）→ 校验规则拦下，不建岗位', async () => {
+    await mountTb()
+    toolbarBtn('＋ 新建岗位').click()
+    await flush()
+    const st = app._instance.setupState
+    st.createForm.name = '岗'.repeat(65)
+    st.createForm.description = '负责经营分析'
+    await st.submitCreate()
+    expect(createPosition).not.toHaveBeenCalled()
+    st.createForm.name = '岗'.repeat(64)
+    createPosition.mockResolvedValue({ positionId: 'ps_new' })
+    await st.submitCreate()
+    expect(createPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('停用提交中（unpublishPosition 未返回）→【停用】按钮 loading', async () => {
+    let release
+    unpublishPosition.mockImplementation(() => new Promise((r) => { release = r }))
+    await mountTb()
+    btn(rowByName('零领用岗'), '停用').click()
+    await flush()
+    expect(unpublishPosition).toHaveBeenCalledTimes(1)
+    expect(btn(rowByName('零领用岗'), '停用').getAttribute('data-loading')).toBe('true')
+    release({})
+    await flush()
+    expect(btn(rowByName('零领用岗'), '停用').getAttribute('data-loading')).toBe('false')
+  })
+
+  it('停用提交中再点一次【停用】→ 不重复提交：确认框只弹一次、unpublishPosition 只调一次', async () => {
+    let release
+    unpublishPosition.mockImplementation(() => new Promise((r) => { release = r }))
+    await mountTb()
+    btn(rowByName('零领用岗'), '停用').click()
+    await flush()
+    btn(rowByName('零领用岗'), '停用').click()
+    await flush()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(unpublishPosition).toHaveBeenCalledTimes(1)
+    release({})
+    await flush()
+    expect(ElMessage.success).toHaveBeenCalledTimes(1)
   })
 })
