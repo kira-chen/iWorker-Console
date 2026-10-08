@@ -23,6 +23,25 @@ describe('instanceMock —— 只管理实例，不引入任务/会话对象', (
     expect((await listInstances({ pending: true })).list.map((row) => row.id)).toEqual(['ins-240904'])
   })
 
+  // 2026-10-08 对齐 md 实例 §五.3「搜索：支持规格名称、岗位、用户姓名、用户名和实例标识的部分匹配」
+  it.each([
+    ['实例标识 ins-240903', 'ins-240903', ['ins-240903']],
+    ['用户姓名 王强', '王强', ['ins-240903']],
+    ['岗位 经营分析岗', '经营分析岗', ['ins-240901', 'ins-240904']]
+  ])('关键词按%s搜索 → 只命中对应实例', async (_label, keyword, ids) => {
+    const { list, total } = await listInstances({ keyword })
+    expect(list.map((row) => row.id)).toEqual(ids)
+    expect(total).toBe(ids.length)
+  })
+
+  // 2026-10-08 对齐 md 实例 §七「排序规则」：异常 → 启动中 → 运行中 → 空闲 → 回收中；同状态按最近活跃由近到远。
+  // 期望序列由种子推得：903 异常；905 启动中；901 运行中；902 空闲（14:56）先于 904 空闲（13:30）。
+  it('默认顺序：异常 → 启动中 → 运行中 → 空闲（同为空闲时最近活跃 14:56 排在 13:30 前）', async () => {
+    const { list } = await listInstances()
+    expect(list.map((row) => row.id)).toEqual(['ins-240903', 'ins-240905', 'ins-240901', 'ins-240902', 'ins-240904'])
+    expect(list.map((row) => row.status)).toEqual(['ERROR', 'STARTING', 'RUNNING', 'IDLE', 'IDLE'])
+  })
+
   it('繁忙或启动中的实例由 operable 规则阻止操作', async () => {
     await expect(operateInstance('ins-240901', 'restart')).rejects.toThrow('实例当前繁忙')
     await expect(operateInstance('ins-240905', 'recycle')).rejects.toThrow('实例正在启动')
