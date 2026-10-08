@@ -12,8 +12,8 @@ import { createApp, h, nextTick } from 'vue'
  *  3. 无档案：中部空态提示，不渲染档案卡；
  *  4. 本地校验失败不发请求；
  *  5. 只读态：无 取消/保存、无「＋ 新增」、无删除按钮；
- *  6.（2026-09-12 审计 T53）编目信息「唯一 ID」单选互斥（md §4.2.2 L282，DossierCatalogGrid 真挂载）
- *     + 【取消】toast「已取消未保存修改」（md §4.2.1 L275）。
+ *  6.（2026-09-12 审计 T53）编目信息「唯一 ID」单选互斥（md §4.2.2「至多勾选 1 条，勾选新的一条时自动取消原有勾选」，DossierCatalogGrid 真挂载）
+ *     + 【取消】toast「已取消未保存修改」（md §4.2.1「【取消】放弃本次编辑，提示"已取消未保存修改"」）。
  * 注：「新建档案弹窗【取消】【下一步】+ 工作档案已创建…」口径 e705dfb（09-08）已从 md 删（现行 §4.1 右侧弹表单、
  *     §4.2 只有【保存】【取消】），记代码缺陷 K10，该用例钉现状不动，修后随改。
  *
@@ -229,7 +229,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(el.querySelector('.drg-err-text').textContent).toContain('最多 8 条')
   })
 
-  it('编目信息「唯一 ID」单选互斥：勾第 2 行 → 第 1 行自动取消；再点第 2 行 → 全部取消（md §4.2.2 L282）', async () => {
+  it('编目信息「唯一 ID」单选互斥：勾第 2 行 → 第 1 行自动取消；再点第 2 行 → 全部取消（md §4.2.2「至多勾选 1 条，勾选新的一条时自动取消原有勾选」）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     const uniques = () => Array.from(el.querySelectorAll('.dcg-row .dcg-unique')).map((b) => b.textContent.trim())
@@ -263,7 +263,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(msg.warning).toHaveBeenCalledWith('编目信息最多 8 条')
   })
 
-  it('基本信息卡头【取消】→ 放弃本次编辑、重拉详情并 toast「已取消未保存修改」（md §4.2.1 L275）', async () => {
+  it('基本信息卡头【取消】→ 放弃本次编辑、重拉详情并 toast「已取消未保存修改」（md §4.2.1「【取消】放弃本次编辑，提示"已取消未保存修改"」）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     api.getDataTable.mockClear()

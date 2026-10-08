@@ -11,7 +11,7 @@ import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
  *   md §1.3 页签 name `tasks`（2026-09-12 审计 J8③ 已由 `sampleTasks` 改齐），本组不钉 name。
  * - 人格页签为 md §2 七区块（岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
- * - 顶栏（md §1.2 L144-145）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
+ * - 顶栏（md §1.2「版本号：已发布岗位展示当前版本号（如 v2.1.0）；未发布不展示」「未保存提示：存在未保存修改时展示"有未保存的修改"」）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
  * - 只读态（query.view=1）/ 审核中：顶部隐藏【保存】【发布岗位】。
  * 只钉页面这一层，不测子组件内部（全桩）。
  *
@@ -141,7 +141,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.el-tabs').dataset.active).toBe('agents')
     app.unmount(); container.remove()
 
-    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（L589 注），旧深链值不再合法
+    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（md §1.3「自动化任务（`tasks`）」），旧深链值不再合法
     await mount()
     expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
     app.unmount(); container.remove()
@@ -178,7 +178,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(store.saveBasic).not.toHaveBeenCalled()
   })
 
-  it('人格Tab名称改动后 → 顶栏显「有未保存的修改」（md §1.2 L145）；未改动时隐藏', async () => {
+  it('人格Tab名称改动后 → 顶栏显「有未保存的修改」（md §1.2「存在未保存修改时展示"有未保存的修改"；无未保存时隐藏」）；未改动时隐藏', async () => {
     await mount()
     expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('')
     // 岗位名称编辑框已移入人格Tab；直接改 store 触发 dirty 检测
@@ -188,7 +188,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.tb-dirty').classList.contains('on')).toBe(true)
   })
 
-  it('已发布岗位 → 顶栏展示当前在架版本号（如 v2.1.0，md §1.2 L144）', async () => {
+  it('已发布岗位 → 顶栏展示当前在架版本号（如 v2.1.0，md §1.2「已发布岗位展示当前版本号」）', async () => {
     store.isPublished = true
     store.detail = { positionId: 5, status: 'published', pendingAction: null }
     listPublicationsSpy.mockImplementation(() => Promise.resolve([
@@ -201,7 +201,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.tb-version')?.textContent.trim()).toBe('v2.1.0')
   })
 
-  it('未发布岗位 → 顶栏不展示版本号（md §1.2 L144）', async () => {
+  it('未发布岗位 → 顶栏不展示版本号（md §1.2「未发布不展示」）', async () => {
     await mount()
     await nextTick(); await Promise.resolve(); await nextTick()
     expect(container.querySelector('.tb-version')).toBeNull()

@@ -17,7 +17,7 @@ import { passthrough } from './helpers/commonStubs'
  *
  * 2026-09-04 PRD-20260903 对齐：停用/删除/撤回文案、领用护栏与【查看】断言按新口径重写。
  * 2026-09-12 测试审计：T39 el-table 桩改用 helpers/elTableStub（renderHeader 开，供列头排序按钮断言）；
- *   T53 补「最近更新时间」toggleSort（md §二.2 L53）、草稿【删除】title「删除前需二次确认」（md §二.3.1 L62）；
+ *   T53 补「最近更新时间」toggleSort（md §二.2 排序规则「默认按最近更新时间由近到远排列，点击列头切换升降序」）、草稿【删除】title「删除前需二次确认」（md §二.3.1「【删除】按钮悬停提示"删除前需二次确认"」）；
  *   T48 真实 ListPagination/ListStates 挂载 + 「加载失败 + 重试」在单独文件 adminPositionsSmoke.test.js（vi.mock 文件级）。
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §一.1 / §一.2 / §二.5 补：
@@ -216,7 +216,7 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
   })
 
   it('②c 发布门（A1）：缺项 → toast「请先填写：…」+ 跳详情页第一个缺失项所在页签，不开侧栏', async () => {
-    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（tasks 页签，md §1.3 L160）
+    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（tasks 页签，md §三.1.3「自动化任务（`tasks`）」）
     getPosition.mockResolvedValue({ ...FULL_DETAIL, positionSop: '', agents: [{ name: 'A1', skills: [] }] })
     listSampleTasks.mockResolvedValue({ list: [] })
     await mount()
@@ -335,7 +335,7 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
     expect(rowByName('停用中岗').querySelector('.status-tag').textContent).toBe('审核中')
   })
 
-  it('⑦ 列头「最近更新时间」默认 ↓（降序）；点一下 → listPositions sort=asc + ↑；再点 → desc + ↓（md §二.2 L53）', async () => {
+  it('⑦ 列头「最近更新时间」默认 ↓（降序）；点一下 → listPositions sort=asc + ↑；再点 → desc + ↓（md §二.2「默认按最近更新时间由近到远排列，点击列头切换升降序」）', async () => {
     await mount()
     const sortBtn = () => container.querySelector('.el-head .time-sort')
     expect(sortBtn().textContent).toContain('最近更新时间')
@@ -352,7 +352,7 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
     expect(listPositions).toHaveBeenCalledTimes(3)
   })
 
-  it('⑧ 草稿行【删除】带悬停提示 title「删除前需二次确认」（md §二.3.1 L62）', async () => {
+  it('⑧ 草稿行【删除】带悬停提示 title「删除前需二次确认」（md §二.3.1 未发布「【删除】按钮悬停提示"删除前需二次确认"」）', async () => {
     await mount()
     expect(btn(rowByName('草稿岗'), '删除').getAttribute('title')).toBe('删除前需二次确认')
     expect(btn(rowByName('可发布草稿岗'), '删除').getAttribute('title')).toBe('删除前需二次确认')

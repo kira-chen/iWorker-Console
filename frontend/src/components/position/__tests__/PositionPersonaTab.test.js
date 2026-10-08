@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive, ref } from 'vue'
 
 /**
- * PositionPersonaTab（岗位详情「人格」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §2.1 / §2.4 / §2.5：
+ * PositionPersonaTab（岗位详情「人格」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §2.4 领用页文案 / §2.5 示例问题 / §2.6 岗位 SOP（「岗位描述为空时按钮置灰禁用，hover 展示 tooltip「请先填写岗位描述」」）：
  *  - 岗位描述为空 → 两处【AI 生成】disabled + title「请先填写岗位描述」；填了描述恢复可用；
  *  - 点【AI 生成】→ 按钮变「生成中…」，500ms 后示例问题 3 条填入 / SOP 填入，toast「已生成示例问题」「已生成岗位 SOP」；
  *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；
@@ -87,7 +87,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5）', () => {
+describe('人格页签 · 【AI 生成】门与拟真生成（md §2.5 示例问题 / §2.6 岗位 SOP「岗位描述为空时按钮置灰禁用」「延迟 500ms 后自动生成」）', () => {
   it('岗位描述为空 → 示例问题 / 岗位 SOP 两处【AI 生成】均 disabled + title「请先填写岗位描述」', async () => {
     await mount()
     expect(aiBtns()).toHaveLength(2)
@@ -189,7 +189,7 @@ describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54�
   })
 })
 
-describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3 L188；2026-09-12 审计 J18）', () => {
+describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.4 领用页文案「达到 6 条上限后提示"领用页文案最多 6 条"」；2026-09-12 审计 J18）', () => {
   const claimCard = () => cardByTitle('领用页文案')
   const addBtn = () => [...claimCard().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 新增一条')
 
@@ -220,7 +220,7 @@ describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3
   })
 })
 
-describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.1 / §2.4 / §2.5）', () => {
+describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.3 岗位描述「最多 2000」/ §2.5 示例问题「每条不超过 300 个字符」/ §2.6 岗位 SOP「最多 4000 个字符」）', () => {
   it('示例问题 3 格：占位第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；提示「3 条均为必填，每条不超过 300 个字符」', async () => {
     await mount()
     const card = cardByTitle('示例问题')

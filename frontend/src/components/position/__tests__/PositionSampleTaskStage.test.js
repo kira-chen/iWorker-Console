@@ -12,7 +12,7 @@
  * 只读态（§10 审核中全部页签只读）由父级 PositionDetailTabs 的 .pd-ro-freeze 指针冻结兜底，本组件无 readonly 入参，
  *   不在本文件覆盖（见 PositionDetailTabs 注释「工作档案 / 自动化任务两个内嵌 Stage 暂无 readonly prop」）。
  *
- * 覆盖点（SampleTaskPrototype4B.test.js 已覆盖的缺指令 / 软上限 / 默认选中 / 脏检查 / 删除确认 / 启停 toast 不重复）：
+ * 覆盖点（默认选中第一条 / 有脏切换条目确认 / 卡头开关启停 toast 三条需真编辑器，见 SampleTaskEditor.test.js「Stage × 真编辑器集成」组，此处不重复）：
  *   ① 未保存岗位（positionId=null）：不拉列表、计数 0、点新增提示「请先保存岗位」；
  *   ② 加载：上报 update:sampleCount；加载失败「样例加载失败」+【重试】可恢复；
  *   ③ 副行摘要文案（含无周期 / 无技能兜底）；
@@ -23,7 +23,9 @@
  *   ⑧ 拖拽排序：drop 后即时 reorderSampleTasks(新 id 序)；失败回滚 + 「调序保存失败」；同位 drop 不下发；
  *   ⑨ 试跑面板（EFFECT_TEST_ENABLED 构建期开关，当前关闭；md §7 未规定试跑，按代码现状只做开关两态与结果面板基本态）。
  *
- * SampleTaskEditor 以桩替换（其自身行为由 SampleTaskPrototype4B / SampleTaskEditorPrompt 覆盖），桩暴露 emit 句柄驱动回调。
+ *   ⑩ 左侧列表规则（2026-10-08 T12 自原 SampleTaskPrototype4B 迁入）：缺指令红标 / 软上限 20 / 19 条可新增 / 无脏直接切换 / 删除确认取消。
+ *
+ * SampleTaskEditor 以桩替换（其自身行为由 SampleTaskEditor.test.js 覆盖），桩暴露 emit 句柄驱动回调。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
@@ -568,5 +570,78 @@ describe('自动化任务 · 试跑入口（EFFECT_TEST_ENABLED 开关；md §7 
     )
     expect(testRunSampleTask).not.toHaveBeenCalled()
     expect(drawer()).toBeNull()
+  })
+})
+
+/* ============================ 左侧列表规则（2026-10-08 T12 由 SampleTaskPrototype4B 迁入） ============================ */
+// 迁入 5 条纯列表行为用例：断言原样，挂载由 mountComp(PositionSampleTaskStage) + flush 换为本文件的 mountStage（内含 flush）；
+// 原组另 2 条与本文件重复已删（列表为空占位 ↔「接口返回无 list 字段…」；删除确认 ↔「删除当前选中任务…」），
+// 3 条依赖真编辑器 DOM 的留在 SampleTaskEditor.test.js「Stage × 真编辑器集成」组。
+describe('自动化任务 · 左侧列表规则（md 岗位 §7.1）', () => {
+  const task = (id, over = {}) => ({
+    id,
+    name: `任务${id}`,
+    prompt: `指令${id}`,
+    status: 'ENABLED',
+    scheduleSummary: '每天 09:00',
+    schedule: { scheduleType: 'DAILY', times: ['09:00'] },
+    sopDoc: 'sop',
+    toolRefs: [],
+    skillRefs: [],
+    ...over
+  })
+
+  it('缺「一句话指令」的条目 → 名称旁出红色「缺指令」标签；已填的不出（md §7.1「缺少"一句话指令"时展示红色"缺指令"标签」）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1, { prompt: '' }), task(2)] })
+    await mountStage({ positionId: 1 })
+    const items = [...container.querySelectorAll('.st-item')]
+    expect(items[0].querySelector('.st-flag')?.textContent.trim()).toBe('缺指令')
+    expect(items[1].querySelector('.st-flag')).toBeNull()
+  })
+
+  it('已有 20 条 → 新增按钮置灰、文案「已达 20 条任务上限」，点击不进新建态（md §7.1「软上限 20 条，达到上限后新增按钮置灰并提示"已达 20 条任务上限"」）', async () => {
+    const { ElMessage } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, i) => task(i + 1)) })
+    await mountStage({ positionId: 1 })
+    const btn = container.querySelector('.st-new')
+    expect(btn.classList.contains('disabled')).toBe(true)
+    expect(btn.textContent.trim()).toBe('已达 20 条任务上限')
+    btn.click()
+    await flush()
+    expect(container.querySelector('.st-creating')).toBeNull()
+    expect(ElMessage.warning).toHaveBeenCalledWith('自动化任务建议不超过 20 条，把最推荐的放前面')
+  })
+
+  it('19 条 → 新增按钮可点、文案「＋ 新增自动化任务」，点击后左栏出「新增中…」行（md §7.1「底部【＋ 新增自动化任务】按钮，点击后右侧进入新建态」）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 19 }, (_, i) => task(i + 1)) })
+    await mountStage({ positionId: 1 })
+    const btn = container.querySelector('.st-new')
+    expect(btn.classList.contains('disabled')).toBe(false)
+    expect(btn.textContent.trim()).toBe('＋ 新增自动化任务')
+    btn.click()
+    await flush()
+    expect(container.querySelector('.st-creating')?.textContent).toContain('新增中…')
+  })
+
+  it('无未保存修改时切换条目 → 不弹确认直接切换', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
+    await mountStage({ positionId: 1 })
+    ;[...container.querySelectorAll('.st-item')][1].click()
+    await flush()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(container.querySelector('.st-item.on .st-name-text').textContent.trim()).toBe('任务2')
+  })
+
+  it('K6 删除确认取消 → 不调 deleteSampleTask、无 toast', async () => {
+    const { ElMessage, ElMessageBox } = await import('element-plus')
+    const { deleteSampleTask } = await import('@/api/sampleTask')
+    listSampleTasks.mockResolvedValueOnce({ list: [task(1)] })
+    await mountStage({ positionId: 1 })
+    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+    ;[...container.querySelectorAll('.st-item .st-name button')].find((b) => b.textContent.trim() === '删除').click()
+    await flush()
+    expect(deleteSampleTask).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
   })
 })
