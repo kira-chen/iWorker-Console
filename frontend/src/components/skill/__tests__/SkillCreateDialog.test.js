@@ -4,9 +4,9 @@ import { createApp, h, ref, nextTick } from 'vue'
 
 /**
  * SkillCreateDialog（技能页 / 岗位白板共用新建对话框）行为测试。
- * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.2 新建技能弹窗 L150-165：
- * 技能类型必选单选（L152）、每包独立选分类（L152）、未选类型/分类/内容不可提交（L153）、
- * 每次打开弹窗清空上次选择（L152/L165）、zip 导入返回列表 / 手动创建进编辑页（L157/L161）。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.2 新建技能弹窗：
+ * 技能类型必选单选（§三.2「技能类型：必选单选」）、每包独立选分类（§三.2「每个包必须独立选择分类」）、未选类型/分类/内容不可提交（§三.2「未选择类型、分类或未填写创建内容时不可提交」）、
+ * 每次打开弹窗清空上次选择（§三.2「每次打开弹窗清空上次选择」）、zip 导入返回列表 / 手动创建进编辑页（§三.2「导入完成后统一返回技能列表，不自动进入编辑页」/「点击【创建】后直接跳转至编辑页」）。
  * 原 AdminSkills #4 对话框断言（zip 主 + 手动次入口、F5c 就地回显）随本体迁到这里，
  * 并补两侧差异点：agentId/source 透传 importSkillZip、手动创建走 createFn。
  * 2026-09-12 审计 T33：原 components/__tests__/skillCreateDialog.test.js（类型选择两窗合一，9 条）并入本文件末尾 describe。
@@ -299,16 +299,16 @@ describe('SkillCreateDialog · 多包批量上传（2026-08-17）', () => {
  * 背景：原交互是「点新建 → 选类型窗 → 下一步 → 二次确认『建后不可更改』→ 上传窗」；
  * 现改为类型单选内置于上传窗顶部，一步到位。锁住合一后的关键不变式：
  *   1) 传 typeOptions 才启用内置类型选择；不传时行为与改造前一致（岗位白板调用方不受影响）。
- *   2) 类型不预选，未选前提交被兜底拦截（类型建后不可改，绝不能落空；md L152）。
+ *   2) 类型不预选，未选前提交被兜底拦截（类型建后不可改，绝不能落空；md §三.2「技能类型建成后不可更改」）。
  *   3) source / createFn / hint 全部随所选类型切换。
- *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 11 类（md L152）。
+ *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 11 类（md §三.2「技能分类：必选 11 个固定分类」）。
  *   5) created-batch 回传 skillType，父级据此刷新列表。
  */
-describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）', () => {
+describe('SkillCreateDialog · 技能类型内置单选（md §三.2 技能类型必选单选 / 技能分类必选）', () => {
   const platformCreate = vi.fn(async () => ({ skillId: 'sk_platform' }))
   const systemCreate = vi.fn(async () => ({ skillId: 'sk_system' }))
   const positionCreate = vi.fn(async () => ({ skillId: 'sk_position' }))
-  // 词表照 md L12/L152：岗位私有 / 市场技能 / 通用技能
+  // 词表照 md §一.1 技能类型筛选、§三.2 技能类型单选：岗位私有 / 市场技能 / 通用技能
   const TYPE_OPTIONS = [
     { value: 'SYSTEM_DEFAULT', label: '通用技能', source: 'system', createFn: systemCreate, hint: '通用技能提示' },
     { value: 'POSITION', label: '岗位私有', source: 'fde', createFn: positionCreate, hint: '岗位私有提示' },
@@ -325,7 +325,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     importSkillZip.mockResolvedValue({ skillId: 'sk_zip' })
   })
 
-  it('传 typeOptions 才渲染类型区与「建成后不可更改」警示（md L152）', async () => {
+  it('传 typeOptions 才渲染类型区与「建成后不可更改」警示（md §三.2「技能类型建成后不可更改，跨类型需导出后重新导入」）', async () => {
     mountTyped()
     await nextTick()
     expect(container.textContent).toContain('技能类型')
@@ -341,7 +341,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     expect(ss.effectiveSource).toBe('fde')
   })
 
-  it('类型不预选；未选时 zip 导入被兜底拦截、不发请求、红字提示补齐（md L153）', async () => {
+  it('类型不预选；未选时 zip 导入被兜底拦截、不发请求、红字提示补齐（md §三.2「请选择技能类型、技能分类并填写创建内容」）', async () => {
     const { importSkillZip } = await import('@/api/skillFiles')
     const ss = mountTyped()
     await nextTick()
@@ -351,11 +351,11 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     ss.zipItems = [zipItem()]
     await ss.confirmImportZip()
     expect(importSkillZip).not.toHaveBeenCalled()
-    // 拦截红字逐字 md L153（2026-09-12 审计 K17 闭环：zip / 手动两场景同一句）
+    // 拦截红字逐字 md §三.2「请选择技能类型、技能分类并填写创建内容」（2026-09-12 审计 K17 闭环：zip / 手动两场景同一句）
     expect(ss.zipError).toBe('请选择技能类型、技能分类并填写创建内容')
   })
 
-  it('未选类型时手动创建同样被拦截、红字同 md L153 一句，三个 createFn 都不调（审计 K17）', async () => {
+  it('未选类型时手动创建同样被拦截、红字同 md §三.2 同一句，三个 createFn 都不调（审计 K17）', async () => {
     const ss = mountTyped()
     await nextTick()
     ss.createMode = 'manual'
@@ -396,7 +396,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     expect(systemCreate).not.toHaveBeenCalled()
   })
 
-  it('分类选择器在技能页语境对三类均出现，选项来自 fieldDict 固定分类（md L152）', async () => {
+  it('分类选择器在技能页语境对三类均出现，选项来自 fieldDict 固定分类（md §三.2「技能分类：必选 11 个固定分类」）', async () => {
     const ss = mountTyped()
     ss.pickedType = 'PLATFORM'
     await nextTick()
@@ -408,7 +408,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     expect(ss.categoryOptions).toEqual([{ id: '工作', name: '工作' }, { id: '效率', name: '效率' }])
   })
 
-  it('zip 导入完成 emit created-batch 并回传 skillType（父级据此刷新列表，不自动进编辑页；md L152/L157）', async () => {
+  it('zip 导入完成 emit created-batch 并回传 skillType（父级据此刷新列表，不自动进编辑页；md §三.2「导入完成后统一返回技能列表，不自动进入编辑页」）', async () => {
     const ss = mountTyped()
     ss.pickedType = 'SYSTEM_DEFAULT'
     await nextTick()
@@ -419,7 +419,7 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 L152-153）
     expect(emitted.visible.at(-1)).toBe(false)
   })
 
-  it('重新打开弹窗 → 类型重选、技能包 / 分类 / 手动名清空、回到 zip 初始上传态（md L152/L165 每次打开清空上次选择）', async () => {
+  it('重新打开弹窗 → 类型重选、技能包 / 分类 / 手动名清空、回到 zip 初始上传态（md §三.2「每次打开弹窗清空上次选择」）', async () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     const visible = ref(true)

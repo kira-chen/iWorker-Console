@@ -8,11 +8,12 @@ import { elInput, elSelect, elOption, pick, makeListProbes } from './helpers/lis
 /**
  * AdminLoginLogs.vue（访问审计）列表页单测（2026-09-12 测试审计 T56 新建，薄）。
  *
- * 对齐 md `prd.访问审计.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索用户名」、在线 / 离线、【查询】回第 1 页）；
- * - §3.1 六列：终端仅 Windows / Mac 蓝标签；登录时间 / 登出时间 双列可排序、箭头 ↓ / ↑；
+ * 对齐 md `prd.访问审计.md`（三页签版，本文件只覆盖默认页签「登录访问」= §四）：
+ * - §一「页面说明」（注：md 现为「记录用户登录访问、用户端文件下载与管理端操作的完整行为轨迹」，下方断言仍取代码现状「产物下载」措辞，差异未在本次处置范围）；
+ *   §四.1 查询区（占位「搜索用户名」、在线 / 离线、【查询】「按当前全部条件刷新列表并回到第 1 页」）；
+ * - §四.2 列表展示六列：终端仅 Windows / Mac 蓝标签；登录时间 / 登出时间 双列可排序、箭头 ↓ / ↑；
  *   在线记录登出时间「—」、状态 在线绿 / 离线灰；来源 IP；默认按登录时间倒序；
- * - §五 L66 登出时间为空展示「—」不视为异常；L65 加载失败「加载失败」+【重试】。
+ * - §七「登出时间为空（登录访问）：展示—，不视为异常」；§七「日志加载失败：展示加载失败和【重试】」。
  * 排序细节（AdminLoginLogs.vue:37-50）：同列再点切向，换列转倒序，非当前列恒显 ↓，均回第 1 页。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩。
  */
@@ -103,13 +104,13 @@ afterEach(() => {
 })
 
 describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
-  it('页面说明取 md §一 L8；挂载即按登录时间倒序拉列表（sortField=loginAt、sortDir=desc、page=1）（md §3.1 L34）', async () => {
+  it('页面说明取 md §一「页面说明」；挂载即按登录时间倒序拉列表（sortField=loginAt、sortDir=desc、page=1）（md §四.2「默认按登录时间倒序展示」）', async () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent).toBe('记录用户登录访问、产物下载与管理端操作的完整行为轨迹')
     expect(listLoginLogs).toHaveBeenCalledWith(expect.objectContaining({ sortField: 'loginAt', sortDir: 'desc', page: 1 }))
   })
 
-  it('查询区（md §二）：占位「搜索用户名」、在线状态 在线 / 离线、【查询】；下拉选中即时重查回第 1 页', async () => {
+  it('查询区（md §四.1）：占位「搜索用户名」、在线状态 在线 / 离线、【查询】；下拉选中即时重查回第 1 页', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索用户名')
     const select = container.querySelector('.el-select')
@@ -150,7 +151,7 @@ describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
     expect(cleared.dateTo).toBeFalsy()
   })
 
-  it('六列表头：登录时间 / 登出时间 均为文字箭头列头，默认 ↓ / ↓（当前列倒序、非当前列恒显 ↓）（md §3.1）', async () => {
+  it('六列表头：登录时间 / 登出时间 均为文字箭头列头，默认 ↓ / ↓（当前列倒序、非当前列恒显 ↓）（md §四.2）', async () => {
     await mount()
     const heads = [...container.querySelectorAll('.el-head .el-table-column')].map((c) => c.textContent.replace(/\s+/g, ' ').trim())
     expect(heads).toEqual(['用户名', '终端', '登录时间 ↓', '登出时间 ↓', '状态', '来源 IP'])
@@ -175,7 +176,7 @@ describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
     expect(arrows()).toEqual(['↓', '↓'])
   })
 
-  it('在线行：登出时间「—」、状态「在线」绿标（success）；离线行：登出时间实际值、状态「离线」灰标（info）；终端均蓝标（md §3.1 / §五 L66）', async () => {
+  it('在线行：登出时间「—」、状态「在线」绿标（success）；离线行：登出时间实际值、状态「离线」灰标（info）；终端均蓝标（md §四.2 / §七「登出时间为空（登录访问）：展示—，不视为异常」）', async () => {
     await mount()
     const [online, offline] = rowEls()
     const cell = (row, label) => row.querySelector(`[data-label="${label}"]`)
@@ -196,7 +197,7 @@ describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
     expect(cell(online, '用户名').textContent.trim()).toBe('zhangwei')
   })
 
-  it('空态；加载失败出「加载失败」+【重试】（md §五 L64-65）', async () => {
+  it('空态；加载失败出「加载失败」+【重试】（md §七「查询无结果：展示空状态」「日志加载失败：展示加载失败和【重试】」）', async () => {
     listLoginLogs.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     expect(container.querySelector('.ls-empty')).toBeTruthy()

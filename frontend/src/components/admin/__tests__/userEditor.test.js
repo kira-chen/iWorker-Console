@@ -16,7 +16,7 @@ import { createApp, h, nextTick, ref } from 'vue'
  *
  * el-form 桩内置一个只认 required / min / max / type:'email' 的迷你校验器：读组件真实 rules 校验 model，
  * 把错误文案渲染成 .form-err——校验断言落在用户可见文案与「是否打接口」上，而不是断 rules 对象。
- * K14 已于 2026-09-12 闭环：新建态「初始角色」区渲染 md §三.2 L149 提示「选择一个或多个角色」，编辑态不出现（见对应用例）。
+ * K14 已于 2026-09-12 闭环：新建态「初始角色」区渲染 md §三.2「初始角色…提示文字为『选择一个或多个角色』」，编辑态不出现（见对应用例）。
  */
 const createUser = vi.fn(() => Promise.resolve({}))
 const updateUser = vi.fn(() => Promise.resolve({}))
@@ -164,7 +164,7 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
     expect(requiredOf('邮箱（选填）')).toBe('')
   })
 
-  it('新建态「初始角色」区带提示文字「选择一个或多个角色」，位于卡片之前；编辑态无此提示（md §三.2 L149；审计 K14）', async () => {
+  it('新建态「初始角色」区带提示文字「选择一个或多个角色」，位于卡片之前；编辑态无此提示（md §三.2「初始角色…提示文字为『选择一个或多个角色』」；审计 K14）', async () => {
     let el = mount({ user: null })
     await open()
     const hint = el.querySelector('.ue-roles .ue-role-hint')
@@ -179,7 +179,7 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
     expect(el.textContent).not.toContain('选择一个或多个角色')
   })
 
-  it('取消全部角色后点【新建】→ 内联「请至少选择一个角色」，不打接口、窗口保持打开；勾回后错误消失（§三.3 L160）', async () => {
+  it('取消全部角色后点【新建】→ 内联「请至少选择一个角色」，不打接口、窗口保持打开；勾回后错误消失（§三.3「未选择角色时提示『请至少选择一个角色』」）', async () => {
     const el = mount({ user: null })
     await open()
     typeInto(inputByPlaceholder('3–32 个字符'), 'zhangsan')
@@ -199,7 +199,7 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
     expect(el.querySelector('.error-text')).toBeNull()
   })
 
-  it('提交 → createUser 带 roleCodes，toast「用户已新建」、关窗并 emit saved（§三.6 L191）', async () => {
+  it('提交 → createUser 带 roleCodes，toast「用户已新建」、关窗并 emit saved（§三.6「新建成功后提示『用户已新建』…关闭窗口」）', async () => {
     mount({ user: null })
     await open()
     typeInto(inputByPlaceholder('3–32 个字符'), 'zhangsan')
@@ -213,7 +213,7 @@ describe('UserEditor · 新建态（md §三.1 / §三.2）', () => {
   })
 })
 
-describe('UserEditor · 新建校验（md §三.3 L156-161 / 一览表 §九）', () => {
+describe('UserEditor · 新建校验（md §三.3 新建校验 / 一览表 §九）', () => {
   it('用户名为空 →「请输入 3–32 个字符」；显示名为空 →「请输入显示名」；不保存、窗口保持打开', async () => {
     mount({ user: null })
     await open()
@@ -327,7 +327,7 @@ describe('UserEditor · 编辑态（md §三.4 / §三.5）', () => {
     expect(inputByPlaceholder('name@example.com').value).toBe('lisi@x.com')
   })
 
-  it('提交 → updateUser 只送 displayName/email/status，toast「用户信息已保存」、关窗并 emit saved（§三.6 L191）', async () => {
+  it('提交 → updateUser 只送 displayName/email/status，toast「用户信息已保存」、关窗并 emit saved（§三.6「编辑成功后提示『用户信息已保存』，关闭窗口」）', async () => {
     mount({ user: USER })
     await open()
     typeInto(inputByPlaceholder('用于展示的姓名'), '李四四')
@@ -339,7 +339,7 @@ describe('UserEditor · 编辑态（md §三.4 / §三.5）', () => {
     expect(visibleRef.value).toBe(false)
   })
 
-  it('编辑校验：显示名空 →「请输入显示名」；邮箱格式 →「请输入有效邮箱」；用户名不重复校验长度（2 位用户名也可保存）（§三.5 L181-183）', async () => {
+  it('编辑校验：显示名空 →「请输入显示名」；邮箱格式 →「请输入有效邮箱」；用户名不重复校验长度（2 位用户名也可保存）（§三.5「显示名为空时提示…」「邮箱格式不正确时提示…」「用户名不可修改，不重复校验长度」）', async () => {
     mount({ user: { ...USER, username: 'ab' } })
     await open()
     typeInto(inputByPlaceholder('用于展示的姓名'), '')
@@ -358,8 +358,8 @@ describe('UserEditor · 编辑态（md §三.4 / §三.5）', () => {
   })
 })
 
-describe('UserEditor · 重开与保存失败（md §三.1 L141-142 / §三.6 L192-193 / §三.7）', () => {
-  it('关闭后重新打开 → 新建内容回空白、角色回默认「普通用户」、上次校验提示清除（L142 / L200）', async () => {
+describe('UserEditor · 重开与保存失败（md §三.1「保存期间，确认按钮显示进行中状态」「每次打开窗口时…清除上一次的校验提示」/ §三.6「保存失败时优先展示具体原因…保存失败后窗口保持打开，保留当前填写内容」/ §三.7）', () => {
+  it('关闭后重新打开 → 新建内容回空白、角色回默认「普通用户」、上次校验提示清除（§三.1「每次打开窗口时，重新展示当前操作对应的内容，并清除上一次的校验提示」/ §三.7「关闭后重新打开」）', async () => {
     const el = mount({ user: null })
     await open()
     typeInto(inputByPlaceholder('3–32 个字符'), 'draft')
@@ -399,7 +399,7 @@ describe('UserEditor · 重开与保存失败（md §三.1 L141-142 / §三.6 L1
     expect(inputByPlaceholder('用于展示的姓名').value).toBe('张伟')
   })
 
-  it('保存期间确认按钮显进行中（loading）、完成后恢复（L141）', async () => {
+  it('保存期间确认按钮显进行中（loading）、完成后恢复（§三.1「保存期间，确认按钮显示进行中状态，不允许重复保存」）', async () => {
     let finish
     createUser.mockReturnValue(new Promise((r) => { finish = r }))
     mount({ user: null })

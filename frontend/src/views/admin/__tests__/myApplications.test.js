@@ -9,12 +9,13 @@ import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './h
  * MyApplications.vue（我的申请）列表页单测（2026-09-12 测试审计 T56 新建，此前 407 行零测试）。
  *
  * 对齐 md `prd.我的申请.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、审核结果四项、【查询】）；
+ * - §一「页面说明」；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、审核结果四项、【查询】）；
  * - §3.1 七列；审核结果四态标签，已驳回悬停展示驳回原因；操作列固定【查看】+ 待审核【撤回】+ 已驳回/已撤回【重新提交】；
- * - §四 L47 / §七 L98 对象已删除 → 【查看】置灰；技能走整页只读路由，其余开原生详情抽屉；
+ * - §四「对应业务对象已被删除时，不提供详情查看：【查看】按钮置灰」/ §七「对象已被删除：【查看】置灰不可点击」；技能走整页只读路由，其余开原生详情抽屉；
  * - §4.1 待审核底栏 关闭|撤回申请，撤回二次确认 → 「申请已撤回」；§4.2 已通过仅 关闭；
  *   §4.3/§4.4 已驳回 / 已撤回底栏 关闭|前往修改|重新提交，重新提交 → 「提交成功」提示窗（alertResubmitSuccess）；
- * - §七 L97 空态「暂无申请记录」；L99 撤回时已被审核 → toast 原因并重拉；L100 重新提交失败 → toast 原因。
+ * - §七「查询无结果：展示暂无申请记录」；§七「撤回时申请已被审核：阻止撤回并刷新最新审核结果」→ toast 原因并重拉；
+ *   §七「重新提交失败：保留当前状态并提示具体原因」→ toast 原因。
  * - 2026-10-08 补：夹具加一行版本管理（VERSION）——【查看】开原生详情抽屉（GovObjectDetail 桩收到 kind=VERSION）；
  *   §七「重新提交失败 → 保留当前状态并提示具体原因」：详情不关、不弹「提交成功」、不重拉。
  * 列表【撤回】走 warning 色档，对齐 md 我的申请 §3.1（【撤回】橙色，与全站「停用/下架/撤回」等状态类操作统一）。
@@ -146,7 +147,7 @@ afterEach(() => {
 })
 
 describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
-  it('页面说明取 md §一 L8；挂载即拉列表（默认 sortDir=desc、page=1）', async () => {
+  it('页面说明取 md §一「页面说明」；挂载即拉列表（默认 sortDir=desc、page=1）', async () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent).toBe('查看和跟踪自己从各业务模块提交的审核申请')
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
@@ -164,7 +165,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(toolbarBtn('查询')).toBeTruthy()
   })
 
-  it('审核结果下拉选中「已驳回」→ 即时按 result 重查回第 1 页，列表只剩已驳回行；条件可组合（md §二 L19-21）', async () => {
+  it('审核结果下拉选中「已驳回」→ 即时按 result 重查回第 1 页，列表只剩已驳回行；条件可组合（md §二「审核结果：全部审核结果、待审核、已通过、已驳回、已撤回」「搜索、业务类型、申请类型和审核结果可以组合使用」）', async () => {
     listMyApplications.mockImplementation((p = {}) => {
       let list = ROWS
       if (p.result) list = list.filter((r) => r.result === p.result)
@@ -202,7 +203,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(r501.textContent).toContain('2026-08-28 10:30')
   })
 
-  it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1 L34）', async () => {
+  it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1「已驳回的标签悬停展示驳回原因」）', async () => {
     await mount()
     const tip = rowById(503).querySelector('[data-label="审核结果"] .el-tooltip')
     expect(tip).toBeTruthy()
@@ -212,7 +213,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(rowById(501).querySelector('[data-label="审核结果"] .el-tooltip')).toBeNull()
   })
 
-  it('操作列按状态（md §3.1 L35 / §五）：待审核【查看】【撤回】/ 已驳回、已撤回【查看】【重新提交】/ 已通过仅【查看】；撤回为 warning 链（5585a2b）', async () => {
+  it('操作列按状态（md §3.1「操作：固定提供【查看】；待审核追加【撤回】…已驳回、已撤回追加【重新提交】」/ §五）：待审核【查看】【撤回】/ 已驳回、已撤回【查看】【重新提交】/ 已通过仅【查看】；撤回为 warning 链（5585a2b）', async () => {
     await mount()
     expect(rowOps(rowById(501))).toEqual(['查看', '撤回'])
     expect(rowBtn(rowById(501), '撤回').dataset.type).toBe('warning')
@@ -222,7 +223,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(rowOps(rowById(502))).toEqual(['查看'])
   })
 
-  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡、操作列只剩【查看】、详情底栏只剩【关闭】；行与六个信息字段照常保留（md §四 L47 / §七 L98）', async () => {
+  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡、操作列只剩【查看】、详情底栏只剩【关闭】；行与六个信息字段照常保留（md §四「对应业务对象已被删除时…列表行保留该条申请记录…」/ §七「对象已被删除：【查看】置灰不可点击」）', async () => {
     await mount()
     const row = rowById(510)
     const view = rowBtn(row, '查看')
@@ -249,7 +250,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭'])
   })
 
-  it('列表【撤回】→ 二次确认（confirmWithdrawMyApp 收到对象名）→ withdrawMyApplication(id) → toast「申请已撤回」→ 重拉（md §4.1 L51）', async () => {
+  it('列表【撤回】→ 二次确认（confirmWithdrawMyApp 收到对象名）→ withdrawMyApplication(id) → toast「申请已撤回」→ 重拉（md §4.1「撤回前二次确认，成功后…提示申请已撤回」）', async () => {
     await mount()
     rowBtn(rowById(501), '撤回').click()
     await flush()
@@ -259,7 +260,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
-  it('【撤回】确认取消 → 不调接口；撤回时申请已被审核（接口 409）→ toast 原因并重拉最新结果（md §七 L99）', async () => {
+  it('【撤回】确认取消 → 不调接口；撤回时申请已被审核（接口 409）→ toast 原因并重拉最新结果（md §七「撤回时申请已被审核：阻止撤回并刷新最新审核结果」）', async () => {
     confirmWithdrawMyApp.mockResolvedValueOnce(false)
     await mount()
     rowBtn(rowById(501), '撤回').click()
@@ -319,7 +320,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
-  it('已驳回详情【前往修改】→ 先关只读抽屉再以编辑态重开（readonly=false），底栏换为 关闭|提交审核；【提交审核】走重新提交（md §4.3 L65）', async () => {
+  it('已驳回详情【前往修改】→ 先关只读抽屉再以编辑态重开（readonly=false），底栏换为 关闭|提交审核；【提交审核】走重新提交（md §4.3「【前往修改】打开对应业务模块编辑页面或编辑抽屉，修改后在编辑态点击【提交审核】」）', async () => {
     await mount()
     rowBtn(rowById(503), '查看').click()
     await flush()
@@ -365,7 +366,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(detailBtns()).toHaveLength(0)
   })
 
-  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView（query.myApp=申请 id）；列表【重新提交】直接重提（md §四 L46 / §4.4）', async () => {
+  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView（query.myApp=申请 id）；列表【重新提交】直接重提（md §四「技能：打开技能完整只读详情页面」/ §4.4）', async () => {
     await mount()
     rowBtn(rowById(504), '查看').click()
     await flush()
@@ -377,7 +378,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(resubmitMyApplication).toHaveBeenCalledWith(504)
   })
 
-  it('申请时间列头点击 → 切正序 ↑ 并按 sortDir=asc 重查回第 1 页（md §3.1 L33）', async () => {
+  it('申请时间列头点击 → 切正序 ↑ 并按 sortDir=asc 重查回第 1 页（md §3.1「申请时间：精确到分钟，支持正序 / 倒序排序」）', async () => {
     await mount()
     listMyApplications.mockClear()
     container.querySelector('.ma-sort').click()
@@ -386,7 +387,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(container.querySelector('.ma-sort-arrow').textContent).toBe('↑')
   })
 
-  it('空态「暂无申请记录」（md §七 L97）；加载失败出「加载失败」+【重试】', async () => {
+  it('空态「暂无申请记录」（md §七「查询无结果：展示暂无申请记录」）；加载失败出「加载失败」+【重试】', async () => {
     listMyApplications.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     expect(container.querySelector('.ls-empty').textContent).toContain('暂无申请记录')

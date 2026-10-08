@@ -7,10 +7,10 @@ import { createApp, h, provide, inject } from 'vue'
  * LeaveGuard,Q2Diff,SourceMatrix} 6 文件 22 条合并为本文件；用例内容不减，旧编号在 describe/用例名内括注）。
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md：
- *  - §三.1 L139-141 进入方式（【查看】= 编辑路由 ?view=1 只读态；【编辑】= 编辑态）/ 返回回到技能列表；
- *  - §三.3 L176-177 【保存】成功提示「技能配置已保存」；只读态不展示分类修改 / 默认安装 / 发布 / 保存；
- *  - §三.6 SKILL.md 文件树操作（Q2 工具引用 diff）；
- *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤300）。
+ *  - §三.1 进入方式「通过列表点击【查看】进入只读态、点击【编辑】进入编辑态」（【查看】= 编辑路由 ?view=1）/ 返回方式「点击顶部【← 返回】回到技能列表并刷新」；
+ *  - §三.3【保存】「成功提示『技能配置已保存』」；「只读态展示『只读查看』标记，不展示技能分类修改、默认安装、【发布】和【保存】」；
+ *  - §三.5 文件目录（左栏）「文件操作」（Q2 工具引用 diff）；
+ *  - 一览表 §三 #1 / #2 / #4 / #5 保存门（技能名称「最多 64 字符」/ 技能分类必选 / 描述「最多 2000 字符」/ 示例问题「1 条，最多 300 字符」）。
  *
  * 公共桩：vue-router 用 hoisted routeState（meta/params/query 按 describe 切换）+ leaveGuard 捕获；
  * stores/position 的 fetchSkillDetail/patchSkill 为可切实现的 spy；SkillFocusEditor 桩取各文件 props/emits 并集，
@@ -284,7 +284,7 @@ describe('数据源分流（原 SourceMatrix · 接线守卫：路由 meta → �
 })
 
 /* ====================================================================================== */
-describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新；原 BackPlatform / BackPosition / Description #3）', () => {
+describe('返回（md §三.1「点击顶部【← 返回】回到技能列表并刷新」；原 BackPlatform / BackPosition / Description #3）', () => {
   beforeEach(() => vi.useFakeTimers())
 
   it('FDE 视图 back → 路由回技能列表 AdminSkillsUnified、不 window.close（原 Description #3）', async () => {
@@ -300,7 +300,7 @@ describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新�
     expect(closeSpy).not.toHaveBeenCalled()
   })
 
-  it('平台视图（meta.skillSource=platform）back → 同样回 AdminSkillsUnified（三类技能同一列表，md §一 L17），不 window.close（原 BackPlatform）', async () => {
+  it('平台视图（meta.skillSource=platform）back → 同样回 AdminSkillsUnified（md §一.1「三类技能在同一列表中统一展示」），不 window.close（原 BackPlatform）', async () => {
     routeState.meta = { skillSource: 'platform' }
     routeState.params = { id: '9' }
     const closeSpy = vi.fn()
@@ -333,10 +333,10 @@ describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新�
 })
 
 /* ====================================================================================== */
-describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存门；原 Description 配置保存 / 单行融合）', () => {
+describe('保存（md §三.3【保存】配置手动保存 + 一览表 §三 保存门；原 Description 配置保存 / 单行融合）', () => {
   beforeEach(() => vi.useFakeTimers())
 
-  it('改描述不 debounce 自动保存（只标脏）；点【保存】→ 配置 PUT 含 description、不带 triggers/skillMd，成功提示「技能配置已保存」（md L176）', async () => {
+  it('改描述不 debounce 自动保存（只标脏）；点【保存】→ 配置 PUT 含 description、不带 triggers/skillMd，成功提示「技能配置已保存」（md §三.3【保存】「成功提示『技能配置已保存』」）', async () => {
     mount()
     await vi.runOnlyPendingTimersAsync()
     expect(fetchSkillDetailSpy).toHaveBeenCalledWith('7')
@@ -399,7 +399,7 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
     expect(patchSkillSpy).toHaveBeenCalledTimes(2)
   })
 
-  describe('保存门（一览表 §三 L58 名称 ≤64 / L61 描述 ≤2000 / L62 示例问题 ≤300 / 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
+  describe('保存门（一览表 §三 #1 名称 ≤64 / #4 描述 ≤2000 / #5 示例问题 ≤300 / #2 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
     it('技能名称超过 64 字符 → warning「请填写最多 64 个字符的技能名称」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
@@ -465,7 +465,7 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       expect(el.querySelector('.tb-more')).toBeNull()
     })
 
-    it('返回文案一律「← 返回」透传进 SkillFocusEditor（md L139 顶部【← 返回】；showClose 开关已退役，2026-09-12 J14）', async () => {
+    it('返回文案一律「← 返回」透传进 SkillFocusEditor（md §三.1「点击顶部【← 返回】回到技能列表并刷新」；showClose 开关已退役，2026-09-12 J14）', async () => {
       const el = mount()
       await vi.runOnlyPendingTimersAsync()
       const f = el.querySelector('.stub-focus')
@@ -558,7 +558,7 @@ describe('离开拦截（原 LeaveGuard 组①：flushAllDirty 覆盖全部 dirt
 })
 
 /* ====================================================================================== */
-describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 refsChanged 铁律，md §三.6 文件树操作）', () => {
+describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 refsChanged 铁律，md §三.5 文件目录（左栏）「文件操作」）', () => {
   // 技能详情：已引用 3 个数据表工具（模拟线上场景）。
   const REFERENCED = [
     { code: 'table__crm_visit__query', bizName: '客户交互记录表-查询', checkStatus: 'HEALTHY', known: true },
@@ -636,7 +636,7 @@ describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 ref
 })
 
 /* ====================================================================================== */
-describe('只读态（md §三.1 L139 【查看】= 编辑路由 ?view=1；§三.3 L177 只读态不保存）', () => {
+describe('只读态（md §三.1「通过列表点击【查看】进入只读态」= 编辑路由 ?view=1；§三.3「只读态…不展示…【发布】和【保存】」）', () => {
   beforeEach(() => {
     routeState.query = { view: '1' }
     vi.useFakeTimers()
@@ -684,7 +684,7 @@ describe('只读态（md §三.1 L139 【查看】= 编辑路由 ?view=1；§三
 })
 
 /* ======================================================================================
- * 2026-10-08 /test-audit 补缺口（对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.3 保存 / §三.5 发布 / §三.8 时间信息）：
+ * 2026-10-08 /test-audit 补缺口（对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.3 保存 / 发布、§三.5「SKILL.md 不存在或正文为空时不可发布」/ §三.8 时间信息）：
  *  - 保存门「必填为空」三条 + 业务系统专属技能「描述为空照样保存」；
  *  - 底部时间信息：有值显示原值、为空显示「—」；
  *  - 发布就绪门接线：用真 skillPublishReadiness，正文清空 → publishReadiness.missing 含 SKILL.md。
