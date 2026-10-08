@@ -31,6 +31,15 @@ export default defineConfig({
     // exports 对象，ElFormItem 内 `new AsyncValidator()` 直接抛错、又被 ElForm.validate 吞成 resolve(true)
     // ——真挂载的表单在 jsdom 里永远校验不出红字，空表单点【接入】也能调到 createModel（假绿）。
     // 内联后真 ElForm 校验可信（modelConfigEditDialogSmoke A12 四条即靠此断 DOM 红字），全量约 +3s。
-    server: { deps: { inline: ['element-plus', 'async-validator'] } }
+    server: { deps: { inline: ['element-plus', 'async-validator'] } },
+    // 覆盖率（2026-10-08）：只在 `npm run test:coverage` 时采集，日常 `npm test` 不受影响。
+    // 报告写 frontend/coverage/（不入库）；口径为 src 下全部 js/vue（测试文件除外），
+    // 未被任何用例加载的文件也计入，便于看出「零测试」的盲区。基线：行 81.9% / 分支 72.3%。
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,vue}'],
+      exclude: ['src/**/__tests__/**', 'src/**/*.test.js'],
+      reporter: ['text-summary', 'html', 'json-summary']
+    }
   }
 })
