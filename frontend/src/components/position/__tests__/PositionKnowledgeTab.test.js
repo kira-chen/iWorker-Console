@@ -47,7 +47,7 @@ const ROWS = [
     sources: [{ sourceType: 'UPLOAD' }, { sourceType: 'UPLOAD' }, { sourceType: 'API' }, { sourceType: 'MCP', status: 'DISABLED' }]
   }),
   kb({ id: 2, name: '财务口径库', description: '', status: 'DRAFT', sources: [{ sourceType: 'API' }] }),
-  kb({ id: 3, name: '审批中库', status: 'PUBLISHED', pendingAction: 'OFFLINE', sources: [] }),
+  kb({ id: 3, name: '审批中库', status: 'PUBLISHED', pendingAction: 'DELIST', sources: [] }),
   // 其它岗位的知识库：不应出现在本岗位页签
   kb({ id: 9, name: '别岗知识库', status: 'PUBLISHED', scopeRefId: 99 })
 ]
