@@ -33,10 +33,10 @@ import { __resetOrgMock } from '../adminUserMock'
 import { __resetSampleTaskMock } from '../sampleTaskMock'
 import { __resetDataTableMock } from '../dataTableMock'
 import { __resetRuntimeSpecMock } from '../runtimeSpecMock'
-import { updateExpert, __resetExpertMock } from '../domainExpertMock'
+import { updateExpert, createExpert, __resetExpertMock } from '../domainExpertMock'
 import { listMcpSync, createMcp, fetchMcpTools, __resetMcpMock } from '../mcpConnectorMock'
 import { __resetApiMock } from '../apiConnectorMock'
-import { __resetBizSystemMock } from '../bizSystemMock'
+import { createBizSystem, __resetBizSystemMock } from '../bizSystemMock'
 import * as skillMock from '../unifiedSkillMock'
 import * as kbMock from '../knowledgeBaseMock'
 
@@ -177,6 +177,60 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
       endpoint: 'https://x.intra/mcp', description: '验证用', exampleQuestions: ['问题一', '问题二', '问题三']
     })).rejects.toThrow()
   })
+})
+
+describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共享层补钉：⑤后半、⑥后半）', () => {
+  // ⑤后半：一览表「专家帮你做（示例问题）固定 3 条输入行，每条最多 300 字符」（各模块必填选填字段一览表.md:56）；
+  // domainExpertMock 的 normQuestions 只做 String() 归一，create / update 都不校验长度
+  const okQuestions = ['帮我查报销制度', '帮我解释流程', '帮我整理依据']
+  const longQuestions = ['问'.repeat(301), '帮我解释流程', '帮我整理依据']
+
+  it('前提：新建专家带 3 条正常长度的示例问题能建出来', async () => {
+    const e = await createExpert({ name: '示例问题长度验证专家', exampleQuestions: okQuestions })
+    expect(e.id).toBeTruthy()
+    expect(e.exampleQuestions).toEqual(okQuestions)
+  })
+
+  it.fails('yuepu#57⑤ 新建专家示例问题单条超过 300 字符应被拒绝', async () => {
+    await expect(createExpert({ name: '超长示例问题专家', exampleQuestions: longQuestions })).rejects.toThrow(/300/)
+  })
+
+  // ⑥后半·MCP：一览表 :137「服务描述 最多 2000 字符」、:153「MCP 服务地址（Endpoint）最多 500 字符」；
+  // API mock 两项都校验（apiConnectorMock validateApiPayload），MCP mock 都没有。类型显式传 PLATFORM，避开⑥前半（类型缺省兜底）
+  const mcpPayload = (code, extra = {}) => ({
+    code, name: `长度验证 ${code}`, icon: '🧪', type: 'PLATFORM', transport: 'streamable-http',
+    endpoint: 'https://x.intra/mcp', description: '验证用', exampleQuestions: ['问题一', '问题二', '问题三'], ...extra
+  })
+
+  it('前提：字段齐全、地址与描述都在上限内的 MCP 能登记成功', async () => {
+    await expect(createMcp(mcpPayload('len_ok_mcp'))).resolves.toMatchObject({ code: 'len_ok_mcp' })
+  })
+
+  it.fails('yuepu#57⑥ MCP 服务地址超过 500 字符应被拒绝', async () => {
+    await expect(createMcp(mcpPayload('long_ep_mcp', { endpoint: 'https://x.intra/' + 'a'.repeat(500) }))).rejects.toThrow(/500/)
+  })
+
+  it.fails('yuepu#57⑥ MCP 服务描述超过 2000 字符应被拒绝', async () => {
+    await expect(createMcp(mcpPayload('long_desc_mcp', { description: '述'.repeat(2001) }))).rejects.toThrow(/2000/)
+  })
+
+  // ⑥后半·业务系统：一览表 :227「登录地址 合法的 HTTP 或 HTTPS URL，最多 1024 字符」；validateBizPayload 只校验协议前缀
+  const bizPayload = (name, extra = {}) => ({
+    name, icon: '🧪', type: 'PLATFORM', description: '验证用', loginUrl: 'https://crm.intra/login',
+    exampleQuestions: ['问题一', '问题二', '问题三'], ...extra
+  })
+
+  it('前提：字段齐全、登录地址在上限内的业务系统能登记成功', async () => {
+    await expect(createBizSystem(bizPayload('长度验证业务系统'))).resolves.toMatchObject({ name: '长度验证业务系统' })
+  })
+
+  it.fails('yuepu#57⑥ 业务系统登录地址超过 1024 字符应被拒绝', async () => {
+    await expect(createBizSystem(bizPayload('超长登录地址系统', { loginUrl: 'https://crm.intra/' + 'a'.repeat(1024) }))).rejects.toThrow(/1024/)
+  })
+
+  // ⑦（单个分配选「未绑定」也把待分配申请标为已分配）不在此钉：缺陷在页面编排（AdminPositionAssignments.vue onSaved
+  // 不看所选岗位一律调 markApplicationAssigned），数据层 markApplicationAssigned(id) 契约里没有岗位参数、无从判断，
+  // 写成数据层断言等于替修复人臆造接口。页面层钉桩归岗位管理页用例。
 })
 
 describe('Agent 技能子行「技能分类」未进数据层（md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
