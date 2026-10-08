@@ -10,31 +10,17 @@
 
 | 序号 | 状态 | 发起人 | 问题详述 |
 |---|---|---|---|
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+| 49 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中】#43 残留：两个自写页脚的编辑器在「加载失败」时仍可保存 / 发布（03 能力 / 知识库）。** 现状：`51ebec1` 只修了 `DrawerEditor` 默认页脚（`submitBlocked`），自己覆写 #footer 的编辑器不受保护。①`ExpertEditor.vue` 约 :883-890【保存】【发布】只判 saving；加载失败时 `locked` 为 false，且 `load()` 失败不 `resetForm`（编辑器在 AdminExperts / GovObjectDetail 常驻挂载）→ 表单残留上一个专家的值，点【保存】会执行 `updateExpert(当前 id, 上一个专家的表单)`，**可能把别的专家配置写进当前专家**。②`KnowledgeBaseEditor.vue` 编辑分支【保存】只判 saving，加载失败时 el-form 未渲染、`formRef` 为 null，`save()` 约 :255 `formRef.value.validate()` 抛 TypeError 且无提示；又因 `isOffline(null)` 为 true（`knowledgeBaseMeta.js` 约 :327），失败态还多出【删除】【提交发布】（后者同样 TypeError）。依据：原待办 #43「错误态应禁用保存」。期望：两处页脚补 loading / loadError 禁用（或改用默认页脚）；ExpertEditor 加载失败时清空表单；KB 失败态不渲染【删除】【提交发布】。注：②的 TypeError 为读代码路径推导，未实测。 |
+| 50 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中】#10②(b) 残留：已停用 / 未发布的连接器仍能被技能新引用，且显示「连接正常」（03 能力）。** 现状：技能工具坞候选 `loadToolDirectory`（`unifiedSkillMock.js` 约 :360-373）全量读三个连接器，`toolPicker`（约 :834-849）只按类型和关键词过滤，不看发布状态与 API 的 `enabled`；`checkStatus` 只取健康度。例：种子 `mail_center` 未发布但健康度 ok，工具坞里可选且显示「连接正常」。依据：一览表 :195「停用后技能不再可引用该 API」（`prd-API.md:159` 同句）；三份连接器 md「停用后技能仍可执行」指已引用的照常运行，不冲突。#10 关闭时写「①②③均已处理」，与此不符。期望：候选只列已发布且启用的连接器；已引用但已停用的工具给出明确状态。 |
+| 51 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中】岗位侧绑定 / 解绑连接器后，连接器列表「N 个岗位引用」不更新（02 岗位 × 03 能力）。** 现状：连接器的 `referencedByPositions` 只有种子值 + 删岗、改岗名两处回写（`positionMock.js` 约 :381、:777）；岗位保存 `connectorMcpIds / connectorApiIds / businessSystemIds` 时只写岗位自己（约 :814-826）。复现：在 401 移除 `expense_mcp` 并保存 → MCP 页仍「1 个岗位引用 · 经营分析岗」；给 403 绑定一个岗位私有且已发布的连接器 → 连接器页不变。`932a5bd` 说明写了「未纳入本条」但未登记。依据：`prd-连接器-MCP.md:51`「N 为引用了该连接器的岗位数，引用关系在岗位侧产生」。期望：改为由岗位侧绑定关系实时派生（或保存时回写），列表计数与引用清单弹窗同源。两位复核员分别从岗位侧、连接器侧独立查到此问题（读代码推断，未实走）。 |
+| 52 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中】#9⑥ 残留：岗位重新播种后复用旧 id，新岗位继承孤儿数据（02 岗位）。** 现状：删岗级联已做，但 `09cf8b1` 说明里点名的另一条路径没堵——positionMock 升版本（09-23 v6、09-28 v7）丢弃旧快照后 posSeq 回到 405，而按 positionId 存数据的模块（positionAssignment v2、sampleTask、dataTable、runtimeSpec、knowledgeBase、domainExpert、三个连接器）没有同步清理。复现：旧版浏览器新建岗位得 405 → 配自动化任务 / 档案 → 发布并绑定用户 → 升级到当前代码 → 再新建岗位仍得 405，立刻继承旧任务和档案，`countAssignedUsers(405)>0` 删不掉也停不了。另：删岗不清知识库 `scopeRefId`（`knowledgeBaseMock.js` 约 :268），岗位知识库会指向已删岗位，id 复用时还会挂到新岗位上（#23 六类之外的第七类引用）。期望：posSeq 取各模块已用 id 的最大值，或 position 升版本时联动清理孤儿引用；删岗补清 KB scopeRefId。 |
+| 53 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中】`unifiedSkillMock` 改了种子没 bump 持久化版本（#16 同类，03 能力）。** 现状：`435aa3c`（09-23）把 9 条种子技能的 toolRefs 从虚构代码改成真实连接器代码、SKILL.md 加「## 引用工具」，但 `attachPersist` 版本仍是 6（`unifiedSkillMock.js` 约 :1012；6 是 `8bf83fd` 当天早些时候 bump 的）。存过 v6 快照的浏览器会一直保留旧 toolRefs，工具坞显示裸代码 +「未检测」。依据：mock 持久化约定「改种子必须 bump version」（`api/mockPersist.js` 头注检查清单）。期望：bump 到 7。 |
+| 54 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中低】岗位人设页两个 AI 生成按钮是手写定时器，#26 的串数据问题在这里仍在（02 岗位）。** 现状：`PositionPersonaTab.vue` 约 :68-86 的 `aiGenQuestions / aiGenSop` 用手写 500ms setTimeout，没走 `useAiLiveGenerate`：无撤销、不核对对象、不复判只读，回调写 Pinia 全局 store（patchBasic）。500ms 内切到别的岗位或进入只读，结果照样写进当前 store 并弹成功提示。依据：#26 期望「AI 生成可撤销 + stale 守卫」。期望：改用 `useAiLiveGenerate`（resetOn 岗位 id）。 |
+| 55 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中低】API 页签只按「连接器类型」筛选时，空分组仍显示（#36 同类，03 能力）。** 现状：`AdminApis.vue` 约 :188 `const searching = !!applied.keyword \|\| !!applied.state` 漏 `applied.type`。复现：API 页签类型只选「市场连接器」→「客户数据平台」（只有岗位私有 API）、「内容服务中心」（无 API）两个分组照样显示「该系统下暂无 API」；全不命中时「没有匹配的 API」永远出不来。依据：`prd-API.md:20`「搜索或筛选后，只展示存在匹配 API 的分组」。期望：:188 补上 `!!applied.type`。 |
+| 56 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【中低】专家列表「N 个岗位引用」点不开（03 能力）。** 现状：`AdminExperts.vue` 约 :388 只是普通 span，没有点击。依据：`prd.专家.md:48`「岗位私有点击弹出引用清单（展示岗位名）」。期望：参照三个连接器页 `openRefs` 加引用清单弹窗。另请知悉：#25 按 09-24 裁定后，市场专家「技能数」与「引用情况」两列显示的是同一个数，如需调整请与负责人确认。 |
+| 57 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【低】数据层守卫 / 校验缺口合集（页面上无入口或已有 UI 兜底，但研发照 mock 实现会漏）。** ①`positionMock.deletePosition` 不拦状态与在途审核（md `prd.岗位.md:97,119` 仅「未发布且不在审核中」可删）；②`positionMock.assignSkill` 只校验类型不校验已发布（md 岗位 §6.4）；③`unifiedSkillMock.relistSkill` 无任何状态守卫，可绕过审核直接回到已发布；④`mcpConnectorMock.fetchMcpTools` 不拦审核中，可覆盖在审 MCP 的 tools；⑤`domainExpertMock` create/update 不按候选校验整批 skillIds、不校验示例问题长度；⑥三个连接器 mock 校验不齐：新建都以「缺省即 PLATFORM」兜底不校验类型，MCP mock 无地址 500 / 描述 2000，业务系统 mock 无登录地址 1024（只有 API mock 齐）；⑦单个分配选「未绑定」也会把待分配申请标为已分配（`AdminPositionAssignments.vue` 约 :125-133）；⑧种子 402 绑了未发布的 `mail_center`、审核中的 `crm`，与 md 岗位 §8「只能引用已发布」矛盾。潜伏项（当前无触发入口，知悉即可）：ExpertEditor 岗位下拉未传 size、mock 默认只返回 12 条；RuntimeSpecEditor / KnowledgeBaseEditor 仍只 watch visible；`ChatMarkdown.vue` MdPreview 未关 echarts（效果测试已关闭）；审核中心专家详情的快照可能晚于 ExpertEditor 首次 load；`AdminSkillEditPage.vue` 约 :933 `fromPosition` 未用 queryString 归一；`PositionDataTableStage` 卡位保存后后两步失败仍会半提交；知识库专家可见范围候选写死 ex_1/ex_2。期望：①–⑧逐条补；潜伏项择机处理或在代码头注说明。 |
+| 58 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【低】#5⑥ / #8 常量源收敛未完成 + 一段死代码。** ①示例问题 300 仍有多处独立来源：`defValidate.js:119`、`bizSystemMock.js:36`、`aiLiveGenerate.js:43`、`positionModel.js:142` 四个常量，`positionMock.js` 约 :808、`unifiedSkillMock.js` 约 :506 字面量，`SkillFocusEditor.vue` 约 :946、`ExpertEditor.vue` 约 :755、`AdminSkillEditPage.vue` 约 :619 写死；AGENT_MAX / SKILL_MAX 两份（`positionMock.js:631-632` 与 `positionModel.js:13/17`）。②岗位 mock 上限仍写死（`positionMock.js` 约 :327-330、:784、:799-808），`0f3ccd2` 的 import 在后续合并中丢失。③「mock 不 import utils」注释不成立（`positionMock.js:39`、`mcpConnectorMock.js:24`、`apiConnectorMock.js:22` 都已 import utils；该注释见 `bizSystemMock.js:31-33`、`positionMock.js:631-632/:806`）。④死代码：`apiConnectorMock.js` 约 :877-883 `aiGenerateExampleQuestion` 及 `api/apiConnector.js:82` 无调用方（页面走 `ApiEditor` 的 `connectorQuestionSet`，按 300 截断），其 `.slice(0, 60)` 与用例 `apiConnectorMock.test.js` 约 :462-468 钉的「≤60」是旧口径，不影响用户。期望：收敛为单一常量来源；删死代码及对应用例。按工程大原则第二条，属可读性收益项。 |
+| 59 | 未处理 | 陈森亮（2026-10-08，待办核验第三方复核发现） | **【低】#33 / #40 过期注释残留（第一轮与复核合计）。** ①`ClaimNotesEditor.vue:7`「× 100 字」→ 300；②「修订版本」应为「修复更新」6 处：`positionModel.js:486`、`PublishCheckDialog.vue:25`、`VersionDrawer.vue:50`、`:86`、`AdminPositions.vue:365`、`PositionDetailTabs.vue:415`；③`PositionPersonaTab.vue:38` 领用页文案节号 §2.5 → §2.4；④`AdminModels.vue:3-7` 头注「不走审核、上架即生效」、`:12`「上架·下架」与提交审核实现矛盾；⑤`AdminRoles.vue:7`「不分页」与 client 分页矛盾；⑥「约 420ms / 60 字截断」→ 500ms / 300：`ExpertEditor.vue:179`、`SkillFocusEditor.vue:216`、`aiLiveGenerate.js:76`；⑦`ListPagination.vue:6`「共 N 个数据」→「条」；⑧`adminUserMock.js:10`、`:19` 仍说 userCount 是种子示意值，`positionAssignmentMock.js:4-5`「6 名用户」；⑨`defValidate.js:216` 引 md「L243」→ 实为 `prd-连接器-MCP.md:245`；⑩`sampleTaskMock.js:295-298` 升版注释未提 execType 默认值改动；⑪仍写弹窗标题「被技能引用」：`AdminBizSystems.vue:53`、`:472`、`AdminMcp.vue:567`、`AdminApis.vue:770`。（另 `knowledgeBaseMock.js:724/727` verifiedAt、`McpEditor.vue:535` lastCheckedAt 兜底仍写 UTC，仅展示不排序，顺手可改。）行号以 2026-10-08 `b1640c7` 为准。期望：一次性订正。 |
 
 ## 已处理
 
