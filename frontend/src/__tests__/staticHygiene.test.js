@@ -17,6 +17,15 @@ import { fileURLToPath } from 'node:url'
  *    （09-11 负责人指示「定类型字段不换行」；漏挂即时间折两行读不出分钟）；
  *  ③ assets/*.css 内 `var(--x)`（非 `--el-`）剥注释后必须在 assets 内有定义——与 themeTokens.browser.test.js
  *    互为不同门禁的等价守卫：那个在真浏览器里算 computed style（须起 browser 跑道），这个纯文本零依赖跑在 vitest 常规跑道。
+ *
+ * 2026-10-08 /test-audit 新增三条（负责人批准；实测存量均 0 命中）：
+ *  ④ 测试文件不得残留 .skip / .only / .todo / .skipIf / .runIf（原「.only/.skip 外泄」规则只扫产品源码，
+ *    真正会出现这些标记的测试文件反而没人守；CI 会拦 .only，但 .skip / .todo 会静默通过）。it.fails 不在此列。
+ *  ⑤ 非 browser 用例不得用 getBoundingClientRect / getComputedStyle / offset* / client* / scroll* 尺寸——
+ *    jsdom 不排版，这些值恒为 0 或空，写了就是假绿；布局断言归 *.browser.test.js。
+ *  ⑥ 页面读 route.query.keyword 必须经 utils/routeQuery 的 queryString()——同名参数重复时 query 值是数组，
+ *    直接 .trim() 会整页白屏（待办 yuepu#22，致命级）。
+ * 同轮把 v-for / debugger / 冲突标记三条规则抽成纯函数，自检改为调用规则本体（原自检抄了一份正则，规则写错照样绿）。
  */
 
 // 基于本文件位置定位 src（本文件在 src/__tests__/ 下），不用 process.cwd()——
@@ -36,6 +45,16 @@ function collect(dir, exts, out = []) {
   return out
 }
 
+/** 收集 __tests__ 下的测试文件（collect 刻意跳过 __tests__，测试文件单独收）。 */
+function collectTests(dir, out = []) {
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name)
+    if (fs.statSync(p).isDirectory()) collectTests(p, out)
+    else if (/\.test\.js$/.test(name) && p.includes(`${path.sep}__tests__${path.sep}`)) out.push(p)
+  }
+  return out
+}
+
 const rel = (f) => path.relative(SRC, f)
 
 describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
@@ -43,27 +62,12 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
   const allFiles = collect(SRC, ['.vue', '.js'])
 
   it(`v-for 必须带 :key（${vueFiles.length} 个组件）——缺 key 会导致列表更新错位/内容串行`, () => {
-    const offenders = []
-    for (const f of vueFiles) {
-      const tpl = fs.readFileSync(f, 'utf8').match(/<template>([\s\S]*)<\/template>/)
-      if (!tpl) continue
-      const lines = tpl[1].split('\n')
-      lines.forEach((ln, i) => {
-        if (!/\sv-for=/.test(ln)) return
-        // 同一起始标签可能跨多行：取该行起最多 6 行内的首个 '>' 之前作为标签范围
-        const chunk = lines.slice(i, i + 6).join(' ')
-        const end = chunk.indexOf('>')
-        const tag = end > 0 ? chunk.slice(0, end) : chunk
-        if (!/:key=|v-bind:key=/.test(tag)) {
-          offenders.push(`${rel(f)}:${i + 1}  ${ln.trim().slice(0, 60)}`)
-        }
-      })
-    }
+    const offenders = vueFiles.flatMap((f) => vForOffenders(fs.readFileSync(f, 'utf8')).map((o) => `${rel(f)}:${o}`))
     expect(offenders, 'v-for 必须显式绑定 :key').toEqual([])
   })
 
   it('不得残留 debugger 语句', () => {
-    const offenders = allFiles.filter((f) => /^\s*debugger\b/m.test(fs.readFileSync(f, 'utf8')))
+    const offenders = allFiles.filter((f) => hasDebugger(fs.readFileSync(f, 'utf8')))
     expect(offenders.map(rel)).toEqual([])
   })
 
@@ -81,7 +85,7 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
   })
 
   it('源码不得残留 Git 冲突标记', () => {
-    const offenders = allFiles.filter((f) => /^(<{7}|={7}|>{7})\s/m.test(fs.readFileSync(f, 'utf8')))
+    const offenders = allFiles.filter((f) => hasConflictMarker(fs.readFileSync(f, 'utf8')))
     expect(offenders.map(rel)).toEqual([])
   })
 
@@ -117,13 +121,44 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
     expect(missing.map((m) => `${rel(m.file)} ${m.name}`), 'assets 内引用了未定义的 CSS 变量').toEqual([])
   })
 
+  // 排除本文件自身：自检用例里有意写着违规样例字符串（it.skip(…)、getBoundingClientRect() 等）
+  const testFiles = collectTests(SRC).filter((f) => f !== fileURLToPath(import.meta.url))
+
+  it(`④ 测试文件（${testFiles.length} 个）不得残留 .skip / .only / .todo / .skipIf / .runIf`, () => {
+    expect(testFiles.length, '至少应扫到测试文件（收集失败会让规则空转）').toBeGreaterThan(50)
+    const offenders = testFiles.flatMap((f) => skipMarkers(fs.readFileSync(f, 'utf8')).map((l) => `${rel(f)}:${l}`))
+    expect(offenders, '测试标记残留').toEqual([])
+  })
+
+  it('⑤ 非 browser 用例不得做布局尺寸 / 计算样式断言（jsdom 下恒为 0，假绿）', () => {
+    const nodeSide = testFiles.filter((f) => !f.endsWith('.browser.test.js'))
+    const offenders = nodeSide.flatMap((f) => layoutApiUses(fs.readFileSync(f, 'utf8')).map((l) => `${rel(f)}:${l}`))
+    expect(offenders, '布局类断言应写进 *.browser.test.js').toEqual([])
+  })
+
+  it('⑥ 页面读 route.query.keyword 必须经 queryString()（重复参数为数组，直接用会白屏）', () => {
+    const offenders = allFiles.flatMap((f) => rawKeywordReads(fs.readFileSync(f, 'utf8')).map((l) => `${rel(f)}:${l}`))
+    expect(offenders, 'route.query.keyword 未经 queryString 归一').toEqual([])
+  })
+
   it('自检：规则本身能识别违规样例（防规则写错导致永远通过）', () => {
-    const badVFor = '<div v-for="x in list">{{ x }}</div>'
-    expect(/:key=|v-bind:key=/.test(badVFor.slice(0, badVFor.indexOf('>')))).toBe(false)
-    const goodVFor = '<div v-for="x in list" :key="x.id">'
-    expect(/:key=/.test(goodVFor.slice(0, goodVFor.indexOf('>') + 1))).toBe(true)
-    expect(/^\s*debugger\b/m.test('  debugger\n')).toBe(true)
-    expect(/^(<{7}|={7}|>{7})\s/m.test('<<<<<<< HEAD\n')).toBe(true)
+    const tpl = (body) => `<template>\n${body}\n</template>`
+    expect(vForOffenders(tpl('<div v-for="x in list">{{ x }}</div>'))).toHaveLength(1)
+    expect(vForOffenders(tpl('<div v-for="x in list" :key="x.id">'))).toEqual([])
+    expect(vForOffenders(tpl('<div\n  v-for="x in list"\n  :key="x.id"\n>'))).toEqual([]) // 跨行标签
+    expect(hasDebugger('  debugger\n')).toBe(true)
+    expect(hasDebugger('// 不要留 debugger 语句')).toBe(false)
+    expect(hasConflictMarker('<<<<<<< HEAD\n')).toBe(true)
+    expect(hasConflictMarker('// ======= 分隔线')).toBe(false)
+    // ④ 各种标记都报；it.fails 与注释里的提及不报
+    expect(skipMarkers("it.skip('a', () => {})\ndescribe.only('b', () => {})\nit.todo('c')\nit.skipIf(x)('d')")).toHaveLength(4)
+    expect(skipMarkers("it.fails('a', () => {})\n// 不要用 it.skip\n * 也不要 describe.only")).toEqual([])
+    // ⑤ 真调用报；注释里的说明不报
+    expect(layoutApiUses('const r = el.getBoundingClientRect()\nexpect(el.offsetWidth).toBe(0)')).toHaveLength(2)
+    expect(layoutApiUses('// jsdom 下 getBoundingClientRect 恒为 0\n/* offsetWidth 同理 */')).toEqual([])
+    // ⑥ 裸读报；经 queryString 的与注释里的提及不报
+    expect(rawKeywordReads("query.keyword = String(route.query.keyword)\nconst k = route?.query?.keyword || ''")).toHaveLength(2)
+    expect(rawKeywordReads("const kw = queryString(route.query?.keyword)\n// route.query.keyword 是数组时…")).toEqual([])
     // ① 值不等 / 单侧缺键 都要报；注释里的假键不得被当成 COL 键
     const badTheme = ':root {\n  --col-status: 84px;\n  --col-time: 152px;\n}'
     const badCol = 'export const COL = {\n  /* OLD: 90, */\n  STATUS: 84,\n  TIME: 168,\n  TAG: 136\n}\n'
@@ -146,6 +181,42 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
     expect(bad.missing.map((m) => m.name)).toEqual(['--ghost', '--y'])
   })
 })
+
+/* ================= 基础规则与 2026-10-08 新增规则的实现（纯函数、不读磁盘，自检直接调用） ================= */
+
+/** v-for 缺 :key 的位置（返回「行号  行内容」）；同一起始标签可能跨多行，取该行起最多 6 行内首个 '>' 之前为标签范围。 */
+function vForOffenders(src) {
+  const tpl = src.match(/<template>([\s\S]*)<\/template>/)
+  if (!tpl) return []
+  const lines = tpl[1].split('\n')
+  const out = []
+  lines.forEach((ln, i) => {
+    if (!/\sv-for=/.test(ln)) return
+    const chunk = lines.slice(i, i + 6).join(' ')
+    const end = chunk.indexOf('>')
+    const tag = end > 0 ? chunk.slice(0, end) : chunk
+    if (!/:key=|v-bind:key=/.test(tag)) out.push(`${i + 1}  ${ln.trim().slice(0, 60)}`)
+  })
+  return out
+}
+const hasDebugger = (src) => /^\s*debugger\b/m.test(src)
+const hasConflictMarker = (src) => /^(<{7}|={7}|>{7})\s/m.test(src)
+
+/** 逐行检查（跳过 // 与块注释行），返回命中的行号。 */
+function codeLinesMatching(src, re) {
+  const out = []
+  src.split('\n').forEach((ln, i) => {
+    const t = ln.trim()
+    if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return
+    const code = ln.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '')
+    if (re.test(code)) out.push(i + 1)
+  })
+  return out
+}
+const skipMarkers = (src) => codeLinesMatching(src, /\b(describe|it|test)\.(skip|only|todo|skipIf|runIf)\b/)
+const layoutApiUses = (src) =>
+  codeLinesMatching(src, /\b(getBoundingClientRect|getComputedStyle)\s*\(|\.(offset|client|scroll)(Width|Height|Top|Left)\b/)
+const rawKeywordReads = (src) => codeLinesMatching(src, /(?<!queryString\()\broute\??\.query\??\.keyword\b/)
 
 /* ================= J20 三条规则的实现（导出给自检用例，纯函数、不读磁盘） ================= */
 
