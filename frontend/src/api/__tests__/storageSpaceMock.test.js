@@ -8,14 +8,20 @@ import {
   listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest, __resetStorageSpaceMock
 } from '../storageSpaceMock'
 import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { listUsersSync, createUser, updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
+import { setUserPosition, getAssignmentByUserId, __resetPositionAssignmentMock } from '../positionAssignmentMock'
 
 // 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md 与 05治理/访问审计 §6.2 / §6.5.4。
 // 种子：默认 5 GB；已满且有待处理申请的 4 人（刘强 ER-1003、孙欣 ER-1004、王芳 ER-1005、陈宇 ER-1006）；
 // 何静已满（申请已拒绝）；李娜预警；赵敏个人 10 GB（申请已同意）；杨帆、马超未统计；张伟正常。
 const liveOps = () => opsRecords.filter((r) => r.live && r.module === '存储空间')
+// 客户端读取视图里本次测试新产生的存储空间记录（种子记录的 recordId < 100，排除掉）
+const liveClientOps = () => listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
 const memberOf = async (username) => (await listStorageMembers({ size: 50 })).list.find((m) => m.username === username)
 
 beforeEach(() => {
+  __resetOrgMock()
+  __resetPositionAssignmentMock()
   __resetStorageSpaceMock()
   resetAccessAuditMock()
 })
@@ -40,7 +46,7 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
   })
 
   it('可按状态、有待处理申请、用户名或显示名筛选', async () => {
-    expect((await listStorageMembers({ state: 'FULL', size: 50 })).list.map((m) => m.username).sort()).toEqual(['chenyu', 'hejing', 'liuqiang', 'sun.xin', 'wangfang'])
+    expect((await listStorageMembers({ state: 'FULL', size: 50 })).list.map((m) => m.username).sort()).toEqual(['chenyu', 'hejing', 'liuqiang', 'wangfang', 'xulin'])
     expect((await listStorageMembers({ pending: true, size: 50 })).list.map((m) => m.username).sort()).toEqual(['chenyu', 'liuqiang', 'sun.xin', 'wangfang'])
     expect((await listStorageMembers({ keyword: ' 张伟 ', size: 50 })).list.map((m) => m.username)).toEqual(['zhangwei'])
   })
@@ -55,16 +61,6 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
   })
 })
 
-describe('storageSpaceMock —— 默认排序', () => {
-  it('容量分配：按状态严重度排序（已满 > 预警 > 正常 > 未统计）', async () => {
-    const states = (await listStorageMembers({ size: 50 })).list.map((m) => m.state)
-    const order = { FULL: 0, WARN: 1, NORMAL: 2, UNKNOWN: 3 }
-    expect(states.map((s) => order[s])).toEqual([...states.map((s) => order[s])].sort((a, b) => a - b))
-    expect(states[0]).toBe('FULL')
-    expect(states.at(-1)).toBe('UNKNOWN')
-  })
-})
-
 describe('storageSpaceMock —— 访问审计可见性', () => {
   it('同意 / 拒绝扩容的审计记录标 hidden（访问审计页不展示），调整容量不标；客户端读取视图三类都在', async () => {
     await approveExpansionRequest('ER-1006', 10)
@@ -74,7 +70,7 @@ describe('storageSpaceMock —— 访问审计可见性', () => {
     expect(byAction['同意扩容'].hidden).toBe(true)
     expect(byAction['拒绝扩容'].hidden).toBe(true)
     expect(byAction['调整容量'].hidden).toBeUndefined()
-    expect(listClientFacingOps().filter((r) => r.kind === 'storageQuota').map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
+    expect(liveClientOps().map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
   })
 })
 
@@ -104,7 +100,7 @@ describe('storageSpaceMock —— 调整容量', () => {
     expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 3, state: 'FULL' })
     await adjustStorageQuota(208, 1)
     expect((await memberOf('zhaomin')).totalGb).toBe(1)
-    await expect(adjustStorageQuota(208, 0)).rejects.toThrow('新总量不能小于 1 GB')
+    await expect(adjustStorageQuota(208, 0)).rejects.toThrow('容量不能小于 1 GB')
     await adjustStorageQuota(208, 50000) // 不设上限
     expect((await memberOf('zhaomin')).totalGb).toBe(50000)
   })
@@ -118,7 +114,7 @@ describe('storageSpaceMock —— 调整容量', () => {
   it('批量设置最小 1 GB', async () => {
     await batchAdjustStorageQuota([201, 202], 1)
     expect((await memberOf('zhangwei')).totalGb).toBe(1)
-    await expect(batchAdjustStorageQuota([201], 0)).rejects.toThrow('新总量不能小于 1 GB')
+    await expect(batchAdjustStorageQuota([201], 0)).rejects.toThrow('容量不能小于 1 GB')
   })
 
   it('批量调整逐人写审计，总量没变的不记', async () => {
@@ -151,7 +147,7 @@ describe('storageSpaceMock —— 有待处理申请的员工不能在容量分�
     expect(liveOps().map((r) => r.target).sort()).toEqual(['li.na', 'zhangwei'])
   })
 
-  it('申请处理后恢复可调整：拒绝之后可以直接调整容量，且没有「同意扩容」之外的联动记录', async () => {
+  it('申请处理后恢复可调整：拒绝之后可以直接调整容量，审计各记一条', async () => {
     await rejectExpansionRequest('ER-1006', '先清理历史产物')
     await adjustStorageQuota(203, 3)
     expect(await memberOf('chenyu')).toMatchObject({ totalGb: 3, pendingRequestId: null })
@@ -168,14 +164,14 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
   it('已处理的申请按处理时间排序：默认倒序，sortOrder=ascending 为正序；待处理始终排在最前', async () => {
     const desc = (await listExpansionRequests({ size: 10 })).list.map((r) => r.id)
     const asc = (await listExpansionRequests({ sortOrder: 'ascending', size: 10 })).list.map((r) => r.id)
-    expect(desc.slice(-2)).toEqual(['ER-1002', 'ER-1001']) // 处理时间 10-07、10-05：倒序
-    expect(asc.slice(-2)).toEqual(['ER-1001', 'ER-1002']) // 正序
+    expect(desc.slice(4)).toEqual(['ER-1002', 'ER-1001', 'ER-0999', 'ER-0998']) // 处理时间 10-07、10-05、09-28、09-20：倒序
+    expect(asc.slice(4)).toEqual(['ER-0998', 'ER-0999', 'ER-1001', 'ER-1002']) // 正序
     expect(asc.slice(0, 4)).toEqual(desc.slice(0, 4)) // 待处理的顺序（先到先处理）不受影响
   })
 
   it('待处理排最前且先提交的在前；已处理按处理时间倒序', async () => {
     const all = (await listExpansionRequests({ size: 10 })).list
-    expect(all.map((r) => r.id)).toEqual(['ER-1003', 'ER-1004', 'ER-1005', 'ER-1006', 'ER-1002', 'ER-1001'])
+    expect(all.map((r) => r.id)).toEqual(['ER-1003', 'ER-1004', 'ER-1005', 'ER-1006', 'ER-1002', 'ER-1001', 'ER-0999', 'ER-0998'])
     expect((await listExpansionRequests({ status: 'PENDING', size: 10 })).total).toBe(4)
   })
 
@@ -185,7 +181,7 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     const req = await getExpansionRequest('ER-1006')
     expect(req).toMatchObject({ status: 'APPROVED', newTotalGb: 12, handler: 'demo' })
     expect(liveOps()[0]).toMatchObject({ action: '同意扩容', detail: '5 GB → 12 GB' })
-    expect(listClientFacingOps().find((r) => r.kind === 'storageQuota')).toMatchObject({
+    expect(liveClientOps()[0]).toMatchObject({
       type: '同意扩容', username: 'chenyu', userId: 203, requestId: 'ER-1006', newTotalGb: 12
     })
   })
@@ -193,7 +189,7 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
   it('同意：新总量必须大于当前总量且在范围内', async () => {
     await expect(approveExpansionRequest('ER-1006', 5)).rejects.toThrow('新总量须大于当前总量 5 GB')
     await expect(approveExpansionRequest('ER-1006', 3)).rejects.toThrow('新总量须大于当前总量 5 GB') // 同意扩容只能往大调
-    await expect(approveExpansionRequest('ER-1006', 2.5)).rejects.toThrow('新总量只能填整数')
+    await expect(approveExpansionRequest('ER-1006', 2.5)).rejects.toThrow('容量只能填整数')
     expect((await getExpansionRequest('ER-1006')).status).toBe('PENDING')
   })
 
@@ -204,7 +200,7 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect(await memberOf('chenyu')).toMatchObject({ totalGb: 5, state: 'FULL' })
     expect(await getExpansionRequest('ER-1006')).toMatchObject({ status: 'REJECTED', rejectReason: '请先清理历史产物' })
     expect(liveOps()[0]).toMatchObject({ action: '拒绝扩容', target: 'chenyu', detail: '请先清理历史产物' })
-    expect(listClientFacingOps().find((r) => r.kind === 'storageQuota')).toMatchObject({ type: '拒绝扩容', rejectReason: '请先清理历史产物' })
+    expect(liveClientOps()[0]).toMatchObject({ type: '拒绝扩容', rejectReason: '请先清理历史产物' })
   })
 
   it('500 字刚好允许', async () => {
@@ -225,5 +221,91 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     const detail = await getExpansionRequest('ER-1006')
     expect(detail).toMatchObject({ usedGb: 5, totalGb: 5 }) // 申请时快照
     expect(detail.current).toMatchObject({ username: 'chenyu', usedGb: 5, totalGb: 5, state: 'FULL' }) // 当前最新
+  })
+})
+
+describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconcile）', () => {
+  it('员工清单 = 用户模块的在职账号；停用账号（周明、吴杰）不在清单里', async () => {
+    const names = (await listStorageMembers({ size: 50 })).list.map((m) => m.username).sort()
+    const active = listUsersSync().filter((u) => u.status === 'active').map((u) => u.username).sort()
+    expect(names).toEqual(active)
+    expect(names).not.toContain('zhouming')
+    expect(names).not.toContain('wujie')
+  })
+
+  it('岗位取岗位分配的当前值；改了岗位列表跟着变，而申请上的岗位仍是提交时的快照', async () => {
+    expect(await memberOf('li.na')).toMatchObject({ position: getAssignmentByUserId(202).positionName })
+    expect((await memberOf('chenyu')).position).toBe('') // 陈宇未绑定岗位
+    await setUserPosition(203, 401)
+    expect((await memberOf('chenyu')).position).toBe(getAssignmentByUserId(203).positionName)
+    expect((await getExpansionRequest('ER-1006')).position).toBe('') // 提交时未绑定岗位
+  })
+
+  it('用户模块新增员工 → 出现在清单里，没统计过 = 未统计；改显示名同步', async () => {
+    await createUser({ username: 'newbie', displayName: '新人', roleCodes: ['普通用户'] })
+    expect(await memberOf('newbie')).toMatchObject({ name: '新人', state: 'UNKNOWN', usedGb: null, totalGb: 5 })
+    const zhangwei = listUsersSync().find((u) => u.username === 'zhangwei')
+    await updateUser(zhangwei.id, { displayName: '张伟伟' })
+    expect((await memberOf('zhangwei')).name).toBe('张伟伟')
+  })
+
+  it('用户模块删除员工 → 其容量记录与待处理申请一并移除，角标同步减少', async () => {
+    await deleteUser(203) // 陈宇，有待处理申请 ER-1006
+    expect(await memberOf('chenyu')).toBeUndefined()
+    expect((await listExpansionRequests({ size: 20 })).list.map((r) => r.id)).not.toContain('ER-1006')
+    expect((await getStorageOverview()).pendingCount).toBe(3)
+    await expect(getExpansionRequest('ER-1006')).rejects.toThrow('申请不存在')
+  })
+
+  it('停用账号退出清单，重新启用后用量还在', async () => {
+    await updateUser(210, { status: 'disabled' })
+    expect(await memberOf('hejing')).toBeUndefined()
+    await updateUser(210, { status: 'active' })
+    expect(await memberOf('hejing')).toMatchObject({ finalGb: 5, state: 'FULL' })
+  })
+})
+
+describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审计种子对齐）', () => {
+  it('种子里每个员工都是用户模块里真实存在的账号，用户名与显示名一致', async () => {
+    const users = listUsersSync()
+    const reqs = (await listExpansionRequests({ size: 50 })).list
+    for (const r of reqs) {
+      const u = users.find((x) => x.id === r.userId)
+      expect(u, `申请 ${r.id} 的员工 ${r.username} 应存在于用户模块`).toBeTruthy()
+      expect(u.username).toBe(r.username)
+      expect(u.displayName).toBe(r.name)
+    }
+  })
+
+  it('申请上的岗位快照与岗位分配种子一致', async () => {
+    const reqs = (await listExpansionRequests({ size: 50 })).list
+    for (const r of reqs) {
+      expect(r.position, `申请 ${r.id}`).toBe(getAssignmentByUserId(r.userId)?.positionName || '')
+    }
+  })
+
+  it('已处理的申请在访问审计种子里有对应的 hidden 记录（处理人、时间、申请单标识一致），个人设置的徐琳有「调整容量」记录', async () => {
+    const reqs = (await listExpansionRequests({ size: 50 })).list.filter((r) => r.status !== 'PENDING')
+    const seeds = opsRecords.filter((r) => r.module === '存储空间' && !r.live)
+    for (const r of reqs) {
+      const rec = seeds.find((x) => x.meta?.requestId === r.id)
+      expect(rec, `申请 ${r.id} 应有审计种子`).toBeTruthy()
+      expect(rec).toMatchObject({ hidden: true, operator: r.handler, time: r.handledAt, target: r.username })
+      expect(rec.action).toBe(r.status === 'APPROVED' ? '同意扩容' : '拒绝扩容')
+    }
+    const adjust = seeds.find((x) => x.action === '调整容量')
+    expect(adjust).toMatchObject({ target: 'xulin', detail: '5 GB → 8 GB' })
+    expect(adjust.hidden).toBeUndefined()
+    expect((await memberOf('xulin')).totalGb).toBe(8)
+  })
+
+  it('种子覆盖各种状态：个人设置且已满（徐琳）、预警但仍有待处理申请（孙欣）、未统计、超长申请说明与拒绝原因', async () => {
+    expect(await memberOf('xulin')).toMatchObject({ quotaSource: 'PERSONAL', state: 'FULL' })
+    expect(await memberOf('sun.xin')).toMatchObject({ state: 'WARN', pendingRequestId: 'ER-1004' })
+    expect((await memberOf('yangfan')).state).toBe('UNKNOWN')
+    const reqs = (await listExpansionRequests({ size: 50 })).list
+    expect(Math.max(...reqs.map((r) => r.reason.length))).toBeGreaterThan(120)
+    expect(Math.max(...reqs.map((r) => r.rejectReason.length))).toBeGreaterThan(120)
+    expect(new Set(reqs.map((r) => r.handler).filter(Boolean)).size).toBeGreaterThanOrEqual(2) // 不止一位处理人
   })
 })

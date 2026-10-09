@@ -7,13 +7,12 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * AdminStorageSpace.vue 页面级用例（2026-10-09 存储空间首版）。
  * 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md
  *   §二 页面结构（两个页签 + 待处理角标）/ §三 容量分配（默认容量条、列表、调整容量二次确认）/ §四 扩容申请（同意 / 拒绝）。
- * 真实挂载（真 Element Plus + 真子组件），只 mock api 层；业务规则（状态判定、联动结案、审计）见 storageSpaceMock.test.js。
+ * 真实挂载（真 Element Plus + 真子组件），只 mock api 层；业务规则（状态判定、待处理员工不可调整、审计、与用户 / 岗位模块联动）见 storageSpaceMock.test.js。
  */
 
 const api = {
   getStorageOverview: vi.fn(),
   listStorageMembers: vi.fn(),
-  updateDefaultQuota: vi.fn(),
   adjustStorageQuota: vi.fn(),
   batchAdjustStorageQuota: vi.fn(),
   listExpansionRequests: vi.fn(),
@@ -204,7 +203,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
 })
 
 describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
-  // 手动点开「扩容申请」页签（默认状态筛选为待处理）；带 ?tab=request 直接进入是访问审计的跳转口径，见专门用例
+  // 手动点开「扩容申请」页签（默认状态筛选为待处理）
   async function openRequestTab() {
     const c = await mountPage()
     c.querySelectorAll('.el-tabs__item')[1].click()
@@ -278,7 +277,7 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     await typeNumber(10.5)
     btn(dialogBody(), '确认同意').click()
     await flushAll(4)
-    expect(textOf(dialogBody())).toContain('新总量只能填整数')
+    expect(textOf(dialogBody())).toContain('容量只能填整数')
     expect(api.approveExpansionRequest).not.toHaveBeenCalled()
     await typeNumber(5)
     btn(dialogBody(), '确认同意').click()

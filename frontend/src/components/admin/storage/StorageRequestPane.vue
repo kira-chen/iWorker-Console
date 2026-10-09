@@ -14,9 +14,8 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { useAdminList } from '@/composables/useAdminList'
 import { listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest } from '@/api/storageSpace'
-import { REQUEST_STATE, QUOTA_MIN_GB, fmtGb } from '@/utils/storageSpace'
+import { REQUEST_STATE, QUOTA_MIN_GB, REJECT_REASON_MAX as REJECT_MAX, fmtGb } from '@/utils/storageSpace'
 
-const REJECT_MAX = 500
 
 const props = defineProps({
   /** 从容量分配页「待处理」跳转过来时带入的员工用户名，作为初始搜索词 */
@@ -84,8 +83,8 @@ async function submitApprove() {
   const v = approve.value
   // 输入框不做取整（不设 precision），小数原样保留，由这里提示，而不是悄悄改成整数
   if (v == null) { approve.error = '请输入正整数'; return }
-  if (!Number.isInteger(v)) { approve.error = '新总量只能填整数'; return }
-  if (v < QUOTA_MIN_GB) { approve.error = `新总量不能小于 ${QUOTA_MIN_GB} GB`; return }
+  if (!Number.isInteger(v)) { approve.error = '容量只能填整数'; return }
+  if (v < QUOTA_MIN_GB) { approve.error = `容量不能小于 ${QUOTA_MIN_GB} GB`; return }
   if (v <= approve.current.totalGb) { approve.error = `新总量须大于当前总量 ${approve.current.totalGb} GB`; return }
   approve.submitting = true
   try {

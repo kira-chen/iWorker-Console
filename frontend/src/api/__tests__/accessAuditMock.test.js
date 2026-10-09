@@ -163,11 +163,11 @@ describe('§6.5 数据层字段：at / objectId / meta（页面不展示但必�
 })
 
 describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
-  it('只含强制回收 / 用户技能审核 / 岗位分配三类；不含操作人；发布 / 停用 / 版本管理等不读取', () => {
+  it('只含强制回收 / 用户技能审核 / 岗位分配 / 存储空间四类；不含操作人；发布 / 停用 / 版本管理等不读取', () => {
     appendOpsRecord({ operator: 'a', module: '版本管理', action: '发布', target: 'Windows v1.3.0' })
     appendOpsRecord({ operator: 'a', module: '技能', action: '发布', target: '某技能', version: 'v1' })
     const list = listClientFacingOps()
-    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['skillReview', 'positionAssign']))
+    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['skillReview', 'positionAssign', 'storageQuota']))
     for (const r of list) expect(r).not.toHaveProperty('operator')
     expect(list.every((r) => r.recordId != null && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.at))).toBe(true)
     expect(new Set(list.map((r) => r.recordId)).size).toBe(list.length)
@@ -208,10 +208,24 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
     expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
     const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24'])
+    // 08-28 11:10:24 的岗位分配 + 存储空间种子（调整容量 / 同意 / 拒绝扩容，hidden 的也在，页面不展示但客户端要读）
+    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12'])
     const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
     expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    expect(listClientFacingOps({ since: '2026-08-28 11:10:24' }).map((r) => r.recordId)).toEqual([fresh.id])
+    const later = listClientFacingOps({ since: '2026-10-08 14:30:12' }) // 严格晚于最后一条存储空间种子
+    expect(later.map((r) => r.recordId)).toEqual([fresh.id])
+  })
+
+  it('存储空间视图（§6.5.4）：种子里的调整容量 / 同意扩容 / 拒绝扩容都在（hidden 的也读得到），字段齐全且不含操作人', () => {
+    const sq = listClientFacingOps().filter((r) => r.kind === 'storageQuota')
+    expect(sq.map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '拒绝扩容', '拒绝扩容', '调整容量'])
+    const adjust = sq.find((r) => r.type === '调整容量')
+    expect(adjust).toMatchObject({ username: 'xulin', userId: 212, requestId: null, newTotalGb: 8, rejectReason: '' })
+    const approve = sq.find((r) => r.type === '同意扩容')
+    expect(approve).toMatchObject({ username: 'zhaomin', userId: 208, requestId: 'ER-1002', newTotalGb: 10 })
+    const reject = sq.find((r) => r.requestId === 'ER-0999')
+    expect(reject).toMatchObject({ type: '拒绝扩容', username: 'liuqiang', rejectReason: '申请说明过于简单，请补充使用场景和预计增量后重新提交。' })
+    for (const r of sq) expect(r).not.toHaveProperty('operator')
   })
 
   it('旧快照记录（没有 at / objectId / meta）也不抛错：at 按分钟补 :00', () => {

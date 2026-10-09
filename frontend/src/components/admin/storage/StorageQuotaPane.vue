@@ -20,7 +20,7 @@ import {
   adjustStorageQuota,
   batchAdjustStorageQuota
 } from '@/api/storageSpace'
-import { STORAGE_STATE, QUOTA_MIN_GB, fmtGb } from '@/utils/storageSpace'
+import { STORAGE_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, fmtGb } from '@/utils/storageSpace'
 
 const props = defineProps({
   /** 访问审计「查看」跳转带入的员工用户名，作为初始搜索词 */
@@ -52,7 +52,7 @@ function clearFilters() {
 }
 
 /* ---------- 默认容量条 ---------- */
-const overview = ref({ defaultQuotaGb: 5, defaultMemberCount: 0, pendingCount: 0 })
+const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0 })
 async function loadOverview() {
   try {
     overview.value = await getStorageOverview()

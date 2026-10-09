@@ -18,6 +18,12 @@ export const REQUEST_STATE = {
   REJECTED: { label: '已拒绝', tag: 'danger' }
 }
 
+/** 默认容量固定 5 GB（员工端 PRD：默认 5 GB，管理员按员工调整），不提供全局修改入口 */
+export const DEFAULT_QUOTA_GB = 5
+
+/** 拒绝原因最多字数（与驳回原因、回收原因同口径）；输入框限长，超出无法继续输入 */
+export const REJECT_REASON_MAX = 500
+
 /** 调整容量、批量设置、同意扩容的输入框最小值（GB），减号减到它就不能再减 */
 export const QUOTA_MIN_GB = 1
 /** 容量数值展示：整数不带小数点，其余保留 1 位；空值显示「—」。 */

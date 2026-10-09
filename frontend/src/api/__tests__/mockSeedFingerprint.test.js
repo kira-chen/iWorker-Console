@@ -50,7 +50,7 @@ const FINGERPRINTS = {
   runtimeSpec: { version: 3, fp: 'ee9c4c1c' },
   sampleTask: { version: 6, fp: '01a9bf8e' },
   skillReview: { version: 3, fp: 'aa231c01' },
-  storageSpace: { version: 3, fp: '381cb450' },
+  storageSpace: { version: 4, fp: 'e395589e' },
   unifiedSkill: { version: 6, fp: '8c59fbb1' },
   version: { version: 5, fp: '45a0afc5' }
 }
