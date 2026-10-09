@@ -19,7 +19,8 @@ import { derivePlatformState } from '@/utils/skillPublication'
 // 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
 // 动态 import 在那之后拿到的会是另一个模块实例，跟 unifiedSkillMock 内部静态 import 的
 // mcpConnectorMock 对不上（同 positionMock.test.js 排查过的同一类坑，2026-09-23 待办 yuepu#10②）
-import { createMcp, deleteMcp } from '@/api/mcpConnectorMock'
+import { createMcp, deleteMcp, publishMcpService, applyMcpReviewResult } from '@/api/mcpConnectorMock'
+import { listApisSync } from '@/api/apiConnectorMock'
 import { opsRecords, resetAccessAuditMock } from '@/api/accessAuditMock'
 import { listReviews } from '@/api/reviewsMock'
 
@@ -439,21 +440,53 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
     expect(row.toolCount).toBe(0)
   })
 
-  it('新建的 MCP 立即进入工具坞候选；连接器被删除后已引用工具侧回落显示 code', async () => {
+  it('新建的 MCP 未发布时不进工具坞候选、已引用则显示「已停用」；发布通过后才进候选（yuepu#50）；连接器被删除后已引用工具侧回落显示 code', async () => {
     const created = await createMcp({ name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
-    const candidates = await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })
-    expect(candidates.some((t) => t.code === `mcp__${created.code}` && t.bizName === '测试专用 MCP')).toBe(true)
+    const pick = async () => (await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })).map((t) => t.code)
+    expect(await pick()).not.toContain(`mcp__${created.code}`) // 未发布：不可被技能新引用
 
     const id = await mkSkill({ name: '健康度联动' })
-    await mock.updateSkill(id, { skillMd: `# 正文\n\n@tool[mcp__${created.code}]\n` })
-    let detail = await mock.getSkillDetail(id)
-    expect(detail.referencedTools[0].bizName).toBe('测试专用 MCP')
+    await mock.updateSkill(id, { skillMd: `# 正文
 
-    // 新建 MCP 未发布态可删（yuepu#7②状态守卫）；删除后技能侧不再假装「连接正常」，回落显示 code
-    await deleteMcp(created.code)
+@tool[mcp__${created.code}]
+` })
+    let detail = await mock.getSkillDetail(id)
+    expect(detail.referencedTools[0].bizName).toBe('测试专用 MCP') // 已引用的仍回显名称
+    expect(detail.referencedTools[0].checkStatus).toBe('DISABLED') // 但给明确状态，不再「连接正常」
+
+    // 提交发布 + 审核通过 → 已发布，进入候选
+    await publishMcpService(created.code)
+    expect(applyMcpReviewResult(created.code, 'FIRST_PUBLISH', true)).toBe(true)
+    const candidates = await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })
+    expect(candidates.find((t) => t.code === `mcp__${created.code}`)).toMatchObject({ bizName: '测试专用 MCP' })
     detail = await mock.getSkillDetail(id)
+    expect(detail.referencedTools[0].checkStatus).toBe('UNKNOWN') // 新建未探测 → 未检测，而非已停用
+  })
+
+  it('连接器被删除后已引用工具侧回落显示 code，不再假装「连接正常」', async () => {
+    const created = await createMcp({ name: '待删除 MCP', description: '仅供本用例验证删除回落', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const id = await mkSkill({ name: '删除回落联动' })
+    await mock.updateSkill(id, { skillMd: `# 正文
+
+@tool[mcp__${created.code}]
+` })
+    // 新建 MCP 未发布态可删（yuepu#7②状态守卫）
+    await deleteMcp(created.code)
+    const detail = await mock.getSkillDetail(id)
     expect(detail.referencedTools[0].bizName).toBe(`mcp__${created.code}`)
     expect(detail.referencedTools[0].checkStatus).toBe('UNKNOWN')
+  })
+
+  it('API / 业务系统同样只列已发布的：候选与连接器发布态一致（yuepu#50）', async () => {
+    const bizNames = (await mock.toolPicker({ type: 'BIZ_SYSTEM' })).map((t) => t.bizName)
+    expect(bizNames).toContain('客户管理系统 CRM')
+    expect(bizNames).not.toContain('人力资源系统') // 种子：审核中
+    expect(bizNames).not.toContain('合同管理系统') // 种子：未发布
+    const apiCodes = (await mock.toolPicker({ type: 'API' })).map((t) => t.code)
+    const apiRows = listApisSync()
+    expect(apiCodes.length).toBeGreaterThan(0)
+    expect(apiRows.some((a) => a.status !== 'PUBLISHED')).toBe(true) // 前提：种子里有未发布的 API
+    expect(apiCodes.sort()).toEqual(apiRows.filter((a) => a.status === 'PUBLISHED' && a.enabled !== false).map((a) => `api__${a.code}`).sort())
   })
 })
 
@@ -514,9 +547,9 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
     const mcp = await mock.toolPicker({ type: 'MCP' })
     expect(mcp.length).toBeGreaterThan(0)
     expect(mcp.every((t) => t.code.startsWith('mcp__'))).toBe(true)
-    // 候选取自 bizSystemMock 真实种子（人力资源系统 biz_2102），不再是与之脱钩的静态目录
+    // 候选取自 bizSystemMock 真实种子（已发布的客户管理系统 CRM），不再是与之脱钩的静态目录
     const biz = await mock.toolPicker({ type: 'BIZ_SYSTEM' })
-    expect(biz.some((t) => t.bizName === '人力资源系统')).toBe(true)
+    expect(biz.some((t) => t.bizName === '客户管理系统 CRM')).toBe(true)
     const kw = await mock.toolPicker({ type: 'API', keyword: '客户资料' })
     expect(kw.map((t) => t.bizName)).toEqual(['客户资料查询'])
   })

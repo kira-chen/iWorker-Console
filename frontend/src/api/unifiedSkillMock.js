@@ -366,16 +366,21 @@ export async function listUnifiedSkills(params = {}) {
  * `[a-z][a-z0-9_]*`，三个连接器的 code/id 种子均为小写字母数字下划线，天然兼容。
  */
 function loadToolDirectory() {
+  // available = 已发布且启用（一览表「停用后技能不再可引用该 API」，yuepu#50）：只有 available 的才进工具坞候选；
+  // 已被技能引用、但如今未发布 / 已停用的工具照常回显，checkStatus 给 DISABLED（已停用），不再沿用「连接正常」。
   const dir = {}
+  const put = (key, row, available, health, type) => {
+    dir[key] = { bizName: row.name, description: row.description || '', checkStatus: available ? health : 'DISABLED', type, available }
+  }
   for (const m of listMcpSync()) {
-    dir[`mcp__${m.code}`] = { bizName: m.name, description: m.description || '', checkStatus: m.displayStatus || 'UNKNOWN', type: 'MCP' }
+    put(`mcp__${m.code}`, m, m.stateKey === 'PUBLISHED' && m.status !== 'disabled' && m.status !== 'inactive', m.displayStatus || 'UNKNOWN', 'MCP')
   }
   for (const a of listApisSync()) {
-    dir[`api__${a.code}`] = { bizName: a.name, description: a.description || '', checkStatus: a.displayStatus || 'UNKNOWN', type: 'API' }
+    put(`api__${a.code}`, a, a.status === 'PUBLISHED' && a.enabled !== false, a.displayStatus || 'UNKNOWN', 'API')
   }
   for (const b of listBizSystemsSync()) {
     // 业务系统走登录态托管，无连通性验证概念（无 displayStatus），沿用旧口径 UNKNOWN
-    dir[`biz__${b.id}`] = { bizName: b.name, description: b.description || '', checkStatus: 'UNKNOWN', type: 'BIZ_SYSTEM' }
+    put(`biz__${b.id}`, b, b.status === 'PUBLISHED', 'UNKNOWN', 'BIZ_SYSTEM')
   }
   return dir
 }
@@ -870,7 +875,7 @@ export async function toolPicker(params = {}) {
   const { type = 'MCP', keyword = '' } = params
   const q = String(keyword).trim().toLowerCase()
   return Object.entries(loadToolDirectory())
-    .filter(([, t]) => t.type === type)
+    .filter(([, t]) => t.type === type && t.available)
     .map(([code, t]) => ({
       code,
       bizName: t.bizName,

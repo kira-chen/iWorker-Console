@@ -360,7 +360,8 @@ function aggStateKey(id) {
  * 用到，不能改造成 async。
  */
 export function listMcpSync() {
-  return mcps.map(toRow)
+  // stateKey：列表三态聚合键（工具坞按「已发布且启用」过滤候选用，yuepu#50）
+  return mcps.map((m) => ({ ...toRow(m), stateKey: aggStateKey(m.id) }))
 }
 
 /**

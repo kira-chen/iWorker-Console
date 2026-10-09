@@ -65,7 +65,7 @@ describe('yuepu#50 连接器发布态未联动技能工具坞', () => {
     expect(mcpRow('mail_center')).toMatchObject({ publishedAt: null, pendingAction: null })
   })
 
-  it.fails('yuepu#50 工具坞候选不应列出未发布的 MCP（mail_center）', async () => {
+  it('yuepu#50 工具坞候选不应列出未发布的 MCP（mail_center）', async () => {
     const codes = (await skillMock.toolPicker({ type: 'MCP' })).map((t) => t.code)
     expect(codes).not.toContain('mcp__mail_center')
   })
