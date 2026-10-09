@@ -82,7 +82,7 @@ const agentSkillRows = computed(() => {
   for (const a of store.agents) {
     out.push({ kind: 'agent', agentId: a.agentId, name: a.name, description: a.description || '', skillCount: (a.skills || []).length })
     for (const sk of a.skills || []) {
-      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolCount(sk), revoked: sk.revoked || null })
+      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, displayCategoryName: sk.displayCategoryName || '', tools: agentSkillToolCount(sk), revoked: sk.revoked || null })
     }
   }
   return out
@@ -94,7 +94,9 @@ function agentSkillToolCount(sk) {
   if (Number.isFinite(sk?.toolCount)) return sk.toolCount
   return Array.isArray(sk?.referencedTools) ? sk.referencedTools.length : 0
 }
-const skillCategoryText = (c) => (c ? categoryLabel(c) : '—')
+// md §6.4 技能子行的「技能分类」= 技能本体的分类名（displayCategoryName）；缺省回落 category 原值
+// （旧形状里 OPERATION / QUERY 派生类走 categoryLabel 译成「操作类 / 查询类」），都没有才显「—」。
+const skillCategoryText = (row) => row.displayCategoryName || categoryLabel(row.category) || row.category || '—'
 
 /* ---------- Agent 抽屉：新建 / 编辑同一抽屉（2026-09-09 原型复刻批次 4C，#14） ----------
  * 原「＋ 新增 Agent」直建一条「新 Agent」空行 + 行内「＋技能」开弹窗挑技能的两段式，按负责人
@@ -275,7 +277,7 @@ async function onDeleteSkill({ agentId, skillId }) {
           <el-table-column label="职责描述 / 分类" min-width="320">
             <template #default="{ row }">
               <span v-if="row.kind === 'agent'" class="pd-agent-desc">{{ row.description || '—' }}</span>
-              <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row.category) }}</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="工具" width="120" align="center">

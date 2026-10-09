@@ -165,12 +165,29 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
 
 describe('positionMock · Agent CRUD 与列表计数同源联动', () => {
   it('createAgent 追加 Agent 并回写列表 agentCount；重名拒绝 1005（2026-09-18 待办 yuepu#13·岗位 P4：新建与编辑共用同一抽屉表单，均需显式填名，不再静默加序号——此前与 updateAgent 的重名报错口径矛盾）', async () => {
-    const a1 = await createAgent(404, { name: '新 Agent' })
+    const a1 = await createAgent(404, { name: '新 Agent', description: '职责描述' })
     expect(a1.name).toBe('新 Agent')
-    await expect(createAgent(404, { name: '新 Agent' })).rejects.toMatchObject({ field: 'name', message: 'Agent 名已存在' })
+    await expect(createAgent(404, { name: '新 Agent', description: '职责描述' })).rejects.toMatchObject({ field: 'name', message: 'Agent 名已存在' })
     const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
     // 2 = 种子 1 个（研究纪要整理，2026-09-09 补全）+ 本用例新建 1 个（重名那次被拒，不计入）
     expect(row.agentCount).toBe(2)
+  })
+
+  it('createAgent / updateAgent 必填与长度（md §6.2 + 一览表 #5.1 / #5.2：名称必填 ≤64、职责描述必填 ≤2000；yuepu#61①）', async () => {
+    await expect(createAgent(404, { description: '有职责' })).rejects.toMatchObject({ field: 'name', message: '请填写 Agent 名称' })
+    await expect(createAgent(404, { name: '   ', description: '有职责' })).rejects.toMatchObject({ field: 'name' })
+    await expect(createAgent(404, { name: '有名称' })).rejects.toMatchObject({ field: 'description', message: '请填写职责描述' })
+    await expect(createAgent(404, { name: 'n'.repeat(65), description: 'd' })).rejects.toMatchObject({ field: 'name' })
+    await expect(createAgent(404, { name: '职责超长', description: 'd'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
+    // 边界放行：名称 64、职责 2000
+    const ok = await createAgent(404, { name: 'n'.repeat(64), description: 'd'.repeat(2000) })
+    expect(ok.description).toHaveLength(2000)
+    // 编辑态同口径
+    await expect(updateAgent(ok.agentId, { description: '  ' })).rejects.toMatchObject({ field: 'description' })
+    await expect(updateAgent(ok.agentId, { description: 'd'.repeat(2001) })).rejects.toMatchObject({ field: 'description' })
+    await expect(updateAgent(ok.agentId, { name: 'n'.repeat(65) })).rejects.toMatchObject({ field: 'name' })
+    const row = (await listPositions({ keyword: '市场研究岗' })).list[0]
+    expect(row.agentCount).toBe(2) // 种子 1 + 边界那条；被拒的都没落库
   })
 
   it('updateAgent 改名重名 1005；deleteAgent 回 orphanedSkillCount 并同步技能数', async () => {
@@ -205,7 +222,7 @@ describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同
     // 2026-09-23 待办 yuepu#9⑤：原引用 sk_303 违反 md §6.4 岗位私有类型限制，改引 sk_305）
     const d = await getPosition(404)
     expect(d.agents).toHaveLength(1)
-    const agent = await createAgent(404, { name: '研究员' })
+    const agent = await createAgent(404, { name: '研究员', description: '职责描述' })
     const vo = await assignSkill('sk_301', agent.agentId)
     expect(vo).toMatchObject({ skillId: 'sk_301', name: '日报周报生成' })
     let row = (await listPositions({ keyword: '市场研究岗' })).list[0]
@@ -218,7 +235,7 @@ describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同
   })
 
   it('assignSkill 拒绝非岗位私有类型技能（md §6.4，2026-09-23 待办 yuepu#9⑤）', async () => {
-    const agent = await createAgent(404, { name: '研究员' })
+    const agent = await createAgent(404, { name: '研究员', description: '职责描述' })
     // sk_303 通用（SYSTEM_DEFAULT）、sk_302 市场技能（PLATFORM）均应被拒绝
     await expect(assignSkill('sk_303', agent.agentId)).rejects.toThrow('岗位私有')
     await expect(assignSkill('sk_302', agent.agentId)).rejects.toThrow('岗位私有')
@@ -228,7 +245,7 @@ describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同
 
   it('技能被删除后悬空引用不计入 skillCount，展示仍保留占位提示管理员清理（md §9.1 第 8 条，yuepu#9⑤）', async () => {
     const empty = await createPosition({ name: `悬空引用岗_${Date.now()}` })
-    const agent = await createAgent(empty.positionId, { name: '研究员' })
+    const agent = await createAgent(empty.positionId, { name: '研究员', description: '职责描述' })
     const { skillId } = await createSkill({ name: `待删技能_${Date.now()}`, type: 'POSITION', categoryName: '办公效率' })
     await assignSkill(skillId, agent.agentId)
     let row = (await listPositions({ keyword: empty.name })).list[0]
@@ -273,7 +290,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     expect(created).toMatchObject({ name: '售后支持岗', status: 'draft', agents: [] })
     const d = await getPosition(created.positionId)
     // 新岗位可直接建 Agent + 引用技能（全链路落内存）
-    const agent = await createAgent(created.positionId, { name: '答疑' })
+    const agent = await createAgent(created.positionId, { name: '答疑', description: '职责描述' })
     await assignSkill('sk_301', agent.agentId)
     const row = (await listPositions({ keyword: '售后支持岗' })).list[0]
     expect(row).toMatchObject({ agentCount: 1, skillCount: 1 })

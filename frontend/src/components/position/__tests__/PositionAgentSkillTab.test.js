@@ -19,7 +19,7 @@ import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
  *
  * 覆盖点：正常路径（二维表渲染、抽屉新建/编辑/差集同步、删除、移除、跳转）、边界（空列表、20 个 Agent、100 个技能、工具数兜底）、
  * 异常路径（技能库加载失败 + loading 态、保存/删除/移除失败、确认框取消、ensurePersisted 拦截）、只读态（查看按钮 / 只读抽屉）。
- * 疑似缺陷以 it.fails 按 md 期望钉桩（见文末 describe）。
+ * 候选排除（yuepu#60⑥）与技能分类列（yuepu#61②）见文末 describe。
  *
  * 依赖打桩：usePositionStore（reactive 桩）、@/api/position.listSkills、vue-router、element-plus 的 ElMessage/ElMessageBox、
  * DrawerEditor（轻桩：visible 时渲染默认插槽 + footer）；Element Plus 组件以最小桩注册（el-table 按 data 渲染列插槽）。
@@ -640,12 +640,16 @@ describe('Agent 抽屉候选排除本岗位已引用技能（md §6.4，yuepu#60
     expect(checked()).toEqual([false, true])
   })
 
-  it.fails('技能子行应展示技能分类（如「数据分析」）（疑似缺陷：分类列只认 OPERATION/QUERY 派生类别，md 技能分类取值渲染为空标签；md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2 技能分类取值）', async () => {
+  it('技能子行展示技能分类（如「数据分析」）：优先取 VO 的 displayCategoryName（md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2；yuepu#61②）', async () => {
     store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '经营数据分析', category: '数据分析', toolCount: 5 }] }]
     await mount()
     // 前提：技能子行已渲染
     expect(cellTexts('AGENT / 技能')).toEqual(['◆ A', '· 经营数据分析'])
     // md 期望：分类列展示技能分类原值
     expect(cellTexts('职责描述 / 分类')[1]).toBe('数据分析')
+    // 数据层 VO 形状：displayCategoryName 优先于 OPERATION / QUERY 派生类别
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '经营数据分析', category: 'QUERY', displayCategoryName: '办公效率', toolCount: 5 }] }]
+    await flush()
+    expect(cellTexts('职责描述 / 分类')[1]).toBe('办公效率')
   })
 })

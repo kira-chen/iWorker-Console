@@ -233,7 +233,7 @@ describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共�
   // 写成数据层断言等于替修复人臆造接口。页面层钉桩归岗位管理页用例。
 })
 
-describe('Agent 技能子行「技能分类」未进数据层（md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
+describe('Agent 技能子行「技能分类」进数据层（yuepu#61② 已修；md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
   // 页面层钉桩 PositionAgentSkillTab.test.js 用的夹具直接写了 category:'数据分析'，真实 VO 里 category 恒为
   // OPERATION/QUERY 派生值，11 类技能分类根本没进 VO——修复多半新增字段承载，页面层钉桩不会翻红（岗位组 T17c、专家组 T11）。
   // 断言不绑字段名：技能子行 VO 的某个字段等于技能本体的分类即可。
@@ -244,9 +244,9 @@ describe('Agent 技能子行「技能分类」未进数据层（md 岗位 §6.4�
     expect(skillMock._getRaw('sk_301').category).toBeTruthy()
   })
 
-  it.fails('技能子行 VO 应带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY', async () => {
+  it('技能子行 VO 带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY（yuepu#61②）', async () => {
     const detail = await getPosition(401)
     const ref = detail.agents.find((a) => a.agentId === 501).skills[0]
-    expect(Object.values(ref)).toContain(skillMock._getRaw('sk_301').category)
+    expect(ref.displayCategoryName).toBe(skillMock._getRaw('sk_301').category)
   })
 })

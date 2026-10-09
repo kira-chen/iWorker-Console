@@ -662,7 +662,7 @@ function syncCounts(p) {
 function skillRefVO(ref) {
   const raw = skillMock._getRaw(ref.skillId)
   if (!raw) {
-    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0, toolCount: 0, deleted: true }
+    return { skillId: ref.skillId, name: '（技能已删除）', icon: '', description: '', category: 'QUERY', displayCategoryName: '', status: 'draft', versionLabel: '', sortOrder: ref.sortOrder ?? 0, toolCount: 0, deleted: true }
   }
   // 类别派生口径与后端一致：引用业务系统/数据表 → 操作类，否则查询类
   const isOperation = (raw.toolRefs || []).some((c) => String(c).startsWith('biz__') || String(c).startsWith('table__'))
@@ -672,6 +672,9 @@ function skillRefVO(ref) {
     icon: raw.icon || '',
     description: raw.description || '',
     category: isOperation ? 'OPERATION' : 'QUERY',
+    // md §6.4「技能子行展示：技能名称、技能分类、工具数量」：技能分类 = 技能本体的 11 类分类名（读时同源取自
+    // unifiedSkillMock，与技能 VO 的 displayCategoryName 同名同义）；上面的 category 仅是操作类 / 查询类派生值（yuepu#61②）
+    displayCategoryName: raw.category || '',
     status: raw.status,
     versionLabel: raw.version || '',
     sortOrder: ref.sortOrder ?? 0,
@@ -841,6 +844,16 @@ export async function updatePosition(id, payload = {}) {
 
 /* ---------------- Agent CRUD（契约 §2） ---------------- */
 
+const AGENT_NAME_MAX = 64
+const AGENT_DESC_MAX = 2000
+/** Agent 必填 + 长度校验（field 指向出错控件，页面按 field 回显）。 */
+function assertAgentFields(name, description) {
+  if (!name) throw err('请填写 Agent 名称', 'name')
+  if (name.length > AGENT_NAME_MAX) throw err(`Agent 名称最多 ${AGENT_NAME_MAX} 个字符`, 'name')
+  if (!description) throw err('请填写职责描述', 'description')
+  if (description.length > AGENT_DESC_MAX) throw err(`职责描述最多 ${AGENT_DESC_MAX} 个字符`, 'description')
+}
+
 // 2.1 新建 Agent（岗位内 name 唯一 1005；≤20 上限 1002）
 export async function createAgent(positionId, payload = {}) {
   await delay()
@@ -848,7 +861,10 @@ export async function createAgent(positionId, payload = {}) {
   if (!p) throw err('岗位不存在或已被删除', null, 404)
   const wb = ensureWb(p.positionId)
   if (wb.agents.length >= AGENT_MAX) throw err(`单岗位最多 ${AGENT_MAX} 个 Agent`, null, 1002)
-  const name = String(payload.name || '').trim() || '新 Agent'
+  // md §6.2 + 一览表 #5.1 / #5.2：名称、职责描述均必填，名称 ≤64、职责描述 ≤2000（yuepu#61①，原缺省落「新 Agent」、不校验长度）
+  const name = String(payload.name || '').trim()
+  const description = String(payload.description || '').trim()
+  assertAgentFields(name, description)
   // 新建与编辑现共用同一抽屉表单（PositionAgentSkillTab.vue saveAgentDraft），均要求用户显式填写
   // 名称——不再是「快捷加号按钮、默认空名」的场景，故与 updateAgent 同口径拒重名，不静默改名
   // （2026-09-18 待办 yuepu#13·岗位 P4：此前改名静默追加序号，用户不知道保存的其实不是自己填的名字，
@@ -857,7 +873,7 @@ export async function createAgent(positionId, payload = {}) {
   const agent = {
     agentId: agentSeq++,
     name,
-    description: String(payload.description || ''),
+    description,
     sortOrder: payload.sortOrder ?? wb.agents.length,
     skills: []
   }
@@ -877,10 +893,16 @@ export async function updateAgent(agentId, payload = {}) {
   if ('name' in payload) {
     const name = String(payload.name || '').trim()
     if (!name) throw err('请填写 Agent 名称', 'name')
+    if (name.length > AGENT_NAME_MAX) throw err(`Agent 名称最多 ${AGENT_NAME_MAX} 个字符`, 'name')
     if (wb.agents.some((a) => a !== agent && a.name === name)) throw err('Agent 名已存在', 'name', 1005)
     agent.name = name
   }
-  if ('description' in payload) agent.description = String(payload.description || '')
+  if ('description' in payload) {
+    const description = String(payload.description || '').trim()
+    if (!description) throw err('请填写职责描述', 'description')
+    if (description.length > AGENT_DESC_MAX) throw err(`职责描述最多 ${AGENT_DESC_MAX} 个字符`, 'description')
+    agent.description = description
+  }
   if ('sortOrder' in payload) agent.sortOrder = payload.sortOrder
   p.updatedAt = nowIso()
   persist()
