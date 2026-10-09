@@ -77,7 +77,7 @@ describe('页签结构（PRD §一）', () => {
     expect(labels).toEqual(['技能调用', '岗位自动化任务', '知识库检索'])
     expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('技能调用')
 
-    expect(pane('skill').textContent).toContain('进行中（待确认）')
+    expect(pane('skill').textContent).toContain('涉及写操作的执行')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
     expect(pane('task')).toBeNull()
     expect(pane('knowledge')).toBeNull()
@@ -105,7 +105,7 @@ describe('页签结构（PRD §一）', () => {
 })
 
 describe('岗位自动化任务页签（PRD §八）', () => {
-  it('无人值守 + 免授权口径：卡片没有「进行中」，是成功 / 失败 / 执行前拦截三态；列表展示任务、触发方式、涉及写操作，没有授权相关字段', async () => {
+  it('无人值守 + 免授权口径：卡片没有「进行中」，是成功 / 失败两态；列表展示任务、触发方式、涉及写操作，没有授权相关字段', async () => {
     mountReal()
     await flush()
     await openTab('task')
@@ -113,7 +113,7 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     const text = p.textContent
 
     expect(cards(p).map((c) => c.querySelector('.metric-label').textContent)).toEqual([
-      '运行总数', '涉及写操作的运行', '执行失败', '执行前拦截'
+      '运行总数', '涉及写操作的运行', '执行失败'
     ])
     expect(text).not.toContain('进行中')
     expect(text).not.toContain('已预授权')
@@ -122,6 +122,8 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     expect(text).toContain('每日经营晨报')
     expect(text).toContain('定时·每天 08:30')
     expect(text).toContain('涉及写操作')
+    // 单次工具调用不记录耗时与具体执行时刻，列表不展示"执行耗时"
+    expect(text).not.toContain('执行耗时')
     expect(p.querySelector('input[placeholder="搜索用户 / 岗位 / 任务 / 工具"]')).toBeTruthy()
   })
 
@@ -138,29 +140,30 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     expect(rows.length).toBeGreaterThan(0)
   })
 
-  it('点「执行前拦截」卡片 → 只剩被拦截的运行记录，原因展示具体工具 + 原因（不再是"未授权"）', async () => {
+  it('点「执行失败」卡片 → 只剩失败的运行记录，原「执行前拦截」的运行（不在工具白名单）也并在其中，原因展示具体工具 + 原因（不是"未授权"）', async () => {
     mountReal()
     await flush()
     await openTab('task')
     const p = pane('task')
-    cardOf(p, '执行前拦截').click()
+    cardOf(p, '执行失败').click()
     await flush()
     const rows = bodyRows(p)
     expect(rows.length).toBeGreaterThan(0)
     rows.forEach((r) => {
-      expect(r.textContent).toContain('执行前拦截')
+      expect(r.textContent).toContain('失败')
       expect(r.textContent).not.toContain('未授权')
     })
+    expect(rows.some((r) => r.textContent.includes('不在工具白名单'))).toBe(true)
   })
 
-  it('详情：免授权的写操作直接展示执行结果，没有授权相关字段；被拦截的运行在该工具调用项上展示拦截原因', async () => {
+  it('详情：免授权的写操作直接展示执行结果，没有授权相关字段；原「执行前拦截」的运行（不在工具白名单）在该工具调用项上展示失败原因', async () => {
     mountReal()
     await flush()
     await openTab('task')
     const p = pane('task')
-    cardOf(p, '执行前拦截').click()
+    cardOf(p, '执行失败').click()
     await flush()
-    const row = bodyRows(p)[0]
+    const row = bodyRows(p).find((r) => r.textContent.includes('不在工具白名单'))
     ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
     await flush()
 
@@ -168,7 +171,8 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     expect(drawer).toBeTruthy()
     const t = drawer.textContent
     expect(t).toContain('工具调用明细')
-    expect(t).toContain('执行前拦截')
+    expect(t).toContain('不在工具白名单')
+    expect(t).not.toContain('执行前拦截')
     expect(t).not.toContain('授权')
     expect(t).not.toContain('任务运行编号')
   })
@@ -183,11 +187,27 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     const row = bodyRows(p).find((r) => r.textContent.includes('拜访前资料准备') && r.textContent.includes('成功'))
     ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
     await flush()
-    const t = document.body.querySelector('.el-drawer__body').textContent
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const t = drawer.textContent
     expect(t).toContain('写')
     expect(t).not.toContain('已确认')
     expect(t).not.toContain('待确认')
     expect(t).not.toContain('已预授权')
+    // 写操作即使成功也展示参数 / 响应入口（2026-10-09 收窄范围只排除"成功的只读调用"）
+    expect(drawer.querySelector('.call-item-toggle')).toBeTruthy()
+  })
+
+  it('成功的只读运行（每周竞品动态汇总）：详情里不展示参数 / 响应入口', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    const row = bodyRows(p).find((r) => r.textContent.includes('每周竞品动态汇总') && r.textContent.includes('成功'))
+    ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
+    await flush()
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.querySelector('.call-item-toggle')).toBeNull()
+    expect(drawer.textContent).toContain('只读调用成功，不保留请求参数与响应内容')
   })
 })
 
@@ -200,7 +220,7 @@ describe('知识库检索页签（PRD §九）', () => {
     const text = p.textContent
 
     expect(cards(p).map((c) => c.querySelector('.metric-label').textContent)).toEqual([
-      '检索请求总数', '无命中检索', '执行失败', '执行前拦截'
+      '检索请求总数', '无命中检索', '执行失败'
     ])
     expect(text).toContain('知识库 / 数据源')
     expect(text).toContain('检索词')
