@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { mountReal, flushAll } from '@/views/admin/__tests__/helpers/smokeMount'
 
 /**
@@ -117,6 +117,10 @@ afterEach(() => {
   mounted = null
   vi.restoreAllMocks()
 })
+// ExpertEditor 挂的真 milkdown 会留一个 3 秒就绪定时器（@milkdown/ctx 默认 timeout），卸载清不掉；
+// 文件跑完 jsdom 销毁后它才触发，会抛 "removeEventListener is not defined" 的未捕获异常把 CI 判红。
+// 慢机器上（CI）尤其容易撞上，所以收尾前等它在环境里走完。
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 3200)))
 
 async function open(Component, props) {
   mounted = mountReal(Component, { visible: true, ...props })
