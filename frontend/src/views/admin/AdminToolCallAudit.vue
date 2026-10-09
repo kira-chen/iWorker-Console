@@ -87,7 +87,7 @@ const list = useAdminList(listToolCallAudits, {
   paged: 'client',
   clientPipeline: filterRecords
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 
 function applySearch() {
   appliedKeyword.value = keyword.value.trim().toLowerCase()
@@ -297,6 +297,7 @@ const timelineSteps = computed(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="暂无符合条件的调用记录"
         @retry="list.reload"

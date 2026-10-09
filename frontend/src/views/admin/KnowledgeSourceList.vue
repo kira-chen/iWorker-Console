@@ -37,7 +37,7 @@ const list = useAdminList(listKnowledgeSources, {
     return p
   }
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty, reload, search } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty, reload, search } = list
 
 const editorVisible = ref(false)
 const editingId = ref(null)
@@ -186,6 +186,7 @@ onActivated(reload)
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="hasFilter ? '暂无符合条件的数据源' : '还没有数据源 · 点「新建数据源」创建第一个'"
         @retry="reload"

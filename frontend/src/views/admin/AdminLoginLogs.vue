@@ -40,7 +40,7 @@ const loginDateRange = ref(defaultRange())
 const list = useAdminList(listLoginLogs, {
   params: () => ({ ...query, dateFrom: ymd(loginDateRange.value?.[0]), dateTo: ymd(loginDateRange.value?.[1]) })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -299,6 +299,7 @@ function opsGoto(row) {
         <ListStates
           :loading="loading"
           :error="loadError"
+          :error-message="loadErrorMessage"
           :empty="isEmpty"
           empty-text="暂无登录记录"
           @retry="fetchList"

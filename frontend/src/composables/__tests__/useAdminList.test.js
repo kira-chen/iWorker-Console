@@ -59,6 +59,19 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(l.total.value).toBe(2)
   })
 
+  it('取数失败：保留失败原因（loadErrorMessage），重试成功后清空（待办 yuepu#74）', async () => {
+    const fetcher = vi.fn().mockRejectedValueOnce(new Error('网络异常：服务暂不可用')).mockResolvedValueOnce({ list: [{ id: 1 }], total: 1 })
+    const l = useAdminList(fetcher)
+
+    await l.reload()
+    expect(l.loadError.value).toBe(true)
+    expect(l.loadErrorMessage.value).toBe('网络异常：服务暂不可用')
+
+    await l.reload()
+    expect(l.loadError.value).toBe(false)
+    expect(l.loadErrorMessage.value).toBe('')
+  })
+
   it('取数失败：置 loadError 且关 loading（不把异常抛给调用方）', async () => {
     const fetcher = vi.fn(() => Promise.reject(new Error('boom')))
     const l = useAdminList(fetcher)

@@ -61,7 +61,7 @@ const list = useAdminList(listRoles, {
     )
   }
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 
 function applySearch() {
@@ -192,6 +192,7 @@ async function remove(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="showEmpty"
         empty-text="还没有角色，点击「新建角色」创建第一个"
         @retry="fetchList"

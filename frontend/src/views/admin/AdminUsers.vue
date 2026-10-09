@@ -53,7 +53,7 @@ function toggleSort() {
 // 四态 / 分页 / 空筛选项过滤 / 防空页回退 / 竞态防护均由其承担，本页只描述「取什么」。
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · G#2，原「每页 10 条」覆盖已移除，全站统一）
 const list = useAdminList(listUsers, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 // 角色选项（供过滤下拉 + 编辑/设置角色弹窗复用）
 const roleOptions = ref([])
@@ -243,6 +243,7 @@ const emptyText = computed(() =>
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="emptyText"
         @retry="fetchList"

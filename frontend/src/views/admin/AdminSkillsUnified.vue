@@ -74,7 +74,7 @@ const list = useAdminList(listUnifiedSkills, {
     return p
   }
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 const categoryOptions = ref([])
 const actionBusy = ref(null) // 行级互斥：停用/删除/撤回共用（一次只允许一行在途）
@@ -558,6 +558,7 @@ onBeforeUnmount(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="hasFilter ? '没有符合条件的技能' : '还没有技能，点击「新建技能」创建第一个'"
         @retry="fetchList"

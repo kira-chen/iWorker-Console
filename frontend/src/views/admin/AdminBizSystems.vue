@@ -108,7 +108,7 @@ const list = useAdminList(listBizSystems, {
         : compareTimeText(a.updatedAt, b.updatedAt)
     )
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 
 // 排序方向箭头
@@ -320,6 +320,7 @@ async function remove(row) {
     <ListStates
       :loading="loading"
       :error="loadError"
+      :error-message="loadErrorMessage"
       :empty="isEmpty"
       empty-text="没有匹配的业务系统"
       @retry="fetchList"

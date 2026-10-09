@@ -71,7 +71,7 @@ const STATE_OPTIONS = [
 
 // 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）
 const list = useAdminList(listExperts, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -353,6 +353,7 @@ async function forceRevokeFromList(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="还没有专家，点击「新建专家」创建第一个"
         @retry="fetchList"

@@ -31,7 +31,7 @@ import '@/assets/connector.css'
 const route = useRoute()
 const query = reactive({ keyword: '', usage: '', sortOrder: 'descending' })
 const list = useAdminList(listRuntimeSpecs, { pageSize: 10, params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -206,6 +206,7 @@ function usedTip(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="emptyText"
         @retry="refresh"
