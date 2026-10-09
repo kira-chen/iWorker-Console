@@ -20,6 +20,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
  *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
+ * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，真弹窗交互另见
+ *  utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -34,6 +36,7 @@ const conn = {
   publishApi: vi.fn(),
   withdrawApi: vi.fn(),
   deactivateApi: vi.fn(),
+  forceRevokeApi: vi.fn(),
   listProviderSystems: vi.fn(),
   deleteProviderSystem: vi.fn()
 }
@@ -42,6 +45,10 @@ vi.mock('@/api/apiConnector', () => conn)
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 每页个数钉 3（真实是按窗口高度算且最小 5，9 个系统分不出页）
 vi.mock('@/composables/useDynPageSize', () => ({ useDynPageSize: () => ref(3) }))
@@ -230,6 +237,7 @@ beforeEach(() => {
   conn.publishApi.mockResolvedValue({})
   conn.withdrawApi.mockResolvedValue({})
   conn.deactivateApi.mockResolvedValue({})
+  conn.forceRevokeApi.mockResolvedValue({})
   conn.deleteApi.mockResolvedValue({})
   conn.deleteProviderSystem.mockResolvedValue({})
   msgBox.confirm.mockResolvedValue('confirm')
@@ -346,9 +354,9 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2「各状态按�
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】', async () => {
+  it('已发布：【查看】【编辑】【停用】【强制回收】', async () => {
     await mount()
-    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用'])
+    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('连通性验证未通过：【发布】置灰并提示「连通性验证通过后才可提交发布」（md §二.2 L50 / §二.3 L59）', async () => {
@@ -709,5 +717,69 @@ describe('AdminApis · 深链 ?keyword=（yuepu#22 防回归）', () => {
     expect(conn.listApis.mock.calls[0][0]).toEqual({ keyword: '尾巴' })
     expect(container.querySelector('.lt-search').value).toBe('尾巴')
     expect(groupNames()).toEqual(['系统9号'])
+  })
+})
+
+describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立即生效、不进审核、原因必填、两步确认）', () => {
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeApi(id, 原因) + 「已强制回收」+ 重新取数', async () => {
+    askForceRevoke.mockResolvedValue('接口泄露了客户手机号')
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(conn.forceRevokeApi).toHaveBeenCalledWith('a_pub', '接口泄露了客户手机号')
+    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+  })
+
+  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(conn.forceRevokeApi).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(conn.listApis.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    conn.forceRevokeApi.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    conn.forceRevokeApi.mockRejectedValueOnce(new Error(''))
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '接口泄露了客户手机号', at: '2026-10-09 09:30', operator: 'admin' }
+    conn.listApis.mockImplementation(async () => ({
+      list: APIS.map((a) => (a.id === 'a_np' ? { ...a, revoked } : a))
+    }))
+    await mount()
+    const tag = rowByName('未发布接口').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：接口泄露了客户手机号（admin · 2026-10-09 09:30）')
+    expect(rowByName('已上线接口').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('在审接口').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowByName('未发布接口').querySelector('.revoked-tag')).toBeNull()
   })
 })

@@ -18,6 +18,9 @@
  *   编辑留空=保留原值；clientFill 行值由客户端收集、平台不存。
  */
 import { ApiError } from './request'
+import { appendOpsRecord } from './accessAuditMock'
+import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
@@ -90,6 +93,8 @@ const mkApi = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null,
+  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeApi）
+  revoked: null,
   ...over
 })
 
@@ -473,7 +478,7 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 5,
+  version: 6,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -856,6 +861,7 @@ export function applyApiReviewResult(refId, requestAction, approved) {
     } else {
       a.status = 'PUBLISHED'
       a.publishedAt = nowIso()
+      a.revoked = null // 重新发布审核通过 → 清「已回收」（驳回 / 撤回不清）
     }
   } else {
     // 驳回与撤回同向：待审停用被拒 → 保持已发布；待审发布被拒 → 未发布
@@ -865,6 +871,24 @@ export function applyApiReviewResult(refId, requestAction, approved) {
   a.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true
+}
+
+/**
+ * 强制回收（prd-API.md §4）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
+ * 仅「已发布且无审核中操作」可回收；状态回「未发布」（保留 publishedAt），写 revoked，
+ * 引用清单原样保留；写访问审计「管理端操作」。
+ */
+export async function forceRevokeApi(id, reason) {
+  await delay(250)
+  const a = findApi(id)
+  if (!a) throw err('API 不存在')
+  if (a.status !== 'PUBLISHED' || a.pendingAction) throw err('API状态已变化，请刷新后重试')
+  a.status = 'NOT_PUBLISHED'
+  a.revoked = makeRevokedInfo(reason)
+  a.updatedAt = nowIso()
+  appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: reason })
+  persist()
+  return toRow(a)
 }
 
 /* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */

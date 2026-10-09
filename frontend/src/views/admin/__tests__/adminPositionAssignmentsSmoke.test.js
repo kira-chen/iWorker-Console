@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
@@ -28,8 +29,10 @@ const ROWS = [
   { userId: 203, username: 'chenyu', displayName: '陈宇', status: 'active', positionId: null, positionName: null, hasPendingRequest: true, pendingRequestId: 801 }
 ]
 
-let mounted, errorSpy
+let mounted, errorSpy, router
 beforeEach(() => {
+  // 页面读 route.query.keyword（访问审计「查看」跳转带入），冒烟需要一个真路由
+  router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
   listPositionAssignments.mockReset().mockResolvedValue({ list: ROWS, total: 13 })
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -41,7 +44,7 @@ afterEach(() => {
 
 describe('AdminPositionAssignments · 真实 Element Plus 挂载冒烟', () => {
   it('整页真挂载不抛、console.error 零调用；页头「岗位管理」、行文案、分页条「共 13 条数据」齐全（md §一 / §二 / §3.1）', async () => {
-    expect(() => { mounted = mountReal(AdminPositionAssignments) }).not.toThrow()
+    expect(() => { mounted = mountReal(AdminPositionAssignments, {}, { plugins: [router] }) }).not.toThrow()
     await flushAll(10)
     expect(errorSpy).not.toHaveBeenCalled()
 
@@ -59,5 +62,15 @@ describe('AdminPositionAssignments · 真实 Element Plus 挂载冒烟', () => {
     const pager = container.querySelector('.list-pager')
     expect(pager).toBeTruthy()
     expect(pager.textContent).toContain('共 13 条数据')
+  })
+
+  // 2026-10-09 /test-audit 补缺口：访问审计「岗位分配」记录的【查看】会带 ?keyword=用户名 过来（访问审计 §6.3），
+  // 此前只测了发送端（adminLoginLogsOps.test.js），接收端的注入无守护。
+  it('带 ?keyword=chenyu 进入 → 搜索框预填 chenyu，并以该关键词取数（访问审计 §6.3）', async () => {
+    await router.push('/?keyword=chenyu')
+    mounted = mountReal(AdminPositionAssignments, {}, { plugins: [router] })
+    await flushAll(10)
+    expect(mounted.container.querySelector('input[placeholder="搜索用户名 / 显示名"]').value).toBe('chenyu')
+    expect(listPositionAssignments).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: 'chenyu' }))
   })
 })

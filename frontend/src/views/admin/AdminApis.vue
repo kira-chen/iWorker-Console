@@ -26,6 +26,7 @@ import {
   publishApi,
   withdrawApi,
   deactivateApi,
+  forceRevokeApi,
   listProviderSystems,
   deleteProviderSystem
 } from '@/api/apiConnector'
@@ -36,6 +37,8 @@ import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
 import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
+import { askForceRevoke } from '@/utils/forceRevoke'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
@@ -60,7 +63,7 @@ const collapsed = ref(new Set())
 
 const checkBusy = ref(null) // 立即检活中的 API id
 const psDelBusy = ref(null) // 删除中的服务提供系统 id
-// 行内动作 busy 态：{ [apiId]: 'publish' | 'withdraw' | 'deactivate' | 'delete' }
+// 行内动作 busy 态：{ [apiId]: 'publish' | 'withdraw' | 'deactivate' | 'forceRevoke' | 'delete' }
 const busy = ref({})
 
 // API 编辑器（查看/编辑共用，靠 readonly 区分）
@@ -424,6 +427,18 @@ async function deactivate(row) {
   runAction(row, 'deactivate', () => deactivateApi(row.id), '已提交停用审核')
 }
 
+/** 强制回收（prd-API.md §4）：立即生效、不进审核；回收弹窗 + 二次确认由 askForceRevoke 承担。 */
+async function forceRevoke(row) {
+  const reason = await askForceRevoke({
+    typeLabel: 'API',
+    name: row.name,
+    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
+    refText: '岗位 / 技能'
+  })
+  if (reason == null) return
+  runAction(row, 'forceRevoke', () => forceRevokeApi(row.id, reason), '已强制回收')
+}
+
 /** 删除：软引用——被技能引用也可删，确认影响后继续（PRD §二.4）。 */
 async function removeApi(row) {
   // 被技能引用时提示引用数（2026-09-28 待办 yuepu#37③ 负责人拍板补齐，与 MCP 页签一致）
@@ -572,9 +587,11 @@ async function removeApi(row) {
               </el-table-column>
               <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后
                    （与下方「性质」列是两回事：性质=读/写，状态=发布态） -->
-              <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+              <!-- 宽度多留一枚「已回收」小标签的位置 -->
+              <el-table-column label="状态" :width="COL.STATUS + 64" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #default="{ row }">
                   <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+                  <RevokedTag v-if="row.status === 'NOT_PUBLISHED'" :info="row.revoked" />
                 </template>
               </el-table-column>
 
@@ -722,6 +739,16 @@ async function removeApi(row) {
                       @click="deactivate(row)"
                     >
                       停用
+                    </el-button>
+                    <!-- 强制回收：已发布行位于【停用】之后（prd-API.md §4），危险红色 -->
+                    <el-button
+                      v-if="canDeactivate(row)"
+                      link
+                      type="danger"
+                      :loading="busy[row.id] === 'forceRevoke'"
+                      @click="forceRevoke(row)"
+                    >
+                      强制回收
                     </el-button>
 
                     <!-- ③ 危险操作置末：删除（软引用，被引用也可删） -->

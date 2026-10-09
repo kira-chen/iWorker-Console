@@ -333,7 +333,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=3 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=4 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -346,6 +346,10 @@ describe('bizSystemMock —— 持久化', () => {
       () => m.withdrawBizSystem(row.id),
       () => m.publishBizSystem(row.id),
       () => m.rejectBizSystem(row.id),
+      () => m.publishBizSystem(row.id),
+      () => m.approveBizSystem(row.id),
+      // 2026-10-09 补缺口 C2：强制回收（prd-业务系统.md §3）也是写点；回收后回未发布，重新走一轮发布审核再接着停用
+      () => m.forceRevokeBizSystem(row.id, '持久化回收'),
       () => m.publishBizSystem(row.id),
       () => m.approveBizSystem(row.id),
       () => m.deactivateBizSystem(row.id),
@@ -361,7 +365,7 @@ describe('bizSystemMock —— 持久化', () => {
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 2)
     }
-    expect(harness.options.version).toBe(3)
+    expect(harness.options.version).toBe(4)
     const snap = harness.options.snapshot()
     expect(Number.isFinite(snap.bizSeq)).toBe(true)
     expect(Number.isFinite(snap.skillSeq)).toBe(true)
@@ -384,5 +388,108 @@ describe('bizSystemMock —— 持久化', () => {
     expect(created.id).toBe('biz_9000')
     const skill = await run(m.createBizSystemOwnedSkill(created.id, { name: 'x' }))
     expect(skill.skillId).toBe('sk_own_77')
+  })
+})
+
+describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () => {
+  const reason = '系统停用，紧急回收'
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  // 每例冷 import 拿全新种子；audit 与 mock 同一模块注册表
+  async function fresh() {
+    vi.resetModules()
+    const m = await import('../bizSystemMock')
+    const audit = await import('../accessAuditMock')
+    const harness = persistHarness.modules.get('bizSystem')
+    const run = async (p) => {
+      p.catch(() => {})
+      await vi.runAllTimersAsync()
+      return p
+    }
+    return { m, audit, harness, run }
+  }
+
+  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；不进审核（无待审类型）；引用清单保留', async () => {
+    const { m, harness, run } = await fresh()
+    const before = await run(m.getBizSystem('biz_2101'))
+    expect(before.revoked).toBeNull()
+    harness.persist.mockClear()
+    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.pendingAction).toBeNull()
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect(row.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(row.referencedByPositions).toEqual(before.referencedByPositions)
+    expect(harness.persist).toHaveBeenCalledTimes(1)
+    const listed = (await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101')
+    expect(listed.revoked.reason).toBe(reason)
+  })
+
+  it('写访问审计：模块 业务系统 · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+    const { m, audit, run } = await fresh()
+    const n = audit.opsRecords.length
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(audit.opsRecords.length).toBe(n + 1)
+    expect(audit.opsRecords[0]).toMatchObject({ module: '业务系统', action: '强制回收', target: '客户管理系统 CRM', detail: reason })
+  })
+
+  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
+    const { m, run } = await fresh()
+    await expect(run(m.forceRevokeBizSystem('biz_2103', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeBizSystem('biz_2102', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 待审发布
+    await run(m.deactivateBizSystem('biz_2101')) // 已发布 → 待审停用
+    await expect(run(m.forceRevokeBizSystem('biz_2101', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeBizSystem('nope', reason))).rejects.toThrow('业务系统不存在')
+  })
+
+  it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清（approveBizSystem 与审核中心落地两条路径）', async () => {
+    const { m, run } = await fresh()
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await run(m.publishBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.withdrawBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    await run(m.rejectBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    await run(m.approveBizSystem('biz_2101'))
+    let done = await run(m.getBizSystem('biz_2101'))
+    expect(done.status).toBe('PUBLISHED')
+    expect(done.revoked).toBeNull()
+    // 审核中心落地路径
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await run(m.publishBizSystem('biz_2101'))
+    expect(m.applyBizSystemReviewResult('biz_2101', undefined, false)).toBe(true)
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    expect(m.applyBizSystemReviewResult('biz_2101', undefined, true)).toBe(true)
+    done = await run(m.getBizSystem('biz_2101'))
+    expect(done.revoked).toBeNull()
+  })
+
+  // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
+  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await fresh()
+    await first.run(first.m.forceRevokeBizSystem('biz_2101', reason))
+    const snap = JSON.parse(JSON.stringify(first.harness.options.snapshot()))
+    const { m, harness, run } = await fresh()
+    harness.options.restore(snap)
+    const row = await run(m.getBizSystem('biz_2101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect((await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101').revoked.reason).toBe(reason)
+  })
+
+  it('持久化：restore 兼容缺 revoked 的旧快照行', async () => {
+    const { m, harness, run } = await fresh()
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    snap.bizRows.forEach((b) => delete b.revoked)
+    harness.options.restore(snap)
+    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeUndefined()
+    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(row.revoked.reason).toBe(reason)
   })
 })

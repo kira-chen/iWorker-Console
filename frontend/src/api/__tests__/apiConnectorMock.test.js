@@ -408,7 +408,7 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
 })
 
 describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中间态归一', () => {
-  it('10 个写点各调 persist() 恰一次；读操作不调', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调', async () => {
     await run(m.listApis())
     await run(m.getApi('api_1101'))
     await run(m.listProviderSystems())
@@ -423,6 +423,8 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       () => m.publishApi('api_1106'),
       () => m.withdrawApi('api_1106'),
       () => m.deactivateApi('api_1101'),
+      // 2026-10-09 补缺口 C2：强制回收（prd-API.md §4）也是写点；用另一条已发布种子 api_1103，不与上面的停用撞行
+      () => m.forceRevokeApi('api_1103', '持久化回收'),
       // 删除仅未发布态可用（md-API §2 L54-56，2026-09-23 待办 yuepu#7②）：api_1102 是 PENDING_REVIEW 种子，
       // 改用未发布的 api_1104 验证这一写点
       () => m.deleteApi('api_1104')
@@ -431,7 +433,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(5) // v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
+    expect(harness.options.version).toBe(6) // v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
@@ -466,5 +468,91 @@ describe('示例问题 AI 生成（demo 本地模板）', () => {
     const q3 = await run(m.aiGenerateExampleQuestion({ name: '', index: 3 }))
     expect(q3.question).toContain('这个 API')
     expect(q3.question.length).toBeLessThanOrEqual(60)
+  })
+})
+
+describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
+  const reason = '接口下线，紧急回收'
+  const auditOps = async () => (await import('../accessAuditMock')).opsRecords
+
+  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；立即生效不进审核（无待审类型）', async () => {
+    const before = await run(m.getApi('api_1101'))
+    expect(before.revoked).toBeNull()
+    const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.pendingAction).toBeNull()
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
+    const listed = (await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101')
+    expect(listed.revoked.reason).toBe(reason)
+    expect(harness.persist).toHaveBeenCalledTimes(1) // 2026-10-09 补缺口 C2：回收是写点，恰落盘一次
+  })
+
+  it('引用清单（技能 / 岗位）原样保留', async () => {
+    const before = await run(m.getApi('api_1101'))
+    expect(before.referencedBySkills.length).toBeGreaterThan(0)
+    expect(before.referencedByPositions.length).toBeGreaterThan(0)
+    const after = await run(m.forceRevokeApi('api_1101', reason))
+    expect(after.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(after.referencedByPositions).toEqual(before.referencedByPositions)
+  })
+
+  it('写访问审计：模块 API · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+    const ops = await auditOps()
+    const n = ops.length
+    await run(m.forceRevokeApi('api_1101', reason))
+    expect(ops.length).toBe(n + 1)
+    expect(ops[0]).toMatchObject({ module: 'API', action: '强制回收', target: '报销单查询', detail: reason })
+  })
+
+  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
+    await expect(run(m.forceRevokeApi('api_1104', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeApi('api_1102', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 待审发布
+    await run(m.deactivateApi('api_1103')) // 已发布 → 待审停用
+    await expect(run(m.forceRevokeApi('api_1103', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeApi('nope', reason))).rejects.toThrow('API 不存在')
+    await run(m.forceRevokeApi('api_1101', reason))
+    await expect(run(m.forceRevokeApi('api_1101', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
+  })
+
+  it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清并回已发布', async () => {
+    await run(m.forceRevokeApi('api_1101', reason))
+    await run(m.publishApi('api_1101'))
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.withdrawApi('api_1101'))
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.publishApi('api_1101'))
+    expect(m.applyApiReviewResult('api_1101', undefined, false)).toBe(true)
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.publishApi('api_1101'))
+    expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+    const done = await run(m.getApi('api_1101'))
+    expect(done.status).toBe('PUBLISHED')
+    expect(done.revoked).toBeNull()
+  })
+
+  // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
+  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    await run(m.forceRevokeApi('api_1101', reason))
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    vi.resetModules()
+    m = await import('../apiConnectorMock')
+    harness = persistHarness.modules.get('apiConnector')
+    harness.options.restore(snap)
+    const row = await run(m.getApi('api_1101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect((await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101').revoked.reason).toBe(reason)
+  })
+
+  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 视为空）', async () => {
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    snap.apis.forEach((a) => delete a.revoked)
+    harness.options.restore(snap)
+    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告：低风险缺陷，旧快照实际会被版本号 bump 丢弃）
+    expect((await run(m.getApi('api_1101'))).revoked).toBeUndefined()
+    const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.revoked.reason).toBe(reason)
   })
 })

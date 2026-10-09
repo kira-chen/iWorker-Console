@@ -8,6 +8,7 @@ import {
 } from '../positionAssignmentMock'
 import { __resetPositionMock } from '../positionMock'
 import { updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 
 // vitest 用例随机顺序执行：每例前重置三侧种子（岗位名实时从 positionMock 解析；
 // 2026-09-23 待办 yuepu#11③ 起用户列表同源自 adminUserMock，须一并重置）
@@ -15,6 +16,7 @@ beforeEach(() => {
   __resetOrgMock()
   __resetPositionMock()
   __resetPositionAssignmentMock()
+  resetAccessAuditMock()
 })
 
 const ALL_USERNAMES = [
@@ -124,5 +126,52 @@ describe('positionAssignmentMock · 持久化读回（mockPersist v2；写点 se
     const fresh = await import('../positionAssignmentMock')
     const { list } = await fresh.listPositionAssignments()
     expect(list.find((r) => r.userId === 203)).toMatchObject({ positionId: 402, positionName: '客户成功岗' })
+  })
+})
+
+describe('positionAssignmentMock · 写访问审计（prd.访问审计.md §6.2「岗位分配记录」、§6.5.3）', () => {
+  const assignRecs = () => opsRecords.filter((r) => r.live && r.module === '岗位分配')
+
+  it('首绑记「分配」：target=用户名，detail=「未绑定 → 新岗位」，objectId=用户 id，meta 带前后岗位（原岗位 null）', async () => {
+    await setUserPosition(203, 402) // chenyu 原未绑定
+    expect(assignRecs()).toHaveLength(1)
+    expect(assignRecs()[0]).toMatchObject({
+      module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 客户成功岗', objectId: 203,
+      meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 402, name: '客户成功岗' } }
+    })
+    expect(assignRecs()[0].operator).toBeTruthy()
+  })
+
+  it('换绑记「变更」：detail=「原岗位 → 新岗位」，meta 带原岗位名称与标识', async () => {
+    await setUserPosition(201, 402) // zhangwei 401 经营分析岗 → 402 客户成功岗
+    expect(assignRecs()[0]).toMatchObject({
+      action: '变更', target: 'zhangwei', detail: '经营分析岗 → 客户成功岗', objectId: 201,
+      meta: { fromPosition: { id: 401, name: '经营分析岗' }, toPosition: { id: 402, name: '客户成功岗' } }
+    })
+  })
+
+  it('保存前后没变化不写记录（同岗位重复保存）', async () => {
+    await setUserPosition(201, 401)
+    expect(assignRecs()).toHaveLength(0)
+  })
+
+  it('清除绑定（改回未绑定）本期不写记录', async () => {
+    await setUserPosition(201, null)
+    expect(assignRecs()).toHaveLength(0)
+  })
+
+  it('批量绑定按用户逐条写：N 名用户 N 条（混合分配 / 变更 / 无变化）', async () => {
+    // 批量页对每个选中用户各调一次 setUserPosition
+    await Promise.all([203, 206, 201, 202].map((id) => setUserPosition(id, 402))) // 203/206 分配；201 变更；202 本就是 402 无变化
+    const recs = assignRecs()
+    expect(recs).toHaveLength(3)
+    expect(recs.filter((r) => r.action === '分配').map((r) => r.target).sort()).toEqual(['chenyu', 'sun.xin'])
+    expect(recs.filter((r) => r.action === '变更').map((r) => r.target)).toEqual(['zhangwei'])
+  })
+
+  it('校验失败（岗位不存在 / 用户不存在）不写记录', async () => {
+    await expect(setUserPosition(203, 99999)).rejects.toBeTruthy()
+    await expect(setUserPosition(99999, 402)).rejects.toBeTruthy()
+    expect(assignRecs()).toHaveLength(0)
   })
 })

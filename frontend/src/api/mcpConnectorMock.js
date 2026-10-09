@@ -20,6 +20,9 @@ import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
+import { appendOpsRecord } from './accessAuditMock'
+import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 
@@ -143,6 +146,8 @@ const mkMcp = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null, // 最近发布审核通过时间（PRD §三.9；从未发布为 null）
+  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeMcpService）
+  revoked: null,
   ...over
 })
 
@@ -294,7 +299,7 @@ const persist = attachPersist('mcpConnector', {
   //    旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种
   // v8：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
   //    旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种
-  version: 8,
+  version: 9,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -631,7 +636,10 @@ function setAgg(id, status) {
   // 发布状态变更同时刷新最近更新时间（2026-09-28 待办 yuepu#45 负责人拍板；此前只有保存才刷新，停用审核通过后列表时间原地不动）
   if (m) m.updatedAt = nowIso()
   // 2026-09-04 PRD-20260903 对齐：转入已发布时刷新最近发布时间（publishedAt 出参；从未发布保持 null → 界面显「—」）
-  if (status === 'PUBLISHED' && m) m.publishedAt = nowIso()
+  if (status === 'PUBLISHED' && m) {
+    m.publishedAt = nowIso()
+    m.revoked = null // 重新发布通过 → 清「已回收」
+  }
   persist()
   return { affected: (findMcp(id)?.tools || []).length, skipped: 0 }
 }
@@ -705,6 +713,7 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
   m.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   if (approved && !isDelist) {
     m.publishedAt = nowIso()
+    m.revoked = null // 重新发布审核通过 → 清「已回收」（驳回 / 撤回不清）
     pubAgg[m.id] = 'PUBLISHED'
   } else if (approved) {
     pubAgg[m.id] = 'NOT_PUBLISHED'
@@ -733,6 +742,26 @@ export async function reviewMcpService(id, payload = {}) {
     return { affected: (m.tools || []).length, skipped: 0 }
   }
   return setAgg(id, payload.approve ? (wasDelist ? 'DELISTED' : 'PUBLISHED') : 'REJECTED')
+}
+
+/**
+ * 强制回收（md §3.6.1）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
+ * 仅「已发布且无审核中操作」可回收；聚合态回到 NOT_PUBLISHED（保留 publishedAt），写 revoked，
+ * 引用清单（referencedByPositions / referencedBySkills）原样保留；写访问审计「管理端操作」。
+ * @param {string} id
+ * @param {string} reason 回收原因（必填，由 askForceRevoke 收集）
+ */
+export async function forceRevokeMcpService(id, reason) {
+  await delay(250)
+  const m = findMcp(id)
+  if (!m) throw err('MCP 不存在')
+  if (pubAgg[m.id] !== 'PUBLISHED' || m.pendingAction) throw err('MCP状态已变化，请刷新后重试')
+  pubAgg[m.id] = 'NOT_PUBLISHED'
+  m.revoked = makeRevokedInfo(reason)
+  m.updatedAt = nowIso()
+  appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
+  persist()
+  return toRow(m)
 }
 
 /**

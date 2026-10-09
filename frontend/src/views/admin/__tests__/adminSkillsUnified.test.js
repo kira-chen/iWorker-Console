@@ -27,6 +27,9 @@ import { passthrough } from './helpers/commonStubs'
  * - 分类筛选固定 11 类（fieldDict 同源）对全部类型开放，类型切换不再清分类；
  * - 查看/编辑同标签路由跳转（router.push；查看 = 编辑路由 + ?view=1），不再 window.open 新标签；
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
+ *
+ * 2026-10-09 对齐 prd.技能.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：文末 describe 补【强制回收】点击流程
+ * （askForceRevoke 桩，真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  */
 
 // 真实端点桩：demo 路径下一次都不该被调到（每条用例末尾靠 vi.clearAllMocks 归零）
@@ -46,12 +49,19 @@ vi.mock('@/api/request', () => ({
 
 // 真 unifiedSkillMock，仅把 listUnifiedSkills 包一层 vi.fn 以便断请求次数 / 下发参数（行为不变）
 const listSpy = vi.fn()
+const forceRevokeSpy = vi.fn()
 vi.mock('@/api/unifiedSkillMock', async (importOriginal) => {
   const actual = await importOriginal()
   listSpy.mockImplementation(actual.listUnifiedSkills)
-  return { ...actual, listUnifiedSkills: (...a) => listSpy(...a) }
+  // 强制回收接口同样包一层 spy（默认透传真 mock，个别用例 mockRejectedValueOnce 等改写）
+  forceRevokeSpy.mockImplementation(actual.forceRevokeSkill)
+  return { ...actual, listUnifiedSkills: (...a) => listSpy(...a), forceRevokeSkill: (...a) => forceRevokeSpy(...a) }
 })
 const skillMock = await import('@/api/unifiedSkillMock')
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 2026-09-01：分类选项改走 fieldDict 同源字典（固定 11 类）。
 const listFieldDictSpy = vi.fn(() => Promise.resolve({ skillCategory: [{ name: '办公效率' }] }))
@@ -144,6 +154,8 @@ afterEach(() => {
   skillMock._reset('sk_303', { pendingAction: null, pendingVersion: '', pendingReleaseNotes: '' })
   skillMock._reset('sk_302', { pendingAction: 'publish', pendingVersion: 'v1.5.0', pendingReleaseNotes: '补充经营异常归因说明' })
   skillMock._reset('sk_308', { pendingAction: 'publish', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首次发布' })
+  // 强制回收端到端用例动过 303：恢复为已发布且无回收信息
+  skillMock._reset('sk_303', { status: 'published', delisted: false, revoked: null })
 })
 
 /** 真等 mock 的 delay（≤120ms）落库，再冲刷渲染队列。 */
@@ -740,10 +752,10 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md §二.3.1�
     expect(edit.getAttribute('title')).toBe('审核中不可编辑')
   })
 
-  it('已发布 → 查看 / 编辑 / 停用 / 版本管理 4 个；【编辑】可点、无 title（md §二.3.1「已发布：【查看】【编辑】【停用】【版本管理】，共 4 个按钮」）', async () => {
+  it('已发布 → 查看 / 编辑 / 停用 / 强制回收 / 版本管理 5 个；【编辑】可点、无 title（md §二.3.1「已发布：【查看】【编辑】【停用】【强制回收】【版本管理】，共 5 个按钮」）', async () => {
     const { host } = await mountRows([published])
     const cell = opsCellOf(host, '已发布技能')
-    expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '版本管理'])
+    expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
     expect(btn(cell, '编辑').disabled).toBe(false)
     expect(btn(cell, '编辑').getAttribute('title') || '').toBe('')
     // 最新版本列展示当前已发布版本号（md §二.1「最新版本：展示当前已发布版本号」）
@@ -850,5 +862,119 @@ describe('版本管理适配器（md §四）+ 最近更新时间列头排序（
     headBtn.click()
     await nextTick()
     expect(vm.query.sort).toBe('desc')
+  })
+})
+
+// PRD 技能 §3.5.1：已发布行【强制回收】→ 回收弹窗（原因必填）→ 二次确认 → 立即生效、不进审核；引用关系保留，回收后回「未发布」并带「已回收」标记
+describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、原因必填、两步确认）', () => {
+  const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
+  const rowStubs = {
+    ...stubs,
+    'el-table': tableStub,
+    'el-table-column': tableColStub,
+    'el-button': { name: 'el-button', props: ['disabled', 'loading'], template: '<button :disabled="disabled"><slot /></button>' }
+  }
+  /** 挂载 → 等真 mock 首屏列表回来（否则稍后返回的列表会盖掉注入的行）→ 可选注入行。 */
+  async function mountAndInject(rowsData) {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp(Page)
+    Object.entries(rowStubs).forEach(([k, v]) => app.component(k, v))
+    app.mount(host)
+    mountedApp = app
+    mountedHost = host
+    await settle()
+    const vm = app._instance.setupState
+    if (rowsData) {
+      vm.rows = rowsData
+      await nextTick()
+      await nextTick()
+    }
+    return { vm, host }
+  }
+  const ready = { displayCategoryId: '办公效率', icon: '▤', description: 'd', exampleQuestion: 'q', hasSkillMd: true }
+  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+  const draftRow = { ...rowPlatform, ...ready, id: 'r_draft', name: '未发布技能' }
+  const rowOf = (host, name) => [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name))
+  const opBtn = (host, name, text) =>
+    [...rowOf(host, name).querySelectorAll('.el-table-column[data-label="操作"] button')].find((b) => b.textContent.trim() === text)
+  const stateCell = (host, name) => rowOf(host, name).querySelector('.el-table-column[data-label="状态"]')
+
+  it('端到端：已发布的会议纪要整理点【强制回收】、拿到原因 → 接口带原因、toast「已强制回收」、列表重取，该行变「未发布」并带回收信息', async () => {
+    askForceRevoke.mockResolvedValue('技能内含违规内容')
+    const { vm, host } = await mountAndInject()
+    expect(stateCell(host, '会议纪要整理').textContent).toContain('已发布')
+    expect(stateCell(host, '会议纪要整理').querySelector('.revoked-tag')).toBeNull()
+    const before = listSpy.mock.calls.length
+    opBtn(host, '会议纪要整理', '强制回收').click()
+    await settle(450) // 回收写点 + 随后的列表重取各带 60~120ms 的 mock 延迟
+    expect(forceRevokeSpy).toHaveBeenCalledWith('sk_303', { reason: '技能内含违规内容' })
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.success).toHaveBeenCalledWith('已强制回收')
+    expect(listSpy.mock.calls.length).toBeGreaterThan(before)
+    // 重取后的新行数据（共享行桩按 id 复用旧行作用域，DOM 不随之刷新，故读页面状态）：回「未发布」并带回收信息
+    const row = rowById(vm, 'sk_303')
+    expect(vm.displayStateLabel(row)).toBe('未发布')
+    expect(row.revoked).toMatchObject({ reason: '技能内含违规内容' })
+    expect(realPost).not.toHaveBeenCalled()
+  })
+
+  it('弹窗入参：类型「技能」、对象名、引用数（行上 refCount=3）、引用方按技能类型取（市场技能 → 专家，岗位私有 → 岗位，口径同列表「引用情况」）', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    const { host } = await mountAndInject([publishedRow])
+    opBtn(host, '已发布技能', '强制回收').click()
+    await settle(0)
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '专家' })
+  })
+
+  it('岗位私有技能的回收弹窗：引用方描述为「岗位」，不是写死的「岗位 / 专家」（/prd-import Q6，口径同列表「引用情况」）', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2 }
+    const { host } = await mountAndInject([positionPublished])
+    opBtn(host, '岗位私有已发布技能', '强制回收').click()
+    await settle(0)
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '岗位私有已发布技能', refCount: 2, refText: '岗位' })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    const { host } = await mountAndInject([publishedRow])
+    const before = listSpy.mock.calls.length
+    opBtn(host, '已发布技能', '强制回收').click()
+    await settle(0)
+    const { ElMessage } = await import('element-plus')
+    expect(forceRevokeSpy).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(listSpy.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文（如「技能状态已变化，请刷新后重试」）；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    const { host } = await mountAndInject([publishedRow])
+    const { ElMessage } = await import('element-plus')
+    forceRevokeSpy.mockRejectedValueOnce(new Error('技能状态已变化，请刷新后重试'))
+    opBtn(host, '已发布技能', '强制回收').click()
+    await settle(0)
+    expect(forceRevokeSpy).toHaveBeenCalledWith('r_pub', { reason: '原因' })
+    expect(ElMessage.error).toHaveBeenCalledWith('技能状态已变化，请刷新后重试')
+    forceRevokeSpy.mockRejectedValueOnce(new Error(''))
+    opBtn(host, '已发布技能', '强制回收').click()
+    await settle(0)
+    expect(ElMessage.error).toHaveBeenLastCalledWith('操作失败')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行、从未回收的未发布行都没有', async () => {
+    const revoked = { reason: '技能内含违规内容', at: '2026-10-09 09:30', operator: 'admin' }
+    const { host } = await mountAndInject([
+      { ...draftRow, id: 'r_rev', name: '已回收技能', revoked },
+      publishedRow,
+      draftRow
+    ])
+    const tag = stateCell(host, '已回收技能').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('content')).toBe('回收原因：技能内含违规内容（admin · 2026-10-09 09:30）')
+    expect(stateCell(host, '已发布技能').querySelector('.revoked-tag')).toBeNull()
+    expect(stateCell(host, '未发布技能').querySelector('.revoked-tag')).toBeNull()
   })
 })

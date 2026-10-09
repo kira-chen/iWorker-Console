@@ -56,6 +56,9 @@ function makeChannelSkillApi(base) {
       USE_MOCK ? mock.withdrawPublish(skillId) : request.delete(`${base}/${skillId}/publish`, W),
     // 技能级停用（V100：提交停用审核，审核通过前客户端仍可使用）/ 重新上架
     delist: (skillId) => (USE_MOCK ? mock.delistSkill(skillId) : request.post(`${base}/${skillId}/delist`, {}, W)),
+    // 强制回收（PRD 技能 §3.5.1）：不走审核、不受引用拦截；payload: { reason }
+    forceRevoke: (skillId, payload) =>
+      USE_MOCK ? mock.forceRevokeSkill(skillId, payload) : request.post(`${base}/${skillId}/force-revoke`, payload, W),
     relist: (skillId) => (USE_MOCK ? mock.relistSkill(skillId) : request.post(`${base}/${skillId}/relist`, {}, W)),
     // 版本历史 + 单版本禁用/启用（真实路径 target ∈ FDE_WORKBENCH | USER_END；mock 单轨忽略 target）
     listSnapshots: (skillId, target) =>

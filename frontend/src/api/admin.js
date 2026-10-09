@@ -132,6 +132,11 @@ export function delistBizSystem(id, target) {
   if (BIZ_MOCK) return bizMock.deactivateBizSystem(id)
   return request.post(`/fde/connectors/biz-systems/${id}/delist`, { target }, W)
 }
+// 强制回收（prd-业务系统.md §3）：立即生效、不进审核中心。
+export function forceRevokeBizSystem(id, reason) {
+  if (BIZ_MOCK) return bizMock.forceRevokeBizSystem(id, reason)
+  return request.post(`/fde/connectors/biz-systems/${id}/force-revoke`, { reason }, W)
+}
 // 重新上架（FDE，某目标 DELISTED→PUBLISHED）。
 export function relistBizSystem(id, target) {
   return request.post(`/fde/connectors/biz-systems/${id}/relist`, { target }, W)

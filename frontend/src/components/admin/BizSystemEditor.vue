@@ -31,6 +31,7 @@
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import RevokedBanner from '@/components/admin/RevokedBanner.vue'
 import IconField from '@/components/common/IconField.vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -108,6 +109,8 @@ const pagesOpen = ref(false)
 const referencedBySkills = ref([])
 // 底部弱化时间行（B13）：创建/最近更新/最近发布（未发布 —）
 const times = reactive({ createdAt: null, updatedAt: null, publishedAt: null })
+// 强制回收信息（顶部红色提示条用；null=未被回收）
+const revokedInfo = ref(null)
 const fieldErrors = reactive({})
 
 /* ---------- N8（第三类，V72）：业务系统专属技能（BQ1 保留：本系统专用技能的列表 / 从零新建 / 编辑 / 删除） ----------
@@ -223,6 +226,7 @@ function resetForm() {
   times.createdAt = null
   times.updatedAt = null
   times.publishedAt = null
+  revokedInfo.value = null
   ownedSkills.value = []
   ownedLoadError.value = false
   clearErrors()
@@ -259,6 +263,7 @@ async function load() {
     times.createdAt = d.createdAt || null
     times.updatedAt = d.updatedAt || null
     times.publishedAt = d.publishedAt || null
+    revokedInfo.value = d.revoked || null
     // N8：并行拉取该系统的专属技能（失败置错误态，不阻断主表编辑）。
     // 查看态不拉（2026-09-12 审计 K45）：专属技能区仅编辑态展示（md §三.4 L120），只读态多一次无用请求。
     if (!props.readonly) loadOwnedSkills()
@@ -449,6 +454,8 @@ async function save() {
   >
     <!-- bodyRef 保留：scrollToFirstError 以此为根查询首个错误元素（回落 document 会跨出本抽屉） -->
     <div ref="bodyRef" class="ad-body">
+      <!-- 强制回收提示条（prd-业务系统.md §3）：查看 / 编辑抽屉顶部红色，未被回收不渲染 -->
+      <RevokedBanner v-if="isEdit" label="业务系统" :info="revokedInfo" />
       <!-- 顶部提示行（B9，原型 connector-editor-note 逐字） -->
       <div class="ad-note">业务系统通过登录态托管供技能执行办事操作，可配置最多 20 条业务页入口。</div>
 

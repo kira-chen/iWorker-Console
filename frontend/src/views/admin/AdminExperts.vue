@@ -28,10 +28,13 @@ import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
+import { askForceRevoke } from '@/utils/forceRevoke'
 import {
   listExperts,
   deleteExpert,
   unpublishExpert,
+  forceRevokeExpert,
   publishExpert,
   withdrawExpert,
   getExpertNextVersionLabel,
@@ -288,6 +291,26 @@ async function stopExpert(row) {
     busyId.value = null
   }
 }
+
+/**
+ * 强制回收（PRD 专家 §3.5.1）：与【停用】并列的紧急下线——不走审核、立即生效。
+ * 回收弹窗（必填原因）→ 二次确认 → 调接口；成功后刷新列表（回「未发布」并带「已回收」标记）。
+ */
+async function forceRevokeFromList(row) {
+  if (busyId.value != null) return
+  const reason = await askForceRevoke({ typeLabel: '专家', name: row.name, refCount: 0 })
+  if (reason == null) return
+  busyId.value = row.id
+  try {
+    await forceRevokeExpert(row.id, { reason })
+    ElMessage.success('已强制回收')
+    fetchList()
+  } catch (e) {
+    ElMessage.error(e?.message || '强制回收失败')
+  } finally {
+    busyId.value = null
+  }
+}
 </script>
 
 <template>
@@ -358,9 +381,10 @@ async function stopExpert(row) {
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+          <el-table-column label="状态" :width="COL.STATUS + 56" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
+              <RevokedTag :info="row.revoked" />
             </template>
           </el-table-column>
           <el-table-column label="专家类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
@@ -420,7 +444,7 @@ async function stopExpert(row) {
           </el-table-column>
           <!-- 操作列（照原型 expertActions）：查看 + 编辑（审核中置灰）恒显；
                审核中→撤回；未发布→发布+删除；已发布→停用+版本管理。 -->
-          <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
+          <el-table-column label="操作" :width="opsWidth(5) + 32" fixed="right">
             <template #default="{ row }">
               <div class="tbl-ops">
                 <el-button link type="primary" @click="openView(row)">查看</el-button>
@@ -461,6 +485,13 @@ async function stopExpert(row) {
                     :loading="busyId === row.id"
                     @click="stopExpert(row)"
                   >停用</el-button>
+                  <!-- 强制回收：与停用并列的紧急下线，无审核（PRD 专家 §3.5.1） -->
+                  <el-button
+                    link
+                    type="danger"
+                    :loading="busyId === row.id"
+                    @click="forceRevokeFromList(row)"
+                  >强制回收</el-button>
                   <el-button link type="primary" @click="openVersion(row)">版本管理</el-button>
                 </template>
               </div>
