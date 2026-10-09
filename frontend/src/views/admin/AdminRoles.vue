@@ -116,13 +116,16 @@ function scopeLines(modules) {
 const editorVisible = ref(false)
 const editingRole = ref(null)
 
+// 每次打开抽屉都重拉权限树：上次加载失败时，关闭重开才能重试（md 角色 §三.5「关闭后重新打开会再次加载权限选项」）
 function openCreate() {
   editingRole.value = null
   editorVisible.value = true
+  loadPermissionTree()
 }
 function openEdit(row) {
   editingRole.value = { ...row }
   editorVisible.value = true
+  loadPermissionTree()
 }
 function onSaved() {
   editorVisible.value = false

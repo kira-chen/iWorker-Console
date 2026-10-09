@@ -126,6 +126,10 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(useAdminList(vi.fn()).pageSize.value).toBe(DYN_DEFAULT)
   })
 
+  it('极矮窗口（可用高度 330–391px，算出 0 条）每页条数夹到下限 5，不落到 10（md 岗位 §列表「最少 5 条」；yuepu#65②）', () => {
+    for (const h of [330, 360, 391, 392, 453]) expect(computeDynPageSize(h)).toBe(DYN_PAGE_MIN)
+  })
+
   it("paged:'client'：不下发 page/size，取回全量后本地切片，total 取全量长度", async () => {
     const all = Array.from({ length: 7 }, (_, i) => ({ id: i + 1 }))
     const fetcher = vi.fn(() => Promise.resolve({ list: all, total: 7 }))
