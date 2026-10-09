@@ -882,7 +882,7 @@ export async function forceRevokeApi(id, reason) {
   await delay(250)
   const a = findApi(id)
   if (!a) throw err('API 不存在')
-  if (a.status !== 'PUBLISHED' || a.pendingAction) throw err('状态已变化，请刷新后重试')
+  if (a.status !== 'PUBLISHED' || a.pendingAction) throw err('API状态已变化，请刷新后重试')
   a.status = 'NOT_PUBLISHED'
   a.revoked = makeRevokedInfo(reason)
   a.updatedAt = nowIso()
