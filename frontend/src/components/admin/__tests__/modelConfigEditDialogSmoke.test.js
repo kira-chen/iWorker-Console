@@ -214,9 +214,9 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
 })
 
 /* 2026-10-08 /test-audit 补缺口：对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md §三.8
- * 「模型名称重复：提示名称已存在，并定位到模型名称位置」。已登记疑似缺陷 yuepu#63⑦：保存时 updateModel 回
- * { field:'name' } 后，代码只 `validateField('name')` 走本地规则（名称非空 → 通过）并 toast，名称项不出红字、也不聚焦。
- * 前提（toast 展示失败原因、接口确被调）拆普通 it；缺陷断言单独 it.fails，修好后改回 it。 */
+ * 「模型名称重复：提示名称已存在，并定位到模型名称位置」。原登记疑似缺陷 yuepu#63⑦（保存时 updateModel 回
+ * { field:'name' } 后名称项不出红字）已修并转正：下面的红字用例与「改名后红字消失」均为正式回归用例，
+ * 文件里已没有 it.fails；「toast 展示失败原因、接口确被调」的前提用例仍保留为普通 it。 */
 describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 · yuepu#63⑦）', () => {
   const DRAFT = {
     id: 'md_x', name: '重名模型', providerName: 'deepseek', category: 'TEXT', icon: '▦',
@@ -249,6 +249,18 @@ describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 �
     await saveWithDupName()
     const red = nameItem().querySelector('.el-form-item__error')?.textContent ?? ''
     expect(red).toContain('已存在')
+  })
+
+  it('重名红字出现后改名 → 红字消失（改名即清服务端回的重名提示）', async () => {
+    await saveWithDupName()
+    expect(nameItem().querySelector('.el-form-item__error')?.textContent ?? '').toContain('已存在') // 前提：红字确已出现
+    // 只改值、不失焦：排除「失焦触发本地校验顺手清红字」的干扰，专守「改名即清」这条
+    const nameInput = nameItem().querySelector('input')
+    nameInput.value = '另一个模型名'
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await settleErrors()
+    expect(nameItem().querySelector('.el-form-item__error')).toBeNull()
+    expect(errorTexts()).toEqual([])
   })
 })
 
