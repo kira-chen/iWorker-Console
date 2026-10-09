@@ -13,7 +13,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  * 真实挂载（真 Element Plus + 真 el-dialog / el-tabs / el-table / el-checkbox / StatusTag），只 mock api 层；
  * ElMessage / ElMessageBox 用 spy 拦截。el-dialog append-to-body → 从 document.body 取节点。
  * 组件的 visible watcher 非 immediate，用持 ref 的宿主组件驱动 false→true。
- * 不写：md §三.3.5「已驳回 / 已撤回」展示（代码无此两态，记代码缺陷低）。
+ * 历史申请覆盖「已驳回 / 已撤回」和申请详情查看。
  */
 
 const api = { listRuntimeSpecUsers: vi.fn(), assignRuntimeSpecUsers: vi.fn(), unassignRuntimeSpecUser: vi.fn() }
@@ -34,11 +34,15 @@ const USERS = [
   user({ userId: 207, username: 'liuqiang', displayName: '刘强', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT' }),
   user({ userId: 211, username: 'wujie', displayName: '吴杰', status: 'disabled', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT' })
 ]
+const APPLICATIONS = [
+  { id: 'a1', username: 'sun.xin', displayName: '孙欣', approval: 'REJECTED', submittedAt: '2026-08-28 10:20', updatedAt: '2026-08-28 14:05', reason: '资源申请不符合当前任务' },
+  { id: 'a2', username: 'liuqiang', displayName: '刘强', approval: 'WITHDRAWN', submittedAt: '2026-08-27 09:40', updatedAt: '2026-08-27 11:15', reason: '用户主动撤回' }
+]
 
 let mounted, savedSpy, confirmSpy, successSpy, errorSpy
 beforeEach(() => {
   vi.clearAllMocks()
-  api.listRuntimeSpecUsers.mockResolvedValue({ list: USERS.map((u) => ({ ...u })), total: USERS.length })
+  api.listRuntimeSpecUsers.mockResolvedValue({ list: USERS.map((u) => ({ ...u })), total: USERS.length, applications: APPLICATIONS })
   savedSpy = vi.fn()
   confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
   successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }))
@@ -65,7 +69,7 @@ async function open(spec = SPEC) {
   return document.body.querySelector('.el-dialog')
 }
 // 两个页签的表格同时在 DOM 里（非激活页签 v-show 隐藏），「生效用户与待审」取第一个 tab-pane 内的行
-const rowsOf = (dlg) => [...dlg.querySelectorAll('.el-tab-pane')[0].querySelectorAll('.el-table__body tr.el-table__row')]
+const rowsOf = (dlg) => [...dlg.querySelectorAll('.el-tab-pane')[0].querySelector('.el-table').querySelectorAll('.el-table__body tr.el-table__row')]
 const rowByName = (dlg, name) => rowsOf(dlg).find((r) => r.querySelector('.rsu-user-name')?.textContent.trim() === name)
 const linkBtn = (row) => row.querySelector('.el-button')
 async function switchToAddTab(dlg) {
@@ -101,6 +105,9 @@ describe('RuntimeSpecUserDialog · 配置范围（md §三.3.4 / §三.3.5）', 
     expect(hejing.textContent).toContain('个人申请')
     expect(hejing.textContent).toContain('待审批')
     expect(linkBtn(hejing).textContent.trim()).toBe('撤回')
+    expect(dlg.querySelector('.rsu-history').textContent).toContain('已驳回')
+    expect(dlg.querySelector('.rsu-history').textContent).toContain('已撤回')
+    expect(dlg.querySelector('.rsu-history').textContent).toContain('查看申请')
 
     // 第一页签底部只有【关闭】
     expect([...dlg.querySelectorAll('.el-dialog__footer .el-button')].map((b) => b.textContent.trim())).toEqual(['关闭'])
