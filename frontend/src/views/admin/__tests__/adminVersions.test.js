@@ -317,6 +317,18 @@ describe('AdminVersions · 发布 / 停用（提交审核）与撤回（PRD §�
     expect(api.listVersions).toHaveBeenCalledTimes(1)
   })
 
+  it('撤回时申请已被审核：提示「该申请已被审核，无法撤回，请查看最新审核结果」并刷新列表（md §九；yuepu#64②）', async () => {
+    api.listVersions.mockResolvedValue({ list: [...ROWS, MAC_PENDING], total: ROWS.length + 1 })
+    api.withdrawVersion.mockRejectedValue(new Error('该申请已被审核，无法撤回，请查看最新审核结果'))
+    await mount()
+    api.listVersions.mockClear()
+    clickOp(rowOf('Mac', 'v1.2.0'), '撤回')
+    await flushAll()
+    expect(ElMessage.error).toHaveBeenCalledWith('该申请已被审核，无法撤回，请查看最新审核结果')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(api.listVersions).toHaveBeenCalledTimes(1)
+  })
+
   it('撤回发布申请：曾发布过的版本（编辑已冻结）提示改为「可重新提交」，不再说「可继续编辑」', async () => {
     const ever = { ...MAC_PENDING, publishedAt: '2026-08-01T10:00:00+08:00', publishedBy: 'zhang.wei' }
     api.listVersions.mockResolvedValue({ list: [...ROWS, ever], total: ROWS.length + 1 })

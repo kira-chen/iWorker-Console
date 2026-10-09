@@ -390,7 +390,7 @@ describe('撤回审核中的申请', () => {
       target: 'Mac v1.2.0',
       detail: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。'
     })
-    await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该版本当前没有审核中的申请' })
+    await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该申请已被审核，无法撤回，请查看最新审核结果' })
     await expect(withdrawVersion(9999)).rejects.toMatchObject({ message: '版本不存在或已被删除' })
   })
 })

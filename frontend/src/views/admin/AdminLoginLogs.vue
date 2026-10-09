@@ -380,11 +380,11 @@ function opsGoto(row) {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-select v-model="dlResult" placeholder="全部下载结果" clearable class="lt-filter">
+        <el-select v-model="dlResult" placeholder="全部结果" clearable class="lt-filter">
           <el-option label="成功" value="SUCCESS" />
           <el-option label="失败" value="FAILED" />
         </el-select>
-        <el-select v-model="dlSource" placeholder="全部产物来源" clearable class="lt-filter">
+        <el-select v-model="dlSource" placeholder="全部来源" clearable class="lt-filter">
           <el-option label="会话产物" value="会话产物" />
           <el-option label="知识库·本地产物" value="知识库·本地产物" />
           <el-option label="知识库·我的资料" value="知识库·我的资料" />

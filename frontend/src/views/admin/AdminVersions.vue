@@ -159,7 +159,12 @@ async function withdraw(row) {
   )
   if (!ok) return
   await withBusy(row, 'withdraw', async () => {
-    await withdrawVersion(row.id)
+    try {
+      await withdrawVersion(row.id)
+    } catch (e) {
+      refresh() // 撤回时申请已被审核：提示后刷新列表，让行状态与最新审核结果一致（md §九）
+      throw e
+    }
     ElMessage.success(`已撤回${kind}申请`)
     refresh()
   })
