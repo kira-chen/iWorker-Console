@@ -174,9 +174,11 @@ function toggleOpsSort() {
   opsSortOrder.value = opsSortOrder.value === 'descending' ? 'ascending' : 'descending'
 }
 
-const opsFiltered = computed(() => {
+// 管理端操作记录同样是全量内存数据，走 useAdminList 的 'client' 分页（md §6「列表根据页面高度动态分页」，同下载页签做法）：
+// 筛选 + 排序在 clientPipeline 里对全量做，之后才按页切片；筛选 / 排序项一变就回第 1 页（下方 watch）。
+function opsPipeline(all) {
   const q = opsKeyword.value.toLowerCase()
-  const base = opsRecords.filter(
+  const base = all.filter(
     (r) =>
       (!q || r.operator.toLowerCase().includes(q) || r.target.toLowerCase().includes(q)) &&
       (!opsModule.value || r.module === opsModule.value) &&
@@ -188,7 +190,11 @@ const opsFiltered = computed(() => {
       ? b.time.localeCompare(a.time)
       : a.time.localeCompare(b.time)
   )
-})
+}
+const opsList = useAdminList(() => Promise.resolve(opsRecords), { paged: 'client', clientPipeline: opsPipeline })
+const { rows: opsRows, total: opsTotal, page: opsPage, pageSize: opsPageSize } = opsList
+watch([opsKeyword, opsModule, opsAction, opsSortOrder, opsDateRange], opsList.search, { deep: true })
+onMounted(opsList.reload)
 
 // 原型 actColors / resColor 映射到本地 tag 样式类
 const RES_CLS = { SUCCESS: 'tag-green', FAILED: 'tag-red' }
@@ -464,7 +470,7 @@ function opsGoto(row) {
       </ListToolbar>
 
       <div class="table-wrap">
-        <el-table :data="opsFiltered" class="ll-table">
+        <el-table :data="opsRows" class="ll-table">
           <el-table-column width="170" class-name="col-nowrap">
             <template #header>
               <button type="button" class="ll-sort" @click="toggleOpsSort">
@@ -506,6 +512,13 @@ function opsGoto(row) {
           </el-table-column>
         </el-table>
       </div>
+
+      <ListPagination
+        v-model:page="opsPage"
+        v-model:page-size="opsPageSize"
+        :total="opsTotal"
+        @change="opsList.reload"
+      />
       </el-tab-pane>
 
     </el-tabs>
