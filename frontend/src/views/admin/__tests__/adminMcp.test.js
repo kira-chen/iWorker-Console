@@ -26,7 +26,7 @@ import { fmtTime } from '@/utils/docMeta'
  * - §三.8「登记成功后提示"已登记"，关闭抽屉，返回列表第 1 页并刷新列表」（编辑同）；§三.6「拉取成功后提示"已拉取 N 个工具"，
  *   并刷新当前抽屉中的连接信息和工具清单」→ 列表行工具数随之更新（编辑器桩 emit saved / probed）。
  * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ *   弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。

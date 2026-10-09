@@ -18,7 +18,7 @@ import { makeListProbes } from './helpers/listPageStubs'
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
  * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ *   弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
  * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
@@ -276,6 +276,39 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     ;[...dlg.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '关闭').click()
     await flush()
     expect(container.querySelector('.el-dialog')).toBeNull()
+  })
+
+  // openRefs 的两个分支（yuepu#56 补）：岗位列表接口失败 → toast 报错；岗位名查不到（已删/改名未同步）→ 「岗位 #id」兜底
+  const openFirstRefs = async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionIds: [401, 999], positionCount: 2 }],
+      total: 1
+    })
+    await mount()
+    rowEls()[0].querySelector('.el-table-column[data-label="引用情况"] .el-button').click()
+    await flush(6)
+  }
+  const refItems = () => [...container.querySelectorAll('.el-dialog .refs-item')].map((e) => e.textContent.trim())
+
+  it('引用清单：岗位列表接口失败 → toast 带上失败原因，弹窗里不列岗位名也不卡在加载态', async () => {
+    listPositions.mockRejectedValueOnce(new Error('岗位服务不可用'))
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('岗位服务不可用')
+    expect(container.querySelector('.el-dialog')).toBeTruthy()
+    expect(refItems()).toEqual([])
+    expect(container.querySelector('.el-dialog').textContent).toContain('暂无引用') // loading 已收，落到空态而非一直转圈
+  })
+
+  it('引用清单：岗位列表接口失败且无错误信息 → toast 兜底「加载引用清单失败」', async () => {
+    listPositions.mockRejectedValueOnce({})
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('加载引用清单失败')
+  })
+
+  it('引用清单：某个岗位已不在岗位列表里 → 该项显示「岗位 #id」兜底，其余岗位照常显示岗位名', async () => {
+    await openFirstRefs() // 默认岗位桩只有 401 经营分析岗 / 402 客户成功岗；专家挂的 999 查不到
+    expect(refItems()).toEqual(['经营分析岗', '岗位 #999'])
+    expect(ElMessage.error).not.toHaveBeenCalled()
   })
 
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）

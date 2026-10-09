@@ -20,8 +20,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
  *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
- * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，真弹窗交互另见
- *  utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，弹窗 vnode 级交互另见
+ *  utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -560,6 +560,22 @@ describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹�
     expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
     expect(groups().length).toBe(0)
     expect(container.querySelector('.lt-search').value).toBe('不存在的关键词')
+  })
+
+  // yuepu#55 的另一面：只按「连接器类型」筛、且一个都没命中 → 不能剩一屏空白，要落到「没有匹配的 API」
+  it('yuepu#55 只按「连接器类型」筛且全不命中 → 「没有匹配的 API」，不残留空分组', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    await mount()
+    expect(groups().length).toBeGreaterThan(0) // 前提：未筛选时有分组
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION' // 夹具里没有岗位私有的 API
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' }) // 前提：类型确实下发了
+    expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
+    expect(groups().length).toBe(0)
   })
 })
 

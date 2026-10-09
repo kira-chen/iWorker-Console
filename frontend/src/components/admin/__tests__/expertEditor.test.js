@@ -843,26 +843,64 @@ describe('ExpertEditor — 编辑', () => {
   const footerBtn = (text) =>
     [...container.querySelectorAll('.dr-footer .el-button')].find((b) => b.textContent.trim() === text)
 
-  it('yuepu#49① 加载失败 → 底部【保存】【发布】不可点（不渲染或置灰）', async () => {
+  it('yuepu#49① 加载失败 → 页脚已渲染，且【保存】【发布】置灰（footerBlocked 的 loadError 分支）', async () => {
     getExpert.mockRejectedValueOnce(new Error('炸了'))
     await mount({ expertId: 201 })
     expect(container.textContent).toContain('重试') // 前提：确实处于加载失败态
+    // 前提：页脚真渲染了（否则下面的置灰断言会因找不到按钮而空转）
+    expect(footerBtn('取消')).toBeTruthy()
     for (const text of ['保存', '发布']) {
       const b = footerBtn(text)
-      expect(!b || b.disabled).toBe(true)
+      expect(b, text + ' 按钮应渲染').toBeTruthy()
+      expect(b.disabled, text + ' 应置灰').toBe(true)
     }
   })
 
-  it('yuepu#49① 切换对象后加载失败再点【保存】 → 不得把上一个专家的表单写进当前专家', async () => {
+  it('yuepu#49① 加载中 → 【保存】【发布】置灰（footerBlocked 的 loading 分支），加载完成后恢复可点', async () => {
+    let release
+    getExpert.mockImplementationOnce(() => new Promise((r) => { release = () => r({ ...DETAIL }) }))
+    await mount({ expertId: 201 })
+    expect(container.querySelector('.el-skeleton')).toBeTruthy() // 前提：骨架屏 = 加载中
+    expect(footerBtn('取消')).toBeTruthy()
+    for (const text of ['保存', '发布']) {
+      expect(footerBtn(text)?.disabled, text + ' 加载中应置灰').toBe(true)
+    }
+    release()
+    await flush()
+    for (const text of ['保存', '发布']) {
+      expect(footerBtn(text)?.disabled, text + ' 加载完成应可点').toBe(false)
+    }
+  })
+
+  it('yuepu#49① 切换对象后加载失败再点【保存】【发布】 → 都不得把上一个专家的表单写进当前专家', async () => {
     await mount({ expertId: 201 })
     expect(inputs()[0].value).toBe('经营分析专家')
     getExpert.mockRejectedValueOnce(new Error('炸了'))
     propsState.expertId = 203
     await flush()
     expect(container.textContent).toContain('重试') // 前提：203 加载失败
-    footerBtn('保存')?.click()
+    for (const text of ['保存', '发布']) {
+      expect(footerBtn(text)?.disabled, text + ' 应置灰').toBe(true)
+      footerBtn(text)?.click()
+    }
     await flush()
     expect(updateExpert).not.toHaveBeenCalled()
+    expect(publishSpy).not.toHaveBeenCalled()
+    expect(ElMessage.warning).not.toHaveBeenCalled() // 置灰即无反应，不是「校验不过」才没写
+  })
+
+  // resetForm(null) 与 footerBlocked 是两道独立防线：失败态表单区被「重试」空态替换、不可见，
+  // 故此条直接读组件内部表单（setupState）确认上一个专家的值已被清空——即便页脚守卫失效也不会写错对象。
+  it('yuepu#49① 加载失败 → 表单已被清空（resetForm(null)），不残留上一个专家的值', async () => {
+    await mount({ expertId: 201 })
+    const state = () => app._instance.subTree.component.setupState
+    expect(state().form.name).toBe('经营分析专家') // 前提：201 已回填
+    getExpert.mockRejectedValueOnce(new Error('炸了'))
+    propsState.expertId = 203
+    await flush()
+    expect(container.textContent).toContain('重试')
+    expect(state().form.name).toBe('')
+    expect(state().form.skillIds).toEqual([])
   })
 
   it('快速连切两个对象：先发出的慢请求后返回也不覆盖最新对象（序号守卫）', async () => {

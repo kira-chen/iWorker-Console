@@ -648,19 +648,31 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     })
   })
 
-  it('前提：先在 streamable-http 下填服务地址与 Bearer，再切 stdio 并补齐必填后保存 → 调到 create（stdio 保存放行）', async () => {
+  /**
+   * 「先在 streamable-http 下填服务地址与鉴权凭证 → 切 stdio → 补齐 stdio 必填 → 测试并保存」的共用步骤。
+   * authType 'bearer' 填 Token；'header' 填 Header 名 + 访问凭证。
+   * 返回 { payload: create 收到的载荷, afterSwitch: 刚切到 stdio 时表单里 http 侧字段的快照 }。
+   */
+  async function saveStdioAfterFillingHttp({ authType = 'bearer' } = {}) {
     api.createKnowledgeSource.mockResolvedValue(undefined)
     api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', tools: ['search_documents'], toolCount: 1 })
     await mountMcp()
     typeInto(itemByLabel('数据源名称').querySelector('input'), '本地 MCP')
     formModel().mcp.endpoint = 'https://mcp.example.com/mcp'
-    formModel().mcp.authType = 'bearer'
+    formModel().mcp.authType = authType
     await flushAll(6)
-    typeInto(itemByLabel('Bearer Token').querySelector('input'), 'secret-tok')
+    if (authType === 'header') {
+      typeInto(itemByLabel('Header 名').querySelector('input'), 'X-Api-Key')
+      typeInto(itemByLabel('访问凭证').querySelector('input'), 'secret-tok')
+    } else {
+      typeInto(itemByLabel('Bearer Token').querySelector('input'), 'secret-tok')
+    }
     await flushAll(4)
 
     formModel().mcp.transport = 'stdio'
     await flushAll(6)
+    const { endpoint, authType: at, authHeaderName } = formModel().mcp
+    const afterSwitch = { endpoint, authType: at, authHeaderName }
     clickBtn('测试连接')
     await flushAll(10)
     toolBoxes()[0].querySelector('input').click()
@@ -669,36 +681,34 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     typeInto(respRows[1].querySelectorAll('input')[0], 'content')
     await flushAll(6)
     await save()
+    return { payload: api.createKnowledgeSource.mock.calls[0]?.[0], afterSwitch }
+  }
 
+  it('前提：先在 streamable-http 下填服务地址与 Bearer，再切 stdio 并补齐必填后保存 → 调到 create（stdio 保存放行）', async () => {
+    await saveStdioAfterFillingHttp()
     expect(api.createKnowledgeSource).toHaveBeenCalledTimes(1)
   })
 
-  it('yuepu#62③ 切到 stdio 后保存，载荷不再带 streamable-http 下填过的服务地址与 Bearer 凭证（md §七.2.3「切换到 stdio 则按各自字段清空」）', async () => {
-    api.createKnowledgeSource.mockResolvedValue(undefined)
-    api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', tools: ['search_documents'], toolCount: 1 })
-    await mountMcp()
-    typeInto(itemByLabel('数据源名称').querySelector('input'), '本地 MCP')
-    formModel().mcp.endpoint = 'https://mcp.example.com/mcp'
-    formModel().mcp.authType = 'bearer'
-    await flushAll(6)
-    typeInto(itemByLabel('Bearer Token').querySelector('input'), 'secret-tok')
-    await flushAll(4)
+  // 两层防线：切换瞬间表单即清空（watch，第一层，单独破坏会红）；载荷组装时 stdio 也不带 http 侧字段（第二层兜底，
+  // 与第一层冗余，只有两层同时失效才会让载荷断言变红）。
+  it.each(['bearer', 'header'])(
+    'yuepu#62③ 切到 stdio（原鉴权 %s）→ 表单里服务地址 / 鉴权类型 / Header 名随即清空（md §七.2.3「切换到 stdio 则按各自字段清空」）',
+    async (authType) => {
+      const { afterSwitch } = await saveStdioAfterFillingHttp({ authType })
+      expect(afterSwitch).toEqual({ endpoint: '', authType: 'none', authHeaderName: '' })
+    }
+  )
 
-    formModel().mcp.transport = 'stdio'
-    await flushAll(6)
-    clickBtn('测试连接')
-    await flushAll(10)
-    toolBoxes()[0].querySelector('input').click()
-    const respRows = [...drawer().querySelectorAll('.sme-resp-row')]
-    typeInto(respRows[0].querySelectorAll('input')[0], 'title')
-    typeInto(respRows[1].querySelectorAll('input')[0], 'content')
-    await flushAll(6)
-    await save()
-
-    const payload = api.createKnowledgeSource.mock.calls[0][0]
-    expect(payload.authValue).toBeNull()
-    expect(payload.config.endpoint).toBe('')
-  })
+  it.each(['bearer', 'header'])(
+    'yuepu#62③ 切到 stdio 后保存（原鉴权 %s）→ 载荷清空服务地址 / 凭证 / 鉴权类型 / Header 名',
+    async (authType) => {
+      const { payload } = await saveStdioAfterFillingHttp({ authType })
+      expect(payload.authValue).toBeNull()
+      expect(payload.config.endpoint).toBe('')
+      expect(payload.config.authType).toBe('none')
+      expect(payload.config.authHeaderName).toBe('')
+    }
+  )
 })
 
 /* ====================================================================== */
@@ -785,8 +795,23 @@ describe('KnowledgeSourceEditor · 编辑回填与敏感信息遮罩（md §四.
   it('yuepu#62④ 编辑打开一个最近测试成功的 API 源（未做任何修改）：展示「连接正常」验证结果，不被回填冲成「修改连接配置后需要重新测试」（md §六.4 修改后才重置为未验证）', async () => {
     api.getKnowledgeSource.mockResolvedValue(apiDetail())
     await mountEditor({ sourceId: 'ks_api' })
-    expect(drawer().querySelector('.ksrc-test').textContent).toContain('连接正常')
-    expect(btn('重新测试')).toBeTruthy()
+    expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常')
+    expect(btn('重新测试').textContent.trim()).toBe('重新测试') // 验证成功态的按钮文案
+    expect(btn('测试连接')).toBeUndefined()
+    expect(drawer().querySelector('.ksrc-hint')).toBeNull() // 没有「修改连接配置后需要重新测试」
+  })
+
+  // 防「回填静默」变成永久静默：静默只罩住回填那一拍，打开之后用户再改连接配置仍须重置验证状态
+  it('yuepu#62④ 编辑打开最近测试成功的 API 源后再改 URL → 验证结果重置为「修改连接配置后需要重新测试」，按钮回「测试连接」', async () => {
+    api.getKnowledgeSource.mockResolvedValue(apiDetail())
+    await mountEditor({ sourceId: 'ks_api' })
+    expect(drawer().querySelector('.ksrc-verify.ok')).toBeTruthy() // 前提：打开时是「连接正常」
+    formModel().api.url = 'https://rag.example.com/search-v2'
+    await flushAll(6)
+    expect(drawer().querySelector('.ksrc-verify')).toBeNull()
+    expect(drawer().querySelector('.ksrc-hint').textContent).toContain('修改连接配置后需要重新测试')
+    expect(btn('测试连接')).toBeTruthy()
+    expect(btn('重新测试')).toBeUndefined()
   })
 
   it('查看态打开最近测试成功的源：展示「连接正常」验证结果', async () => {

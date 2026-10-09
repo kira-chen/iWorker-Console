@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
@@ -5,9 +6,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/ 下各模块「强制回收」小节（技能 / 专家 §3.5.1、MCP §3.6.1、API、业务系统）：
  * - 回收弹窗：标题「强制回收{类型}」，展示影响范围，红色警示，回收原因必填 ≤500 字，按钮【取消】【确认强制回收】；
  * - 二次确认：「将立即强制回收「X」，确认继续？」，按钮【再想想】【立即回收】；两步都过才返回原因，任一步取消返回 null；
+ * - 影响范围：refCount 为 0 也显示「已被 0 个…引用」；不传 refCount（专家）整句不出；传 refNames 时汇总句可点击展开/收起引用清单；
+ *   没有 refNames 则不可点击；connectorRefNames 把连接器行的岗位名 + 技能名拼成清单（空值剔除）；
  * - 回收信息（落到对象 revoked 字段）与「已回收」悬停文案。
  *
- * ElMessageBox 整体桩掉（jsdom 里不弹真窗），断言落在「传给弹窗的文案 / 校验函数」和「askForceRevoke 的返回值」。
+ * 前面各组用例把 ElMessageBox 整体桩掉，断言落在「传给弹窗的文案 / 校验函数」和「askForceRevoke 的返回值」（vnode 级交互）；
+ * 文件末尾单独一条用例卸掉桩、在 jsdom 里挂载**真实** ElMessageBox.prompt，验证展开引用清单在真弹窗里确实可点可见。
  */
 const prompt = vi.fn()
 const confirm = vi.fn()
@@ -150,5 +154,44 @@ describe('makeRevokedInfo / revokedTip', () => {
     expect(revokedTip({ reason: '异常', at: '2026-10-09 10:00', operator: 'xiaomei' })).toBe('回收原因：异常（xiaomei · 2026-10-09 10:00）')
     expect(revokedTip({ reason: '异常', at: '2026-10-09 10:00' })).toBe('回收原因：异常（管理员 · 2026-10-09 10:00）')
     expect(revokedTip(null)).toBe('')
+  })
+})
+
+/* ==================== 真实 ElMessageBox 挂载（不走桩） ==================== */
+describe('askForceRevoke · 真实弹窗挂载（jsdom，不 mock element-plus）', () => {
+  it('弹出真实回收弹窗 → 点开「影响范围」后弹窗里出现引用清单 li 并含引用名；再点收起；取消后弹窗关闭、返回 null', async () => {
+    // 文件顶部的 vi.mock 是整文件生效的：先卸掉桩并重置模块缓存，再动态载入，forceRevoke 拿到的才是真 element-plus
+    vi.doUnmock('element-plus')
+    vi.resetModules()
+    const { askForceRevoke: realAsk } = await import('@/utils/forceRevoke')
+    const tick = () => new Promise((r) => setTimeout(r, 30))
+    const box = () => document.body.querySelector('.el-message-box')
+
+    const pending = realAsk({ typeLabel: 'API', name: '报销单查询', refCount: 2, refText: '岗位 / 技能', refNames: ['财务专员', '报销查询技能'] })
+    try {
+      await tick()
+      expect(box(), '真实弹窗应已挂到 document.body').toBeTruthy()
+      expect(box().textContent).toContain('强制回收API')
+      expect(box().textContent).toContain('已被 2 个岗位 / 技能引用')
+      // 前提：初始只有汇总句，没有清单
+      expect(box().querySelectorAll('.force-revoke-scope-list li').length).toBe(0)
+
+      box().querySelector('.force-revoke-scope-toggle').click()
+      await tick()
+      const items = [...box().querySelectorAll('.force-revoke-scope-list li')].map((li) => li.textContent.trim())
+      expect(items).toEqual(['财务专员', '报销查询技能'])
+
+      box().querySelector('.force-revoke-scope-toggle').click()
+      await tick()
+      expect(box().querySelectorAll('.force-revoke-scope-list li').length).toBe(0)
+    } finally {
+      // 清理：点【取消】结束 prompt，免得弹窗残留在 document.body 里污染别的用例
+      const cancel = [...document.body.querySelectorAll('.el-message-box__btns .el-button')].find((b) => b.textContent.trim() === '取消')
+      cancel?.click()
+    }
+    expect(await pending).toBeNull()
+    await new Promise((r) => setTimeout(r, 400)) // 等关闭过渡结束
+    document.body.querySelectorAll('.el-overlay, .el-message-box').forEach((n) => n.remove())
+    expect(box()).toBeNull()
   })
 })
