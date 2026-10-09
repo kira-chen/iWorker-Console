@@ -510,6 +510,16 @@ describe('访问审计 · 用户端文件下载 · 分页（§5.2「列表根据
     expect(dlRows()).toHaveLength(pageSize())
   })
 
+  it('停在第 2 页时点【查询】→ 回到第 1 页，列表仍是全部记录（md §5.1(5)；yuepu#84）', async () => {
+    await goPage(2)
+    expect(activePage()).toBe('2')
+    const btn = [...dlPane().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询')
+    btn.click()
+    await flushAll(4)
+    expect(activePage()).toBe('1')
+    expect(dlRows()).toHaveLength(pageSize())
+  })
+
   it('停在第 2 页时输入搜索关键词 → 回到第 1 页，只剩命中记录', async () => {
     await goPage(2)
     const input = dlPane().querySelector('.lt-search input')
@@ -573,6 +583,16 @@ describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面
   it('停在第 2 页时切换排序 → 回到第 1 页', async () => {
     await goPage(2)
     sortHead().click()
+    await flushAll(4)
+    expect(activePage()).toBe('1')
+    expect(rows()).toHaveLength(pageSize())
+  })
+
+  it('停在第 2 页时点【查询】→ 回到第 1 页，列表仍是全部记录（md §6.1(5)；yuepu#84）', async () => {
+    await goPage(2)
+    expect(activePage()).toBe('2')
+    const btn = [...pane().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询')
+    btn.click()
     await flushAll(4)
     expect(activePage()).toBe('1')
     expect(rows()).toHaveLength(pageSize())

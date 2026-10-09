@@ -387,7 +387,7 @@ function opsGoto(row) {
           <el-option label="知识库·本地产物" value="知识库·本地产物" />
           <el-option label="知识库·我的资料" value="知识库·我的资料" />
         </el-select>
-        <el-button>查询</el-button>
+        <el-button @click="dlList.search">查询</el-button>
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>
@@ -465,7 +465,7 @@ function opsGoto(row) {
           <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回']"
             :key="a" :label="a" :value="a" />
         </el-select>
-        <el-button>查询</el-button>
+        <el-button @click="opsList.search">查询</el-button>
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>
