@@ -103,6 +103,18 @@ function validate() {
   return ''
 }
 
+/** 调整后总量不高于已用 → 员工会立刻变成已满，提交前二次确认（调整容量、批量设置、恢复默认共用一句话）。 */
+async function confirmFull(who) {
+  try {
+    await ElMessageBox.confirm(`调整后${who}总量不高于已用，将处于已满状态，任务会被拦截，是否继续？`, '确认调整', {
+      type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function submitDialog() {
   dialog.error = validate()
   if (dialog.error) return
@@ -110,13 +122,7 @@ async function submitDialog() {
     const who = overusedTargets.value.length === 1
       ? `${overusedTargets.value[0].name} 的`
       : `其中 ${overusedTargets.value.length} 名员工的`
-    try {
-      await ElMessageBox.confirm(`调整后${who}总量不高于已用，将处于已满状态，任务会被拦截，是否继续？`, '确认调整', {
-        type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消'
-      })
-    } catch {
-      return
-    }
+    if (!(await confirmFull(who))) return
   }
   dialog.submitting = true
   try {
@@ -140,6 +146,8 @@ async function submitDialog() {
 
 async function restoreDefault() {
   const t = dialog.target
+  // 恢复后的默认容量不高于已用量（如 10 GB 的员工已用 7 GB，恢复成 5 GB）→ 先二次确认
+  if (t.usedGb != null && overview.value.defaultQuotaGb <= t.usedGb && !(await confirmFull(`${t.name} 的`))) return
   dialog.submitting = true
   try {
     await adjustStorageQuota(t.userId, null, { restoreDefault: true })

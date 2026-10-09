@@ -171,6 +171,52 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     expect(api.listStorageMembers.mock.calls.at(-1)[0].sortOrder).toBeUndefined()
   })
 
+  describe('恢复默认（Q13）', () => {
+    const personal = (usedGb) => ({
+      userId: 208, username: 'zhaomin', name: '赵敏', position: '', usedGb, finalGb: usedGb, cacheGb: 0, totalGb: 10,
+      ratio: usedGb / 10, state: 'NORMAL', quotaSource: 'PERSONAL', statAt: '2026-10-09 09:30', pendingRequestId: null
+    })
+    async function openAdjust(row) {
+      api.listStorageMembers.mockResolvedValue({ list: [row], total: 1 })
+      const c = await mountPage()
+      btn(c.querySelectorAll('.el-table__body tr.el-table__row')[0], '调整容量').click()
+      await flushAll(6)
+    }
+
+    it('只有个人设置过容量的员工才显示【恢复默认】；默认容量的员工不显示', async () => {
+      await openAdjust({ ...MEMBERS[1] }) // 张敏：容量来源「默认」
+      expect(btn(dialogBody(), '恢复默认')).toBeUndefined()
+      mounted.unmount()
+      mounted = null
+      document.body.innerHTML = ''
+      await openAdjust(personal(7))
+      expect(btn(dialogBody(), '恢复默认')).toBeTruthy()
+    })
+
+    it('恢复后的默认容量 5 GB 不高于已用量 → 先二次确认；取消则不提交，继续才提交', async () => {
+      const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('ok')
+      await openAdjust(personal(7)) // 已用 7 GB > 5 GB
+      btn(dialogBody(), '恢复默认').click()
+      await flushAll(6)
+      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(String(confirm.mock.calls[0][0])).toContain('调整后赵敏 的总量不高于已用，将处于已满状态，任务会被拦截，是否继续？')
+      expect(api.adjustStorageQuota).not.toHaveBeenCalled()
+      btn(dialogBody(), '恢复默认').click()
+      await flushAll(8)
+      expect(confirm).toHaveBeenCalledTimes(2)
+      expect(api.adjustStorageQuota).toHaveBeenCalledWith(208, null, { restoreDefault: true })
+    })
+
+    it('恢复后的默认容量高于已用量 → 不弹确认，直接提交', async () => {
+      const confirm = vi.spyOn(ElMessageBox, 'confirm')
+      await openAdjust(personal(3)) // 已用 3 GB < 5 GB
+      btn(dialogBody(), '恢复默认').click()
+      await flushAll(8)
+      expect(confirm).not.toHaveBeenCalled()
+      expect(api.adjustStorageQuota).toHaveBeenCalledWith(208, null, { restoreDefault: true })
+    })
+  })
+
   it('列表展示最终产物与缓存两列', async () => {
     const c = await mountPage()
     const heads = [...c.querySelectorAll('.el-table__header th')].map((th) => textOf(th))

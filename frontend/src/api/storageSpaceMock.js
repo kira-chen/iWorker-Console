@@ -283,10 +283,9 @@ function applyQuota(m, nextTotal, { restoreDefault = false } = {}) {
   return true
 }
 
-/** 同意扩容：申请结案为已同意，审计记「同意扩容」。 */
-function closePending(request, newTotalGb) {
+/** 同意扩容：申请结案为已同意，审计记「同意扩容」。prevTotal = 同意那一刻员工的当前总量（不是申请快照）。 */
+function closePending(request, newTotalGb, prevTotal) {
   const member = findMember(request.userId)
-  const prevTotal = request.totalGb
   request.status = 'APPROVED'
   request.newTotalGb = newTotalGb
   request.handler = currentDemoUsername()
@@ -369,8 +368,9 @@ export async function approveExpansionRequest(id, newTotalGb) {
   const m = findMember(r.userId)
   const next = checkQuota(newTotalGb)
   if (next <= totalOf(m)) throw err(`新总量须大于当前总量 ${totalOf(m)} GB`, 40001, 'quotaGb')
+  const prevTotal = totalOf(m) // 先取同意那一刻的当前总量，再写入新总量
   m.quotaGb = next
-  closePending(r, next)
+  closePending(r, next, prevTotal)
   persist()
   return clone(r)
 }

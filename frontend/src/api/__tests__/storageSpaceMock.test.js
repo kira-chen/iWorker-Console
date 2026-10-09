@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
-vi.mock('../mockPersist', () => ({ attachPersist: () => vi.fn() }))
+// 捕获 attachPersist 的 restore，用来构造「申请快照总量 ≠ 同意时当前总量」这种正常操作到不了的状态
+const persistHarness = vi.hoisted(() => ({ options: null }))
+vi.mock('../mockPersist', () => ({
+  attachPersist: (_key, options) => {
+    persistHarness.options = options
+    return vi.fn()
+  }
+}))
 
 import {
   getStorageOverview, listStorageMembers, adjustStorageQuota, batchAdjustStorageQuota,
@@ -184,6 +191,17 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect(liveClientOps()[0]).toMatchObject({
       type: '同意扩容', username: 'chenyu', userId: 203, requestId: 'ER-1006', newTotalGb: 12
     })
+  })
+
+  it('同意扩容审计的「原总量」取同意那一刻员工的当前总量，不取申请时的快照', async () => {
+    // 构造：陈宇的申请是在总量 5 GB 时提交的（快照 totalGb=5），但同意时他的当前总量已是个人设置的 8 GB
+    const snap = persistHarness.options.snapshot()
+    snap.members.find((m) => m.userId === 203).quotaGb = 8
+    persistHarness.options.restore(snap)
+    expect((await getExpansionRequest('ER-1006')).totalGb).toBe(5) // 快照仍是 5
+    await approveExpansionRequest('ER-1006', 12)
+    expect(liveOps()[0]).toMatchObject({ action: '同意扩容', detail: '8 GB → 12 GB' })
+    expect(liveClientOps()[0]).toMatchObject({ type: '同意扩容', newTotalGb: 12 })
   })
 
   it('同意：新总量必须大于当前总量且在范围内', async () => {
