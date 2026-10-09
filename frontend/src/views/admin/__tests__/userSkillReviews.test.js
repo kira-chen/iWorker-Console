@@ -289,9 +289,11 @@ describe('UserSkillReviews（2026-09-08 PRD-20260908 对齐）', () => {
     await mount()
     expect(container.querySelector('.ls-empty').textContent).toContain('没有符合条件的审核记录')
     app.unmount(); container.remove()
-    listReviewApplications.mockRejectedValueOnce(new Error('x'))
+    listReviewApplications.mockRejectedValueOnce(new Error('审核服务暂不可用'))
     await mount()
     expect(container.querySelector('.el-empty').textContent).toContain('加载失败')
+    // md 要求失败展示原因：reject 带的文案出现在页面上（yuepu#74）
+    expect(container.querySelector('.ls-error-reason').textContent).toBe('审核服务暂不可用')
   })
 
   it('【查看技能】开抽屉（带行 id），不再新标签整页', async () => {
