@@ -14,6 +14,7 @@
  * 状态切换即刷新不重置分页；【查询】按钮回第 1 页。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
@@ -32,6 +33,7 @@ import { COL, opsWidth } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
+import { queryString } from '@/utils/routeQuery'
 
 /* ---------- 待分配数量（工具栏筛选按钮徽标） ---------- */
 const pendingCount = ref(0)
@@ -211,7 +213,11 @@ async function confirmBatchBind() {
   }
 }
 
+// 访问审计「查看」跳转会带 keyword=用户名（prd.访问审计.md §6.3），注入搜索框
+const route = useRoute()
 onMounted(() => {
+  const kw = queryString(route.query.keyword)
+  if (kw) query.keyword = kw
   list.reload()
   loadPositions()
   refreshPendingCount()

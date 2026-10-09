@@ -178,6 +178,7 @@ const opsFiltered = computed(() => {
 const RES_CLS = { SUCCESS: 'tag-green', FAILED: 'tag-red' }
 const MOD_CLS = {
   岗位: 'tag-green',
+  岗位分配: 'tag-green',
   专家: 'tag-blue',
   技能: 'tag-blue',
   知识库: 'tag-orange',
@@ -193,7 +194,10 @@ const MOD_CLS = {
 const ACT_CLS = {
   发布: 'tag-green',
   个人配置: 'tag-green',
+  分配: 'tag-green',
+  变更: 'tag-green',
   停用: 'tag-orange',
+  强制回收: 'tag-red',
   撤回: 'tag-orange',
   删除: 'tag-red',
   审核通过: 'tag-green',
@@ -205,6 +209,7 @@ const VERSION_MODULES = new Set(['岗位', '专家', '技能'])
 
 const MODULE_ROUTE = {
   岗位:       { name: 'AdminPositions' },
+  岗位分配:   { name: 'AdminPositionAssignments' },
   专家:       { name: 'AdminExperts' },
   技能:       { name: 'AdminSkillsUnified' },
   知识库:     { name: 'AdminKnowledgeBase' },
@@ -423,11 +428,11 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','岗位分配','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','停用','撤回','删除','审核通过','审核驳回']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button>查询</el-button>

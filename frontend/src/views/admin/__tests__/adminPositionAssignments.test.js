@@ -46,6 +46,8 @@ vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
   }
 }))
 vi.mock('@/assets/connector.css', () => ({}))
+// 页面读 route.query.keyword（访问审计「查看」跳转注入），本测试无路由实例，给个空 query
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
 const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssignments.vue')).default
 

@@ -34,7 +34,9 @@ vi.mock('@/api/accessAuditMock', () => {
       { id: 1, time: `${day} 09:00`, operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
       { id: 2, time: `${day} 10:00`, operator: 'xiaomei', module: '版本管理', action: '发布', target: 'Windows v1.2.0', detail: '1. 新增记忆管理\n2. 修复若干问题' },
       { id: 3, time: `${day} 11:00`, operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: '' },
-      { id: 4, time: `${day} 12:00`, operator: 'demo', module: '运行规格', action: '个人配置', target: '标准', detail: '为 2 个用户配置规格「标准」' }
+      { id: 4, time: `${day} 12:00`, operator: 'demo', module: '运行规格', action: '个人配置', target: '标准', detail: '为 2 个用户配置规格「标准」' },
+      { id: 5, time: `${day} 13:00`, operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗' },
+      { id: 6, time: `${day} 14:00`, operator: 'admin', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' }
     ]
   }
 })
@@ -58,6 +60,7 @@ beforeEach(async () => {
       { path: '/admin/login-logs', name: 'AdminLoginLogs', component: { template: '<div />' } },
       { path: '/admin/versions', name: 'AdminVersions', component: { template: '<div />' } },
       { path: '/admin/positions', name: 'AdminPositions', component: { template: '<div />' } },
+      { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
       { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: { template: '<div />' } }
     ]
   })
@@ -77,8 +80,8 @@ afterEach(() => {
 })
 
 describe('访问审计 · 管理端操作 · 版本管理记录', () => {
-  it('四条记录都在默认时间范围内展示', () => {
-    expect(rows()).toHaveLength(4)
+  it('六条记录都在默认时间范围内展示', () => {
+    expect(rows()).toHaveLength(6)
   })
 
   it('模块标签：版本管理灰色（§6.4）；动作标签：发布绿、停用橙', () => {
@@ -177,5 +180,54 @@ describe('访问审计 · 管理端操作 · 运行规格记录（2026-09-23）'
     ;[...assign.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminRuntimeSpecs'))
     expect(router.currentRoute.value.query.keyword).toBe('标准')
+  })
+})
+
+describe('访问审计 · 管理端操作 · 岗位分配记录（2026-09-30，§6.1 / §6.2 / §6.3 / §6.4）', () => {
+  const openDropdown = async (idx) => {
+    pane().querySelectorAll('.lt-filter')[idx].querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    return [...document.body.querySelectorAll('.el-select-dropdown__item')]
+  }
+
+  it('模块筛选含「岗位分配」且紧跟「岗位」之后；选中后只剩岗位分配记录', async () => {
+    const items = await openDropdown(0)
+    const labels = items.map((i) => i.textContent.trim())
+    expect(labels.indexOf('岗位分配')).toBe(labels.indexOf('岗位') + 1)
+    items.find((i) => i.textContent.trim() === '岗位分配').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(2)
+  })
+
+  it('动作筛选含「分配」「变更」，位置在「个人配置」之后、「停用」之前；选「变更」只剩一条', async () => {
+    const items = await openDropdown(1)
+    const labels = items.map((i) => i.textContent.trim())
+    expect(labels.slice(labels.indexOf('个人配置'), labels.indexOf('停用') + 1)).toEqual(['个人配置', '分配', '变更', '停用'])
+    items.find((i) => i.textContent.trim() === '变更').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].textContent).toContain('li.na')
+  })
+
+  it('标签颜色：模块「岗位分配」绿；动作「分配」「变更」绿', () => {
+    const a = rowOf('chenyu', '分配')
+    const c = rowOf('li.na', '变更')
+    expect(tagOf(a, '岗位分配').className).toContain('tag-green')
+    expect(tagOf(a, '分配').className).toContain('tag-green')
+    expect(tagOf(c, '变更').className).toContain('tag-green')
+  })
+
+  it('变更内容展示「原岗位 → 新岗位」；操作对象为用户名，不附版本号小标签', () => {
+    const a = rowOf('chenyu', '分配')
+    expect(detailCell(a).textContent).toContain('未绑定 → 经营分析岗')
+    expect(a.querySelector('.ops-target-name').textContent).toBe('chenyu')
+    expect(a.querySelector('.ops-version')).toBeNull()
+  })
+
+  it('【查看】跳转岗位管理页（岗位分配），并把用户名作为关键词带过去', async () => {
+    const a = rowOf('chenyu', '分配')
+    ;[...a.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminPositionAssignments'))
+    expect(router.currentRoute.value.query.keyword).toBe('chenyu')
   })
 })
