@@ -29,7 +29,7 @@ import { passthrough } from './helpers/commonStubs'
  * - 发布就绪门与编辑页共用 skillPublishReadiness（api/unifiedSkill.js）。
  *
  * 2026-10-09 对齐 prd.技能.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：文末 describe 补【强制回收】点击流程
- * （askForceRevoke 桩，真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * （askForceRevoke 桩，弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  */
 
 // 真实端点桩：demo 路径下一次都不该被调到（每条用例末尾靠 vi.clearAllMocks 归零）
