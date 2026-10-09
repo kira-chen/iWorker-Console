@@ -31,6 +31,7 @@
  * 最后一个启用版本禁「禁用」（VersionHistoryList guardLastActive 前置置灰，mock 兜底拦截）。
  */
 import { ApiError } from './request'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { getFieldOptionNames } from './fieldDictMock'
 import { attachPersist } from './mockPersist'
 // 2026-09-23 待办 yuepu#10①：toolRefs/技能类别标签改由 SKILL.md 正文实时解析，不再是编辑正文
@@ -401,7 +402,7 @@ function referencedToolsOf(s) {
 /**
  * 技能类别标签派生（md §三.3「操作类/查询类，由工具引用自动派生」）：引用业务系统/数据表等
  * 写类工具 → 操作类，否则查询类。口径与 positionMock.skillRefVO 的同名派生一致（utils/skillCategory.js
- * 的 SKILL_CATEGORY 枚举同值，mock 层不 import utils，数值对齐即可）。
+ * 的 SKILL_CATEGORY 枚举同值；两处各以字符串字面量写出，改枚举值时须一并改）。
  */
 function operationCategoryOf(s) {
   const isOperation = (s.toolRefs || []).some((c) => String(c).startsWith('biz__') || String(c).startsWith('table__'))
@@ -518,9 +519,8 @@ export async function updateSkill(id, payload = {}) {
   }
   if ('exampleQuestion' in payload) {
     const eq = String(payload.exampleQuestion ?? '')
-    // 300 = 一览表示例类统一规则（mock 不 import utils，数值对齐即可；2026-09-18 待办 yuepu#5⑥：
-    // 此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
-    if (eq.length > 300) throw new ApiError({ code: 40001, message: '示例问题最多 300 个字符' })
+    // 上限取一览表示例类统一规则（defValidate.BIZ_QUESTION_MAX，与页面校验同源）
+    if (eq.length > BIZ_QUESTION_MAX) throw new ApiError({ code: 40001, message: `示例问题最多 ${BIZ_QUESTION_MAX} 个字符` })
     s.exampleQuestion = eq
   }
   if ('defaultInstall' in payload) s.defaultInstall = !!payload.defaultInstall

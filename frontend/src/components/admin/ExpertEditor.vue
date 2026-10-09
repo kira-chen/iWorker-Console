@@ -74,6 +74,7 @@ import { useAiLiveGenerate, expertQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { EXPERT_TYPE, EXPERT_TYPE_LABEL, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 
 const props = defineProps({
@@ -759,7 +760,7 @@ const metaItems = computed(() => {
                 <el-input
                   :ref="(el) => setQuestionRef(el, i)"
                   v-model="form.exampleQuestions[i]"
-                  maxlength="300"
+                  :maxlength="BIZ_QUESTION_MAX"
                   :disabled="disabled"
                   :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
                   :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"

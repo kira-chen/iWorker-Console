@@ -83,9 +83,3 @@ export function forceRevokeApi(id, reason) {
   if (USE_MOCK) return mock.forceRevokeApi(id, reason)
   return request.post(`${API}/${id}/force-revoke`, { reason }, W)
 }
-
-/* ================= 示例问题 AI 生成 ================= */
-export function aiGenerateExampleQuestion(payload) {
-  if (USE_MOCK) return mock.aiGenerateExampleQuestion(payload)
-  return request.post(`${API}/example-question`, payload, W)
-}

@@ -34,6 +34,7 @@ import {
   deriveSkillDisplayView
 } from '@/api/unifiedSkill'
 import AdminRail from '@/components/admin/AdminRail.vue'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import SkillFocusEditor from '@/components/position/SkillFocusEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import RevokedBanner from '@/components/admin/RevokedBanner.vue'
@@ -618,8 +619,8 @@ async function saveConfig() {
     return
   }
   const exampleText = String(s.exampleQuestion || '').trim()
-  if (!isBizSystem.value && (!exampleText || exampleText.length > 300)) {
-    ElMessage.warning('请填写最多 300 个字符的示例问题')
+  if (!isBizSystem.value && (!exampleText || exampleText.length > BIZ_QUESTION_MAX)) {
+    ElMessage.warning(`请填写最多 ${BIZ_QUESTION_MAX} 个字符的示例问题`)
     return
   }
   const catChanged = (s.displayCategoryId ?? null) !== savedConfig.displayCategoryId

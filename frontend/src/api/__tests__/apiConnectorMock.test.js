@@ -463,18 +463,6 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
   })
 })
 
-describe('示例问题 AI 生成（demo 本地模板）', () => {
-  it('按 index 轮换模板、含 API 名、≤60 字；名称空回落「这个 API」', async () => {
-    const q0 = await run(m.aiGenerateExampleQuestion({ name: '报销查询', description: '按单号查状态。', index: 0 }))
-    expect(q0.question).toBe('帮我用「报销查询」按单号查状态')
-    const q1 = await run(m.aiGenerateExampleQuestion({ name: '报销查询', index: 1 }))
-    expect(q1.question).toContain('什么情况下应该用「报销查询」')
-    const q3 = await run(m.aiGenerateExampleQuestion({ name: '', index: 3 }))
-    expect(q3.question).toContain('这个 API')
-    expect(q3.question.length).toBeLessThanOrEqual(60)
-  })
-})
-
 describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
   const reason = '接口下线，紧急回收'
   const auditOps = async () => (await import('../accessAuditMock')).opsRecords

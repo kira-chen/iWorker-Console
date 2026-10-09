@@ -31,6 +31,7 @@
  */
 import { ref, computed, watch, getCurrentScope, onScopeDispose } from 'vue'
 import { ElMessage } from 'element-plus'
+import { BIZ_QUESTION_MAX } from './defValidate'
 
 /** 「生成中…」态时长（2026-09-06 负责人拍板 Q10：全站统一 500ms，原型 420ms 口径废止） */
 export const AI_LIVE_DELAY_MS = 500
@@ -40,7 +41,7 @@ export const AI_LIVE_DONE_TOAST = 'AI 内容已生成，请确认后保存'
 export const AI_LIVE_BUSY_LABEL = '生成中…'
 /** 生成的示例问题截断长度（一览表示例类统一规则；2026-09-18 待办 yuepu#5⑥：此前 7 处硬编码 60，
  *  输入框已放宽到 300，生成内容仍被这里截到 60 字，活 bug——收成一个常量，改一处生效） */
-export const AI_LIVE_QUESTION_MAX = 300
+export const AI_LIVE_QUESTION_MAX = BIZ_QUESTION_MAX
 
 /** 压空白 + 截断加省略号（原型 shortText 同口径），用于把源文本收成模板主语。 */
 export function shortText(text, max) {

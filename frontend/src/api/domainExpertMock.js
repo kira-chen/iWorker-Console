@@ -22,6 +22,7 @@
  *   沿用 domainExpert.js 既有端点口径）。
  */
 import { ApiError } from './request'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
@@ -255,10 +256,9 @@ function parseVersion(label) {
 const normQuestions = (qs) => [0, 1, 2].map((i) => String((qs || [])[i] || ''))
 
 /** 示例问题每条 ≤300 字符（一览表「专家帮你做」固定 3 条、每条最多 300；待办 yuepu#57⑤）。create / update 带了该字段时校验。 */
-const EXPERT_QUESTION_MAX = 300
 function assertExpertQuestions(qs) {
-  if (normQuestions(qs).some((q) => q.trim().length > EXPERT_QUESTION_MAX)) {
-    throw err(`示例问题每条最多 ${EXPERT_QUESTION_MAX} 个字符`, 'exampleQuestions')
+  if (normQuestions(qs).some((q) => q.trim().length > BIZ_QUESTION_MAX)) {
+    throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
   }
 }
 

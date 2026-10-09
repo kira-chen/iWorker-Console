@@ -22,7 +22,7 @@ import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnrol
 import { appendOpsRecord } from './accessAuditMock'
 import { makeRevokedInfo } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
-import { isBlankBizPage, BIZ_URL_MAX } from '@/utils/defValidate'
+import { isBlankBizPage, BIZ_URL_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { CONNECTOR_TYPE } from './connectorTypes'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -34,10 +34,9 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let bizSeq = 2104
 let skillSeq = 3
 
-// 与 utils/defValidate.js 的同名 BIZ_QUESTION_MAX 同口径（mock 不 import utils，数值对齐即可；
-// 2026-09-18 待办 yuepu#5⑥ 改口径时两处曾一度失配：这里卡在 60、defValidate 已经是 300，
-// 导致输入框能填 300 字、保存却被这里拒——改这个值时务必同步另一处）
-export const BIZ_QUESTION_MAX = 300
+// 示例问题上限的单一来源是 utils/defValidate.js（页面校验与各 mock 共用；曾因两处各写一份而失配：
+// 一处卡 60、一处 300，输入框能填、保存却被拒）。此处转出供既有引用方沿用。
+export { BIZ_QUESTION_MAX }
 
 const mkBiz = (over) => ({
   id: over.id,

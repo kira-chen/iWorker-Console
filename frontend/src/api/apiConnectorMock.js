@@ -901,21 +901,6 @@ export async function forceRevokeApi(id, reason) {
   return toRow(a)
 }
 
-/* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */
-const QUESTION_TEMPLATES = [
-  (n, d) => `帮我用「${n}」${d ? d.replace(/[。.]$/, '') : '查一下相关信息'}`,
-  (n) => `什么情况下应该用「${n}」？给我举个例子`,
-  (n) => `用「${n}」帮我处理一下今天的这件事`
-]
-
-export async function aiGenerateExampleQuestion({ name, description, index = 0 } = {}) {
-  await delay(600) // 模拟模型生成耗时
-  const n = (name || '').trim() || '这个 API'
-  const d = (description || '').trim()
-  const tpl = QUESTION_TEMPLATES[index % QUESTION_TEMPLATES.length]
-  return { question: tpl(n, d).slice(0, 60) }
-}
-
 /**
  * 岗位被删 / 改名后同步「被岗位引用」清单（2026-09-23 待办 yuepu#23⑥，positionMock.deletePosition / updatePosition 调用）。
  * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。

@@ -53,6 +53,7 @@ import {
 } from '@/utils/skillFileTree'
 import { analyzeFrontmatter } from '@/utils/yamlLint'
 import StatusTag from '@/components/StatusTag.vue'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { categoryLabel, categoryTagType, hasCategory, CATEGORY_TOOLTIP } from '@/utils/skillCategory'
 import {
   parseSkillMdTools,
@@ -935,7 +936,7 @@ onBeforeUnmount(() => {
           v-if="!ro"
           v-model="exampleQuestion"
           class="ib-input"
-          :maxlength="300"
+          :maxlength="BIZ_QUESTION_MAX"
           show-word-limit
           :placeholder="adminContext
             ? '填 1 个终端用户会问的问题'

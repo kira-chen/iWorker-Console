@@ -36,7 +36,8 @@ import { countAssignedUsers } from './positionAssignmentMock'
 // 否则 posSeq 复用旧 id 时新岗位会「继承」上一轮同 id 岗位遗留的数据（runtimeSpecMock 已反向
 // import 本模块，同属有意的循环依赖，函数体内调用，安全）
 import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef, countSampleTasks } from './sampleTaskMock'
-import { computePublishCheck } from '@/utils/positionModel'
+// 各项字数 / 条数 / 个数上限一律引用 utils/positionModel 的常量（页面校验与本 mock 同源，避免两处各写一份而失配）
+import { computePublishCheck, LIMITS, DESCRIPTION_MAX_LEN, CLAIM_NOTE_MAX, CLAIM_NOTE_LEN, EXAMPLE_Q_MAX_LEN } from '@/utils/positionModel'
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
@@ -356,10 +357,8 @@ export async function createPosition(payload = {}) {
   const name = String(payload.name || '').trim()
   if (!name) throw err('请填写岗位名称', 'name')
   if (positions.some((p) => p.name === name)) throw err('已存在同名岗位', 'name', 1005)
-  // 2000 = utils/positionModel.js DESCRIPTION_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
-  // 2026-09-20 待办 yuepu#8：09-16 217ce1f 只把页面/md 放宽到 2000（一览表描述类统一规则），这里还卡在 09-08 的 500，
-  // 填 600 字计数显示 600/2000、保存却被拒，活 bug）
-  if (String(payload.description || '').trim().length > 2000) throw err('岗位描述最多 2000 个字符', 'description')
+  // 上限取 DESCRIPTION_MAX_LEN（一览表描述类统一规则，页面与本 mock 同源；曾因本处还卡在旧的 500 而与页面失配）
+  if (String(payload.description || '').trim().length > DESCRIPTION_MAX_LEN) throw err(`岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`, 'description')
   const now = nowIso()
   const p = {
     positionId: posSeq++,
@@ -665,8 +664,8 @@ export async function relistPositionPublication(positionId, version) {
 
 /* ============================ 工作台：岗位详情树 + Agent/技能引用（2026-09-02 补 mock） ============================ */
 
-const AGENT_MAX = 20 // 与 utils/positionModel.js LIMITS.AGENT_MAX 同口径（mock 不 import utils，改这个值务必同步那边）
-const SKILL_PER_AGENT_MAX = 100 // 与 utils/positionModel.js LIMITS.SKILL_MAX 同口径（mock 不 import utils，改这个值务必同步那边）；Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
+const AGENT_MAX = LIMITS.AGENT_MAX
+const SKILL_PER_AGENT_MAX = LIMITS.SKILL_MAX // Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
 
 const bySort = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
 
@@ -826,8 +825,7 @@ export async function updatePosition(id, payload = {}) {
   }
   if ('description' in payload) {
     const description = String(payload.description || '').trim()
-    // 2000 = utils/positionModel.js DESCRIPTION_MAX_LEN 同口径（2026-09-20 待办 yuepu#8，原 500，见 createPosition 注释）
-    if (description.length > 2000) throw err('岗位描述最多 2000 个字符', 'description')
+    if (description.length > DESCRIPTION_MAX_LEN) throw err(`岗位描述最多 ${DESCRIPTION_MAX_LEN} 个字符`, 'description')
     p.description = description
   }
   if ('intro' in payload) wb.intro = String(payload.intro || '').trim()
@@ -841,16 +839,14 @@ export async function updatePosition(id, payload = {}) {
     const notes = Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map((s) => String(s ?? '').trim()).filter(Boolean) : []
     // 2026-09-08 PRD-20260908 对齐：「岗位认领说明」→「领用页文案」（md §2.4）、≤6 条；
     // 2026-09-21 起必填（至少 1 条）但只在发布时拦（md §9.1），保存仍允许空列表，故此处不校验最少条数；
-    // 每条 300 = utils/positionModel.js CLAIM_NOTE_LEN 同口径（2026-09-20 待办 yuepu#8，原 100 与 UI/一览表不同源）
-    if (notes.length > 6) throw err('领用页文案最多 6 条', 'claimDescriptions')
-    if (notes.some((s) => s.length > 300)) throw err('领用页文案每条最多 300 个字符', 'claimDescriptions')
+    // 条数 / 每条字数取 CLAIM_NOTE_MAX / CLAIM_NOTE_LEN（页面与本 mock 同源）
+    if (notes.length > CLAIM_NOTE_MAX) throw err(`领用页文案最多 ${CLAIM_NOTE_MAX} 条`, 'claimDescriptions')
+    if (notes.some((s) => s.length > CLAIM_NOTE_LEN)) throw err(`领用页文案每条最多 ${CLAIM_NOTE_LEN} 个字符`, 'claimDescriptions')
     wb.claimDescriptions = notes
   }
   if ('exampleQuestions' in payload) {
     const qs = normEq(payload.exampleQuestions)
-    // 300 = utils/positionModel.js EXAMPLE_Q_MAX_LEN 同口径（mock 不 import utils，数值对齐即可；
-    // 2026-09-18 待办 yuepu#5⑥：此前卡在 60，输入框已放宽到 300，保存被这里拒绝，活 bug）
-    if (qs.some((q) => q.trim().length > 300)) throw err('示例问题每条最多 300 个字符', 'exampleQuestions')
+    if (qs.some((q) => q.trim().length > EXAMPLE_Q_MAX_LEN)) throw err(`示例问题每条最多 ${EXAMPLE_Q_MAX_LEN} 个字符`, 'exampleQuestions')
     wb.exampleQuestions = qs
   }
   if ('positionSop' in payload) {
