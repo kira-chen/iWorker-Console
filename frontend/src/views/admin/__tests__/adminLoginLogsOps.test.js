@@ -26,6 +26,12 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  *   日期面板不真点（jsdom 下面板定位不稳），改读真 ElDatePicker 收到的 disabled-date 函数并经其 calendar-change 回调驱动。
  * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案（#64④）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
  *
+ * 2026-09-30 补岗位分配记录（§6.1 / §6.2 / §6.3 / §6.4）；2026-10-09 /test-audit 补：
+ * - 强制回收（§6.1 动作筛选完整顺序、§6.4 红色动作标签、技能模块蓝标签与版本号小标签、变更内容 = 回收原因）；
+ * - 用户技能审核（§6.4 橙色模块标签、审核通过绿 / 审核驳回红；变更内容驳回写原因、通过为空显示「—」）；
+ * - 下载页签真分页（§5.2「列表根据页面高度动态分页」：多于一页时切片 + 总数 + 翻页 + 改筛选 / 排序回第 1 页），
+ *   此前「出分页条」用例只有 3 行夹具，分页逻辑改坏也绿。
+ *
  * 真实挂载（真 Element Plus 标签页 / 表格 / 下拉），只 mock 数据层。记录时间取「今天」，
  * 避免被页面默认的「近 90 天」时间范围滤掉。「登录访问」页签的用例见 adminLoginLogs.test.js。
  */
@@ -48,7 +54,10 @@ vi.mock('@/api/accessAuditMock', () => {
       { id: 3, time: `${day} 11:00`, operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: '' },
       { id: 4, time: `${day} 12:00`, operator: 'demo', module: '运行规格', action: '个人配置', target: '标准', detail: '为 2 个用户配置规格「标准」' },
       { id: 5, time: `${day} 13:00`, operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗' },
-      { id: 6, time: `${day} 14:00`, operator: 'admin', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' }
+      { id: 6, time: `${day} 14:00`, operator: 'admin', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' },
+      { id: 7, time: `${day} 15:00`, operator: 'admin', module: '技能', action: '强制回收', target: '财税合规助手', version: 'v1.0.0', detail: '存在数据泄露风险' },
+      { id: 8, time: `${day} 16:00`, operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 合同管理助手', detail: '岗位与技能权限范围不匹配' },
+      { id: 9, time: `${day} 17:00`, operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 报销助手', detail: '' }
     ]
   }
 })
@@ -59,7 +68,7 @@ let mounted
 let router
 const pane = () => mounted.container.querySelector('#pane-admin-ops')
 const rows = () => [...pane().querySelectorAll('.el-table__body tr')]
-const rowOf = (target, action) => rows().find((tr) => tr.textContent.includes(target) && tr.querySelector('.aa-tag:nth-of-type(1)') && [...tr.querySelectorAll('.aa-tag')].some((t) => t.textContent.trim() === action))
+const rowOf = (target, action) => rows().find((tr) => tr.textContent.includes(target) && [...tr.querySelectorAll('.aa-tag')].some((t) => t.textContent.trim() === action))
 const tags = (tr) => [...tr.querySelectorAll('.aa-tag')]
 // 列序：时间 / 操作人 / 模块 / 动作 / 变更内容 / 操作对象 / 操作（变更内容 = 第 5 格）
 const detailCell = (tr) => tr.querySelectorAll('td')[4]
@@ -95,8 +104,8 @@ afterEach(() => {
 
 describe('访问审计 · 管理端操作 · 版本管理记录', () => {
   beforeEach(() => switchTab('管理端操作'))
-  it('六条记录都在默认时间范围内展示', () => {
-    expect(rows()).toHaveLength(6)
+  it('九条记录都在默认时间范围内展示', () => {
+    expect(rows()).toHaveLength(9)
   })
 
   it('模块标签：版本管理灰色（§6.4）；动作标签：发布绿、停用橙', () => {
@@ -196,6 +205,59 @@ describe('访问审计 · 管理端操作 · 运行规格记录（2026-09-23）'
     ;[...assign.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminRuntimeSpecs'))
     expect(router.currentRoute.value.query.keyword).toBe('标准')
+  })
+})
+
+describe('访问审计 · 管理端操作 · 强制回收与用户技能审核记录（2026-10-09 /test-audit 补，§6.1 / §6.2 / §6.4）', () => {
+  beforeEach(() => switchTab('管理端操作'))
+  const openDropdown = async (idx) => {
+    pane().querySelectorAll('.lt-filter')[idx].querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    return [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
+  }
+
+  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 撤回 / 删除 / 审核通过 / 审核驳回（§6.1）', async () => {
+    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 10 项
+    const labels = await openDropdown(1)
+    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 10)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '撤回', '删除', '审核通过', '审核驳回'])
+  })
+
+  it('模块筛选含「用户技能审核」', async () => {
+    expect(await openDropdown(0)).toContain('用户技能审核')
+  })
+
+  it('强制回收：动作标签红色、模块「技能」蓝色；变更内容 = 回收原因；操作对象附版本号小标签 v1.0.0（§6.2 / §6.4）', () => {
+    const r = rowOf('财税合规助手', '强制回收')
+    expect(tagOf(r, '强制回收').className).toContain('tag-red')
+    expect(tagOf(r, '技能').className).toContain('tag-blue')
+    expect(detailCell(r).textContent).toContain('存在数据泄露风险')
+    expect(r.querySelector('.ops-version').textContent).toBe('v1.0.0')
+  })
+
+  it('用户技能审核：模块标签橙色；审核驳回红、审核通过绿（§6.4）', () => {
+    const rejected = rowOf('sun.hao / 合同管理助手', '审核驳回')
+    const approved = rowOf('wang.fang / 报销助手', '审核通过')
+    expect(tagOf(rejected, '用户技能审核').className).toContain('tag-orange')
+    expect(tagOf(rejected, '审核驳回').className).toContain('tag-red')
+    expect(tagOf(approved, '审核通过').className).toContain('tag-green')
+  })
+
+  it('用户技能审核的变更内容：驳回展示驳回原因，通过为空显示「—」；操作对象为「提交人 / 技能名」且不附版本号（§6.2）', () => {
+    const rejected = rowOf('sun.hao / 合同管理助手', '审核驳回')
+    const approved = rowOf('wang.fang / 报销助手', '审核通过')
+    expect(detailCell(rejected).textContent).toContain('岗位与技能权限范围不匹配')
+    expect(detailCell(approved).textContent.trim()).toBe('—')
+    expect(rejected.querySelector('.ops-target-name').textContent).toBe('sun.hao / 合同管理助手')
+    expect(rejected.querySelector('.ops-version')).toBeNull()
+  })
+
+  it('动作筛选选「强制回收」→ 只剩强制回收记录', async () => {
+    pane().querySelectorAll('.lt-filter')[1].querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === '强制回收').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].textContent).toContain('财税合规助手')
   })
 })
 
@@ -356,6 +418,79 @@ describe('访问审计 · 用户端文件下载 · 列表（§5.2）', () => {
   })
 })
 
+describe('访问审计 · 用户端文件下载 · 分页（§5.2「列表根据页面高度动态分页」）', () => {
+  // 夹具 3 条 + 追加 6 条 = 9 条，必须多于 jsdom 窗口算出的每页条数（768 高 → 7 条），才能验证真切片
+  const EXTRA = 6
+  const added = []
+  const pager = () => dlPane().querySelector('.list-pager')
+  const pageBtns = () => [...dlPane().querySelectorAll('.list-pager .page-btn')]
+  const activePage = () => dlPane().querySelector('.list-pager .page-btn.active').textContent.trim()
+  const goPage = async (n) => {
+    pageBtns().find((b) => b.textContent.trim() === String(n)).click()
+    await flushAll(4)
+  }
+  const sortHead = () => dlPane().querySelector('.ll-sort')
+  /** 追加的记录写进共享夹具后，点两次时间列头（正序再倒序）触发一次重新取数，回到第 1 页倒序。 */
+  const reloadDl = async () => {
+    sortHead().click()
+    await flushAll(4)
+    sortHead().click()
+    await flushAll(4)
+  }
+  const pageSize = () => Number(dlPane().querySelector('.list-pager .page-size').value)
+
+  beforeEach(async () => {
+    const today = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const day = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+    const { dlRecords } = await import('@/api/accessAuditMock')
+    for (let i = 1; i <= EXTRA; i++) {
+      const rec = { id: 200 + i, time: `${day} 0${i}:00`, user: `用户${i}`, filename: `追加文件${i}.pdf`, channel: 'Windows', source: '会话产物', result: 'SUCCESS' }
+      dlRecords.push(rec)
+      added.push(rec)
+    }
+    await switchTab('用户端文件下载')
+    await reloadDl()
+  })
+  afterEach(async () => {
+    const { dlRecords } = await import('@/api/accessAuditMock')
+    for (const rec of added.splice(0)) dlRecords.splice(dlRecords.indexOf(rec), 1)
+  })
+
+  it('记录多于一页 → 首页只出一页的行数，分页条写明「共 9 条数据」', () => {
+    expect(pageSize()).toBeLessThan(9) // 前提：每页条数小于总数，否则下面的切片断言没意义
+    expect(dlRows()).toHaveLength(pageSize())
+    expect(pager().textContent).toContain('共 9 条数据')
+  })
+
+  it('点第 2 页 → 出剩余的记录，首页的最新一条不再出现', async () => {
+    const firstPageFirst = dlRows()[0].textContent
+    await goPage(2)
+    expect(dlRows()).toHaveLength(9 - pageSize())
+    expect(dlRows().some((tr) => tr.textContent === firstPageFirst)).toBe(false)
+    expect(activePage()).toBe('2')
+  })
+
+  it('停在第 2 页时切换排序 → 回到第 1 页', async () => {
+    await goPage(2)
+    sortHead().click()
+    await flushAll(4)
+    expect(activePage()).toBe('1')
+    expect(dlRows()).toHaveLength(pageSize())
+  })
+
+  it('停在第 2 页时输入搜索关键词 → 回到第 1 页，只剩命中记录', async () => {
+    await goPage(2)
+    const input = dlPane().querySelector('.lt-search input')
+    input.value = '追加文件3'
+    input.dispatchEvent(new Event('input'))
+    await flushAll(6)
+    expect(dlRows()).toHaveLength(1)
+    expect(dlRows()[0].textContent).toContain('追加文件3.pdf')
+    expect(pager().textContent).toContain('共 1 条数据')
+  })
+})
+
 /* ======================================================================================
  * 时间范围跨度与页签条件独立（2026-10-08 /test-audit 补缺口，prd.访问审计.md §二 / §三）
  * ====================================================================================== */
@@ -420,7 +555,7 @@ describe('访问审计 · 切换页签各页签条件独立（§二 / §三）',
     await flushAll(4)
     await switchTab('管理端操作')
     expect(pane().querySelector('.lt-search input').value).toBe('')
-    expect(rows()).toHaveLength(6)
+    expect(rows()).toHaveLength(9)
     await switchTab('用户端文件下载')
     expect(dlPane().querySelector('.lt-search input').value).toBe('吴强')
     expect(dlRows()).toHaveLength(1)
@@ -433,6 +568,6 @@ describe('访问审计 · 切换页签各页签条件独立（§二 / §三）',
     expect(dlRows()).toHaveLength(0) // 下载页签按新范围立即过滤（夹具全是今天）
     expect(pickers()[2].props.modelValue).toBe(before)
     await switchTab('管理端操作')
-    expect(rows()).toHaveLength(6)
+    expect(rows()).toHaveLength(9)
   })
 })

@@ -63,4 +63,14 @@ describe('AdminPositionAssignments · 真实 Element Plus 挂载冒烟', () => {
     expect(pager).toBeTruthy()
     expect(pager.textContent).toContain('共 13 条数据')
   })
+
+  // 2026-10-09 /test-audit 补缺口：访问审计「岗位分配」记录的【查看】会带 ?keyword=用户名 过来（访问审计 §6.3），
+  // 此前只测了发送端（adminLoginLogsOps.test.js），接收端的注入无守护。
+  it('带 ?keyword=chenyu 进入 → 搜索框预填 chenyu，并以该关键词取数（访问审计 §6.3）', async () => {
+    await router.push('/?keyword=chenyu')
+    mounted = mountReal(AdminPositionAssignments, {}, { plugins: [router] })
+    await flushAll(10)
+    expect(mounted.container.querySelector('input[placeholder="搜索用户名 / 显示名"]').value).toBe('chenyu')
+    expect(listPositionAssignments).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: 'chenyu' }))
+  })
 })

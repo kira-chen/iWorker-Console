@@ -5,6 +5,9 @@ import { opsRecords, appendOpsRecord, resetAccessAuditMock, listClientFacingOps 
 /**
  * accessAuditMock「管理端操作」记录：种子 + 运行期写入（2026-09-20，版本管理发布 / 停用写记录）。
  * 对齐 prd.访问审计.md §6.2（操作对象 / 变更内容）与 prd.版本管理.md §八「审计」。
+ *
+ * 2026-09-30 起新增（4125917）：§6.2 强制回收 / 用户技能审核 / 岗位分配三类记录；§6.5.1–6.5.3 落给客户端的数据层
+ * （appendOpsRecord 的 at / objectId / meta / version 可选字段，listClientFacingOps 的 since 增量、排序、旧种子无 at 兜底）。
  */
 
 beforeEach(() => resetAccessAuditMock())
