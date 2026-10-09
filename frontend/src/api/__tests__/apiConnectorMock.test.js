@@ -507,13 +507,13 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
   })
 
   it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
-    await expect(run(m.forceRevokeApi('api_1104', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
-    await expect(run(m.forceRevokeApi('api_1102', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await expect(run(m.forceRevokeApi('api_1104', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeApi('api_1102', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 待审发布
     await run(m.deactivateApi('api_1103')) // 已发布 → 待审停用
-    await expect(run(m.forceRevokeApi('api_1103', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeApi('api_1103', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
     await expect(run(m.forceRevokeApi('nope', reason))).rejects.toThrow('API 不存在')
     await run(m.forceRevokeApi('api_1101', reason))
-    await expect(run(m.forceRevokeApi('api_1101', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeApi('api_1101', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
   })
 
   it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清并回已发布', async () => {

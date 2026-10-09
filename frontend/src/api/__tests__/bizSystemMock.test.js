@@ -436,10 +436,10 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
 
   it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
     const { m, run } = await fresh()
-    await expect(run(m.forceRevokeBizSystem('biz_2103', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
-    await expect(run(m.forceRevokeBizSystem('biz_2102', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await expect(run(m.forceRevokeBizSystem('biz_2103', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeBizSystem('biz_2102', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 待审发布
     await run(m.deactivateBizSystem('biz_2101')) // 已发布 → 待审停用
-    await expect(run(m.forceRevokeBizSystem('biz_2101', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeBizSystem('biz_2101', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试')
     await expect(run(m.forceRevokeBizSystem('nope', reason))).rejects.toThrow('业务系统不存在')
   })
 
