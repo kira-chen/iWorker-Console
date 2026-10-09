@@ -644,6 +644,11 @@ describe('访问审计 · 时间范围跨度最多 30 天（§三）', () => {
     for (const p of pickers()) expect(typeof p.props.disabledDate).toBe('function')
   })
 
+  it('三个日期区间选择器都不可清空，避免清空后展示 90 天之外的记录（md §三「仅展示当前日期向前 90 天」；yuepu#85）', () => {
+    expect(pickers()).toHaveLength(3)
+    for (const p of pickers()) expect(p.props.clearable).toBe(false)
+  })
+
   it('还没点选起始日时 → 不置灰任何日期', () => {
     for (const p of pickers()) expect(p.props.disabledDate(day(BASE, 200))).toBe(false)
   })

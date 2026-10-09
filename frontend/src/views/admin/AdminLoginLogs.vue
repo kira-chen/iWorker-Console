@@ -274,6 +274,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="loginDisabledDate"
+          :clearable="false"
           @calendar-change="onLoginCalendarChange"
           @change="reload"
           class="lt-date-range"
@@ -367,6 +368,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="dlDisabledDate"
+          :clearable="false"
           @calendar-change="onDlCalendarChange"
           class="lt-date-range"
         />
@@ -446,6 +448,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="opsDisabledDate"
+          :clearable="false"
           @calendar-change="onOpsCalendarChange"
           class="lt-date-range"
         />
