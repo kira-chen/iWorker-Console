@@ -4,8 +4,9 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 // 捕获 attachPersist 的 restore，用来构造「申请快照总量 ≠ 同意时当前总量」这种正常操作到不了的状态
 const persistHarness = vi.hoisted(() => ({ options: null }))
 vi.mock('../mockPersist', () => ({
-  attachPersist: (_key, options) => {
-    persistHarness.options = options
+  attachPersist: (key, options) => {
+    // 用户 / 岗位 / 审计等模块也会 attach，只记存储空间自己的，不依赖加载顺序
+    if (key === 'storageSpace') persistHarness.options = options
     return vi.fn()
   }
 }))
@@ -19,9 +20,14 @@ import { quotaInputError } from '../../utils/storageSpace'
 import { listUsersSync, createUser, updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
 import { setUserPosition, getAssignmentByUserId, __resetPositionAssignmentMock } from '../positionAssignmentMock'
 
-// 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md 与 05治理/访问审计 §6.2 / §6.5.4。
-// 种子：默认 5 GB；已满且有待处理申请的 4 人（刘强 ER-1003、孙欣 ER-1004、王芳 ER-1005、陈宇 ER-1006）；
-// 何静已满（申请已拒绝）；李娜预警；赵敏个人 10 GB（申请已同意）；杨帆、马超未统计；张伟正常。
+// 2026-10-09 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md（§一·4 状态判定 / §三 容量分配 / §四 扩容申请 / §五 用户联动 / §六 审计）
+// 与 05治理/访问审计 §6.2 / §6.5.4。覆盖：状态与排序、调整 / 批量 / 恢复默认、有待处理申请不可调整、申请处理与并发、
+// 审计 hidden 与客户端视图、与用户 / 岗位模块联动（reconcile）、种子自洽；持久化与读回见 storageSpaceMockPersist.test.js。
+//
+// 种子速查（员工 id 取自 adminUserMock 种子，用户名 → id）：zhangwei 201 / li.na 202 / chenyu 203 / wangfang 204 /
+// sun.xin 206 / liuqiang 207 / zhaomin 208 / hejing 210 / xulin 212 / yangfan 209（未统计）/ ma.chao 213（未统计）；停用的 zhouming 205、wujie 211 不进清单。
+// 默认 5 GB；待处理 4 条：刘强 ER-1003、孙欣 ER-1004（预警：申请后自行清了空间）、王芳 ER-1005、陈宇 ER-1006；
+// 已处理 4 条：赵敏同意（个人 10 GB）、何静 / 刘强 / 孙欣被拒；徐琳个人 8 GB 且已满；李娜预警；张伟正常。
 const liveOps = () => opsRecords.filter((r) => r.live && r.module === '存储空间')
 // 客户端读取视图里本次测试新产生的存储空间记录（种子记录的 recordId < 100，排除掉）
 const liveClientOps = () => listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
@@ -53,6 +59,14 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
     expect(states.map((s) => order[s])).toEqual([...states.map((s) => order[s])].sort((a, b) => a - b))
   })
 
+  it('同一状态内按使用率降序（md 三·3）：正常组里使用率高的在前，调整容量后顺序随之变化', async () => {
+    await adjustStorageQuota(202, 20) // 李娜 4.7/20 = 23.5%，变成正常；张伟 2.7/5 = 54%
+    const normals = async () => (await listStorageMembers({ state: 'NORMAL', size: 50 })).list.map((m) => m.username)
+    expect(await normals()).toEqual(['zhangwei', 'li.na'])
+    await adjustStorageQuota(201, 100) // 张伟 2.7/100 = 2.7%，掉到李娜后面
+    expect(await normals()).toEqual(['li.na', 'zhangwei'])
+  })
+
   it('可按状态、有待处理申请、用户名或显示名筛选', async () => {
     expect((await listStorageMembers({ state: 'FULL', size: 50 })).list.map((m) => m.username).sort()).toEqual(['chenyu', 'hejing', 'liuqiang', 'wangfang', 'xulin'])
     expect((await listStorageMembers({ pending: true, size: 50 })).list.map((m) => m.username).sort()).toEqual(['chenyu', 'liuqiang', 'sun.xin', 'wangfang'])
@@ -65,6 +79,7 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
   })
 
   it('概览给出默认容量、按默认值计算的人数与待处理申请数', async () => {
+    // 在职 11 人 − 个人设置 2 人（赵敏 10 GB、徐琳 8 GB）= 9 人用默认；待处理 4 条
     expect(await getStorageOverview()).toEqual({ defaultQuotaGb: 5, defaultMemberCount: 9, pendingCount: 4 })
   })
 })
@@ -82,15 +97,6 @@ describe('storageSpaceMock —— 访问审计可见性', () => {
   })
 })
 
-describe('storageSpaceMock —— 默认容量固定 5 GB', () => {
-  it('没有个人设置值的员工总量恒为 5 GB，概览里默认容量固定为 5；不再提供修改默认容量', async () => {
-    expect((await getStorageOverview()).defaultQuotaGb).toBe(5)
-    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'DEFAULT' })
-    const mock = await import('../storageSpaceMock')
-    expect(mock.updateDefaultQuota).toBeUndefined()
-  })
-})
-
 describe('storageSpaceMock —— 调整容量', () => {
   it('单个调整后总量与容量来源更新，并写「调整容量」（变更内容「原总量 → 新总量」）', async () => {
     await adjustStorageQuota(201, 8)
@@ -105,13 +111,19 @@ describe('storageSpaceMock —— 调整容量', () => {
     expect((await getStorageOverview()).defaultMemberCount).toBe(9)
   })
 
-  it('调整容量最小 1 GB，可任意调大调小；调到不高于已用时允许保存，员工随即处于已满状态', async () => {
-    await adjustStorageQuota(208, 3) // 赵敏原为 10 GB，已用 9.7，可调到低于默认容量
+  it('调整容量可任意调小，不受当前容量限制：10 GB 的员工直接调到 3 GB，已用不高于新总量时随即处于已满状态', async () => {
+    await adjustStorageQuota(208, 3) // 赵敏原为 10 GB，已用 9.7
     expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 3, state: 'FULL' })
+  })
+
+  it('调整容量最小 1 GB：1 可以，0 报「容量不能小于 1 GB」', async () => {
     await adjustStorageQuota(208, 1)
     expect((await memberOf('zhaomin')).totalGb).toBe(1)
     await expect(adjustStorageQuota(208, 0)).rejects.toThrow('容量不能小于 1 GB')
-    await adjustStorageQuota(208, 50000) // 不设上限
+  })
+
+  it('调整容量不设上限', async () => {
+    await adjustStorageQuota(208, 50000)
     expect((await memberOf('zhaomin')).totalGb).toBe(50000)
   })
 
@@ -131,6 +143,22 @@ describe('storageSpaceMock —— 调整容量', () => {
     const result = await batchAdjustStorageQuota([201, 202, 208], 10)
     expect(result).toEqual({ count: 3, changed: 2, skipped: 0 }) // 赵敏本来就是 10
     expect(liveOps().map((r) => r.target).sort()).toEqual(['li.na', 'zhangwei'])
+  })
+
+  it('批量里重复的员工 id 只处理一次（审计也只记一条）', async () => {
+    await batchAdjustStorageQuota([201, 201, 201], 8)
+    expect(liveOps()).toHaveLength(1)
+  })
+
+  it('批量里夹了不存在的员工 → 整批报错，已存在的员工也不改（原子）', async () => {
+    await expect(batchAdjustStorageQuota([201, 999], 8)).rejects.toThrow('员工不存在')
+    expect((await memberOf('zhangwei')).totalGb).toBe(5)
+    expect(liveOps()).toHaveLength(0)
+  })
+
+  it('恢复默认对本来就是默认的员工没有变化：不写审计', async () => {
+    await adjustStorageQuota(201, null, { restoreDefault: true })
+    expect(liveOps()).toHaveLength(0)
   })
 
   it('批量未选员工时拦截；员工不存在时报错', async () => {
@@ -196,6 +224,12 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     })
   })
 
+  it('员工在申请待处理期间自行清出空间、不再满：申请仍待处理，管理员可照常同意（md 四·5）', async () => {
+    expect(await memberOf('sun.xin')).toMatchObject({ state: 'WARN', pendingRequestId: 'ER-1004' }) // 种子：申请后清了空间
+    await approveExpansionRequest('ER-1004', 9)
+    expect(await memberOf('sun.xin')).toMatchObject({ totalGb: 9, pendingRequestId: null })
+  })
+
   it('同意扩容审计的「原总量」取同意那一刻员工的当前总量，不取申请时的快照', async () => {
     // 构造：陈宇的申请是在总量 5 GB 时提交的（快照 totalGb=5），但同意时他的当前总量已是个人设置的 8 GB
     const snap = persistHarness.options.snapshot()
@@ -214,12 +248,20 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect((await getExpansionRequest('ER-1006')).status).toBe('PENDING')
   })
 
-  it('拒绝：原因必填且 ≤ 500 字；成功后容量不变，原因写进审计变更内容', async () => {
+  it('拒绝原因必填且 ≤ 500 字：空白报「请输入拒绝原因」，501 字报「拒绝原因最多 500 字」，失败后申请仍待处理', async () => {
     await expect(rejectExpansionRequest('ER-1006', '   ')).rejects.toThrow('请输入拒绝原因')
     await expect(rejectExpansionRequest('ER-1006', '字'.repeat(501))).rejects.toThrow('拒绝原因最多 500 字')
+    expect((await getExpansionRequest('ER-1006')).status).toBe('PENDING')
+  })
+
+  it('拒绝成功：申请记已拒绝并存原因，员工容量不变、仍是已满', async () => {
     await rejectExpansionRequest('ER-1006', '请先清理历史产物')
     expect(await memberOf('chenyu')).toMatchObject({ totalGb: 5, state: 'FULL' })
-    expect(await getExpansionRequest('ER-1006')).toMatchObject({ status: 'REJECTED', rejectReason: '请先清理历史产物' })
+    expect(await getExpansionRequest('ER-1006')).toMatchObject({ status: 'REJECTED', rejectReason: '请先清理历史产物', handler: 'demo' })
+  })
+
+  it('拒绝成功：审计记「拒绝扩容」（变更内容 = 拒绝原因），客户端视图带拒绝原因', async () => {
+    await rejectExpansionRequest('ER-1006', '请先清理历史产物')
     expect(liveOps()[0]).toMatchObject({ action: '拒绝扩容', target: 'chenyu', detail: '请先清理历史产物' })
     expect(liveClientOps()[0]).toMatchObject({ type: '拒绝扩容', rejectReason: '请先清理历史产物' })
   })
@@ -334,25 +376,31 @@ describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审�
     expect((await memberOf('xulin')).totalGb).toBe(8)
   })
 
-  it('种子覆盖各种状态：个人设置且已满（徐琳）、预警但仍有待处理申请（孙欣）、未统计、超长申请说明与拒绝原因', async () => {
+  it('演示种子守卫——覆盖各种状态：个人设置且已满（徐琳）、预警但仍有待处理申请（孙欣）、未统计、超长申请说明与拒绝原因', async () => {
     expect(await memberOf('xulin')).toMatchObject({ quotaSource: 'PERSONAL', state: 'FULL' })
     expect(await memberOf('sun.xin')).toMatchObject({ state: 'WARN', pendingRequestId: 'ER-1004' })
     expect((await memberOf('yangfan')).state).toBe('UNKNOWN')
     const reqs = (await listExpansionRequests({ size: 50 })).list
+    // 120：列表里申请说明 / 拒绝原因超长省略号 + 悬停的演示阈值（列宽放不下 100 字左右），种子要有超过它的样例
     expect(Math.max(...reqs.map((r) => r.reason.length))).toBeGreaterThan(120)
     expect(Math.max(...reqs.map((r) => r.rejectReason.length))).toBeGreaterThan(120)
     expect(new Set(reqs.map((r) => r.handler).filter(Boolean)).size).toBeGreaterThanOrEqual(2) // 不止一位处理人
   })
 })
 
-describe('quotaInputError —— 容量输入校验文案（页面与 mock 共用）', () => {
-  it('空值 / 非数字「请输入正整数」，小数「容量只能填整数」，小于下限「容量不能小于 N GB」，合法返回空串', () => {
-    expect(quotaInputError(null)).toBe('请输入正整数')
-    expect(quotaInputError('')).toBe('请输入正整数')
-    expect(quotaInputError(2.5)).toBe('容量只能填整数')
-    expect(quotaInputError(0)).toBe('容量不能小于 1 GB')
-    expect(quotaInputError(3, 5)).toBe('容量不能小于 5 GB')
-    expect(quotaInputError(1)).toBe('')
-    expect(quotaInputError(100000)).toBe('') // 不设上限
+describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md 存储空间 §一·4「已用 ≥ 总量 90% 且未满为预警」）', () => {
+  // 前提单独成条：it.fails 遇任何异常都算通过，前提若写在里面会「为错误的原因通过」
+  it('前提：构造 11.7 GB / 13 GB 的员工（恰好 90%，未满）', async () => {
+    const snap = persistHarness.options.snapshot()
+    Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
+    persistHarness.options.restore(snap)
+    expect(await memberOf('zhangwei')).toMatchObject({ usedGb: 11.7, totalGb: 13 })
+  })
+
+  it.fails('yuepu#86 11.7 / 13 恰好 90% 应为预警（现状：13*0.9 = 11.700000000000001，被判成正常）', async () => {
+    const snap = persistHarness.options.snapshot()
+    Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
+    persistHarness.options.restore(snap)
+    expect((await memberOf('zhangwei')).state).toBe('WARN')
   })
 })

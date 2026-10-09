@@ -4,10 +4,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
- * AdminStorageSpace.vue 页面级用例（2026-10-09 存储空间首版）。
- * 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md
- *   §二 页面结构（两个页签 + 待处理角标）/ §三 容量分配（默认容量条、列表、调整容量二次确认）/ §四 扩容申请（同意 / 拒绝）。
- * 真实挂载（真 Element Plus + 真子组件），只 mock api 层；业务规则（状态判定、待处理员工不可调整、审计、与用户 / 岗位模块联动）见 storageSpaceMock.test.js。
+ * AdminStorageSpace.vue 页面级用例（2026-10-09 存储空间首版，同日经 prd-import 验收与 test-audit 补强）。
+ * 2026-10-09 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md
+ *   §二 页面结构（标题 / 说明 / 两个页签 / 待处理角标 / 切换页签不保留状态）/ §三 容量分配（默认容量条、操作列互斥、批量勾选、调整容量、恢复默认、加载失败）/
+ *   §四 扩容申请（处理时间排序、同意 / 拒绝、并发、查看）/ §五 用户联动里与页面有关的部分。
+ * 真实挂载（真 Element Plus + 真子组件），只 mock api 层；业务规则（状态判定、待处理员工不可调整、审计、与用户 / 岗位模块联动）见 storageSpaceMock.test.js，
+ * 两个页签各自的细节（批量弹窗、未统计行、进度条、空态、拒绝限长、查看弹窗等）见 components/admin/__tests__/storageQuotaPane.test.js、storageRequestPane.test.js。
+ * 本文件的 fixture 是自造的，与 mock 种子无关（例如这里 ER-1003 指陈宇，种子里 ER-1003 是刘强）。
  */
 
 const api = {
@@ -36,9 +39,10 @@ const REQUEST = {
   submittedAt: '2026-10-09 10:05', status: 'PENDING', newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
 }
 
-let mounted, successSpy, warnSpy
+let mounted, successSpy, warnSpy, errorSpy
 beforeEach(() => {
   vi.clearAllMocks()
+  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   route.query = {}
   api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 1 })
   api.listStorageMembers.mockResolvedValue({ list: MEMBERS, total: MEMBERS.length })
@@ -54,6 +58,8 @@ afterEach(() => {
   mounted?.unmount()
   mounted = null
   document.body.innerHTML = ''
+  // 真实挂载冒烟的探针之一：整个用例过程中 console.error 零调用（setup 期报错、模板错误都会走这里）
+  expect(errorSpy).not.toHaveBeenCalled()
   vi.restoreAllMocks()
 })
 
@@ -65,6 +71,14 @@ async function mountPage() {
 const textOf = (el) => el.textContent.replace(/\s+/g, ' ').trim()
 const btn = (root, text) => [...root.querySelectorAll('button')].find((b) => textOf(b) === text)
 const dialogBody = () => document.body.querySelector('.el-dialog')
+/** 点开页面里第 n 个下拉（el-select）并选中文案为 text 的选项 */
+async function chooseOption(root, nth, text) {
+  root.querySelectorAll('.el-select')[nth].querySelector('.el-select__wrapper').click()
+  await flushAll(4)
+  const item = [...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => textOf(i) === text)
+  item.click()
+  await flushAll(6)
+}
 /** 点 el-input-number 的加减键：Element Plus 用 mousedown（按住连发）+ mouseup 触发，不是 click */
 async function pressStep(selector) {
   const el = dialogBody().querySelector(selector)
@@ -82,24 +96,30 @@ async function typeNumber(value) {
 }
 
 describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () => {
-  it('展示标题、默认容量条与「扩容申请」页签的待处理角标', async () => {
+  it('展示页面标题与说明（md §二）、默认容量条全文（md §三·1）与「扩容申请」页签的待处理角标', async () => {
     const c = await mountPage()
-    expect(textOf(c)).toContain('存储空间')
-    expect(textOf(c.querySelector('.sq-default'))).toContain('默认容量：5 GB')
+    expect(textOf(c.querySelector('h2'))).toBe('存储空间')
+    expect(textOf(c)).toContain('分配员工产物存储容量，处理扩容申请；仅统计本地产物（最终产物 + 缓存），不含知识库资料')
+    expect(textOf(c.querySelector('.sq-default'))).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整')
     expect(textOf(c.querySelector('.ss-badge'))).toBe('1')
-    expect(api.getStorageOverview).toHaveBeenCalled()
   })
 
-  it('员工行展示「已用 / 总量」、状态标签与待处理申请入口；正常员工没有申请入口', async () => {
+  it('待处理数为 0 时「扩容申请」页签不显示角标（md §二）', async () => {
+    api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 0 })
+    const c = await mountPage()
+    expect(c.querySelector('.ss-badge')).toBeNull()
+    expect(textOf(c.querySelectorAll('.el-tabs__item')[1])).toBe('扩容申请')
+  })
+
+  it('员工行展示姓名、「已用 / 总量」与状态标签', async () => {
     const c = await mountPage()
     const rows = [...c.querySelectorAll('.el-table__body tr.el-table__row')]
     expect(rows).toHaveLength(2)
     expect(textOf(rows[0])).toContain('陈宇')
     expect(textOf(rows[0])).toContain('5 GB / 5 GB')
     expect(textOf(rows[0])).toContain('已满')
-    expect(btn(rows[0], '待处理')).toBeTruthy()
     expect(textOf(rows[1])).toContain('2.7 GB / 5 GB')
-    expect(btn(rows[1], '待处理')).toBeUndefined()
+    expect(textOf(rows[1])).toContain('正常')
   })
 
   it('操作列：有待处理申请的显示「待处理」不显示「调整容量」，没有的显示「调整容量」；不再有单独的「扩容申请」列', async () => {
@@ -129,8 +149,8 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     expect(textOf(c)).toContain('报告产物较多，申请扩容到 10 GB。')
   })
 
-  it('新总量不高于已用时先二次确认；取消则不提交', async () => {
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+  it('新总量不高于已用时先二次确认（全文见 md §三·4）；取消则不提交，点「继续」才提交', async () => {
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('ok')
     const c = await mountPage()
     btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
     await flushAll(6)
@@ -138,8 +158,27 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     btn(dialogBody(), '确定').click()
     await flushAll(6)
     expect(confirm).toHaveBeenCalledTimes(1)
-    expect(String(confirm.mock.calls[0][0])).toContain('已满状态')
+    expect(String(confirm.mock.calls[0][0])).toBe('调整后张敏的总量不高于已用，将处于已满状态，任务会被拦截，是否继续？')
     expect(api.adjustStorageQuota).not.toHaveBeenCalled()
+    btn(dialogBody(), '确定').click()
+    await flushAll(8)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(api.adjustStorageQuota).toHaveBeenCalledWith(201, 2)
+  })
+
+  it('切换页签不保留搜索 / 筛选：在容量分配页选了状态再切走切回，请求参数回到默认（md §二）', async () => {
+    const c = await mountPage()
+    await chooseOption(c, 0, '已满') // 第一个下拉是状态筛选
+    expect(api.listStorageMembers.mock.calls.at(-1)[0].state).toBe('FULL')
+    const tabs = c.querySelectorAll('.el-tabs__item')
+    tabs[1].click()
+    await flushAll(12)
+    api.listStorageMembers.mockClear()
+    tabs[0].click()
+    await flushAll(12)
+    const params = api.listStorageMembers.mock.calls.at(-1)[0]
+    expect(params.state).toBeUndefined()
+    expect(params.keyword).toBeUndefined()
   })
 
   it('调整容量输入框带上下加减键（点加减按钮数字 ±1），减到 1 不能再减', async () => {
@@ -159,11 +198,10 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
 
   it('默认容量固定 5 GB：容量条只展示，没有「修改默认容量」按钮', async () => {
     const c = await mountPage()
-    expect(textOf(c.querySelector('.sq-default'))).toContain('默认容量：5 GB')
     expect(btn(c, '修改默认容量')).toBeUndefined()
   })
 
-  it('容量分配列表不展示统计时间列，也没有时间排序；仍按状态严重度排（已满在前）', async () => {
+  it('容量分配列表不展示统计时间列，也不提供时间排序（排序由 mock 守，见 storageSpaceMock.test.js）', async () => {
     const c = await mountPage()
     const heads = [...c.querySelectorAll('.el-table__header th')].map((th) => textOf(th))
     expect(heads).not.toContain('统计时间')
@@ -265,7 +303,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     expect(textOf(row)).toContain('0.6 GB')
   })
 
-  it('新总量高于已用时直接提交并提示；输入小于 1 的数被拉回 1、小数就地报错不提交，不设上限', async () => {
+  it('新总量高于已用时直接提交并提示；输入小于 1 的数被拉回 1、小数就地报错不提交', async () => {
     const c = await mountPage()
     btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
     await flushAll(6)
@@ -308,6 +346,42 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     expect(api.listStorageMembers.mock.calls[0][0].keyword).toBeUndefined()
   })
 
+  it('手动进入扩容申请页签，状态筛选默认「待处理」（md §四·1），没有搜索词', async () => {
+    await openRequestTab()
+    const params = api.listExpansionRequests.mock.calls.at(-1)[0]
+    expect(params.status).toBe('PENDING')
+    expect(params.keyword).toBeUndefined()
+  })
+
+  it('从容量分配点【待处理】带入员工用户名，离开页签后再手动切入：搜索词已清空、状态仍是待处理（md §二）', async () => {
+    const c = await mountPage()
+    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[0], '待处理').click()
+    await flushAll(12)
+    expect(api.listExpansionRequests.mock.calls.at(-1)[0].keyword).toBe('chenyu')
+    const tabs = c.querySelectorAll('.el-tabs__item')
+    tabs[0].click() // 回容量分配
+    await flushAll(12)
+    api.listExpansionRequests.mockClear()
+    tabs[1].click() // 手动再进扩容申请
+    await flushAll(12)
+    const params = api.listExpansionRequests.mock.calls.at(-1)[0]
+    expect(params.keyword).toBeUndefined()
+    expect(params.status).toBe('PENDING')
+  })
+
+  it('同意成功后角标刷新：重新取概览，角标显示新的待处理数', async () => {
+    const c = await openRequestTab()
+    expect(textOf(c.querySelector('.ss-badge'))).toBe('1')
+    api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 0 })
+    const callsBefore = api.getStorageOverview.mock.calls.length
+    btn(c.querySelector('.el-table__body tr.el-table__row'), '同意').click()
+    await flushAll(8)
+    btn(dialogBody(), '确认同意').click()
+    await flushAll(12)
+    expect(api.getStorageOverview.mock.calls.length).toBeGreaterThan(callsBefore)
+    expect(c.querySelector('.ss-badge')).toBeNull()
+  })
+
   it('扩容申请列表不展示提交时间列，处理人、处理时间各占一列', async () => {
     const c = await openRequestTab()
     const heads = [...c.querySelectorAll('.el-table__header th')].map((th) => textOf(th))
@@ -340,21 +414,30 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     const rows = [...c.querySelectorAll('.el-table__body tr.el-table__row')]
     expect(textOf(rows[1])).toContain('demo')
     expect(textOf(rows[1])).toContain('2026-10-09 11:00')
-    expect(textOf(rows[0])).not.toContain('2026-10-09 11:00')
+    // 列序：申请人 / 岗位 / 申请时用量 / 事实标签 / 申请说明 / 状态 / 处理结果 / 处理人 / 处理时间 / 操作——待处理行的后三列都是「—」
+    const cells = [...rows[0].querySelectorAll('td')].map(textOf)
+    expect(cells.slice(6, 9)).toEqual(['—', '—', '—'])
   })
 
-  it('待处理申请展示事实标签与【同意】【拒绝】；同意弹窗预填「当前总量 + 5」', async () => {
+  it('待处理申请展示事实标签与【同意】【拒绝】', async () => {
     const c = await openRequestTab()
     const row = c.querySelector('.el-table__body tr.el-table__row')
     expect(textOf(row)).toContain('缓存已清理')
     expect(textOf(row)).toContain('2 个自动化待执行')
-    btn(row, '同意').click()
-    await flushAll(8)
-    const input = dialogBody().querySelector('.el-input-number input')
-    expect(input.value).toBe('10')
+    expect(btn(row, '同意')).toBeTruthy()
+    expect(btn(row, '拒绝')).toBeTruthy()
   })
 
-  it('同意：新总量必须大于当前总量，不满足就地报错；满足后提交并提示', async () => {
+  it('同意弹窗预填「员工当前总量 + 5」（不是申请时的快照）：快照 5 GB、当前 8 GB → 预填 13', async () => {
+    api.getExpansionRequest.mockResolvedValue({ ...REQUEST, current: { ...MEMBERS[0], totalGb: 8 } })
+    const c = await openRequestTab()
+    btn(c.querySelector('.el-table__body tr.el-table__row'), '同意').click()
+    await flushAll(8)
+    expect(dialogBody().querySelector('.el-input-number input').value).toBe('13')
+  })
+
+  it('同意：新总量必须大于员工当前总量（这里当前 8 GB、申请快照 5 GB），不满足就地报错；满足后提交并提示', async () => {
+    api.getExpansionRequest.mockResolvedValue({ ...REQUEST, current: { ...MEMBERS[0], totalGb: 8 } })
     const c = await openRequestTab()
     btn(c.querySelector('.el-table__body tr.el-table__row'), '同意').click()
     await flushAll(8)
@@ -363,10 +446,10 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     await flushAll(4)
     expect(textOf(dialogBody())).toContain('容量只能填整数')
     expect(api.approveExpansionRequest).not.toHaveBeenCalled()
-    await typeNumber(5)
+    await typeNumber(8)
     btn(dialogBody(), '确认同意').click()
     await flushAll(4)
-    expect(textOf(dialogBody())).toContain('新总量须大于当前总量 5 GB')
+    expect(textOf(dialogBody())).toContain('新总量须大于当前总量 8 GB')
     expect(api.approveExpansionRequest).not.toHaveBeenCalled()
     await typeNumber(12)
     btn(dialogBody(), '确认同意').click()
