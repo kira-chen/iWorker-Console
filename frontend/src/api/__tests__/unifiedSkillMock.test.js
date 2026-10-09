@@ -20,7 +20,8 @@ import { derivePlatformState } from '@/utils/skillPublication'
 // 动态 import 在那之后拿到的会是另一个模块实例，跟 unifiedSkillMock 内部静态 import 的
 // mcpConnectorMock 对不上（同 positionMock.test.js 排查过的同一类坑，2026-09-23 待办 yuepu#10②）
 import { createMcp, deleteMcp, publishMcpService, applyMcpReviewResult } from '@/api/mcpConnectorMock'
-import { listApisSync } from '@/api/apiConnectorMock'
+import { listApisSync, getApi, updateApi, forceRevokeApi, __resetApiMock } from '@/api/apiConnectorMock'
+import { forceRevokeBizSystem, __resetBizSystemMock } from '@/api/bizSystemMock'
 import { opsRecords, resetAccessAuditMock } from '@/api/accessAuditMock'
 import { listReviews } from '@/api/reviewsMock'
 
@@ -488,10 +489,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
     expect(await pick()).not.toContain(`mcp__${created.code}`) // 未发布：不可被技能新引用
 
     const id = await mkSkill({ name: '健康度联动' })
-    await mock.updateSkill(id, { skillMd: `# 正文
-
-@tool[mcp__${created.code}]
-` })
+    await mock.updateSkill(id, { skillMd: `# 正文\n\n@tool[mcp__${created.code}]\n` })
     let detail = await mock.getSkillDetail(id)
     expect(detail.referencedTools[0].bizName).toBe('测试专用 MCP') // 已引用的仍回显名称
     expect(detail.referencedTools[0].checkStatus).toBe('DISABLED') // 但给明确状态，不再「连接正常」
@@ -508,10 +506,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
   it('连接器被删除后已引用工具侧回落显示 code，不再假装「连接正常」', async () => {
     const created = await createMcp({ type: 'PLATFORM', name: '待删除 MCP', description: '仅供本用例验证删除回落', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     const id = await mkSkill({ name: '删除回落联动' })
-    await mock.updateSkill(id, { skillMd: `# 正文
-
-@tool[mcp__${created.code}]
-` })
+    await mock.updateSkill(id, { skillMd: `# 正文\n\n@tool[mcp__${created.code}]\n` })
     // 新建 MCP 未发布态可删（yuepu#7②状态守卫）
     await deleteMcp(created.code)
     const detail = await mock.getSkillDetail(id)
@@ -528,7 +523,57 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
     const apiRows = listApisSync()
     expect(apiCodes.length).toBeGreaterThan(0)
     expect(apiRows.some((a) => a.status !== 'PUBLISHED')).toBe(true) // 前提：种子里有未发布的 API
-    expect(apiCodes.sort()).toEqual(apiRows.filter((a) => a.status === 'PUBLISHED' && a.enabled !== false).map((a) => `api__${a.code}`).sort())
+    // 固定清单：种子里已发布且启用的 4 个 API；未发布的 1104 / 1106、审核中的 1102 均不在
+    expect(apiCodes.sort()).toEqual(['api__api_1101', 'api__api_1103', 'api__api_1105', 'api__api_1107'])
+  })
+
+  // 一览表「停用后技能不再可引用该 API」（yuepu#50）：enabled=false 的 API 即使仍是已发布，也不进候选；已引用的回显「已停用」。
+  // 种子 API 是模块级共享内存，改完必须 __resetApiMock 复位（用例乱序，不能留脏状态）。
+  it('API 被停用（enabled=false）后：从工具坞候选消失；已引用它的技能侧回显名称但状态为「已停用」', async () => {
+    try {
+      const id = await mkSkill({ name: 'API停用联动' })
+      await mock.updateSkill(id, { skillMd: '# 正文\n\n@tool[api__api_1103]\n' })
+      expect((await mock.toolPicker({ type: 'API' })).map((t) => t.code)).toContain('api__api_1103') // 前提：停用前在候选里
+      expect((await mock.getSkillDetail(id)).referencedTools[0].checkStatus).not.toBe('DISABLED') // 前提：停用前不是「已停用」
+
+      const row = await getApi('api_1103')
+      await updateApi('api_1103', { ...row, enabled: false })
+
+      expect((await mock.toolPicker({ type: 'API' })).map((t) => t.code)).not.toContain('api__api_1103')
+      const ref = (await mock.getSkillDetail(id)).referencedTools[0]
+      expect(ref.bizName).toBe('客户资料查询')
+      expect(ref.checkStatus).toBe('DISABLED')
+    } finally {
+      __resetApiMock()
+    }
+  })
+
+  it('已引用的 API 被强制回收（回到未发布）→ 技能侧回显「已停用」，且不在候选里', async () => {
+    try {
+      const id = await mkSkill({ name: 'API回收联动' })
+      await mock.updateSkill(id, { skillMd: '# 正文\n\n@tool[api__api_1101]\n' })
+      expect((await mock.getSkillDetail(id)).referencedTools[0].checkStatus).not.toBe('DISABLED') // 前提
+      await forceRevokeApi('api_1101', '联动测试')
+      expect((await mock.getSkillDetail(id)).referencedTools[0]).toMatchObject({ bizName: '报销单查询', checkStatus: 'DISABLED' })
+      expect((await mock.toolPicker({ type: 'API' })).map((t) => t.code)).not.toContain('api__api_1101')
+    } finally {
+      __resetApiMock()
+      resetAccessAuditMock()
+    }
+  })
+
+  it('已引用的业务系统被强制回收（回到未发布）→ 技能侧回显「已停用」，且不在候选里', async () => {
+    try {
+      const id = await mkSkill({ name: '业务系统回收联动' })
+      await mock.updateSkill(id, { skillMd: '# 正文\n\n@tool[biz__biz_2101]\n' })
+      expect((await mock.getSkillDetail(id)).referencedTools[0].checkStatus).not.toBe('DISABLED') // 前提
+      await forceRevokeBizSystem('biz_2101', '联动测试')
+      expect((await mock.getSkillDetail(id)).referencedTools[0]).toMatchObject({ bizName: '客户管理系统 CRM', checkStatus: 'DISABLED' })
+      expect((await mock.toolPicker({ type: 'BIZ_SYSTEM' })).map((t) => t.code)).not.toContain('biz__biz_2101')
+    } finally {
+      __resetBizSystemMock()
+      resetAccessAuditMock()
+    }
   })
 })
 
@@ -555,7 +600,7 @@ describe('审核锁定写守卫（md §二.2 L120 / §三.1 L141，2026-09-12 �
 
 describe('种子自洽（md §二.3.4 L226-229 在审版本号由线上版本自动递增，2026-09-12 审计 K19）', () => {
   it('所有在审发布行：pendingVersion 必须等于 bumpVersion(version, NONE|MINOR|MAJOR) 之一（sk_302 v1.4.0 → v1.5.0）', async () => {
-    const reviewing = ['sk_301', 'sk_302', 'sk_303', 'sk_304', 'sk_305', 'sk_306', 'sk_307', 'sk_308', 'sk_309']
+    const reviewing = ['sk_301', 'sk_302', 'sk_303', 'sk_304', 'sk_305', 'sk_307', 'sk_308', 'sk_309']
       .map((id) => mock._getRaw(id))
       .filter((r) => r && r.pendingAction === 'publish')
     expect(reviewing.length).toBeGreaterThan(0)

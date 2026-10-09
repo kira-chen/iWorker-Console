@@ -278,6 +278,39 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.el-dialog')).toBeNull()
   })
 
+  // openRefs 的两个分支（yuepu#56 补）：岗位列表接口失败 → toast 报错；岗位名查不到（已删/改名未同步）→ 「岗位 #id」兜底
+  const openFirstRefs = async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionIds: [401, 999], positionCount: 2 }],
+      total: 1
+    })
+    await mount()
+    rowEls()[0].querySelector('.el-table-column[data-label="引用情况"] .el-button').click()
+    await flush(6)
+  }
+  const refItems = () => [...container.querySelectorAll('.el-dialog .refs-item')].map((e) => e.textContent.trim())
+
+  it('引用清单：岗位列表接口失败 → toast 带上失败原因，弹窗里不列岗位名也不卡在加载态', async () => {
+    listPositions.mockRejectedValueOnce(new Error('岗位服务不可用'))
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('岗位服务不可用')
+    expect(container.querySelector('.el-dialog')).toBeTruthy()
+    expect(refItems()).toEqual([])
+    expect(container.querySelector('.el-dialog').textContent).toContain('暂无引用') // loading 已收，落到空态而非一直转圈
+  })
+
+  it('引用清单：岗位列表接口失败且无错误信息 → toast 兜底「加载引用清单失败」', async () => {
+    listPositions.mockRejectedValueOnce({})
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('加载引用清单失败')
+  })
+
+  it('引用清单：某个岗位已不在岗位列表里 → 该项显示「岗位 #id」兜底，其余岗位照常显示岗位名', async () => {
+    await openFirstRefs() // 默认岗位桩只有 401 经营分析岗 / 402 客户成功岗；专家挂的 999 查不到
+    expect(refItems()).toEqual(['经营分析岗', '岗位 #999'])
+    expect(ElMessage.error).not.toHaveBeenCalled()
+  })
+
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
   it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的市场技能数，缺省显 0', async () => {
     listExperts.mockResolvedValueOnce({

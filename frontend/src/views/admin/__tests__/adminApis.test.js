@@ -561,6 +561,22 @@ describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹�
     expect(groups().length).toBe(0)
     expect(container.querySelector('.lt-search').value).toBe('不存在的关键词')
   })
+
+  // yuepu#55 的另一面：只按「连接器类型」筛、且一个都没命中 → 不能剩一屏空白，要落到「没有匹配的 API」
+  it('yuepu#55 只按「连接器类型」筛且全不命中 → 「没有匹配的 API」，不残留空分组', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    await mount()
+    expect(groups().length).toBeGreaterThan(0) // 前提：未筛选时有分组
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION' // 夹具里没有岗位私有的 API
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' }) // 前提：类型确实下发了
+    expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
+    expect(groups().length).toBe(0)
+  })
 })
 
 describe('AdminApis · 验证列与引用情况（md §二.1「最近更新时间」「验证」/ §二.3 连通性验证）', () => {
