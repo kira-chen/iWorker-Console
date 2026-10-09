@@ -17,6 +17,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）。
+ * 2026-10-09 对齐 prd-业务系统.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
+ *  真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -25,13 +27,18 @@ const admin = {
   deleteBizSystem: vi.fn(),
   submitBizSystemPublish: vi.fn(),
   withdrawBizSystem: vi.fn(),
-  delistBizSystem: vi.fn()
+  delistBizSystem: vi.fn(),
+  forceRevokeBizSystem: vi.fn()
 }
 vi.mock('@/api/admin', () => admin)
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 路由 query 由各用例改写（深链 ?view=<id>）
 const routeState = vi.hoisted(() => ({ query: {} }))
@@ -196,6 +203,7 @@ beforeEach(() => {
   admin.withdrawBizSystem.mockResolvedValue({})
   admin.delistBizSystem.mockResolvedValue({})
   admin.deleteBizSystem.mockResolvedValue({})
+  admin.forceRevokeBizSystem.mockResolvedValue({})
   msgBox.confirm.mockResolvedValue('confirm')
 })
 afterEach(() => {
@@ -533,5 +541,70 @@ describe('AdminBizSystems · 切筛选与清空即刷新（md §一.2「点击�
     expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
     expect(admin.listBizSystems).toHaveBeenLastCalledWith({})
     expect(rows().length).toBe(3)
+  })
+})
+
+describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收」小节：立即生效、不进审核、原因必填、两步确认）', () => {
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeBizSystem(id, 原因) + 「已强制回收」+ 重新取数', async () => {
+    askForceRevoke.mockResolvedValue('系统凭据已泄露')
+    await mount()
+    const before = admin.listBizSystems.mock.calls.length
+    btn(rowByName('客户管理系统'), '强制回收').click()
+    await flush()
+    expect(admin.forceRevokeBizSystem).toHaveBeenCalledWith('biz_1', '系统凭据已泄露')
+    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
+  })
+
+  it('弹窗入参：类型「业务系统」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    btn(rowByName('客户管理系统'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能' })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = admin.listBizSystems.mock.calls.length
+    btn(rowByName('客户管理系统'), '强制回收').click()
+    await flush()
+    expect(admin.forceRevokeBizSystem).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(admin.listBizSystems.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    admin.forceRevokeBizSystem.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    btn(rowByName('客户管理系统'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    admin.forceRevokeBizSystem.mockRejectedValueOnce(new Error(''))
+    btn(rowByName('客户管理系统'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '系统凭据已泄露', at: '2026-10-09 09:30', operator: 'admin' }
+    admin.listBizSystems.mockImplementation(async () => ({
+      list: LIST.map((b) => (b.id === 'biz_3' ? { ...b, revoked } : b)),
+      total: LIST.length
+    }))
+    await mount()
+    const tag = rowByName('合同管理平台').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：系统凭据已泄露（admin · 2026-10-09 09:30）')
+    expect(rowByName('客户管理系统').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('人力资源系统').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowByName('合同管理平台').querySelector('.revoked-tag')).toBeNull()
   })
 })

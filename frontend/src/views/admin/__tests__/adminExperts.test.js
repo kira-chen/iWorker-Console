@@ -17,6 +17,8 @@ import { makeListProbes } from './helpers/listPageStubs'
  * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/强制回收/版本管理；
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
+ * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
+ *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
  * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
@@ -30,11 +32,13 @@ const listExperts = vi.fn()
 const deleteExpert = vi.fn()
 const unpublishExpert = vi.fn()
 const withdrawExpert = vi.fn()
+const forceRevokeExpert = vi.fn()
 vi.mock('@/api/domainExpert', () => ({
   listExperts: (...a) => listExperts(...a),
   deleteExpert: (...a) => deleteExpert(...a),
   unpublishExpert: (...a) => unpublishExpert(...a),
   withdrawExpert: (...a) => withdrawExpert(...a),
+  forceRevokeExpert: (...a) => forceRevokeExpert(...a),
   // 版本抽屉适配器所需（本页只组装 adapter，不直接调用）
   publishExpert: vi.fn(),
   getExpertNextVersionLabel: vi.fn(),
@@ -87,6 +91,10 @@ vi.mock('@/components/admin/VersionDrawer.vue', () => ({
     }
   }
 }))
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 const ElMessageBox = { confirm: vi.fn(), alert: vi.fn(), prompt: vi.fn() }
@@ -146,6 +154,8 @@ async function mount() {
   app.component('el-table-column', tableColStub)
   app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
+  // 悬停说明：已回收标签的 el-tooltip，桩内把 content 落到 data-tip 供断言
+  app.component('el-tooltip', { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -178,6 +188,8 @@ beforeEach(() => {
   deleteExpert.mockReset()
   unpublishExpert.mockReset()
   withdrawExpert.mockReset()
+  forceRevokeExpert.mockReset().mockResolvedValue({})
+  askForceRevoke.mockReset()
   ElMessageBox.confirm.mockReset()
   ElMessageBox.alert.mockReset()
   ElMessage.success.mockReset()
@@ -565,5 +577,69 @@ describe('AdminExperts 补缺口（2026-10-08）', () => {
     await flush()
     expect(listExperts).toHaveBeenCalledTimes(2)
     expect(listExperts.mock.calls[1][0]).not.toHaveProperty('keyword')
+  })
+})
+
+describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不进审核、原因必填、两步确认）', () => {
+  const rowOf = (name) => rowEls().find((el) => el.textContent.includes(name))
+
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeExpert(id, { reason }) + 「已强制回收」+ 重新取列表', async () => {
+    askForceRevoke.mockResolvedValue('专家知识库被污染')
+    await mount()
+    const before = listExperts.mock.calls.length
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(forceRevokeExpert).toHaveBeenCalledWith(201, { reason: '专家知识库被污染' })
+    expect(ElMessage.success).toHaveBeenCalledWith('已强制回收')
+    expect(listExperts.mock.calls.length).toBe(before + 1)
+  })
+
+  it('弹窗入参：类型「专家」、对象名、引用数 0（专家无引用方统计）', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0 })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = listExperts.mock.calls.length
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(forceRevokeExpert).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(listExperts.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 兜底「强制回收失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    forceRevokeExpert.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    forceRevokeExpert.mockRejectedValueOnce(new Error(''))
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenLastCalledWith('强制回收失败')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '专家知识库被污染', at: '2026-10-09 09:30', operator: 'admin' }
+    listExperts.mockResolvedValue({ list: EXPERTS.map((e) => (e.id === 203 ? { ...e, revoked } : e)), total: 3 })
+    await mount()
+    const tag = rowOf('法务审阅专家').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：专家知识库被污染（admin · 2026-10-09 09:30）')
+    expect(rowOf('经营分析专家').querySelector('.revoked-tag')).toBeNull()
+    expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowOf('法务审阅专家').querySelector('.revoked-tag')).toBeNull()
   })
 })

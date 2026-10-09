@@ -25,6 +25,8 @@ import { fmtTime } from '@/utils/docMeta'
  * - §一.2 搜索口径：深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）；
  * - §三.8「登记成功后提示"已登记"，关闭抽屉，返回列表第 1 页并刷新列表」（编辑同）；§三.6「拉取成功后提示"已拉取 N 个工具"，
  *   并刷新当前抽屉中的连接信息和工具清单」→ 列表行工具数随之更新（编辑器桩 emit saved / probed）。
+ * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
+ *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
@@ -46,9 +48,14 @@ const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
   publishMcpService: vi.fn(),
   delistMcpService: vi.fn(),
-  withdrawMcpService: vi.fn()
+  withdrawMcpService: vi.fn(),
+  forceRevokeMcpService: vi.fn()
 }
 vi.mock('@/api/market', () => marketApi)
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn() }
@@ -971,5 +978,107 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect(toolCell('已上线服务')).toBe('4')
       expect(adminApi.listMcp.mock.calls.length).toBe(before)
     })
+  })
+})
+
+describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核、原因必填、两步确认）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeState.query = {}
+    adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
+    marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
+      Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG_SEED[id], pendingAction: null }] })
+    )
+    marketApi.forceRevokeMcpService.mockResolvedValue({})
+  })
+  afterEach(() => {
+    app?.unmount()
+    container?.remove()
+  })
+
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeMcpService(id, 原因) + 「已强制回收」+ 重新取列表', async () => {
+    askForceRevoke.mockResolvedValue('服务被入侵')
+    await mount()
+    const before = adminApi.listMcp.mock.calls.length
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(marketApi.forceRevokeMcpService).toHaveBeenCalledWith('mc_pub', '服务被入侵')
+    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    // 回收信息在行上（row.revoked），必须重取列表行，「已回收」标签才会出现
+    expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(before)
+  })
+
+  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能' })
+  })
+
+  it('引用数 = 引用它的技能数 + 岗位数', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, referencedBySkillCount: 2, positionCount: 3 } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith(expect.objectContaining({ refCount: 5 }))
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = adminApi.listMcp.mock.calls.length
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(marketApi.forceRevokeMcpService).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(adminApi.listMcp.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    marketApi.forceRevokeMcpService.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    marketApi.forceRevokeMcpService.mockRejectedValueOnce(new Error(''))
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '服务被入侵', at: '2026-10-09 09:30', operator: 'admin' }
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_none' ? { ...r, revoked } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    const tag = rowByName('未发布服务').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：服务被入侵（admin · 2026-10-09 09:30）')
+    expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('在审服务').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('已发布行即使数据里残留回收信息，也不出「已回收」标签（重新发布通过后应已清除，标签只跟未发布态）', async () => {
+    const revoked = { reason: '旧回收', at: '2026-10-01 09:30', operator: 'admin' }
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, revoked } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowByName('未发布服务').querySelector('.revoked-tag')).toBeNull()
   })
 })
