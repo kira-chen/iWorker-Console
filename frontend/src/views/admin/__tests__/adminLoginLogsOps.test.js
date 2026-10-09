@@ -26,6 +26,11 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  *   日期面板不真点（jsdom 下面板定位不稳），改读真 ElDatePicker 收到的 disabled-date 函数并经其 calendar-change 回调驱动。
  * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案（#64④）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
  *
+ * 2026-10-09 起三个页签的列表都是 useAdminList 'client' 分页，每页条数按窗口高度算（useDynPageSize）：
+ * 全局挂载把 window.innerHeight 调到 2000（每页 26 条，9 条夹具一页放得下，行数类用例不受分页影响），
+ * 分页用例（下载 / 管理端操作两组）经 remountAtHeight(768) 以每页 7 条重新挂载，追加记录凑出多于一页。
+ * 管理端操作页签分页由待办 yuepu#80 补齐（§六「列表根据页面高度动态分页」）。
+ *
  * 2026-09-30 补岗位分配记录（§6.1 / §6.2 / §6.3 / §6.4）；2026-10-09 /test-audit 补：
  * - 强制回收（§6.1 动作筛选完整顺序、§6.4 红色动作标签、技能模块蓝标签与版本号小标签、变更内容 = 回收原因）；
  * - 用户技能审核（§6.4 橙色模块标签、审核通过绿 / 审核驳回红；变更内容驳回写原因、通过为空显示「—」）；
@@ -220,6 +225,16 @@ describe('访问审计 · 管理端操作 · 运行规格记录（2026-09-23）'
     ;[...assign.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminRuntimeSpecs'))
     expect(router.currentRoute.value.query.keyword).toBe('标准')
+  })
+})
+
+describe('访问审计 · 管理端操作 · 列表列头（§6.2，/prd-import Q13）', () => {
+  beforeEach(() => switchTab('管理端操作'))
+
+  it('列头：第一列为「操作时间」（带排序箭头 ↓），其后依次操作人 / 模块 / 动作 / 变更内容 / 操作对象 / 操作', () => {
+    const heads = [...pane().querySelectorAll('.el-table__header th')].map((th) => th.textContent.trim())
+    expect(heads[0]).toBe('操作时间 ↓')
+    expect(heads.slice(1)).toEqual(['操作人', '模块', '动作', '变更内容', '操作对象', '操作'])
   })
 })
 
