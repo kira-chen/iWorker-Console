@@ -169,8 +169,8 @@ function openView(row) {
           <el-table-column label="岗位" width="92">
             <template #default="{ row }">{{ row.position || '—' }}</template>
           </el-table-column>
-          <el-table-column label="申请时用量" width="172" class-name="col-nowrap" label-class-name="col-nowrap">
-            <template #default="{ row }">已用 {{ fmtGb(row.usedGb) }} / 总量 {{ fmtGb(row.totalGb) }}</template>
+          <el-table-column label="当前用量" width="172" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">已用 {{ fmtGb(row.current.usedGb) }} / 总量 {{ fmtGb(row.current.totalGb) }}</template>
           </el-table-column>
           <el-table-column label="事实标签" min-width="120">
             <template #default="{ row }">
@@ -225,12 +225,11 @@ function openView(row) {
     </div>
     <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="list.reload" />
 
-    <!-- 同意：申请时用量是提交时的快照，另展示最新用量供判断（员工可能已自行清出空间） -->
+    <!-- 同意：只展示员工当前用量（员工可能在申请后自行清出空间，以最新统计为准） -->
     <el-dialog v-model="approve.visible" title="同意扩容" width="500px" append-to-body>
       <template v-if="approve.request">
         <div class="sq-dlg-info">
           <div><b>{{ approve.request.name }}</b>（{{ approve.request.username }}）<template v-if="approve.request.position">· {{ approve.request.position }}</template></div>
-          <div class="sq-sub">申请时：已用 {{ fmtGb(approve.request.usedGb) }} / 总量 {{ fmtGb(approve.request.totalGb) }}</div>
           <div class="sq-sub">当前：已用 {{ fmtGb(approve.current.usedGb) }} / 总量 {{ fmtGb(approve.current.totalGb) }}</div>
         </div>
         <div class="sq-quote">{{ approve.request.reason }}</div>
@@ -270,7 +269,7 @@ function openView(row) {
       <template v-if="view.request">
         <div class="sq-dlg-info">
           <div><b>{{ view.request.name }}</b>（{{ view.request.username }}）<template v-if="view.request.position">· {{ view.request.position }}</template></div>
-          <div class="sq-sub">提交于 {{ view.request.submittedAt }}；申请时已用 {{ fmtGb(view.request.usedGb) }} / 总量 {{ fmtGb(view.request.totalGb) }}</div>
+          <div class="sq-sub">提交于 {{ view.request.submittedAt }}；当前已用 {{ fmtGb(view.request.current.usedGb) }} / 总量 {{ fmtGb(view.request.current.totalGb) }}</div>
         </div>
         <div class="sq-quote">{{ view.request.reason }}</div>
         <div class="sq-dlg-info">

@@ -29,24 +29,19 @@ const metrics = [
   { label: '领用岗位员工数量', tag: '覆盖率', value: 241, unit: '人', sub: '启用员工 268 人', pct: 90, pctText: '89.9%', type: '' },
   { label: '已发布技能数量', tag: '已发布', value: 68, unit: '个', sub: '全部技能 82 个', pct: 83, pctText: '82.9%', type: '' },
   { label: '已发布专家数量', tag: '已发布', value: 18, unit: '个', sub: '全部专家 22 个', pct: 82, pctText: '81.8%', type: '' },
-  { label: '知识资产', tag: '资产构成', type: 'dual', knowledge: 12, source: 19, sub: '点击查看知识资产明细' },
 ]
 
-// 待处理指标（右上角独立 danger 卡）
-const pendingMetric = {
-  label: '待处理', tag: '需处理', value: 16, unit: '项',
-  breakdown: [
-    { label: '待审核', value: 11 },
-    { label: '高风险', value: 2 },
-    { label: '连接失败', value: 3 },
-  ]
-}
+// 第二行两张宽卡：知识资产（双格）+ 已发布模型数量（圆环；总数 8 = 「各模块发布状态」模型行 6+1+1）
+const knowledgeMetric = { knowledge: 12, source: 19, sub: '点击查看知识资产明细' }
+const modelMetric = { label: '已发布模型数量', tag: '已发布', value: 6, unit: '个', sub: '全部模型 8 个', pct: 75, pctText: '75%' }
 
 // 异常与待办：行动按钮真实跳转对应模块页面（原型是 toast 占位，这里改为路由跳转）
 const alerts = [
   { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
   { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
   { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
+  { count: 5,  level: 'medium', label: '待分配',   text: '岗位管理有 5 条待分配申请',    meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments' },
+  { count: 4,  level: 'medium', label: '待扩容',   text: '存储空间有 4 条扩容申请待处理', meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace' },
 ]
 const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 
@@ -264,7 +259,7 @@ function openAlertAction(item) {
         <span class="metric-sub">{{ m.sub }}</span>
       </button>
 
-      <!-- 知识资产（wide，本月成本卡删去后占其余 2 列） -->
+      <!-- 知识资产（wide，占 2 列） -->
       <button class="metric wide" @click="tip('知识库')">
         <span class="metric-head">
           <span class="metric-label">知识资产</span>
@@ -272,27 +267,24 @@ function openAlertAction(item) {
         </span>
         <span class="metric-main">
           <span class="dual-stat">
-            <span><b>{{ metrics[4].knowledge }}</b>知识库</span>
-            <span><b>{{ metrics[4].source }}</b>数据源</span>
+            <span><b>{{ knowledgeMetric.knowledge }}</b>知识库</span>
+            <span><b>{{ knowledgeMetric.source }}</b>数据源</span>
           </span>
         </span>
-        <span class="metric-sub">{{ metrics[4].sub }}</span>
+        <span class="metric-sub">{{ knowledgeMetric.sub }}</span>
       </button>
 
-      <!-- 待处理（danger，wide，本月成本卡删去后占其余 2 列） -->
-      <button class="metric danger wide" @click="tip('待处理事项')">
+      <!-- 已发布模型数量（圆环卡样式，占 2 列） -->
+      <button class="metric wide" @click="tip(modelMetric.label)">
         <span class="metric-head">
-          <span class="metric-label">{{ pendingMetric.label }}</span>
-          <span class="metric-tag">{{ pendingMetric.tag }}</span>
+          <span class="metric-label">{{ modelMetric.label }}</span>
+          <span class="metric-tag">{{ modelMetric.tag }}</span>
         </span>
         <span class="metric-main">
-          <span class="metric-value">{{ pendingMetric.value }}<small>{{ pendingMetric.unit }}</small></span>
+          <span class="metric-value">{{ modelMetric.value }}<small>{{ modelMetric.unit }}</small></span>
+          <span class="dash-ring" :style="`--pct:${modelMetric.pct}`"><b>{{ modelMetric.pctText }}</b></span>
         </span>
-        <span class="pending-breakdown">
-          <span v-for="b in pendingMetric.breakdown" :key="b.label">
-            <b>{{ b.value }}</b>{{ b.label }}
-          </span>
-        </span>
+        <span class="metric-sub">{{ modelMetric.sub }}</span>
       </button>
     </section>
 
@@ -580,14 +572,6 @@ function openAlertAction(item) {
   height: 3px;
   background: var(--c-accent);
 }
-.metric.danger::before {
-  background: var(--c-danger);
-}
-.metric.danger .metric-tag {
-  border-color: #f0c7c4;
-  background: var(--c-danger-soft, #fdebea);
-  color: var(--c-danger);
-}
 .metric-head {
   display: flex;
   align-items: center;
@@ -684,22 +668,6 @@ function openAlertAction(item) {
   color: #213028;
   font: 700 22px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
-
-/* 待处理分项 */
-.pending-breakdown {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
-  color: #6a756f;
-  font-size: 11px;
-}
-.pending-breakdown b {
-  display: block;
-  font: 700 16px ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-.pending-breakdown span:nth-child(1) b { color: var(--c-warning, #e6921e); }
-.pending-breakdown span:nth-child(2) b,
-.pending-breakdown span:nth-child(3) b { color: var(--c-danger); }
 
 /* ---- 面板 ---- */
 .dash-panel {

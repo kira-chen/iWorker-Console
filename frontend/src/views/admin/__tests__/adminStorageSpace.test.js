@@ -35,7 +35,7 @@ const MEMBERS = [
 ]
 const REQUEST = {
   id: 'ER-1003', userId: 203, username: 'chenyu', name: '陈宇', position: '经营分析岗',
-  usedGb: 5, totalGb: 5, cacheCleared: true, skippedAutomations: 2, reason: '报告产物较多，申请扩容到 10 GB。',
+  current: { usedGb: 5, totalGb: 5 }, cacheCleared: true, skippedAutomations: 2, reason: '报告产物较多，申请扩容到 10 GB。',
   submittedAt: '2026-10-09 10:05', status: 'PENDING', newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
 }
 

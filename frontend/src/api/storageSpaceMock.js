@@ -51,47 +51,48 @@ const seedMembers = () => [
 ]
 
 // 扩容申请：员工端只在「清理缓存后仍满」或「缓存本来就是零」时才给申请入口，所以申请时缓存都已为零（cacheCleared 恒为 true）。
+// 管理端只展示员工「当前用量」（列表行的 current 由 listExpansionRequests 现算），不存、不展示申请时的用量。
 // position 是提交时的岗位快照，与岗位分配种子对齐（只有 202 李娜 / 204 王芳 / 201 张伟有绑定，其余提交时未绑定岗位）。
 // 待处理 4 条（陈宇最新）；已处理 4 条：赵敏已同意（5→10 GB），何静、刘强、孙欣曾被拒绝（处理人有 demo / zhangwei 两位，对应访问审计 hidden 种子）。
 const seedRequests = () => [
   {
     id: 'ER-1006', userId: 203, username: 'chenyu', name: '陈宇', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 2,
+    cacheCleared: true, skippedAutomations: 2,
     reason: '季度经营分析报告产物较多，缓存已清理，最终产物都需要保留，申请扩容到 10 GB。',
     submittedAt: '2026-10-09 10:05', status: 'PENDING',
     newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
   },
   {
     id: 'ER-1005', userId: 204, username: 'wangfang', name: '王芳', position: '财务审核岗',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 0,
+    cacheCleared: true, skippedAutomations: 0,
     reason: '客户方案和调研附件越来越多，申请扩容 5 GB。',
     submittedAt: '2026-10-09 09:40', status: 'PENDING',
     newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
   },
   {
     id: 'ER-1004', userId: 206, username: 'sun.xin', name: '孙欣', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 3,
+    cacheCleared: true, skippedAutomations: 3,
     reason: '每日数据日报自动化已经因空间不足跳过 3 次，影响晨会材料，麻烦尽快扩容。申请后我又清理了部分历史产物，目前略有余量，但日报和周报产物每天都在增加，预计很快会再次写满，希望能一并扩容，避免自动化反复被跳过。如果无法一次扩到位，也请先临时增加一部分额度，我会同步清理历史文件。',
     submittedAt: '2026-10-09 08:55', status: 'PENDING',
     newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
   },
   {
     id: 'ER-1003', userId: 207, username: 'liuqiang', name: '刘强', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 1,
+    cacheCleared: true, skippedAutomations: 1,
     reason: '排产表和设备点检图片按周归档，5 GB 已不够，申请扩容到 15 GB。',
     submittedAt: '2026-10-08 16:40', status: 'PENDING',
     newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
   },
   {
     id: 'ER-1002', userId: 208, username: 'zhaomin', name: '赵敏', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 0,
+    cacheCleared: true, skippedAutomations: 0,
     reason: '月度对账产物每日产出表格与图片，5 GB 已不够用。',
     submittedAt: '2026-10-07 14:20', status: 'APPROVED',
     newTotalGb: 10, rejectReason: '', handler: 'demo', handledAt: '2026-10-07 16:02'
   },
   {
     id: 'ER-1001', userId: 210, username: 'hejing', name: '何静', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 1,
+    cacheCleared: true, skippedAutomations: 1,
     reason: '客户资料归档需要更多空间。',
     submittedAt: '2026-10-05 11:30', status: 'REJECTED',
     newTotalGb: null,
@@ -100,14 +101,14 @@ const seedRequests = () => [
   },
   {
     id: 'ER-0999', userId: 207, username: 'liuqiang', name: '刘强', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 0,
+    cacheCleared: true, skippedAutomations: 0,
     reason: '希望扩容。',
     submittedAt: '2026-09-28 10:10', status: 'REJECTED',
     newTotalGb: null, rejectReason: '申请说明过于简单，请补充使用场景和预计增量后重新提交。', handler: 'demo', handledAt: '2026-09-28 11:40'
   },
   {
     id: 'ER-0998', userId: 206, username: 'sun.xin', name: '孙欣', position: '',
-    usedGb: 5.0, totalGb: 5, cacheCleared: true, skippedAutomations: 0,
+    cacheCleared: true, skippedAutomations: 0,
     reason: '周报产物增多，申请扩容。',
     submittedAt: '2026-09-20 09:30', status: 'REJECTED',
     newTotalGb: null, rejectReason: '近期有大量重复产物，请先清理后再申请。', handler: 'zhangwei', handledAt: '2026-09-20 14:05'
@@ -158,8 +159,9 @@ const visibleRequests = () => requests.filter((r) => r.active)
 // v2（2026-10-09）：员工改取用户模块真实在职账号；待处理扩容申请由 1 条增至 4 条，旧快照弃用回种子。
 // v3（2026-10-09）：去掉「修改默认容量」，默认容量固定 5 GB，快照不再含 defaultQuotaGb，旧快照弃用回种子。
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
+// v5（2026-10-09）：扩容申请只展示当前用量，申请记录不再带申请时的 usedGb / totalGb，种子随之变，旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
-  version: 4,
+  version: 5,
   // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
   snapshot: () => ({
     members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
@@ -348,10 +350,15 @@ export async function listExpansionRequests(params = {}) {
       const dir = params.sortOrder === 'ascending' ? 1 : -1
       return a.handledAt.localeCompare(b.handledAt) * dir
     })
+    // 列表展示的是员工「当前用量」（不是申请时的用量）：每行现算，员工清空间 / 管理员调整后刷新即变
+    .map((r) => {
+      const m = findMember(r.userId)
+      return { ...r, current: { usedGb: usedOf(m), totalGb: totalOf(m) } }
+    })
   return paginate(rows, params)
 }
 
-/** 取申请当前对应员工的最新用量，供同意弹窗展示（申请时用量是快照，不随之变）。 */
+/** 取申请对应员工的当前用量，供同意弹窗展示（员工可能在申请后自行清出空间）。 */
 export async function getExpansionRequest(id) {
   await delay(60)
   reconcile()

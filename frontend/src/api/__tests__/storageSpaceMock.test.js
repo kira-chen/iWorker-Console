@@ -230,12 +230,11 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect(await memberOf('sun.xin')).toMatchObject({ totalGb: 9, pendingRequestId: null })
   })
 
-  it('同意扩容审计的「原总量」取同意那一刻员工的当前总量，不取申请时的快照', async () => {
-    // 构造：陈宇的申请是在总量 5 GB 时提交的（快照 totalGb=5），但同意时他的当前总量已是个人设置的 8 GB
+  it('同意扩容审计的「原总量」取同意那一刻员工的当前总量', async () => {
+    // 构造：陈宇原来是默认 5 GB，同意时他的当前总量已是个人设置的 8 GB（正常操作到不了，因为有待处理申请的员工不能被调整，所以用 restore 造状态）
     const snap = persistHarness.options.snapshot()
     snap.members.find((m) => m.userId === 203).quotaGb = 8
     persistHarness.options.restore(snap)
-    expect((await getExpansionRequest('ER-1006')).totalGb).toBe(5) // 快照仍是 5
     await approveExpansionRequest('ER-1006', 12)
     expect(liveOps()[0]).toMatchObject({ action: '同意扩容', detail: '8 GB → 12 GB' })
     expect(liveClientOps()[0]).toMatchObject({ type: '同意扩容', newTotalGb: 12 })
@@ -280,10 +279,19 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect(liveOps()).toHaveLength(before)
   })
 
-  it('同意弹窗取到员工当前用量（current），与申请时的快照分开存放', async () => {
+  it('同意弹窗取到员工当前用量（current）', async () => {
     const detail = await getExpansionRequest('ER-1006')
-    expect(detail).toMatchObject({ usedGb: 5, totalGb: 5 }) // 申请时快照
-    expect(detail.current).toMatchObject({ username: 'chenyu', usedGb: 5, totalGb: 5, state: 'FULL' }) // 当前最新
+    expect(detail.current).toMatchObject({ username: 'chenyu', usedGb: 5, totalGb: 5, state: 'FULL' })
+    expect(detail).not.toHaveProperty('usedGb') // 申请记录本身不再存申请时用量
+  })
+
+  it('申请列表每行带员工当前用量（current），员工容量变化后刷新即变；申请记录不带申请时用量', async () => {
+    const find = async (id) => (await listExpansionRequests({ size: 50 })).list.find((r) => r.id === id)
+    expect(await find('ER-1004')).toMatchObject({ current: { usedGb: 4.6, totalGb: 5 } }) // 孙欣：申请后清了空间，当前 4.6 / 5
+    expect(await find('ER-1004')).not.toHaveProperty('usedGb')
+    expect(await find('ER-1004')).not.toHaveProperty('totalGb')
+    await approveExpansionRequest('ER-1004', 9)
+    expect(await find('ER-1004')).toMatchObject({ current: { usedGb: 4.6, totalGb: 9 } })
   })
 })
 

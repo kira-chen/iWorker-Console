@@ -23,7 +23,7 @@ vi.mock('@/api/storageSpace', () => api)
 const StorageRequestPane = (await import('@/components/admin/storage/StorageRequestPane.vue')).default
 
 const base = {
-  userId: 203, username: 'chenyu', name: '陈宇', position: '经营分析岗', usedGb: 5, totalGb: 5, cacheCleared: true, skippedAutomations: 0,
+  userId: 203, username: 'chenyu', name: '陈宇', position: '经营分析岗', current: { usedGb: 5, totalGb: 5 }, cacheCleared: true, skippedAutomations: 0,
   reason: '报告产物较多，申请扩容。', submittedAt: '2026-10-09 10:05', status: 'PENDING', newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
 }
 const PENDING = { ...base, id: 'ER-1' }
@@ -68,11 +68,15 @@ async function chooseStatus(c, text) {
 }
 
 describe('StorageRequestPane · 列表行与筛选（md §四·1 / §四·2）', () => {
-  it('申请行展示「已用 5 GB / 总量 5 GB」快照；已同意行的处理结果是「新总量 N GB」；无岗位显示「—」', async () => {
-    api.listExpansionRequests.mockResolvedValue({ list: [PENDING, APPROVED, REJECTED], total: 3 })
+  it('申请行展示员工「当前用量」（列头「当前用量」，不再有「申请时用量」）；已同意行的处理结果是「新总量 N GB」；无岗位显示「—」', async () => {
+    api.listExpansionRequests.mockResolvedValue({ list: [PENDING, { ...APPROVED, current: { usedGb: 6.4, totalGb: 10 } }, REJECTED], total: 3 })
     const c = await mountPane()
+    const heads = [...c.querySelectorAll('.el-table__header th')].map(textOf)
+    expect(heads).toContain('当前用量')
+    expect(heads).not.toContain('申请时用量')
     const rows = rowsOf(c)
     expect(textOf(rows[0])).toContain('已用 5 GB / 总量 5 GB')
+    expect(textOf(rows[1])).toContain('已用 6.4 GB / 总量 10 GB')
     expect(textOf(rows[1])).toContain('新总量 10 GB')
     // 列序：申请人 / 岗位 / …，岗位为空的何静显示「—」
     expect([...rows[2].querySelectorAll('td')].map(textOf)[1]).toBe('—')
@@ -203,7 +207,8 @@ describe('StorageRequestPane · 查看弹窗（已处理的申请）', () => {
     const text = textOf(dialogBody())
     expect(text).toContain('赵敏（zhaomin）· 经营分析岗')
     expect(text).toContain('提交于 2026-10-07 14:20')
-    expect(text).toContain('申请时已用 5 GB / 总量 5 GB')
+    expect(text).toContain('当前已用 5 GB / 总量 5 GB')
+    expect(text).not.toContain('申请时')
     expect(text).toContain('报告产物较多，申请扩容。')
     expect(text).toContain('已同意')
     expect(text).toContain('新总量 10 GB')
