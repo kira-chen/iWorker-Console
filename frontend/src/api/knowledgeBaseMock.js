@@ -363,6 +363,21 @@ export async function update(id, payload) {
   persist()
   return vo(r)
 }
+/**
+ * 删岗级联（待办 yuepu#52）：岗位知识库（kbType=POSITION）的可见范围 scopeRefId 指向被删岗位时置空——
+ * 否则它悬空指向已删岗位，岗位 id 被复用时还会错挂到新岗位上。知识库本体与数据源保留（不动审核状态），
+ * 置空后 scopeName 显示为空，管理员编辑时需重新选择可见范围（validate 会要求）。只动 scopeRefId 等于该岗位的行。
+ */
+export function clearPositionScope(positionId) {
+  let changed = false
+  rows.forEach((r) => {
+    if (r.kbType === 'POSITION' && String(r.scopeRefId) === String(positionId)) {
+      r.scopeRefId = null
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
 export async function remove(id) {
   await delay()
   const r = find(id)

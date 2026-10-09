@@ -45,12 +45,42 @@ import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as rena
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs, syncPositionRefs as syncApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs, syncPositionRefs as syncBizPositionRefs } from './bizSystemMock'
 import { revokedConnectorNames } from './positionRevokedRefs'
+import { clearPositionScope as clearKnowledgeBaseScope } from './knowledgeBaseMock'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let posSeq = 405
 let agentSeq = 520
+
+/* ---------------- 岗位 id 水位线（待办 yuepu#52） ----------------
+ * 按 positionId 存数据的模块（分配 / 自动化任务 / 工作档案 / 运行规格 / 知识库 / 专家 / 三个连接器）各自持久化，
+ * 而本模块升版本会丢弃旧快照、posSeq 回到 405——新建岗位复用旧 id，立刻「继承」旧岗位遗留的任务 / 档案 / 领用关系。
+ * 做法：另存一个**不随快照版本走**的 id 水位线（localStorage 单独一个 key），启动时再取旧快照里的 posSeq / 最大岗位 id
+ * 兜底（升级当次旧快照还没被丢弃前先读到），posSeq 只升不降。resetMock=1 / 清站点数据会连同水位线一起清掉。 */
+const ID_FLOOR_KEY = 'iworker-demo-mock:position-id-floor'
+function readIdFloor() {
+  try {
+    const s = globalThis.localStorage
+    if (!s) return 405
+    let floor = Number(s.getItem(ID_FLOOR_KEY)) || 405
+    const old = JSON.parse(s.getItem('iworker-demo-mock:position') || 'null')?.data // 旧版本快照：mockPersist 随后会把它丢弃
+    if (old) {
+      floor = Math.max(floor, Number(old.posSeq) || 0, ...(Array.isArray(old.positions) ? old.positions.map((p) => Number(p?.positionId) + 1 || 0) : []))
+    }
+    return floor
+  } catch {
+    return 405
+  }
+}
+function writeIdFloor() {
+  try {
+    globalThis.localStorage?.setItem(ID_FLOOR_KEY, String(posSeq))
+  } catch {
+    /* 存储不可用：退化为仅内存 posSeq */
+  }
+}
+const idFloorAtBoot = readIdFloor()
 
 /* ---------------- 岗位种子（照原型 positionRows + positionCountSeeds） ---------------- */
 let positions = [
@@ -350,6 +380,7 @@ export async function createPosition(payload = {}) {
   publications[p.positionId] = []
   // 工作台条目同步初始化（新建岗位小弹窗 → 跳工作台即可编辑；工作台新建态首存 hydrate 需完整详情树）
   workbench[String(p.positionId)] = emptyWorkbench(payload)
+  writeIdFloor()
   persist()
   return detailVO(p)
 }
@@ -382,6 +413,7 @@ export async function deletePosition(id) {
   removeMcpPositionRefs(p.positionId)
   removeApiPositionRefs(p.positionId)
   removeBizPositionRefs(p.positionId)
+  clearKnowledgeBaseScope(p.positionId) // 岗位知识库可见范围置空（待办 yuepu#52：此前 scopeRefId 悬空，id 复用时还会挂到新岗位上）
   persist()
   return {}
 }
@@ -833,6 +865,10 @@ export async function updatePosition(id, payload = {}) {
   if ('connectorApiIds' in payload) {
     wb.connectorApiIds = Array.isArray(payload.connectorApiIds) ? [...payload.connectorApiIds] : []
   }
+  // 绑定 / 解绑后回写连接器侧「被岗位引用」清单（待办 yuepu#51），列表计数与引用清单弹窗同源
+  if ('businessSystemIds' in payload) syncBizPositionRefs(p.positionId, p.name, wb.businessSystemIds)
+  if ('connectorMcpIds' in payload) syncMcpPositionRefs(p.positionId, p.name, wb.connectorMcpIds)
+  if ('connectorApiIds' in payload) syncApiPositionRefs(p.positionId, p.name, wb.connectorApiIds)
   if ('persona' in payload) wb.persona = String(payload.persona || '')
   if ('intakeSchema' in payload) {
     wb.intakeSchema = Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : []
@@ -865,10 +901,6 @@ export async function createAgent(positionId, payload = {}) {
   const name = String(payload.name || '').trim()
   const description = String(payload.description || '').trim()
   assertAgentFields(name, description)
-  // 绑定 / 解绑后回写连接器侧「被岗位引用」清单（待办 yuepu#51），列表计数与引用清单弹窗同源
-  if ('businessSystemIds' in payload) syncBizPositionRefs(p.positionId, p.name, wb.businessSystemIds)
-  if ('connectorMcpIds' in payload) syncMcpPositionRefs(p.positionId, p.name, wb.connectorMcpIds)
-  if ('connectorApiIds' in payload) syncApiPositionRefs(p.positionId, p.name, wb.connectorApiIds)
   // 新建与编辑现共用同一抽屉表单（PositionAgentSkillTab.vue saveAgentDraft），均要求用户显式填写
   // 名称——不再是「快捷加号按钮、默认空名」的场景，故与 updateAgent 同口径拒重名，不静默改名
   // （2026-09-18 待办 yuepu#13·岗位 P4：此前改名静默追加序号，用户不知道保存的其实不是自己填的名字，
@@ -1006,6 +1038,7 @@ export function isPositionBindable(id) {
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位）。 */
 export function __resetPositionMock() {
   posSeq = 405
+  try { globalThis.localStorage?.removeItem(ID_FLOOR_KEY) } catch { /* ignore */ }
   agentSeq = 520
   workbench = buildWorkbenchSeed()
   positions = [
@@ -1051,7 +1084,9 @@ const persist = attachPersist('position', {
   // 的 Agent 改引 sk_305（原 sk_303 违反 md §6.4 岗位私有类型限制）。存量快照结构/引用已过期，丢弃回种子。
   // v7（2026-09-28 待办 yuepu#42）：401/402 种子补 connectorMcpIds / connectorApiIds（与连接器侧
   // referencedByPositions 同源）；旧快照缺这两个键，不 bump 则演示环境仍显示「暂无绑定」。
-  version: 8,
+  // v9（2026-10-09 待办 yuepu#61②）：技能引用 VO 新增 displayCategoryName（技能分类），种子在审岗位的审核版本快照
+  // （reviewSnapshots）里内嵌了该 VO，快照形状变了；存量快照缺这个字段 → 丢弃回种子。
+  version: 9,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (
@@ -1071,6 +1106,9 @@ const persist = attachPersist('position', {
     seedReviewSnapshots()
   }
 })
+
+// 水位线兜底：快照被丢弃 / 版本升级后 posSeq 回到种子值，这里抬回到旧水位之上（只升不降），避免复用旧 id（待办 yuepu#52）
+posSeq = Math.max(posSeq, idFloorAtBoot)
 
 /** 种子在审岗位（pendingAction 非空）若无快照则补播一份，保证 demo 打开即有内容（A5）。 */
 function seedReviewSnapshots() {

@@ -83,13 +83,13 @@ describe('yuepu#51（已修）岗位侧绑定 / 解绑回写连接器「N 个岗
   it('yuepu#51 401 解绑 expense_mcp 后，该连接器的岗位引用数归 0、引用清单里不再有 401', async () => {
     await updatePosition(401, { connectorMcpIds: [] })
     expect(mcpRow('expense_mcp').positionCount).toBe(0)
+    expect(mcpRow('expense_mcp').referencedByPositions).toEqual([])
   })
 
   it('yuepu#51 402 绑定 expense_mcp 后，该连接器的岗位引用数 +1，清单带岗位名；重复保存不重复计数', async () => {
     await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
     await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
     expect(mcpRow('expense_mcp').positionCount).toBe(2)
-  })
     expect(mcpRow('expense_mcp').referencedByPositions.map((p) => [p.positionId, p.positionName])).toEqual([[401, '经营分析岗'], [402, '客户成功岗']])
   })
 
@@ -108,9 +108,10 @@ describe('yuepu#51（已修）岗位侧绑定 / 解绑回写连接器「N 个岗
   it('yuepu#51 未带连接器键的普通保存（只改描述）不动连接器引用', async () => {
     await updatePosition(401, { description: '只改描述' })
     expect(mcpRow('expense_mcp').positionCount).toBe(1)
+  })
 })
 
-describe('yuepu#52 删岗不清知识库可见范围', () => {
+describe('yuepu#52（已修）删岗清知识库可见范围', () => {
   // knowledgeBaseMock 无重置导出、同类型重名会被拒，库名带随机后缀保证每次运行唯一
   let seq = 0
   async function setup() {
@@ -126,7 +127,7 @@ describe('yuepu#52 删岗不清知识库可见范围', () => {
     expect((await listPositions()).list.some((p) => p.positionId === pos.positionId)).toBe(false)
   })
 
-  it.fails('yuepu#52 删掉岗位后，以它为可见范围的岗位知识库不应再指向已删岗位', async () => {
+  it('yuepu#52 删掉岗位后，以它为可见范围的岗位知识库不再指向已删岗位', async () => {
     const { pos, kb } = await setup()
     const after = await kbMock.get(kb.id)
     expect(String(after.scopeRefId)).not.toBe(String(pos.positionId))

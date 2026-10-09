@@ -43,7 +43,7 @@ const FINGERPRINTS = {
   knowledgeBase: { version: 9, fp: '04ba3a72' },
   mcpConnector: { version: 9, fp: '17ba4020' },
   myApplications: { version: 7, fp: 'b8042447' },
-  position: { version: 8, fp: '6dde3c4d' },
+  position: { version: 9, fp: '9ab010e3' },
   positionApplications: { version: 4, fp: 'bf5160f2' },
   positionAssignment: { version: 2, fp: 'a3b870be' },
   reviews: { version: 8, fp: 'ffc05ceb' },
