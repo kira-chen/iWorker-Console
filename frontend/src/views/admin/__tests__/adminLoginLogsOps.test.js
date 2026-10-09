@@ -24,7 +24,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * - §5.2 成功绿标签 / 失败红标签带具体原因；产物来源灰标签；默认下载时间倒序，列头箭头 ↓ / ↑ 切换；
  * - §三 点选起始日后距其超 30 天的日期置灰、两端选定后解除；各页签时间范围独立；§二 切页签各页签查询条件独立。
  *   日期面板不真点（jsdom 下面板定位不稳），改读真 ElDatePicker 收到的 disabled-date 函数并经其 calendar-change 回调驱动。
- * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案、§5.2 列头「下载时间」「用户」、§5.2 动态分页。
+ * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案（#64④）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
  *
  * 真实挂载（真 Element Plus 标签页 / 表格 / 下拉），只 mock 数据层。记录时间取「今天」，
  * 避免被页面默认的「近 90 天」时间范围滤掉。「登录访问」页签的用例见 adminLoginLogs.test.js。
@@ -345,13 +345,13 @@ describe('访问审计 · 用户端文件下载 · 列表（§5.2）', () => {
     expect(arrow()).toBe('↓')
   })
 
-  it.fails('列头为「下载时间」「用户」（疑似缺陷：页面列头为「时间」「用户名」；md 访问审计 §5.2 字段表「下载时间」「用户」）', () => {
+  it('列头为「下载时间」「用户」（md 访问审计 §5.2 字段表；待办 yuepu#73② 已修）', () => {
     const heads = [...dlPane().querySelectorAll('.el-table__header th')].map((th) => th.textContent.trim())
     expect(heads[0]).toContain('下载时间')
     expect(heads[1]).toBe('用户')
   })
 
-  it.fails('有记录时出分页条（疑似缺陷：页签内无分页控件，全部记录一屏平铺；md 访问审计 §5.2「列表根据页面高度动态分页」、§5.1【查询】「回到第 1 页」）', () => {
+  it('有记录时出分页条（md 访问审计 §5.2「列表根据页面高度动态分页」；待办 yuepu#73③ 已修）', () => {
     expect(dlPane().querySelector('.list-pager')).not.toBeNull()
   })
 })
@@ -379,15 +379,9 @@ const day = (base, offset) => {
 
 describe('访问审计 · 时间范围跨度最多 30 天（§三）', () => {
   const BASE = new Date(2026, 8, 15) // 2026-09-15，作为「点选的起始日」
-  /** 模拟在日期面板上点选（真 ElDatePicker 的 calendar-change 回调）。
-   *  注意：当前页面里这个回调本身会抛 TypeError（模板把 ref 解包成 null 后又去写 .value，见下方 it.fails 说明），
-   *  这里吞掉异常只为让失败落在「是否置灰」这条用户可见的断言上。 */
+  /** 模拟在日期面板上点选（真 ElDatePicker 的 calendar-change 回调）；回调抛错会直接让用例失败。 */
   const pickDays = async (p, val) => {
-    try {
-      p.vnode.props.onCalendarChange(val)
-    } catch {
-      /* 见上 */
-    }
+    p.vnode.props.onCalendarChange(val)
     await flushAll(2)
   }
 
@@ -406,7 +400,7 @@ describe('访问审计 · 时间范围跨度最多 30 天（§三）', () => {
     expect(p().props.disabledDate(day(BASE, 60))).toBe(false)
   })
 
-  it.fails('点选起始日后 → 距其超过 30 天的日期置灰（疑似缺陷：三个页签的 @calendar-change 都写成 onCalendarChange(xxxPickFirst, v)，模板里 ref 已被解包成 null，回调写 null.value 直接抛 TypeError，起始日没记下，超 30 天的日期始终可点；md 访问审计 §三「点选起始日期后……超过 30 天的日期自动置灰、不可点击」）', async () => {
+  it('点选起始日后 → 距其超过 30 天的日期置灰（md 访问审计 §三；待办 yuepu#73① 已修）', async () => {
     for (let i = 0; i < 3; i++) {
       await pickDays(pickers()[i], [BASE, null])
       const disabled = pickers()[i].props.disabledDate

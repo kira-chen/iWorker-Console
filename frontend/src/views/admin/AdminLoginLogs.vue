@@ -106,13 +106,21 @@ function makeDisabledDate(firstRef) {
   })
 }
 
-function onCalendarChange(firstRef, val) {
-  firstRef.value = val?.[1] ? null : (val?.[0] ?? null)
+/**
+ * 日历点选回调工厂：点了起始日（只有 [起]）记下来，选满两端（[起, 止]）后清空，约束随之解除。
+ * 返回闭包而不是在模板里写 (v) => fn(xxxPickFirst, v)：模板里的 ref 会被自动解包成值，
+ * 传进函数的是 null，再写 .value 会抛 TypeError，起始日记不下来（待办 yuepu#73①）。
+ */
+function makeCalendarChange(firstRef) {
+  return (val) => {
+    firstRef.value = val?.[1] ? null : (val?.[0] ?? null)
+  }
 }
 
 // ── 登录访问：时间范围 ────────────────────────────────────────
 const loginPickFirst = ref(null)
 const loginDisabledDate = makeDisabledDate(loginPickFirst)
+const onLoginCalendarChange = makeCalendarChange(loginPickFirst)
 
 // ── 产物下载 ─────────────────────────────────────────────────
 const dlKeyword = ref('')
@@ -123,14 +131,17 @@ const dlSortArrow = computed(() => dlSortOrder.value === 'descending' ? '↓' : 
 const dlDateRange = ref(defaultRange())
 const dlPickFirst = ref(null)
 const dlDisabledDate = makeDisabledDate(dlPickFirst)
+const onDlCalendarChange = makeCalendarChange(dlPickFirst)
 
 function toggleDlSort() {
   dlSortOrder.value = dlSortOrder.value === 'descending' ? 'ascending' : 'descending'
 }
 
-const dlFiltered = computed(() => {
+// 下载记录是全量内存数据，走 useAdminList 的 'client' 分页（md §5.2「列表根据页面高度动态分页」）：
+// 筛选 + 排序在 clientPipeline 里对全量做，之后才按页切片；筛选项一变就回第 1 页（下方 watch）。
+function dlPipeline(all) {
   const q = dlKeyword.value.toLowerCase()
-  const base = dlRecords.filter(
+  const base = all.filter(
     (r) =>
       (!q || r.filename.toLowerCase().includes(q) || r.user.toLowerCase().includes(q)) &&
       (!dlResult.value || r.result === dlResult.value) &&
@@ -142,7 +153,11 @@ const dlFiltered = computed(() => {
       ? b.time.localeCompare(a.time)
       : a.time.localeCompare(b.time)
   )
-})
+}
+const dlList = useAdminList(() => Promise.resolve(dlRecords), { paged: 'client', clientPipeline: dlPipeline })
+const { rows: dlRows, total: dlTotal, page: dlPage, pageSize: dlPageSize } = dlList
+watch([dlKeyword, dlResult, dlSource, dlSortOrder, dlDateRange], dlList.search, { deep: true })
+onMounted(dlList.reload)
 
 // ── 管理端操作 ───────────────────────────────────────────────
 const opsKeyword = ref('')
@@ -153,6 +168,7 @@ const opsSortArrow = computed(() => opsSortOrder.value === 'descending' ? '↓' 
 const opsDateRange = ref(defaultRange())
 const opsPickFirst = ref(null)
 const opsDisabledDate = makeDisabledDate(opsPickFirst)
+const onOpsCalendarChange = makeCalendarChange(opsPickFirst)
 
 function toggleOpsSort() {
   opsSortOrder.value = opsSortOrder.value === 'descending' ? 'ascending' : 'descending'
@@ -252,7 +268,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="loginDisabledDate"
-          @calendar-change="(v) => onCalendarChange(loginPickFirst, v)"
+          @calendar-change="onLoginCalendarChange"
           @change="reload"
           class="lt-date-range"
         />
@@ -344,7 +360,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="dlDisabledDate"
-          @calendar-change="(v) => onCalendarChange(dlPickFirst, v)"
+          @calendar-change="onDlCalendarChange"
           class="lt-date-range"
         />
         <el-input
@@ -370,16 +386,16 @@ function opsGoto(row) {
       </ListToolbar>
 
       <div class="table-wrap">
-        <el-table :data="dlFiltered" class="ll-table">
+        <el-table :data="dlRows" class="ll-table">
           <el-table-column width="170" class-name="col-nowrap">
             <template #header>
               <button type="button" class="ll-sort" @click="toggleDlSort">
-                时间 <span class="ll-sort-arrow">{{ dlSortArrow }}</span>
+                下载时间 <span class="ll-sort-arrow">{{ dlSortArrow }}</span>
               </button>
             </template>
             <template #default="{ row }"><span class="ll-muted">{{ row.time }}</span></template>
           </el-table-column>
-          <el-table-column label="用户名" width="90">
+          <el-table-column label="用户" width="90">
             <template #default="{ row }">{{ row.user }}</template>
           </el-table-column>
           <el-table-column label="产物文件名" min-width="200" show-overflow-tooltip>
@@ -404,6 +420,13 @@ function opsGoto(row) {
           </el-table-column>
         </el-table>
       </div>
+
+      <ListPagination
+        v-model:page="dlPage"
+        v-model:page-size="dlPageSize"
+        :total="dlTotal"
+        @change="dlList.reload"
+      />
       </el-tab-pane>
 
       <!-- ── 管理端操作 ───────────────────────────────────────── -->
@@ -416,7 +439,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="opsDisabledDate"
-          @calendar-change="(v) => onCalendarChange(opsPickFirst, v)"
+          @calendar-change="onOpsCalendarChange"
           class="lt-date-range"
         />
         <el-input
