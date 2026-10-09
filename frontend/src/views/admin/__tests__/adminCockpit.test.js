@@ -5,9 +5,9 @@ import { mountReal, flushAll } from './helpers/smokeMount'
 
 /**
  * AdminCockpit.vue（01 总览 / 驾驶舱）单测。对齐 docs/PRD/数字员工管理端PRD/01总览/驾驶舱/prd.驾驶舱.md：
- * - §五 用户端当前下发版本：Windows / Mac 两张只读卡片，展示版本号、发布时间、更新说明（保留换行）；
+ * - §二 用户端当前下发版本：Windows / Mac 两张只读卡片，展示版本号、发布时间、更新说明（保留换行）；
  *   该终端没有下发中版本显示「暂无下发版本」；数据取自版本管理概览（getVersionOverview），不可点击；
- * - §一.2 / §九 【刷新】重新拉取该面板并进入骨架屏；该面板取数失败单独展示「加载失败」+【重试】，不影响其余区块。
+ * - §一.2 / §八 【刷新】重新拉取该面板并进入骨架屏；该面板取数失败单独展示「加载失败」+【重试】，不影响其余区块。
  *
  * 真实挂载（真 Element Plus），只 mock 版本 api 与 ElMessage；版本业务规则本身见 versionMock.test.js。
  * 驾驶舱其余区块是静态 mock，这里只留「页面仍在」的探针，不逐个断言。
@@ -15,7 +15,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * 2026-10-08 /test-audit 补缺口（同对齐 prd.驾驶舱.md；静态示例数值不测，只测交互规则）：
  * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews（memory router 断 currentRoute.name）；
  * - §四.2 岗位领用 Top 5 只列已发布岗位；
- * - §七.2 点踩明细每页 10 条、首 / 末页按钮置灰；§八.1 点踩明细与对话明细两个弹窗互斥；
+ * - §六.2 点踩明细每页 10 条、首 / 末页按钮置灰；§七.1 点踩明细与对话明细两个弹窗互斥；
  * - §一.1 页头「更新于 HH:MM」，刷新后为当前时刻。
  */
 
@@ -74,7 +74,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('AdminCockpit · 用户端当前下发版本（PRD §五）', () => {
+describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
   it('区块头 + Windows / Mac 两张卡片：版本号、发布时间（精确到分钟）、更新说明；挂载即取一次概览；控制台零 error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     await mount()
@@ -141,7 +141,7 @@ describe('AdminCockpit · 用户端当前下发版本（PRD §五）', () => {
   })
 })
 
-describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §九）', () => {
+describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §八）', () => {
   it('【刷新】重新拉取概览：期间两张卡片回到骨架屏，约 650ms 后显示最新版本并 toast「驾驶舱数据已刷新」', async () => {
     await mount()
     const { ElMessage } = await import('element-plus')
@@ -228,7 +228,8 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
 
   it('区块头「共 N 项」= 五张卡片数量之和', async () => {
     await mount()
-    expect(mounted.container.querySelector('.dash-panel-count').textContent).toContain('共 25 项')
+    const panel = [...mounted.container.querySelectorAll('.dash-panel')].find((p) => p.querySelector('.dash-panel-title')?.textContent.trim() === '异常与待办')
+    expect(panel.querySelector('.dash-panel-count').textContent).toContain('共 25 项')
   })
 
   it('点卡片本身（非行动按钮）→ 不跳转、也不弹提示', async () => {
@@ -242,15 +243,24 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
   })
 })
 
-describe('AdminCockpit · 指标卡第二行（PRD §二）', () => {
-  it('已发布模型数量卡取代「待处理」卡：6 个、75%、全部模型 8 个；页面不再有「待处理」指标', async () => {
+describe('AdminCockpit · 页面区块顺序（PRD §二 / §四）', () => {
+  it('核心指标卡区已删除：页面没有任何指标卡与圆环', async () => {
     await mount()
-    const card = [...mounted.container.querySelectorAll('.metric')].find((m) => m.textContent.includes('已发布模型数量'))
-    expect(card.textContent).toContain('6个')
-    expect(card.textContent).toContain('75%')
-    expect(card.textContent).toContain('全部模型 8 个')
-    expect(mounted.container.querySelector('.metric.danger')).toBeNull()
-    expect([...mounted.container.querySelectorAll('.metric-label')].map((e) => e.textContent.trim())).not.toContain('待处理')
+    expect(mounted.container.querySelector('.metrics')).toBeNull()
+    expect(mounted.container.querySelector('.metric')).toBeNull()
+    expect(mounted.container.querySelector('.dash-ring')).toBeNull()
+  })
+
+  it('「用户端当前下发版本」是页头下第一个区块，排在「异常与待办」之前', async () => {
+    await mount()
+    const titles = [...mounted.container.querySelectorAll('.dash-panel-title')].map((e) => e.textContent.trim())
+    expect(titles.slice(0, 2)).toEqual(['用户端当前下发版本', '异常与待办'])
+  })
+
+  it('「岗位领用 Top 5」标题旁展示「领用岗位员工数量 241 人」', async () => {
+    await mount()
+    const panel = [...mounted.container.querySelectorAll('.dash-panel')].find((p) => p.querySelector('.dash-panel-title')?.textContent.trim() === '岗位领用 Top 5')
+    expect(panel.querySelector('.dash-panel-count').textContent.trim()).toBe('领用岗位员工数量 241 人')
   })
 })
 
@@ -264,7 +274,7 @@ describe('AdminCockpit · 岗位领用 Top 5（PRD §四.2）', () => {
   })
 })
 
-describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §七 / §八）', () => {
+describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七）', () => {
   const dlBody = () => [...document.body.querySelectorAll('.el-dialog')].find((d) => d.querySelector('.dl-dialog-title'))
   const cvBody = () => [...document.body.querySelectorAll('.el-dialog')].find((d) => d.querySelector('.cv-dialog-title'))
   /** 弹窗是否可见：el-dialog 关闭后外层遮罩 display:none（或尚未渲染）。 */
