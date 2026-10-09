@@ -9,7 +9,7 @@ import { __resetInstanceMock, getInstance, listInstances, operateInstance } from
  * instanceMock（实例管理 mock 层）单测。
  * 2026-10-08 对齐 04运行/实例管理/prd.实例管理.md §五 / §七 / §九：只维护实例对象与运行处置（重启 / 按最新规格重建 / 回收），
  * 不引入任务 / 会话对象；筛选与 operable 拦截规则见各用例。
- * 状态机缺边（启动中→运行中/空闲、回收中→移除）见待办 clcao#2，此处不覆盖。
+ * 状态机覆盖启动中→空闲、回收中→移除，并回写操作记录结果。
  */
 
 describe('instanceMock —— 只管理实例，不引入任务/会话对象', () => {
@@ -26,8 +26,8 @@ describe('instanceMock —— 只管理实例，不引入任务/会话对象', (
   // 2026-10-08 对齐 md 实例 §五.3「搜索：支持规格名称、岗位、用户姓名、用户名和实例标识的部分匹配」
   it.each([
     ['实例标识 ins-240903', 'ins-240903', ['ins-240903']],
-    ['用户姓名 王强', '王强', ['ins-240903']],
-    ['岗位 经营分析岗', '经营分析岗', ['ins-240901', 'ins-240904']]
+    ['用户姓名 周明', '周明', ['ins-240903']],
+    ['岗位 经营分析岗', '经营分析岗', ['ins-240903', 'ins-240901']]
   ])('关键词按%s搜索 → 只命中对应实例', async (_label, keyword, ids) => {
     const { list, total } = await listInstances({ keyword })
     expect(list.map((row) => row.id)).toEqual(ids)
@@ -47,16 +47,21 @@ describe('instanceMock —— 只管理实例，不引入任务/会话对象', (
     await expect(operateInstance('ins-240905', 'recycle')).rejects.toThrow('实例正在启动')
   })
 
-  it('按最新规格重建后实际规格更新并写入操作记录', async () => {
+  it('按最新规格重建先进入启动中，完成后才更新实际规格和操作记录', async () => {
     const changed = await operateInstance('ins-240904', 'rebuild')
-    expect(changed.actualSpec).toBe('重')
+    expect(changed.actualSpec).toBe('标准')
     expect(changed.status).toBe('STARTING')
     expect(changed.records[0]).toMatchObject({ type: '按最新规格重建', result: '已受理' })
-    expect((await getInstance('ins-240904')).operable).toBe(false)
+    await listInstances()
+    await listInstances()
+    expect(await getInstance('ins-240904')).toMatchObject({ actualSpec: '重', status: 'IDLE', operable: true })
+    expect((await getInstance('ins-240904')).records[0].result).toBe('成功')
   })
 
   it('实际规格已是最新时禁止重建，但允许回收进入回收中', async () => {
     await expect(operateInstance('ins-240902', 'rebuild')).rejects.toThrow('当前实际规格已是最新生效规格')
     expect((await operateInstance('ins-240902', 'recycle')).status).toBe('RECYCLING')
+    await listInstances()
+    expect((await listInstances()).list.some((row) => row.id === 'ins-240902')).toBe(false)
   })
 })

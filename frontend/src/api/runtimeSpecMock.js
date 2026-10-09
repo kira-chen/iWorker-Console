@@ -14,24 +14,28 @@ import { nowMinuteText as now } from '@/utils/datetime'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 let seq = 10
-const relation = (username, name, approval = null) => ({ username, name, approval })
+const relation = (userId, username, name, approval = null) => ({ userId: Number(userId), username, name, approval })
 
 // 演示环境上限；正式环境由后端根据可调度单节点能力和平台安全策略返回。
 const resourceLimits = { cpu: 32, memoryGi: 128, diskGi: 500 }
+const applicationHistory = [
+  { id: 'rsa-20260828-01', specId: 3, userId: 206, username: 'sun.xin', displayName: '孙欣', approval: 'REJECTED', submittedAt: '2026-08-28 10:20', updatedAt: '2026-08-28 14:05', reason: '当前工作不需要高资源规格' },
+  { id: 'rsa-20260827-01', specId: 3, userId: 207, username: 'liuqiang', displayName: '刘强', approval: 'WITHDRAWN', submittedAt: '2026-08-27 09:40', updatedAt: '2026-08-27 11:15', reason: '用户主动撤回' }
+]
 
 const seedSpecs = () => [
   { id: 1, name: '轻', boundaryDesc: '轻量问答与日常处理，可处理 20MB 以内文件', cpu: 1, memoryGi: 2, diskGi: 5, readinessTimeoutMin: 5, idleRecycleMin: 10, maxLifetimeHours: 0, isDefault: false, positionIds: [402], allowUserApply: true, requireApproval: true, directUsers: [], createdAt: '2026-08-15 10:20', updatedAt: '2026-08-28 09:40' },
   { id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置，可处理 100MB 以内文件', cpu: 2, memoryGi: 4, diskGi: 20, readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0, isDefault: true, positionIds: [], allowUserApply: false, requireApproval: false, directUsers: [], createdAt: '2026-08-15 10:22', updatedAt: '2026-08-30 14:12' },
-  { id: 3, name: '重', boundaryDesc: '文档处理、数据分析、报告生成，可处理 500MB 以内文件', cpu: 4, memoryGi: 16, diskGi: 100, readinessTimeoutMin: 15, idleRecycleMin: 30, maxLifetimeHours: 24, isDefault: false, positionIds: [401], allowUserApply: true, requireApproval: true, directUsers: [relation('zhaomin', '赵敏', 'APPROVED'), relation('hejing', '何静', 'PENDING')], createdAt: '2026-08-16 09:05', updatedAt: '2026-08-29 16:55' },
+  { id: 3, name: '重', boundaryDesc: '文档处理、数据分析、报告生成，可处理 500MB 以内文件', cpu: 4, memoryGi: 16, diskGi: 100, readinessTimeoutMin: 15, idleRecycleMin: 30, maxLifetimeHours: 24, isDefault: false, positionIds: [401], allowUserApply: true, requireApproval: true, directUsers: [relation(208, 'zhaomin', '赵敏', 'APPROVED'), relation(210, 'hejing', '何静', 'PENDING')], createdAt: '2026-08-16 09:05', updatedAt: '2026-08-29 16:55' },
   { id: 4, name: '高敏', boundaryDesc: '处理敏感数据的隔离运行环境', cpu: 2, memoryGi: 8, diskGi: 50, readinessTimeoutMin: 10, idleRecycleMin: 15, maxLifetimeHours: 8, isDefault: false, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [], createdAt: '2026-08-18 11:30', updatedAt: '2026-08-18 11:30' },
-  { id: 5, name: '专属 · 生产计划员', boundaryDesc: '排产表体积大，可处理 800MB 以内文件', cpu: 8, memoryGi: 32, diskGi: 200, readinessTimeoutMin: 20, idleRecycleMin: 30, maxLifetimeHours: 12, isDefault: false, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [relation('zhouming', '周明', 'APPROVED')], createdAt: '2026-08-20 15:48', updatedAt: '2026-08-26 10:08' }
+  { id: 5, name: '专属 · 生产计划员', boundaryDesc: '排产表体积大，可处理 800MB 以内文件', cpu: 8, memoryGi: 32, diskGi: 200, readinessTimeoutMin: 20, idleRecycleMin: 30, maxLifetimeHours: 12, isDefault: false, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [relation(205, 'zhouming', '周明', 'APPROVED')], createdAt: '2026-08-20 15:48', updatedAt: '2026-08-26 10:08' }
 ]
 
 let specs = seedSpecs()
 
-// v2 对应默认规格、岗位继承、个人例外及9字段契约；旧版运行规格缓存自动失效。
+// v3 将个人配置的关联主键改为 userId；旧版运行规格缓存自动失效。
 const persist = attachPersist('runtimeSpec', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ seq, specs }),
   restore: (data) => {
     if (!data || !Number.isFinite(data.seq) || !Array.isArray(data.specs)) {
@@ -89,7 +93,7 @@ function resolveUser(user, ctx) {
   let activeDirect = null
   let pending = null
   for (const spec of specs) {
-    const rel = spec.directUsers.find((x) => x.username === user.username)
+    const rel = spec.directUsers.find((x) => Number(x.userId) === Number(user.id))
     if (!rel) continue
     if (rel.approval === 'PENDING') pending = { spec, relation: rel }
     else activeDirect = { spec, relation: rel }
@@ -103,7 +107,7 @@ function resolveUser(user, ctx) {
 async function enrichedRows() {
   const ctx = await getContext()
   const positionMap = new Map(ctx.positions.map((p) => [Number(p.positionId), p.name]))
-  const states = ctx.users.map((user) => ({ user, ...resolveUser(user, ctx) }))
+  const states = ctx.users.filter((user) => user.status === 'active').map((user) => ({ user, ...resolveUser(user, ctx) }))
   return specs.map((s) => {
     const effectiveUsers = states.filter((x) => x.effective?.id === s.id).map((x) => ({ username: x.user.username, name: x.user.displayName, source: x.source, positionName: x.positionName || '' }))
     const pendingUsers = states.filter((x) => x.pending?.spec.id === s.id).map((x) => ({ username: x.user.username, name: x.user.displayName, approval: 'PENDING' }))
@@ -122,8 +126,11 @@ function payloadOf(s, p) {
   }
 }
 function occupyPositions(targetId, positionIds) {
+  const changedAt = now()
   positionIds.forEach((positionId) => specs.forEach((s) => {
-    if (s.id !== targetId) s.positionIds = s.positionIds.filter((id) => id !== positionId)
+    if (s.id === targetId || !s.positionIds.includes(positionId)) return
+    s.positionIds = s.positionIds.filter((id) => id !== positionId)
+    s.updatedAt = changedAt
   }))
 }
 
@@ -168,7 +175,12 @@ export async function listRuntimeSpecUsers(specId, params = {}) {
     const isEffective = state.effective?.id === target.id
     return { userId: u.id, username: u.username, displayName: u.displayName, status: u.status, roles: u.roles, currentSpecId: state.effective?.id || null, currentSpecName: state.effective?.name || '', source: state.source, positionName: state.positionName || '', approval: isPending ? 'PENDING' : null, pendingSpecName: state.pending?.spec.name || '', isCurrent: isEffective || isPending, isEffective, isPending }
   }).filter((u) => !kw || [u.username, u.displayName, u.currentSpecName, u.positionName].some((v) => String(v).toLowerCase().includes(kw)))
-  return { list: rows, total: rows.length, spec: (await enrichedRows()).find((s) => s.id === target.id) }
+  return {
+    list: rows,
+    total: rows.length,
+    applications: applicationHistory.filter((item) => Number(item.specId) === Number(target.id)).map((item) => ({ ...item })),
+    spec: (await enrichedRows()).find((s) => s.id === target.id)
+  }
 }
 
 export async function assignRuntimeSpecUsers(specId, usernames = []) {
@@ -186,8 +198,8 @@ export async function assignRuntimeSpecUsers(specId, usernames = []) {
   unique.forEach((username) => {
     const user = userMap.get(username)
     // 管理员配置是授权动作，保存后立即生效；只有用户自主申请才进入审批。
-    specs.forEach((s) => { s.directUsers = s.directUsers.filter((u) => u.username !== username) })
-    target.directUsers.push(relation(username, user.displayName || username))
+    specs.forEach((s) => { s.directUsers = s.directUsers.filter((u) => Number(u.userId) !== Number(user.id)) })
+    target.directUsers.push(relation(user.id, username, user.displayName || username))
   })
   persist()
   // md 访问审计 §6「运行规格记录」：个人例外确认配置后写入管理端操作
@@ -203,8 +215,8 @@ export async function applyRuntimeSpecForUser(specId, username) {
   const user = (data.list || []).find((item) => item.username === username)
   if (!user) throw err(`用户 ${username} 不存在`, 40400)
   if (user.status === 'disabled') throw err(`用户 ${user.displayName || username} 已停用，不能申请规格`, 40004)
-  specs.forEach((s) => { s.directUsers = s.directUsers.filter((u) => !(u.username === username && u.approval === 'PENDING')) })
-  target.directUsers.push(relation(username, user.displayName || username, 'PENDING'))
+  specs.forEach((s) => { s.directUsers = s.directUsers.filter((u) => !(Number(u.userId) === Number(user.id) && u.approval === 'PENDING')) })
+  target.directUsers.push(relation(user.id, username, user.displayName || username, 'PENDING'))
   persist()
   return { pending: true }
 }
@@ -213,7 +225,9 @@ export async function unassignRuntimeSpecUser(specId, username) {
   await delay()
   const target = findOr404(specId)
   const before = target.directUsers.length
-  target.directUsers = target.directUsers.filter((u) => u.username !== username)
+  const data = await listUsers({ size: 200 })
+  const user = (data.list || []).find((item) => item.username === username)
+  target.directUsers = target.directUsers.filter((u) => user ? Number(u.userId) !== Number(user.id) : u.username !== username)
   if (before === target.directUsers.length) throw err('该用户没有此规格的个人配置或待审批申请', 40400)
   persist()
   return true
@@ -224,6 +238,19 @@ export async function getRuntimeSpec(id) {
   const row = (await enrichedRows()).find((x) => x.id === Number(id))
   if (!row) throw err('规格不存在', 40400)
   return row
+}
+
+/** 供实例管理实时计算用户当前生效规格；实例只保留 actualSpec 快照。 */
+export async function getEffectiveRuntimeSpecForUser(userId) {
+  const ctx = await getContext()
+  const user = ctx.users.find((item) => Number(item.id) === Number(userId))
+  if (!user) return null
+  const state = resolveUser(user, ctx)
+  return {
+    userStatus: user.status,
+    effectiveSpec: state.effective?.name || '',
+    specSource: state.source === 'USER' ? '个人配置' : state.source === 'POSITION' ? `岗位继承${state.positionName ? ` · ${state.positionName}` : ''}` : '平台默认'
+  }
 }
 export async function createRuntimeSpec(payload) {
   await delay()
@@ -258,7 +285,9 @@ export async function deleteRuntimeSpec(id) {
   // 新的删岗已级联摘除，这里兜住存量持久化数据里已经悬空的引用）
   const livePositionIds = s.positionIds.filter((pid) => getPositionNameById(pid))
   if (livePositionIds.length) throw err(`该规格已配置给 ${livePositionIds.length} 个岗位，请先解除岗位配置`, 40004)
-  if (s.directUsers.length) throw err(`该规格存在 ${s.directUsers.length} 个个人配置或待审批申请，请先处理后再删除`, 40004)
+  const liveUserIds = new Set(((await listUsers({ size: 200 })).list || []).map((u) => Number(u.id)))
+  const liveDirectCount = s.directUsers.filter((u) => liveUserIds.has(Number(u.userId))).length
+  if (liveDirectCount) throw err(`该规格存在 ${liveDirectCount} 个个人配置或待审批申请，请先处理后再删除`, 40004)
   specs.splice(specs.indexOf(s), 1)
   persist()
   return true
@@ -276,6 +305,23 @@ export function __resetRuntimeSpecMock() {
  */
 export function unassignPositionFromAllSpecs(positionId) {
   const pid = Number(positionId)
-  specs.forEach((s) => { s.positionIds = s.positionIds.filter((id) => id !== pid) })
+  const changedAt = now()
+  specs.forEach((s) => {
+    if (!s.positionIds.includes(pid)) return
+    s.positionIds = s.positionIds.filter((id) => id !== pid)
+    s.updatedAt = changedAt
+  })
   persist()
+}
+
+/** 删用户级联：用 userId 清理个人配置和待审申请，避免用户名复用后继承旧关系。 */
+export function unassignUserFromAllSpecs(userId) {
+  const uid = Number(userId)
+  let changed = false
+  specs.forEach((s) => {
+    const before = s.directUsers.length
+    s.directUsers = s.directUsers.filter((u) => Number(u.userId) !== uid)
+    changed = changed || before !== s.directUsers.length
+  })
+  if (changed) persist()
 }

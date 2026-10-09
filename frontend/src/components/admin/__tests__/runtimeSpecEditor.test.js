@@ -108,7 +108,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(numberValue(d, 'CPU（核）')).toBe('2')
     expect(numberValue(d, '内存（Gi）')).toBe('4')
     expect(numberValue(d, '临时存储（Gi）')).toBe('20')
-    expect(numberValue(d, 'Pod 就绪超时（分钟）')).toBe('10')
+    expect(numberValue(d, '就绪等待超时（分钟）')).toBe('10')
     expect(numberValue(d, '空闲回收（分钟）')).toBe('20')
     expect(numberValue(d, '最大存活时长（小时）')).toBe('0')
     // md §四.4 L300：资源配置区直接展示当前平台单实例上限 + 每个输入项下方同步展示最大值
@@ -187,16 +187,16 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(savedSpy).not.toHaveBeenCalled()
   })
 
-  it('平台上限读取失败 → 抽屉保留、展示通用「加载失败」+【重试】；重试成功后表单出现（代码现状；md §四.10 要求文案「平台资源上限获取失败」，差异待登记代码缺陷）', async () => {
+  it('平台上限读取失败 → 抽屉保留表单、明确提示「平台资源上限获取失败」并可单独重试', async () => {
     api.getRuntimeSpecLimits.mockRejectedValueOnce(new Error('limits down')).mockResolvedValue({ ...LIMITS })
     const d = await open({ specId: null })
-    expect(d.textContent).toContain('加载失败')
-    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeNull() // 不展示空白表单可提交
+    expect(d.textContent).toContain('平台资源上限获取失败')
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     const retry = [...d.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
     expect(retry).toBeTruthy()
     retry.click()
     await flushAll(10)
-    expect(d.textContent).not.toContain('加载失败')
+    expect(d.textContent).not.toContain('平台资源上限获取失败')
     expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(api.getRuntimeSpecLimits).toHaveBeenCalledTimes(2)
   })

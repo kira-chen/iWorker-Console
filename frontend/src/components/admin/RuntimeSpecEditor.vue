@@ -73,6 +73,7 @@ const isDirty = computed(() => baseline.value !== '' && snapshot() !== baseline.
 
 const loading = ref(false)
 const loadError = ref(false)
+const resourceLimitError = ref(false)
 const saving = ref(false)
 const fieldErrors = reactive({})
 
@@ -99,14 +100,18 @@ async function load() {
   discardConfirmed = false
   loading.value = true
   loadError.value = false
+  resourceLimitError.value = false
   try {
-    const [positionData, limitData, specData] = await Promise.all([
+    const [positionData, specData] = await Promise.all([
       listPositions({ size: 200, status: 'published' }),
-      getRuntimeSpecLimits(),
       listRuntimeSpecs()
     ])
     positions.value = positionData?.list || []
-    Object.assign(resourceLimits, limitData)
+    try {
+      Object.assign(resourceLimits, await getRuntimeSpecLimits())
+    } catch {
+      resourceLimitError.value = true
+    }
     // 岗位占用表：排除本规格自身（编辑态回填的岗位不算「被其他规格占用」）
     const owners = new Map()
     for (const s of specData?.list || []) {
@@ -131,9 +136,24 @@ async function load() {
     })
     baseline.value = snapshot()
   } catch (e) {
+    if (e?.code === 40400 || e?.status === 404) {
+      ElMessage.error('规格不存在或已被删除')
+      emit('update:visible', false)
+      emit('saved')
+      return
+    }
     loadError.value = true
   } finally {
     loading.value = false
+  }
+}
+
+async function retryResourceLimits() {
+  try {
+    Object.assign(resourceLimits, await getRuntimeSpecLimits())
+    resourceLimitError.value = false
+  } catch {
+    resourceLimitError.value = true
   }
 }
 
@@ -248,7 +268,7 @@ async function confirmRuntimeChange() {
     h('ul', { class: 'rs-confirm-list' }, [
       h('li', null, '已运行 Pod 不会被立即修改或重启。'),
       h('li', null, '新配置在用户 Pod 下一次创建或管理员主动重建时生效。'),
-      h('li', null, '「实例与会话」中使用旧配置的 Pod 将标记「规格待生效」。')
+      h('li', null, '「实例管理」中使用旧配置的 Pod 将标记「规格待生效」。')
     ])
   ])
   return confirmDialog(body, '运行配置变更', { confirmText: '确认保存' })
@@ -278,7 +298,11 @@ async function save() {
   } catch (e) {
     // 护栏错误（重名等）按 field 就地红框；无 field 的兜底 toast
     if (e?.field) fieldErrors[e.field] = e.message
-    else ElMessage.error(e?.message || '保存失败，请稍后重试')
+    else if (e?.code === 40400 || e?.status === 404) {
+      ElMessage.error('规格不存在或已被删除')
+      emit('update:visible', false)
+      emit('saved')
+    } else ElMessage.error(e?.message || '保存失败，请稍后重试')
   } finally {
     saving.value = false
   }
@@ -363,8 +387,19 @@ async function save() {
     </section>
 
     <section class="rs-sec">
-      <div class="rs-sec-title">资源配置<span class="rs-sec-sub">k8s Pod 资源（demo：requests = limits）</span></div>
+      <div class="rs-sec-title">Pod资源配置<span class="rs-sec-sub">请求量与上限一致</span></div>
       <el-alert
+        v-if="resourceLimitError"
+        title="平台资源上限获取失败"
+        type="error"
+        :closable="false"
+        show-icon
+        class="rs-limit-alert"
+      >
+        <template #default><el-button link type="primary" @click="retryResourceLimits">重试</el-button></template>
+      </el-alert>
+      <el-alert
+        v-else
         :title="`当前平台单实例上限：CPU ${resourceLimits.cpu} 核、内存 ${resourceLimits.memoryGi} Gi、临时存储 ${resourceLimits.diskGi} Gi。上限由平台根据集群可调度能力统一配置。`"
         type="info"
         :closable="false"
@@ -393,7 +428,7 @@ async function save() {
       <div class="rs-sec-title">运行策略</div>
       <el-form label-position="top">
         <div class="rs-row3">
-          <el-form-item label="Pod 就绪超时（分钟）" :error="fieldErrors.readinessTimeoutMin" required>
+          <el-form-item label="就绪等待超时（分钟）" :error="fieldErrors.readinessTimeoutMin" required>
             <el-input-number v-model="form.readinessTimeoutMin" :min="1" class="rs-num" :disabled="readonly" />
             <div class="rs-hint">创建 Pod 后等待 warmed=true，写入时转为秒；不是任务超时</div>
           </el-form-item>
@@ -417,6 +452,7 @@ async function save() {
           <span class="rs-source">{{ u.source === 'USER' ? '个人配置' : u.source === 'POSITION' ? `岗位 · ${u.positionName}` : '平台默认' }}</span>
         </span>
       </div>
+      <div v-if="meta.effectiveUsers.length > 10" class="rs-pending">共 {{ meta.effectiveUsers.length }} 个生效用户，当前展示前 10 个</div>
       <div v-else class="rs-used-empty">暂无用户生效</div>
       <div v-if="meta.pendingUsers.length" class="rs-pending">另有 {{ meta.pendingUsers.length }} 个个人申请待审批</div>
     </section>

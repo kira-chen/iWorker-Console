@@ -15,12 +15,14 @@ import {
   listRuntimeSpecUsers, assignRuntimeSpecUsers, applyRuntimeSpecForUser, unassignRuntimeSpecUser, __resetRuntimeSpecMock
 } from '../runtimeSpecMock'
 import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
+import { deleteUser, __resetOrgMock } from '../adminUserMock'
 
 // 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/04运行/运行规格/prd.运行规格.md §一.4 核心规则 /
 // §二.1 搜索 / §三.2 排序 / §三.3.4 配置范围 / §三.3.6 删除 / §四.3 适用范围 / §四.4 资源上限。
 // 校验文案 2026-09-12 已按 md §四.10 / §三.3.6 逐字对齐（审计 K28 闭环），本文件断言 md 原文。
 describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', () => {
   beforeEach(() => {
+    __resetOrgMock()
     __resetRuntimeSpecMock()
     resetAccessAuditMock()
   })
@@ -30,7 +32,8 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     expect(list.filter((s) => s.isDefault)).toHaveLength(1)
     expect(list.find((s) => s.isDefault).name).toBe('标准')
     expect(summary.specCount).toBe(5)
-    expect(summary.userCount).toBe(13)
+    expect(summary.userCount).toBe(11)
+    expect(list.find((s) => s.id === 5).usedCount).toBe(0)
   })
 
   it('生效优先级：个人配置 > 岗位规格 > 平台默认', async () => {
@@ -171,7 +174,7 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     await expect(updateRuntimeSpec(3, { ...heavy, maxLifetimeHours: 6 })).resolves.toMatchObject({ maxLifetimeHours: 6, allowUserApply: true })
   })
 
-  it('规格写操作调用共享持久化层并生成v2快照', async () => {
+  it('规格写操作调用共享持久化层并生成v3快照', async () => {
     const runtimePersist = persistHarness.modules.get('runtimeSpec')
     runtimePersist.persist.mockClear()
     await createRuntimeSpec({
@@ -179,7 +182,7 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
       readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0,
       positionIds: [], allowUserApply: false
     })
-    expect(runtimePersist.options.version).toBe(2)
+    expect(runtimePersist.options.version).toBe(3)
     expect(runtimePersist.persist).toHaveBeenCalledTimes(1)
     expect(runtimePersist.options.snapshot().specs.some((spec) => spec.name === '持久化测试档')).toBe(true)
   })
@@ -216,12 +219,26 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     expect([...seen.values()].every((n) => n === 1)).toBe(true)
   })
 
+  it('岗位被新规格接管时，原规格的最近更新时间同步变更', async () => {
+    const before = await getRuntimeSpec(1)
+    await createRuntimeSpec({ ...BASE, name: '接管并更新时间', positionIds: [402] })
+    const after = await getRuntimeSpec(1)
+    expect(after.positionIds).toEqual([])
+    expect(after.updatedAt).not.toBe(before.updatedAt)
+  })
+
   it('停用用户不能被管理员配置个人例外：assign rejects「已停用，不能配置规格」（md §三.3.4「停用用户不可新增个人配置」）', async () => {
     await expect(assignRuntimeSpecUsers(3, ['wujie'])).rejects.toThrow('已停用，不能配置规格')
     // 整批不落库：同批的正常用户也未写入
     await expect(assignRuntimeSpecUsers(3, ['chenyu', 'wujie'])).rejects.toThrow('已停用，不能配置规格')
     const rows = await listRuntimeSpecUsers(3)
     expect(rows.list.find((u) => u.username === 'chenyu').isCurrent).toBe(false)
+  })
+
+  it('删除用户时按 userId 级联清理个人配置，规格不被幽灵关系锁死', async () => {
+    expect((await getRuntimeSpec(3)).directUsers.some((u) => u.userId === 208)).toBe(true)
+    await deleteUser(208)
+    expect((await getRuntimeSpec(3)).directUsers.some((u) => u.userId === 208)).toBe(false)
   })
 
   it('关闭申请入口的规格（标准，allowUserApply=false）：用户申请 rejects「该规格当前不开放用户申请」（md §四.3）', async () => {

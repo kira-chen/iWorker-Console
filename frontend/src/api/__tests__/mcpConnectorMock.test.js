@@ -786,14 +786,14 @@ describe('mcpConnectorMock · 强制回收', () => {
   })
 
   it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝「状态已变化，请刷新后重试」', async () => {
-    await expect(m.forceRevokeMcpService('project_hub', reasonText)).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
-    await expect(m.forceRevokeMcpService('local_files', reasonText)).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await expect(m.forceRevokeMcpService('project_hub', reasonText)).rejects.toThrow('MCP状态已变化，请刷新后重试') // 未发布
+    await expect(m.forceRevokeMcpService('local_files', reasonText)).rejects.toThrow('MCP状态已变化，请刷新后重试') // 待审发布
     await m.delistMcpService('calendar') // 已发布 → 待审停用
-    await expect(m.forceRevokeMcpService('calendar', reasonText)).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(m.forceRevokeMcpService('calendar', reasonText)).rejects.toThrow('MCP状态已变化，请刷新后重试')
     await expect(m.forceRevokeMcpService('no_such', reasonText)).rejects.toThrow('MCP 不存在')
     // 已回收的行再回收（已是未发布）也被拒，不产生重复审计
     await m.forceRevokeMcpService('knowledge_hub', reasonText)
-    await expect(m.forceRevokeMcpService('knowledge_hub', reasonText)).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(m.forceRevokeMcpService('knowledge_hub', reasonText)).rejects.toThrow('MCP状态已变化，请刷新后重试')
   })
 
   it('重新发布：提交 / 撤回 / 驳回都不清 revoked，审核通过才清，且回到已发布', async () => {

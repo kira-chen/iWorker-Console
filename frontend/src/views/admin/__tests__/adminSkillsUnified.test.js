@@ -927,6 +927,15 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '专家' })
   })
 
+  it('岗位私有技能的回收弹窗：引用方描述为「岗位」，不是写死的「岗位 / 专家」（/prd-import Q6，口径同列表「引用情况」）', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2 }
+    const { host } = await mountAndInject([positionPublished])
+    opBtn(host, '岗位私有已发布技能', '强制回收').click()
+    await settle(0)
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '岗位私有已发布技能', refCount: 2, refText: '岗位' })
+  })
+
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
     askForceRevoke.mockResolvedValue(null)
     const { host } = await mountAndInject([publishedRow])

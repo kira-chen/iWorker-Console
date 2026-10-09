@@ -343,7 +343,7 @@ export async function forceRevokeBizSystem(id, reason) {
   await delay(250)
   const b = findBiz(id)
   if (!b) throw err('业务系统不存在')
-  if (b.status !== 'PUBLISHED' || b.pendingAction) throw err('状态已变化，请刷新后重试')
+  if (b.status !== 'PUBLISHED' || b.pendingAction) throw err('业务系统状态已变化，请刷新后重试')
   b.status = 'NOT_PUBLISHED'
   b.revoked = makeRevokedInfo(reason)
   b.updatedAt = nowIso()

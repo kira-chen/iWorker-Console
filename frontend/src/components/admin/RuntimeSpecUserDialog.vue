@@ -30,6 +30,7 @@ const loading = ref(false)
 const loadError = ref(false)
 const saving = ref(false)
 const users = ref([])
+const applications = ref([])
 const selected = ref([])
 
 function toggleSelected(username, checked) {
@@ -43,7 +44,7 @@ const candidateUsers = computed(() => {
   return users.value.filter((u) => {
     if (u.isCurrent) return false
     if (!kw) return true
-    return [u.username, u.displayName, u.currentSpecName]
+    return [u.username, u.displayName, u.currentSpecName, u.positionName]
       .some((v) => String(v || '').toLowerCase().includes(kw))
   })
 })
@@ -51,6 +52,8 @@ const candidateUsers = computed(() => {
 function approvalText(value) {
   if (value === 'PENDING') return '待审批'
   if (value === 'APPROVED') return '已审批'
+  if (value === 'REJECTED') return '已驳回'
+  if (value === 'WITHDRAWN') return '已撤回'
   return '已生效'
 }
 
@@ -64,6 +67,8 @@ function sourceText(row) {
 function approvalType(value) {
   if (value === 'PENDING') return 'warning'
   if (value === 'APPROVED') return 'success'
+  if (value === 'REJECTED') return 'danger'
+  if (value === 'WITHDRAWN') return 'info'
   return 'accent'
 }
 
@@ -74,11 +79,20 @@ async function load() {
   try {
     const data = await listRuntimeSpecUsers(props.spec.id)
     users.value = data?.list || []
+    applications.value = data?.applications || []
   } catch (e) {
     loadError.value = true
   } finally {
     loading.value = false
   }
+}
+
+function showApplication(row) {
+  ElMessageBox.alert(
+    `提交时间：${row.submittedAt}\n最近更新：${row.updatedAt}\n处理说明：${row.reason || '—'}`,
+    `申请详情 · ${row.displayName}`,
+    { confirmButtonText: '关闭' }
+  ).catch(() => {})
 }
 
 watch(
@@ -196,6 +210,15 @@ async function removeUser(row) {
             </template>
           </el-table-column>
         </el-table>
+        <div v-if="applications.length" class="rsu-history">
+          <div class="rsu-history-title">历史申请</div>
+          <el-table :data="applications" max-height="180">
+            <el-table-column label="用户" min-width="180"><template #default="{ row }">{{ row.displayName }}（{{ row.username }}）</template></el-table-column>
+            <el-table-column label="申请状态" width="100"><template #default="{ row }"><StatusTag :type="approvalType(row.approval)">{{ approvalText(row.approval) }}</StatusTag></template></el-table-column>
+            <el-table-column prop="updatedAt" label="最近更新" width="150" />
+            <el-table-column label="操作" width="80" align="right"><template #default="{ row }"><el-button link type="primary" @click="showApplication(row)">查看申请</el-button></template></el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="添加个人例外" name="available">
@@ -289,6 +312,8 @@ async function removeUser(row) {
 .rsu-tabs {
   margin-top: var(--space-4);
 }
+.rsu-history { margin-top: var(--space-4); }
+.rsu-history-title { margin-bottom: var(--space-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .rsu-search {
   width: 320px;
   margin-bottom: var(--space-3);

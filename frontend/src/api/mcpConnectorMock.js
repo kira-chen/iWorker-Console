@@ -755,7 +755,7 @@ export async function forceRevokeMcpService(id, reason) {
   await delay(250)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
-  if (pubAgg[m.id] !== 'PUBLISHED' || m.pendingAction) throw err('状态已变化，请刷新后重试')
+  if (pubAgg[m.id] !== 'PUBLISHED' || m.pendingAction) throw err('MCP状态已变化，请刷新后重试')
   pubAgg[m.id] = 'NOT_PUBLISHED'
   m.revoked = makeRevokedInfo(reason)
   m.updatedAt = nowIso()

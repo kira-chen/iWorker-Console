@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 /**
- * runtimeSpecMock · 持久化（mockPersist v2，key iworker-demo-mock:runtimeSpec）。
+ * runtimeSpecMock · 持久化（mockPersist v3，key iworker-demo-mock:runtimeSpec）。
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/04运行/运行规格/prd.运行规格.md §三.2「新建规格成功后排在最前」
  * + 项目 mock 持久化约定（刷新后数据仍在；改种子须 bump version，旧快照作废回种子；坏快照不白屏）。
  *
@@ -62,7 +62,7 @@ describe('runtimeSpecMock · 持久化（刷新后读回 / 旧版作废 / 坏快
 
   it('本地快照版本对但形状不合法（specs 不是数组）→ 兜底回种子 5 条，页面不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { seq: 12, specs: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { seq: 12, specs: 'oops' } }))
     const m = await import('../runtimeSpecMock')
     const { list, total } = await m.listRuntimeSpecs()
     expect(total).toBe(5)
