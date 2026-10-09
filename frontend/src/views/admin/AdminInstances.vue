@@ -1,18 +1,20 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListStates from '@/components/admin/ListStates.vue'
+import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import { listInstances, operateInstance } from '@/api/instance'
 
-const route = useRoute()
-const allowedViews = new Set(['spec', 'position', 'detail'])
-const instanceView = ref(allowedViews.has(route.query.view) ? route.query.view : 'spec')
+const instanceView = ref('spec')
 const query = reactive({ keyword: '', status: '', position: '', spec: '', pending: false })
+const summaryContext = ref(null)
+const page = ref(1)
+const pageSize = ref(10)
+const activeSort = ref('descending')
 const detailVisible = ref(false)
 const current = ref(null)
 const instances = ref([])
@@ -30,7 +32,11 @@ const filteredInstances = computed(() => instances.value.filter(x => {
     && (!query.position || x.position === query.position)
     && (!query.spec || x.effectiveSpec === query.spec)
     && (!query.pending || x.actualSpec !== x.effectiveSpec)
-}))
+}).sort((a, b) => activeSort.value === 'ascending' ? String(a.active).localeCompare(String(b.active)) : String(b.active).localeCompare(String(a.active))))
+const pagedInstances = computed(() => filteredInstances.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+const hasFilter = computed(() => !!(query.keyword.trim() || query.status || query.position || query.spec || query.pending))
+const emptyText = computed(() => hasFilter.value ? '没有符合当前条件的实例' : '当前没有运行实例')
+watch([() => query.keyword, () => query.status, () => query.position, () => query.spec, () => query.pending], () => { page.value = 1 })
 
 function aggregate(list, key, label) {
   const groups = new Map()
@@ -59,8 +65,27 @@ const metrics = computed(() => [
 ])
 const cardTitle = computed(() => instanceView.value === 'detail' ? '实例明细' : `按${instanceView.value === 'spec' ? '规格' : '岗位'}汇总`)
 
-function drillInstances(row) { instanceView.value = 'detail'; if (row.label === '运行规格') query.spec = row.name; else query.position = row.name }
-function chooseMetric(metric) { instanceView.value = 'detail'; query.pending = metric[2] === 'PENDING'; query.status = metric[2] === 'PENDING' ? '' : (query.status === metric[2] ? '' : metric[2]) }
+function rememberSummary() { summaryContext.value = { view: instanceView.value, query: { ...query } } }
+function drillInstances(row) { rememberSummary(); instanceView.value = 'detail'; if (row.label === '运行规格') query.spec = row.name; else query.position = row.name }
+function chooseMetric(metric) {
+  if (instanceView.value !== 'detail') rememberSummary()
+  instanceView.value = 'detail'
+  if (metric[2] === 'PENDING') {
+    query.pending = !query.pending
+    query.status = ''
+  } else {
+    query.pending = false
+    query.status = query.status === metric[2] ? '' : metric[2]
+  }
+}
+function changeView(next) {
+  if (next !== 'detail' && summaryContext.value) {
+    Object.assign(query, summaryContext.value.query)
+    summaryContext.value = null
+  }
+}
+function clearFilters() { Object.assign(query, { keyword: '', status: '', position: '', spec: '', pending: false }); page.value = 1 }
+function toggleActiveSort() { activeSort.value = activeSort.value === 'descending' ? 'ascending' : 'descending' }
 function showDetail(row) { current.value = row; detailVisible.value = true }
 async function load() {
   loading.value = true
@@ -70,9 +95,6 @@ async function load() {
     instances.value = data.list || []
     updatedAt.value = data.updatedAt || '—'
     if (current.value) current.value = instances.value.find((item) => item.id === current.value.id) || null
-    const deepLinkId = typeof route.query.instance === 'string' ? route.query.instance : ''
-    const target = deepLinkId ? instances.value.find((item) => item.id === deepLinkId) : null
-    if (target) { instanceView.value = 'detail'; current.value = target; detailVisible.value = true }
   } catch {
     loadError.value = true
   } finally {
@@ -130,37 +152,50 @@ onMounted(load)
       <el-select v-model="query.spec" placeholder="全部运行规格" clearable class="lt-filter">
         <el-option v-for="spec in specs" :key="spec" :label="spec" :value="spec" />
       </el-select>
-      <el-button>查询</el-button><template #right><el-button @click="refreshStatus">刷新状态</el-button></template>
+      <el-button @click="load">查询</el-button><el-button v-if="hasFilter" @click="clearFilters">清空筛选</el-button><template #right><el-button @click="refreshStatus">刷新状态</el-button></template>
     </ListToolbar>
-    <div class="view-switch"><span>查看方式</span><el-radio-group v-model="instanceView" size="small"><el-radio-button value="spec">按规格</el-radio-button><el-radio-button value="position">按岗位</el-radio-button><el-radio-button value="detail">实例明细</el-radio-button></el-radio-group><span class="view-hint">先查看实例分布，再下钻定位具体实例</span></div>
+    <div class="view-switch"><span>查看方式</span><el-radio-group v-model="instanceView" size="small" @change="changeView"><el-radio-button value="spec">按规格</el-radio-button><el-radio-button value="position">按岗位</el-radio-button><el-radio-button value="detail">实例明细</el-radio-button></el-radio-group><span class="view-hint">先查看实例分布，再下钻定位具体实例</span></div>
     <div class="runtime-card">
       <div class="runtime-card-title">{{ cardTitle }}<span>数据更新于 {{ updatedAt }}</span></div>
-      <ListStates :loading="loading" :error="loadError" :empty="!loading && !loadError && filteredInstances.length === 0" empty-text="暂无符合条件的实例" @retry="load">
+      <ListStates :loading="loading" :error="loadError" :empty="!loading && !loadError && filteredInstances.length === 0" :empty-text="emptyText" @retry="load">
       <el-table v-if="instanceView !== 'detail'" v-loading="loading" :data="instanceGroups" row-key="name">
         <el-table-column :label="instanceView === 'spec' ? '运行规格' : '岗位'" min-width="180"><template #default="{row}"><div class="primary-text">{{ row.name }}</div><div class="secondary-text">{{ row.label }}汇总</div></template></el-table-column>
         <el-table-column prop="users" label="涉及用户" width="110" /><el-table-column prop="total" label="当前实例" width="110" />
         <el-table-column label="状态分布" min-width="300"><template #default="{row}"><span class="state-item success-text">运行 {{ row.running }}</span><span class="state-item">空闲 {{ row.idle }}</span><span class="state-item warning-text">启动 {{ row.starting }}</span><span class="state-item danger-text">异常 {{ row.abnormal }}</span></template></el-table-column>
         <el-table-column prop="pending" label="规格待生效" width="120" /><el-table-column prop="lastActive" label="最近活跃" width="160" /><el-table-column label="操作" width="110" fixed="right"><template #default="{row}"><el-button link type="primary" @click="drillInstances(row)">查看实例</el-button></template></el-table-column>
       </el-table>
-      <el-table v-else v-loading="loading" :data="filteredInstances" row-key="id">
-        <el-table-column label="用户" min-width="130"><template #default="{row}"><div class="primary-text">{{ row.name }}</div><div class="secondary-text">{{ row.username }}</div></template></el-table-column><el-table-column prop="position" label="岗位" width="120" /><el-table-column label="实例状态" width="100"><template #default="{row}"><StatusTag :type="statusMeta[row.status][1]">{{ statusMeta[row.status][0] }}</StatusTag></template></el-table-column><el-table-column label="当前实际规格" min-width="140"><template #default="{row}"><div>{{ row.actualSpec }}</div><StatusTag v-if="row.actualSpec !== row.effectiveSpec" type="warning">规格待生效</StatusTag></template></el-table-column><el-table-column label="CPU / 内存" width="145"><template #default="{row}"><div>{{ row.cpu }}</div><div class="secondary-text">已用 {{ row.usage }}</div></template></el-table-column><el-table-column prop="active" label="最近活跃" width="150" /><el-table-column label="异常摘要" min-width="190"><template #default="{row}"><span :class="{'danger-text':row.error !== '—'}">{{ row.error }}</span></template></el-table-column>
-        <el-table-column label="操作" width="145" fixed="right"><template #default="{row}"><div class="row-actions"><el-button link type="primary" @click="showDetail(row)">查看</el-button><el-dropdown trigger="click"><el-button link type="primary">运行操作⌄</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item :disabled="!canOperate(row,'restart')" @click="instanceAction(row,'restart')">重启</el-dropdown-item><el-dropdown-item :disabled="!canOperate(row,'rebuild')" @click="instanceAction(row,'rebuild')">按最新规格重建</el-dropdown-item><el-dropdown-item :disabled="!canOperate(row,'recycle')" divided @click="instanceAction(row,'recycle')">回收</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></template></el-table-column>
+      <el-table v-else v-loading="loading" :data="pagedInstances" row-key="id">
+        <el-table-column label="用户" min-width="130"><template #default="{row}"><div class="primary-text">{{ row.name }} <StatusTag v-if="row.userStatus === 'disabled'" type="info">已停用</StatusTag></div><div class="secondary-text">{{ row.username }}</div></template></el-table-column><el-table-column prop="position" label="岗位" width="120" /><el-table-column label="实例状态" width="100"><template #default="{row}"><StatusTag :type="statusMeta[row.status][1]">{{ statusMeta[row.status][0] }}</StatusTag></template></el-table-column><el-table-column label="当前实际规格" min-width="140"><template #default="{row}"><div>{{ row.actualSpec }}</div><StatusTag v-if="row.actualSpec !== row.effectiveSpec" type="warning">规格待生效</StatusTag></template></el-table-column><el-table-column label="CPU / 内存" width="145"><template #default="{row}"><div>{{ row.cpu }}</div><div class="secondary-text">已用 {{ row.usage }}</div></template></el-table-column><el-table-column width="150"><template #header><button type="button" class="active-sort" @click="toggleActiveSort">最近活跃 {{ activeSort === 'descending' ? '↓' : '↑' }}</button></template><template #default="{row}">{{ row.active }}</template></el-table-column><el-table-column label="异常摘要" min-width="190"><template #default="{row}"><span :class="{'danger-text':row.error !== '—'}">{{ row.error }}</span></template></el-table-column>
+        <el-table-column label="操作" width="145" fixed="right"><template #default="{row}"><div class="row-actions"><el-button link type="primary" @click="showDetail(row)">查看</el-button><el-dropdown trigger="click"><el-button link type="primary">运行操作⌄</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item :disabled="!canOperate(row,'restart')" :title="disabledReason(row,'restart')" @click="instanceAction(row,'restart')">重启</el-dropdown-item><el-dropdown-item :disabled="!canOperate(row,'rebuild')" :title="disabledReason(row,'rebuild')" @click="instanceAction(row,'rebuild')">按最新规格重建</el-dropdown-item><el-dropdown-item :disabled="!canOperate(row,'recycle')" :title="disabledReason(row,'recycle')" divided @click="instanceAction(row,'recycle')">回收</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></template></el-table-column>
       </el-table>
       </ListStates>
       <div class="table-foot">{{ instanceView === 'detail' ? filteredInstances.length : instanceGroups.length }} 条记录</div>
     </div>
+    <ListPagination v-if="instanceView === 'detail'" v-model:page="page" v-model:page-size="pageSize" :total="filteredInstances.length" />
     <DrawerEditor v-model:visible="detailVisible" :title="`实例详情 · ${current?.name || ''}`" readonly size="720px">
       <template v-if="current">
         <div class="detail-section"><h3>基本信息</h3><el-descriptions :column="2" border><el-descriptions-item label="实例标识">{{ current.id }}</el-descriptions-item><el-descriptions-item label="所属用户">{{ current.name }}（{{ current.username }}）</el-descriptions-item><el-descriptions-item label="岗位">{{ current.position }}</el-descriptions-item><el-descriptions-item label="当前状态"><StatusTag :type="statusMeta[current.status][1]">{{ statusMeta[current.status][0] }}</StatusTag></el-descriptions-item></el-descriptions></div>
-        <div class="detail-section"><h3>规格与资源</h3><el-descriptions :column="2" border><el-descriptions-item label="当前实际规格">{{ current.actualSpec }}</el-descriptions-item><el-descriptions-item label="当前生效规格">{{ current.effectiveSpec }}</el-descriptions-item><el-descriptions-item label="CPU / 内存额度">{{ current.cpu }}</el-descriptions-item><el-descriptions-item label="当前用量">{{ current.usage }}</el-descriptions-item></el-descriptions></div>
+        <div class="detail-section"><h3>规格与资源</h3><el-descriptions :column="2" border><el-descriptions-item label="当前实际规格">{{ current.actualSpec }}</el-descriptions-item><el-descriptions-item label="当前生效规格">{{ current.effectiveSpec }}</el-descriptions-item><el-descriptions-item label="规格来源">{{ current.specSource || '—' }}</el-descriptions-item><el-descriptions-item label="CPU / 内存额度">{{ current.cpu }}</el-descriptions-item><el-descriptions-item label="当前用量">{{ current.usage }}</el-descriptions-item></el-descriptions></div>
         <div class="detail-section"><h3>状态与异常</h3><el-alert v-if="current.error !== '—'" :title="current.error" type="error" :closable="false" show-icon /><el-alert v-else title="当前未发现实例异常" type="success" :closable="false" show-icon /><el-descriptions :column="2" border class="time-descriptions"><el-descriptions-item label="启动时间">{{ current.startedAt }}</el-descriptions-item><el-descriptions-item label="最近活跃">{{ current.active }}</el-descriptions-item><el-descriptions-item label="数据更新时间" :span="2">{{ current.updatedAt }}</el-descriptions-item></el-descriptions></div>
         <div class="detail-section"><h3>运行操作</h3><el-alert v-if="!current.operable" :title="current.operationHint" type="warning" :closable="false" show-icon /><div class="detail-actions"><el-button :disabled="!canOperate(current,'restart')" @click="instanceAction(current,'restart')">重启</el-button><el-button :disabled="!canOperate(current,'rebuild')" @click="instanceAction(current,'rebuild')">按最新规格重建</el-button><el-button type="danger" plain :disabled="!canOperate(current,'recycle')" @click="instanceAction(current,'recycle')">回收</el-button></div></div>
-        <div class="detail-section"><h3>操作记录</h3><el-timeline class="detail-timeline"><el-timeline-item :timestamp="current.updatedAt" type="primary">实例状态已同步</el-timeline-item><el-timeline-item :timestamp="current.startedAt" type="success">运行环境已创建</el-timeline-item></el-timeline></div>
+        <div class="detail-section">
+          <h3>操作记录</h3>
+          <el-timeline v-if="current.records?.length" class="detail-timeline">
+            <el-timeline-item
+              v-for="record in current.records"
+              :key="`${record.type}-${record.time}`"
+              :timestamp="record.completedAt || record.time"
+              :type="record.result === '成功' ? 'success' : 'primary'"
+            >{{ record.type }} · {{ record.operator }} · {{ record.result }}</el-timeline-item>
+          </el-timeline>
+          <div v-else class="secondary-text">暂无运行操作记录</div>
+        </div>
       </template><template #footer><el-button @click="detailVisible = false">关闭</el-button><el-button type="primary" @click="refreshStatus">刷新状态</el-button></template>
     </DrawerEditor>
   </div>
 </template>
 
 <style scoped>
+.active-sort{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .runtime-page{gap:0}.runtime-note{margin-bottom:16px;padding:10px 14px;font-size:12px;line-height:1.7;color:var(--c-text-muted);background:var(--bg-sunken);border:1px solid var(--border-soft);border-left:3px solid var(--c-success);border-radius:var(--radius-sm)}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.metric-card{text-align:left;padding:13px 16px;background:var(--bg-base);border:1px solid var(--border-soft);border-radius:var(--radius-md);cursor:pointer;color:var(--c-text-muted)}.metric-card:hover{border-color:var(--c-accent)}.metric-card span{display:block;font-size:12px}.metric-card strong{display:block;margin-top:5px;font-size:23px;color:var(--c-text-strong)}.view-switch{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:10px 14px;background:var(--bg-sunken);border:1px solid var(--border-soft);border-radius:var(--radius-sm);font-size:12px;color:var(--c-text-muted)}.view-hint{margin-left:auto;color:var(--c-text-faint)}.runtime-card{border:1px solid var(--border-soft);border-radius:var(--radius-md);background:var(--bg-base);overflow:hidden}.runtime-card-title{display:flex;justify-content:space-between;padding:12px 16px;font-weight:var(--fw-semibold);border-bottom:1px solid var(--border-soft)}.runtime-card-title span,.secondary-text,.table-foot{font-size:12px;color:var(--c-text-faint);font-weight:400}.primary-text{font-weight:var(--fw-semibold);color:var(--c-text-strong)}.state-item{display:inline-block;margin-right:16px}.success-text{color:var(--c-success)}.warning-text{color:var(--c-warning)}.danger-text{color:var(--c-danger)}.row-actions,.detail-actions{display:flex;align-items:center;gap:8px;white-space:nowrap}.table-foot{padding:10px 16px;border-top:1px solid var(--border-soft)}.detail-section{margin-bottom:24px}.detail-section h3{margin:0 0 12px;font-size:14px}.detail-timeline{margin-top:8px}.time-descriptions{margin-top:12px}@media(max-width:1000px){.metric-grid{grid-template-columns:repeat(2,1fr)}.view-hint{display:none}}
 </style>

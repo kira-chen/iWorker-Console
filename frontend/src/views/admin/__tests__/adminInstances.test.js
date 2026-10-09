@@ -54,6 +54,16 @@ async function mountPage(query = {}) {
   return mounted.container
 }
 
+async function openDetailAt(index) {
+  const container = await mountPage()
+  container.querySelectorAll('.view-switch .el-radio-button')[2].querySelector('input').click()
+  await flushAll(6)
+  const row = [...container.querySelectorAll('.el-table__body tr.el-table__row')][index]
+  ;[...row.querySelectorAll('.el-button')].find((button) => button.textContent.trim() === '查看').click()
+  await flushAll(6)
+  return container
+}
+
 describe('AdminInstances · 实例管理范围纠偏', () => {
   it('真实挂载展示实例汇总：查看方式正好三种、四张指标卡按种子计数；实例明细表头不含任务 / 排队 / 会话', async () => {
     // 喂 instanceMock 真种子（5 个实例：运行中 ins-240901；空闲 ins-240902、ins-240904；异常 ins-240903；
@@ -80,12 +90,10 @@ describe('AdminInstances · 实例管理范围纠偏', () => {
     }
   })
 
-  it('实例深链进入明细并打开对应实例详情', async () => {
+  it('未定义的 view/instance 深链参数不再改变页面状态', async () => {
     const container = await mountPage({ view: 'detail', instance: 'ins-2' })
-    expect(container.textContent).toContain('实例详情 · 李琳')
-    expect(container.textContent).toContain('当前实际规格')
-    expect(container.textContent).toContain('当前生效规格')
-    expect(container.textContent).toContain('操作记录')
+    expect(container.querySelector('.view-switch .el-radio-button.is-active').textContent.trim()).toBe('按规格')
+    expect(container.textContent).not.toContain('实例详情 · 李琳')
   })
 })
 
@@ -98,7 +106,7 @@ async function mountWithSeed() {
 const metricCard = (c, label) => [...c.querySelectorAll('.metric-card')].find((b) => b.querySelector('span').textContent.trim() === label)
 const activeView = (c) => c.querySelector('.view-switch .el-radio-button.is-active')?.textContent.trim()
 const bodyRows = (c) => [...c.querySelectorAll('.el-table__body tr.el-table__row')]
-const detailUsers = (c) => bodyRows(c).map((tr) => tr.querySelector('.primary-text').textContent.trim())
+const detailUsers = (c) => bodyRows(c).map((tr) => tr.querySelector('.primary-text').childNodes[0].textContent.trim())
 // 工具栏三个下拉依次为：状态 / 岗位 / 运行规格；取下拉框里当前显示的已选文字（未选时为占位）
 const selectShown = (c, idx) => c.querySelectorAll('.el-select')[idx].querySelector('.el-select__selected-item:not(.is-hidden)')?.textContent.trim()
 const headerIndex = (c, label) => [...c.querySelectorAll('.el-table__header th')].findIndex((th) => th.textContent.trim() === label)
@@ -111,14 +119,14 @@ const drawer = () => document.body.querySelector('.el-drawer')
 const drawerBtn = (text) => [...drawer().querySelectorAll('.detail-actions .el-button')].find((b) => b.textContent.trim() === text)
 
 describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / §六.3）', () => {
-  it('点「异常」指标卡 → 切到实例明细、状态筛选显示「异常」、只剩王强一行；再点一次 → 取消状态筛选，5 个实例全回来', async () => {
+  it('点「异常」指标卡 → 切到实例明细、状态筛选显示「异常」、只剩周明一行；再点一次 → 取消状态筛选，5 个实例全回来', async () => {
     const c = await mountWithSeed()
     expect(activeView(c)).toBe('按规格')
     metricCard(c, '异常').click()
     await flushAll(8)
     expect(activeView(c)).toBe('实例明细')
     expect(selectShown(c, 0)).toBe('异常')
-    expect(detailUsers(c)).toEqual(['王强'])
+    expect(detailUsers(c)).toEqual(['周明'])
     metricCard(c, '异常').click()
     await flushAll(8)
     expect(activeView(c)).toBe('实例明细')
@@ -126,21 +134,21 @@ describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / 
     expect(detailUsers(c)).toHaveLength(5)
   })
 
-  it('按规格汇总点「重」的【查看实例】→ 切到实例明细，运行规格筛选显示「重」，只列生效规格为「重」的张敏、陈晨', async () => {
+  it('按规格汇总点「重」的【查看实例】→ 切到实例明细，运行规格筛选显示「重」，只列生效规格为「重」的张伟、赵敏', async () => {
     const c = await mountWithSeed()
     const tr = bodyRows(c).find((r) => r.querySelector('.primary-text')?.textContent.trim() === '重')
     ;[...tr.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看实例').click()
     await flushAll(8)
     expect(activeView(c)).toBe('实例明细')
     expect(selectShown(c, 2)).toBe('重')
-    expect(detailUsers(c)).toEqual(['张敏', '陈晨'])
+    expect(detailUsers(c)).toEqual(['张伟', '赵敏'])
   })
 
-  it('按规格汇总时输入关键词「陈晨」→「重」行的「当前实例」由 2 变 1（汇总按当前搜索计算，不混用全局数据）', async () => {
+  it('按规格汇总时输入关键词「赵敏」→「重」行的「当前实例」由 2 变 1（汇总按当前搜索计算，不混用全局数据）', async () => {
     const c = await mountWithSeed()
     expect(groupCell(c, '重', '当前实例')).toBe('2')
     const input = c.querySelector('input[placeholder="搜索规格、岗位、用户或实例标识"]')
-    input.value = '陈晨'
+    input.value = '赵敏'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await flushAll(8)
     expect(groupCell(c, '重', '当前实例')).toBe('1')
@@ -150,7 +158,7 @@ describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / 
 
 describe('AdminInstances · 运行操作（md §八.4 / §九）', () => {
   it('不可操作的实例（张敏，繁忙）→ 详情里三个运行操作按钮全部置灰，并展示服务端给的原因「实例当前繁忙」', async () => {
-    await mountPage({ view: 'detail', instance: 'ins-1' })
+    await openDetailAt(0)
     expect(document.body.querySelectorAll('.el-drawer')).toHaveLength(1)
     expect(drawer().textContent).toContain('实例详情 · 张敏')
     expect(['重启', '按最新规格重建', '回收'].map((t) => drawerBtn(t).disabled)).toEqual([true, true, true])
@@ -171,7 +179,7 @@ describe('AdminInstances · 运行操作（md §八.4 / §九）', () => {
   it('对李琳点【按最新规格重建】→ 确认文案写明「从「标准」切换为「重」」；确认后提示「实例按最新规格重建操作已提交」并重新拉取实例', async () => {
     const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
     const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }))
-    await mountPage({ view: 'detail', instance: 'ins-2' })
+    await openDetailAt(1)
     const callsBefore = api.listInstances.mock.calls.length
     drawerBtn('按最新规格重建').click()
     await flushAll(10)
@@ -188,7 +196,7 @@ describe('AdminInstances · 运行操作（md §八.4 / §九）', () => {
     const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }))
     const errorSpy = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }))
     api.operateInstance.mockRejectedValue(new Error('实例状态已变化，请刷新后重试'))
-    await mountPage({ view: 'detail', instance: 'ins-2' })
+    await openDetailAt(1)
     drawerBtn('重启').click()
     await flushAll(10)
     expect(api.operateInstance).toHaveBeenCalledWith('ins-2', 'restart')

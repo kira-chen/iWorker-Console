@@ -277,24 +277,27 @@ describe('【统计口径】说明（§二）', () => {
   const helpBtn = () => [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '统计口径')
 
   it('默认收起，看不到说明', () => {
-    expect(container.querySelector('.tca-help')).toBeNull()
+    expect(container.querySelector('.help-body')).toBeNull()
   })
 
   it('点【统计口径】→ 展开三句说明；再点 → 收起', async () => {
     helpBtn().click()
     await flush()
-    const text = container.querySelector('.tca-help').textContent
+    const text = container.querySelector('.help-body').textContent
     expect(text).toContain('调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。')
     expect(text).toContain('执行耗时只统计工具实际执行时间，不含等待用户确认的时间')
     expect(text).toContain('"待确认"反映当前尚未处理的请求，不是历史累计数量。')
     // 说明块紧随【统计口径】入口之后展开（不是飘在页面别处）
-    expect(container.querySelector('.tca-help-entry').nextElementSibling).toBe(container.querySelector('.tca-help'))
+    expect(container.querySelector('.help-entry').nextElementSibling).toBe(container.querySelector('.help-body'))
     helpBtn().click()
     await flush()
-    expect(container.querySelector('.tca-help')).toBeNull()
+    expect(container.querySelector('.help-body')).toBeNull()
   })
 
-  it('【统计口径】入口在统计卡片下方（md 工具调用审计 §二「卡片下方提供【统计口径】说明入口」）', () => {
+  // 2026-10-09 合并 origin/main 时由 it.fails 转正：拆页签改造把【统计口径】入口收进
+  // AuditMetricGrid.vue，本就放在卡片区下方（md §二），与待办 yuepu#64 的其余 5 项无关，
+  // 该待办仍由另一条未合并分支整体关闭。
+  it('【统计口径】入口在统计卡片下方', () => {
     const grid = container.querySelector('.metric-grid')
     // 入口按钮在 DOM 顺序上应位于卡片区之后
     expect(grid.compareDocumentPosition(helpBtn()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

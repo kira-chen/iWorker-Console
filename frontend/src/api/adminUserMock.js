@@ -218,6 +218,10 @@ export async function deleteUser(id) {
     throw err('不能删除最后一个系统管理员', null, 409)
   }
   users = users.filter((x) => x !== u)
+  // 运行规格以 userId 为关联主键；删用户时同步清理个人配置和待审申请。
+  // 动态导入避免 adminUserMock 与 runtimeSpecMock 的静态循环依赖。
+  const { unassignUserFromAllSpecs } = await import('./runtimeSpecMock')
+  unassignUserFromAllSpecs(u.id)
   persist()
   return {}
 }
