@@ -669,7 +669,7 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  // 2026-09-04 PRD-20260903 对齐：toast 文案「编辑」改带直引号（照新原型逐字）
+  // 2026-09-04 曾改成带直引号（照旧原型）；#63① 已对齐 md 技能 §三.2，现为无引号：「请从列表点击编辑继续配置」
   it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击编辑继续配置」+ 刷列表不跳编辑页', async () => {
     const vm = await mountPage()
     pushSpy.mockClear()

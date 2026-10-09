@@ -468,7 +468,7 @@ function onSkillCreated(payload) {
 function onSkillsCreatedBatch(payload) {
   createVisible.value = false
   const n = payload?.skillIds?.length
-  // 2026-09-04 PRD-20260903 对齐：文案照新原型（「编辑」带直引号）
+  // #63① 对齐 md 技能 §三.2：「编辑」不带引号（2026-09-04 曾照旧原型带直引号，已废）
   if (n) ElMessage.success(`已导入 ${n} 个技能包，请从列表点击编辑继续配置`)
   fetchList()
 }
