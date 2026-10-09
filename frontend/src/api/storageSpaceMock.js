@@ -121,7 +121,7 @@ let requests = seedRequests()
  * 与用户模块、岗位分配对齐（每次读写前调用）：
  * - 用户被删除 → 其容量记录与扩容申请一并移除；
  * - 在职 / 新增用户都有一条记录（新用户没统计过 → 未统计）；显示名、用户名、岗位取当前值；
- * - 停用账号保留记录但不进清单（active=false），重新启用后用量还在。
+ * - 停用账号保留记录但不进清单（active=false），其扩容申请同样不展示、不计入角标，重新启用后用量和申请都回来。
  * 申请上的岗位是提交时的快照，不随岗位分配变化；用户名 / 显示名随用户模块。
  */
 function reconcile() {
@@ -144,11 +144,15 @@ function reconcile() {
     const u = users.find((x) => x.id === r.userId)
     r.username = u.username
     r.name = u.displayName
+    r.active = u.status === 'active'
   }
 }
 
 /** 清单里的员工（在职账号） */
 const roster = () => members.filter((m) => m.active)
+
+/** 页面可见的申请：停用账号的申请（含待处理）不展示、不计数、不能处理，重新启用后恢复 */
+const visibleRequests = () => requests.filter((r) => r.active)
 
 // v1（2026-10-09）：存储空间首版，容量分配 + 扩容申请。
 // v2（2026-10-09）：员工改取用户模块真实在职账号；待处理扩容申请由 1 条增至 4 条，旧快照弃用回种子。
@@ -257,7 +261,7 @@ export async function getStorageOverview() {
   return {
     defaultQuotaGb: DEFAULT_QUOTA_GB,
     defaultMemberCount: roster().filter((m) => m.quotaGb == null).length,
-    pendingCount: requests.filter((r) => r.status === 'PENDING').length
+    pendingCount: visibleRequests().filter((r) => r.status === 'PENDING').length
   }
 }
 
@@ -334,7 +338,7 @@ export async function listExpansionRequests(params = {}) {
   await delay()
   reconcile()
   const keyword = String(params.keyword || '').trim().toLowerCase()
-  const rows = requests
+  const rows = visibleRequests()
     .filter((r) => matchKeyword(r, keyword))
     .filter((r) => !params.status || r.status === params.status)
     // 待处理永远在前、先到先处理；已处理按处理时间排序，默认倒序，列头箭头可切正序（PRD 四·2）
@@ -351,14 +355,14 @@ export async function listExpansionRequests(params = {}) {
 export async function getExpansionRequest(id) {
   await delay(60)
   reconcile()
-  const r = requests.find((row) => row.id === id)
+  const r = visibleRequests().find((row) => row.id === id)
   if (!r) throw err('申请不存在', 40400)
   const m = findMember(r.userId)
   return { ...clone(r), current: toMemberRow(m) }
 }
 
 function findPending(id) {
-  const r = requests.find((row) => row.id === id)
+  const r = visibleRequests().find((row) => row.id === id)
   if (!r) throw err('申请不存在', 40400)
   if (r.status !== 'PENDING') throw err('该申请已被处理', 40900)
   return r

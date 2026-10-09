@@ -284,6 +284,20 @@ describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconci
     await updateUser(210, { status: 'active' })
     expect(await memberOf('hejing')).toMatchObject({ finalGb: 5, state: 'FULL' })
   })
+
+  it('停用有待处理申请的账号：其申请不展示、不计入角标、不能被处理；重新启用后恢复', async () => {
+    await updateUser(204, { status: 'disabled' }) // 王芳，待处理 ER-1005
+    const ids = (await listExpansionRequests({ size: 50 })).list.map((r) => r.id)
+    expect(ids).not.toContain('ER-1005')
+    expect((await getStorageOverview()).pendingCount).toBe(3)
+    await expect(getExpansionRequest('ER-1005')).rejects.toThrow('申请不存在')
+    await expect(approveExpansionRequest('ER-1005', 9)).rejects.toThrow('申请不存在')
+    await expect(rejectExpansionRequest('ER-1005', '原因')).rejects.toThrow('申请不存在')
+    await updateUser(204, { status: 'active' })
+    expect((await listExpansionRequests({ size: 50 })).list.map((r) => r.id)).toContain('ER-1005')
+    expect((await getStorageOverview()).pendingCount).toBe(4)
+    expect((await getExpansionRequest('ER-1005')).status).toBe('PENDING')
+  })
 })
 
 describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审计种子对齐）', () => {
