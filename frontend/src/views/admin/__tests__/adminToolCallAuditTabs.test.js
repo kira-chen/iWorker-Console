@@ -11,6 +11,11 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 真实挂载整页，断言五件事：页签结构与懒挂载、页签间筛选互不影响、
  * 岗位自动化任务页签（无人值守口径）、知识库检索页签（命中口径）、两页签各自的详情与导出。
  * 「技能调用」页签自身行为由 adminToolCallAudit.test.js 覆盖，这里不重复。
+ *
+ * 2026-10-09 记录单元改版（与研发梅竹讨论后）：「岗位自动化任务」一节整段重写——记录单元
+ * 从「一次工具调用」改为「一次任务运行」，且全部操作免授权、不经确认，原「写操作预授权」
+ * （已预授权 / 未授权）整套断言随之移除；「任务运行编号」字段废弃，记录本身已是运行级。
+ * 「知识库检索」一节不受本次改版影响，原样保留。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -72,7 +77,7 @@ describe('页签结构（PRD §一）', () => {
     expect(labels).toEqual(['技能调用', '岗位自动化任务', '知识库检索'])
     expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('技能调用')
 
-    expect(pane('skill').textContent).toContain('当前待确认')
+    expect(pane('skill').textContent).toContain('进行中（待确认）')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
     expect(pane('task')).toBeNull()
     expect(pane('knowledge')).toBeNull()
@@ -89,18 +94,18 @@ describe('页签结构（PRD §一）', () => {
     await flush()
     const failedOnly = bodyRows(pane('skill'))
     expect(failedOnly.length).toBeGreaterThan(0)
-    failedOnly.forEach((r) => expect(r.textContent).toContain('执行失败'))
+    failedOnly.forEach((r) => expect(r.textContent).toContain('失败'))
 
     await openTab('task')
     // 任务页签自己的筛选是空的，不受技能调用页签影响：列表里仍有成功的记录
     expect(bodyRows(pane('task')).some((r) => r.textContent.includes('成功'))).toBe(true)
     await openTab('skill')
-    bodyRows(pane('skill')).forEach((r) => expect(r.textContent).toContain('执行失败'))
+    bodyRows(pane('skill')).forEach((r) => expect(r.textContent).toContain('失败'))
   })
 })
 
 describe('岗位自动化任务页签（PRD §八）', () => {
-  it('无人值守口径：卡片没有「当前待确认」，换成「执行前拦截」；列表展示任务、触发方式、写操作授权', async () => {
+  it('无人值守 + 免授权口径：卡片没有「进行中」，是成功 / 失败 / 执行前拦截三态；列表展示任务、触发方式、涉及写操作，没有授权相关字段', async () => {
     mountReal()
     await flush()
     await openTab('task')
@@ -108,68 +113,81 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     const text = p.textContent
 
     expect(cards(p).map((c) => c.querySelector('.metric-label').textContent)).toEqual([
-      '调用请求总数', '写操作请求', '执行失败', '执行前拦截'
+      '运行总数', '涉及写操作的运行', '执行失败', '执行前拦截'
     ])
-    expect(text).not.toContain('当前待确认')
-    expect(text).toContain('已预授权')
-    expect(text).toContain('未授权拦截')
+    expect(text).not.toContain('进行中')
+    expect(text).not.toContain('已预授权')
+    expect(text).not.toContain('未授权')
+    expect(text).not.toContain('预授权')
     expect(text).toContain('每日经营晨报')
     expect(text).toContain('定时·每天 08:30')
-    expect(text).toContain('任务 / 工具')
-    expect(text).toContain('写操作授权')
+    expect(text).toContain('涉及写操作')
     expect(p.querySelector('input[placeholder="搜索用户 / 岗位 / 任务 / 工具"]')).toBeTruthy()
   })
 
-  it('点「写操作请求」卡片 → 只剩写操作；其中未授权的一条被执行前拦截', async () => {
+  it('点「涉及写操作的运行」卡片 → 只剩涉及写操作的运行记录', async () => {
     mountReal()
     await flush()
     await openTab('task')
     const p = pane('task')
-    cardOf(p, '写操作请求').click()
+    cardOf(p, '涉及写操作的运行').click()
     await flush()
     const rows = bodyRows(p)
-    const writes = MOCK.taskCallRecords.filter((r) => r.nature === 'WRITE')
+    const writes = MOCK.taskCallRecords.filter((r) => r.hasWrite)
     expect(rows.length).toBe(writes.length)
-    const blocked = rows.find((r) => r.textContent.includes('未授权'))
-    expect(blocked.textContent).toContain('执行前拦截')
-    expect(blocked.textContent).toContain('无人值守任务未授权写操作')
+    expect(rows.length).toBeGreaterThan(0)
   })
 
-  it('详情：时间线以「任务触发」开头并展示任务运行编号；未授权的写操作在调用检查处停止', async () => {
+  it('点「执行前拦截」卡片 → 只剩被拦截的运行记录，原因展示具体工具 + 原因（不再是"未授权"）', async () => {
     mountReal()
     await flush()
     await openTab('task')
     const p = pane('task')
-    cardOf(p, '写操作请求').click()
+    cardOf(p, '执行前拦截').click()
     await flush()
-    const row = bodyRows(p).find((r) => r.textContent.includes('未授权'))
+    const rows = bodyRows(p)
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach((r) => {
+      expect(r.textContent).toContain('执行前拦截')
+      expect(r.textContent).not.toContain('未授权')
+    })
+  })
+
+  it('详情：免授权的写操作直接展示执行结果，没有授权相关字段；被拦截的运行在该工具调用项上展示拦截原因', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    cardOf(p, '执行前拦截').click()
+    await flush()
+    const row = bodyRows(p)[0]
     ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
     await flush()
 
     const drawer = document.body.querySelector('.el-drawer__body')
     expect(drawer).toBeTruthy()
     const t = drawer.textContent
-    expect(t).toContain('任务触发')
-    expect(t).toContain('任务运行编号')
-    expect(t).toContain('RUN-20260925-7012')
-    expect(t).toContain('检查未通过，已拦截')
-    expect(t).not.toContain('写操作已预授权')
-    expect(t).toContain('该任务未对写操作预授权')
+    expect(t).toContain('工具调用明细')
+    expect(t).toContain('执行前拦截')
+    expect(t).not.toContain('授权')
+    expect(t).not.toContain('任务运行编号')
   })
 
-  it('已预授权的写操作详情展示授权人与授权时间', async () => {
+  it('涉及写操作且成功的运行（拜访前资料准备）：详情展示写操作但不展示任何确认 / 授权标签', async () => {
     mountReal()
     await flush()
     await openTab('task')
     const p = pane('task')
-    cardOf(p, '写操作请求').click()
+    cardOf(p, '涉及写操作的运行').click()
     await flush()
-    const row = bodyRows(p).find((r) => r.textContent.includes('已预授权') && r.textContent.includes('成功'))
+    const row = bodyRows(p).find((r) => r.textContent.includes('拜访前资料准备') && r.textContent.includes('成功'))
     ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
     await flush()
     const t = document.body.querySelector('.el-drawer__body').textContent
-    expect(t).toContain('写操作已预授权')
-    expect(t).toContain('2026-09-10 14:20')
+    expect(t).toContain('写')
+    expect(t).not.toContain('已确认')
+    expect(t).not.toContain('待确认')
+    expect(t).not.toContain('已预授权')
   })
 })
 
