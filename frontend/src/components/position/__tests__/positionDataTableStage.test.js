@@ -19,8 +19,7 @@ import { createApp, h, nextTick } from 'vue'
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §4.2.1 / §4.2.2 + 一览表第 11 行补：
  *  - 档案名称最多 64、档案说明最多 500（基本信息卡）；编目字段名最多 64、编目说明最多 200（DossierCatalogGrid 真挂载）；
- *  - 置信度阈值下拉「高 / 中（推荐）/ 低」；用户确认下拉「低置信需确认（推荐）/ 全部需要确认 / 不需要确认」——
- *    首项代码多一个「度」字（「低置信度需确认（推荐）」），以 it.fails 按 md 钉桩。
+ *  - 置信度阈值下拉「高 / 中（推荐）/ 低」；用户确认下拉「低置信需确认（推荐）/ 全部需要确认 / 不需要确认」（yuepu#75 已对齐 md）。
  */
 
 const api = vi.hoisted(() => ({
@@ -346,7 +345,7 @@ describe('PositionDataTableStage · 字段上限与下拉选项（2026-10-08 对
     expect(labels[0].endsWith('（推荐）')).toBe(true)
   })
 
-  it.fails('「用户确认」首项文案应为「低置信需确认（推荐）」（疑似缺陷：utils/dossierConfig.js CONFIRM_MODES 写成「低置信度需确认（推荐）」多一个「度」；md 岗位 §4.2.1「下拉：低置信需确认（推荐）/ 全部需要确认 / 不需要确认」）', async () => {
+  it('「用户确认」首项文案为「低置信需确认（推荐）」（md 岗位 §4.2.1；yuepu#75 已修）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     expect(optionLabels(policyField(el, '用户确认'))[0]).toBe('低置信需确认（推荐）')
