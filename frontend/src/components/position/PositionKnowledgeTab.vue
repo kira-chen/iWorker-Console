@@ -17,7 +17,7 @@ import { ref, computed, watch, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePositionStore } from '@/stores/position'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
-import { sourcesText, hasUploadSource, stateMeta as kbStateMeta } from '@/utils/knowledgeBaseMeta'
+import { sourcesText, hasUploadSource, isOnline, stateMeta as kbStateMeta } from '@/utils/knowledgeBaseMeta'
 import { NA } from '@/utils/tableLayout'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
@@ -156,7 +156,7 @@ function gotoKbModule(action, row) {
             <template #default="{ row }">
               <el-button link type="primary" @click="gotoKbModule('view', row)">查看</el-button>
               <el-button
-                v-if="row.status === 'PUBLISHED'"
+                v-if="isOnline(row)"
                 link
                 type="primary"
                 @click="openKbSearch(row)"

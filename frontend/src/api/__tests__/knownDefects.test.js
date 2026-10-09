@@ -35,8 +35,8 @@ import { __resetDataTableMock } from '../dataTableMock'
 import { __resetRuntimeSpecMock } from '../runtimeSpecMock'
 import { updateExpert, createExpert, __resetExpertMock } from '../domainExpertMock'
 import { listMcpSync, createMcp, fetchMcpTools, __resetMcpMock } from '../mcpConnectorMock'
-import { __resetApiMock } from '../apiConnectorMock'
-import { createBizSystem, __resetBizSystemMock } from '../bizSystemMock'
+import { listApisSync, __resetApiMock } from '../apiConnectorMock'
+import { createBizSystem, listBizSystemsSync, __resetBizSystemMock } from '../bizSystemMock'
 import * as skillMock from '../unifiedSkillMock'
 import * as kbMock from '../knowledgeBaseMock'
 
@@ -71,7 +71,7 @@ describe('yuepu#50 连接器发布态未联动技能工具坞', () => {
   })
 })
 
-describe('yuepu#51 岗位侧绑定 / 解绑不回写连接器「N 个岗位引用」', () => {
+describe('yuepu#51（已修）岗位侧绑定 / 解绑回写连接器「N 个岗位引用」', () => {
   // prd-连接器-MCP.md:51「N 为引用了该连接器的岗位数，引用关系在岗位侧产生」
   it('前提：expense_mcp 种子被 401 引用（positionCount=1）；401 解绑、402 改绑的保存都能成功', async () => {
     expect(mcpRow('expense_mcp').positionCount).toBe(1)
@@ -80,18 +80,38 @@ describe('yuepu#51 岗位侧绑定 / 解绑不回写连接器「N 个岗位引�
     await expect(updatePosition(402, { connectorMcpIds: ['expense_mcp'] })).resolves.toMatchObject({ positionId: 402 })
   })
 
-  it.fails('yuepu#51 401 解绑 expense_mcp 后，该连接器的岗位引用数应归 0', async () => {
+  it('yuepu#51 401 解绑 expense_mcp 后，该连接器的岗位引用数归 0、引用清单里不再有 401', async () => {
     await updatePosition(401, { connectorMcpIds: [] })
     expect(mcpRow('expense_mcp').positionCount).toBe(0)
+    expect(mcpRow('expense_mcp').referencedByPositions).toEqual([])
   })
 
-  it.fails('yuepu#51 402 绑定 expense_mcp 后，该连接器的岗位引用数应 +1', async () => {
-    await updatePosition(402, { connectorMcpIds: ['expense_mcp'] })
+  it('yuepu#51 402 绑定 expense_mcp 后，该连接器的岗位引用数 +1，清单带岗位名；重复保存不重复计数', async () => {
+    await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
+    await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
     expect(mcpRow('expense_mcp').positionCount).toBe(2)
+    expect(mcpRow('expense_mcp').referencedByPositions.map((p) => [p.positionId, p.positionName])).toEqual([[401, '经营分析岗'], [402, '客户成功岗']])
+  })
+
+  it('yuepu#51 API / 业务系统同口径：401 解绑 api_1101 与 biz_2101 → 各自引用数减 1；改名后清单带新名', async () => {
+    const apiRow = (id) => listApisSync().find((a) => a.id === id)
+    const bizRow = (id) => listBizSystemsSync().find((b) => b.id === id)
+    expect(apiRow('api_1101').positionCount).toBe(1)
+    expect(bizRow('biz_2101').positionCount).toBe(2)
+    await updatePosition(401, { connectorApiIds: [], businessSystemIds: [] })
+    expect(apiRow('api_1101').positionCount).toBe(0)
+    expect(bizRow('biz_2101').referencedByPositions.map((p) => p.positionId)).toEqual([402])
+    await updatePosition(402, { name: '客户成功岗（改名）', businessSystemIds: ['biz_2101'] })
+    expect(bizRow('biz_2101').referencedByPositions).toEqual([{ positionId: 402, positionName: '客户成功岗（改名）' }])
+  })
+
+  it('yuepu#51 未带连接器键的普通保存（只改描述）不动连接器引用', async () => {
+    await updatePosition(401, { description: '只改描述' })
+    expect(mcpRow('expense_mcp').positionCount).toBe(1)
   })
 })
 
-describe('yuepu#52 删岗不清知识库可见范围', () => {
+describe('yuepu#52（已修）删岗清知识库可见范围', () => {
   // knowledgeBaseMock 无重置导出、同类型重名会被拒，库名带随机后缀保证每次运行唯一
   let seq = 0
   async function setup() {
@@ -107,7 +127,7 @@ describe('yuepu#52 删岗不清知识库可见范围', () => {
     expect((await listPositions()).list.some((p) => p.positionId === pos.positionId)).toBe(false)
   })
 
-  it.fails('yuepu#52 删掉岗位后，以它为可见范围的岗位知识库不应再指向已删岗位', async () => {
+  it('yuepu#52 删掉岗位后，以它为可见范围的岗位知识库不再指向已删岗位', async () => {
     const { pos, kb } = await setup()
     const after = await kbMock.get(kb.id)
     expect(String(after.scopeRefId)).not.toBe(String(pos.positionId))
@@ -124,9 +144,14 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     expect((await listPositions({ size: 50 })).list.find((p) => p.positionId === 403).claimedUserCount).toBe(0)
   })
 
-  it.fails('yuepu#57① 审核中的岗位（403）数据层应拒绝删除', async () => {
+  it('yuepu#57① 审核中的岗位（403）数据层拒绝删除，已发布的岗位（401）也拒绝，列表里都还在', async () => {
     await setUserPosition(204, null)
     await expect(deletePosition(403)).rejects.toThrow(/审核/)
+    // 402 已发布、仅 li.na（202）领用：解绑后只剩「已发布」这道守卫
+    await setUserPosition(202, null)
+    await expect(deletePosition(402)).rejects.toThrow(/已发布/)
+    const ids = (await listPositions({ size: 50 })).list.map((p) => p.positionId)
+    expect(ids).toEqual(expect.arrayContaining([402, 403]))
   })
 
   // ② md 岗位 §6.4 候选为「已发布」的岗位私有技能
@@ -143,9 +168,10 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     expect(agentId).toBeTruthy()
   })
 
-  it.fails('yuepu#57② Agent 不应能引用未发布的岗位私有技能', async () => {
+  it('yuepu#57② Agent 不能引用未发布的岗位私有技能；已发布的仍可引用', async () => {
     const { skillId, agentId } = await draftPositionSkillAndAgent()
-    await expect(assignSkill(skillId, agentId)).rejects.toThrow()
+    await expect(assignSkill(skillId, agentId)).rejects.toThrow(/已发布/)
+    await expect(assignSkill('sk_301', agentId)).resolves.toBeTruthy()
   })
 
   // ③ relistSkill 状态守卫（已修，转正式回归；正反向用例另见 unifiedSkillMock.test.js「重新上架状态守卫」）
@@ -233,7 +259,7 @@ describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共�
   // 写成数据层断言等于替修复人臆造接口。页面层钉桩归岗位管理页用例。
 })
 
-describe('Agent 技能子行「技能分类」未进数据层（md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
+describe('Agent 技能子行「技能分类」进数据层（yuepu#61② 已修；md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
   // 页面层钉桩 PositionAgentSkillTab.test.js 用的夹具直接写了 category:'数据分析'，真实 VO 里 category 恒为
   // OPERATION/QUERY 派生值，11 类技能分类根本没进 VO——修复多半新增字段承载，页面层钉桩不会翻红（岗位组 T17c、专家组 T11）。
   // 断言不绑字段名：技能子行 VO 的某个字段等于技能本体的分类即可。
@@ -244,9 +270,9 @@ describe('Agent 技能子行「技能分类」未进数据层（md 岗位 §6.4�
     expect(skillMock._getRaw('sk_301').category).toBeTruthy()
   })
 
-  it.fails('技能子行 VO 应带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY', async () => {
+  it('技能子行 VO 带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY（yuepu#61②）', async () => {
     const detail = await getPosition(401)
     const ref = detail.agents.find((a) => a.agentId === 501).skills[0]
-    expect(Object.values(ref)).toContain(skillMock._getRaw('sk_301').category)
+    expect(ref.displayCategoryName).toBe(skillMock._getRaw('sk_301').category)
   })
 })

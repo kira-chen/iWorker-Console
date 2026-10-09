@@ -14,6 +14,7 @@ import {
   delistPositionPublication,
   relistPositionPublication,
   getPositionNameById,
+  applyPositionReviewResult,
   __resetPositionMock
 } from '../positionMock'
 import { setUserPosition, __resetPositionAssignmentMock } from '../positionAssignmentMock'
@@ -31,6 +32,12 @@ import { listExperts, __resetExpertMock } from '../domainExpertMock'
 import { listMcpSync, __resetMcpMock } from '../mcpConnectorMock'
 import { listApisSync, __resetApiMock } from '../apiConnectorMock'
 import { listBizSystemsSync, __resetBizSystemMock } from '../bizSystemMock'
+
+// 已发布岗位删除前须先停用：提交停用 → 审核通过 → 回到「未发布」（md 岗位 §3.5 / §3.6，yuepu#57①）
+async function unpublishAndApprove(id) {
+  await unpublishPosition(id)
+  expect(applyPositionReviewResult(id, 'DELIST', true)).toBe(true)
+}
 
 // vitest 用例随机顺序执行：每例前重置种子，杜绝状态顺序依赖。
 // expert/mcp/api/biz 四个此前不需要在这里重置——deletePosition 从不碰它们的状态；
@@ -159,6 +166,7 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect((await getRuntimeSpec(1)).positionIds).toContain(402)
 
     await setUserPosition(202, null) // 402 种子被 li.na 领用，先解绑才能删
+    await unpublishAndApprove(402) // 402 种子是已发布岗位，须先走停用审核回到「未发布」才可删（yuepu#57①）
     await deletePosition(402)
 
     expect((await listSampleTasks(402)).total).toBe(0)
@@ -184,6 +192,7 @@ describe('positionMock · 删岗 / 改名回写专家与连接器里的岗位引
     expect(before.positionIds).toEqual([401, 402]) // 种子：岗位私有专家绑 401 + 402
 
     await setUserPosition(202, null) // 402 被 li.na 领用，先解绑才能删
+    await unpublishAndApprove(402) // 已发布岗位须先停用回到「未发布」才可删（yuepu#57①）
     await deletePosition(402)
 
     const after = (await listExperts()).list.find((e) => e.id === 203)
@@ -202,7 +211,7 @@ describe('positionMock · 删岗 / 改名回写专家与连接器里的岗位引
   })
 })
 
-describe('positionMock · 持久化读回（mockPersist v8，写点 → 刷新后仍在）', () => {
+describe('positionMock · 持久化读回（mockPersist v10，写点 → 刷新后仍在）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（Node 22+ 自带的实验性 localStorage 占位，
   // mockPersist 探测后走纯内存模式），故与 mockPersist.test 同款：注入内存版存储，
   // 用 vi.resetModules + 动态 import 模拟「写入 → 刷新页面 → 重新加载模块」。
@@ -227,11 +236,11 @@ describe('positionMock · 持久化读回（mockPersist v8，写点 → 刷新�
     vi.resetModules()
   })
 
-  it('deletePosition 落盘（v=8）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+  it('deletePosition 落盘（v=10）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(8) // v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
+    expect(snap.v).toBe(10) // v10：402 种子不再绑未发布 / 审核中 MCP（yuepu#57⑧）；v9：技能引用 VO 增 displayCategoryName（yuepu#61②）；v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')

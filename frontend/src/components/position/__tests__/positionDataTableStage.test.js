@@ -14,13 +14,11 @@ import { createApp, h, nextTick } from 'vue'
  *  5. 只读态：无 取消/保存、无「＋ 新增」、无删除按钮；
  *  6.（2026-09-12 审计 T53）编目信息「唯一 ID」单选互斥（md §4.2.2「至多勾选 1 条，勾选新的一条时自动取消原有勾选」，DossierCatalogGrid 真挂载）
  *     + 【取消】toast「已取消未保存修改」（md §4.2.1「【取消】放弃本次编辑，提示"已取消未保存修改"」）。
- * 注：「新建档案弹窗【取消】【下一步】+ 工作档案已创建…」口径 e705dfb（09-08）已从 md 删（现行 §4.1 右侧弹表单、
- *     §4.2 只有【保存】【取消】），记代码缺陷 K10，该用例钉现状不动，修后随改。
+ * yuepu#60④：新建档案已改为右侧直接展开表单（md §4.1），不再有「取消 / 下一步」弹窗。
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §4.2.1 / §4.2.2 + 一览表第 11 行补：
  *  - 档案名称最多 64、档案说明最多 500（基本信息卡）；编目字段名最多 64、编目说明最多 200（DossierCatalogGrid 真挂载）；
- *  - 置信度阈值下拉「高 / 中（推荐）/ 低」；用户确认下拉「低置信需确认（推荐）/ 全部需要确认 / 不需要确认」——
- *    首项代码多一个「度」字（「低置信度需确认（推荐）」），以 it.fails 按 md 钉桩。
+ *  - 置信度阈值下拉「高 / 中（推荐）/ 低」；用户确认下拉「低置信需确认（推荐）/ 全部需要确认 / 不需要确认」（yuepu#75 已对齐 md）。
  */
 
 const api = vi.hoisted(() => ({
@@ -199,23 +197,62 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(api.getDataTable).not.toHaveBeenCalled()
   })
 
-  it('新建档案弹窗：底部【取消】【下一步】，确认后提示继续配置（钉现状，md §4.1/§4.2 无此弹窗，代码缺陷待登记）', async () => {
+  it('无档案时点「＋ 新增」→ 右侧直接展开空白档案表单（无弹窗、无「已创建」提示），只有【取消】【保存】（md §4.1 / §4.2；yuepu#60④）', async () => {
     api.listDataTables.mockResolvedValue({ list: [] })
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     btnByText(el, '.wd-empty', '＋ 新增').click()
     await flush()
-    const dlg = el.querySelector('.dlg') || document.querySelector('.dlg')
-    expect(dlg).toBeTruthy()
-    expect(Array.from(dlg.querySelectorAll('button')).map((b) => b.textContent.trim())).toEqual(['取消', '下一步'])
-    dlg.querySelector('input').dispatchEvent(new Event('input'))
-    const nameInput = dlg.querySelector('input')
+    expect(document.querySelector('.dlg')).toBeNull()
+    expect(btnByText(document.body, '', '下一步')).toBeUndefined()
+    expect(msg.success).not.toHaveBeenCalled()
+    // 右侧三卡 + 空白名称框 + 左栏出现「未保存」草稿卡
+    expect(Array.from(el.querySelectorAll('.wd-sec .wd-sec-head strong')).map((h) => h.textContent.trim())).toEqual(['基本信息', '编目信息', '档案详情'])
+    expect(el.querySelector('.wd-basic-fields input').value).toBe('')
+    expect(el.querySelector('.wd-side .wd-profile-card.on span').textContent).toBe('未保存')
+    expect(Array.from(el.querySelectorAll('.wd-head-actions button')).map((b) => b.textContent.trim())).toEqual(['取消', '保存'])
+  })
+
+  it('新建表单填名称后点【保存】→ createDataTable 以该名称落库并提示「配置已保存到页面草稿」；未填名称点【保存】不发请求', async () => {
+    api.listDataTables.mockResolvedValue({ list: [] })
+    api.createDataTable.mockResolvedValue({ id: 'dt_new' })
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    btnByText(el, '.wd-empty', '＋ 新增').click()
+    await flush()
+    clickSave(el)
+    await flush()
+    expect(api.createDataTable).not.toHaveBeenCalled()
+    const nameInput = el.querySelector('.wd-basic-fields input')
     nameInput.value = '经营分析报告'
     nameInput.dispatchEvent(new Event('input'))
     await flush()
-    Array.from(dlg.querySelectorAll('button')).find((b) => b.textContent.trim() === '下一步').click()
+    // 编目信息至少 1 条字段（validateFields）
+    el.querySelector('.dcg-add').click()
     await flush()
-    expect(msg.success).toHaveBeenCalledWith('工作档案已创建，请继续配置编目信息和档案详情')
+    const fieldName = el.querySelector('.dcg-row input')
+    fieldName.value = '分析周期'
+    fieldName.dispatchEvent(new Event('input'))
+    await flush()
+    api.listDataTables.mockResolvedValue({ list: [{ id: 'dt_new', label: '经营分析报告', status: 'active', fieldCount: 0, recordCount: 0 }] })
+    api.getDataTable.mockResolvedValue({ ...detail, id: 'dt_new', label: '经营分析报告', fields: [], dossier: { policy: {}, reduceRules: [] } })
+    clickSave(el)
+    await flush()
+    expect(api.createDataTable).toHaveBeenCalledTimes(1)
+    expect(api.createDataTable.mock.calls[0][1].label).toBe('经营分析报告')
+    expect(msg.success).toHaveBeenCalledWith('配置已保存到页面草稿')
+  })
+
+  it('新建表单点【取消】→ 回到空态并提示「已取消未保存修改」', async () => {
+    api.listDataTables.mockResolvedValue({ list: [] })
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    btnByText(el, '.wd-empty', '＋ 新增').click()
+    await flush()
+    btnByText(el, '.wd-head-actions', '取消').click()
+    await flush()
+    expect(el.querySelector('.wd-empty')).toBeTruthy()
+    expect(msg.info).toHaveBeenCalledWith('已取消未保存修改')
   })
 
   it('本地校验失败（档案详情超 8 条）→ 不发请求并标红', async () => {
@@ -346,7 +383,7 @@ describe('PositionDataTableStage · 字段上限与下拉选项（2026-10-08 对
     expect(labels[0].endsWith('（推荐）')).toBe(true)
   })
 
-  it.fails('「用户确认」首项文案应为「低置信需确认（推荐）」（疑似缺陷：utils/dossierConfig.js CONFIRM_MODES 写成「低置信度需确认（推荐）」多一个「度」；md 岗位 §4.2.1「下拉：低置信需确认（推荐）/ 全部需要确认 / 不需要确认」）', async () => {
+  it('「用户确认」首项文案为「低置信需确认（推荐）」（md 岗位 §4.2.1；yuepu#75 已修）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     expect(optionLabels(policyField(el, '用户确认'))[0]).toBe('低置信需确认（推荐）')

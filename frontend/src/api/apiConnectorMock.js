@@ -214,7 +214,7 @@ let apis = [
   mkApi({
     code: 'api_1104',
     type: 'POSITION',
-    referencedByPositions: [POS_402],
+    referencedByPositions: [POS_402], // 已回收样例（yuepu#83）：md 规定回收后引用保留、标「已回收」，402 仍引用它以演示失效标记与发布阻断
     name: '新增客户跟进',
     icon: '✅',
     description: '写入客户跟进记录和下次联系时间',
@@ -482,6 +482,7 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 // version 7（2026-10-09 待办 yuepu#83）：api_1104 预置「已回收」样例（revoked + publishedAt），旧快照仍是未回收 → 丢弃重播种。
+// （同 v7）yuepu#57⑧ 合并说明：402 不再引用未发布的 mail_center / crm，但 api_1104 是「已回收」样例，引用按 md 保留（不清理）。
 const persist = attachPersist('apiConnector', {
   version: 7,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
@@ -939,6 +940,29 @@ export function renamePositionRefs(positionId, positionName) {
         changed = true
       }
     })
+  })
+  if (changed) persist()
+}
+
+/**
+ * 岗位侧保存绑定后回写「被岗位引用」清单（待办 yuepu#51，positionMock.updatePosition 调用）：
+ * 岗位私有连接器的引用关系在岗位侧产生，列表「N 个岗位引用」与引用清单弹窗读的都是 referencedByPositions，
+ * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
+ */
+export function syncPositionRefs(positionId, positionName, boundIds) {
+  const bound = new Set((boundIds || []).map(String))
+  let changed = false
+  apis.forEach((r) => {
+    if (r.type !== 'POSITION') return
+    const list = r.referencedByPositions || []
+    const has = list.some((p) => String(p.positionId) === String(positionId))
+    if (bound.has(String(r.id)) && !has) {
+      r.referencedByPositions = [...list, { positionId, positionName }]
+      changed = true
+    } else if (!bound.has(String(r.id)) && has) {
+      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
+      changed = true
+    }
   })
   if (changed) persist()
 }

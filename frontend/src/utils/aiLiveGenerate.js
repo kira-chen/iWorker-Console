@@ -144,6 +144,7 @@ export function skillExampleQuestion(ctx) {
  *   复位 busy、不回填不弹 toast。传抽屉的 [visible, 对象 id]：列表页的编辑器常驻挂载、关抽屉不卸载，500ms 内
  *   关抽屉再打开另一条记录，回调照常执行会把 A 的生成结果写进已载入的 B 表单并弹成功 toast
  *   （2026-09-23 待办 yuepu#26）。组件卸载（scope 销毁）时无论传不传都会清掉在途定时器。
+ * @param {string} [options.doneToast] 完成 toast 文案，默认 AI_LIVE_DONE_TOAST；md 另有逐字提示的入口（如岗位人设页「已生成示例问题」）传入覆盖
  * @returns {{ busy, sourceEmpty, disabled, title, label, run, cancel }} 均为 ref/computed + 触发函数
  */
 export function useAiLiveGenerate({
@@ -156,7 +157,8 @@ export function useAiLiveGenerate({
   delayMs = AI_LIVE_DELAY_MS,
   idleLabel = 'AI 生成',
   getEntityId = null,
-  resetOn = null
+  resetOn = null,
+  doneToast = AI_LIVE_DONE_TOAST
 }) {
   const busy = ref(false)
   const sourceEmpty = computed(() => !String(getSourceText() || '').trim())
@@ -187,7 +189,7 @@ export function useAiLiveGenerate({
       if (getEntityId && getEntityId() !== entityAtClick) return // 生成期间切换了对象，结果作废
       if (isReadonly()) return // isReadonly 原先只在 run() 入口判一次，500ms 内进入只读 / 锁定态不能再写表单
       apply(generate(ctx))
-      ElMessage.success(AI_LIVE_DONE_TOAST)
+      ElMessage.success(doneToast)
     }, delayMs)
   }
 

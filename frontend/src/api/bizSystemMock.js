@@ -475,6 +475,29 @@ export function renamePositionRefs(positionId, positionName) {
   if (changed) persist()
 }
 
+/**
+ * 岗位侧保存绑定后回写「被岗位引用」清单（待办 yuepu#51，positionMock.updatePosition 调用）：
+ * 岗位私有连接器的引用关系在岗位侧产生，列表「N 个岗位引用」与引用清单弹窗读的都是 referencedByPositions，
+ * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
+ */
+export function syncPositionRefs(positionId, positionName, boundIds) {
+  const bound = new Set((boundIds || []).map(String))
+  let changed = false
+  bizRows.forEach((r) => {
+    if (r.type !== 'POSITION') return
+    const list = r.referencedByPositions || []
+    const has = list.some((p) => String(p.positionId) === String(positionId))
+    if (bound.has(String(r.id)) && !has) {
+      r.referencedByPositions = [...list, { positionId, positionName }]
+      changed = true
+    } else if (!bound.has(String(r.id)) && has) {
+      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
+
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */
 export function __resetBizSystemMock() {
   bizRows = JSON.parse(JSON.stringify(BIZ_ROWS_SEED_SNAPSHOT))

@@ -437,7 +437,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(7) // v7：api_1104 预置已回收样例（待办 yuepu#83）；v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
+    expect(harness.options.version).toBe(7) // v7：api_1104 预置已回收样例（待办 yuepu#83）+ 种子引用清理（yuepu#57⑧）；v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
