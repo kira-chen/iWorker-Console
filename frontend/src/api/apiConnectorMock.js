@@ -497,6 +497,8 @@ const persist = attachPersist('apiConnector', {
     providerSystems = d.providerSystems
     apis = d.apis.map((a) => ({
       ...a,
+      // 旧快照行缺 revoked 键 → 补 null，与技能 / 专家 / MCP 出参口径一致（待办 yuepu#81）
+      revoked: a.revoked ?? null,
       // 连通性展示态归一：只认三个稳定值，异常快照回「未探测」
       displayStatus: a.displayStatus === 'HEALTHY' || a.displayStatus === 'UNHEALTHY' ? a.displayStatus : null
     }))

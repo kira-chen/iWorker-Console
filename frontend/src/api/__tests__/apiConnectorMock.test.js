@@ -546,12 +546,12 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     expect((await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101').revoked.reason).toBe(reason)
   })
 
-  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 视为空）', async () => {
+  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 为 null）', async () => {
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.apis.forEach((a) => delete a.revoked)
     harness.options.restore(snap)
-    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告：低风险缺陷，旧快照实际会被版本号 bump 丢弃）
-    expect((await run(m.getApi('api_1101'))).revoked).toBeUndefined()
+    // 待办 yuepu#81：restore 对缺键行补 null，与另外三个 mock 出参口径一致（不用 ?? null 掩盖）
+    expect((await run(m.getApi('api_1101'))).revoked).toBeNull()
     const row = await run(m.forceRevokeApi('api_1101', reason))
     expect(row.revoked.reason).toBe(reason)
   })

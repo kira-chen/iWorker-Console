@@ -148,7 +148,7 @@ const persist = attachPersist('bizSystem', {
     }
     bizSeq = d.bizSeq
     skillSeq = d.skillSeq
-    bizRows = d.bizRows
+    bizRows = d.bizRows.map((b) => ({ ...b, revoked: b.revoked ?? null })) // 旧快照行缺 revoked 键 → 补 null（待办 yuepu#81）
   }
 })
 

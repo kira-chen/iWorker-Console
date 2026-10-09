@@ -487,8 +487,8 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.bizRows.forEach((b) => delete b.revoked)
     harness.options.restore(snap)
-    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
-    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeUndefined()
+    // 待办 yuepu#81：restore 对缺键行补 null，与另外三个 mock 出参口径一致（不用 ?? null 掩盖）
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeNull()
     const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
     expect(row.revoked.reason).toBe(reason)
   })
