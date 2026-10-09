@@ -257,6 +257,29 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     expect((await m.getMcp(ok.id)).exampleQuestions[1]).toBe('q'.repeat(300))
   })
 
+  // 一览表 §5.1 / md MCP §三.3：服务描述 ≤2000、服务地址 ≤500（待办 yuepu#57⑥）。新建与编辑两个入口各守一遍，边界值（恰好上限）放行
+  it('服务描述 / 服务地址上限：createMcp 超 2000 / 500 被拦并回 field、不落行；恰好 2000 / 500 放行', async () => {
+    const before = (await m.listMcp()).total
+    await expect(m.createMcp(mkStdioIn('mcp_len_bad', { description: 'd'.repeat(2001) }))).rejects.toMatchObject({ field: 'description', message: '服务描述最多 2000 个字符' })
+    await expect(m.createMcp(mkStdioIn('mcp_len_bad', { transport: 'streamable-http', endpoint: `https://m.example.com/${'p'.repeat(500)}` }))).rejects.toMatchObject({ field: 'endpoint', message: 'MCP 服务地址最多 500 个字符' })
+    expect((await m.listMcp()).total).toBe(before)
+    const ok = await m.createMcp(mkStdioIn('mcp_len_ok', { description: 'd'.repeat(2000), transport: 'streamable-http', endpoint: `https://m.example.com/${'p'.repeat(500 - 'https://m.example.com/'.length)}` }))
+    const row = await m.getMcp(ok.id)
+    expect(row.description.length).toBe(2000)
+    expect(row.endpoint.length).toBe(500)
+  })
+
+  it('服务描述 / 服务地址上限：updateMcp 超限同样被拦（原值不变），恰好上限放行', async () => {
+    const created = await m.createMcp(mkStdioIn('mcp_len_upd', { description: '原描述' }))
+    await expect(m.updateMcp(created.id, { description: 'd'.repeat(2001) })).rejects.toMatchObject({ field: 'description', message: '服务描述最多 2000 个字符' })
+    await expect(m.updateMcp(created.id, { endpoint: `https://m.example.com/${'p'.repeat(500)}` })).rejects.toMatchObject({ field: 'endpoint', message: 'MCP 服务地址最多 500 个字符' })
+    expect((await m.getMcp(created.id)).description).toBe('原描述')
+    await m.updateMcp(created.id, { description: 'd'.repeat(2000), endpoint: `https://m.example.com/${'p'.repeat(500 - 'https://m.example.com/'.length)}` })
+    const row = await m.getMcp(created.id)
+    expect(row.description.length).toBe(2000)
+    expect(row.endpoint.length).toBe(500)
+  })
+
   // ① md §三.5 L302「测试连接结果仅在当前抽屉内展示」→ 不写库
   it('① 测试连接不改列表验证状态：未探测行（project_hub）测试成功后仍是 UNKNOWN、lastCheckedAt 仍为空', async () => {
     const before = await m.getMcp('project_hub')
@@ -665,7 +688,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v10）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=9）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=10）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', type: 'PLATFORM', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)

@@ -149,6 +149,20 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     })
   })
 
+  // 一览表 §十一 / md 业务系统 §三 L115「登录地址 ≤1024」：边界值——恰好 1024 放行，1025 被拦（超限的单独钉桩见 knownDefects 已转正的 yuepu#57⑥）
+  it('登录地址长度边界：恰好 1024 字符放行并原样落库；1025 字符 → rejects field=loginUrl', async () => {
+    const prefix = 'https://crm.intra/'
+    const at1024 = prefix + 'a'.repeat(1024 - prefix.length)
+    const at1025 = at1024 + 'a'
+    const created = await createBizSystem({ ...VALID, name: `登录地址边界-${Date.now()}`, loginUrl: at1024 })
+    expect(created.loginUrl).toBe(at1024)
+    expect(created.loginUrl.length).toBe(1024)
+    await expect(createBizSystem({ ...VALID, name: `登录地址超限-${Date.now()}`, loginUrl: at1025 })).rejects.toMatchObject({
+      field: 'loginUrl',
+      message: '登录地址最多 1024 个字符'
+    })
+  })
+
   // 2026-09-12 测试审计 T58（A31）：md §三.2 L86「系统名称：必填，平台内不可重复」+ 一览表 §七「最多 64 字符」
   it('系统名称：空 / 65 字 / 与种子「人力资源系统」同名 → rejects field=name；64 字通过', async () => {
     await expect(createBizSystem({ ...VALID, name: '   ' })).rejects.toMatchObject({ field: 'name', message: '系统名称必填' })
