@@ -313,9 +313,8 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
-  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
-  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
-  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+  // 回归（待办 yuepu#55 已修）：searching 须把「连接器类型」也算筛选，只按类型筛时空分组不展示。
+  it('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
     conn.listApis.mockImplementation(async (params = {}) => ({
       list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
     }))

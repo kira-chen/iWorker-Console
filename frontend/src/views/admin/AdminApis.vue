@@ -188,7 +188,7 @@ const groups = computed(() => {
     const k = a.providerSystemId ?? '__none__'
     ;(byPs[k] ||= []).push(a)
   }
-  const searching = !!applied.keyword || !!applied.state
+  const searching = !!applied.keyword || !!applied.state || !!applied.type
   return providerSystems.value
     .map((ps) => ({ ps, apis: sortApis(byPs[ps.id] || [], ps.id) }))
     .filter((g) => !searching || g.apis.length > 0)
