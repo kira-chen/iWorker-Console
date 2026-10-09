@@ -20,7 +20,10 @@ import { passthrough, elEmpty } from './helpers/commonStubs'
  * 二次确认文案「将 N 名用户（…）统一绑定至「X」？」；取消确认不绑定；确认后逐个 setUserPosition；
  * 有 pendingRequestId 的用户补调 markApplicationAssigned（待办 yuepu#9② 回归）；
  * 成功 toast「已将 N 名用户绑定至「X」」、关弹窗、清勾选、重拉列表与待分配计数；失败 → 错误提示、弹窗保持。
- * 注：「未勾选时按钮置灰」现状不符 md，已登记 yuepu#60②，此处不钉。
+ *
+ * 2026-10-09 头注订正：
+ *  - 「未勾选【批量绑定】置灰」原登记 yuepu#60②（现状不符 md、当时不钉），已修，现有正式回归用例；
+ *  - 「选『未绑定』保存不把待分配申请标为已分配」（待办 yuepu#57⑦）已修，回归用例见「有待分配申请的用户在弹窗里选『未绑定』保存」条。
  */
 
 const listPositionAssignments = vi.fn()

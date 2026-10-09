@@ -643,7 +643,7 @@ describe('Agent 抽屉候选排除本岗位已引用技能（md §6.4，yuepu#60
   it('技能子行展示技能分类（如「数据分析」）：优先取 VO 的 displayCategoryName（md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2；yuepu#61②）', async () => {
     store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '经营数据分析', category: '数据分析', toolCount: 5 }] }]
     await mount()
-    // 前提：技能子行已渲染
+    // 技能子行已渲染（下面分类断言的依托）
     expect(cellTexts('AGENT / 技能')).toEqual(['◆ A', '· 经营数据分析'])
     // md 期望：分类列展示技能分类原值
     expect(cellTexts('职责描述 / 分类')[1]).toBe('数据分析')

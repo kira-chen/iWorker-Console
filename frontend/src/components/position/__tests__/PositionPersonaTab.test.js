@@ -79,6 +79,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   claimStub.atLimit = false
   claimStub.editing = false
+  store.positionId = 5 // 切岗位用例会改成 6；不复位的话乱序下后跑的切岗位用例「5→6」变成空操作
   store.basic = { positionId: 5, name: '经营分析岗', description: '', icon: '▤', claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', persona: '' }
 })
 afterEach(() => {
@@ -184,6 +185,36 @@ describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54�
     await flush()
     expect(store.basic.exampleQuestions).toEqual(['原问题一', '原问题二', '原问题三'])
     expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('岗位 SOP【AI 生成】在途时切岗位：旧结果不写进新岗位、不弹提示；按钮 busy 复位为「AI 生成」且可再点，再点正常生成', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
+    await mount()
+    aiBtns()[1].click()
+    await flush()
+    expect(aiBtns()[1].textContent.trim()).toBe('生成中…') // 前提：生成已发起
+    store.positionId = 6
+    store.basic = { positionId: 6, name: '客户成功岗', description: '负责客户跟进', icon: '◎', claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '原 SOP', persona: '' }
+    await flush()
+    // 切岗位即撤销在途生成：按钮立刻复位，不必等旧定时器
+    expect(aiBtns()[1].textContent.trim()).toBe('AI 生成')
+    expect(aiBtns()[1].disabled).toBe(false)
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSop).toBe('原 SOP')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    // 复位后可再点：对新岗位正常生成并提示一次
+    aiBtns()[1].click()
+    await flush()
+    expect(aiBtns()[1].textContent.trim()).toBe('生成中…')
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSop).not.toBe('原 SOP')
+    expect(store.basic.positionSop.trim().length).toBeGreaterThan(0)
+    expect(ElMessage.success).toHaveBeenCalledTimes(1)
+    expect(ElMessage.success).toHaveBeenCalledWith('已生成岗位 SOP')
   })
 })
 

@@ -77,7 +77,7 @@ function useGen(generate, field, doneToast) {
     doneToast
   })
 }
-const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.4 逐字
+const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.5 逐字
 const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md §2.6 逐字
 </script>
 
