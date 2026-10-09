@@ -27,7 +27,7 @@ import {
   knowledgeCallRecords,
   knowledgeParamsOf,
   knowledgeOutputOf,
-  RESULT_LABEL,
+  KNOWLEDGE_RESULT_LABEL,
   UNATTENDED_RESULTS
 } from '@/api/toolCallAuditMock'
 
@@ -124,7 +124,7 @@ function exportCsv() {
     ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
-      r.result === 'SUCCESS' ? r.hitCount : '', RESULT_LABEL[r.result], r.reason, r.duration
+      r.result === 'SUCCESS' ? r.hitCount : '', KNOWLEDGE_RESULT_LABEL[r.result], r.reason, r.duration
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -144,7 +144,7 @@ const detail = computed(() => {
   if (!d) return null
   return {
     title: `检索详情 · ${d.id}`,
-    result: { label: RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
+    result: { label: KNOWLEDGE_RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '知识库', value: d.kb },
@@ -180,7 +180,7 @@ function timelineSteps(d) {
   steps.push({ time: '', title: '调用检查通过', desc: '请求发送到数据源。', type: 'primary' })
   steps.push({
     time: '',
-    title: RESULT_LABEL[d.result],
+    title: KNOWLEDGE_RESULT_LABEL[d.result],
     desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
     type: d.result === 'FAILED' ? 'danger' : 'success'
   })
@@ -205,7 +205,7 @@ function timelineSteps(d) {
         class="lt-date-range"
       />
       <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="key in UNATTENDED_RESULTS" :key="key" :label="RESULT_LABEL[key]" :value="key" />
+        <el-option v-for="key in UNATTENDED_RESULTS" :key="key" :label="KNOWLEDGE_RESULT_LABEL[key]" :value="key" />
       </el-select>
       <el-select v-model="query.sourceType" placeholder="全部数据源类型" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="t in SOURCE_TYPES" :key="t" :label="t" :value="t" />
@@ -266,7 +266,7 @@ function timelineSteps(d) {
           </el-table-column>
           <el-table-column label="执行结果 / 原因" min-width="180">
             <template #default="{ row }">
-              <StatusTag :type="RESULT_TAG[row.result]">{{ RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag :type="RESULT_TAG[row.result]">{{ KNOWLEDGE_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>

@@ -13,6 +13,10 @@
  *   - 没有用户确认、没有授权环节，读写操作展示规则一致；
  *   - 没有「进行中」——免授权不会运行到一半停下等人处理，执行结果只有成功 / 失败 / 执行前拦截三类；
  *     「执行前拦截」原因仍可能是白名单、权限等（与是否写操作无关），不会再出现「未授权」。
+ *
+ * 2026-10-09 同日第二轮改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程
+ * 时间数据。执行结果三态（成功 / 失败 / 执行前拦截）不受影响，继续保留——这条跟技能调用不同，
+ * 不并入「失败」，「压根没跑」和「跑了但出错」对无人值守的任务来说是不同的处置路径。
  */
 import { computed, reactive, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
@@ -111,7 +115,7 @@ function chooseMetric(key) {
 
 const HELP = [
   '执行结果包含成功、失败、执行前拦截三类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
-  '执行耗时统计这次运行里全部工具调用的实际执行时间。'
+  '单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
 /* ── 导出 CSV ── */
@@ -119,10 +123,10 @@ function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-岗位自动化任务-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '任务', '触发方式', '涉及写操作', '执行结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '任务', '触发方式', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.task, r.trigger,
-      YES_NO[r.hasWrite], UNATTENDED_RESULT_LABEL[r.result], r.reason, r.duration
+      YES_NO[r.hasWrite], UNATTENDED_RESULT_LABEL[r.result], r.reason
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -147,17 +151,14 @@ const detail = computed(() => {
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '自动化任务', value: d.task },
       { label: '触发方式', value: d.trigger },
-      { label: '涉及写操作', value: YES_NO[d.hasWrite] },
-      { label: '执行耗时', value: d.duration }
+      { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
-      time: c.endAt || '',
       tool: c.tool,
       nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
       confirm: null,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
       reason: c.reason,
-      duration: c.duration,
       // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，规则同技能调用页签（§8.5）。
       showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
       params: paramsOf(c),
@@ -249,14 +250,11 @@ function resultExplain(d) {
               <StatusTag :type="YES_NO_TAG(row.hasWrite)">{{ YES_NO[row.hasWrite] }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="执行结果 / 原因" min-width="200">
+          <el-table-column label="执行结果 / 原因" min-width="220">
             <template #default="{ row }">
               <StatusTag :type="RUN_RESULT_TAG[row.result]">{{ UNATTENDED_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
-          </el-table-column>
-          <el-table-column label="执行耗时" width="110">
-            <template #default="{ row }">{{ row.duration }}</template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">

@@ -77,7 +77,7 @@ describe('页签结构（PRD §一）', () => {
     expect(labels).toEqual(['技能调用', '岗位自动化任务', '知识库检索'])
     expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('技能调用')
 
-    expect(pane('skill').textContent).toContain('进行中（待确认）')
+    expect(pane('skill').textContent).toContain('涉及写操作的执行')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
     expect(pane('task')).toBeNull()
     expect(pane('knowledge')).toBeNull()
@@ -122,6 +122,8 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     expect(text).toContain('每日经营晨报')
     expect(text).toContain('定时·每天 08:30')
     expect(text).toContain('涉及写操作')
+    // 单次工具调用不记录耗时与具体执行时刻，列表不展示"执行耗时"
+    expect(text).not.toContain('执行耗时')
     expect(p.querySelector('input[placeholder="搜索用户 / 岗位 / 任务 / 工具"]')).toBeTruthy()
   })
 

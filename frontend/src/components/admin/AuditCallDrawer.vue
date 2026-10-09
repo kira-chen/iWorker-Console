@@ -6,11 +6,12 @@
  * 2026-10-09 记录单元改版：原「执行过程」时间线（发起 → 检查 → 确认 → 结果，固定 4 步、只对应
  * 一次工具调用）改为「工具调用明细」时间线——一次技能执行 / 任务运行可能调用零到多个工具，
  * 每一项是一次具体调用，各自的确认 / 结果 / 参数响应收在 AuditCallDetailItem 里，点开才看，
- * 互不影响（PRD §5.2）。
+ * 互不影响（PRD §5.2）。不展示具体执行时刻——系统不采集单次调用的过程时间，时间线只体现
+ * 发生顺序，不标时间点。
  *
  * @prop {boolean} visible v-model:visible
  * @prop {string} title 抽屉标题
- * @prop {{label:string,type:string}} result 整体结果标签（成功 / 失败 / 进行中，或任务运行的执行前拦截）
+ * @prop {{label:string,type:string}} result 整体结果标签（成功 / 失败，或任务运行的执行前拦截）
  * @prop {Array<{label:string,value:string,mono?:boolean}>} summary 操作摘要
  * @prop {Array<Object>} calls 工具调用明细，字段见 AuditCallDetailItem；为空数组时展示「未调用外部工具」
  * @prop {string} explain 结果说明
@@ -56,7 +57,6 @@ defineEmits(['update:visible'])
         <el-timeline-item
           v-for="(c, i) in calls"
           :key="i"
-          :timestamp="c.time || ''"
           :type="c.result.type"
           placement="top"
         >
@@ -66,7 +66,6 @@ defineEmits(['update:visible'])
             :confirm="c.confirm"
             :result="c.result"
             :reason="c.reason"
-            :duration="c.duration"
             :show-params="c.showParams"
             :params="c.params"
             :output="c.output"

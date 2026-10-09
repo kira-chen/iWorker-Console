@@ -5,8 +5,13 @@
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次技能执行」——
  * 单次对话可能多次调用工具，按单条工具调用上报数据量大，且单个工具失败、整体兜底成功时单纯记
- * 工具失败意义有限。列表层只看整体结果（成功 / 失败 / 进行中）与两个布尔态（是否涉及写操作 /
- * 是否有待处理的确认），工具调用的明细挪进详情（§5.2）。
+ * 工具失败意义有限。列表层只看整体结果与一个布尔态（是否涉及写操作），工具调用的明细挪进
+ * 详情（§5.2）。
+ *
+ * 2026-10-09 同日第二轮改版：不展示耗时与「执行中」——系统本来就不采集单次工具调用的过程
+ * 时间数据，技能执行只在确认 / 执行都有结果后才入账，没有「待确认」这个可展示的中间态；
+ * 执行结果收窄为 成功 / 失败 两态（原「进行中」随之消失）。
+ *
  * 列表分页走全站统一的 useAdminList paged:'client'（2026-09-08 原型复刻批次 1 负责人拍板：全站所有列表页都分页）。
  */
 import { computed, reactive, ref } from 'vue'
@@ -32,9 +37,9 @@ import {
   NATURE_LABEL
 } from '@/api/toolCallAuditMock'
 
-const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', IN_PROGRESS: 'accent' }
-const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning', CANCELLED: 'info', PENDING: 'accent' }
-const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success', PENDING: 'accent', CANCELLED: 'info' }
+const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success' }
 const YES_NO = { true: '是', false: '否' }
 const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
 
@@ -64,13 +69,13 @@ const metrics = computed(() => {
       key: 'all',
       label: '执行总数',
       value: all.length,
-      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')} / 进行中 ${count('IN_PROGRESS')}`
+      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'write',
       label: '涉及写操作的执行',
       value: writes.length,
-      sub: `待处理确认 ${writes.filter((r) => r.pending).length}`
+      sub: `已确认 ${writes.filter((r) => r.calls.some((c) => c.confirm === 'CONFIRMED')).length} / 不需要确认 ${writes.filter((r) => r.calls.every((c) => c.nature !== 'WRITE' || c.confirm === 'NONE')).length}`
     },
     {
       key: 'failed',
@@ -78,13 +83,6 @@ const metrics = computed(() => {
       value: count('FAILED'),
       sub: '按整体结果判定',
       danger: true
-    },
-    {
-      key: 'pending',
-      label: '进行中（待确认）',
-      value: count('IN_PROGRESS'),
-      sub: '仍有工具调用待处理，尚未跑完',
-      warn: true
     }
   ]
 })
@@ -92,7 +90,6 @@ const metrics = computed(() => {
 const activeMetric = computed(() => {
   if (query.hasWrite === true) return 'write'
   if (query.result === 'FAILED') return 'failed'
-  if (query.result === 'IN_PROGRESS') return 'pending'
   return ''
 })
 
@@ -101,13 +98,12 @@ function chooseMetric(key) {
   query.hasWrite = ''
   if (key === 'write') query.hasWrite = true
   if (key === 'failed') query.result = 'FAILED'
-  if (key === 'pending') query.result = 'IN_PROGRESS'
   list.search()
 }
 
 const HELP = [
-  '执行结果包含成功、失败、进行中三类：记录里有任意一次工具调用仍待用户确认即为"进行中"；否则按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计。',
-  '执行耗时统计这次执行里全部工具调用的实际执行时间，不含等待用户确认的时间；"待处理确认"与"执行结果=进行中"含义一致，列表单独给出便于一眼扫出当前还卡着的记录。'
+  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：一次技能执行只在确认与执行都有结果后才入账。',
+  '同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
 /* ── 导出 CSV ── */
@@ -115,10 +111,10 @@ function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-技能调用-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '涉及写操作', '待处理确认', '执行结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.skill,
-      YES_NO[r.hasWrite], YES_NO[r.pending], EXEC_RESULT_LABEL[r.result], r.reason, r.duration
+      YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -142,18 +138,14 @@ const detail = computed(() => {
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '技能', value: d.skill },
-      { label: '涉及写操作', value: YES_NO[d.hasWrite] },
-      { label: '待处理确认', value: YES_NO[d.pending] },
-      { label: '执行耗时', value: d.duration }
+      { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
-      time: c.endAt || '',
       tool: c.tool,
       nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
-      confirm: c.nature === 'WRITE' && c.confirm !== 'NONE' ? { label: CONFIRM_LABEL[c.confirm], type: CALL_CONFIRM_TAG[c.confirm] } : null,
+      confirm: c.confirm ? { label: CONFIRM_LABEL[c.confirm], type: CALL_CONFIRM_TAG[c.confirm] } : null,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
       reason: c.reason,
-      duration: c.duration,
       // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，数据量压力主要来自这部分
       // 高频调用，且极少被实际查阅；写操作与非成功结果才展示（§5.2）。
       showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
@@ -166,7 +158,6 @@ const detail = computed(() => {
 
 function resultExplain(d) {
   if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
-  if (d.result === 'IN_PROGRESS') return '仍有工具调用等待发起人在客户端确认，此页不代替用户确认。'
   return '本次执行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>
@@ -242,19 +233,11 @@ function resultExplain(d) {
               <StatusTag :type="YES_NO_TAG(row.hasWrite)">{{ YES_NO[row.hasWrite] }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="待处理确认" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
-            <template #default="{ row }">
-              <StatusTag :type="YES_NO_TAG(row.pending)">{{ YES_NO[row.pending] }}</StatusTag>
-            </template>
-          </el-table-column>
-          <el-table-column label="执行结果 / 原因" min-width="200">
+          <el-table-column label="执行结果 / 原因" min-width="220">
             <template #default="{ row }">
               <StatusTag :type="EXEC_RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.result === 'FAILED' && row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
-          </el-table-column>
-          <el-table-column label="执行耗时" width="110">
-            <template #default="{ row }">{{ row.duration }}</template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">

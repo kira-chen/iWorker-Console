@@ -94,7 +94,8 @@ describe('AdminToolCallAudit · 技能调用页签 · 真实 Element Plus 挂载
     expect(text).toContain('执行总数')
     expect(text).toContain('涉及写操作的执行')
     expect(text).toContain('执行失败')
-    expect(text).toContain('进行中（待确认）')
+    // 不展示"执行中"：卡片只有 3 张，没有"进行中"这张
+    expect(cards().length).toBe(3)
 
     const total = MOCK.toolCallRecords.length
     expect(cardOf('执行总数').textContent).toContain(String(total))
@@ -113,10 +114,11 @@ describe('统计卡片（§二）', () => {
     await flush()
   })
 
-  it('执行总数副标题展示成功 / 失败 / 进行中计数，与种子数据一致', () => {
+  it('执行总数副标题展示成功 / 失败计数，与种子数据一致（不展示"进行中"）', () => {
     const all = MOCK.toolCallRecords
     const count = (r) => all.filter((x) => x.result === r).length
-    expect(cardOf('执行总数').textContent).toContain(`成功 ${count('SUCCESS')} / 失败 ${count('FAILED')} / 进行中 ${count('IN_PROGRESS')}`)
+    expect(cardOf('执行总数').textContent).toContain(`成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`)
+    expect(cardOf('执行总数').textContent).not.toContain('进行中')
   })
 
   it('点「执行失败」→ 列表只剩整体结果=失败的记录', async () => {
@@ -125,14 +127,6 @@ describe('统计卡片（§二）', () => {
     const rows = bodyRows()
     expect(rows.length).toBeGreaterThan(0)
     rows.forEach((r) => expect(r.textContent).toContain('失败'))
-  })
-
-  it('点「进行中（待确认）」→ 列表只剩进行中的记录，且"待处理确认"列为"是"', async () => {
-    cardOf('进行中（待确认）').click()
-    await flush()
-    const rows = bodyRows()
-    expect(rows.length).toBeGreaterThan(0)
-    rows.forEach((r) => expect(r.textContent).toContain('进行中'))
   })
 
   it('点「涉及写操作的执行」→ 列表只剩涉及写操作的记录；清空后再点「执行总数」恢复全量', async () => {
@@ -165,11 +159,12 @@ describe('查询区（§三）', () => {
     await flush()
   })
 
-  it('执行结果下拉只有成功 / 失败 / 进行中三项，不含旧版的执行前拦截 / 用户取消 / 待确认', () => {
-    const select = container.querySelector('.lt-filter')
-    expect(select).toBeTruthy()
+  it('执行结果下拉只有成功 / 失败两项，不含旧版的执行前拦截 / 待确认 / 进行中（"用户取消"作为失败原因文案仍会出现，不是独立状态，不在此断言范围）', () => {
+    expect(container.querySelector('.lt-filter')).toBeTruthy()
     const text = container.textContent
     expect(text).toContain('全部结果')
+    expect(text).not.toContain('进行中')
+    expect(text).not.toContain('执行前拦截')
   })
 
   it('搜索框按用户 / 岗位 / 技能 / 工具标识模糊过滤', async () => {
@@ -194,12 +189,12 @@ describe('列表（§四）', () => {
     await flush()
   })
 
-  it('列字段：技能、涉及写操作、待处理确认、执行结果 / 原因、执行耗时齐全；失败行展示原因概要', () => {
+  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', () => {
     const row = bodyRows().find((r) => r.textContent.includes('生产数据查询'))
     expect(row.textContent).toContain('是') // 涉及写操作
     expect(row.textContent).toContain('失败')
     expect(row.textContent).toContain('业务系统·SAP ERP 不在工具白名单')
-    expect(row.textContent).toContain('未执行')
+    expect(container.textContent).not.toContain('执行耗时')
   })
 
   it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', () => {
@@ -224,7 +219,7 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     await flush()
   })
 
-  it('操作摘要展示用户 / 岗位、技能、涉及写操作、待处理确认、执行耗时', async () => {
+  it('操作摘要展示用户 / 岗位、技能、涉及写操作；不展示待处理确认、执行耗时（都随改版去掉）', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
     const text = drawer.textContent
@@ -232,22 +227,22 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(text).toContain('销售顾问')
     expect(text).toContain('报价单生成')
     expect(text).toContain('涉及写操作')
-    expect(text).toContain('待处理确认')
+    expect(text).not.toContain('待处理确认')
+    expect(text).not.toContain('执行耗时')
   })
 
-  it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立', async () => {
+  it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
     expect(drawer.textContent).toContain('工具调用明细')
     const items = drawer.querySelectorAll('.call-item')
     expect(items.length).toBe(2)
-    // 页面只展示工具标识 / 读写性质 / 结果 / 耗时（PRD §5.2 没有写具体操作描述这一项）：
-    // 第一项是读（查询客户信息，0.6 秒），第二项是写（创建报价单，需确认，1.4 秒）
+    // 页面只展示工具标识 / 读写性质 / 确认 / 结果（PRD §5.2 没有写具体操作描述、耗时这两项）：
+    // 第一项是读（查询客户信息），第二项是写（创建报价单，已确认）
     expect(items[0].textContent).toContain('读')
-    expect(items[0].textContent).toContain('0.6 秒')
     expect(items[1].textContent).toContain('写')
     expect(items[1].textContent).toContain('已确认')
-    expect(items[1].textContent).toContain('1.4 秒')
+    expect(drawer.textContent).not.toContain('秒')
   })
 
   it('成功的只读调用（查询客户信息）不展示参数 / 响应入口，原地给一句说明（2026-10-09 收窄展示范围）', async () => {
@@ -289,16 +284,22 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(text).toContain('本次执行已完成')
     const items = [...drawer.querySelectorAll('.call-item')]
     expect(items.length).toBe(2)
-    expect(items[0].textContent).toContain('执行失败')
+    // 单次工具调用的结果只有"成功 / 失败"两态（不再是"执行失败"）
+    expect(items[0].textContent).toContain('失败')
     expect(items[0].textContent).toContain('连接超时')
     expect(items[1].textContent).toContain('成功')
   })
 
-  it('进行中的执行（排产计划调整，待确认）：结果说明提示"此页不代替用户确认"', async () => {
-    await openDetailOf('排产计划调整')
+  it('确认被用户拒绝的写操作（报销单提交）：不展示确认标签，由执行结果=失败 + 原因"用户取消本次操作"表达', async () => {
+    await openDetailOf('报销单提交')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.textContent).toContain('此页不代替用户确认')
-    expect(drawer.textContent).toContain('待确认')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items.length).toBe(1)
+    expect(items[0].textContent).toContain('失败')
+    expect(items[0].textContent).toContain('用户取消本次操作')
+    // confirm 为 null：不展示"不需要确认""已确认"这类标签
+    expect(items[0].textContent).not.toContain('不需要确认')
+    expect(items[0].textContent).not.toContain('已确认')
   })
 
   it('未调用任何外部工具时展示占位文案（当前种子均有调用，断言兜底文案字符串存在于组件逻辑——通过无 calls 的 detail 直接校验展示规则）', async () => {
