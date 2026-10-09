@@ -528,9 +528,9 @@ describe('访问审计 · 用户端文件下载 · 分页（§5.2「列表根据
 })
 
 describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面高度动态分页」，待办 yuepu#80）', () => {
-  // 夹具 9 条 + 追加 6 条 = 15 条，多于 768 高窗口算出的每页 7 条
+  // 夹具可展示 10 条（另有 2 条 hidden 的扩容同意 / 拒绝不计）+ 追加 6 条 = 16 条，多于 768 高窗口算出的每页 7 条
   const EXTRA = 6
-  const TOTAL = 9 + EXTRA
+  const TOTAL = 10 + EXTRA
   const added = []
   const pager = () => pane().querySelector('.list-pager')
   const pageBtns = () => [...pane().querySelectorAll('.list-pager .page-btn')]
@@ -561,7 +561,7 @@ describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面
     for (const rec of added.splice(0)) opsRecords.splice(opsRecords.indexOf(rec), 1)
   })
 
-  it('记录多于一页 → 首页只出一页的行数，分页条写明「共 15 条数据」', () => {
+  it('记录多于一页 → 首页只出一页的行数，分页条写明「共 16 条数据」', () => {
     expect(pageSize()).toBeLessThan(TOTAL) // 前提：每页条数小于总数，否则切片断言没意义
     expect(rows()).toHaveLength(pageSize())
     expect(pager().textContent).toContain(`共 ${TOTAL} 条数据`)
