@@ -299,7 +299,7 @@ const persist = attachPersist('mcpConnector', {
   //    旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种
   // v8：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
   //    旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种
-  version: 8,
+  version: 9,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {

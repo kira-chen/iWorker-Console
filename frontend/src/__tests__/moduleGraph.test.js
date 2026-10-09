@@ -18,11 +18,38 @@ import { fileURLToPath } from 'node:url'
  * 2026-09-12 审计 J20④ 扩：路径存在性从「`@/` 具名导入」扩到 默认导入 / 相对路径导入 / 动态 `import()`
  * （实测存量 312 / 138 / 66 处 0 缺）。三者构建期同样不报——vite 对 .vue 路由懒加载 `import()` 只在点到时才解析；
  * 统一经 `resolveSpec(fromFile, spec)` 解析（`@/` 与相对路径都试 原样/.js/.vue/index.js，裸包名跳过）。
+ *
+ * 2026-10-08 /test-audit 新增（负责人批准；实测存量均 0 命中）：
+ *  ⑦ 测试文件里 vi.mock / vi.doMock 的本地路径必须能解析到文件——被测模块删改名后，旧 mock 不报错只会悄悄失效（幽灵 mock）；
+ *  ⑧ 相对路径的具名导入也要核对导出（原只核 `@/` 别名导入）；
+ *  ⑨ 从 .js 模块默认导入时，目标必须有 `export default`（.vue 恒有默认导出，不查）。
  */
 
 // 基于本文件位置定位 src（本文件在 src/__tests__/ 下），不用 process.cwd()——
 // 后者随调用目录变化，从仓库根目录跑会 ENOENT 崩溃而非断言失败，排查困惑（2026-08-08 实测）。
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/** 递归收集 __tests__ 下的测试文件（⑦ 用）。 */
+function collectTests(dir, out = []) {
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name)
+    if (fs.statSync(p).isDirectory()) collectTests(p, out)
+    else if (/\.test\.js$/.test(name) && p.includes(`${path.sep}__tests__${path.sep}`)) out.push(p)
+  }
+  return out
+}
+
+/** ⑦ 抽取 vi.mock / vi.doMock 的模块路径（只认字符串字面量首参）。 */
+const VI_MOCK_RE = /vi\.(?:do)?[mM]ock\(\s*['"]([^'"]+)['"]/g
+function extractMockSpecs(src) {
+  return [...src.matchAll(VI_MOCK_RE)].map((m) => m[1])
+}
+
+/** ⑧ 相对路径具名导入 `import { a, b as c } from './x'`。 */
+const RELATIVE_NAMED_RE = /import\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]/g
+
+/** ⑨ 是否有默认导出（`export default` 或 `export { x as default }`）。 */
+const hasDefaultExport = (source) => /export\s+default\b|export\s*\{[^}]*\bas\s+default\b[^}]*\}/.test(source)
 
 /** 递归收集源码文件（跳过测试目录）。 */
 function collect(dir, out = []) {
@@ -153,7 +180,56 @@ describe('模块图静态守卫（构建期不报、运行时才炸的两类问�
     expect(missing, '以下导入指向不存在的模块').toEqual([])
   })
 
+  it('⑦ 测试文件里 vi.mock / vi.doMock 的本地路径均能解析到文件（防被测模块删改名后留下幽灵 mock）', () => {
+    const tests = collectTests(SRC).filter((f) => f !== fileURLToPath(import.meta.url))
+    const missing = []
+    let total = 0
+    for (const f of tests) {
+      for (const spec of extractMockSpecs(fs.readFileSync(f, 'utf8'))) {
+        const r = resolveSpec(f, spec)
+        if (r === 'pkg') continue
+        total++
+        if (!r) missing.push(`${path.relative(SRC, f)} → vi.mock('${spec}')`)
+      }
+    }
+    expect(total, '至少应扫到本地 vi.mock（解析失败会让规则空转）').toBeGreaterThan(50)
+    expect(missing, '以下 vi.mock 指向不存在的模块').toEqual([])
+  })
+
+  it('⑧ 相对路径具名导入的导出均存在；⑨ 从 .js 默认导入的目标均有 export default', () => {
+    const broken = []
+    let named = 0
+    let defaults = 0
+    for (const f of files) {
+      const src = fs.readFileSync(f, 'utf8')
+      for (const m of src.matchAll(RELATIVE_NAMED_RE)) {
+        const target = resolveSpec(f, m[2])
+        if (!target || !target.endsWith('.js')) continue
+        const targetSrc = fs.readFileSync(target, 'utf8')
+        for (const n of parseImportNames(m[1])) {
+          named++
+          if (!hasNamedExport(targetSrc, n)) broken.push(`${path.relative(SRC, f)} 导入 { ${n} } 自 ${m[2]}`)
+        }
+      }
+      for (const spec of extractSpecs(src).default) {
+        const target = resolveSpec(f, spec)
+        if (!target || target === 'pkg' || !target.endsWith('.js')) continue
+        defaults++
+        if (!hasDefaultExport(fs.readFileSync(target, 'utf8'))) broken.push(`${path.relative(SRC, f)} 默认导入 ${spec}（目标无 export default）`)
+      }
+    }
+    expect(named, '至少应扫到相对路径具名导入').toBeGreaterThan(0)
+    expect(defaults, '至少应扫到 .js 默认导入').toBeGreaterThan(0)
+    expect(broken, '以下导入在目标模块中找不到对应导出').toEqual([])
+  })
+
   it('自检：守卫本身能识别不存在的导出（防规则写错导致永远通过）', () => {
+    // ⑦ ⑧ ⑨：vi.mock 首参抽取；默认导出两种写法都认，缺失时判 false
+    expect(extractMockSpecs("vi.mock('@/api/x', () => ({}))\nvi.doMock(\"../y\")\nvi.mocked(fn)")).toEqual(['@/api/x', '../y'])
+    expect(hasDefaultExport('export default { a: 1 }')).toBe(true)
+    expect(hasDefaultExport('const r = 1\nexport { r as default }')).toBe(true)
+    expect(hasDefaultExport('export const a = 1')).toBe(false)
+    expect([...'import { a, b as c } from "./x"'.matchAll(RELATIVE_NAMED_RE)].map((m) => m[2])).toEqual(['./x'])
     const fake = 'export const realOne = 1\nexport async function realTwo() {}\n'
     expect(hasNamedExport(fake, 'realOne')).toBe(true)
     expect(hasNamedExport(fake, 'realTwo')).toBe(true) // async function 形态

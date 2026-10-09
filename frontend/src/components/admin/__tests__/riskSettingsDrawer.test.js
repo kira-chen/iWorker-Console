@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { elEmpty, elDrawer } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * RiskSettingsDrawer.vue 单测（2026-09-08 PRD-20260908 对齐 · md §七「风险设置」抽屉）。
  *
- * 验：标题「风险设置」；卡 1「当前审查尺度」单选 通用 / 严格 / 宽松 默认通用、选择即时生效（setCurrentScale）；
+ * 验：标题「风险设置」；卡 1「当前审查尺度」单选 通用 / 严格 / 宽松 默认通用、选择只改草稿，点【保存设置】后生效（md §7.1；生效时才调 setCurrentScale）；
  * 卡 2 说明文 + Tab 宽松 / 通用 / 严格 默认通用 + Tab 下方当前尺度适用说明（md §7.2 L156-160 三句随切换，2026-09-12 K31）
  * + 表格三列、四检测项（展示名）各自可选等级集合与默认值；
  * 【恢复默认】当前 Tab 回默认值 + toast「已恢复默认设置」；【取消】不保存；【保存设置】只存当前 Tab → toast「「尺度」审核尺度设置已保存」并关闭。
@@ -25,22 +26,11 @@ vi.mock('element-plus', () => ({ ElMessage }))
 const Drawer = (await import('@/components/admin/RiskSettingsDrawer.vue')).default
 const { DEFAULT_RISK_TEMPLATES } = await import('@/utils/userSkillAuditMeta')
 
-const elDrawer = {
-  name: 'el-drawer',
-  props: ['modelValue', 'size'],
-  emits: ['update:modelValue'],
-  template:
-    '<div class="el-drawer" v-if="modelValue" :data-size="size">' +
-    '<div class="dr-header"><slot name="header" /></div>' +
-    '<div class="dr-body"><slot /></div>' +
-    '<div class="dr-footer"><slot name="footer" /></div></div>'
-}
 const elButton = {
   props: { disabled: Boolean, loading: Boolean, type: String },
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elSkeleton = { props: ['rows'], template: '<div class="el-skeleton" />' }
 // 单选组：渲染 radio input，change 时同时 emit update:modelValue 与 change（模拟 EP 行为）
 const elRadioGroup = {

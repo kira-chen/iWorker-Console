@@ -7,16 +7,21 @@ import { createApp, h, nextTick } from 'vue'
  *
  * 抽象的边界是「收壳与四态，放内容」：本文件只验外壳职责（标题三态、加载/失败/内容三选一、
  * 底部动作条、各差异入参），字段渲染属各编辑器自己的测试。
+ *
+ * 2026-10-08 对齐 DrawerEditor.vue 头注「抽屉尺寸/方向/禁点遮罩关闭」与 createTitle 入参注释（/test-audit 共享层补缺口）：
+ * 补「点遮罩不关」（外壳向 el-drawer 传 close-on-click-modal=false，全站 17 个编辑器靠它防误触丢草稿）、
+ * createTitle 只在新建态生效、保存在途时保存键转 loading 三条。
  */
 
 const DrawerEditor = (await import('@/components/admin/DrawerEditor.vue')).default
 
 const elDrawer = {
   name: 'el-drawer',
-  props: ['modelValue', 'size'],
+  // closeOnClickModal 按 EP 原型声明为 Boolean（缺省 true）：外壳若漏传 / 传 true，桩上就读到 true
+  props: { modelValue: Boolean, size: String, closeOnClickModal: { type: Boolean, default: true } },
   emits: ['update:modelValue'],
   template:
-    '<div class="el-drawer" v-if="modelValue" :data-size="size">' +
+    '<div class="el-drawer" v-if="modelValue" :data-size="size" :data-close-on-click-modal="String(closeOnClickModal)">' +
     '<div class="dr-header"><slot name="header" /></div>' +
     '<div class="dr-body"><slot /></div>' +
     '<div class="dr-footer"><slot name="footer" /></div></div>'
@@ -261,5 +266,37 @@ describe('DrawerEditor · 全站抽屉一致性', () => {
     // PositionSampleTaskStage）都是只读形态。这里改为自证「裸抽屉本身扫到了」，
     // 上面的 close-on-click-modal 守卫对将来新增的含输入裸抽屉仍然生效。
     expect(bareDrawers).toBeGreaterThan(0)
+  })
+})
+
+describe('DrawerEditor · 2026-10-08 补缺口', () => {
+  it('点遮罩不关抽屉：外壳向 el-drawer 传 close-on-click-modal=false（全站编辑器防误触丢草稿都靠这一处）', () => {
+    mount({ isEdit: true })
+    expect(container.querySelector('.el-drawer').dataset.closeOnClickModal).toBe('false')
+  })
+
+  it('新建态传了 createTitle → 标题用它（如 MCP「登记 MCP」）', () => {
+    mount({ isEdit: false, entity: 'MCP', createTitle: '登记 MCP' })
+    expect(title()).toBe('登记 MCP')
+  })
+
+  it('编辑态传了 createTitle → 不生效，仍是「编辑 + 实体名」', () => {
+    mount({ isEdit: true, entity: 'MCP', createTitle: '登记 MCP' })
+    expect(title()).toBe('编辑MCP')
+  })
+
+  it('只读查看态传了 createTitle → 不生效，仍是「查看 + 实体名」', () => {
+    mount({ isEdit: false, readonly: true, entity: 'MCP', createTitle: '登记 MCP' })
+    expect(title()).toBe('查看MCP')
+  })
+
+  it('保存在途（saving=true）→ 保存键转 loading 态', () => {
+    mount({ isEdit: true, saving: true })
+    expect(btn('保存').dataset.loading).toBe('true')
+  })
+
+  it('未在保存（saving 缺省）→ 保存键不带 loading', () => {
+    mount({ isEdit: true })
+    expect(btn('保存').dataset.loading).toBe('false')
   })
 })

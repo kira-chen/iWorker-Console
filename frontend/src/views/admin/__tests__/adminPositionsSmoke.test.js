@@ -5,7 +5,7 @@ import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 /**
- * AdminPositions.vue 真实挂载冒烟（2026-09-12 测试审计 T48 / T53，对齐 md 岗位管理 prd.岗位管理.md §一.3 / §二.1）。
+ * AdminPositions.vue 真实挂载冒烟（2026-09-12 测试审计 T48 / T53，对齐 md 02岗位/岗位/prd.岗位.md §一.3 / §二.1）。
  *
  * adminPositionsOps.test.js 把 PageHeader / ListStates / ListPagination / el-table 全桩，拦不住组件 setup 期错误
  * （2026-09-11 分页条 TDZ 白屏教训；0f2087f/5585a2b 改分页条时本页零真挂载）。本文件只 mock api 层，

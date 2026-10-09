@@ -83,4 +83,16 @@ describe('fieldDictMock · 持久化 restore 形状守卫', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('fieldDict 存量数据不可用'), expect.any(Error))
     warn.mockRestore()
   })
+
+  // 2026-10-08 /test-audit 补缺口（md 字段字典 §三「点击【完成】后统一保存」+ §四「保存后相关模块读取最新选项」）：刷新后新选项仍在。
+  it('保存专家分类新选项后刷新 → 读回的是新选项列表', async () => {
+    const m = await import('../fieldDictMock')
+    const names = [...(await m.listFieldDict()).expertCategory.map((o) => o.name), '医疗']
+    await m.saveFieldOptions('expertCategory', names)
+
+    vi.resetModules()
+    const reloaded = await import('../fieldDictMock')
+    expect((await reloaded.listFieldDict()).expertCategory.map((o) => o.name)).toEqual(names)
+    expect(reloaded.getFieldOptionNames('expertCategory')).toContain('医疗')
+  })
 })

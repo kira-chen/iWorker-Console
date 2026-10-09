@@ -478,7 +478,7 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 5,
+  version: 6,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (

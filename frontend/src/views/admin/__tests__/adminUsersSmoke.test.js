@@ -13,6 +13,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *  - 页头标题「用户」+ 说明「管理平台账号、角色分配与密码重置」（md §一.1）；
  *  - 工具栏搜索占位「搜索用户名、显示名或邮箱」+【＋ 新建用户】；
  *  - 表格行含种子用户名 / 显示名；分页条（站内统一 .list-pager，非 el-pagination）在。
+ *
+ * 2026-10-08 对齐 prd-用户.md §二.4「加载失败：展示加载失败和【重试】；点击【重试】后重新加载当前页」补失败态（真 ListStates + 真分页条）。
  */
 const listUsers = vi.fn()
 const listRoles = vi.fn()
@@ -75,7 +77,8 @@ describe('AdminUsers · 真实 Element Plus 挂载冒烟', () => {
     expect(errorSpy).not.toHaveBeenCalled()
 
     const text = container.textContent
-    expect(text).toContain('用户')
+    // 页头标题元素文本正好是「用户」（整页 toContain('用户') 恒真——列名「用户名」已含）
+    expect(container.querySelector('.page-header-title').textContent.trim()).toBe('用户')
     expect(text).toContain('管理平台账号、角色分配与密码重置')
     expect(container.querySelector('input[placeholder="搜索用户名、显示名或邮箱"]')).toBeTruthy()
     expect(text).toContain('＋ 新建用户')
@@ -90,5 +93,27 @@ describe('AdminUsers · 真实 Element Plus 挂载冒烟', () => {
     // 分页条（站内统一 ListPagination → .list-pager；total>0 恒显）
     expect(container.querySelector('.list-pager')).toBeTruthy()
     expect(container.querySelector('.list-pager').textContent).toContain('共 2 条')
+  })
+})
+
+describe('AdminUsers · 加载失败与重试（md §二.4）', () => {
+  it('翻到第 2 页时加载失败 → 展示「加载失败」和【重试】；点【重试】仍按第 2 页重新加载并列出用户', async () => {
+    listUsers.mockResolvedValue({ list: ROWS, total: 300 })
+    mountReal()
+    await flush()
+    listUsers.mockRejectedValueOnce(new Error('boom'))
+    const page2 = [...container.querySelectorAll('.list-pager .page-btn')].find((b) => b.textContent.trim() === '2')
+    page2.click()
+    await flush()
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    expect(container.querySelector('.el-empty__description').textContent).toContain('加载失败')
+    expect(container.textContent).not.toContain('chenyu')
+    listUsers.mockClear()
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试').click()
+    await flush()
+    expect(listUsers).toHaveBeenCalledTimes(1)
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    expect(container.textContent).toContain('chenyu')
+    expect(container.textContent).not.toContain('加载失败')
   })
 })

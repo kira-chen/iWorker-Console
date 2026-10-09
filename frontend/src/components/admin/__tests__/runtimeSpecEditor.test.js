@@ -118,7 +118,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(itemByLabel(d, '临时存储（Gi）').textContent).toContain('最多 500 Gi')
     // 上限来自接口（不由前端固定）
     expect(api.getRuntimeSpecLimits).toHaveBeenCalled()
-    // md §四.2 占位；§四.3 允许用户申请默认开
+    // md §四.2 占位；「允许用户申请」新建默认开为代码现状（md 未写，待裁决）
     expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]')).toBeTruthy()
     expect(d.querySelector('.el-switch').classList.contains('is-checked')).toBe(true)
@@ -187,7 +187,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(savedSpy).not.toHaveBeenCalled()
   })
 
-  it('平台上限读取失败 → 抽屉保留、展示「加载失败」+【重试】；重试成功后表单出现（md §四.10 L396 / §四.1 L267）', async () => {
+  it('平台上限读取失败 → 抽屉保留、展示通用「加载失败」+【重试】；重试成功后表单出现（代码现状；md §四.10 要求文案「平台资源上限获取失败」，差异待登记代码缺陷）', async () => {
     api.getRuntimeSpecLimits.mockRejectedValueOnce(new Error('limits down')).mockResolvedValue({ ...LIMITS })
     const d = await open({ specId: null })
     expect(d.textContent).toContain('加载失败')
@@ -268,7 +268,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     expect(footBtns(d)).toEqual(['关闭'])
   })
 
-  it('编辑默认规格：可改名称，但「允许用户申请」开关禁用（默认规格不开放申请；md §四.3 L284）', async () => {
+  it('编辑默认规格：可改名称，但「允许用户申请」开关禁用（默认规格不开放申请为代码现状，md 未写，待裁决）', async () => {
     api.getRuntimeSpec.mockResolvedValue({ ...DEFAULT_SPEC })
     const d = await open({ specId: 2 })
     expect(title(d)).toBe('编辑规格')

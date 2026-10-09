@@ -13,7 +13,6 @@ import { createApp, h, ref, nextTick } from 'vue'
  * - 响应字段映射（variant='api' 默认 / 'mcp'）：参数名固定 + 可编辑「接口返回字段名」+ 描述 + 变量类型，四列同构；
  *   API 预设 content/source/score（md §六.3）、MCP 预设 title/content/sourceName 外加卡内「结果数组路径」必填输入
  *   （md §七.5）；预设行不可删除、变量类型可改；【添加字段】新增自定义行。
- * 已知差异不在此断言：新建示例组缺 md L318 的 enabled(boolean) 子字段（审计 K37）。
  * Element 组件按仓内范式桩化（同 paramRowsEditor.test.js）。
  */
 
@@ -96,7 +95,7 @@ const setSelect = async (sel, value) => {
   await nextTick()
 }
 
-describe('SourceMappingEditor（2026-09-08 PRD-20260908 对齐）', () => {
+describe('SourceMappingEditor（2026-09-18 口径：API / MCP 同一套显式改名映射）', () => {
   it('请求映射预设 query/topK：参数名固定、无删除入口；必填与映射客户端字段不可改（md §六.2 L313）', async () => {
     await mountEditor()
     const reqCard = cards()[0]

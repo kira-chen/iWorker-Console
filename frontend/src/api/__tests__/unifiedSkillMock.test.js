@@ -557,7 +557,7 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待�
     expect((await fresh.getSkillDetail(skillId)).name).toBe('读回验证技能')
   })
 
-  it('存量 version≠3 快照 → 启动时丢弃、回代码种子（sk_301 在、伪造行不在），旧 key 被清掉', async () => {
+  it('存量版本号 ≠ 当前版本的快照 → 丢弃回种子（sk_301 在、伪造行不在），旧 key 被清掉', async () => {
     globalThis.localStorage.setItem(
       KEY,
       JSON.stringify({ v: 2, data: { idSeq: 9999, skills: [{ id: 'sk_fake', name: '伪造行', type: 'PLATFORM' }], exampleCursor: {}, reviewSnapshots: {} } })

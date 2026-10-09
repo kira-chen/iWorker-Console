@@ -2,7 +2,7 @@
 // （adminModelMock → request.js → router 链路触达 window，故用 jsdom；同 fieldDictMock.test.js）
 // 注意：vitest 全局随机顺序执行——用例间不得有状态顺序依赖：
 // 种子断言只查从不被本文件改写的行；状态机用例各自新建专属行自洽驱动。
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   listModels,
   getModel,
@@ -291,5 +291,58 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
     expect(ok.verifyStatus).toBe('SUCCESS')
     expect(ok.verifyError).toBeNull()
     expect(ok.supportsStreaming).toBe(true)
+  })
+})
+
+/* 2026-10-08 /test-audit 补缺口：持久化「写入 → 刷新 → 读回」（mock 层 localStorage 约定，见 api/mockPersist.js）。
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md §三（新建模型保存后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
+ * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
+ * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
+describe('adminModelMock · 持久化读回（mockPersist v2；key iworker-demo-mock:adminModel）', () => {
+  const KEY = 'iworker-demo-mock:adminModel'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('createModel 落盘（v=2）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建模型', async () => {
+    const first = await import('@/api/adminModelMock')
+    const created = await first.createModel({
+      name: '读回验证模型', providerName: 'deepseek', category: 'TEXT', baseUrl: 'https://api.example.com/v1',
+      model: 'demo-chat', contextWindow: 65536, apiKey: 'sk-test-abcdefgh12345678'
+    })
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(2)
+    vi.resetModules()
+    const fresh = await import('@/api/adminModelMock')
+    const { list } = await fresh.listModels({ keyword: '读回验证模型' })
+    expect(list.map((m) => m.id)).toEqual([created.id])
+    expect((await fresh.getModel(created.id)).name).toBe('读回验证模型')
+  })
+
+  it('存量版本号 ≠ 当前版本的快照 → 丢弃回种子（md_101 在、伪造行不在），旧 key 被清掉', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 1, data: { modelSeq: 9999, models: [{ id: 'md_fake', name: '伪造模型', status: 'DRAFT' }] } })
+    )
+    const fresh = await import('@/api/adminModelMock')
+    const { list } = await fresh.listModels({})
+    expect(list.some((m) => m.id === 'md_101')).toBe(true)
+    expect(list.some((m) => m.id === 'md_fake')).toBe(false)
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 })

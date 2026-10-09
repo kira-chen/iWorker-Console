@@ -140,7 +140,7 @@ const BIZ_ROWS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(bizRows))
 // version 3：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 const persist = attachPersist('bizSystem', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ bizSeq, skillSeq, bizRows }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.bizSeq) || !Number.isFinite(d.skillSeq) || !Array.isArray(d.bizRows)) {

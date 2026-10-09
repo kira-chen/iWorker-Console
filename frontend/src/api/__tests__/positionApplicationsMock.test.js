@@ -45,7 +45,7 @@ describe('positionApplicationsMock —— 待分配申请（新流程：举手�
     expect(getPendingApplicationByUserId(999)).toBeNull()
   })
 
-  it('联查到分配列表：有待分配申请的行带 hasPendingRequest/pendingRequestId/pendingRequestAt；hasPendingRequest=true 只筛出这些行（md §一.18 / §二「待分配」标签）', async () => {
+  it('联查到分配列表：有待分配申请的行带 hasPendingRequest/pendingRequestId/pendingRequestAt；hasPendingRequest=true 只筛出这些行（md 岗位管理 §二 第 3 项「待分配申请按钮：点击后仅展示有待分配申请的用户」/ §3.1 绑定岗位「有待分配申请时在岗位名称后附"待分配"橙色标签」）', async () => {
     expect(await assignmentOf(203)).toMatchObject({ hasPendingRequest: true, pendingRequestId: 701, pendingRequestAt: '2026-08-28 10:32' })
     expect(await assignmentOf(202)).toMatchObject({ hasPendingRequest: false, pendingRequestId: null })
     const { list } = await listPositionAssignments({ hasPendingRequest: true })

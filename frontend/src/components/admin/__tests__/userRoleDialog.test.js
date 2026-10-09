@@ -9,6 +9,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - 角色为 RoleCheckCards 卡片复选，打开时按当前角色预勾；
  *  - 未选 → 内联「请至少选择一个角色」、窗口保持打开、不打接口；
  *  - 保存 → setUserRoles(id, codes)，toast「角色已更新」，emit saved。
+ *  - 2026-10-08 对齐 prd-用户.md §二.4「单项操作失败：保留当前页面和目标用户记录，并展示具体原因」补：
+ *    保存被护栏拒绝（移除最后一个系统管理员的系统管理员角色）→ 原文提示、窗口不关、不 emit saved。
  */
 const setUserRoles = vi.fn(() => Promise.resolve({}))
 vi.mock('@/api/adminUser', () => ({ setUserRoles: (...a) => setUserRoles(...a) }))
@@ -108,5 +110,20 @@ describe('UserRoleDialog', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('角色已更新')
     expect(savedSpy).toHaveBeenCalled()
     expect(visibleRef.value).toBe(false)
+  })
+})
+
+describe('UserRoleDialog · 保存失败', () => {
+  it('保存被拒「不能移除最后一个系统管理员的系统管理员角色」→ 原文错误提示，窗口保持打开、不通知列表刷新', async () => {
+    setUserRoles.mockRejectedValueOnce(new Error('不能移除最后一个系统管理员的系统管理员角色'))
+    mount({ id: 201, username: 'zhangwei', displayName: '张伟', roleCodes: ['user'] })
+    await open()
+    saveBtn().click()
+    await flush()
+    expect(setUserRoles).toHaveBeenCalledWith(201, ['user'])
+    expect(ElMessage.error).toHaveBeenCalledWith('不能移除最后一个系统管理员的系统管理员角色')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(visibleRef.value).toBe(true)
+    expect(savedSpy).not.toHaveBeenCalled()
   })
 })

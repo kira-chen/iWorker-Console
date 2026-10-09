@@ -1,15 +1,21 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick, reactive } from 'vue'
+import { createApp, h, nextTick, reactive, ref } from 'vue'
 
 /**
- * PositionPersonaTab（岗位详情「人格」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §2.1 / §2.4 / §2.5：
+ * PositionPersonaTab（岗位详情「人格」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §2.4 领用页文案 / §2.5 示例问题 / §2.6 岗位 SOP（「岗位描述为空时按钮置灰禁用，hover 展示 tooltip「请先填写岗位描述」」）：
  *  - 岗位描述为空 → 两处【AI 生成】disabled + title「请先填写岗位描述」；填了描述恢复可用；
  *  - 点【AI 生成】→ 按钮变「生成中…」，500ms 后示例问题 3 条填入 / SOP 填入，toast「已生成示例问题」「已生成岗位 SOP」；
  *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；
  *  - 只读态不出【AI 生成】；
  *  - 2026-09-12 审计 J18：领用页文案满 6 条【＋ 新增一条】不隐藏，点击直调 ClaimNotesEditor.startAdd。
  * 数据走 usePositionStore（reactive 桩），三个重子组件（IconField / ClaimNotesEditor / SkillMilkdownEditor）桩掉。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §2.1 / §2.5 / §2.7 / §9.1 第 5 项补：
+ *  - 岗位名称卡副标题「用于列表、标题栏与员工端展示」、maxlength 64、输入写回 store.basic.name；
+ *  - 岗位人格富文本占位（§2.7 逐字）；
+ *  - 示例问题【AI 生成】完成后再点会覆盖当前内容（含手改过的格子）；
+ *  - 父层注入 pdEqShowErrors=true（发布被示例问题阻断）→ 空格带 pd-eq-err，已填的不带。
  */
 
 const store = reactive({
@@ -53,10 +59,11 @@ const elInput = {
 }
 
 let app, container
-async function mount(props = {}) {
+async function mount(props = {}, provides = {}) {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp({ render: () => h(PositionPersonaTab, props) })
+  for (const [k, v] of Object.entries(provides)) app.provide(k, v)
   app.component('el-button', elButton)
   app.component('el-input', elInput)
   app.mount(container)
@@ -80,7 +87,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5）', () => {
+describe('人格页签 · 【AI 生成】门与拟真生成（md §2.5 示例问题 / §2.6 岗位 SOP「岗位描述为空时按钮置灰禁用」「延迟 500ms 后自动生成」）', () => {
   it('岗位描述为空 → 示例问题 / 岗位 SOP 两处【AI 生成】均 disabled + title「请先填写岗位描述」', async () => {
     await mount()
     expect(aiBtns()).toHaveLength(2)
@@ -159,7 +166,30 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.4 / §2.5�
   })
 })
 
-describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3 L188；2026-09-12 审计 J18）', () => {
+// 已知缺陷钉桩（2026-10-08 待办 yuepu#54）：aiGenQuestions / aiGenSop 是手写 500ms setTimeout，没走 useAiLiveGenerate——
+// 无撤销、不核对对象，回调直接写 Pinia 全局 store。#26 同类问题在这里仍在。
+// 修好后本组会报红——把 it.fails 改回 it 即成正式回归用例。
+describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54）', () => {
+  it.fails('yuepu#54 点【AI 生成】后 500ms 内切到另一个岗位 → 生成结果不得写进新岗位、不弹成功提示', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
+    await mount()
+    aiBtns()[0].click()
+    await flush()
+    expect(aiBtns()[0].textContent.trim()).toBe('生成中…') // 前提：生成已发起
+    // 工作台切到另一个岗位（store.basic 整体换成新对象）
+    store.positionId = 6
+    store.basic = { positionId: 6, name: '客户成功岗', description: '负责客户跟进', icon: '◎', claimDescriptions: [], exampleQuestions: ['原问题一', '原问题二', '原问题三'], positionSop: '', persona: '' }
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.exampleQuestions).toEqual(['原问题一', '原问题二', '原问题三'])
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.4 领用页文案「达到 6 条上限后提示"领用页文案最多 6 条"」；2026-09-12 审计 J18）', () => {
   const claimCard = () => cardByTitle('领用页文案')
   const addBtn = () => [...claimCard().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '＋ 新增一条')
 
@@ -190,7 +220,7 @@ describe('人格页签 · 领用页文案卡头【＋ 新增一条】（md §2.3
   })
 })
 
-describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.1 / §2.4 / §2.5）', () => {
+describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.3 岗位描述「最多 2000」/ §2.5 示例问题「每条不超过 300 个字符」/ §2.6 岗位 SOP「最多 4000 个字符」）', () => {
   it('示例问题 3 格：占位第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；提示「3 条均为必填，每条不超过 300 个字符」', async () => {
     await mount()
     const card = cardByTitle('示例问题')
@@ -227,5 +257,95 @@ describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.1 / 
     expect(container.querySelector('.pd-desc-input').disabled).toBe(true)
     expect(container.querySelector('.pd-sop-input').disabled).toBe(true)
     for (const i of container.querySelectorAll('.pd-eq-row .el-input')) expect(i.disabled).toBe(true)
+  })
+})
+
+describe('人格页签 · 岗位名称 / 岗位人格（2026-10-08 对齐 md §2.1 / §2.7）', () => {
+  it('岗位名称卡副标题为「用于列表、标题栏与员工端展示」，标题带必填红星', async () => {
+    await mount()
+    const card = cardByTitle('岗位名称')
+    expect(card.querySelector('.pd-card-sub').textContent.trim()).toBe('用于列表、标题栏与员工端展示')
+    expect(card.querySelector('.pd-card-title .pd-req')?.textContent).toBe('*')
+  })
+
+  it('岗位名称输入框最多 64 个字符，回显当前岗位名', async () => {
+    await mount()
+    const input = cardByTitle('岗位名称').querySelector('.el-input')
+    expect(input.getAttribute('maxlength')).toBe('64')
+    expect(input.value).toBe('经营分析岗')
+  })
+
+  it('在岗位名称框里改名 → 写回 store.basic.name（随顶部【保存】提交）', async () => {
+    await mount()
+    const input = cardByTitle('岗位名称').querySelector('.el-input')
+    input.value = '经营分析二岗'
+    input.dispatchEvent(new Event('input'))
+    await flush()
+    expect(store.basic.name).toBe('经营分析二岗')
+  })
+
+  it('岗位人格编辑器占位为「你是一名严谨的经营分析助手。优先核对数据口径，先给结论，再展示关键依据和风险提示。」', async () => {
+    await mount()
+    const md = cardByTitle('岗位人格').querySelector('.stub-md')
+    expect(md.getAttribute('placeholder')).toBe('你是一名严谨的经营分析助手。优先核对数据口径，先给结论，再展示关键依据和风险提示。')
+  })
+})
+
+describe('人格页签 · 示例问题【AI 生成】重复点击覆盖（2026-10-08 对齐 md §2.5「重复点击可重新生成，覆盖当前内容」）', () => {
+  it('生成完成后手改一格，再点【AI 生成】→ 500ms 后 3 格整体被新生成内容覆盖，手改内容不保留', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
+    store.basic.exampleQuestions = ['旧问题一', '旧问题二', '旧问题三']
+    await mount()
+    aiBtns()[0].click()
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    const generated = [...store.basic.exampleQuestions]
+    expect(generated).not.toEqual(['旧问题一', '旧问题二', '旧问题三'])
+
+    // 用户手改第 1 格后再点一次
+    const inputs = () => [...cardByTitle('示例问题').querySelectorAll('.pd-eq-row .el-input')]
+    inputs()[0].value = '我手改过的问题'
+    inputs()[0].dispatchEvent(new Event('input'))
+    await flush()
+    expect(store.basic.exampleQuestions[0]).toBe('我手改过的问题')
+    expect(aiBtns()[0].disabled).toBe(false)
+    aiBtns()[0].click()
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.exampleQuestions).toHaveLength(3)
+    expect(store.basic.exampleQuestions).not.toContain('我手改过的问题')
+    expect(store.basic.exampleQuestions.every((q) => q.trim())).toBe(true)
+    expect(inputs().map((i) => i.value)).toEqual(store.basic.exampleQuestions)
+    expect(ElMessage.success).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('人格页签 · 示例问题发布阻断标红（2026-10-08 对齐 md §9.1 第 5 项 / §2.5）', () => {
+  const eqInputs = () => [...cardByTitle('示例问题').querySelectorAll('.pd-eq-row .el-input')]
+
+  it('父层注入 pdEqShowErrors=true 时 → 空着的格子（含只有空格的）带 pd-eq-err，已填的不带', async () => {
+    store.basic.exampleQuestions = ['帮我分析本周经营数据', '', '   ']
+    await mount({}, { pdEqShowErrors: ref(true) })
+    expect(eqInputs().map((i) => i.classList.contains('pd-eq-err'))).toEqual([false, true, true])
+  })
+
+  it('未注入（或为 false）时 → 即使格子是空的也不标红', async () => {
+    store.basic.exampleQuestions = ['帮我分析本周经营数据', '', '']
+    await mount({}, { pdEqShowErrors: ref(false) })
+    expect(eqInputs().some((i) => i.classList.contains('pd-eq-err'))).toBe(false)
+  })
+
+  it('标红状态下把空格填上 → 该格立即去掉 pd-eq-err', async () => {
+    store.basic.exampleQuestions = ['帮我分析本周经营数据', '', 'q3']
+    await mount({}, { pdEqShowErrors: ref(true) })
+    expect(eqInputs()[1].classList.contains('pd-eq-err')).toBe(true)
+    eqInputs()[1].value = '本月异常指标有哪些'
+    eqInputs()[1].dispatchEvent(new Event('input'))
+    await flush()
+    expect(eqInputs()[1].classList.contains('pd-eq-err')).toBe(false)
   })
 })

@@ -2,18 +2,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './helpers/listPageStubs'
 
 /**
  * MyApplications.vue（我的申请）列表页单测（2026-09-12 测试审计 T56 新建，此前 407 行零测试）。
  *
  * 对齐 md `prd.我的申请.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、审核结果四项、【查询】）；
+ * - §一「页面说明」；§二 查询区（占位「搜索申请对象名称 / 描述」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、审核结果四项、【查询】）；
  * - §3.1 七列；审核结果四态标签，已驳回悬停展示驳回原因；操作列固定【查看】+ 待审核【撤回】+ 已驳回/已撤回【重新提交】；
- * - §四 L47 / §七 L98 对象已删除 → 【查看】置灰；技能走整页只读路由，其余开原生详情抽屉；
+ * - §四「对应业务对象已被删除时，不提供详情查看：【查看】按钮置灰」/ §七「对象已被删除：【查看】置灰不可点击」；技能走整页只读路由，其余开原生详情抽屉；
  * - §4.1 待审核底栏 关闭|撤回申请，撤回二次确认 → 「申请已撤回」；§4.2 已通过仅 关闭；
  *   §4.3/§4.4 已驳回 / 已撤回底栏 关闭|前往修改|重新提交，重新提交 → 「提交成功」提示窗（alertResubmitSuccess）；
- * - §七 L97 空态「暂无申请记录」；L99 撤回时已被审核 → toast 原因并重拉；L100 重新提交失败 → toast 原因。
- * 列表【撤回】走 warning 色档（5585a2b 负责人拍板「与全局色值保持一致」，md 未规定颜色）。
+ * - §七「查询无结果：展示暂无申请记录」；§七「撤回时申请已被审核：阻止撤回并刷新最新审核结果」→ toast 原因并重拉；
+ *   §七「重新提交失败：保留当前状态并提示具体原因」→ toast 原因。
+ * - 2026-10-08 补：夹具加一行版本管理（VERSION）——【查看】开原生详情抽屉（GovObjectDetail 桩收到 kind=VERSION）；
+ *   §七「重新提交失败 → 保留当前状态并提示具体原因」：详情不关、不弹「提交成功」、不重拉。
+ * 列表【撤回】走 warning 色档，对齐 md 我的申请 §3.1（【撤回】橙色，与全站「停用/下架/撤回」等状态类操作统一）。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩，
  * GovObjectDetail 桩只验「开没开、带的什么、回传什么」。
  */
@@ -75,41 +80,9 @@ vi.mock('@/components/admin/GovObjectDetail.vue', () => ({
 
 const MyApplications = (await import('@/views/admin/MyApplications.vue')).default
 
-const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-head' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
-      ])
-  }
-}
-const elInput = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'keyup', 'clear'],
-  template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
-}
-const elSelect = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'change'],
-  template:
-    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
-}
-const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
-const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 // tooltip 桩：把 content 落到 data-tip 上，好断「已驳回悬停展示驳回原因」
 const elTooltip = { props: ['content', 'placement'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' }
-const elButton = {
-  props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean },
-  emits: ['click'],
-  template:
-    '<button class="el-button" :disabled="disabled" :data-type="type" :data-link="link" @click="!disabled && $emit(\'click\')"><slot /></button>'
-}
 
 let app, container
 async function mount() {
@@ -138,20 +111,21 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls, toolbarBtn } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.ma-ops .el-button')].find((b) => b.textContent.trim() === text)
 const rowOps = (row) => [...row.querySelectorAll('.ma-ops .el-button')].map((b) => b.textContent.trim())
-const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 const detailBtns = () => [...container.querySelectorAll('.gov-detail .gov-btn')]
 
-// 夹具照 myApplicationsMock 种子形状：四态各一 + 技能行 + 对象已删除行
+// 虚构夹具，字段形状同 myApplicationsMock 种子：四态各一 + 技能行 + 对象已删除行
 const ROWS = [
   { id: 501, objectName: '客户资料查询', description: '按客户编号读取客户基础信息和当前商机状态', businessType: 'API', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-28 10:30', result: 'PENDING', reviewer: '', reviewedAt: '', rejectReason: '', refId: 'api_1103', objectDeleted: false },
   { id: 502, objectName: '经营分析专家', description: '汇总经营数据，识别异常并形成管理建议', businessType: 'EXPERT', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-27 16:20', result: 'APPROVED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 17:05', rejectReason: '', refId: 201, objectDeleted: false },
   { id: 503, objectName: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', businessType: 'POSITION', applicationType: 'VERSION_PUBLISH', version: 'v2.2.0', submittedAt: '2026-08-27 15:10', result: 'REJECTED', reviewer: 'audit.admin', reviewedAt: '2026-08-27 16:02', rejectReason: '岗位说明未明确数据使用范围，请补充后重新提交。', refId: 401, objectDeleted: false },
   { id: 504, objectName: '行业研究助手', description: '汇总行业资料、竞品动态并生成结构化研究结论', businessType: 'SKILL', applicationType: 'FIRST_PUBLISH', version: 'v1.0.0', submittedAt: '2026-08-27 11:42', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-27 12:10', rejectReason: '', refId: 'sk_309', objectDeleted: false },
   { id: 507, objectName: 'Kimi K2', description: '支持长上下文分析和文本生成的通用模型', businessType: 'MODEL', applicationType: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-08-26 15:08', result: 'REJECTED', reviewer: 'model.audit', reviewedAt: '2026-08-26 16:30', rejectReason: '连通性验证未通过。', refId: 'md_104', objectDeleted: false },
-  { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-24 10:46', rejectReason: '', refId: 203, objectDeleted: true }
+  { id: 510, objectName: '法务审阅专家', description: '辅助审阅合同条款并识别法律风险', businessType: 'EXPERT', applicationType: 'DELIST', version: 'v1.3.0', submittedAt: '2026-08-24 10:18', result: 'WITHDRAWN', reviewer: '—', reviewedAt: '2026-08-24 10:46', rejectReason: '', refId: 203, objectDeleted: true },
+  // 2026-10-08：版本管理行（md §3.1 申请对象 =「终端 + 版本号」、下一行 = 更新说明）
+  { id: 518, objectName: 'Mac v1.2.0', description: '新增记忆管理 修复若干问题', businessType: 'VERSION', applicationType: 'VERSION_PUBLISH', version: 'v1.2.0', submittedAt: '2026-08-23 16:30', result: 'PENDING', reviewer: '', reviewedAt: '', rejectReason: '', refId: 7, objectDeleted: false }
 ]
 const byId = (id) => ROWS.find((r) => r.id === id)
 const rowById = (id) => rowEls().find((el) => el.querySelector('.ma-name').textContent === byId(id).objectName)
@@ -173,7 +147,7 @@ afterEach(() => {
 })
 
 describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
-  it('页面说明取 md §一 L8；挂载即拉列表（默认 sortDir=desc、page=1）', async () => {
+  it('页面说明取 md §一「页面说明」；挂载即拉列表（默认 sortDir=desc、page=1）', async () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent).toBe('查看和跟踪自己从各业务模块提交的审核申请')
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
@@ -191,7 +165,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(toolbarBtn('查询')).toBeTruthy()
   })
 
-  it('审核结果下拉选中「已驳回」→ 即时按 result 重查回第 1 页，列表只剩已驳回行；条件可组合（md §二 L19-21）', async () => {
+  it('审核结果下拉选中「已驳回」→ 即时按 result 重查回第 1 页，列表只剩已驳回行；条件可组合（md §二「审核结果：全部审核结果、待审核、已通过、已驳回、已撤回」「搜索、业务类型、申请类型和审核结果可以组合使用」）', async () => {
     listMyApplications.mockImplementation((p = {}) => {
       let list = ROWS
       if (p.result) list = list.filter((r) => r.result === p.result)
@@ -229,7 +203,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(r501.textContent).toContain('2026-08-28 10:30')
   })
 
-  it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1 L34）', async () => {
+  it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1「已驳回的标签悬停展示驳回原因」）', async () => {
     await mount()
     const tip = rowById(503).querySelector('[data-label="审核结果"] .el-tooltip')
     expect(tip).toBeTruthy()
@@ -239,7 +213,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(rowById(501).querySelector('[data-label="审核结果"] .el-tooltip')).toBeNull()
   })
 
-  it('操作列按状态（md §3.1 L35 / §五）：待审核【查看】【撤回】/ 已驳回、已撤回【查看】【重新提交】/ 已通过仅【查看】；撤回为 warning 链（5585a2b）', async () => {
+  it('操作列按状态（md §3.1「操作：固定提供【查看】；待审核追加【撤回】…已驳回、已撤回追加【重新提交】」/ §五）：待审核【查看】【撤回】/ 已驳回、已撤回【查看】【重新提交】/ 已通过仅【查看】；撤回为 warning 链（5585a2b）', async () => {
     await mount()
     expect(rowOps(rowById(501))).toEqual(['查看', '撤回'])
     expect(rowBtn(rowById(501), '撤回').dataset.type).toBe('warning')
@@ -249,7 +223,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(rowOps(rowById(502))).toEqual(['查看'])
   })
 
-  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡；行与六个信息字段照常保留（md §四 L47 / §七 L98）', async () => {
+  it('对象已被删除的行（objectDeleted）→ 【查看】置灰不可点并带说明气泡、操作列只剩【查看】、详情底栏只剩【关闭】；行与六个信息字段照常保留（md §四「对应业务对象已被删除时…列表行保留该条申请记录…」/ §七「对象已被删除：【查看】置灰不可点击」）', async () => {
     await mount()
     const row = rowById(510)
     const view = rowBtn(row, '查看')
@@ -266,9 +240,17 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toEqual(['专家', '停用', '已撤回'])
     // 对象仍在的行【查看】可点
     expect(rowBtn(rowById(502), '查看').disabled).toBe(false)
+    // 已撤回但对象已删除：操作列只剩【查看】，不出【重新提交】（同状态对象仍在的 504 有【重新提交】）
+    expect(rowOps(row)).toEqual(['查看'])
+    expect(rowOps(rowById(504))).toEqual(['查看', '重新提交'])
+    // 详情底栏同口径只剩【关闭】（不出【前往修改】【重新提交】）。界面上【查看】已置灰进不来，
+    // 这是防御分支，故直接调页面内 openDetail 打开它来验
+    app._instance.setupState.openDetail(byId(510))
+    await flush()
+    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭'])
   })
 
-  it('列表【撤回】→ 二次确认（confirmWithdrawMyApp 收到对象名）→ withdrawMyApplication(id) → toast「申请已撤回」→ 重拉（md §4.1 L51）', async () => {
+  it('列表【撤回】→ 二次确认（confirmWithdrawMyApp 收到对象名）→ withdrawMyApplication(id) → toast「申请已撤回」→ 重拉（md §4.1「撤回前二次确认，成功后…提示申请已撤回」）', async () => {
     await mount()
     rowBtn(rowById(501), '撤回').click()
     await flush()
@@ -278,7 +260,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
-  it('【撤回】确认取消 → 不调接口；撤回时申请已被审核（接口 409）→ toast 原因并重拉最新结果（md §七 L99）', async () => {
+  it('【撤回】确认取消 → 不调接口；撤回时申请已被审核（接口 409）→ toast 原因并重拉最新结果（md §七「撤回时申请已被审核：阻止撤回并刷新最新审核结果」）', async () => {
     confirmWithdrawMyApp.mockResolvedValueOnce(false)
     await mount()
     rowBtn(rowById(501), '撤回').click()
@@ -289,6 +271,8 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     await flush()
     expect(ElMessage.error).toHaveBeenCalledWith('该申请已被审核，无法撤回，请查看最新审核结果')
     expect(ElMessage.success).not.toHaveBeenCalled()
+    // 挂载 1 次 + 409 后重拉 1 次（取消那次不拉）
+    expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
   it('非技能行【查看】→ 开只读原生详情（readonly=true、不开快照闸门）；待审核底栏 关闭|撤回申请（danger）（md §四 / §4.1）', async () => {
@@ -336,7 +320,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledTimes(2)
   })
 
-  it('已驳回详情【前往修改】→ 先关只读抽屉再以编辑态重开（readonly=false），底栏换为 关闭|提交审核；【提交审核】走重新提交（md §4.3 L65）', async () => {
+  it('已驳回详情【前往修改】→ 先关只读抽屉再以编辑态重开（readonly=false），底栏换为 关闭|提交审核；【提交审核】走重新提交（md §4.3「【前往修改】打开对应业务模块编辑页面或编辑抽屉，修改后在编辑态点击【提交审核】」）', async () => {
     await mount()
     rowBtn(rowById(503), '查看').click()
     await flush()
@@ -382,7 +366,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(detailBtns()).toHaveLength(0)
   })
 
-  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView（query.myApp=申请 id）；列表【重新提交】直接重提（md §四 L46 / §4.4）', async () => {
+  it('技能行【查看】→ 跳整页只读路由 SysConfigSkillView（query.myApp=申请 id）；列表【重新提交】直接重提（md §四「技能：打开技能完整只读详情页面」/ §4.4）', async () => {
     await mount()
     rowBtn(rowById(504), '查看').click()
     await flush()
@@ -394,7 +378,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(resubmitMyApplication).toHaveBeenCalledWith(504)
   })
 
-  it('申请时间列头点击 → 切正序 ↑ 并按 sortDir=asc 重查回第 1 页（md §3.1 L33）', async () => {
+  it('申请时间列头点击 → 切正序 ↑ 并按 sortDir=asc 重查回第 1 页（md §3.1「申请时间：精确到分钟，支持正序 / 倒序排序」）', async () => {
     await mount()
     listMyApplications.mockClear()
     container.querySelector('.ma-sort').click()
@@ -403,7 +387,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(container.querySelector('.ma-sort-arrow').textContent).toBe('↑')
   })
 
-  it('空态「暂无申请记录」（md §七 L97）；加载失败出「加载失败」+【重试】', async () => {
+  it('空态「暂无申请记录」（md §七「查询无结果：展示暂无申请记录」）；加载失败出「加载失败」+【重试】', async () => {
     listMyApplications.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     expect(container.querySelector('.ls-empty').textContent).toContain('暂无申请记录')
@@ -412,5 +396,38 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     await mount()
     expect(container.querySelector('.el-empty').textContent).toContain('加载失败')
     expect([...container.querySelectorAll('.el-empty .el-button')].map((b) => b.textContent.trim())).toContain('重试')
+  })
+
+  it('版本管理行（md §3.1）：申请对象为「终端 + 版本号」、下一行为更新说明，业务类型「版本管理」', async () => {
+    await mount()
+    const row = rowById(518)
+    expect(row.querySelector('.ma-name').textContent).toBe('Mac v1.2.0')
+    expect(row.textContent).toContain('新增记忆管理 修复若干问题')
+    expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toContain('版本管理')
+  })
+
+  it('版本管理行【查看】→ 打开原生详情抽屉，kind=VERSION、带版本 id；待审核底栏 关闭|撤回申请（md §四 / §4.1）', async () => {
+    await mount()
+    rowBtn(rowById(518), '查看').click()
+    await flush()
+    const detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.kind).toBe('VERSION')
+    expect(detail.dataset.ref).toBe('7')
+    expect(detailBtns().map((b) => b.textContent)).toEqual(['关闭', '撤回申请'])
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('详情里【重新提交】失败 → toast 具体原因；详情不关、不弹「提交成功」、不重拉列表（md §七「重新提交失败 → 保留当前状态并提示具体原因」）', async () => {
+    resubmitMyApplication.mockRejectedValueOnce(new Error('该对象已有待审核申请，请勿重复提交'))
+    await mount()
+    rowBtn(rowById(503), '查看').click()
+    await flush()
+    detailBtns()[2].click()
+    await flush()
+    expect(resubmitMyApplication).toHaveBeenCalledWith(503)
+    expect(ElMessage.error).toHaveBeenCalledWith('该对象已有待审核申请，请勿重复提交')
+    expect(container.querySelector('.gov-detail')).toBeTruthy()
+    expect(alertResubmitSuccess).not.toHaveBeenCalled()
+    expect(listMyApplications).toHaveBeenCalledTimes(1)
   })
 })

@@ -222,7 +222,7 @@ const persist = attachPersist('domainExpert', {
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
-  version: 5,
+  version: 6,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {

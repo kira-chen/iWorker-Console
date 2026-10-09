@@ -157,7 +157,7 @@ describe('mockPersist', () => {
 
   /**
    * 2026-09-12 审计 T57 补：URL 带 ?resetMock=1 打开 → 模块首次 import 时清空全部 mock 存储回出厂态
-   * （mockPersist.js:88-100；文件头注「重置」段）。node 环境无 window，这里临时挂一个只带 location 的 window。
+   * （mockPersist.js 模块级「?resetMock=1 清空回出厂态」段调 clearAllMockState()；文件头注「重置」段）。node 环境无 window，这里临时挂一个只带 location 的 window。
    */
   it('URL 带 ?resetMock=1 → 模块加载即清空本工具前缀的全部存量（站点其它 key 不动），并 console.info 提示', async () => {
     globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))
@@ -202,5 +202,71 @@ describe('mockPersist', () => {
     expect(globalThis.localStorage.getItem('iworker-demo-mock:a')).toBeNull()
     expect(globalThis.localStorage.getItem('iworker-demo-mock:b')).toBeNull()
     expect(globalThis.localStorage.getItem('other-key')).toBe('keep')
+  })
+
+  /**
+   * 2026-10-08 对齐 mockPersist.js 头注「出厂数据」段（/test-audit 共享层补缺口）：URL 带 ?exportMock=1 打开 →
+   * 模块首次 import 时把本机全部 mock 存量打成 JSON 下载，用于制作出厂数据 mockSeedOverrides.json。
+   * 本文件为 node 环境：临时挂只带 location 的 window、只带 createElement 的 document，并桩 URL.createObjectURL
+   * 截住被下载的 Blob 读回内容；下载文件结构须能直接粘进 mockSeedOverrides.json（{ exportedAt, entries }）。
+   */
+  async function runExport(search) {
+    const anchor = { href: '', download: '', click: vi.fn() }
+    let blob = null
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
+      blob = b
+      return 'blob:mock-export'
+    })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    globalThis.window = { location: { search } }
+    globalThis.document = { createElement: vi.fn(() => anchor) }
+    try {
+      await importFresh()
+    } finally {
+      delete globalThis.window
+      delete globalThis.document
+    }
+    return { anchor, blob, json: blob ? JSON.parse(await blob.text()) : null }
+  }
+
+  it('URL 带 ?exportMock=1 → 自动下载一份 iworker-demo-data-*.json（点了一次下载链接）', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: { rows: ['甲'] } }))
+    const { anchor, blob } = await runExport('?exportMock=1')
+    expect(anchor.click).toHaveBeenCalledTimes(1)
+    expect(anchor.download).toMatch(/^iworker-demo-data-\d{8}-\d{4}\.json$/)
+    expect(blob.type).toBe('application/json')
+  })
+
+  it('导出内容结构为 { exportedAt, entries }，entries 以去掉前缀的模块名为键、值为原快照', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: { rows: ['甲'] } }))
+    globalThis.localStorage.setItem('iworker-demo-mock:b', JSON.stringify({ v: 3, data: { n: 2 } }))
+    const { json } = await runExport('?exportMock=1')
+    expect(Object.keys(json).sort()).toEqual(['entries', 'exportedAt'])
+    expect(Number.isNaN(Date.parse(json.exportedAt))).toBe(false)
+    expect(json.entries).toEqual({ a: { v: 1, data: { rows: ['甲'] } }, b: { v: 3, data: { n: 2 } } })
+  })
+
+  it('只导出 iworker-demo-mock: 前缀的 key：主题、登录态等站点其它数据不进出厂包', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))
+    // 站点其它 key 用能被 JSON.parse 的值：若用 'dark' 这类裸串，解析失败会被「单条损坏跳过」顺手挡掉，测不出前缀过滤
+    globalThis.localStorage.setItem('ai_assistant_user', JSON.stringify({ username: 'demo', roles: ['ADMIN'] }))
+    globalThis.localStorage.setItem('ai_theme', JSON.stringify('dark'))
+    const { json } = await runExport('?exportMock=1')
+    expect(Object.keys(json.entries)).toEqual(['a'])
+  })
+
+  it('某条存量 JSON 损坏 → 跳过该条，其余照常导出', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))
+    globalThis.localStorage.setItem('iworker-demo-mock:bad', '{broken')
+    const { json } = await runExport('?exportMock=1')
+    expect(Object.keys(json.entries)).toEqual(['a'])
+  })
+
+  it('URL 不带 exportMock（或值不是 1）→ 不触发下载', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:a', JSON.stringify({ v: 1, data: {} }))
+    const { anchor, blob } = await runExport('?exportMock=0')
+    expect(anchor.click).not.toHaveBeenCalled()
+    expect(blob).toBeNull()
   })
 })

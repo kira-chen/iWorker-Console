@@ -333,7 +333,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=3 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=4 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -361,7 +361,7 @@ describe('bizSystemMock —— 持久化', () => {
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 2)
     }
-    expect(harness.options.version).toBe(3)
+    expect(harness.options.version).toBe(4)
     const snap = harness.options.snapshot()
     expect(Number.isFinite(snap.bizSeq)).toBe(true)
     expect(Number.isFinite(snap.skillSeq)).toBe(true)

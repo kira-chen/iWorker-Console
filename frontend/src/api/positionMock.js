@@ -1025,7 +1025,7 @@ const persist = attachPersist('position', {
   // 的 Agent 改引 sk_305（原 sk_303 违反 md §6.4 岗位私有类型限制）。存量快照结构/引用已过期，丢弃回种子。
   // v7（2026-09-28 待办 yuepu#42）：401/402 种子补 connectorMcpIds / connectorApiIds（与连接器侧
   // referencedByPositions 同源）；旧快照缺这两个键，不 bump 则演示环境仍显示「暂无绑定」。
-  version: 7,
+  version: 8,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApp, h, nextTick, ref } from 'vue'
+import { createApp, h, nextTick, ref, reactive } from 'vue'
 
 /**
- * BizSystemEditor.vue 单测（2026-09-12 测试审计 T58 扩写；对齐
+ * BizSystemEditor.vue 单测（2026-09-12 测试审计 T58 扩写；2026-10-08 /test-audit T8 由 BizSystemEditorSkills.test.js
+ * 改名，与 mcpEditor.test.js / ApiEditor.test.js 对齐——本文件覆盖编辑器全部功能，不只专属技能；对齐
  * docs/PRD/数字员工管理端PRD/03能力/连接器/业务系统/prd-业务系统.md）：
  *  - §三.4 业务系统专属技能：仅编辑态展示（查看态不拉列表，K45 2026-09-12）；打开时拉取列表；
  *    【＋ 新建专属技能】（全角＋ 逐字照 md L124，K41 2026-09-12）弹窗取名 → 创建 → 重拉 + 新标签开编辑器；
@@ -14,8 +15,10 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - §三.7 保存：「业务系统已创建」/「业务系统已保存」+ 关抽屉；失败 field 回显在对应字段附近；
  *  - §三.1 三态底部按钮：新建【取消】【保存】（3cc4591 起主按钮为「保存」）、查看态仅【关闭】；
  *  - watcher immediate 防回归（5303c7c）。
+ *  - 2026-10-08 对齐同一 md §三.2 L104 补缺口：示例问题【AI 生成】生成中… → 500ms 回填 3 条 → 再点覆盖；
+ *    点击后不到 500ms 切记录 / 关抽屉 → 不回填、不弹 toast（67d2fc1 / yuepu#26 防回归）。
  * 桩：api/admin、element-plus（ElMessage/ElMessageBox）、vue-router、IconPickerPopover（IconField 真组件套它）、EP 最小桩；
- * defValidate 走 importOriginal（真校验 + 真 isBlankBizPage）。
+ * defValidate 为真实现（未 mock）。
  */
 
 const admin = {
@@ -39,10 +42,6 @@ const admin = {
   deleteBizSystemOwnedSkill: vi.fn(() => Promise.resolve())
 }
 vi.mock('@/api/admin', () => admin)
-
-// defValidate 用真实现（编辑器 import 了 validateBizSystemForm / isBlankBizPage / 四个上限常量；
-// 原桩缺 isBlankBizPage，触碰保存即炸——2026-09-12 测试审计 T14 改 importOriginal 展开）
-vi.mock('@/utils/defValidate', async (importOriginal) => ({ ...(await importOriginal()) }))
 
 // 图标选择 popover（IconField 内部依赖）：桩掉，避免其内部 api/position 链路在 jsdom 里发真实请求；
 // props 补齐 readonly / headless（IconField 透传），点【选图标】回吐 pick
@@ -630,5 +629,92 @@ describe('watcher immediate 防回归（5303c7c）', () => {
     expect(inputOf(el, '登录地址').value).toBe('https://crm.example.com/login')
     expect(admin.listBizSystemSkills).toHaveBeenCalledWith('biz_1')
     expect(el.textContent).toContain('客户记录')
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('示例问题【AI 生成】（md §三.2 L104）', () => {
+  const AI_TOAST = 'AI 内容已生成，请确认后保存'
+  const aiBtn = () => container.querySelector('.ad-eq-ai')
+  const eqValues = () => eqInputs(container).map((i) => i.value)
+  /** 受控挂载：bizId / visible 挂在 reactive 上，用例可在挂载后改（模拟列表页常驻抽屉切记录、关开） */
+  async function mountLive(initial = {}) {
+    const { default: Editor } = await import('@/components/admin/BizSystemEditor.vue')
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    const p = reactive({ visible: true, bizId: null, ...initial })
+    app = createApp({
+      render: () => h(Editor, { visible: p.visible, bizId: p.bizId, 'onUpdate:visible': (v) => (p.visible = v) })
+    })
+    for (const [n, c] of Object.entries(stubs)) app.component(n, c)
+    app.mount(container)
+    await flush()
+    return p
+  }
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('填了系统名称与描述点【AI 生成】→ 按钮「生成中…」且不可点 → 500ms 后 3 条回填并提示「AI 内容已生成，请确认后保存」；手改后再点 → 覆盖当前内容', async () => {
+    vi.useFakeTimers()
+    await mountLive()
+    setInput(inputOf(container, '系统名称'), '客户管理系统')
+    setInput(inputOf(container, '系统描述'), '管理客户资料')
+    await nextTick()
+    expect(aiBtn().disabled).toBe(false)
+    aiBtn().click()
+    await nextTick()
+    expect(aiBtn().textContent.trim()).toBe('生成中…')
+    expect(aiBtn().disabled).toBe(true)
+    expect(eqValues()).toEqual(['', '', ''])
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    const first = eqValues()
+    expect(first.every((q) => q.includes('客户管理系统'))).toBe(true)
+    expect(msg.success).toHaveBeenCalledWith(AI_TOAST)
+    expect(aiBtn().textContent.trim()).toBe('AI 生成')
+    // 重复点击可重新生成，覆盖当前内容
+    setInput(eqInputs(container)[0], '手改的')
+    await nextTick()
+    aiBtn().click()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(eqValues()).toEqual(first)
+  })
+
+  it('点【AI 生成】后不到 500ms 切到另一条业务系统 → 已载入的示例问题不被覆盖、不弹成功提示（yuepu#26）', async () => {
+    vi.useFakeTimers()
+    admin.getBizSystem.mockImplementation((id) =>
+      Promise.resolve(id === 'biz_9' ? { ...DETAIL, name: 'ERP', exampleQuestions: ['B一', 'B二', 'B三'] } : { ...DETAIL })
+    )
+    const p = await mountLive({ bizId: 'biz_1' })
+    aiBtn().click()
+    await nextTick()
+    expect(aiBtn().textContent.trim()).toBe('生成中…')
+    await vi.advanceTimersByTimeAsync(200)
+    p.bizId = 'biz_9'
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(inputOf(container, '系统名称').value).toBe('ERP')
+    expect(eqValues()).toEqual(['B一', 'B二', 'B三'])
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    expect(aiBtn().textContent.trim()).toBe('AI 生成')
+  })
+
+  it('点【AI 生成】后不到 500ms 关掉抽屉 → 不弹成功提示；再打开仍是原内容', async () => {
+    vi.useFakeTimers()
+    const p = await mountLive({ bizId: 'biz_1' })
+    aiBtn().click()
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(200)
+    p.visible = false
+    await flush()
+    await vi.advanceTimersByTimeAsync(500)
+    await flush(2)
+    expect(msg.success).not.toHaveBeenCalledWith(AI_TOAST)
+    p.visible = true
+    await flush()
+    expect(eqValues()).toEqual(['问题一', '问题二', '问题三'])
   })
 })

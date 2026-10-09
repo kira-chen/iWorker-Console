@@ -15,9 +15,14 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  *  ③ 九项齐备时保存不出提示条、发布放行到发布前检查弹窗。
  *
  * 另钉 A19（Q455）：知识页签【检索测试】原地开弹窗、不 router.push。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §8.1–§8.3 / §9.1 第 5 项补：
+ *  - 【保存】载荷带连接器页签三份引用清单 connectorMcpIds / connectorApiIds / businessSystemIds（yuepu#7①④ 回归）；
+ *  - 第 5 项「示例问题」缺一条 → 阻断、toast 点名「3 条示例问题」、切人格页签，且空着的那一格标红（pd-eq-err）。
  */
 
 import { ElMessage } from 'element-plus'
+import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 
 const basicFull = () => ({
   positionId: 5, name: '销售', icon: '▤', status: 'draft', persona: '',
@@ -113,9 +118,6 @@ vi.doMock('@/components/admin/KnowledgeSearchDialog.vue', () => visProbe('kb-sea
 
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
-const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container
 async function mount() {
@@ -125,7 +127,7 @@ async function mount() {
   for (const t of ['el-skeleton', 'el-empty', 'el-form', 'el-form-item', 'el-select', 'el-option',
     'el-switch', 'el-tag', 'el-icon', 'el-dialog', 'el-tooltip', 'el-checkbox']) app.component(t, passthrough(t))
   app.component('el-button', {
-    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'],
+    name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'], emits: ['click'],
     template: '<button class="el-button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
   })
   app.component('el-input', {
@@ -196,8 +198,7 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
   })
 
   it('发布前自动保存请求失败 → 不开发布弹窗，toast 提示保存失败（发布的会是上次落库的旧内容）', async () => {
-    // 用 mockRejectedValue 而非 Once：本文件的 el-button 桩未声明 emits，点击会触发两次 openPublish
-    store.saveBasic.mockRejectedValue(new Error('网络异常'))
+    store.saveBasic.mockRejectedValueOnce(new Error('网络异常'))
     await mount()
     await clickTop('发布岗位')
     expect(container.querySelector('.publish-check-dialog')).toBeNull()
@@ -230,6 +231,26 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
     expect(container.querySelector('.publish-check-dialog')).toBeNull()
     expect(lastWarn()).toBe('请先填写：领用页文案')
     expect(activeTab()).toBe('persona')
+  })
+
+  it('第 5 项：3 条示例问题缺第 2 条 → 阻断、不开弹窗、toast 点名「3 条示例问题」、定位人格页签', async () => {
+    store.basic.exampleQuestions = ['q1', '', 'q3']
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeNull()
+    expect(lastWarn()).toContain('3 条示例问题')
+    expect(lastWarn()).toBe('请先填写：3 条示例问题')
+    expect(activeTab()).toBe('persona')
+  })
+
+  it('第 5 项阻断后 → 人格页签里空着的那格示例问题标红（pd-eq-err），已填的两格不标', async () => {
+    store.basic.exampleQuestions = ['q1', '', 'q3']
+    await mount()
+    const eqInputs = () => [...container.querySelectorAll('.pd-eq-row .el-input')]
+    expect(eqInputs()).toHaveLength(3)
+    expect(eqInputs().some((i) => i.classList.contains('pd-eq-err'))).toBe(false) // 发布前不标红
+    await clickTop('发布岗位')
+    expect(eqInputs().map((i) => i.classList.contains('pd-eq-err'))).toEqual([false, true, false])
   })
 
   it('第 7 项：采集字段为空 → 阻断、不开弹窗、toast 点名、定位「采集字段」页签（2026-09-21 负责人拍板必填至少 1 个，原不参与阻断）', async () => {
@@ -277,8 +298,7 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
     await mount()
     expect(banner()).toBeNull() // 保存前不打扰
     await clickTop('保存')
-    // 注：el-button 桩既 emit click 又让原生事件穿透，一次点击会打到处理器两次，故只断言「确实保存了」
-    expect(store.saveBasic).toHaveBeenCalled() // 保存真的执行了
+    expect(store.saveBasic).toHaveBeenCalledTimes(1) // 一次点击只保存一次（el-button 桩已声明 emits）
     expect(ElMessage.success).toHaveBeenCalledWith('岗位配置已保存')
     const b = banner()
     expect(b).toBeTruthy()
@@ -298,6 +318,21 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
     expect(activeTab()).toBe('agents')
     banner().querySelector('.pd-cb-close').click(); await flush()
     expect(banner()).toBeNull()
+  })
+
+  it('【保存】载荷带上连接器页签的三份引用清单：岗位私有 MCP / API / 业务系统（md §8.1–§8.3；yuepu#7①④ 回归，此前保存即丢）', async () => {
+    store.basic.connectorMcpIds = ['expense_mcp']
+    store.basic.connectorApiIds = ['api_1101', 'api_1102']
+    store.basic.businessSystemIds = ['biz_2101']
+    await mount()
+    await clickTop('保存')
+    expect(store.saveBasic).toHaveBeenCalledTimes(1)
+    expect(store.saveBasic).toHaveBeenCalledWith(expect.objectContaining({
+      connectorMcpIds: ['expense_mcp'],
+      connectorApiIds: ['api_1101', 'api_1102'],
+      businessSystemIds: ['biz_2101']
+    }))
+    expect(ElMessage.success).toHaveBeenCalledWith('岗位配置已保存')
   })
 
   it('九项齐备保存 → 不出提示条', async () => {
@@ -342,11 +377,15 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）
     expect(routerPushSpy).not.toHaveBeenCalled()
   })
 
-  it('【查看】跳知识库模块（md §11 L519 跳转；与 §5.2 L315「抽屉」口径相互矛盾，记待裁决，本条钉现状）', async () => {
+  it('【查看】跳知识库模块并带深链打开查看抽屉（md §5.2 / §11）：name=AdminKnowledgeBase，query 带 action=view + kbId + 岗位上下文', async () => {
     await mountOnKnowledge()
     kbOpBtn('查看').click()
     await flush()
-    expect(routerPushSpy).toHaveBeenCalled()
+    expect(routerPushSpy).toHaveBeenCalledTimes(1)
+    expect(routerPushSpy).toHaveBeenCalledWith({
+      name: 'AdminKnowledgeBase',
+      query: { tab: 'kb', action: 'view', kbId: 'kb_1', positionId: '5', positionName: '销售' }
+    })
     expect(container.querySelector('.kb-search-dialog')).toBeNull()
   })
 })

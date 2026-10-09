@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （domainExpertMock → request.js → router 链路触达 window，故用 jsdom；同 positionMock.test）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   listExperts,
   getExpert,
@@ -336,5 +336,55 @@ describe('forceRevokeExpert —— 强制回收', () => {
     const d = await getExpert(201)
     expect(d.revoked).toBeNull()
     expect(d).toMatchObject({ status: 'published', latestVersionLabel: 'v2.3.1' })
+  })
+})
+
+/* 2026-10-08 /test-audit 补缺口：持久化「写入 → 刷新 → 读回」（mock 层 localStorage 约定，见 api/mockPersist.js）。
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.7（创建专家后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
+ * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
+ * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
+describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-demo-mock:domainExpert）', () => {
+  const KEY = 'iworker-demo-mock:domainExpert'
+  const makeStorage = () => {
+    const map = new Map()
+    return {
+      get length() { return map.size },
+      key: (i) => [...map.keys()][i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+      clear: () => map.clear()
+    }
+  }
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+    vi.resetModules()
+  })
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    vi.resetModules()
+  })
+
+  it('createExpert 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
+    const first = await import('@/api/domainExpertMock')
+    const created = await first.createExpert({ name: '读回验证专家', type: 'PLATFORM', category: '通用', avatar: '☆', intro: '读回', roleDesc: '你是读回专家', exampleQuestions: ['一', '二', '三'] })
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
+    vi.resetModules()
+    const fresh = await import('@/api/domainExpertMock')
+    const { list } = await fresh.listExperts({ keyword: '读回验证专家' })
+    expect(list.map((e) => e.id)).toContain(created.id)
+    expect((await fresh.getExpert(created.id)).name).toBe('读回验证专家')
+  })
+
+  it('存量版本号 ≠ 当前版本的快照 → 丢弃回种子（201 在、伪造行不在），旧 key 被清掉', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 5, data: { expertSeq: 9999, experts: [{ id: 9998, name: '伪造专家', status: 'draft' }], publications: {}, reviewSnapshots: {} } })
+    )
+    const fresh = await import('@/api/domainExpertMock')
+    const { list } = await fresh.listExperts({})
+    expect(list.some((e) => e.id === 201)).toBe(true)
+    expect(list.some((e) => e.name === '伪造专家')).toBe(false)
+    expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 })

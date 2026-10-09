@@ -21,7 +21,7 @@ const ASSET_CSS_RAW = import.meta.glob('@/assets/*.css', { query: '?raw', import
  *  2. 表面不透明契约：--bg-app/surface/elevated/sunken 是「承载内容的表面」，必须完全不透明
  *     （半透明表面 = sticky/fixed 元素透底这类 bug 的温床；--bg-hover/active 半透明是有意设计，不在此列）；
  *  3. 关键对比度（WCAG 口径）：正文/次级文本对表面 ≥ 4.5/3，强调色对其浅填充 ≥ 3——
- *     暗色主题「看不清」类回退在 CI 即红。
+ *     暗色主题「看不清」类回退在本地 npm run test:browser 即红（CI 暂未接入 browser 用例，接入与否待裁决）。
  */
 
 /** 去掉 CSS 块注释（注释里举例的 var(--旧名) 不是引用）。 */

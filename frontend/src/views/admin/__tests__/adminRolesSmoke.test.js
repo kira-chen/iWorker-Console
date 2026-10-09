@@ -13,6 +13,9 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *  - 页头「角色与权限」+ 说明「角色与页面绑定：勾中哪些页面，持该角色的用户就能进入哪些页面」（md §一.1）；
  *  - 工具栏搜索占位「搜索角色名称」+【＋ 新建角色】；
  *  - 行含种子角色名、「N 个用户」、权限列「√ 管理端（岗位）」；分页条（站内统一 .list-pager）在。
+ *
+ * 2026-10-08 对齐 prd.角色.md §一.3 补三态（真 ListStates）：暂无数据空态文案、加载失败 +【重试】重拉、
+ * 无查询结果展示同一空态文案且保留搜索条件。
  */
 const listRoles = vi.fn()
 const getPermissionTree = vi.fn()
@@ -93,5 +96,44 @@ describe('AdminRoles · 真实 Element Plus 挂载冒烟', () => {
     // 分页条（站内统一 ListPagination → .list-pager；total>0 恒显）
     expect(container.querySelector('.list-pager')).toBeTruthy()
     expect(container.querySelector('.list-pager').textContent).toContain('共 2 条')
+  })
+})
+
+describe('AdminRoles · 列表三态（md §一.3）', () => {
+  const emptyText = () => container.querySelector('.ls-empty-text')?.textContent.trim()
+
+  it('一个角色都没有 → 空态「还没有角色，点击「新建角色」创建第一个」', async () => {
+    listRoles.mockResolvedValue([])
+    mountReal()
+    await flush()
+    expect(emptyText()).toBe('还没有角色，点击「新建角色」创建第一个')
+    expect(container.querySelector('.el-table')).toBeNull()
+  })
+
+  it('角色列表加载失败 → 展示「加载失败」和【重试】，不展示空态；点【重试】重新加载并列出角色', async () => {
+    listRoles.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(ROWS)
+    mountReal()
+    await flush()
+    expect(container.querySelector('.el-empty__description').textContent).toContain('加载失败')
+    expect(emptyText()).toBeUndefined()
+    const retry = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
+    retry.click()
+    await flush()
+    expect(listRoles).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('系统管理员')
+    expect(container.textContent).not.toContain('加载失败')
+  })
+
+  it('有角色时搜索不存在的名字并回车 → 展示同一空态文案，搜索框保留输入内容', async () => {
+    mountReal()
+    await flush()
+    const input = container.querySelector('input[placeholder="搜索角色名称"]')
+    input.value = '不存在的角色'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    expect(emptyText()).toBe('还没有角色，点击「新建角色」创建第一个')
+    expect(input.value).toBe('不存在的角色')
+    expect(container.textContent).not.toContain('审计观察员')
   })
 })

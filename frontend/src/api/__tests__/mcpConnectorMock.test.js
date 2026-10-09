@@ -586,7 +586,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v8；7 个业务写点：
+ * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v9；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 注入内存版存储 + vi.resetModules 动态 import。
  *
@@ -602,7 +602,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
  * 真 Storage 里已写入的 key），必须在每例前后**显式删掉本模块的持久化 key**。vitest 默认 shuffle，
  * 本组可能排在 A19 之前跑，所以 beforeEach 也要清一次，不能只清 afterEach。
  */
-describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
+describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
   const makeStorage = () => {
     const map = new Map()
@@ -663,12 +663,12 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=8）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=9）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(8)
+    expect(snap.v).toBe(9)
     expect(snap.data.mcps.map((x) => x.code)).toContain('mcp_reload')
     expect(snap.data.pubAgg.mcp_reload).toBe('PENDING_REVIEW')
     vi.resetModules()
@@ -691,7 +691,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
 
   it('坏形状快照（mcps 不是数组）→ restore 抛「mcpConnector 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     expect((await m.listMcp()).total).toBe(11)
     expect(warn).toHaveBeenCalled()
