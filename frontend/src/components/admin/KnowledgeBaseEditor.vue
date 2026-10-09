@@ -295,14 +295,18 @@ async function onSave() {
 
 /** 发布前完整校验（md §三.6）当前表单态的原因（用于按钮 tooltip 与拦截提示）。 */
 const publishBlock = computed(() =>
-  publishBlockReason({
+  publishBlockReason(
+    {
     name: form.name,
     icon: form.icon,
     description: form.description,
     kbType: form.kbType,
     scopeRefId: form.kbType === 'ENTERPRISE' ? 'ALL' : form.scopeRefId,
     sources: allRefIds().map(sourceById).filter(Boolean)
-  })
+    },
+    // 可见对象须仍在候选里（md §三.6，yuepu#62⑧）；候选没加载出来时不据此误拦，由提交接口兜底
+    { scopeOptionIds: scopeOptions.value.length ? scopeOptions.value.map((o) => o.id) : undefined }
+  )
 )
 
 async function confirmAction(key) {

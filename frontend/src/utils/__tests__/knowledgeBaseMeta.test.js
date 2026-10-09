@@ -99,6 +99,14 @@ describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.
     expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: null })).toBe('请选择可见范围岗位')
     expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefId: 'ex_1' })).toBeNull()
   })
+  it('⑤ yuepu#62⑧ 可见对象已不存在：候选 id 列表不含所选 id，或行上解析出的 scopeRefName 为空 → 「所选可见范围…已不存在」；仍存在则放行', () => {
+    const expertRow = { ...base, kbType: 'EXPERT', scopeRefId: 'ex_gone' }
+    expect(publishBlockReason(expertRow, { scopeOptionIds: ['ex_1'] })).toBe('所选可见范围专家已不存在，请重新选择')
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401 }, { scopeOptionIds: ['402'] })).toBe('所选可见范围岗位已不存在，请重新选择')
+    expect(publishBlockReason({ ...expertRow, scopeRefName: '' })).toBe('所选可见范围专家已不存在，请重新选择')
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401, scopeRefName: '经营分析岗' })).toBeNull()
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401 }, { scopeOptionIds: ['401'] })).toBeNull() // id 数字 / 字符串同视
+  })
   it('② 无已启用数据源（空 / 全停用）→ 「至少引用 1 个已启用数据源才能提交发布」', () => {
     expect(publishBlockReason({ ...base, sources: [] })).toBe('至少引用 1 个已启用数据源才能提交发布')
     expect(publishBlockReason({ ...base, sources: [{ ...okUpload, status: 'DISABLED' }] })).toBe('至少引用 1 个已启用数据源才能提交发布')
