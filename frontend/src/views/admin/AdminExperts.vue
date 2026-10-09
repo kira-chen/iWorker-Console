@@ -317,7 +317,7 @@ async function stopExpert(row) {
  */
 async function forceRevokeFromList(row) {
   if (busyId.value != null) return
-  const reason = await askForceRevoke({ typeLabel: '专家', name: row.name, refCount: 0 })
+  const reason = await askForceRevoke({ typeLabel: '专家', name: row.name }) // md 专家回收弹窗无「影响范围」项，不传 refCount
   if (reason == null) return
   busyId.value = row.id
   try {

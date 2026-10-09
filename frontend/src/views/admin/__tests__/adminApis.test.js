@@ -731,12 +731,12 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     expect(conn.listApis.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」、引用清单（技能名，供弹窗点击展开）', async () => {
     askForceRevoke.mockResolvedValue(null)
     await mount()
     btn(rowByName('已上线接口'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能', refNames: ['报销查询技能', '财务单据助手'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {

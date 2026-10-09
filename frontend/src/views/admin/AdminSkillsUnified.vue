@@ -243,7 +243,8 @@ async function forceRevoke(row) {
     typeLabel: '技能',
     name: row.name,
     refCount: refCountOf(row),
-    refText: refSubject(row)
+    refText: refSubject(row),
+    refNames: refNamesOf(row)
   })
   if (reason == null) return
   actionBusy.value = row.id

@@ -13,7 +13,7 @@ const prompt = vi.fn()
 const confirm = vi.fn()
 vi.mock('element-plus', () => ({ ElMessageBox: { prompt: (...a) => prompt(...a), confirm: (...a) => confirm(...a) } }))
 
-const { askForceRevoke, makeRevokedInfo, revokedTip, FORCE_REVOKE_REASON_MAX } = await import('@/utils/forceRevoke')
+const { askForceRevoke, connectorRefNames, makeRevokedInfo, revokedTip, FORCE_REVOKE_REASON_MAX } = await import('@/utils/forceRevoke')
 const { currentDemoUsername } = await import('@/utils/demoIdentity')
 
 /** 把弹窗正文（h() 渲染函数返回的 vnode 树）拍平成纯文本，便于断言用户可见文案。 */
@@ -23,10 +23,18 @@ function flatText(vnode) {
   if (Array.isArray(vnode)) return vnode.map(flatText).join('')
   return flatText(vnode.children)
 }
+/** 在 vnode 树里按 class 找节点（用来拿「展开清单」按钮的点击处理）。 */
+function findByClass(vnode, cls) {
+  if (vnode == null || typeof vnode !== 'object') return null
+  if (Array.isArray(vnode)) return vnode.map((v) => findByClass(v, cls)).find(Boolean) || null
+  if (vnode.props?.class === cls) return vnode
+  return findByClass(vnode.children, cls)
+}
 /** 取第一次 prompt 调用的 [正文文本, 标题, 选项]。 */
 function promptArgs() {
   const [msgFn, title, opts] = prompt.mock.calls[0]
-  return { text: flatText(msgFn()), title, opts }
+  const msgVnode = msgFn()
+  return { text: flatText(msgVnode), msgVnode, title, opts }
 }
 
 beforeEach(() => {
@@ -56,12 +64,45 @@ describe('askForceRevoke · 回收弹窗（第一步）', () => {
     expect(text).toContain('正常退役请使用【停用】')
   })
 
-  it('被引用时展示影响范围「已被 N 个{引用方}引用」；无引用不出这句', async () => {
+  it('影响范围「已被 N 个{引用方}引用」：有引用显 N；引用数为 0 也显示「已被 0 个…引用」（md 技能 §3.5.1 / MCP §3.6.1 / API / 业务系统）', async () => {
     await askForceRevoke({ typeLabel: '技能', name: 'A', refCount: 3, refText: '岗位 / 专家' })
     expect(promptArgs().text).toContain('已被 3 个岗位 / 专家引用')
     prompt.mockClear()
-    await askForceRevoke({ typeLabel: '技能', name: 'A', refCount: 0 })
-    expect(promptArgs().text).not.toContain('引用（引用关系保留')
+    await askForceRevoke({ typeLabel: '技能', name: 'A', refCount: 0, refText: '岗位 / 专家' })
+    expect(promptArgs().text).toContain('已被 0 个岗位 / 专家引用')
+  })
+
+  it('不传 refCount（专家：md 回收弹窗无影响范围项）→ 不出「影响范围」整句', async () => {
+    await askForceRevoke({ typeLabel: '专家', name: 'A' })
+    expect(promptArgs().text).not.toContain('影响范围')
+    expect(promptArgs().text).not.toContain('已被')
+  })
+
+  it('影响范围可点击展开引用清单：初始只有汇总句，点击后逐条列出名称，再点收起（口径同列表「引用情况」）', async () => {
+    await askForceRevoke({ typeLabel: 'API', name: 'A', refCount: 2, refText: '岗位 / 技能', refNames: ['财务专员', '报销查询技能'] })
+    const msgFn = prompt.mock.calls[0][0]
+    expect(flatText(msgFn())).toContain('已被 2 个岗位 / 技能引用')
+    expect(flatText(msgFn())).not.toContain('财务专员')
+    findByClass(msgFn(), 'force-revoke-scope-toggle').props.onClick()
+    expect(flatText(msgFn())).toContain('财务专员')
+    expect(flatText(msgFn())).toContain('报销查询技能')
+    findByClass(msgFn(), 'force-revoke-scope-toggle').props.onClick()
+    expect(flatText(msgFn())).not.toContain('财务专员')
+  })
+
+  it('有引用数但没有清单数据（refNames 为空）→ 汇总句不可点击', async () => {
+    await askForceRevoke({ typeLabel: '技能', name: 'A', refCount: 2, refText: '专家' })
+    expect(findByClass(promptArgs().msgVnode, 'force-revoke-scope-toggle')).toBeNull()
+  })
+
+  it('connectorRefNames：岗位名在前、技能名在后，空值剔除', () => {
+    expect(
+      connectorRefNames({
+        referencedByPositions: [{ positionName: '财务专员' }, { positionName: '' }],
+        referencedBySkills: [{ skillName: '报销查询' }]
+      })
+    ).toEqual(['财务专员', '报销查询'])
+    expect(connectorRefNames({})).toEqual([])
   })
 
   it('原因校验：空 / 纯空白提示「请输入回收原因」，501 字提示「最多 500 字」，500 字与正常文本通过', async () => {

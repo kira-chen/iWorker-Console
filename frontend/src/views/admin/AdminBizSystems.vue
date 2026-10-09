@@ -33,7 +33,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import { askForceRevoke, connectorRefNames } from '@/utils/forceRevoke'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -252,7 +252,8 @@ async function forceRevoke(row) {
     typeLabel: '业务系统',
     name: row.name,
     refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
+    refText: '岗位 / 技能',
+    refNames: connectorRefNames(row)
   })
   if (reason == null) return
   runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收')

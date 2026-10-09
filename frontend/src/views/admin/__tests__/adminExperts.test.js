@@ -611,12 +611,12 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不
     expect(listExperts.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「专家」、对象名、引用数 0（专家无引用方统计）', async () => {
+  it('弹窗入参：类型「专家」、对象名；不传引用数（md 专家回收弹窗无「影响范围」项）', async () => {
     askForceRevoke.mockResolvedValue(null)
     await mount()
     rowBtn(rowOf('经营分析专家'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0 })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家' }) // md §3.5.1 专家回收弹窗没有「影响范围」项，不传 refCount
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
