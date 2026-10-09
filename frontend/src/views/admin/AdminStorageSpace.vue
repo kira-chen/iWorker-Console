@@ -74,7 +74,7 @@ onMounted(refreshPending)
   font-size: 11px;
   line-height: 16px;
   text-align: center;
-  color: #fff;
+  color: var(--c-text-on-accent);
   background: var(--c-danger);
   border-radius: 8px;
 }

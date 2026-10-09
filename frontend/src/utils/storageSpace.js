@@ -31,3 +31,16 @@ export function fmtGb(value) {
   if (value == null) return '—'
   return `${Number.isInteger(value) ? value : value.toFixed(1)} GB`
 }
+
+/**
+ * 容量输入框的校验：返回提示文案，合法返回空串。页面输入弹窗与 mock 共用这一份，文案不会两边漂移。
+ * 输入框不设 precision（小数原样保留），所以「只能填整数」由这里提示；小于下限时输入框会先把值拉回下限，
+ * 「不能小于」主要给绕过页面的调用兜底。
+ */
+export function quotaInputError(value, min = QUOTA_MIN_GB) {
+  if (value == null || value === '' || Number.isNaN(Number(value))) return '请输入正整数'
+  const n = Number(value)
+  if (!Number.isInteger(n)) return '容量只能填整数'
+  if (n < min) return `容量不能小于 ${min} GB`
+  return ''
+}

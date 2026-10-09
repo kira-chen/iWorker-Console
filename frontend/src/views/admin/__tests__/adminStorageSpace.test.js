@@ -199,7 +199,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
       btn(dialogBody(), '恢复默认').click()
       await flushAll(6)
       expect(confirm).toHaveBeenCalledTimes(1)
-      expect(String(confirm.mock.calls[0][0])).toContain('调整后赵敏 的总量不高于已用，将处于已满状态，任务会被拦截，是否继续？')
+      expect(String(confirm.mock.calls[0][0])).toContain('调整后赵敏的总量不高于已用，将处于已满状态，任务会被拦截，是否继续？')
       expect(api.adjustStorageQuota).not.toHaveBeenCalled()
       btn(dialogBody(), '恢复默认').click()
       await flushAll(8)
@@ -215,6 +215,44 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
       expect(confirm).not.toHaveBeenCalled()
       expect(api.adjustStorageQuota).toHaveBeenCalledWith(208, null, { restoreDefault: true })
     })
+  })
+
+  it('加载失败展示「加载失败」，点【重试】后重新取数并展示列表', async () => {
+    api.listStorageMembers.mockRejectedValueOnce(new Error('boom'))
+    const c = await mountPage()
+    expect(textOf(c)).toContain('加载失败')
+    api.listStorageMembers.mockResolvedValue({ list: MEMBERS, total: MEMBERS.length })
+    btn(c, '重试').click()
+    await flushAll(8)
+    expect(c.querySelectorAll('.el-table__body tr.el-table__row')).toHaveLength(2)
+  })
+
+  it('调整容量提交时员工刚好有了待处理申请（40900）：提示、关闭弹窗并刷新列表，不留在弹窗里报错', async () => {
+    api.adjustStorageQuota.mockRejectedValueOnce(Object.assign(new Error('张敏 有待处理的扩容申请，请先在扩容申请页签处理'), { code: 40900 }))
+    const c = await mountPage()
+    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
+    await flushAll(6)
+    await typeNumber(8)
+    const callsBefore = api.listStorageMembers.mock.calls.length
+    btn(dialogBody(), '确定').click()
+    await flushAll(10)
+    expect(warnSpy).toHaveBeenCalledWith('张敏 有待处理的扩容申请，请先在扩容申请页签处理')
+    expect(api.listStorageMembers.mock.calls.length).toBeGreaterThan(callsBefore)
+  })
+
+  it('批量设置时有员工被跳过：成功提示用实际改动人数，并另提示跳过了几人', async () => {
+    api.batchAdjustStorageQuota.mockResolvedValue({ count: 1, changed: 1, skipped: 1 })
+    const c = await mountPage()
+    const row = c.querySelectorAll('.el-table__body tr.el-table__row')[1]
+    row.querySelector('.el-checkbox').click()
+    await flushAll(4)
+    btn(c, '批量设置容量（1）').click()
+    await flushAll(6)
+    await typeNumber(8)
+    btn(dialogBody(), '确定').click()
+    await flushAll(10)
+    expect(successSpy).toHaveBeenCalledWith('已将 1 名员工的容量设置为 8 GB')
+    expect(warnSpy).toHaveBeenCalledWith('另有 1 名员工因有待处理的扩容申请已跳过，请到扩容申请页签处理')
   })
 
   it('列表展示最终产物与缓存两列', async () => {
@@ -380,6 +418,18 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     btn(row, '查看').click()
     await flushAll(6)
     expect(textOf(dialogBody())).toContain('拒绝原因：请先清理历史产物')
+  })
+
+  it('同意时申请已不存在（申请人账号被删，40400）：提示、关闭弹窗并刷新列表', async () => {
+    api.approveExpansionRequest.mockRejectedValue(Object.assign(new Error('申请不存在'), { code: 40400 }))
+    const c = await openRequestTab()
+    btn(c.querySelector('.el-table__body tr.el-table__row'), '同意').click()
+    await flushAll(8)
+    const callsBefore = api.listExpansionRequests.mock.calls.length
+    btn(dialogBody(), '确认同意').click()
+    await flushAll(10)
+    expect(warnSpy).toHaveBeenCalledWith('申请不存在')
+    expect(api.listExpansionRequests.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 
   it('没有申请时展示「暂无扩容申请」', async () => {

@@ -22,7 +22,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX } from '@/utils/storageSpace'
+import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
@@ -156,7 +156,11 @@ const roster = () => members.filter((m) => m.active)
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
   version: 4,
-  snapshot: () => ({ members, requests }),
+  // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
+  snapshot: () => ({
+    members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
+    requests
+  }),
   restore: (data) => {
     if (!data || !Array.isArray(data.members) || !Array.isArray(data.requests)) {
       throw new Error('storageSpace 快照形状不合法')
@@ -217,13 +221,10 @@ const matchKeyword = (item, keyword) =>
 
 /* ---------------- 校验 ---------------- */
 function checkQuota(value, min = QUOTA_MIN_GB) {
-  const n = Number(value)
-  // 正整数、不小于 min（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则
-  // 文案与页面输入弹窗一致（容量只能填整数 / 容量不能小于 N GB）
-  if (value === '' || value == null || Number.isNaN(n)) throw err('请输入正整数', 40001, 'quotaGb')
-  if (!Number.isInteger(n)) throw err('容量只能填整数', 40001, 'quotaGb')
-  if (n < min) throw err(`容量不能小于 ${min} GB`, 40001, 'quotaGb')
-  return n
+  // 正整数、不小于 min（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则；文案与页面共用 quotaInputError
+  const message = quotaInputError(value, min)
+  if (message) throw err(message, 40001, 'quotaGb')
+  return Number(value)
 }
 
 function findMember(userId) {
@@ -276,6 +277,8 @@ export async function listStorageMembers(params = {}) {
 /** 应用一次容量变更；总量没变不记审计。 */
 function applyQuota(m, nextTotal, { restoreDefault = false } = {}) {
   const prevTotal = totalOf(m)
+  // 填的值恰好等于当前总量：什么都不改（否则默认员工会悄悄变成「个人设置」，容量来源与人数都变了却没有记录）
+  if (!restoreDefault && nextTotal === prevTotal) return false
   m.quotaGb = restoreDefault ? null : nextTotal
   const total = totalOf(m)
   if (total === prevTotal) return false

@@ -20,7 +20,7 @@ import {
   adjustStorageQuota,
   batchAdjustStorageQuota
 } from '@/api/storageSpace'
-import { STORAGE_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, fmtGb } from '@/utils/storageSpace'
+import { STORAGE_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 const props = defineProps({
   /** 访问审计「查看」跳转带入的员工用户名，作为初始搜索词 */
@@ -94,14 +94,8 @@ const overusedTargets = computed(() => {
 /** 调整容量 / 批量设置最小 1 GB，可任意调大调小，不受当前容量限制 */
 const minGb = QUOTA_MIN_GB
 
-function validate() {
-  const v = dialog.value
-  // 输入框不做取整（不设 precision），小数原样保留，由这里提示，而不是悄悄改成整数
-  if (v == null) return '请输入正整数'
-  if (!Number.isInteger(v)) return '容量只能填整数'
-  if (v < minGb) return `容量不能小于 ${minGb} GB`
-  return ''
-}
+// 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
+const validate = () => quotaInputError(dialog.value, minGb)
 
 /** 调整后总量不高于已用 → 员工会立刻变成已满，提交前二次确认（调整容量、批量设置、恢复默认共用一句话）。 */
 async function confirmFull(who) {
@@ -115,12 +109,23 @@ async function confirmFull(who) {
   }
 }
 
+/** 「有待处理申请」是并发冲突（列表加载后才有人提交了申请）：关弹窗并刷新列表，行上就会变成【待处理】；其余错误就地展示。 */
+function showSubmitError(e, fallback) {
+  if (e?.code === 40900) {
+    ElMessage.warning(e.message)
+    dialog.visible = false
+    refreshAll()
+    return
+  }
+  dialog.error = e?.message || fallback
+}
+
 async function submitDialog() {
   dialog.error = validate()
   if (dialog.error) return
   if (overusedTargets.value.length) {
     const who = overusedTargets.value.length === 1
-      ? `${overusedTargets.value[0].name} 的`
+      ? `${overusedTargets.value[0].name}的`
       : `其中 ${overusedTargets.value.length} 名员工的`
     if (!(await confirmFull(who))) return
   }
@@ -131,14 +136,16 @@ async function submitDialog() {
       ElMessage.success(`已将 ${dialog.target.name} 的容量调整为 ${dialog.value} GB`)
     } else {
       const ids = selected.value.map((r) => r.userId)
-      await batchAdjustStorageQuota(ids, dialog.value)
-      ElMessage.success(`已将 ${ids.length} 名员工的容量设置为 ${dialog.value} GB`)
+      const res = await batchAdjustStorageQuota(ids, dialog.value)
+      ElMessage.success(`已将 ${res.count} 名员工的容量设置为 ${dialog.value} GB`)
+      // 列表加载后才有人提交了申请：这类员工被跳过，提示一句，不要让管理员以为全改了
+      if (res.skipped > 0) ElMessage.warning(`另有 ${res.skipped} 名员工因有待处理的扩容申请已跳过，请到扩容申请页签处理`)
       tableRef.value?.clearSelection()
     }
     dialog.visible = false
     refreshAll()
   } catch (e) {
-    dialog.error = e?.message || '保存失败，请稍后重试'
+    showSubmitError(e, '保存失败，请稍后重试')
   } finally {
     dialog.submitting = false
   }
@@ -147,7 +154,7 @@ async function submitDialog() {
 async function restoreDefault() {
   const t = dialog.target
   // 恢复后的默认容量不高于已用量（如 10 GB 的员工已用 7 GB，恢复成 5 GB）→ 先二次确认
-  if (t.usedGb != null && overview.value.defaultQuotaGb <= t.usedGb && !(await confirmFull(`${t.name} 的`))) return
+  if (t.usedGb != null && overview.value.defaultQuotaGb <= t.usedGb && !(await confirmFull(`${t.name}的`))) return
   dialog.submitting = true
   try {
     await adjustStorageQuota(t.userId, null, { restoreDefault: true })
@@ -155,7 +162,7 @@ async function restoreDefault() {
     dialog.visible = false
     refreshAll()
   } catch (e) {
-    dialog.error = e?.message || '操作失败，请稍后重试'
+    showSubmitError(e, '操作失败，请稍后重试')
   } finally {
     dialog.submitting = false
   }
@@ -176,7 +183,7 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
 <template>
   <div class="sq-pane">
     <div class="sq-default">
-      <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b></span>
+      <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
       <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
     </div>
 

@@ -15,6 +15,7 @@ import {
   listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest, __resetStorageSpaceMock
 } from '../storageSpaceMock'
 import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { quotaInputError } from '../../utils/storageSpace'
 import { listUsersSync, createUser, updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
 import { setUserPosition, getAssignmentByUserId, __resetPositionAssignmentMock } from '../positionAssignmentMock'
 
@@ -97,9 +98,11 @@ describe('storageSpaceMock —— 调整容量', () => {
     expect(liveOps()[0]).toMatchObject({ action: '调整容量', target: 'zhangwei', detail: '5 GB → 8 GB', objectId: 201 })
   })
 
-  it('总量没变不写审计', async () => {
+  it('总量没变不写审计，也不改变容量来源：默认员工填 5 仍是「默认」，不会悄悄变成个人设置', async () => {
     await adjustStorageQuota(201, 5)
     expect(liveOps()).toHaveLength(0)
+    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'DEFAULT' })
+    expect((await getStorageOverview()).defaultMemberCount).toBe(9)
   })
 
   it('调整容量最小 1 GB，可任意调大调小；调到不高于已用时允许保存，员工随即处于已满状态', async () => {
@@ -325,5 +328,17 @@ describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审�
     expect(Math.max(...reqs.map((r) => r.reason.length))).toBeGreaterThan(120)
     expect(Math.max(...reqs.map((r) => r.rejectReason.length))).toBeGreaterThan(120)
     expect(new Set(reqs.map((r) => r.handler).filter(Boolean)).size).toBeGreaterThanOrEqual(2) // 不止一位处理人
+  })
+})
+
+describe('quotaInputError —— 容量输入校验文案（页面与 mock 共用）', () => {
+  it('空值 / 非数字「请输入正整数」，小数「容量只能填整数」，小于下限「容量不能小于 N GB」，合法返回空串', () => {
+    expect(quotaInputError(null)).toBe('请输入正整数')
+    expect(quotaInputError('')).toBe('请输入正整数')
+    expect(quotaInputError(2.5)).toBe('容量只能填整数')
+    expect(quotaInputError(0)).toBe('容量不能小于 1 GB')
+    expect(quotaInputError(3, 5)).toBe('容量不能小于 5 GB')
+    expect(quotaInputError(1)).toBe('')
+    expect(quotaInputError(100000)).toBe('') // 不设上限
   })
 })

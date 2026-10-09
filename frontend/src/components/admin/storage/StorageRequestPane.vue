@@ -14,7 +14,7 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { useAdminList } from '@/composables/useAdminList'
 import { listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest } from '@/api/storageSpace'
-import { REQUEST_STATE, QUOTA_MIN_GB, REJECT_REASON_MAX as REJECT_MAX, fmtGb } from '@/utils/storageSpace'
+import { REQUEST_STATE, REJECT_REASON_MAX as REJECT_MAX, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 
 const props = defineProps({
@@ -81,10 +81,9 @@ async function openApprove(row) {
 
 async function submitApprove() {
   const v = approve.value
-  // 输入框不做取整（不设 precision），小数原样保留，由这里提示，而不是悄悄改成整数
-  if (v == null) { approve.error = '请输入正整数'; return }
-  if (!Number.isInteger(v)) { approve.error = '容量只能填整数'; return }
-  if (v < QUOTA_MIN_GB) { approve.error = `容量不能小于 ${QUOTA_MIN_GB} GB`; return }
+  // 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
+  approve.error = quotaInputError(v)
+  if (approve.error) return
   if (v <= approve.current.totalGb) { approve.error = `新总量须大于当前总量 ${approve.current.totalGb} GB`; return }
   approve.submitting = true
   try {
@@ -126,9 +125,9 @@ async function submitReject() {
   }
 }
 
-/** 「已被处理」是并发冲突：关弹窗、刷新列表；其余错误就地展示在弹窗里。 */
+/** 「已被处理」「申请不存在」（如申请人账号被删）都是并发冲突：关弹窗、刷新列表；其余错误就地展示在弹窗里。 */
 function handleConflict(e, dlg, showInline) {
-  if (e?.code === 40900) {
+  if (e?.code === 40900 || e?.code === 40400) {
     ElMessage.warning(e.message)
     dlg.visible = false
     done()
@@ -161,19 +160,19 @@ function openView(row) {
     <div class="table-wrap">
       <ListStates :loading="loading" :error="loadError" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
         <el-table v-loading="loading" :data="rows" row-key="id">
-          <el-table-column label="申请人" min-width="130">
+          <el-table-column label="申请人" min-width="90">
             <template #default="{ row }">
               <div class="sq-name">{{ row.name }}</div>
               <div class="sq-sub">{{ row.username }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="岗位" width="110">
+          <el-table-column label="岗位" width="92">
             <template #default="{ row }">{{ row.position || '—' }}</template>
           </el-table-column>
-          <el-table-column label="申请时用量" width="150">
+          <el-table-column label="申请时用量" width="172" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">已用 {{ fmtGb(row.usedGb) }} / 总量 {{ fmtGb(row.totalGb) }}</template>
           </el-table-column>
-          <el-table-column label="事实标签" min-width="170">
+          <el-table-column label="事实标签" min-width="120">
             <template #default="{ row }">
               <div class="sq-tags">
                 <StatusTag v-if="row.cacheCleared" type="info">缓存已清理</StatusTag>
@@ -182,22 +181,22 @@ function openView(row) {
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="申请说明" min-width="200">
+          <el-table-column label="申请说明" min-width="120">
             <template #default="{ row }"><div class="sq-ellipsis" :title="row.reason">{{ row.reason }}</div></template>
           </el-table-column>
-          <el-table-column label="状态" width="92">
+          <el-table-column label="状态" width="84">
             <template #default="{ row }">
               <StatusTag :type="REQUEST_STATE[row.status].tag">{{ REQUEST_STATE[row.status].label }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="处理结果" min-width="160">
+          <el-table-column label="处理结果" min-width="96">
             <template #default="{ row }">
               <span v-if="row.status === 'APPROVED'">新总量 {{ fmtGb(row.newTotalGb) }}</span>
               <div v-else-if="row.status === 'REJECTED'" class="sq-ellipsis" :title="row.rejectReason">{{ row.rejectReason }}</div>
               <span v-else class="sq-muted">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="处理人" width="100">
+          <el-table-column label="处理人" width="92">
             <template #default="{ row }"><span :class="{ 'sq-muted': !row.handler }">{{ row.handler || '—' }}</span></template>
           </el-table-column>
           <!-- 处理时间：排序按钮样式对齐专家页「最近更新时间」，默认降序 -->
@@ -209,7 +208,7 @@ function openView(row) {
             </template>
             <template #default="{ row }"><span class="sq-muted">{{ row.handledAt || '—' }}</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="130" fixed="right">
+          <el-table-column label="操作" width="116" fixed="right">
             <template #default="{ row }">
               <template v-if="row.status === 'PENDING'">
                 <el-button link type="primary" @click="openApprove(row)">同意</el-button>
@@ -230,7 +229,7 @@ function openView(row) {
     <el-dialog v-model="approve.visible" title="同意扩容" width="500px" append-to-body>
       <template v-if="approve.request">
         <div class="sq-dlg-info">
-          <div><b>{{ approve.request.name }}</b>（{{ approve.request.username }}）· {{ approve.request.position }}</div>
+          <div><b>{{ approve.request.name }}</b>（{{ approve.request.username }}）<template v-if="approve.request.position">· {{ approve.request.position }}</template></div>
           <div class="sq-sub">申请时：已用 {{ fmtGb(approve.request.usedGb) }} / 总量 {{ fmtGb(approve.request.totalGb) }}</div>
           <div class="sq-sub">当前：已用 {{ fmtGb(approve.current.usedGb) }} / 总量 {{ fmtGb(approve.current.totalGb) }}</div>
         </div>
@@ -270,7 +269,7 @@ function openView(row) {
     <el-dialog v-model="view.visible" title="扩容申请" width="500px" append-to-body>
       <template v-if="view.request">
         <div class="sq-dlg-info">
-          <div><b>{{ view.request.name }}</b>（{{ view.request.username }}）· {{ view.request.position }}</div>
+          <div><b>{{ view.request.name }}</b>（{{ view.request.username }}）<template v-if="view.request.position">· {{ view.request.position }}</template></div>
           <div class="sq-sub">提交于 {{ view.request.submittedAt }}；申请时已用 {{ fmtGb(view.request.usedGb) }} / 总量 {{ fmtGb(view.request.totalGb) }}</div>
         </div>
         <div class="sq-quote">{{ view.request.reason }}</div>
