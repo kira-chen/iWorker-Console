@@ -223,6 +223,9 @@ let apis = [
     url: 'https://crm.example.com/api/follow-up/create',
     exampleQuestions: ['帮我记一条今天的客户拜访跟进', '给这家客户安排下周三的回访', '把刚才的沟通要点存成跟进记录'],
     status: 'NOT_PUBLISHED',
+    publishedAt: '2026-08-22T10:10:00+08:00',
+    // 已回收样例（待办 yuepu#83）：演示列表「已回收」标签与悬停说明、编辑页提示条、402 岗位侧失效标记与发布阻断；配套访问审计种子（accessAuditMock id 21）
+    revoked: { reason: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12', operator: 'admin' },
     displayStatus: 'UNHEALTHY',
     lastCheckedAt: '2026-08-22T10:35:00+08:00',
     lastCheckError: MOCK_FAIL_REASON,
@@ -477,8 +480,9 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// version 7（2026-10-09 待办 yuepu#83）：api_1104 预置「已回收」样例（revoked + publishedAt），旧快照仍是未回收 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (

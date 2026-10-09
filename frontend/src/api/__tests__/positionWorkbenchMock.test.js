@@ -376,7 +376,14 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     })
   })
 
+  it('种子样例（待办 yuepu#83）：402 引用了已回收的 api_1104「新增客户跟进」→ 工作台标出回收引用，发布被阻断', async () => {
+    expect((await getPosition(402)).revokedConnectors).toEqual(['新增客户跟进'])
+    await expect(publishPosition(402, { releaseNotes: 'x' })).rejects.toThrow('引用的「新增客户跟进」已被回收，请移除后再发布')
+  })
+
   it('publishPosition 显式 versionLabel（工作台 N5 链路）以之为准；列表 bump 口径不受影响', async () => {
+    // 种子里 402 引用了已回收的 api_1104（待办 yuepu#83 样例），发布前检查会阻断；本用例测的是发布状态机，先解除该引用
+    await updatePosition(402, { connectorApiIds: ['api_1103'] })
     await publishPosition(402, { versionLabel: 'v002', releaseNotes: '工作台发布' })
     const row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')

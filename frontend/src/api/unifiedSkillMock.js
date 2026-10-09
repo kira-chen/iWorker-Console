@@ -202,7 +202,10 @@ const skills = [
   seed({
     id: 'sk_306', type: 'SYSTEM_DEFAULT', name: '公文润色', icon: '◈',
     description: '', category: '内容创作',
-    status: 'published', version: 'v3.0.2',
+    // 已回收样例（待办 yuepu#83）：曾发布 v3.0.2 后被强制回收——回「未发布」（delisted，保留版本号与快照）并带 revoked，
+    // 配套访问审计种子（accessAuditMock id 20）；演示列表「已回收」标签、编辑页提示条
+    status: 'draft', delisted: true, version: 'v3.0.2',
+    revoked: { reason: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30', operator: 'admin' },
     createdAt: '2026-08-18 10:42', updatedAt: '2026-08-19 09:40', publishedAt: '2026-08-19 09:40',
     exampleQuestion: '帮我把这段通知润色得正式一些',
     toolRefs: ['api__api_1107'],
@@ -1047,8 +1050,9 @@ let reviewSnapshots = {}
 //    配套 fieldDictMock v4（分类枚举同批）。
 // ② 待办 yuepu#9⑤：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用的通用技能 sk_303
 //    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
+// version 7（2026-10-09 待办 yuepu#83）：sk_306 预置「已回收」样例（delisted + revoked），旧快照仍是已发布 → 丢弃重播种。
 const persist = attachPersist('unifiedSkill', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (

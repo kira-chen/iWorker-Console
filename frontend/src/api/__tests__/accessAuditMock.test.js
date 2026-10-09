@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { opsRecords, appendOpsRecord, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import * as skillMock from '../unifiedSkillMock'
+import { listApisSync } from '../apiConnectorMock'
 
 /**
  * accessAuditMock「管理端操作」记录：种子 + 运行期写入（2026-09-20，版本管理发布 / 停用写记录）。
@@ -167,7 +169,7 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     appendOpsRecord({ operator: 'a', module: '版本管理', action: '发布', target: 'Windows v1.3.0' })
     appendOpsRecord({ operator: 'a', module: '技能', action: '发布', target: '某技能', version: 'v1' })
     const list = listClientFacingOps()
-    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['skillReview', 'positionAssign']))
+    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['forceRevoke', 'skillReview', 'positionAssign']))
     for (const r of list) expect(r).not.toHaveProperty('operator')
     expect(list.every((r) => r.recordId != null && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.at))).toBe(true)
     expect(new Set(list.map((r) => r.recordId)).size).toBe(list.length)
@@ -178,7 +180,8 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
       appendOpsRecord({ operator: 'admin', module, action: '强制回收', target: `${module}X`, detail: '安全问题', version: 'v2', objectId: `id-${module}` })
     }
     const revokes = listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
-    expect(revokes.map((r) => r.objectType).sort()).toEqual(['API', 'MCP', '专家', '业务系统', '技能'])
+    // API 多一条：种子里已有 api_1104 的强制回收记录（待办 yuepu#83）
+    expect(revokes.map((r) => r.objectType).sort()).toEqual(['API', 'API', 'MCP', '专家', '业务系统', '技能', '技能'])
     expect(revokes.find((r) => r.objectType === 'MCP')).toEqual({
       kind: 'forceRevoke', recordId: expect.any(Number), at: expect.any(String),
       objectType: 'MCP', objectId: 'id-MCP', objectName: 'MCPX', reason: '安全问题'
@@ -208,16 +211,50 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
     expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
     const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24'])
+    // 08-28 11:10:24 的岗位分配 + 08-29 的两条强制回收种子（待办 yuepu#83）
+    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-08-29 09:30:41', '2026-08-29 10:12:08'])
     const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
     expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    expect(listClientFacingOps({ since: '2026-08-28 11:10:24' }).map((r) => r.recordId)).toEqual([fresh.id])
+    expect(listClientFacingOps({ since: '2026-08-29 10:12:08' }).map((r) => r.recordId)).toEqual([fresh.id])
   })
 
   it('旧快照记录（没有 at / objectId / meta）也不抛错：at 按分钟补 :00', () => {
     opsRecords.unshift({ id: 900, time: '2026-09-01 08:00', operator: 'a', module: '用户技能审核', action: '审核驳回', target: 'u1 / S1', detail: 'r', live: true })
     const r = listClientFacingOps().find((x) => x.recordId === 900)
     expect(r).toMatchObject({ at: '2026-09-01 08:00:00', submitter: 'u1', skillName: 'S1', reviewId: null, rejectReason: 'r' })
+  })
+})
+
+describe('强制回收种子与「已回收」样例对象一一对应（待办 yuepu#83：demo 打开即能看到已回收标签 / 访问审计记录）', () => {
+  const seedRevokes = () => opsRecords.filter((r) => r.action === '强制回收' && !r.live)
+
+  it('种子里有技能与 API 各一条强制回收记录，客户端视图（§6.5.1）带对象标识与回收原因', () => {
+    expect(seedRevokes().map((r) => r.module).sort()).toEqual(['API', '技能'])
+    const views = listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
+    expect(views.map((v) => [v.objectType, v.objectId, v.objectName]).sort()).toEqual([
+      ['API', 'api_1104', '新增客户跟进'],
+      ['技能', 'sk_306', '公文润色']
+    ])
+  })
+
+  it('技能 sk_306：未发布且带 revoked，回收原因 / 版本号与审计记录一致', async () => {
+    const rec = seedRevokes().find((r) => r.objectId === 'sk_306')
+    const detail = await skillMock.getSkillDetail('sk_306')
+    expect(detail.name).toBe(rec.target)
+    expect(detail.revoked).toMatchObject({ reason: rec.detail })
+    expect(detail.versionLabel).toBe(rec.version) // 回收时保留的线上版本号
+    const row = (await skillMock.listUnifiedSkills({ keyword: rec.target, size: 10 })).list.find((r) => r.id === 'sk_306')
+    expect(row.revoked.reason).toBe(rec.detail)
+    expect(row.publications.every((p) => p.status !== 'PUBLISHED')).toBe(true) // 已回到未发布
+  })
+
+  it('API api_1104：未发布且带 revoked，回收原因 / 名称与审计记录一致；仍被 402 岗位引用（引用关系保留）', () => {
+    const rec = seedRevokes().find((r) => r.objectId === 'api_1104')
+    const row = listApisSync().find((a) => a.id === 'api_1104')
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.name).toBe(rec.target)
+    expect(row.revoked).toMatchObject({ reason: rec.detail })
+    expect(row.referencedByPositions.map((p) => p.positionId)).toEqual([402])
   })
 })
 
