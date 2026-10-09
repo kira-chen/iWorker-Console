@@ -36,7 +36,7 @@ import { useDynPageSize } from './useDynPageSize'
  *   const query = reactive({ keyword: '', status: '' })
  *   const list = useAdminList(listUsers, { params: () => ({ ...query }) })
  *   onMounted(list.reload)
- *   // 模板：list.rows / list.loading / list.loadError / list.page / list.total
+ *   // 模板：list.rows / list.loading / list.loadError / list.loadErrorMessage（失败原因）/ list.page / list.total
  *   // 改筛选：list.search()（自动回第 1 页）；翻页：list.page = n 后 list.reload()
  *   // 改筛选但保留页码（岗位管理 md §3.1）：list.reload()——页码越界时自动钳到末页
  *
@@ -61,6 +61,8 @@ export function useAdminList(fetcher, options = {}) {
   const total = ref(0)
   const loading = ref(true)
   const loadError = ref(false)
+  // 失败原因（2026-10-09 待办 yuepu#74）：loadError 仍是布尔，原因另存此处，由 ListStates 的 error-message 展示
+  const loadErrorMessage = ref('')
   const page = ref(1)
   // 固定值（单测）或动态值（全站默认）；两者都是 ref，模板读法不变
   const pageSize = fixedPageSize ? ref(fixedPageSize) : useDynPageSize()
@@ -83,6 +85,7 @@ export function useAdminList(fetcher, options = {}) {
     const seq = ++reqSeq
     loading.value = true
     loadError.value = false
+    loadErrorMessage.value = ''
     try {
       const extra = typeof params === 'function' ? params() : {}
       // 只下发有值的筛选项：空串/undefined 不入参，避免后端把空串当有效筛选条件
@@ -125,6 +128,7 @@ export function useAdminList(fetcher, options = {}) {
     } catch (e) {
       if (seq !== reqSeq) return
       loadError.value = true
+      loadErrorMessage.value = (e && e.message) || ''
     } finally {
       // 仅最后一次请求负责关 loading，避免过期响应提前熄灯导致闪烁
       if (seq === reqSeq) loading.value = false
@@ -158,6 +162,7 @@ export function useAdminList(fetcher, options = {}) {
     total,
     loading,
     loadError,
+    loadErrorMessage,
     page,
     pageSize,
     isEmpty,

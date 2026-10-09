@@ -242,7 +242,7 @@ const versionAdapter = computed(() => {
     // 【发布】按钮已按完整必填集置灰（publishReadiness），此处保留市场技能分类门兜底（原型 version-gate）。
     submitGate: () =>
       pageSkillType.value === SKILL_TYPE.PLATFORM && !(sk.displayCategoryId ?? null)
-        ? '该技能还未选择「技能分类」，按规则不可提交发布。请到技能编辑页选择分类并保存后再来发布。'
+        ? '该技能还未选择「技能分类」，按规则不可提交发布'
         : '',
     // 疑点10：撤回确认保留现状分场景文案
     withdrawText: (state) =>

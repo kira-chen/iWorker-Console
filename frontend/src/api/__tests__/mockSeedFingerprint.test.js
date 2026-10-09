@@ -15,7 +15,7 @@ import { describe, it, expect, vi } from 'vitest'
  * 改种子的正确姿势：bump version → 跑本用例 → 按报错把新 version / fp 抄进下表。
  *
  * 【确定性】种子里有按「当前时间」生成的值，故固定 Date（只假 Date，不假定时器）；TZ 由 vitest.config.js 固定为东八区。
- * 实测同一份代码独立运行 3 次指纹完全一致。下表不追溯历史：unifiedSkill 的 v6 已知漏 bump 一次（yuepu#53），由该待办处理。
+ * 实测同一份代码独立运行 3 次指纹完全一致。下表不追溯历史：unifiedSkill 的 v6 曾漏 bump 一次，已于 v7 补上（yuepu#53）。
  */
 vi.useFakeTimers({ toFake: ['Date'] })
 vi.setSystemTime(new Date('2026-10-08T12:00:00+08:00'))
@@ -50,7 +50,7 @@ const FINGERPRINTS = {
   runtimeSpec: { version: 2, fp: '917f1f22' },
   sampleTask: { version: 6, fp: '01a9bf8e' },
   skillReview: { version: 3, fp: 'aa231c01' },
-  unifiedSkill: { version: 6, fp: '8c59fbb1' },
+  unifiedSkill: { version: 7, fp: '8c59fbb1' },
   version: { version: 5, fp: '45a0afc5' }
 }
 

@@ -17,8 +17,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * - §三 日期跨度 30 天（同访问审计 §三）、操作性质筛选、查询无结果空态保留条件；
  * - §四 请求时间排序 ↓ / ↑；§六 标签色档；
  * - §5.2 时间线在拦截 / 取消 / 待确认节点停止；§5.3 四类结果说明；§5.4 未执行调用的响应页签文案、参数【待补充】。
- * - 疑似缺陷（it.fails 钉桩）：§二「调用请求总数」点击未清搜索词；§二【统计口径】入口不在卡片下方；
- *   §三 两个下拉「全部」项文案；§5.2 无需确认的调用多出「无需用户确认」节点。
+ * - 疑似缺陷（it.fails 钉桩）：§二「调用请求总数」点击未清搜索词。
+ *   （#64③⑤⑥ 已修转正：§二【统计口径】入口在卡片下方；§三 两个下拉「全部」项文案与【导出 CSV】；§5.2 无需确认的调用不出确认节点。）
  */
 const ROWS = (await import('@/api/toolCallAuditMock')).toolCallRecords
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -147,7 +147,7 @@ describe('AdminToolCallAudit · 真实 Element Plus 挂载冒烟', () => {
     const failedCard = [...container.querySelectorAll('.metric-card')].find((c) => c.textContent.includes('执行失败'))
     failedCard.click()
     await flush()
-    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出筛选结果 CSV')
+    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出 CSV')
     expect(exportBtn).toBeTruthy()
     exportBtn.click()
     await flush()
@@ -292,7 +292,7 @@ describe('【统计口径】说明（§二）', () => {
     expect(container.querySelector('.tca-help')).toBeNull()
   })
 
-  it.fails('【统计口径】入口在统计卡片下方（疑似缺陷：按钮放在页头右上角操作区，位于卡片之上；md 工具调用审计 §二「卡片下方提供【统计口径】说明入口」）', () => {
+  it('【统计口径】入口在统计卡片下方（md 工具调用审计 §二「卡片下方提供【统计口径】说明入口」）', () => {
     const grid = container.querySelector('.metric-grid')
     // 入口按钮在 DOM 顺序上应位于卡片区之后
     expect(grid.compareDocumentPosition(helpBtn()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -327,11 +327,11 @@ describe('查询区（§三）', () => {
     expect(container.querySelectorAll('.lt-filter')[1].textContent).toContain('写')
   })
 
-  it.fails('执行结果下拉的「全部」项文案为「全部结果」（疑似缺陷：页面占位为「全部执行结果」；md 工具调用审计 §三.2「下拉，全部结果 / 成功 / …」）', () => {
+  it('执行结果下拉的「全部」项文案为「全部结果」（md 工具调用审计 §三.2「下拉，全部结果 / 成功 / …」）', () => {
     expect(container.querySelectorAll('.lt-filter')[0].textContent).toContain('全部结果')
   })
 
-  it.fails('操作性质下拉的「全部」项文案为「全部」（疑似缺陷：页面占位为「全部操作性质」；md 工具调用审计 §三.3「下拉，全部 / 读 / 写」）', () => {
+  it('操作性质下拉的「全部」项文案为「全部」（md 工具调用审计 §三.3「下拉，全部 / 读 / 写」）', () => {
     expect(container.querySelectorAll('.lt-filter')[1].querySelector('.el-select__placeholder').textContent.trim()).toBe('全部')
   })
 })
@@ -473,7 +473,7 @@ describe('详情抽屉（§5.2 / §5.3 / §5.4）', () => {
     expect(drawer().textContent).toContain('等待 8 秒')
   })
 
-  it.fails('无需确认的读操作 → 时间线不出「用户确认」节点（疑似缺陷：页面多出一个「无需用户确认」节点；md 工具调用审计 §5.2「用户确认（仅『操作性质=写』且需要确认时展示）」）', async () => {
+  it('无需确认的读操作 → 时间线不出「用户确认」节点（md 工具调用审计 §5.2「用户确认（仅『操作性质=写』且需要确认时展示）」）', async () => {
     await openDetail('方案要点生成')
     expect(timelineTitles().some((t) => t.includes('确认'))).toBe(false)
   })

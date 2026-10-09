@@ -163,6 +163,48 @@ describe('三态 + pendingAction 状态机', () => {
   })
 })
 
+describe('重新上架状态守卫（待办 yuepu#57③）：不得绕过审核直接回到已发布', () => {
+  async function mkPublished(name) {
+    const id = await mkSkill({ name })
+    await mock.updateSkill(id, { skillMd: '# 重新上架测试\n\n正文' })
+    await mock.publishSkill(id, { releaseNotes: '首发' })
+    expect(mock.applySkillReviewResult(id, 'FIRST_PUBLISH', true)).toBe(true)
+    return id
+  }
+  const statusOf = async (id) => derivePlatformState((await mock.getSkillDetail(id)).publications)
+
+  it('从未发布的草稿 / 审核中 / 已发布（未下架）一律拒绝，状态不变', async () => {
+    const draft = await mkSkill({ name: '重新上架-草稿' })
+    await expect(mock.relistSkill(draft)).rejects.toMatchObject({ code: 40909 })
+    expect(await statusOf(draft)).not.toBe('PUBLISHED')
+
+    const pending = await mkSkill({ name: '重新上架-审核中' })
+    await mock.updateSkill(pending, { skillMd: '# 正文' })
+    await mock.publishSkill(pending, { releaseNotes: '首发' })
+    await expect(mock.relistSkill(pending)).rejects.toMatchObject({ code: 40909 })
+    expect(mock._getRaw(pending).status).not.toBe('published')
+
+    const live = await mkPublished('重新上架-已发布')
+    await expect(mock.relistSkill(live)).rejects.toMatchObject({ code: 40909 })
+  })
+
+  it('被强制回收的技能须重新提交发布走审核，不能直接重新上架', async () => {
+    const id = await mkPublished('重新上架-已回收')
+    await mock.forceRevokeSkill(id, { reason: '风险' })
+    await expect(mock.relistSkill(id)).rejects.toMatchObject({ code: 40909 })
+    expect(await statusOf(id)).not.toBe('PUBLISHED')
+  })
+
+  it('停用审核通过后的已下架技能仍可重新上架（正向保留）', async () => {
+    const id = await mkPublished('重新上架-已下架')
+    await mock.delistSkill(id)
+    expect(mock.applySkillReviewResult(id, 'DELIST', true)).toBe(true)
+    expect(await statusOf(id)).not.toBe('PUBLISHED')
+    await mock.relistSkill(id)
+    expect(await statusOf(id)).toBe('PUBLISHED')
+  })
+})
+
 describe('强制回收（PRD 技能 §3.5.1，2026-09-30）', () => {
   afterEach(() => resetAccessAuditMock())
 
@@ -522,7 +564,7 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
   })
 })
 
-describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待办 yuepu#9⑤ bump；key iworker-demo-mock:unifiedSkill）', () => {
+describe('unifiedSkillMock · 持久化读回（mockPersist v7，2026-10-09 待办 yuepu#53 bump；key iworker-demo-mock:unifiedSkill）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:unifiedSkill'
@@ -546,10 +588,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待�
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

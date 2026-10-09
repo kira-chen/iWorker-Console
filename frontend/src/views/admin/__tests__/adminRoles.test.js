@@ -198,6 +198,26 @@ describe('AdminRoles · 权限树加载失败（md §一.3 L31）', () => {
   })
 })
 
+describe('AdminRoles · 抽屉重开重拉权限树（md §三.5 L135「关闭后重新打开会再次加载权限选项」；yuepu#65①）', () => {
+  it('首次加载失败 → 点【新建角色】打开抽屉会再拉一次权限树，拉到后列表的页面权限列恢复明细', async () => {
+    getPermissionTree.mockRejectedValueOnce(new Error('boom'))
+    await mount()
+    expect([...container.querySelectorAll('.el-row')].map(permText)[1]).toBe('未开通任何页面')
+    expect(getPermissionTree).toHaveBeenCalledTimes(1)
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建角色')).click()
+    await flush()
+    expect(getPermissionTree).toHaveBeenCalledTimes(2)
+    expect(permText(rowByName('普通用户'))).toContain('√用户端')
+  })
+
+  it('编辑已有角色打开抽屉同样重拉', async () => {
+    await mount()
+    await inst().setupState.openEdit(ROWS[1])
+    await flush()
+    expect(getPermissionTree).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('AdminRoles · 删除分流（md §二.3.3 L72-76 / §二.4 L87）', () => {
   it('有绑定用户 → alertDialog「无法删除角色」文案照 md，不删', async () => {
     await mount()

@@ -61,7 +61,7 @@ const list = useAdminList(listRoles, {
     )
   }
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 
 function applySearch() {
@@ -116,13 +116,16 @@ function scopeLines(modules) {
 const editorVisible = ref(false)
 const editingRole = ref(null)
 
+// 每次打开抽屉都重拉权限树：上次加载失败时，关闭重开才能重试（md 角色 §三.5「关闭后重新打开会再次加载权限选项」）
 function openCreate() {
   editingRole.value = null
   editorVisible.value = true
+  loadPermissionTree()
 }
 function openEdit(row) {
   editingRole.value = { ...row }
   editorVisible.value = true
+  loadPermissionTree()
 }
 function onSaved() {
   editorVisible.value = false
@@ -192,6 +195,7 @@ async function remove(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="showEmpty"
         empty-text="还没有角色，点击「新建角色」创建第一个"
         @retry="fetchList"

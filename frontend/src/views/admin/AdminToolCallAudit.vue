@@ -87,7 +87,7 @@ const list = useAdminList(listToolCallAudits, {
   paged: 'client',
   clientPipeline: filterRecords
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 
 function applySearch() {
   appliedKeyword.value = keyword.value.trim().toLowerCase()
@@ -219,7 +219,6 @@ const timelineSteps = computed(() => {
     })
     return steps
   } else {
-    steps.push({ time: '', title: '无需用户确认', desc: '按当前工具确认策略直接进入执行阶段。', type: 'primary' })
   }
   steps.push({
     time: d.endAt || '',
@@ -233,16 +232,7 @@ const timelineSteps = computed(() => {
 
 <template>
   <div class="list-page">
-    <PageHeader title="工具调用审计" subtitle="追溯每次工具调用的发起人、确认过程与执行结果">
-      <template #actions>
-        <el-button @click="helpOpen = !helpOpen">统计口径</el-button>
-      </template>
-    </PageHeader>
-
-    <div v-if="helpOpen" class="tca-help">
-      <p>调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。</p>
-      <p>执行耗时只统计工具实际执行时间，不含等待用户确认的时间；"待确认"反映当前尚未处理的请求，不是历史累计数量。</p>
-    </div>
+    <PageHeader title="工具调用审计" subtitle="追溯每次工具调用的发起人、确认过程与执行结果" />
 
     <div class="metric-grid">
       <button
@@ -259,6 +249,15 @@ const timelineSteps = computed(() => {
       </button>
     </div>
 
+    <!-- 【统计口径】入口在卡片下方，默认收起（md §二） -->
+    <div class="tca-help-entry">
+      <el-button link type="primary" @click="helpOpen = !helpOpen">统计口径</el-button>
+    </div>
+    <div v-if="helpOpen" class="tca-help">
+      <p>调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。</p>
+      <p>执行耗时只统计工具实际执行时间，不含等待用户确认的时间；"待确认"反映当前尚未处理的请求，不是历史累计数量。</p>
+    </div>
+
     <ListToolbar>
       <el-date-picker
         v-model="dateRange"
@@ -271,10 +270,10 @@ const timelineSteps = computed(() => {
         @change="list.search()"
         class="lt-date-range"
       />
-      <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="(label, key) in RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
-      <el-select v-model="query.nature" placeholder="全部操作性质" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.nature" placeholder="全部" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="(label, key) in NATURE_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-input
@@ -289,7 +288,7 @@ const timelineSteps = computed(() => {
       </el-input>
       <el-button @click="applySearch">查询</el-button>
       <template #right>
-        <el-button @click="exportCsv">导出筛选结果 CSV</el-button>
+        <el-button @click="exportCsv">导出 CSV</el-button>
       </template>
     </ListToolbar>
 
@@ -297,6 +296,7 @@ const timelineSteps = computed(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="暂无符合条件的调用记录"
         @retry="list.reload"
@@ -437,6 +437,9 @@ const timelineSteps = computed(() => {
 </template>
 
 <style scoped>
+.tca-help-entry {
+  margin: calc(var(--space-4) * -0.5) 0 var(--space-3);
+}
 .tca-help {
   margin: 0 0 var(--space-4);
   padding: 14px 16px;

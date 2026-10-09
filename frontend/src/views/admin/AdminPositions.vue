@@ -88,7 +88,7 @@ function toggleSort() {
 const list = useAdminList(listPositions, {
   params: () => ({ keyword: query.keyword.trim(), status: query.status || 'all', sort: query.sort })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -544,6 +544,7 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="没有符合条件的岗位"
         @retry="fetchList"

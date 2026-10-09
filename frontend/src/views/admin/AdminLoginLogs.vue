@@ -40,7 +40,7 @@ const loginDateRange = ref(defaultRange())
 const list = useAdminList(listLoginLogs, {
   params: () => ({ ...query, dateFrom: ymd(loginDateRange.value?.[0]), dateTo: ymd(loginDateRange.value?.[1]) })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -274,6 +274,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="loginDisabledDate"
+          :clearable="false"
           @calendar-change="onLoginCalendarChange"
           @change="reload"
           class="lt-date-range"
@@ -299,6 +300,7 @@ function opsGoto(row) {
         <ListStates
           :loading="loading"
           :error="loadError"
+          :error-message="loadErrorMessage"
           :empty="isEmpty"
           empty-text="暂无登录记录"
           @retry="fetchList"
@@ -366,6 +368,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="dlDisabledDate"
+          :clearable="false"
           @calendar-change="onDlCalendarChange"
           class="lt-date-range"
         />
@@ -377,16 +380,16 @@ function opsGoto(row) {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-select v-model="dlResult" placeholder="全部下载结果" clearable class="lt-filter">
+        <el-select v-model="dlResult" placeholder="全部结果" clearable class="lt-filter">
           <el-option label="成功" value="SUCCESS" />
           <el-option label="失败" value="FAILED" />
         </el-select>
-        <el-select v-model="dlSource" placeholder="全部产物来源" clearable class="lt-filter">
+        <el-select v-model="dlSource" placeholder="全部来源" clearable class="lt-filter">
           <el-option label="会话产物" value="会话产物" />
           <el-option label="知识库·本地产物" value="知识库·本地产物" />
           <el-option label="知识库·我的资料" value="知识库·我的资料" />
         </el-select>
-        <el-button>查询</el-button>
+        <el-button @click="dlList.search">查询</el-button>
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>
@@ -445,6 +448,7 @@ function opsGoto(row) {
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="opsDisabledDate"
+          :clearable="false"
           @calendar-change="onOpsCalendarChange"
           class="lt-date-range"
         />
@@ -464,7 +468,7 @@ function opsGoto(row) {
           <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回']"
             :key="a" :label="a" :value="a" />
         </el-select>
-        <el-button>查询</el-button>
+        <el-button @click="opsList.search">查询</el-button>
         <div class="lt-spacer" />
         <el-button @click="ElMessage.info('CSV 导出已开始，请稍候…')">导出 CSV</el-button>
       </ListToolbar>

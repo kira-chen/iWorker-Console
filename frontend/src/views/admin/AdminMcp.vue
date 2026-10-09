@@ -262,7 +262,7 @@ async function loadPubSummary() {
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7，负责人拍板全站统一；
 // md 已同口径改为「按窗口高度动态计算」，原 pageSize:10 覆盖已移除）
 const list = useAdminList(listMcp, { params: () => ({ ...applied }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 async function fetchList() {
   await list.reload()
@@ -535,6 +535,7 @@ async function remove(row) {
     <ListStates
       :loading="loading"
       :error="loadError"
+      :error-message="loadErrorMessage"
       :empty="isEmpty"
       :empty-text="applied.keyword || applied.type || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"

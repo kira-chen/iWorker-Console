@@ -59,6 +59,19 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(l.total.value).toBe(2)
   })
 
+  it('取数失败：保留失败原因（loadErrorMessage），重试成功后清空（待办 yuepu#74）', async () => {
+    const fetcher = vi.fn().mockRejectedValueOnce(new Error('网络异常：服务暂不可用')).mockResolvedValueOnce({ list: [{ id: 1 }], total: 1 })
+    const l = useAdminList(fetcher)
+
+    await l.reload()
+    expect(l.loadError.value).toBe(true)
+    expect(l.loadErrorMessage.value).toBe('网络异常：服务暂不可用')
+
+    await l.reload()
+    expect(l.loadError.value).toBe(false)
+    expect(l.loadErrorMessage.value).toBe('')
+  })
+
   it('取数失败：置 loadError 且关 loading（不把异常抛给调用方）', async () => {
     const fetcher = vi.fn(() => Promise.reject(new Error('boom')))
     const l = useAdminList(fetcher)
@@ -111,6 +124,10 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(computeDynPageSize(5000)).toBe(DYN_PAGE_MAX) // 太高 → 上限 30
     expect(computeDynPageSize(undefined)).toBe(9) // 无 window → 900 兜底
     expect(useAdminList(vi.fn()).pageSize.value).toBe(DYN_DEFAULT)
+  })
+
+  it('极矮窗口（可用高度 330–391px，算出 0 条）每页条数夹到下限 5，不落到 10（md 岗位 §列表「最少 5 条」；yuepu#65②）', () => {
+    for (const h of [330, 360, 391, 392, 453]) expect(computeDynPageSize(h)).toBe(DYN_PAGE_MIN)
   })
 
   it("paged:'client'：不下发 page/size，取回全量后本地切片，total 取全量长度", async () => {

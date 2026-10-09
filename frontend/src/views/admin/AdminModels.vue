@@ -209,7 +209,7 @@ const list = useAdminList(listModels, {
     sort: sortOrder.value
   })
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 // 筛选 / 查询 / 排序变化：回第 1 页重取（分页后不能停在越界页）
 const searchList = list.search
@@ -495,6 +495,7 @@ async function remove(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="emptyText"
         @retry="fetchList"

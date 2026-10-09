@@ -112,6 +112,12 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
     expect(document.body.querySelector('.el-message')?.textContent).toContain('请先修正标红项')
   })
 
+  it('模型名称占位逐字为 md 模型 §三.2「如 DeepSeek V3」（yuepu#63③）', async () => {
+    mounted = mountReal(Dialog, { visible: true, model: null })
+    await flushAll(10)
+    expect(drawer().querySelector('input[placeholder="如 DeepSeek V3"]')).toBeTruthy()
+  })
+
   it('A12 · base_url：输 ftp://x 失焦 → 红字「服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #」；改成 https://api.deepseek.com/v1 → 红字消失（md §三.2 / §三.8）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
@@ -239,11 +245,10 @@ describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 �
     expect(nameItem().querySelector('input').value).toBe('重名模型')
   })
 
-  it.fails('yuepu#63⑦ updateModel 回 {field:name} → 名称项就地红字「…已存在」或焦点定位到名称输入框（疑似缺陷：只 toast 不定位，md 模型 §三.8）', async () => {
+  it('yuepu#63⑦ updateModel 回 {field:name} → 名称项就地红字「…已存在」（md 模型 §三.8「定位到模型名称位置」）', async () => {
     await saveWithDupName()
-    const input = nameItem().querySelector('input')
     const red = nameItem().querySelector('.el-form-item__error')?.textContent ?? ''
-    expect(red.includes('已存在') || document.activeElement === input).toBe(true)
+    expect(red).toContain('已存在')
   })
 })
 

@@ -65,7 +65,7 @@ const list = useAdminList(listPositionAssignments, {
     ...(focusUserId.value != null ? { focusUserId: focusUserId.value } : {})
   })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 // 【查询】按钮：清置顶、回第 1 页重查
 function reload() {
@@ -268,6 +268,7 @@ onMounted(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="query.hasPendingRequest ? '暂无待分配申请' : '没有匹配的用户'"
         @retry="list.reload"

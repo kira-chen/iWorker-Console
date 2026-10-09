@@ -781,10 +781,17 @@ export async function forceRevokeSkill(id, { reason } = {}) {
   return { skillId: s.id, publications: publicationsOf(s), revoked: { ...s.revoked } }
 }
 
-/** 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。 */
+/**
+ * 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。
+ * 状态守卫（待办 yuepu#57③）：仅「已下架（delisted）、无在途审核、非强制回收」可重新上架；
+ * 从未发布的草稿 / 审核中 / 已回收（须重新提交发布走审核，md 技能 §3.5.1）一律拒绝，避免绕过审核直接回到已发布。
+ */
 export async function relistSkill(id) {
   await delay()
   const s = find(id)
+  if (!s.delisted || s.pendingAction || s.revoked) {
+    throw new ApiError({ code: 40909, message: '技能状态已变化，请刷新后重试' })
+  }
   s.delisted = false
   if (s.version) s.status = 'published'
   s.updatedAt = nowText()
@@ -1042,8 +1049,10 @@ let reviewSnapshots = {}
 //    配套 fieldDictMock v4（分类枚举同批）。
 // ② 待办 yuepu#9⑤：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用的通用技能 sk_303
 //    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
+// version 7（2026-10-09，待办 yuepu#53）：补 435aa3c 漏 bump——9 条种子技能 toolRefs 由虚构代码改为真实连接器代码、
+//    SKILL.md 加「## 引用工具」；旧 v6 快照保留旧 toolRefs（工具坞显示裸代码 + 「未检测」）。
 const persist = attachPersist('unifiedSkill', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (
