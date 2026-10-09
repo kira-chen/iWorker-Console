@@ -54,6 +54,14 @@ AI-Assistant —— 面向企业专业岗位的「AI 同事」应用的**管理�
 - 视觉与交互延续既有设计语言（Notion 风格令牌与双主题）：以 `frontend/src/assets/` 下的样式令牌与现有页面范式为准（原设计规范文档在历史归档 zip 内，需要时查阅）
 - Mock 数据放在前端 api 层旁路文件中（`xxxMock.js`），不散落进组件
 
+## 测试约定（2026-10-09 负责人定：写进规范，由各人的编码工具读到后自行照做）
+
+- **已知缺陷钉桩（`it.fails`）**：代码与 md 不一致、但不归本次任务修的缺陷，按「修好后应有的行为」写成 `it.fails('yuepu#NN …')` / `it.fails('clcao#NN …')`，用例名前缀对应 `docs/产品经理待办任务/<人>.md` 的待办序号；集中在 `frontend/src/api/__tests__/knownDefects.test.js`（数据层）与各页面用例旁（页面层）。**前提断言必须拆成同 describe 的普通 `it`**，`it.fails` 里只留缺陷断言（`it.fails` 遇任何异常都算通过，前提写在里面会「为错误的原因通过」）。
+- **修复缺陷时**：修好后对应的 `it.fails` 会**报红**——这是预期，说明缺陷已修好。处理方式：把该条 `it.fails` 改回 `it` 转成正式回归用例（若有「前提」普通用例可保留或并入），全量跑绿后在同一 commit 说明里写「关闭待办 <人>#<序号>」。不要删掉这条用例，也不要把断言改成迁就代码。
+- **mock 种子指纹守卫**（`frontend/src/api/__tests__/mockSeedFingerprint.test.js`）：改了任何 `xxxMock.js` 的种子数据或持久化快照结构却没 bump `attachPersist` 的 `version`，该用例会报红并提示「请 bump version」。处理方式：把该模块 `version` +1（并在 attachPersist 上方写一行「vN（日期）：为何 bump」），再跑一次该用例，按报错把新的 `version` 与 `fp` 抄进文件里的登记表。只改登记表不 bump version 是错误做法。
+- **新增 / 修改用例**：断言以 PRD md 为准，落在用户可见结果（文案、状态、路由、持久化数据），不只断言 mock 被调用；一条用例守一条规则；每条独立可跑（vitest 默认乱序）；新写的用例至少做一次「能红」验证（临时改坏被测行为确认会红，再还原）。卫生守卫（`src/__tests__/staticHygiene.test.js`、`moduleGraph.test.js`）禁止测试文件残留 `.skip/.only/.todo`、非 browser 用例做布局尺寸断言、页面直接读 `route.query.keyword`（须经 `queryString()`）、`vi.mock` 指向不存在的模块。
+- **覆盖率**：`cd frontend && npm run test:coverage`，报告在 `frontend/coverage/`（不入库）。
+
 ## 安全红线
 
 - 任何真实密钥 / 令牌绝不写入代码 / 文档 / 日志（demo 无后端，正常情况下不应出现密钥需求）

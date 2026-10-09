@@ -20,6 +20,8 @@ import { getPositionNameById, isPositionBindable } from './positionMock'
 import { getPendingApplicationByUserId } from './positionApplicationsMock'
 import { listUsersSync } from './adminUserMock'
 import { attachPersist } from './mockPersist'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -101,8 +103,32 @@ export async function setUserPosition(userId, positionId) {
     // status==='published' 过滤候选，mock 数据层不拦，绕过 UI 直调可把用户绑到未发布岗位
     // （2026-09-23 待办 yuepu#9③）
     if (!isPositionBindable(positionId)) throw err('岗位未发布，暂不可绑定')
-    bindings[String(userId)] = Number(positionId)
+    const user = listUsersSync().find((u) => String(u.id) === String(userId))
+    const fromId = bindings[String(userId)] ?? null
+    const toId = Number(positionId)
+    bindings[String(userId)] = toId
+    // 访问审计（prd.访问审计.md §6.2「岗位分配记录」）：单个分配 / 批量绑定 / 处理待分配申请都走本函数，
+    // 天然「按用户逐条」写；原未绑定 → 分配，原有岗位换成另一个 → 变更，保存前后没变化不写。
+    if (fromId !== toId) {
+      const fromName = fromId != null ? getPositionNameById(fromId) : ''
+      const toName = getPositionNameById(toId)
+      appendOpsRecord({
+        operator: currentDemoUsername(),
+        module: '岗位分配',
+        action: fromId == null ? '分配' : '变更',
+        target: user.username,
+        detail: `${fromId == null ? '未绑定' : fromName} → ${toName}`,
+        objectId: user.id,
+        meta: {
+          userId: user.id,
+          username: user.username,
+          fromPosition: fromId == null ? null : { id: fromId, name: fromName },
+          toPosition: { id: toId, name: toName }
+        }
+      })
+    }
   } else {
+    // 清除绑定（改回「未绑定」）不属于客户端通知范围，本期不写审计（§6.2）
     delete bindings[String(userId)]
   }
   persist()

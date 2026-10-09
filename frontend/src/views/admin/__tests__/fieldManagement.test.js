@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { passthrough, elEmpty } from './helpers/commonStubs'
 
 /**
  * FieldManagement.vue（字段字典）单测（2026-09-12 测试审计 T56 新建，此前 393 行零测试）。
  *
  * 对齐 md `prd.字段字典.md`：
- * - §一 L8 页面说明；L9 无搜索筛选，进入直接展示全部分组；
+ * - §一「页面说明」；§一「页面不提供搜索和筛选，进入后直接展示全部分组」；
  * - §二 分组头（箭头 / 名称 / 说明 / 字段数量）+ 字段卡片（名称 / 选项数量 / 预览 / 无选项「暂无选项」/【编辑】）；
  * - §2.1 默认展开，点箭头只收起该分组、其他分组不受影响；§2.2 两字段（平台技能›技能分类、专家›专家分类）；
  * - §三 编辑弹窗「编辑字段名」：顶部字段说明、每行 序号+输入框+删除、【＋ 添加选项】新增并聚焦、
  *   选项 ≤30 字、【完成】统一保存 → 「字段选项已保存」、【取消】放弃未保存修改；
  * - §五 空值「选项值不能为空」/ 重复「选项值不能重复」阻止保存、保存失败弹窗保持打开并展示原因。
- * - §三 L48 点删除仅从当前编辑草稿中移除、不弹确认（2026-09-12 审计 J19/K32 闭环：原 ElMessageBox 删除确认已撤）。
+ * - §三「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除；点击【完成】后统一保存」（ad4abbe）：确认后仅从当前编辑草稿中移除，【完成】时才统一保存。
+ * - 2026-10-08 对齐 §2.2 末段：分组说明「平台技能相关的可配置字段」「专家相关的可配置字段」，
+ *   专家分类卡说明「专家列表与编辑页使用的业务分类」（字段卡说明在【编辑】弹窗顶部展示，同技能分类）。
  * ListStates / PageHeader 真挂载；EP 控件桩（el-dialog / el-input / el-button / el-icon）。
  */
 
@@ -53,8 +56,6 @@ const elButton = {
   emits: ['click'],
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 
 let app, container
 async function mount() {
@@ -107,7 +108,7 @@ afterEach(() => {
 })
 
 describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
-  it('页面说明取 md §一 L8；无搜索筛选，进入直接展示两分组（平台技能 / 专家）与各自 1 个字段（md §一 L9 / §2.2）', async () => {
+  it('页面说明取 md §一「页面说明」；无搜索筛选，进入直接展示两分组（平台技能 / 专家）与各自 1 个字段（md §一「页面不提供搜索和筛选，进入后直接展示全部分组」/ §2.2）', async () => {
     await mount()
     expect(container.textContent).toContain('集中维护平台各类可配置字段字典。「编辑」进入后可增删改该字段下的选项值。')
     expect(container.querySelector('.list-toolbar')).toBeNull()
@@ -128,7 +129,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(expertCard.querySelector('.fm-preview').textContent.trim()).toBe(EXPERT.join('、'))
   })
 
-  it('字段无选项 → 卡片显示「暂无选项」与「0 个选项」（md §二 L19 / §五 L68）', async () => {
+  it('字段无选项 → 卡片显示「暂无选项」与「0 个选项」（md §二「无选项时显示暂无选项」/ §五「字段无选项：列表显示暂无选项」）', async () => {
     listFieldDict.mockResolvedValueOnce({ skillCategory: mk(SKILL), expertCategory: [] })
     await mount()
     const expertCard = cards(groupNamed('专家'))[0]
@@ -172,7 +173,21 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect([...dialog().querySelectorAll('.dlg-footer .el-button')].map((b) => b.textContent.trim())).toEqual(['取消', '完成'])
   })
 
-  it('【＋ 添加选项】→ 末尾新增一空行并聚焦该输入框（md §三 L47）', async () => {
+  it('分组头说明：平台技能「平台技能相关的可配置字段」、专家「专家相关的可配置字段」（md §2.2）', async () => {
+    await mount()
+    expect(groupNamed('平台技能').querySelector('.aps-group-desc').textContent).toBe('平台技能相关的可配置字段')
+    expect(groupNamed('专家').querySelector('.aps-group-desc').textContent).toBe('专家相关的可配置字段')
+  })
+
+  it('专家分类的说明为「专家列表与编辑页使用的业务分类」（【编辑】弹窗顶部展示，md §2.2）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    expect(dialog().dataset.title).toBe('编辑专家分类')
+    expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('专家列表与编辑页使用的业务分类')
+  })
+
+  it('【＋ 添加选项】→ 末尾新增一空行并聚焦该输入框（md §三「点击列表末尾的【＋ 添加选项】新增一行并聚焦输入框」）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -185,7 +200,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect([...dialog().querySelectorAll('.fm-opt-idx')].at(-1).textContent).toBe('9')
   })
 
-  it('点某行删除钮 → 弹确认「确认删除"法律"？…」，确认后草稿行 −1、序号重排、不调保存（md §三 L48，2026-09-12 ad4abbe 改为需确认）', async () => {
+  it('点某行删除钮 → 弹确认「确认删除"法律"？…」，确认后草稿行 −1、序号重排、不调保存（md §三「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除」，2026-09-12 ad4abbe 改为需确认）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -204,7 +219,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(dialog()).toBeTruthy()
   })
 
-  it('删除确认点【取消】→ 草稿不变（md §三 L48）', async () => {
+  it('删除确认点【取消】→ 草稿不变（md §三「点击删除按钮弹出确认弹窗」）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -215,7 +230,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(draftInputs().map((i) => i.value)).toEqual(EXPERT)
   })
 
-  it('选项为空 → 【完成】被拦：弹窗内提示「选项值不能为空」、不调保存、弹窗不关（md §五 L66）；改输入后提示消失', async () => {
+  it('选项为空 → 【完成】被拦：弹窗内提示「选项值不能为空」、不调保存、弹窗不关（md §五「选项为空：阻止保存并提示选项值不能为空」）；改输入后提示消失', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -232,7 +247,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(dialog().querySelector('.fm-dlg-error').textContent).toBe('')
   })
 
-  it('选项重复（同字段内） → 【完成】被拦：提示「选项值不能重复」、不调保存（md §三 L49 / §五 L67）', async () => {
+  it('选项重复（同字段内） → 【完成】被拦：提示「选项值不能重复」、不调保存（md §三「选项值不能为空，最多 30 个字符，同一字段内不能重复」/ §五「选项重复：阻止保存并提示选项值不能重复」）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -244,7 +259,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(dialog()).toBeTruthy()
   })
 
-  it('【完成】合法 → saveFieldOptions(字段 key, trim 后的草稿名) → toast「字段选项已保存」→ 弹窗关、卡片预览 / 数量取保存返回值（md §三 L50 / §四 L56）', async () => {
+  it('【完成】合法 → saveFieldOptions(字段 key, trim 后的草稿名) → toast「字段选项已保存」→ 弹窗关、卡片预览 / 数量取保存返回值（md §三「点击【完成】保存成功后提示字段选项已保存」/ §四「保存后相关模块读取最新选项」）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
@@ -263,7 +278,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(cards(groupNamed('平台技能'))[0].querySelector('.fm-preview').textContent.trim()).toBe(SKILL.join('、'))
   })
 
-  it('保存失败 → 弹窗保持打开并展示失败原因，不 toast 成功、卡片不变（md §五 L69）', async () => {
+  it('保存失败 → 弹窗保持打开并展示失败原因，不 toast 成功、卡片不变（md §五「保存失败：弹窗保持打开并展示失败原因」）', async () => {
     saveFieldOptions.mockRejectedValueOnce(new Error('服务暂不可用'))
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
@@ -277,7 +292,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(cards(groupNamed('专家'))[0].querySelector('.fm-preview').textContent.trim()).toBe(EXPERT.join('、'))
   })
 
-  it('【取消】→ 放弃本次未保存修改：弹窗关、不调保存；重开草稿回到已保存态（md §三 L51）', async () => {
+  it('【取消】→ 放弃本次未保存修改：弹窗关、不调保存；重开草稿回到已保存态（md §三「点击【取消】或关闭弹窗，放弃本次未保存修改」）', async () => {
     await mount()
     const edit = () => cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button')
     edit().click()

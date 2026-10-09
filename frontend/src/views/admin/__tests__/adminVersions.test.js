@@ -24,7 +24,8 @@ const api = {
   stopVersion: vi.fn(),
   createVersion: vi.fn(),
   updateVersion: vi.fn(),
-  uploadVersionPackage: vi.fn()
+  uploadVersionPackage: vi.fn(),
+  getNextVersion: vi.fn() // VersionEditor.vue 打开新建抽屉时取建议版本号
 }
 vi.mock('@/api/version', () => api)
 const confirmDialog = vi.fn()

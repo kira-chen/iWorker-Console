@@ -7,10 +7,10 @@ import { createApp, h, provide, inject } from 'vue'
  * LeaveGuard,Q2Diff,SourceMatrix} 6 文件 22 条合并为本文件；用例内容不减，旧编号在 describe/用例名内括注）。
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md：
- *  - §三.1 L139-141 进入方式（【查看】= 编辑路由 ?view=1 只读态；【编辑】= 编辑态）/ 返回回到技能列表；
- *  - §三.3 L176-177 【保存】成功提示「技能配置已保存」；只读态不展示分类修改 / 默认安装 / 发布 / 保存；
- *  - §三.6 SKILL.md 文件树操作（Q2 工具引用 diff）；
- *  - 一览表 §三 L58/L61/L62 保存门（名称 ≤64 / 分类必选 / 描述 ≤2000 / 示例问题 ≤300）。
+ *  - §三.1 进入方式「通过列表点击【查看】进入只读态、点击【编辑】进入编辑态」（【查看】= 编辑路由 ?view=1）/ 返回方式「点击顶部【← 返回】回到技能列表并刷新」；
+ *  - §三.3【保存】「成功提示『技能配置已保存』」；「只读态展示『只读查看』标记，不展示技能分类修改、默认安装、【发布】和【保存】」；
+ *  - §三.5 文件目录（左栏）「文件操作」（Q2 工具引用 diff）；
+ *  - 一览表 §三 #1 / #2 / #4 / #5 保存门（技能名称「最多 64 字符」/ 技能分类必选 / 描述「最多 2000 字符」/ 示例问题「1 条，最多 300 字符」）。
  *
  * 公共桩：vue-router 用 hoisted routeState（meta/params/query 按 describe 切换）+ leaveGuard 捕获；
  * stores/position 的 fetchSkillDetail/patchSkill 为可切实现的 spy；SkillFocusEditor 桩取各文件 props/emits 并集，
@@ -26,7 +26,11 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routerPushSpy }),
   onBeforeRouteLeave: (cb) => {
     leaveGuardRef.cb = cb
-  }
+  },
+  // 2026-10-08：「发布就绪门接线」组用 vi.importActual 取真 skillPublishReadiness，真 unifiedSkill.js 链到
+  // request.js → src/router/index.js，需这两个工厂能跑通（同 expertEditor.test.js 写法）
+  createRouter: () => ({ beforeEach: vi.fn(), afterEach: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  createWebHistory: () => ({})
 }))
 
 /* ---------------- 数据源：position store / platformSkill / admin(bizSystem) ---------------- */
@@ -72,12 +76,20 @@ vi.mock('@/api/platformSkill', () => ({
   deletePlatformSkill: (...a) => deletePlatformSkill(...a)
 }))
 const bizGet = vi.fn()
+const bizUpdate = vi.fn()
 vi.mock('@/api/admin', () => ({
   getBizSystemOwnedSkillDetail: (...a) => bizGet(...a),
-  updateBizSystemOwnedSkill: vi.fn()
+  updateBizSystemOwnedSkill: (...a) => bizUpdate(...a)
 }))
 const deleteSkill = vi.fn()
-vi.mock('@/api/position', () => ({ deleteSkill: (...a) => deleteSkill(...a) }))
+// listSkills 等四个仅为「发布就绪门接线」组 importActual 真 unifiedSkill.js 时的具名导入占位（页面本身不调）
+vi.mock('@/api/position', () => ({
+  deleteSkill: (...a) => deleteSkill(...a),
+  listSkills: vi.fn(),
+  createStandaloneSkill: vi.fn(),
+  setSkillStatus: vi.fn(),
+  updateSkill: vi.fn()
+}))
 vi.mock('@/api/skillCategory', () => ({
   listSkillCategories: vi.fn(() => Promise.resolve([])),
   setSkillCategory: vi.fn(() => Promise.resolve())
@@ -85,10 +97,12 @@ vi.mock('@/api/skillCategory', () => ({
 // AdminSkillEditPage 引 @/api/fieldDict（技能分类同源字典）与 @/api/unifiedSkill（apiFor 分流 / 发布态派生）
 // → 必须存根，否则会拉真实 @/api/request → @/router 触发 createRouter（本文件 vue-router 为部分 mock）。
 vi.mock('@/api/fieldDict', () => ({ listFieldDict: vi.fn(() => Promise.resolve({ skillCategory: [] })) }))
+// skillPublishReadiness 默认桩成恒 ready；「发布就绪门接线」组把 readinessImpl.fn 换成真实现（2026-10-08）
+const readinessImpl = vi.hoisted(() => ({ fn: null }))
 vi.mock('@/api/unifiedSkill', () => ({
   apiFor: () => ({}),
   SKILL_TYPE: { POSITION: 'POSITION', PLATFORM: 'PLATFORM', SYSTEM_DEFAULT: 'SYSTEM_DEFAULT' },
-  skillPublishReadiness: () => ({ ready: true, missing: [] }),
+  skillPublishReadiness: (...a) => (readinessImpl.fn ? readinessImpl.fn(...a) : { ready: true, missing: [] }),
   deriveSkillDisplayView: () => ({})
 }))
 
@@ -130,7 +144,7 @@ vi.mock('@/components/position/SkillFocusEditor.vue', () => ({
     name: 'SkillFocusEditor',
     props: [
       'skill', 'backLabel', 'autosaveText', 'configDirty', 'configSaving',
-      'skillSource', 'publications', 'hideMarketFields', 'activeFilePath', 'saveStatus', 'readonly'
+      'skillSource', 'publications', 'hideMarketFields', 'activeFilePath', 'saveStatus', 'readonly', 'publishReadiness'
     ],
     emits: ['update:skill', 'delete-skill', 'back', 'save-config', 'update:activeFileContent', 'select-file', 'tree-changed', 'file-deleted'],
     setup(props, { emit }) {
@@ -206,6 +220,8 @@ beforeEach(() => {
   platformUpdate.mockResolvedValue({ referencedTools: [], category: 'QUERY' })
   systemGet.mockResolvedValue({ skillId: 'sk_1', name: 'S', description: '', triggers: [], skillMd: '# md', referencedTools: [], category: null, publications: [] })
   bizGet.mockResolvedValue({ skillId: 'sk_1', name: 'S', description: '', triggers: [], skillMd: '# md', referencedTools: [], category: null, publications: [] })
+  bizUpdate.mockResolvedValue({ referencedTools: [], category: null })
+  readinessImpl.fn = null
   listSkillFiles.mockImplementation((id) => Promise.resolve({ skillId: id, entryPath: 'SKILL.md', files: [] }))
   getSkillFile.mockResolvedValue({ content: '' })
   saveSkillFileSpy.mockImplementation(() => Promise.resolve({ tree: { files: [] }, treeChanged: false, refsChanged: false }))
@@ -268,7 +284,7 @@ describe('数据源分流（原 SourceMatrix · 接线守卫：路由 meta → �
 })
 
 /* ====================================================================================== */
-describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新；原 BackPlatform / BackPosition / Description #3）', () => {
+describe('返回（md §三.1「点击顶部【← 返回】回到技能列表并刷新」；原 BackPlatform / BackPosition / Description #3）', () => {
   beforeEach(() => vi.useFakeTimers())
 
   it('FDE 视图 back → 路由回技能列表 AdminSkillsUnified、不 window.close（原 Description #3）', async () => {
@@ -284,7 +300,7 @@ describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新�
     expect(closeSpy).not.toHaveBeenCalled()
   })
 
-  it('平台视图（meta.skillSource=platform）back → 同样回 AdminSkillsUnified（三类技能同一列表，md §一 L17），不 window.close（原 BackPlatform）', async () => {
+  it('平台视图（meta.skillSource=platform）back → 同样回 AdminSkillsUnified（md §一.1「三类技能在同一列表中统一展示」），不 window.close（原 BackPlatform）', async () => {
     routeState.meta = { skillSource: 'platform' }
     routeState.params = { id: '9' }
     const closeSpy = vi.fn()
@@ -317,10 +333,10 @@ describe('返回（md §三.1 L139 【← 返回】回到技能列表并刷新�
 })
 
 /* ====================================================================================== */
-describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存门；原 Description 配置保存 / 单行融合）', () => {
+describe('保存（md §三.3【保存】配置手动保存 + 一览表 §三 保存门；原 Description 配置保存 / 单行融合）', () => {
   beforeEach(() => vi.useFakeTimers())
 
-  it('改描述不 debounce 自动保存（只标脏）；点【保存】→ 配置 PUT 含 description、不带 triggers/skillMd，成功提示「技能配置已保存」（md L176）', async () => {
+  it('改描述不 debounce 自动保存（只标脏）；点【保存】→ 配置 PUT 含 description、不带 triggers/skillMd，成功提示「技能配置已保存」（md §三.3【保存】「成功提示『技能配置已保存』」）', async () => {
     mount()
     await vi.runOnlyPendingTimersAsync()
     expect(fetchSkillDetailSpy).toHaveBeenCalledWith('7')
@@ -383,7 +399,7 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
     expect(patchSkillSpy).toHaveBeenCalledTimes(2)
   })
 
-  describe('保存门（一览表 §三 L58 名称 ≤64 / L61 描述 ≤2000 / L62 示例问题 ≤300 / 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
+  describe('保存门（一览表 §三 #1 名称 ≤64 / #4 描述 ≤2000 / #5 示例问题 ≤300 / #2 分类必选）：拦下不发 PUT、warning 提示补齐', () => {
     it('技能名称超过 64 字符 → warning「请填写最多 64 个字符的技能名称」（2026-09-18 待办 yuepu#5⑦文案统一，原「不超过」），不发配置 PUT', async () => {
       mount()
       await vi.runOnlyPendingTimersAsync()
@@ -449,7 +465,7 @@ describe('保存（md §三.3 L176 配置手动保存 + 一览表 §三 保存�
       expect(el.querySelector('.tb-more')).toBeNull()
     })
 
-    it('返回文案一律「← 返回」透传进 SkillFocusEditor（md L139 顶部【← 返回】；showClose 开关已退役，2026-09-12 J14）', async () => {
+    it('返回文案一律「← 返回」透传进 SkillFocusEditor（md §三.1「点击顶部【← 返回】回到技能列表并刷新」；showClose 开关已退役，2026-09-12 J14）', async () => {
       const el = mount()
       await vi.runOnlyPendingTimersAsync()
       const f = el.querySelector('.stub-focus')
@@ -542,7 +558,7 @@ describe('离开拦截（原 LeaveGuard 组①：flushAllDirty 覆盖全部 dirt
 })
 
 /* ====================================================================================== */
-describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 refsChanged 铁律，md §三.6 文件树操作）', () => {
+describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 refsChanged 铁律，md §三.5 文件目录（左栏）「文件操作」）', () => {
   // 技能详情：已引用 3 个数据表工具（模拟线上场景）。
   const REFERENCED = [
     { code: 'table__crm_visit__query', bizName: '客户交互记录表-查询', checkStatus: 'HEALTHY', known: true },
@@ -620,7 +636,7 @@ describe('工具引用 diff（原 Q2Diff：「已移出工具」提示遵守 ref
 })
 
 /* ====================================================================================== */
-describe('只读态（md §三.1 L139 【查看】= 编辑路由 ?view=1；§三.3 L177 只读态不保存）', () => {
+describe('只读态（md §三.1「通过列表点击【查看】进入只读态」= 编辑路由 ?view=1；§三.3「只读态…不展示…【发布】和【保存】」）', () => {
   beforeEach(() => {
     routeState.query = { view: '1' }
     vi.useFakeTimers()
@@ -664,5 +680,132 @@ describe('只读态（md §三.1 L139 【查看】= 编辑路由 ?view=1；§三
     focus.updateSkill({ description: '编辑态改动' })
     await vi.runOnlyPendingTimersAsync()
     expect(el.querySelector('.stub-focus').getAttribute('data-configdirty')).toBe('true')
+  })
+})
+
+/* ======================================================================================
+ * 2026-10-08 /test-audit 补缺口（对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.3 保存 / 发布、§三.5「SKILL.md 不存在或正文为空时不可发布」/ §三.8 时间信息）：
+ *  - 保存门「必填为空」三条 + 业务系统专属技能「描述为空照样保存」；
+ *  - 底部时间信息：有值显示原值、为空显示「—」；
+ *  - 发布就绪门接线：用真 skillPublishReadiness，正文清空 → publishReadiness.missing 含 SKILL.md。
+ * ====================================================================================== */
+describe('保存门 · 必填为空（md 技能 §三.3：名称 / 描述 / 示例问题必填；2026-10-08 补缺口）', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  it('技能名称清空 → warning「请填写最多 64 个字符的技能名称」，不发配置 PUT', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ name: '   ' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 64 个字符的技能名称')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  it('技能描述清空 → warning「请填写最多 2000 个字符的技能描述」，不发配置 PUT', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ description: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 2000 个字符的技能描述')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  it('示例问题清空 → warning「请填写最多 300 个字符的示例问题」，不发配置 PUT', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ exampleQuestion: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请填写最多 300 个字符的示例问题')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  // md §三.3【保存】「保存前先校验必填项（表单层拦截，2026-09-21 负责人拍板图标也必填）」——10-08 审计收尾补（原只测名称 / 分类 / 描述 / 示例问题）
+  it('图标清空 → warning「请选择技能图标」，不发配置 PUT', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ icon: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请选择技能图标')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  it('业务系统专属技能：没有图标行，图标为空也照样保存（md §三.3「业务系统专属技能…只校验技能名称」）', async () => {
+    routeState.meta = { skillSource: 'bizSystem' }
+    routeState.params = { id: 'sk_1', bizId: 'bs_1' }
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ icon: '' })
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+    expect(bizUpdate).toHaveBeenCalled()
+    expect(ElMessage.success).toHaveBeenCalledWith('技能配置已保存')
+  })
+
+  it('业务系统专属技能：描述 / 示例问题为空 → 照样保存（走业务系统端点）并提示「技能配置已保存」', async () => {
+    routeState.meta = { skillSource: 'bizSystem' }
+    routeState.params = { id: 'sk_1', bizId: 'bs_1' }
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    expect(bizGet).toHaveBeenCalledWith('bs_1', 'sk_1')
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+    expect(bizUpdate).toHaveBeenCalledWith('bs_1', 'sk_1', expect.objectContaining({ description: '' }))
+    expect(ElMessage.success).toHaveBeenCalledWith('技能配置已保存')
+  })
+})
+
+describe('底部时间信息（md 技能 §三.8；2026-10-08 补缺口）', () => {
+  beforeEach(() => vi.useFakeTimers())
+  const metaText = () => container.querySelector('.se-meta')?.textContent || ''
+
+  it('详情带创建 / 更新 / 发布时间与最新版本 → 四项原值显示', async () => {
+    fetchSkillDetailSpy.mockImplementation(() => Promise.resolve({
+      ...FDE_DETAIL(),
+      createdAt: '2026-08-01 10:00', updatedAt: '2026-08-02 11:00', lastPublishedAt: '2026-08-03 12:00', versionLabel: 'v1.4.0'
+    }))
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    const t = metaText()
+    expect(t).toContain('创建时间：2026-08-01 10:00')
+    expect(t).toContain('最近更新时间：2026-08-02 11:00')
+    expect(t).toContain('最近发布时间：2026-08-03 12:00')
+    expect(t).toContain('最新版本：v1.4.0')
+  })
+
+  it('从未发布（无发布时间、无版本）→ 「最近发布时间：—」「最新版本：—」', async () => {
+    fetchSkillDetailSpy.mockImplementation(() => Promise.resolve({ ...FDE_DETAIL(), createdAt: '2026-08-01 10:00', lastPublishedAt: '', versionLabel: '' }))
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    const t = metaText()
+    expect(t).toContain('最近发布时间：—')
+    expect(t).toContain('最新版本：—')
+  })
+})
+
+describe('发布就绪门接线（真 skillPublishReadiness；md 技能 §三.3 / §三.5；2026-10-08 补缺口）', () => {
+  beforeEach(async () => {
+    vi.useFakeTimers()
+    readinessImpl.fn = (await vi.importActual('@/api/unifiedSkill')).skillPublishReadiness
+  })
+
+  it('必填齐全 → 传给编辑器的 publishReadiness.ready=true、missing 为空', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    expect(focus.props.publishReadiness).toEqual({ ready: true, missing: [] })
+  })
+
+  it('SKILL.md 正文清空 → publishReadiness.ready=false、missing 含「SKILL.md」', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ skillMd: '' })
+    await vi.runOnlyPendingTimersAsync()
+    expect(focus.props.publishReadiness.ready).toBe(false)
+    expect(focus.props.publishReadiness.missing).toContain('SKILL.md')
   })
 })

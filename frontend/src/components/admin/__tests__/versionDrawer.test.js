@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
+import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * VersionDrawer.vue 单测 —— 技能 / 专家 / 岗位统一的版本管理抽屉。
- * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §四 版本管理弹窗 L225-258
- * （撤回提示「已撤回提交」L243；提交失败弹窗保持打开、保留填写内容并提示原因 L234）。
- * 提交发布成功 toast 文案：md L79 与 L232 曾自相矛盾（审计 J8②），2026-09-12 负责人决策 2 统一取带版本号的
- * 「已提交发布 vX.Y.Z，进入审核」，md L79 已回写，故此处逐字断言。
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §四 版本管理弹窗
+ * （§四.2 审核中状态「确认后撤回，提示『已撤回提交』」；§四.1 发布新版本「提交失败时弹窗保持打开，保留填写内容并提示原因」）。
+ * 提交发布成功 toast 文案：md §二.3.3 发布（首发）与 §四.1 发布新版本 两处曾自相矛盾（审计 J8②），2026-09-12 负责人决策 2 统一取带版本号的
+ * 「已提交发布 vX.Y.Z，进入审核」，md §二.3.3 已回写，故此处逐字断言。
  *
  * 本文件承接合并前三个弹窗各自测试的覆盖点，避免合并造成覆盖回退：
  *  · 来自 PlatformSkillVersionDialog.test：首发 v1.0.0 / 非首发 bump 进位 / 审核中撤回 /
@@ -71,7 +72,6 @@ const elRadioButton = {
   inject: ['pick'],
   template: '<button class="el-radio-btn" :data-v="value" @click="pick(value)"><slot /></button>'
 }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container, visibleRef
 function mount(adapter, opts = {}) {
@@ -152,7 +152,7 @@ describe('VersionDrawer · 发布语义', () => {
     await flush(2)
     btn('提交发布').click(); await flush()
     expect(a.publish).toHaveBeenCalledWith('sk_1', { bump: 'NONE', releaseNotes: '首版' })
-    // md §二.3 L80 / §四.2 L233 同一句（负责人决策 2）
+    // md §二.3.3「提示『已提交发布 vX.Y.Z，进入审核』」/ §四.1 同一句（负责人决策 2）
     expect(ElMessage.success).toHaveBeenCalledWith('已提交发布 v1.0.0，进入审核')
   })
 
@@ -193,7 +193,7 @@ describe('VersionDrawer · 发布语义', () => {
     expect(a.publish).not.toHaveBeenCalled()
   })
 
-  it('审核中：无发布编辑器，显撤回 → 二次确认后调 adapter.withdraw，提示「已撤回提交」并 emit done（md L243）', async () => {
+  it('审核中：无发布编辑器，显撤回 → 二次确认后调 adapter.withdraw，提示「已撤回提交」并 emit done（md §四.2「确认后撤回，提示『已撤回提交』」）', async () => {
     const done = vi.fn()
     const a = makeAdapter({
       deriveView: () => ({ state: 'REVIEWING', label: '审核中', tagType: 'warning', actions: ['withdraw'] })
@@ -208,7 +208,7 @@ describe('VersionDrawer · 发布语义', () => {
     expect(done).toHaveBeenCalledTimes(1)
   })
 
-  it('提交失败 → error(原因)、抽屉不关、升级说明与更新类型保留、不 emit done（md L234）', async () => {
+  it('提交失败 → error(原因)、抽屉不关、升级说明与更新类型保留、不 emit done（md §四.1「提交失败时弹窗保持打开，保留填写内容并提示原因」）', async () => {
     const done = vi.fn()
     const a = makeAdapter({ publish: vi.fn().mockRejectedValue(new Error('已有在审提交')) })
     mount(a, { onDone: done }); await flush()

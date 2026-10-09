@@ -80,6 +80,12 @@ export function delistMcpService(mcpId, payload = {}) {
   return request.post(`/fde/market/mcp-services/${mcpId}/delist`, payload, W)
 }
 
+// 强制回收（md §3.6.1）：立即生效、不进审核中心
+export function forceRevokeMcpService(mcpId, reason) {
+  if (MCP_MOCK) return mcpMock.forceRevokeMcpService(mcpId, reason)
+  return request.post(`/fde/market/mcp-services/${mcpId}/force-revoke`, { reason }, W)
+}
+
 // 3.3 服务级重新上架：该服务下全部 DELISTED 工具 listing 批量上架。入参/响应同 §3.2。
 export function relistMcpService(mcpId, payload = {}) {
   if (MCP_MOCK) return mcpMock.relistMcpService(mcpId, payload)

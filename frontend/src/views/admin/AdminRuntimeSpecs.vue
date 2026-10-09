@@ -30,7 +30,7 @@ import '@/assets/connector.css'
 
 const route = useRoute()
 const query = reactive({ keyword: '', usage: '', sortOrder: 'descending' })
-const list = useAdminList(listRuntimeSpecs, { pageSize: 10, params: () => ({ ...query }) })
+const list = useAdminList(listRuntimeSpecs, { params: () => ({ ...query }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
@@ -49,14 +49,17 @@ onBeforeUnmount(() => {
   if (keywordTimer) clearTimeout(keywordTimer)
 })
 
-// 底部汇总（mock 出参 summary；读失败降级隐藏）
+// 底部汇总（mock 出参 summary；读失败保留占位「—」）
 const summary = ref(null)
+const summaryFailed = ref(false)
 async function loadSummary() {
   try {
     const data = await listRuntimeSpecs()
     summary.value = data?.summary || null
+    summaryFailed.value = !data?.summary
   } catch (e) {
     summary.value = null
+    summaryFailed.value = true
   }
 }
 
@@ -160,9 +163,11 @@ async function remove(row) {
 // 在用用户悬停名单（含审批态后缀）
 function usedTip(row) {
   if (!row.usedCount) return ''
-  return row.effectiveUsers
+  const names = row.effectiveUsers
+    .slice(0, 10)
     .map((u) => `${u.name}（${u.source === 'USER' ? '个人配置' : u.source === 'POSITION' ? `岗位 · ${u.positionName}` : '平台默认'}）`)
-    .join('、')
+  if (row.usedCount > 10) names.push(`共 ${row.usedCount} 人`)
+  return names.join('、')
 }
 </script>
 
@@ -291,9 +296,10 @@ function usedTip(row) {
              原为「汇总 + 弹簧 + 分页」同一行 flex，会把分页条挤到右半边（实测左边界 1010px，
              其余页 239px），与全站「左总数 / 中页码 / 右工具」三段式不一致——
              即负责人报的「各列表页翻页区位置不统一」。汇总信息本身保留，仅换行摆放。 -->
-        <div v-if="summary" class="rs-foot">
+        <div v-if="summary || summaryFailed" class="rs-foot">
           <span class="rs-foot-sum">
-            {{ summary.specCount }} 个规格 · {{ summary.positionCount }} 个岗位已配置 · {{ summary.userCount }} 个用户有生效规格
+            <template v-if="summary">{{ summary.specCount }} 个规格 · {{ summary.positionCount }} 个岗位已配置 · {{ summary.userCount }} 个用户有生效规格</template>
+            <template v-else>—</template>
           </span>
         </div>
       </ListStates>

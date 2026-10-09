@@ -19,6 +19,9 @@ import {
  *  - MCP：docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §三.3 / §三.4.1 / §三.4.2 + 一览表 §5.1/§5.2；
  *  - API 鉴权参数行：prd-API.md §三.3 + 一览表 §6.2；
  *  - 业务系统：prd-业务系统.md §三.2 / §三.3 / §三.7 + 一览表 §七（原散在 bizSystemMeta.test.js，T36 搬入并去重）。
+ *  - 2026-10-08 对齐 prd-业务系统.md §三.2「登录地址…最多 1024 字符」/ §三.3「URL（必填，合法 HTTP/HTTPS 地址，最多 1024 个字符）」
+ *    + 一览表 §七 #4 / #6 补缺口：登录地址、业务页 URL 最多 1024 字符边界。
+ * 注：用例名 / 注释里残留的「Lxx」为旧版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
 describe('常量', () => {
@@ -336,7 +339,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     exampleQuestions: ['帮我发起一个明天下午的请假审批', '帮我打开客户管理工作台', '帮我查询一份员工档案']
   }
 
-  it('连接方式仅登录态托管一种（md §三.2 L96）', () => {
+  it('连接方式仅登录态托管一种（md §三.2「连接方式：固定展示"登录态托管"，只读」）', () => {
     expect(BIZ_CONN_TYPES.map((c) => c.value)).toEqual(['login_session'])
   })
 
@@ -350,7 +353,7 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(validateBizSystemForm({ ...valid, name: 'x'.repeat(64) }).errors.name).toBeUndefined()
   })
 
-  it('图标必填（md §三.2 L87）', () => {
+  it('图标必填（md §三.2「图标：必填」）', () => {
     expect(validateBizSystemForm({ ...valid, icon: '' }).errors.icon).toBe('请选择或上传图标')
   })
 
@@ -360,19 +363,19 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(validateBizSystemForm({ ...valid, type: 'POSITION', positionId: null }).errors.positionId).toBeUndefined()
   })
 
-  it('系统描述必填 + ≤2000（md §三.2 L95）', () => {
+  it('系统描述必填 + ≤2000（md §三.2「系统描述：必填，最多 2000 字符」）', () => {
     expect(validateBizSystemForm({ ...valid, description: '' }).errors.description).toBe('系统描述必填')
     expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2000) }).errors.description).toBeUndefined()
     expect(validateBizSystemForm({ ...valid, description: 'd'.repeat(2001) }).errors.description).toBe('系统描述最多 2000 个字符')
   })
 
-  it('登录地址必填 + 合法 HTTP/HTTPS（md §三.2 L97 / §三.7 L144）', () => {
+  it('登录地址必填 + 合法 HTTP/HTTPS（md §三.2「登录地址：必填，须为合法的 HTTP 或 HTTPS URL」/ §三.7「登录地址必须为合法的 HTTP 或 HTTPS URL」）', () => {
     expect(validateBizSystemForm({ ...valid, loginUrl: '' }).errors.loginUrl).toBe('登录地址必填')
     expect(validateBizSystemForm({ ...valid, loginUrl: 'ftp://x' }).errors.loginUrl).toBe('登录地址需以 http:// 或 https:// 开头')
     expect(validateBizSystemForm({ ...valid, loginUrl: 'https://ok.example.com' }).errors.loginUrl).toBeUndefined()
   })
 
-  it('示例问题固定 3 条均必填、每条 ≤300（md §三.2 L98）', () => {
+  it('示例问题固定 3 条均必填、每条 ≤300（md §三.2「示例问题：必填，固定 3 条输入行…单条示例问题最多 300 字符」）', () => {
     expect(validateBizSystemForm({ ...valid, exampleQuestions: ['a', '', 'c'] }).errors.exampleQuestions).toBe(
       '示例问题固定 3 条，须全部填写'
     )
@@ -444,13 +447,20 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     ).toBe('业务页名称最多 20 个字符')
   })
 
-  it('业务页逐项：description 选填 ≤100（md 未写上限，代码现状；审计 J15 待补 md）', () => {
+  it('业务页逐项：描述选填，最多 100 个字符（md §三.3 L113「描述（选填，最多 100 个字符）」）', () => {
     expect(
       validateBizSystemForm({
         ...valid,
         bizPages: [{ url: 'https://a.com', name: '工作台', description: 'd'.repeat(101) }]
       }).errors['bizPages.0.description']
-    ).toBeTruthy()
+    ).toBe('业务页描述最多 100 个字符')
+    // 边界：恰 100 字通过
+    expect(
+      validateBizSystemForm({
+        ...valid,
+        bizPages: [{ url: 'https://a.com', name: '工作台', description: 'd'.repeat(100) }]
+      }).errors['bizPages.0.description']
+    ).toBeUndefined()
   })
 
   it('业务页条目数 ≤20（md §三.3 L106）', () => {
@@ -474,5 +484,36 @@ describe('validateBizSystemForm（md 业务系统 §三.2 / §三.3 / §三.7；
     expect(r.errors['bizPages.0.url']).toBeUndefined()
     expect(r.errors['bizPages.1.url']).toBeTruthy()
     expect(r.errors['bizPages.1.name']).toBeTruthy()
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('validateBizSystemForm · URL 长度上限 1024（md 业务系统 §三.2 L103 / §三.3 L113；一览表 §七 #4 / #6）', () => {
+  const valid = {
+    name: '客户管理系统 CRM',
+    type: 'PLATFORM',
+    icon: '◎',
+    description: '销售办事主系统，记录与查询客户',
+    loginUrl: 'https://crm.example.com/login',
+    connType: 'login_session',
+    bizPages: [],
+    exampleQuestions: ['问题一', '问题二', '问题三']
+  }
+  /** 合法 https 地址，总长恰为 n 个字符 */
+  const urlOfLen = (n) => {
+    const head = 'https://crm.example.com/'
+    return head + 'p'.repeat(n - head.length)
+  }
+
+  it('登录地址恰 1024 字符 → 通过；1025 字符 → 「登录地址最多 1024 个字符」', () => {
+    expect(urlOfLen(1024)).toHaveLength(1024)
+    expect(validateBizSystemForm({ ...valid, loginUrl: urlOfLen(1024) }).errors.loginUrl).toBeUndefined()
+    expect(validateBizSystemForm({ ...valid, loginUrl: urlOfLen(1025) }).errors.loginUrl).toBe('登录地址最多 1024 个字符')
+  })
+
+  it('业务页 URL 恰 1024 字符 → 通过；1025 字符 → 「业务页 URL 最多 1024 个字符」', () => {
+    const page = (url) => ({ ...valid, bizPages: [{ url, name: '工作台', description: '' }] })
+    expect(validateBizSystemForm(page(urlOfLen(1024))).errors['bizPages.0.url']).toBeUndefined()
+    expect(validateBizSystemForm(page(urlOfLen(1025))).errors['bizPages.0.url']).toBe('业务页 URL 最多 1024 个字符')
   })
 })

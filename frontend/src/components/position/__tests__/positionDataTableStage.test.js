@@ -12,10 +12,15 @@ import { createApp, h, nextTick } from 'vue'
  *  3. 无档案：中部空态提示，不渲染档案卡；
  *  4. 本地校验失败不发请求；
  *  5. 只读态：无 取消/保存、无「＋ 新增」、无删除按钮；
- *  6.（2026-09-12 审计 T53）编目信息「唯一 ID」单选互斥（md §4.2.2 L282，DossierCatalogGrid 真挂载）
- *     + 【取消】toast「已取消未保存修改」（md §4.2.1 L275）。
+ *  6.（2026-09-12 审计 T53）编目信息「唯一 ID」单选互斥（md §4.2.2「至多勾选 1 条，勾选新的一条时自动取消原有勾选」，DossierCatalogGrid 真挂载）
+ *     + 【取消】toast「已取消未保存修改」（md §4.2.1「【取消】放弃本次编辑，提示"已取消未保存修改"」）。
  * 注：「新建档案弹窗【取消】【下一步】+ 工作档案已创建…」口径 e705dfb（09-08）已从 md 删（现行 §4.1 右侧弹表单、
  *     §4.2 只有【保存】【取消】），记代码缺陷 K10，该用例钉现状不动，修后随改。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §4.2.1 / §4.2.2 + 一览表第 11 行补：
+ *  - 档案名称最多 64、档案说明最多 500（基本信息卡）；编目字段名最多 64、编目说明最多 200（DossierCatalogGrid 真挂载）；
+ *  - 置信度阈值下拉「高 / 中（推荐）/ 低」；用户确认下拉「低置信需确认（推荐）/ 全部需要确认 / 不需要确认」——
+ *    首项代码多一个「度」字（「低置信度需确认（推荐）」），以 it.fails 按 md 钉桩。
  */
 
 const api = vi.hoisted(() => ({
@@ -194,7 +199,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(api.getDataTable).not.toHaveBeenCalled()
   })
 
-  it('新建档案弹窗：底部【取消】【下一步】，确认后提示继续配置（md §4.2）', async () => {
+  it('新建档案弹窗：底部【取消】【下一步】，确认后提示继续配置（钉现状，md §4.1/§4.2 无此弹窗，代码缺陷待登记）', async () => {
     api.listDataTables.mockResolvedValue({ list: [] })
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
@@ -224,7 +229,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(el.querySelector('.drg-err-text').textContent).toContain('最多 8 条')
   })
 
-  it('编目信息「唯一 ID」单选互斥：勾第 2 行 → 第 1 行自动取消；再点第 2 行 → 全部取消（md §4.2.2 L282）', async () => {
+  it('编目信息「唯一 ID」单选互斥：勾第 2 行 → 第 1 行自动取消；再点第 2 行 → 全部取消（md §4.2.2「至多勾选 1 条，勾选新的一条时自动取消原有勾选」）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     const uniques = () => Array.from(el.querySelectorAll('.dcg-row .dcg-unique')).map((b) => b.textContent.trim())
@@ -258,7 +263,7 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(msg.warning).toHaveBeenCalledWith('编目信息最多 8 条')
   })
 
-  it('基本信息卡头【取消】→ 放弃本次编辑、重拉详情并 toast「已取消未保存修改」（md §4.2.1 L275）', async () => {
+  it('基本信息卡头【取消】→ 放弃本次编辑、重拉详情并 toast「已取消未保存修改」（md §4.2.1「【取消】放弃本次编辑，提示"已取消未保存修改"」）', async () => {
     const el = mount({ positionId: 'ps_1', embedded: true })
     await flush()
     api.getDataTable.mockClear()
@@ -289,5 +294,61 @@ describe('PositionDataTableStage · 工作档案配置台', () => {
     expect(el.querySelector('.dcg-add')).toBeNull()
     expect(el.querySelector('.drg-add')).toBeNull()
     expect(el.querySelector('.dcg-del')).toBeNull()
+  })
+})
+
+describe('PositionDataTableStage · 字段上限与下拉选项（2026-10-08 对齐 md §4.2.1 / §4.2.2）', () => {
+  const fieldByLabel = (el, label) => Array.from(el.querySelectorAll('.wd-basic-fields .wd-field')).find((f) => f.querySelector('label')?.textContent.replace('*', '').trim() === label)
+  const policyField = (el, label) => Array.from(el.querySelectorAll('.wd-policy .wd-field')).find((f) => f.querySelector('label')?.textContent.trim() === label)
+  const optionLabels = (field) => Array.from(field.querySelectorAll('.opt')).map((o) => o.textContent.trim())
+
+  it('基本信息「档案名称」输入框最多 64 个字符', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    expect(fieldByLabel(el, '档案名称').querySelector('input').getAttribute('maxlength')).toBe('64')
+  })
+
+  it('基本信息「档案说明」输入框最多 500 个字符（工作档案例外，不适用描述类 2000）', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    expect(fieldByLabel(el, '档案说明').querySelector('input').getAttribute('maxlength')).toBe('500')
+  })
+
+  it('编目信息每行「字段名」最多 64 个字符', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    const rows = Array.from(el.querySelectorAll('.dcg-row'))
+    expect(rows).toHaveLength(2)
+    for (const r of rows) expect(r.querySelectorAll('input')[0].getAttribute('placeholder')).toBe('如 分析周期')
+    expect(rows.map((r) => r.querySelectorAll('input')[0].getAttribute('maxlength'))).toEqual(['64', '64'])
+  })
+
+  it('编目信息每行「说明」最多 200 个字符', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    const rows = Array.from(el.querySelectorAll('.dcg-row'))
+    for (const r of rows) expect(r.querySelectorAll('input')[1].getAttribute('placeholder')).toBe('填写字段业务释义')
+    expect(rows.map((r) => r.querySelectorAll('input')[1].getAttribute('maxlength'))).toEqual(['200', '200'])
+  })
+
+  it('「置信度阈值」下拉三项：高 / 中（推荐）/ 低', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    expect(optionLabels(policyField(el, '置信度阈值'))).toEqual(['高', '中（推荐）', '低'])
+  })
+
+  it('「用户确认」下拉共三项，后两项为「全部需要确认」「不需要确认」，首项标「（推荐）」', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    const labels = optionLabels(policyField(el, '用户确认'))
+    expect(labels).toHaveLength(3)
+    expect(labels.slice(1)).toEqual(['全部需要确认', '不需要确认'])
+    expect(labels[0].endsWith('（推荐）')).toBe(true)
+  })
+
+  it.fails('「用户确认」首项文案应为「低置信需确认（推荐）」（疑似缺陷：utils/dossierConfig.js CONFIRM_MODES 写成「低置信度需确认（推荐）」多一个「度」；md 岗位 §4.2.1「下拉：低置信需确认（推荐）/ 全部需要确认 / 不需要确认」）', async () => {
+    const el = mount({ positionId: 'ps_1', embedded: true })
+    await flush()
+    expect(optionLabels(policyField(el, '用户确认'))[0]).toBe('低置信需确认（推荐）')
   })
 })

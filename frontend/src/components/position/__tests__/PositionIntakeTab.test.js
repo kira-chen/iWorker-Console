@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive, computed, inject, unref, ref } from 'vue'
+import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
 
 /**
  * PositionIntakeTab（岗位详情「采集字段」页签）—— 2026-09-12 测试审计 T53 新建，对齐 md 岗位 §3.1 / §3.2 / §3.3：
@@ -56,7 +57,6 @@ const elSelect = {
 }
 const elOption = { name: 'el-option', props: ['value', 'label'], template: '<option :value="value">{{ label }}</option>' }
 const elSwitch = { name: 'el-switch', props: ['modelValue'], emits: ['update:modelValue'], template: '<button class="el-switch" @click="$emit(\'update:modelValue\', !modelValue)" />' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 // el-table 逐行桩：按 data 渲染列插槽（含 $index）；provide 一个 computed 让 data 换新数组后列也跟着重渲
 const elTable = {
   name: 'el-table',

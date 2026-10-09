@@ -94,6 +94,22 @@ describe('computePublishCheck（发布前检查）', () => {
       expect(c.blockingPassed).toBe(false)
     }
   })
+  it('引用了已回收的技能 / 连接器（岗位 PRD §6.4 / §8）：每个对象一行硬阻断，文案「引用的「XX」已被回收，请移除后再发布」；无回收对象时清单不变', () => {
+    const c = computePublishCheck({
+      ...FULL,
+      agents: [{ name: 'A', skills: [{ skillId: 1, name: '日报生成', revoked: { reason: 'r', at: 't', operator: 'o' } }, { skillId: 2, name: '正常技能', revoked: null }] }],
+      revokedConnectors: ['报销系统 MCP', 'CRM 系统']
+    })
+    const rows = c.items.filter((i) => i.key.startsWith('revokedRef_'))
+    expect(rows.map((r) => r.detail)).toEqual([
+      '引用的「日报生成」已被回收，请移除后再发布',
+      '引用的「报销系统 MCP」已被回收，请移除后再发布',
+      '引用的「CRM 系统」已被回收，请移除后再发布'
+    ])
+    expect(rows.every((r) => r.blocking && !r.ok)).toBe(true)
+    expect(c.blockingPassed).toBe(false)
+    expect(computePublishCheck({ ...FULL }).items).toHaveLength(8) // 无回收对象：不多出行
+  })
   it('采集字段只要有 1 个有效字段即通过（不要求填满 10 个），detail 报个数', () => {
     const c = computePublishCheck({ ...FULL, intakeSchema: [{ label: '区域', type: 'text' }, { label: '业务线', type: 'text' }, { label: '', type: 'text' }] })
     const item = c.items.find((i) => i.key === 'intakeSchema')

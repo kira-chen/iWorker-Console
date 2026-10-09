@@ -2,35 +2,43 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { makeListProbes } from './helpers/listPageStubs'
 
 /**
  * AdminExperts.vue 单测。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md
- *   §一.1 导航栏（分类 8 项同源字段字典 / 状态三态）/ §一.3 加载失败【重试】/ §二.1 列表展示 / §二.2 排序 /
+ *   §一.1 导航栏（专家类型筛选 / 分类 8 项同源字段字典 / 状态三态）/ §一.3 加载失败【重试】/ §二.1 列表展示 / §二.2 排序 /
  *   §二.3.1 三态按钮 / §二.3.2 查看编辑 / §二.3.3 发布 / §二.3.4 撤回 / §二.3.5 停用 / §二.3.7 删除。
  * el-table 用共享桩（helpers/elTableStub，T39）；真实挂载冒烟见 adminExpertsSmoke.test.js。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：二态状态列 / 「版本发布」单入口 /
  * 查影响面+回填名强确认删除 / 「平台技能」措辞），本文件按新契约重写：
  * - 三态展示映射（未发布/审核中/已发布）；分类列 / 最新版本「—」占位；
- * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理；
+ * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/强制回收/版本管理；
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
+ * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
+ *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
  * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
 
 vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+// 路由桩：query 可变（每条用例 beforeEach 复位为 {}），供「地址栏带 keyword」类用例改写（yuepu#22 防回归）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => routeState, useRouter: () => ({}) }))
 
 const listExperts = vi.fn()
 const deleteExpert = vi.fn()
 const unpublishExpert = vi.fn()
 const withdrawExpert = vi.fn()
+const forceRevokeExpert = vi.fn()
 vi.mock('@/api/domainExpert', () => ({
   listExperts: (...a) => listExperts(...a),
   deleteExpert: (...a) => deleteExpert(...a),
   unpublishExpert: (...a) => unpublishExpert(...a),
   withdrawExpert: (...a) => withdrawExpert(...a),
+  forceRevokeExpert: (...a) => forceRevokeExpert(...a),
   // 版本抽屉适配器所需（本页只组装 adapter，不直接调用）
   publishExpert: vi.fn(),
   getExpertNextVersionLabel: vi.fn(),
@@ -40,17 +48,22 @@ vi.mock('@/api/domainExpert', () => ({
 }))
 
 // 抽屉本体另有独立单测（expertEditor.test.js）；本页只验「开没开、带的哪个 id、是否只读」。
+// 桩内藏一个 .stub-publish 按钮：点它即以 publishDetail.value 发 publish(detail)，模拟抽屉底部【发布】。
 const editorProps = vi.fn()
+const publishDetail = vi.hoisted(() => ({ value: null }))
 vi.mock('@/components/admin/ExpertEditor.vue', () => ({
   default: {
     name: 'ExpertEditor',
     props: { visible: Boolean, expertId: [String, Number, null], readonly: Boolean },
     emits: ['saved', 'publish'],
-    setup(props) {
+    setup(props, { emit }) {
       return () => {
         editorProps(props.visible, props.expertId, props.readonly)
         return props.visible
-          ? h('div', { class: 'expert-editor', 'data-readonly': String(props.readonly) }, String(props.expertId))
+          ? h('div', { class: 'expert-editor', 'data-readonly': String(props.readonly) }, [
+              String(props.expertId),
+              h('button', { class: 'stub-publish', onClick: () => emit('publish', publishDetail.value) })
+            ])
           : null
       }
     }
@@ -79,6 +92,10 @@ vi.mock('@/components/admin/VersionDrawer.vue', () => ({
   }
 }))
 
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
+
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 const ElMessageBox = { confirm: vi.fn(), alert: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage, ElMessageBox }))
@@ -99,8 +116,6 @@ const { getFieldOptionNames } = await import('@/api/fieldDictMock')
 
 // 共享 el-table 桩（renderHeader：时间列自定义表头的排序按钮要能点到）
 const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
 const elButton = {
   props: { disabled: Boolean, loading: Boolean, type: String, title: String },
   emits: ['click'],
@@ -115,21 +130,32 @@ const elSelect = {
     '<select class="el-select" :data-placeholder="placeholder" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
 }
 const elOption = { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' }
+// 搜索框桩：原生 input + 清空按钮；页面上的 @keyup.enter 作为透传属性落在根 div，input 上的 keyup 冒泡即可触发
+const elInput = {
+  props: { modelValue: { default: '' }, placeholder: String },
+  emits: ['update:modelValue', 'clear'],
+  template:
+    '<div class="el-input"><input class="el-input__inner" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' +
+    '<button class="el-input__clear" @click="$emit(\'update:modelValue\', \'\'); $emit(\'clear\')"></button><slot name="prefix" /></div>'
+}
 
 let app, container
 async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminExperts)
-  for (const t of ['el-input', 'el-pagination', 'el-icon']) {
+  for (const t of ['el-pagination', 'el-icon']) {
     app.component(t, passthrough(t))
   }
+  app.component('el-input', elInput)
   app.component('el-select', elSelect)
   app.component('el-option', elOption)
   app.component('el-table', tableStub)
   app.component('el-table-column', tableColStub)
   app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
+  // 悬停说明：已回收标签的 el-tooltip，桩内把 content 落到 data-tip 供断言
+  app.component('el-tooltip', { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -142,7 +168,7 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 // 三行覆盖三态：已发布 / 未发布（0 技能）/ 审核中。
@@ -155,11 +181,15 @@ const EXPERTS = [
 ]
 
 beforeEach(() => {
+  routeState.query = {}
+  publishDetail.value = null
   editorProps.mockReset()
   listExperts.mockReset().mockResolvedValue({ list: EXPERTS, total: 3 })
   deleteExpert.mockReset()
   unpublishExpert.mockReset()
   withdrawExpert.mockReset()
+  forceRevokeExpert.mockReset().mockResolvedValue({})
+  askForceRevoke.mockReset()
   ElMessageBox.confirm.mockReset()
   ElMessageBox.alert.mockReset()
   ElMessage.success.mockReset()
@@ -215,6 +245,20 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     const cellText = (i) => rowEls()[i].querySelector('.el-table-column[data-label="引用情况"]').textContent.trim()
     expect([0, 1, 2, 3].map(cellText)).toEqual(['2个技能', '暂无技能', '3个岗位引用', '—'])
     expect(container.textContent).not.toContain('应用引用')
+  })
+
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#56）：md prd.专家.md:48「岗位私有点击弹出引用清单（展示岗位名）」，
+  // 页面只渲染普通 span 点不开。断言按三个连接器页同款写法（引用数是可点的链接按钮）。
+  // 修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+  it.fails('yuepu#56 岗位私有专家的「N个岗位引用」应可点击（打开引用清单）', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionCount: 3 }],
+      total: 1
+    })
+    await mount()
+    const cell = rowEls()[0].querySelector('.el-table-column[data-label="引用情况"]')
+    expect(cell.textContent.trim()).toBe('3个岗位引用') // 前提：渲染的就是岗位引用数
+    expect(cell.querySelector('.el-button')).not.toBeNull()
   })
 
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
@@ -302,23 +346,18 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(avatarBg(rows[2])).toBe('')
   })
 
-  it('加载失败 → 「加载失败」；无数据 → 「还没有专家，点击「新建专家」创建第一个」', async () => {
-    listExperts.mockRejectedValueOnce(new Error('x'))
-    await mount()
-    expect(container.querySelector('.el-empty').textContent).toContain('加载失败')
-    app.unmount(); container.remove()
-
+  it('无数据 → 「还没有专家，点击「新建专家」创建第一个」（加载失败态见上方【重试】用例）', async () => {
     listExperts.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     // 2026-09-08 原型复刻批次 1 对齐：空态改纯文字（ListStates .ls-empty），不再走 el-empty 插图
     expect(container.querySelector('.ls-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
   })
 
-  it('操作列按状态：已发布=查看/编辑/停用/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
+  it('操作列按状态：已发布=查看/编辑/停用/强制回收/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
     await mount()
     const [pub, draft, review] = rowEls()
     expect([...pub.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
-      .toEqual(['查看', '编辑', '停用', '版本管理'])
+      .toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
     expect([...draft.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
       .toEqual(['查看', '编辑', '发布', '删除'])
     expect([...review.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
@@ -449,5 +488,158 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     rowBtn(rowEls()[1], '删除').click()
     await flush()
     expect(deleteExpert).not.toHaveBeenCalled()
+  })
+})
+
+/* ===== 2026-10-08 /test-audit 补缺口：类型筛选 / 类型列 / 地址栏 keyword / 抽屉【发布】接线 / 搜索框回车与清空 =====
+ * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §一.1（专家类型筛选）/ §一.2（回车、切换即刷新）/
+ * §二.1（专家类型列）/ §二.3.3 + §三.7（抽屉【发布】→ 版本管理侧栏）；yuepu#22（重复 query 参数不白屏）。 */
+describe('AdminExperts 补缺口（2026-10-08）', () => {
+  const selects = () => [...container.querySelectorAll('select.el-select')]
+
+  it('专家类型筛选：占位「全部专家类型」，选项依次为 岗位私有 / 市场专家 / 通用专家（md §一.1）', async () => {
+    await mount()
+    const type = selects()[0]
+    expect(type.dataset.placeholder).toBe('全部专家类型')
+    expect([...type.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['岗位私有', '市场专家', '通用专家'])
+  })
+
+  it('专家类型选「市场专家」→ 立即重拉，listExperts 带 {type: PLATFORM}（md §一.2 切换即刷新）', async () => {
+    await mount()
+    const type = selects()[0]
+    type.value = 'PLATFORM'
+    type.dispatchEvent(new Event('change'))
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'PLATFORM' }))
+  })
+
+  it('「专家类型」列按行类型显示 岗位私有 / 市场专家 / 通用专家（md §二.1）', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [
+        { ...EXPERTS[0], id: 401, type: 'POSITION' },
+        { ...EXPERTS[0], id: 402, type: 'PLATFORM' },
+        { ...EXPERTS[0], id: 403, type: 'SYSTEM_DEFAULT' }
+      ],
+      total: 3
+    })
+    await mount()
+    const cell = (i) => rowEls()[i].querySelector('.el-table-column[data-label="专家类型"]').textContent.trim()
+    expect([0, 1, 2].map(cell)).toEqual(['岗位私有', '市场专家', '通用专家'])
+  })
+
+  it('地址栏带 ?keyword=a 的单值 → 首拉即带 keyword:a，搜索框回显 a', async () => {
+    routeState.query = { keyword: 'a' }
+    await mount()
+    expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'a' }))
+    expect(container.querySelector('.el-input__inner').value).toBe('a')
+  })
+
+  it('地址栏 keyword 重复成数组 [a, b] → 取第一个 a 查询，页面照常出行不崩（yuepu#22 防回归）', async () => {
+    routeState.query = { keyword: ['a', 'b'] }
+    await mount()
+    expect(listExperts).toHaveBeenCalledTimes(1)
+    expect(listExperts).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'a' }))
+    expect(container.querySelector('.el-input__inner').value).toBe('a')
+    expect(rowEls()).toHaveLength(3)
+  })
+
+  it('抽屉发 publish(detail) → 列表重拉，并打开版本管理侧栏且带该专家 id（md §二.3.3 / §三.7）', async () => {
+    publishDetail.value = { ...EXPERTS[1], skillCount: 1 }
+    await mount()
+    rowBtn(rowEls()[1], '编辑').click()
+    await nextTick()
+    container.querySelector('.stub-publish').click()
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    const dlg = container.querySelector('.version-dialog')
+    expect(dlg).not.toBeNull()
+    expect(dlg.textContent).toBe('203')
+  })
+
+  it('搜索框输入关键词后按回车 → 按当前条件重拉，listExperts 带该 keyword（md §一.2）', async () => {
+    await mount()
+    const input = container.querySelector('.el-input__inner')
+    input.value = '法务'
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '法务' }))
+  })
+
+  it('搜索框点清空 → 立即重拉，查询不再带 keyword（md §一.2）', async () => {
+    routeState.query = { keyword: '法务' }
+    await mount()
+    expect(listExperts).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '法务' }))
+    container.querySelector('.el-input__clear').click()
+    await flush()
+    expect(listExperts).toHaveBeenCalledTimes(2)
+    expect(listExperts.mock.calls[1][0]).not.toHaveProperty('keyword')
+  })
+})
+
+describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不进审核、原因必填、两步确认）', () => {
+  const rowOf = (name) => rowEls().find((el) => el.textContent.includes(name))
+
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeExpert(id, { reason }) + 「已强制回收」+ 重新取列表', async () => {
+    askForceRevoke.mockResolvedValue('专家知识库被污染')
+    await mount()
+    const before = listExperts.mock.calls.length
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(forceRevokeExpert).toHaveBeenCalledWith(201, { reason: '专家知识库被污染' })
+    expect(ElMessage.success).toHaveBeenCalledWith('已强制回收')
+    expect(listExperts.mock.calls.length).toBe(before + 1)
+  })
+
+  it('弹窗入参：类型「专家」、对象名、引用数 0（专家无引用方统计）', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0 })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = listExperts.mock.calls.length
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(forceRevokeExpert).not.toHaveBeenCalled()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    expect(listExperts.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 兜底「强制回收失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    forceRevokeExpert.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    forceRevokeExpert.mockRejectedValueOnce(new Error(''))
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenLastCalledWith('强制回收失败')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '专家知识库被污染', at: '2026-10-09 09:30', operator: 'admin' }
+    listExperts.mockResolvedValue({ list: EXPERTS.map((e) => (e.id === 203 ? { ...e, revoked } : e)), total: 3 })
+    await mount()
+    const tag = rowOf('法务审阅专家').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：专家知识库被污染（admin · 2026-10-09 09:30）')
+    expect(rowOf('经营分析专家').querySelector('.revoked-tag')).toBeNull()
+    expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowOf('法务审阅专家').querySelector('.revoked-tag')).toBeNull()
   })
 })

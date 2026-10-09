@@ -314,10 +314,18 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
     expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 5 个页面')
   })
 
-  it('权限树为空（加载失败）→ 抽屉内失败态文案保持现状', async () => {
-    const el = mount({ role: null, permissionTree: [] })
+  it('页面权限加载失败（权限树为空）→ 权限区展示「权限树加载失败 · 关闭重开重试」，底部仍有【取消】【创建角色】/【保存】（md §三.5 L135）', async () => {
+    const footBtns = (el) => [...el.querySelectorAll('.dr-footer button')].map((b) => b.textContent.trim())
+    let el = mount({ role: null, permissionTree: [] })
     await open()
     expect(el.querySelector('.el-empty').textContent).toContain('权限树加载失败 · 关闭重开重试')
+    expect(footBtns(el)).toEqual(['取消', '创建角色'])
+    app.unmount(); container.remove()
+
+    el = mount({ role: { id: 7, name: '系统配置员', modules: ['驾驶舱'], userCount: 3 }, permissionTree: [] })
+    await open()
+    expect(el.querySelector('.el-empty').textContent).toContain('权限树加载失败 · 关闭重开重试')
+    expect(footBtns(el)).toEqual(['取消', '保存'])
   })
 })
 

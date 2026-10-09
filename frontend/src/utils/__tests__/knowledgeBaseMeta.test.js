@@ -20,21 +20,21 @@ import {
  * knowledgeBaseMeta 纯函数 / 常量守卫（2026-09-12 测试审计新建，E5）。
  *
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
- * - §六.1 L273-275 API 连接配置默认值：方法 POST / 鉴权 **API KEY** / 超时 8000；
- * - §七.2.1 L363 MCP streamable-http 鉴权默认 **无鉴权**；§七.4 L406 超时默认 10000（1000～120000）；
+ * - §六.1 连接配置表「请求方法…默认 POST」「鉴权方式…默认 API KEY」「超时时间 1000～60000ms，默认 8000ms」；
+ * - §七.2.1 streamable-http「鉴权方式…默认无鉴权」；§七.6 超时时间「取值范围 1000～120000ms，默认 10000ms」；
  * - §三.4.3 行内操作确认弹窗四组文案；§三.6 发布完整校验 5 条；§三.5 关键变更判定；§三.2 状态三态。
  *
  * 为什么单独钉 API / MCP 默认鉴权：两处默认值恰好相反（API 默认 API KEY、MCP 默认无鉴权），
  * 2026-09-09 PRD 复核 P0 曾发现被写反（编辑器新建态一打开就选错鉴权），此处防回归。
  */
-describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md §六.1 / §七.2.1 / §七.4）', () => {
-  it('API 新建默认：鉴权 API_KEY、方法 POST、超时 8000ms、地址空（md §六.1 L272-275）', () => {
+describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md §六.1 / §七.2.1 / §七.6）', () => {
+  it('API 新建默认：鉴权 API_KEY、方法 POST、超时 8000ms、地址空（md §六.1 连接配置表）', () => {
     expect(API_DEFAULTS).toEqual({ url: '', method: 'POST', authType: 'API_KEY', timeoutMs: 8000 })
     expect(API_METHOD_OPTIONS).toEqual(['POST', 'GET', 'PUT', 'DELETE', 'PATCH'])
     expect(API_METHOD_OPTIONS[0]).toBe(API_DEFAULTS.method)
   })
 
-  it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 L363 / §七.6）', () => {
+  it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 / §七.6）', () => {
     expect(MCP_DEFAULTS).toEqual({
       transport: 'streamable-http',
       endpoint: '',

@@ -77,6 +77,57 @@ describe('position store', () => {
     expect(store.basic.connectorApiIds).toEqual([])
   })
 
+  // 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §9.1 阻断校验九项：
+  // 前 8 项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 / SOP / 采集字段 / Agent 与技能）的输入由真实 store 的
+  // checkInput 汇出；第 9 项「自动化任务」条数由详情页独立预取（不在 store），此处不涉及。
+  it('checkInput 汇出发布检查所需输入：名称、图标、描述、领用页文案、示例问题、SOP、采集字段、Agent（含技能）', async () => {
+    const intake = [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }]
+    api.getPosition.mockResolvedValue({
+      ...sampleDetail(),
+      icon: '▤',
+      intro: '简介',
+      description: '负责销售线索跟进',
+      claimDescriptions: ['自动汇总经营数据'],
+      exampleQuestions: ['q1', 'q2', 'q3'],
+      positionSop: '1. 理解意图',
+      intakeSchema: intake
+    })
+    const store = usePositionStore()
+    await store.load(5)
+    expect(store.checkInput).toEqual({
+      name: '销售',
+      icon: '▤',
+      intro: '简介',
+      description: '负责销售线索跟进',
+      claimDescriptions: ['自动汇总经营数据'],
+      positionSop: '1. 理解意图',
+      intakeSchema: intake,
+      exampleQuestions: ['q1', 'q2', 'q3'],
+      agents: sampleDetail().agents
+    })
+  })
+
+  it('checkInput 随编辑实时变化：改名称、清空第 2 条示例问题后立刻反映（发布检查读到的是当前编辑值）', async () => {
+    api.getPosition.mockResolvedValue({ ...sampleDetail(), exampleQuestions: ['q1', 'q2', 'q3'] })
+    const store = usePositionStore()
+    await store.load(5)
+    store.basic.name = '销售二部'
+    store.basic.exampleQuestions[1] = ''
+    expect(store.checkInput.name).toBe('销售二部')
+    expect(store.checkInput.exampleQuestions).toEqual(['q1', '', 'q3'])
+  })
+
+  it('详情缺领用页文案 / 示例问题 / 采集字段 → checkInput 给空数组与 3 个空格位（发布检查按「未填」判，不因 undefined 报错）', async () => {
+    api.getPosition.mockResolvedValue({ positionId: 6, name: '空岗', status: 'draft', agents: [] })
+    const store = usePositionStore()
+    await store.load(6)
+    expect(store.checkInput.claimDescriptions).toEqual([])
+    expect(store.checkInput.exampleQuestions).toEqual(['', '', ''])
+    expect(store.checkInput.intakeSchema).toEqual([])
+    expect(store.checkInput.agents).toEqual([])
+    expect(store.checkInput.icon).toBe('')
+  })
+
   it('addAgent 追加到泳道', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.createAgent.mockResolvedValue({ agentId: 13, name: '新 Agent', skills: [] })
@@ -87,7 +138,7 @@ describe('position store', () => {
     expect(store.agents[2].agentId).toBe(13)
   })
 
-  it('removeAgent 删 Agent 后其技能彻底脱离白板（新口径：不再进收纳区/不在白板任何位置）', async () => {
+  it('removeAgent 删 Agent 后其技能子行一并移除（新口径：不转挂、不残留在任何 Agent 行下）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.deleteAgent.mockResolvedValue({ orphanedSkillCount: 2 })
     const store = usePositionStore()
@@ -122,7 +173,7 @@ describe('position store', () => {
     expect(store.agents.find((a) => a.agentId === 12).skills.map((s) => s.skillId)).toContain(101)
   })
 
-  it('收纳区退役：store 无 orphan 派生，allSkills 仅含挂载技能', async () => {
+  it('无游离技能：store 无 orphan 派生，allSkills 仅含挂在 Agent 行下的技能子行', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     const store = usePositionStore()
     await store.load(5)
@@ -135,7 +186,7 @@ describe('position store', () => {
     expect(store.allSkills.every((x) => x.agentId != null)).toBe(true)
   })
 
-  it('saveBasic 的 PUT 详情 hydrate 后白板技能正常，不引入任何 orphan 幻影', async () => {
+  it('saveBasic 的 PUT 详情 hydrate 后 Agent 行 / 技能子行正常，不引入任何 orphan 幻影', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.updatePosition.mockResolvedValue({ ...sampleDetail(), name: '销售-改' })
     const store = usePositionStore()
@@ -157,7 +208,7 @@ describe('position store', () => {
     expect(store.agents[0].skills.find((s) => s.skillId === 101).name).toBe('s1-改')
   })
 
-  it('detachSkillFromAgent 从指定 Agent 移除引用 → 该泳道消失（V84 可逆：技能本体留库，白板本地移除）', async () => {
+  it('detachSkillFromAgent 从指定 Agent 移除引用 → 该 Agent 行下的技能子行消失（V84 可逆：技能本体留库，仅本地移除）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.detachSkill.mockResolvedValue(undefined)
     const store = usePositionStore()

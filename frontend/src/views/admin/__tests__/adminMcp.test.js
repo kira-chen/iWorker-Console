@@ -7,18 +7,31 @@ import { fmtTime } from '@/utils/docMeta'
  * AdminMcp.vue（MCP 列表页）单测。
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md：
- * - §一（导航栏：搜索手动【查询】回第 1 页 L25 / 状态筛选切换即刷新回第 1 页 L26 / 空态文案 L33-34）；
- * - §二.1（列表字段：状态列 09-11 拍板拆独立列，2026-09-12 审计 J1 闭环——拍板覆盖 md、md L45 由文档组回写；
- *   工具数为 0 悬浮 L47；引用情况 L48；最近更新时间排序 L49）；
- * - §二.2（验证列：三态文案 L57 / 未验证悬浮 L58 / 异常三段式 L61 / 验证中 L63 / 四种 toast L65-68）；
- * - §二.3（操作：三态按钮集合逐字 §二.3.1 L83-86；审核中【编辑】置灰提示 §二.3.3 L103；
- *   发布 / 撤回 / 停用 / 删除的确认窗标题·正文·按钮·toast §二.3.4-§二.3.7；状态变化即时替换按钮 L87-92）；
- * - §二.4（状态规则：DELISTED / REJECTED / PARTIAL 归「未发布」）。
+ * - §一（导航栏）：§一.2「输入搜索内容后，点击【查询】按钮或按回车刷新结果，并回到第 1 页」/
+ *   「切换或清空连接器类型、状态筛选后，页面按照当前条件刷新，同时回到第 1 页」；§一.3「首次暂无数据：展示
+ *   "还没有 MCP 服务 · 点「新建 MCP」登记第一个"」「无查询结果：展示空结果状态，保留当前搜索和筛选条件」；
+ * - §二.1（列表字段）：「状态：独立列展示发布状态标签」（09-11 拍板拆独立列，2026-09-12 审计 J1 闭环，md 已回写）/
+ *   「工具数：…无工具时显示"—"，鼠标悬停提示"尚未拉取到工具…"」/「引用情况」/「最近更新时间：…支持按照时间排序」；
+ * - §二.2（验证规则）：「连接状态展示"连接正常、连接异常、未探测"」/「从未验证过时…悬停提示"尚未验证过，点击发起验证"」/
+ *   「连接异常时，鼠标悬停展示最近验证时间、错误原因和错误码」/「验证过程中保留上一次状态，时间位置显示"正在验证…"」/
+ *   四种提示「检活完成 · 连接正常」「检活完成 · 连接异常」「检活完成」「检活失败，请稍后重试」；
+ * - §二.3（操作）：§二.3.1「各状态的按钮组合如下」逐字；§二.3.3「审核中的 MCP，【编辑】置灰，并提示"审核中不可编辑，
+ *   如需修改请先撤回"」；发布 / 撤回 / 停用 / 删除的确认窗标题·正文·按钮·toast §二.3.4-§二.3.7；
+ *   §二.3.1「状态发生变化后，页面按照新状态即时替换操作按钮」；
+ * - §二.4（状态规则：「已驳回、已停用及其他不再对外开放的情况统一展示为"未发布"」，DELISTED / REJECTED / PARTIAL 归「未发布」）。
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ * - §二.1「引用情况」引用清单按类型分流（「岗位私有为"被岗位引用"（列岗位名）」/「通用连接器显示"—"」；
+ *   yuepu#17 修复、负责人 5618381 拍板）；
+ * - §一.2 搜索口径：深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）；
+ * - §三.8「登记成功后提示"已登记"，关闭抽屉，返回列表第 1 页并刷新列表」（编辑同）；§三.6「拉取成功后提示"已拉取 N 个工具"，
+ *   并刷新当前抽屉中的连接信息和工具清单」→ 列表行工具数随之更新（编辑器桩 emit saved / probed）。
+ * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
+ *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
  * StatusTag / HealthTag / ListToolbar / ListStates / ListPagination 为组件局部 import 的**真组件**
  * （全局同名桩对其无效），断言直接读它们渲染出的文案 / 类名。
- * 已知不写的用例（审计 K34 待代码修）：mock 层停用直落 DELISTED——本文件 market api 全桩，与之无关。
  */
 
 const adminApi = {
@@ -27,15 +40,22 @@ const adminApi = {
   healthCheckTool: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({}) }))
+// 路由 query 由各用例改写（深链 ?keyword=，写法同 adminBizSystems.test.js）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeState.query }) }))
 
 const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
   publishMcpService: vi.fn(),
   delistMcpService: vi.fn(),
-  withdrawMcpService: vi.fn()
+  withdrawMcpService: vi.fn(),
+  forceRevokeMcpService: vi.fn()
 }
 vi.mock('@/api/market', () => marketApi)
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn() }
@@ -45,8 +65,13 @@ vi.mock('@/components/admin/McpEditor.vue', () => ({
   default: {
     name: 'McpEditor',
     props: ['visible', 'mcpId', 'readonly'],
+    emits: ['saved', 'probed'],
+    // 两个按钮模拟编辑器回传：保存成功（saved）/ 拉取工具成功（probed，带新工具数）
     template:
-      '<div class="stub-mcp-editor" :data-visible="visible" :data-id="mcpId" :data-readonly="readonly ? 1 : 0" />'
+      '<div class="stub-mcp-editor" :data-visible="visible" :data-id="mcpId" :data-readonly="readonly ? 1 : 0">' +
+      '<button type="button" class="stub-emit-saved" @click="$emit(\'saved\', { id: mcpId })">saved</button>' +
+      '<button type="button" class="stub-emit-probed" @click="$emit(\'probed\', { id: mcpId, toolCount: 7, displayStatus: \'HEALTHY\' })">probed</button>' +
+      '</div>'
   }
 }))
 
@@ -183,6 +208,7 @@ async function flush(n = 4) {
 describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeState.query = {}
     AGG = { ...AGG_SEED }
     PENDING = { ...PENDING_SEED }
     // 页面会就地改写行对象（检活回写 displayStatus / lastCheckedAt），故每次调用都给夹具的浅拷贝，用例间不串
@@ -221,9 +247,9 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
-  it('操作区 · 已发布：【查看】【编辑】【停用】共 3 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
+  it('操作区 · 已发布：【查看】【编辑】【停用】【强制回收】共 4 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
     await mount()
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('操作区 · 审核中：【查看】【编辑】【撤回】共 3 个，【编辑】置灰并提示「审核中不可编辑，如需修改请先撤回」（md §二.3.1 L85 / §二.3.3 L103）', async () => {
@@ -331,7 +357,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect.objectContaining({ confirmButtonText: '撤回' })
     )
     expect(stateOf(rowByName('已上线服务'))).toBe('已发布')
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   // ---- 停用（md §二.3.6 L131-135） ----
@@ -440,7 +466,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     })
   })
 
-  it('验证列：结果标签 + 相对时间 + 刷新入口（外观对齐模型页）', async () => {
+  it('验证列：结果标签 + 刷新入口均在（外观对齐模型页）', async () => {
     await mount()
     const row = rowByName('已上线服务')
     // 结果标签（复用检活四态）与刷新图标入口都在
@@ -858,5 +884,201 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect(adminApi.listMcp.mock.calls.at(-1)[0].sort).toBe('asc')
       expect(container.querySelector('.time-sort').textContent).toContain('↑')
     })
+  })
+
+  /**
+   * 2026-10-08 补缺口：引用清单按连接器类型分流（md §二.1 L51；yuepu#17 修复时未带用例，负责人 5618381 拍板）。
+   */
+  describe('引用情况按类型分流（md §二.1 L51）', () => {
+    const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
+
+    it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{
+          ...LIST[0],
+          type: 'POSITION',
+          positionCount: 2,
+          referencedByPositions: [{ positionId: 'p_1', positionName: '财务专员' }, { positionId: 'p_2', positionName: '采购助理' }],
+          // 同时带技能引用：弹窗必须取岗位名而不是技能名
+          referencedBySkills: [{ skillId: 'sk_x', skillName: '不该出现的技能' }]
+        }],
+        total: 1
+      })
+      await mount()
+      const refBtn = refCell('未发布服务').querySelector('.mc-refs')
+      expect(refBtn.textContent.trim()).toBe('2个岗位引用')
+      refBtn.click()
+      await flush()
+      const dlg = container.querySelector('.el-dialog')
+      expect(dlg.getAttribute('data-title')).toBe('被岗位引用')
+      expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['财务专员', '采购助理'])
+    })
+
+    it('通用连接器：引用情况显「—」，没有可点的引用入口（即使数据里带技能引用数）', async () => {
+      adminApi.listMcp.mockResolvedValue({
+        list: [{ ...LIST[0], type: 'SYSTEM_DEFAULT', referencedBySkillCount: 3 }],
+        total: 1
+      })
+      await mount()
+      expect(refCell('未发布服务').textContent.trim()).toBe('—')
+      expect(refCell('未发布服务').querySelector('.mc-refs')).toBeNull()
+    })
+  })
+
+  /**
+   * 2026-10-08 补缺口：深链 ?keyword= 同名参数重复（数组）不崩页（yuepu#22 防回归；md §一.2 L26 搜索口径）。
+   */
+  describe('深链 ?keyword=（yuepu#22）', () => {
+    it('?keyword=报销&keyword=合同（数组）→ 挂载不抛，首次请求 keyword 取第一个「报销」，搜索框回填「报销」', async () => {
+      routeState.query = { keyword: ['报销', '合同'] }
+      await expect(mount()).resolves.toBeTruthy()
+      expect(adminApi.listMcp.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: '报销', page: 1 }))
+      expect(container.querySelector('.lt-search').value).toBe('报销')
+    })
+  })
+
+  /**
+   * 2026-10-08 补缺口：编辑器回传事件（md §三.8 L365-366 登记 / 编辑成功「返回列表第 1 页并刷新列表」；
+   * §三.6 L322 拉取成功刷新工具清单 → 列表该行工具数同步）。编辑器为桩，按钮直接 emit saved / probed。
+   */
+  describe('编辑器回传：saved 回第 1 页 / probed 更新工具数', () => {
+    it('先翻到第 2 页，编辑器保存成功（saved）→ 重拉列表且 page=1，分页高亮回到 1', async () => {
+      adminApi.listMcp.mockImplementation(async ({ page, size }) => {
+        if (page === 2) return { list: [{ ...LIST[0], id: 'mc_p2', name: '第二页服务' }], total: size + 1 }
+        return {
+          list: Array.from({ length: size }, (_, i) => ({ ...LIST[0], id: `mc_p1_${i}`, name: `首页服务${i}` })),
+          total: size + 1
+        }
+      })
+      await mount()
+      container.querySelector('.list-pager [aria-label="下一页"]').click()
+      await flush()
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('2')
+      btn(rowByName('第二页服务'), '编辑').click()
+      await nextTick()
+      const before = adminApi.listMcp.mock.calls.length
+      container.querySelector('.stub-emit-saved').click()
+      await flush()
+      expect(adminApi.listMcp.mock.calls.length).toBe(before + 1)
+      expect(adminApi.listMcp.mock.calls.at(-1)[0].page).toBe(1)
+      expect(container.querySelector('.list-pager .page-btn.active').textContent.trim()).toBe('1')
+      expect(rowByName('首页服务0')).toBeTruthy()
+    })
+
+    it('编辑器里拉取工具成功（probed，工具数 7）→ 该行工具数由「—」变「7」，其它行不变，不重拉整表', async () => {
+      await mount()
+      const toolCell = (name) => rowByName(name).querySelector('.t-cell[data-label="工具数"]').textContent.trim()
+      expect(toolCell('空工具服务')).toBe('—')
+      btn(rowByName('空工具服务'), '编辑').click()
+      await nextTick()
+      const before = adminApi.listMcp.mock.calls.length
+      container.querySelector('.stub-emit-probed').click()
+      await flush()
+      expect(toolCell('空工具服务')).toBe('7')
+      expect(toolCell('已上线服务')).toBe('4')
+      expect(adminApi.listMcp.mock.calls.length).toBe(before)
+    })
+  })
+})
+
+describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核、原因必填、两步确认）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeState.query = {}
+    adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
+    marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
+      Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG_SEED[id], pendingAction: null }] })
+    )
+    marketApi.forceRevokeMcpService.mockResolvedValue({})
+  })
+  afterEach(() => {
+    app?.unmount()
+    container?.remove()
+  })
+
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeMcpService(id, 原因) + 「已强制回收」+ 重新取列表', async () => {
+    askForceRevoke.mockResolvedValue('服务被入侵')
+    await mount()
+    const before = adminApi.listMcp.mock.calls.length
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(marketApi.forceRevokeMcpService).toHaveBeenCalledWith('mc_pub', '服务被入侵')
+    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    // 回收信息在行上（row.revoked），必须重取列表行，「已回收」标签才会出现
+    expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(before)
+  })
+
+  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能' })
+  })
+
+  it('引用数 = 引用它的技能数 + 岗位数', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, referencedBySkillCount: 2, positionCount: 3 } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith(expect.objectContaining({ refCount: 5 }))
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = adminApi.listMcp.mock.calls.length
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(marketApi.forceRevokeMcpService).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(adminApi.listMcp.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    marketApi.forceRevokeMcpService.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    marketApi.forceRevokeMcpService.mockRejectedValueOnce(new Error(''))
+    btn(rowByName('已上线服务'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '服务被入侵', at: '2026-10-09 09:30', operator: 'admin' }
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_none' ? { ...r, revoked } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    const tag = rowByName('未发布服务').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：服务被入侵（admin · 2026-10-09 09:30）')
+    expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('在审服务').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('已发布行即使数据里残留回收信息，也不出「已回收」标签（重新发布通过后应已清除，标签只跟未发布态）', async () => {
+    const revoked = { reason: '旧回收', at: '2026-10-01 09:30', operator: 'admin' }
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, revoked } : { ...r })),
+      total: LIST.length
+    }))
+    await mount()
+    expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowByName('未发布服务').querySelector('.revoked-tag')).toBeNull()
   })
 })

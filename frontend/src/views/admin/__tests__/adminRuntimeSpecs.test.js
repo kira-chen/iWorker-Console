@@ -12,6 +12,8 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * 只 mock api 层；ElMessage / ElMessageBox 用 spy 拦截（不桩组件）。
  * 2026-09-12 审计 K30 ①②③ 闭环后补：§三.3.6 L222 默认规格【删除】置灰 + 悬停提示、§二.3 L110【清空筛选】、
  *   §三.1 L123-127 列格式「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」「不限 / 24 小时」。
+ * 2026-10-08 补：§三.1 生效用户悬停名单含姓名与来源（岗位来源用词待 J34 裁决，本处只断言「个人配置」）；
+ *   §三.3.1 / §三.5「删除过程中重复点击不重复发送请求」。
  */
 
 const api = { listRuntimeSpecs: vi.fn(), deleteRuntimeSpec: vi.fn(), getRuntimeSpec: vi.fn(), getRuntimeSpecLimits: vi.fn(), createRuntimeSpec: vi.fn(), updateRuntimeSpec: vi.fn(), listRuntimeSpecUsers: vi.fn(), assignRuntimeSpecUsers: vi.fn(), applyRuntimeSpecForUser: vi.fn(), unassignRuntimeSpecUser: vi.fn() }
@@ -254,5 +256,40 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     retry.click()
     await flushAll(10)
     expect(rows()).toHaveLength(5)
+  })
+
+  it('「重」行生效用户数悬停 → 名单里有「赵敏」且标明来源「个人配置」（md §三.1；岗位来源用词待 J34 裁决，此处不断言）', async () => {
+    const heavyUsers = [
+      { username: 'zhaomin', name: '赵敏', source: 'USER', positionName: '' },
+      { username: 'zhangwei', name: '张伟', source: 'POSITION', positionName: '财务审核岗' }
+    ]
+    api.listRuntimeSpecs.mockResolvedValue({
+      list: LIST.map((s) => (s.name === '重' ? { ...s, effectiveUsers: heavyUsers, usedCount: 2 } : s)),
+      total: LIST.length,
+      summary: SUMMARY
+    })
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    const cell = rowByName('重').querySelector('.rs-used-cell')
+    expect(cell.textContent.trim()).toBe('2')
+    expect(cell.getAttribute('title')).toContain('赵敏（个人配置）')
+  })
+
+  it('删除请求还没返回时再点一次【删除】→ 删除接口只调用一次，确认框也只弹一次（md §三.3.1 / §三.5「重复点击不重复发送请求」）', async () => {
+    confirmSpy.mockResolvedValue('confirm')
+    let finish
+    api.deleteRuntimeSpec.mockReturnValue(new Promise((r) => { finish = r }))
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    rowBtn(rowByName('高敏'), '删除').click()
+    await flushAll(6)
+    expect(api.deleteRuntimeSpec).toHaveBeenCalledTimes(1)
+    rowBtn(rowByName('高敏'), '删除').click()
+    await flushAll(6)
+    expect(api.deleteRuntimeSpec).toHaveBeenCalledTimes(1)
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    finish(true)
+    await flushAll(8)
+    expect(successSpy).toHaveBeenCalledWith('规格已删除')
   })
 })

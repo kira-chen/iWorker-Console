@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （positionMock → request.js → router 链路触达 window，故用 jsdom；同 positionMock.test）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   listPositions,
   createPosition,
@@ -14,10 +14,12 @@ import {
   publishPosition,
   __resetPositionMock
 } from '../positionMock'
-import { _getRaw, _reset, createSkill, removeSkill } from '../unifiedSkillMock'
-import { listMcpSync, listMcp } from '../mcpConnectorMock'
-import { listApisSync, listApis } from '../apiConnectorMock'
-import { listBizSystemsSync, listBizSystems } from '../bizSystemMock'
+import { _getRaw, _reset, createSkill, removeSkill, forceRevokeSkill, listUnifiedSkills } from '../unifiedSkillMock'
+import { listMcpSync, listMcp, forceRevokeMcpService, __resetMcpMock } from '../mcpConnectorMock'
+import { revokedConnectorNames } from '../positionRevokedRefs'
+import { listApisSync, listApis, forceRevokeApi, __resetApiMock } from '../apiConnectorMock'
+import { listBizSystemsSync, listBizSystems, forceRevokeBizSystem, __resetBizSystemMock } from '../bizSystemMock'
+import { resetAccessAuditMock } from '../accessAuditMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -293,6 +295,85 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     expect(err.message).toContain('发布前检查未通过')
     for (const part of ['岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', '自动化任务']) expect(err.message).toContain(part)
     expect((await listPositions({ keyword: blank.name })).list[0].pendingAction).toBeNull() // 被拦的不进审核
+  })
+
+  // 岗位 PRD §6.4 / §8「被强制回收」：引用保留 + 详情带回收标记 + 发布阻断；对象回收后自然退出「仅已发布」的候选
+  describe('引用了被强制回收的技能 / 连接器', () => {
+    const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null })
+    afterEach(() => { restoreSkill(); __resetMcpMock(); __resetApiMock(); __resetBizSystemMock(); resetAccessAuditMock() })
+
+    it('技能被回收：岗位详情技能子行带 revoked，引用不自动解除，仍可【移除】（detachSkill）', async () => {
+      const before = (await getPosition(401)).agents.flatMap((a) => a.skills)
+      expect(before[0].revoked).toBeNull()
+      await forceRevokeSkill('sk_301', { reason: '存在安全风险' })
+      const d = await getPosition(401)
+      const sk = d.agents.flatMap((a) => a.skills)[0]
+      expect(sk).toMatchObject({ skillId: 'sk_301', revoked: { reason: '存在安全风险' } })
+      expect(sk.revoked.at).toBeTruthy()
+      expect(d.agents[0].skills).toHaveLength(1) // 引用保留
+      await detachSkill(501, 'sk_301')
+      expect((await getPosition(401)).agents[0].skills).toHaveLength(0)
+    })
+
+    it('技能被回收：发布前检查阻断，提示「引用的「XX」已被回收，请移除后再发布」；移除引用后放行', async () => {
+      await forceRevokeSkill('sk_301', { reason: '下线' })
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('引用的「日报周报生成」已被回收，请移除后再发布')
+      await detachSkill(501, 'sk_301')
+      // 移除后回收阻断消失（此岗位只剩空 Agent，转而被「至少引用 1 个技能」拦）
+      const e = await publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' }).catch((x) => x)
+      expect(e.message).not.toContain('已被回收')
+    })
+
+    it('连接器被回收：详情带回 revokedConnectors，发布阻断；解除引用后放行', async () => {
+      const name = listMcpSync().find((m) => m.id === 'expense_mcp').name
+      expect((await getPosition(401)).revokedConnectors).toEqual([])
+      await forceRevokeMcpService('expense_mcp', '凭据泄露')
+      expect((await getPosition(401)).revokedConnectors).toEqual([name])
+      expect(revokedConnectorNames({ connectorMcpIds: ['expense_mcp'] })).toEqual([name])
+      expect(revokedConnectorNames({ connectorMcpIds: ['mail_center'], connectorApiIds: ['不存在的id'] })).toEqual([]) // 未回收 / 悬空引用不算
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow(`引用的「${name}」已被回收，请移除后再发布`)
+      await updatePosition(401, { connectorMcpIds: [] })
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({})
+    })
+
+    // 2026-10-09 /test-audit 补缺口 A9/A10（岗位 PRD §8 / §9.1）：API 与业务系统各一条正向 + 三类共存顺序
+    it('API 被回收：revokedConnectorNames 列出其名称；未回收的 API 不列入', async () => {
+      const name = listApisSync().find((a) => a.id === 'api_1101').name
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([])
+      await forceRevokeApi('api_1101', '接口下线')
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([name])
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1103'] })).toEqual([])
+    })
+
+    it('业务系统被回收：revokedConnectorNames 列出其名称；未回收的业务系统不列入', async () => {
+      const name = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([])
+      await forceRevokeBizSystem('biz_2101', '系统停用')
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([name])
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2102'] })).toEqual([])
+    })
+
+    it('三类都被回收且岗位都引用：名称顺序固定 MCP → API → 业务系统（与回收先后无关）；悬空 id 与未回收项被跳过', async () => {
+      const mcpName = listMcpSync().find((m) => m.id === 'expense_mcp').name
+      const apiName = listApisSync().find((a) => a.id === 'api_1101').name
+      const bizName = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
+      // 故意按「业务系统 → API → MCP」的反序回收，证明顺序由类别决定而不是回收先后
+      await forceRevokeBizSystem('biz_2101', '系统停用')
+      await forceRevokeApi('api_1101', '接口下线')
+      await forceRevokeMcpService('expense_mcp', '凭据泄露')
+      expect(revokedConnectorNames({
+        connectorMcpIds: ['mail_center', 'expense_mcp', '不存在的mcp'], // 未回收 + 已回收 + 悬空
+        connectorApiIds: ['不存在的api', 'api_1103', 'api_1101'],
+        businessSystemIds: ['biz_2101', 'biz_2102', '不存在的biz']
+      })).toEqual([mcpName, apiName, bizName])
+    })
+
+    it('选择弹窗候选口径：回收后的技能不再出现在「已发布」候选里（回未发布）', async () => {
+      const ids = async () => (await listUnifiedSkills({ status: 'PUBLISHED', type: 'POSITION', size: 200 })).list.map((s) => s.id)
+      expect(await ids()).toContain('sk_301')
+      await forceRevokeSkill('sk_301', { reason: '下线' })
+      expect(await ids()).not.toContain('sk_301')
+    })
   })
 
   it('publishPosition 显式 versionLabel（工作台 N5 链路）以之为准；列表 bump 口径不受影响', async () => {

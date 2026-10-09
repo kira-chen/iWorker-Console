@@ -1,27 +1,28 @@
 // @vitest-environment jsdom
 /**
- * 岗位详情「自动化任务」页签 —— 对齐 md 岗位 §7（2026-09-12 ed839c3：三模式调度 / 提示词 / 空闲时段提前准备）。
- * 历史出处：2026-09-09 原型复刻批次 4B（#16–#22），编号沿用便于回溯；
- * 2026-09-12 测试审计 T26 修头注（「#20 详细说明」已改名「提示词」、「执行星期按钮条」已删）、T53 补 Stage 组 5 条；
- * 2026-09-12 审计闭环批（J5 / K1-K9 / J6 占位 / J8③）：embedded / prototype 开关退役（两条零回归用例随删），
- *   补三模式多时间点 / 起止日期 / buildSchedule 字段 / preKick 两态 / 提示词上限与计数 / toast 与占位文案用例。
- * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（四态 Tab），删除「空闲时段提前准备」勾选框
- *   （原 K1 / K2 preKick 两条用例随删）；补闲时执行次数/执行时段字段与 buildSchedule 用例。
+ * SampleTaskEditor（岗位详情「自动化任务」页签右侧编辑器）—— 对齐 md 岗位 §7.x
+ *（docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §7.1 页签布局 / §7.2 基本信息 / §7.3 调度计划 / §7.4 提示词 /
+ *  §7.5 引用工具 / §7.6 执行动作 / §7.7 执行模型 / §7.8 引用平台技能 / §7.9 保存与创建）。
  *
  * 覆盖：
- * - #16 主从容器（md §7.1 双栏）：页签内联形态，右栏内容限宽居中容器在位；
- * - #17 列表项操作精简为「删除」（md §7.1 行内操作），不再有「编辑」按钮；启停移入右侧「基本信息」卡头（md §7.2）；
- * - Stage 组（md §7.1 L371-388 / §7.8）：缺指令红标 / 软上限 20 / 默认选中第一条（09-10 S2）/ 脏检查 confirm / 启停 toast / 删除确认与 toast；
- * - #18 分区卡头（.te-card-title）承担绿条 + 灰底头条，卡体独立 .te-card-body（md §7.1 末条）；
- * - #19 SchedulePicker 四模式：模式 Tab / 按周期预设 / 多时间点去重 / 每间隔起始时刻 / 单次 / 闲时 / 起止日期 / 绿底执行预览（md §7.3）；
- * - K4 buildSchedule：保存 payload.schedule 带 scheduleMode / periodicPreset / intervalCount / intervalUnit / idleCount 等；
- * - #20 提示词卡：非必填、引导文案、「已输入 N / 8000 字」计数（md §7.4）；
- * - #21 引用工具卡：搜索框（占位「搜索工具名称或类型」）+ 平铺行（已验证 tag）+ 空态 + 卡底「+ 添加工具」（md §7.5）；
- * - #22 引用平台技能卡：已选 chips / 空态「暂无引用技能，点击下方添加」+ 搜索（占位「搜索平台技能名称或描述」）+ 卡底「+ 添加技能」（md §7.6）。
+ * - §7.1 主从容器：页签内联形态、列表项操作只剩「删除」（#16 / #17，挂 PositionSampleTaskStage）；分区卡头 + 独立卡体（#18）；
+ * - §7.1 / §7.2 Stage × 真编辑器集成：默认选中第一条、有脏切换确认、卡头开关启停 toast（需真编辑器 DOM，故不在 PositionSampleTaskStage.test.js）；
+ * - §7.2 基本信息：三处占位、名称 64 / 说明 500、启停开关仅编辑态；一句话指令回填 / 必填 / 编辑态写回 payload；
+ * - §7.3 SchedulePicker 四模式（按周期 / 每间隔 / 单次 / 闲时）、多时间点去重、起止日期、执行位置、执行预览；保存 payload.schedule 字段（K4）；
+ * - §7.4 提示词：必填红星、引导文案、「已输入 N / 8000 字」、8001 字拦截、留空拦截；
+ * - §7.5 / §7.8 引用工具 / 引用平台技能卡：搜索、平铺行、空态、卡底添加；§7.6 / §7.7 执行动作 / 执行模型；
+ * - §7.9 保存 / 创建 toast。
+ *
+ * 历史出处（仅供回溯，不作口径）：
+ * - 2026-09-09 原型复刻批次 4B（#16–#22，编号沿用），原文件名 SampleTaskPrototype4B.test.js；
+ * - 2026-09-12 测试审计 T26 / T53、审计闭环批（J5 / K1-K9 / J6 / J8③）；2026-09-23 闲时模式（K1 / K2 preKick 两条随删）；
+ * - 2026-10-08 T12：文件改名为 SampleTaskEditor.test.js；「左侧列表规则」组纯列表的 5 条迁 PositionSampleTaskStage.test.js、
+ *   与之重复的 2 条删除；SampleTaskEditorPrompt.test.js 并入本文件末组，其中与本文件重复的 3 条合并 / 去重后删除原文件。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
-import { listSampleTasks, setSampleTaskStatus } from '@/api/sampleTask'
+import { listSampleTasks, setSampleTaskStatus, createSampleTask, updateSampleTask } from '@/api/sampleTask'
+import { ElMessage } from 'element-plus'
 
 async function flush(n = 8) {
   for (let i = 0; i < n; i++) {
@@ -173,6 +174,24 @@ afterEach(() => {
   container?.remove()
 })
 
+/* ===== 原 SampleTaskEditorPrompt.test.js 并入的公共件（保留原标识符，断言文本原样）===== */
+const createSpy = createSampleTask
+const updateSpy = updateSampleTask
+const warnSpy = ElMessage.warning
+// 直挂 SampleTaskEditor（原 Prompt 文件的 mount）；flush 后读 stub-el-input 序：name, prompt, remark, ...
+function mount(props = {}) {
+  return mountComp(SampleTaskEditorComp, props)
+}
+function inputs() {
+  return [...container.querySelectorAll('.stub-el-input')]
+}
+function setInput(idx, val) {
+  const el = inputs()[idx]
+  el.value = val
+  el.dispatchEvent(new Event('input'))
+}
+const SampleTaskEditorComp = (await import('@/components/position/SampleTaskEditor.vue')).default
+
 const SAMPLE = {
   id: 1,
   name: '每周经营报告',
@@ -214,8 +233,11 @@ describe('自动化任务 · 主从容器与列表项（4B #16 / #17）', () => 
   })
 })
 
-/* ============================ Stage 组：md §7.1 左侧列表规则（2026-09-12 审计 T53） ============================ */
-describe('自动化任务 · 左侧列表规则（md 岗位 §7.1 L371-388）', () => {
+/* ============== Stage × 真编辑器：左侧列表规则中依赖真 SampleTaskEditor 的三条（md 岗位 §7.1 / §7.2） ============== */
+// 2026-10-08 T12：本组原为「左侧列表规则」整组（10 条）。纯列表行为的 5 条已迁到 PositionSampleTaskStage.test.js，
+// 与该文件重复的 2 条（列表为空占位 / 删除确认）已删；下列 3 条要读写真编辑器 DOM（任务名称输入框 / 卡头启停开关），
+// 而 PositionSampleTaskStage.test.js 把 SampleTaskEditor 整体桩掉，故留在此处作 Stage × Editor 集成用例。
+describe('自动化任务 · Stage × 真编辑器集成（md 岗位 §7.1 左侧列表 / §7.2 启停）', () => {
   let PositionSampleTaskStage
   beforeEach(async () => {
     PositionSampleTaskStage = (await import('@/components/position/PositionSampleTaskStage.vue')).default
@@ -232,45 +254,11 @@ describe('自动化任务 · 左侧列表规则（md 岗位 §7.1 L371-388）', 
     skillRefs: [],
     ...over
   })
-  // 任务名称占位逐字照 md §7.2 L385（J6 无关部分）
+  // 任务名称占位逐字照 md §7.2「占位"如：每日经营分析报告"」（J6 无关部分）
   const nameInput = () => container.querySelector('.stub-el-input[placeholder="如：每日经营分析报告"]')
 
-  it('缺「一句话指令」的条目 → 名称旁出红色「缺指令」标签；已填的不出（md §7.1 L371）', async () => {
-    listSampleTasks.mockResolvedValueOnce({ list: [task(1, { prompt: '' }), task(2)] })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    const items = [...container.querySelectorAll('.st-item')]
-    expect(items[0].querySelector('.st-flag')?.textContent.trim()).toBe('缺指令')
-    expect(items[1].querySelector('.st-flag')).toBeNull()
-  })
 
-  it('已有 20 条 → 新增按钮置灰、文案「已达 20 条任务上限」，点击不进新建态（md §7.1 L374 软上限）', async () => {
-    const { ElMessage } = await import('element-plus')
-    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, i) => task(i + 1)) })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    const btn = container.querySelector('.st-new')
-    expect(btn.classList.contains('disabled')).toBe(true)
-    expect(btn.textContent.trim()).toBe('已达 20 条任务上限')
-    btn.click()
-    await flush()
-    expect(container.querySelector('.st-creating')).toBeNull()
-    expect(ElMessage.warning).toHaveBeenCalledWith('自动化任务建议不超过 20 条，把最推荐的放前面')
-  })
-
-  it('19 条 → 新增按钮可点、文案「＋ 新增自动化任务」，点击后左栏出「新增中…」行（md §7.1 L373）', async () => {
-    listSampleTasks.mockResolvedValueOnce({ list: Array.from({ length: 19 }, (_, i) => task(i + 1)) })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    const btn = container.querySelector('.st-new')
-    expect(btn.classList.contains('disabled')).toBe(false)
-    expect(btn.textContent.trim()).toBe('＋ 新增自动化任务')
-    btn.click()
-    await flush()
-    expect(container.querySelector('.st-creating')?.textContent).toContain('新增中…')
-  })
-
-  it('列表非空 → 进入页签默认选中第一条，右侧直接是编辑器而非占位（md §7.1 L376；09-10 S2）', async () => {
+  it('列表非空 → 进入页签默认选中第一条，右侧直接是编辑器而非占位（md §7.1「列表非空时默认选中第一条，右侧展示编辑器」；09-10 S2）', async () => {
     listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
     mountComp(PositionSampleTaskStage, { positionId: 1 })
     await flush()
@@ -281,14 +269,7 @@ describe('自动化任务 · 左侧列表规则（md 岗位 §7.1 L371-388）', 
     expect(nameInput()?.value).toBe('任务1')
   })
 
-  it('列表为空 → 右侧占位「还没有自动化任务」（md §7.1 L375）', async () => {
-    listSampleTasks.mockResolvedValueOnce({ list: [] })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    expect(container.querySelector('.st-placeholder .ph-title')?.textContent.trim()).toBe('还没有自动化任务')
-  })
-
-  it('编辑器有未保存修改时切换条目 → confirm「有未保存的修改，切换将丢弃。继续？」；取消则停留原条目（md §7.1 L380）', async () => {
+  it('编辑器有未保存修改时切换条目 → confirm「有未保存的修改，切换将丢弃。继续？」；取消则停留原条目（md §7.1「切换任务…若有未保存修改弹窗确认"有未保存的修改，切换将丢弃。继续？"」）', async () => {
     const { ElMessageBox } = await import('element-plus')
     listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
     mountComp(PositionSampleTaskStage, { positionId: 1 })
@@ -315,50 +296,7 @@ describe('自动化任务 · 左侧列表规则（md 岗位 §7.1 L371-388）', 
     expect(container.querySelector('.st-item.on .st-name-text').textContent.trim()).toBe('任务2')
   })
 
-  it('无未保存修改时切换条目 → 不弹确认直接切换', async () => {
-    const { ElMessageBox } = await import('element-plus')
-    listSampleTasks.mockResolvedValueOnce({ list: [task(1), task(2)] })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    ;[...container.querySelectorAll('.st-item')][1].click()
-    await flush()
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
-    expect(container.querySelector('.st-item.on .st-name-text').textContent.trim()).toBe('任务2')
-  })
-
-  it('K6 行内【删除】→ confirm「删除后该任务将不可恢复，确认删除？」；确认后 deleteSampleTask + toast「样例任务已删除」+ 右侧回空态（md §7.8）', async () => {
-    const { ElMessage, ElMessageBox } = await import('element-plus')
-    const { deleteSampleTask } = await import('@/api/sampleTask')
-    listSampleTasks.mockResolvedValueOnce({ list: [task(1)] }).mockResolvedValueOnce({ list: [] })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    const del = [...container.querySelectorAll('.st-item .st-name button')].find((b) => b.textContent.trim() === '删除')
-    del.click()
-    await flush()
-    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '删除后该任务将不可恢复，确认删除？',
-      '删除自动化任务',
-      expect.objectContaining({ confirmButtonText: '删除', cancelButtonText: '取消' })
-    )
-    expect(deleteSampleTask).toHaveBeenCalledWith(1, 1)
-    expect(ElMessage.success).toHaveBeenCalledWith('样例任务已删除')
-    expect(container.querySelector('.st-placeholder .ph-title')?.textContent.trim()).toBe('还没有自动化任务')
-  })
-
-  it('K6 删除确认取消 → 不调 deleteSampleTask、无 toast', async () => {
-    const { ElMessage, ElMessageBox } = await import('element-plus')
-    const { deleteSampleTask } = await import('@/api/sampleTask')
-    listSampleTasks.mockResolvedValueOnce({ list: [task(1)] })
-    mountComp(PositionSampleTaskStage, { positionId: 1 })
-    await flush()
-    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
-    ;[...container.querySelectorAll('.st-item .st-name button')].find((b) => b.textContent.trim() === '删除').click()
-    await flush()
-    expect(deleteSampleTask).not.toHaveBeenCalled()
-    expect(ElMessage.success).not.toHaveBeenCalled()
-  })
-
-  it('「基本信息」卡头开关停用 → setSampleTaskStatus(DISABLED) + toast「任务已停用」；再点 → ENABLED + 「任务已启用」（md §7.1 L388 / §7.2）', async () => {
+  it('「基本信息」卡头开关停用 → setSampleTaskStatus(DISABLED) + toast「任务已停用」；再点 → ENABLED + 「任务已启用」（md §7.2「切换成功提示"任务已启用"或"任务已停用"」）', async () => {
     const { ElMessage } = await import('element-plus')
     listSampleTasks.mockResolvedValueOnce({ list: [task(1)] })
     mountComp(PositionSampleTaskStage, { positionId: 1 })
@@ -476,7 +414,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(container.querySelector('.te-card-actions')).toBeNull()
   })
 
-  it('#20 提示词卡（md §7.4 L407/L409）：卡头带必填星号（2026-09-21 起必填）、引导文案逐字、脚部计数「已输入 N / 8000 字」（N = 原文字符数；K7）', async () => {
+  it('#20 提示词卡（md §7.4「引导文案」「字数计数：编辑器底部展示"已输入 N / 8000 字"」）：卡头带必填星号（2026-09-21 起必填）、引导文案逐字、脚部计数「已输入 N / 8000 字」（N = 原文字符数；K7）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     const head = [...container.querySelectorAll('.te-card-title')][2]
@@ -488,7 +426,8 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(counter.textContent.trim()).toBe(`已输入 ${SAMPLE.sopDoc.length} / 8000 字`)
   })
 
-  it('K7 提示词 8001 字 → 阻断保存、不落 update，计数标红；8000 字放行（md §7.4 L405）', async () => {
+  it('K7 提示词 8001 字 → 阻断保存（编辑态不落 update、计数标红、toast「请检查表单中标红的项」；新建态不落 create、MarkdownEditor 收到「提示词最多 8000 个字符」，2026-09-18 待办 yuepu#5⑦文案统一）；8000 字放行（md §7.4「最多 8000 字符」）', async () => {
+    // —— 编辑态（原 SampleTaskPrototype4B 用例）——
     const { updateSampleTask } = await import('@/api/sampleTask')
     const { ElMessage } = await import('element-plus')
     mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, sopDoc: 'x'.repeat(8001) } })
@@ -506,9 +445,34 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     await flush()
     expect(updateSampleTask).toHaveBeenCalled()
     expect(updateSampleTask.mock.calls[0][2].sopDoc).toHaveLength(8000)
+    // —— 新建态（原 SampleTaskEditorPrompt.test.js 同主题用例并入，T12 去重：两条只留一份）——
+    app.unmount()
+    container.remove()
+    vi.clearAllMocks()
+    mount({ positionId: 1, sample: null })
+    await flush()
+    setInput(0, '样例E')
+    setInput(1, '到点汇总昨日工单')
+    lastSopEmit('字'.repeat(8001))
+    await flush()
+    let btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('提示词最多 8000 个字符')
+    // 改到恰好 8000 字 → 放行
+    lastSopEmit('字'.repeat(8000))
+    await flush()
+    btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).toHaveBeenCalled()
+    expect(createSpy.mock.calls[0][1].sopDoc).toHaveLength(8000)
   })
 
-  it('提示词留空 → 阻断保存、不落 update，MarkdownEditor 收到「请填写提示词」（2026-09-21 负责人拍板必填，原 J7 为「留空仍可保存」）', async () => {
+  it('提示词必填：留空 / 纯空白 → 阻断保存（编辑态不落 update、新建态不落 create），MarkdownEditor 收到「请填写提示词」；填了放行且 payload 带 sopDoc（md §7.4「必填…为空时保存 / 创建阻断，提示"请填写提示词"」；2026-09-21 负责人拍板必填，原 J7 为「留空仍可保存」）', async () => {
+    // —— 编辑态（原 SampleTaskPrototype4B 用例）——
     const { updateSampleTask } = await import('@/api/sampleTask')
     mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, sopDoc: '' } })
     await flush()
@@ -517,9 +481,41 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(updateSampleTask).not.toHaveBeenCalled()
     expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
     expect(container.textContent).not.toContain('请填写详细说明') // 旧文案不回潮
+    // —— 新建态（原 SampleTaskEditorPrompt.test.js 同主题用例并入，T12 去重：两条只留一份）——
+    app.unmount()
+    container.remove()
+    vi.clearAllMocks()
+    mount({ positionId: 1, sample: null })
+    await flush()
+    setInput(0, '样例D')
+    setInput(1, '到点汇总昨日工单')
+    await flush()
+    // 留空
+    let btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
+    // 纯空白同样视同未填
+    lastSopEmit('   \n  ')
+    await flush()
+    btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('请填写提示词')
+    // 填了提示词 → 放行，payload 带上
+    lastSopEmit('1. 拉取昨日工单\n2. 汇总成待办')
+    await flush()
+    btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).toHaveBeenCalled()
+    expect(createSpy.mock.calls[0][1].sopDoc).toBe('1. 拉取昨日工单\n2. 汇总成待办')
   })
 
-  it('K6 编辑态保存 → toast「样例任务已保存」；新建态创建 → toast「样例任务已创建」（md §7.7 L431-432）', async () => {
+  it('K6 编辑态保存 → toast「样例任务已保存」；新建态创建 → toast「样例任务已创建」（md §7.9「提示"样例任务已保存"」「提示"样例任务已创建"」）', async () => {
     const { ElMessage } = await import('element-plus')
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
@@ -543,7 +539,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(ElMessage.success).toHaveBeenLastCalledWith('样例任务已创建')
   })
 
-  it('基本信息三处占位逐字照 md §7.2 L385-387；字数上限 = 名称 64 / 说明 500（2026-09-12 负责人决策 1：名称按一览表通用规则 64，说明取 md 的 500）', async () => {
+  it('基本信息三处占位逐字照 md §7.2（任务名称 / 一句话指令 / 说明三处「占位」）；字数上限 = 名称 64 / 说明 500（2026-09-12 负责人决策 1：名称按一览表通用规则 64，说明取 md 的 500）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: null })
     await flush()
     const inputs = [...container.querySelectorAll('.te-card-body .stub-el-input')].slice(0, 3)
@@ -560,7 +556,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
   it('#21 引用工具卡：搜索框 + 平铺行（已验证 tag）+ 卡底「+ 添加工具」，搜索可过滤', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
-    // 搜索框占位逐字照 md §7.5 L413（K8）
+    // 搜索框占位逐字照 md §7.5「占位"搜索工具名称或类型"」（K8）
     const search = container.querySelector('.stub-el-input[placeholder="搜索工具名称或类型"]')
     expect(search).not.toBeNull()
     const rows = [...container.querySelectorAll('.tl-row')]
@@ -579,13 +575,13 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(container.querySelector('.tl-empty')).not.toBeNull()
   })
 
-  it('K8 无已添加工具 → 空态「暂无引用工具，点击下方添加」（md §7.5 L416）', async () => {
+  it('K8 无已添加工具 → 空态「暂无引用工具，点击下方添加」（md §7.5「无已添加工具时展示空态」）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, toolRefs: [] } })
     await flush()
     expect(container.querySelector('.tl-empty').textContent.trim()).toBe('暂无引用工具，点击下方添加')
   })
 
-  it('K8 无已选技能 → 空态「暂无引用技能，点击下方添加」，无 chips；有已选时不出空态（md §7.6 L425）', async () => {
+  it('K8 无已选技能 → 空态「暂无引用技能，点击下方添加」，无 chips；有已选时不出空态（md §7.8「无已选技能时展示空态」）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, skillRefs: [] } })
     await flush()
     expect(container.querySelector('.sk-none').textContent.trim()).toBe('暂无引用技能，点击下方添加')
@@ -615,7 +611,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     // 已选 chip
     const chip = container.querySelector('.sk-chip .sk-chip-name')
     expect(chip.textContent.trim()).toBe('经营分析技能')
-    // 搜索框占位逐字照 md §7.6 L422（K8）
+    // 搜索框占位逐字照 md §7.8「占位"搜索平台技能名称或描述"」（K8）
     expect(container.querySelector('.stub-el-input[placeholder="搜索平台技能名称或描述"]')).not.toBeNull()
     // 候选默认收起
     expect(container.querySelector('.sk-list')).toBeNull()
@@ -822,8 +818,8 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     expect(container.querySelector('.sp-preview')).toBeNull()
   })
 
-  /* ---- 2026-09-12 审计 K3：md §7.3 L396-397 多时间点 / 每间隔起始时刻 / 起止日期 ---- */
-  it('K3 按周期：【＋ 添加时间】加第二个时间点；第二个改成与第一个相同 → 同一天自动去重只剩一个（md §7.3 L396）', async () => {
+  /* ---- 2026-09-12 审计 K3：md §7.3「定点时间」「起止日期」多时间点 / 每间隔起始时刻 / 起止日期 ---- */
+  it('K3 按周期：【＋ 添加时间】加第二个时间点；第二个改成与第一个相同 → 同一天自动去重只剩一个（md §7.3「支持【＋ 添加时间】配置一天多个时间点，系统自动对同一天时间去重」）', async () => {
     const schedule = mountSched()
     await flush()
     const addBtn = container.querySelector('.sp-add-time-link')
@@ -864,7 +860,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     expect(schedule.value.times).toEqual(['09:00'])
   })
 
-  it('K3 每间隔模式：出「定点时间」起始时刻输入（单个 time input，改值回写 times[0]），无【＋ 添加时间】（md §7.3 L396）', async () => {
+  it('K3 每间隔模式：出「定点时间」起始时刻输入（单个 time input，改值回写 times[0]），无【＋ 添加时间】（md §7.3「每间隔模式下指定起始时刻」）', async () => {
     const schedule = mountSched()
     await flush()
     container.querySelectorAll('.sp-seg-mode .sp-seg-btn')[1].click()
@@ -881,7 +877,7 @@ describe('自动化任务 · 调度计划三模式（4B #19 / md §7.3）', () =
     expect(schedule.value.times).toEqual(['07:30'])
   })
 
-  it('K3 起止日期：按周期 / 每间隔出「从哪天开始」+「到哪天结束」两个日期框；单次仅出起始（md §7.3 L397）', async () => {
+  it('K3 起止日期：按周期 / 每间隔出「从哪天开始」+「到哪天结束」两个日期框；单次仅出起始（md §7.3「起止日期…单次模式仅设起始时间」）', async () => {
     mountSched()
     await flush()
     const labelsOf = () => [...container.querySelectorAll('.sp-label')].map((n) => n.textContent.trim())
@@ -1048,5 +1044,55 @@ describe('自动化任务 · 保存 payload.schedule 带三模式字段（md §7
     const payload = updateSampleTask.mock.calls[0][2]
     expect(payload.schedule.execLocations).toEqual(['CLOUD', 'WEB'])
     expect(payload.schedule.scheduleMode).toBe('IDLE')
+  })
+})
+
+/* ============== 一句话指令(prompt) 校验门（原 SampleTaskEditorPrompt.test.js 并入，md 岗位 §7.2 / §7.9） ============== */
+describe('SampleTaskEditor · 一句话指令(prompt)', () => {
+  it('详情回填 SampleTaskVO.prompt', async () => {
+    mount({
+      positionId: 1,
+      sample: { id: 't1', name: '样例A', prompt: '每天拉工单汇总 [SILENT]', schedule: { scheduleType: 'DAILY', times: ['09:00'] }, sopDoc: 'x', toolRefs: [], skillRefs: [] }
+    })
+    await flush()
+    // prompt 为第二个输入框（name 之后）。
+    expect(inputs()[1].value).toBe('每天拉工单汇总 [SILENT]')
+  })
+
+  it('空 prompt → 阻断保存，不落 create（其余必填齐备，证明归因到 prompt 门）', async () => {
+    mount({ positionId: 1, sample: null })
+    await flush()
+    // 填齐除 prompt 外全部必填：name（输入框 0）、提示词（2026-09-21 起必填）；schedule 创建态默认 DAILY + ['09:00']
+    // 本就合法（blankSchedule），仅 prompt 留空。
+    setInput(0, '样例B')
+    lastSopEmit('1. 拉取工单\n2. 汇总')
+    await flush()
+    // 点击保存（最后一个按钮为主保存）。
+    const btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click()
+    await flush()
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    // 归因：标红错误仅 prompt 一条（name/sopDoc/schedule 均已通过校验）。
+    const errs = [...container.querySelectorAll('.te-err')].map((e) => e.textContent)
+    expect(errs).toEqual(['请填写一句话指令（启用样例必填）'])
+    expect(container.querySelector('.stub-md').getAttribute('data-err')).toBe('')
+  })
+
+  it('编辑态改 prompt → updateSampleTask payload 含新 prompt', async () => {
+    // 编辑态：sopDoc / schedule 由 sample 回填齐（避开 MarkdownEditor stub 不发 update 的困扰），仅改 prompt。
+    mount({
+      positionId: 1,
+      sample: { id: 't1', name: '样例C', prompt: '旧指令', schedule: { scheduleType: 'DAILY', times: ['09:00'] }, sopDoc: '怎么办', toolRefs: [], skillRefs: [] }
+    })
+    await flush()
+    setInput(1, '新指令：到点做汇总') // prompt（第二输入框）
+    await flush()
+    const btns = [...container.querySelectorAll('button')]
+    btns[btns.length - 1].click() // 保存
+    await flush()
+    expect(updateSpy).toHaveBeenCalled()
+    const payload = updateSpy.mock.calls[0][2]
+    expect(payload.prompt).toBe('新指令：到点做汇总')
   })
 })

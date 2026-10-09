@@ -2,16 +2,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
+import { passthrough, elEmpty } from './helpers/commonStubs'
+import { elInput, elSelect, elOption, pick, elButton, makeListProbes } from './helpers/listPageStubs'
 
 /**
  * UnifiedReview.vue（审核中心）列表页单测（2026-09-12 测试审计 T56 新建，此前 368 行零测试）。
  *
  * 对齐 md `prd.审核中心.md`：
- * - §一 L8 页面说明；§二 查询区（占位「搜索名称 / 用户名」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、【查询】）；
+ * - §一「页面说明」；§二 查询区（占位「搜索名称 / 用户名」、业务类型九项（含 2026-09-20 起的「版本管理」）、申请类型三项、【查询】）；
  * - §3.1 七列（名称+描述 / 业务类型 / 申请类型 / 申请版本「—」/ 提交人 / 提交时间 ↓↑ / 操作【查看】【驳回】【通过】）；
  * - §四 【查看】：技能走整页只读路由，其余开原生详情抽屉（GovObjectDetail），底部 关闭|驳回|通过；
  * - §5.1 驳回弹窗 → 「已驳回审核」；§5.2 通过确认 → 发布类「已通过审核」/ 停用「已通过停用申请」，记录离开列表（重拉）；
- * - §七 L99 空态「暂无审核数据」；L102 快照缺失（岗位 / 专家 / 技能）阻止审核（aa7d251：列表行动作也过闸门）。
+ * - 2026-10-08 补：夹具加一行版本管理（VERSION）——名称「终端 + 版本号」、业务类型「版本管理」、申请类型「新版本发布」，
+ *   【查看】开原生详情抽屉（GovObjectDetail 桩收到 kind=VERSION），不查快照（md §四：版本管理不生成快照）。
+ * - §七「查询无结果：展示暂无审核数据」；§七「业务快照缺失（岗位 / 专家 / 技能）：阻止审核…详情页与列表行的【通过】【驳回】均拦截」（aa7d251：列表行动作也过闸门）。
  * 桩法照 userSkillReviews.test.js：ListToolbar / ListStates / ListPagination / StatusTag 真挂载，EP 原生控件桩，
  * 子组件 GovObjectDetail / ReviewRejectDialog 桩（各有独立单测），只验「开没开、带的什么、回传什么」。
  */
@@ -94,40 +98,8 @@ vi.mock('@/components/admin/ReviewRejectDialog.vue', () => ({
 const UnifiedReview = (await import('@/views/admin/UnifiedReview.vue')).default
 const { SNAPSHOT_MISSING_HINT } = await import('@/utils/reviewSnapshot')
 
-// el-table-column / 行单元用共享 helper；el-table 本地包一层按 row.id 作 key（行集合变化后不复用旧行，见 userSkillReviews.test）
-const { RowCells, tableColStub } = makeElTableStubs({ renderHeader: true })
-const tableStub = {
-  name: 'el-table',
-  props: { data: { type: Array, default: () => [] } },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'el-table' }, [
-        h('div', { class: 'el-head' }, slots.default?.()),
-        ...props.data.map((row, i) => h(RowCells, { row, colSlot: slots.default, key: row.id ?? i }))
-      ])
-  }
-}
-const elInput = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'keyup', 'clear'],
-  template: '<input class="el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" @keyup="$emit(\'keyup\', $event)" />'
-}
-const elSelect = {
-  props: ['modelValue', 'placeholder'],
-  emits: ['update:modelValue', 'change'],
-  template:
-    '<div class="el-select" :data-placeholder="placeholder" @pick="$emit(\'update:modelValue\', $event.detail); $emit(\'change\', $event.detail)"><slot /></div>'
-}
-const pick = (selectEl, value) => selectEl.dispatchEvent(new CustomEvent('pick', { detail: value }))
-const elOption = { props: ['label', 'value'], template: '<div class="el-option" :data-value="value">{{ label }}</div>' }
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
-const elEmpty = { props: ['description'], template: '<div class="el-empty">{{ description }}<slot /></div>' }
-const elButton = {
-  props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean },
-  emits: ['click'],
-  template:
-    '<button class="el-button" :disabled="disabled" :data-type="type" :data-link="link" @click="!disabled && $emit(\'click\')"><slot /></button>'
-}
+// el-table / el-table-column 用共享 helper（helper 按 row.id 作 key，行集合变化后不复用旧行）
+const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
 
 let app, container
 async function mount() {
@@ -155,17 +127,18 @@ async function flush(n = 4) {
     await nextTick()
   }
 }
-const rowEls = () => [...container.querySelectorAll('.el-row')]
+const { rowEls, toolbarBtn } = makeListProbes(() => container)
 const rowBtn = (row, text) => [...row.querySelectorAll('.rev-ops .el-button')].find((b) => b.textContent.trim() === text)
 const rowOps = (row) => [...row.querySelectorAll('.rev-ops .el-button')].map((b) => b.textContent.trim())
-const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
 
-// 夹具照 reviewsMock 种子形状（id 1 API 首次发布 / 2 技能新版本 / 3 业务系统停用 / 5 岗位新版本）
+// 虚构夹具，字段形状同 reviewsMock 种子（id 1 API 首次发布 / 2 技能新版本 / 3 业务系统停用 / 5 岗位新版本）
 const ROWS = [
   { id: 1, name: '客户资料查询', description: '按客户编号读取客户基础信息', type: 'TOOL', subType: 'API', refId: 'api_1103', submitterName: 'config.admin', submittedAt: '2026-08-28 09:42', status: 'PENDING_REVIEW', requestAction: 'FIRST_PUBLISH', version: '—' },
   { id: 2, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', type: 'SKILL', refId: 'sk_302', submitterName: 'li.na', submittedAt: '2026-08-28 09:18', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' },
   { id: 3, name: '人力资源系统', description: '员工、组织、请假和入转调离管理', type: 'BIZ_SYSTEM', refId: 'biz_2102', submitterName: 'config.admin', submittedAt: '2026-08-27 18:34', status: 'PENDING_REVIEW', requestAction: 'DELIST', version: 'v2.0.0' },
-  { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', refId: 403, submitterName: 'wangfang', submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' }
+  { id: 5, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', type: 'POSITION', refId: 403, submitterName: 'wangfang', submittedAt: '2026-08-27 14:05', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' },
+  // 2026-10-08：版本管理行（md §3.1 名称 =「终端 + 版本号」、下一行 = 更新说明；申请类型只有新版本发布 / 停用）
+  { id: 13, name: 'Mac v1.2.0', description: '新增记忆管理 修复若干问题', type: 'VERSION', refId: 7, submitterName: 'xiaomei', submittedAt: '2026-08-26 16:30', status: 'PENDING_REVIEW', requestAction: 'VERSION_PUBLISH', version: 'v1.2.0' }
 ]
 const byId = (id) => ROWS.find((r) => r.id === id)
 const rowById = (id) => rowEls().find((el) => el.textContent.includes(byId(id).name))
@@ -189,13 +162,13 @@ afterEach(() => {
 })
 
 describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
-  it('页面说明取 md §一 L8；挂载即拉待审列表（默认 sortDir=desc、page=1）', async () => {
+  it('页面说明取 md §一「页面说明」；挂载即拉待审列表（默认 sortDir=desc、page=1）', async () => {
     await mount()
     expect(container.querySelector('.ph-sub').textContent).toBe('审核系统配置员提交的连接器、技能、模型、岗位与专家发布、停用申请，以及用户端版本的发布、停用申请')
     expect(listReviews).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
   })
 
-  // 待办 yuepu#12④：访问审计【查看】跳转统一带 query.keyword（md 访问审计 §6.3 L128），本页须作为初始搜索词。
+  // 待办 yuepu#12④：访问审计【查看】跳转统一带 query.keyword（md 访问审计 §6.3「在搜索框中自动注入操作对象名称作为关键词」），本页须作为初始搜索词。
   it('跨模块入口 ?keyword=xxx（访问审计【查看】）：首拉即按该关键词取数，搜索框回显', async () => {
     routeQuery.value = { keyword: '经营分析岗' }
     await mount()
@@ -213,7 +186,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(toolbarBtn('查询')).toBeTruthy()
   })
 
-  it('业务类型下拉选中「停用」申请类型 → 即时按 requestAction 重查回第 1 页；【查询】带 keyword 且行随结果变化（md §二 L18）', async () => {
+  it('申请类型下拉选中「停用」 → 即时按 requestAction 重查回第 1 页；【查询】带 keyword 且行随结果变化（md §二「查询按钮：按当前条件刷新列表并回到第 1 页」）', async () => {
     listReviews.mockImplementation((p = {}) => {
       let list = ROWS
       if (p.requestAction) list = list.filter((r) => r.requestAction === p.requestAction)
@@ -221,14 +194,14 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
       return Promise.resolve({ list, total: list.length })
     })
     await mount()
-    expect(rowEls()).toHaveLength(4)
+    expect(rowEls()).toHaveLength(ROWS.length)
     listReviews.mockClear()
     pick(container.querySelectorAll('.el-select')[1], 'DELIST')
     await flush()
     expect(listReviews).toHaveBeenCalledWith(expect.objectContaining({ requestAction: 'DELIST', page: 1 }))
     expect(rowEls()).toHaveLength(1)
     expect(rowEls()[0].textContent).toContain('人力资源系统')
-    // 再叠加 keyword 走【查询】：条件可组合（md §二 L20）
+    // 再叠加 keyword 走【查询】：条件可组合（md §二「查询条件可以组合使用」）
     const input = container.querySelector('.el-input')
     input.value = '客户'
     input.dispatchEvent(new Event('input'))
@@ -258,7 +231,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(r1.textContent).toContain('2026-08-28 09:42')
   })
 
-  it('操作列按顺序【查看】【驳回】【通过】，驳回为红色文字链（md §3.1 L34）', async () => {
+  it('操作列按顺序【查看】【驳回】【通过】，驳回为红色文字链（md §3.1「操作：按顺序展示【查看】【驳回】【通过】」）', async () => {
     await mount()
     for (const row of rowEls()) {
       expect(rowOps(row)).toEqual(['查看', '驳回', '通过'])
@@ -280,7 +253,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(container.querySelector('.rev-sort-arrow').textContent).toBe('↓')
   })
 
-  it('空态「暂无审核数据」（md §七 L99）；加载失败出「加载失败」+【重试】', async () => {
+  it('空态「暂无审核数据」（md §七「查询无结果：展示暂无审核数据」）；加载失败出「加载失败」+【重试】', async () => {
     listReviews.mockResolvedValueOnce({ list: [], total: 0 })
     await mount()
     expect(container.querySelector('.ls-empty').textContent).toContain('暂无审核数据')
@@ -291,7 +264,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect([...container.querySelectorAll('.el-empty .el-button')].map((b) => b.textContent.trim())).toContain('重试')
   })
 
-  it('【通过】发布类申请（VERSION_PUBLISH）→ 先弹确认（confirmApproveReview 收到该行）→ 调 approveReview(row) → toast「已通过审核」→ 重拉列表（md §5.2 L81-82）', async () => {
+  it('【通过】发布类申请（VERSION_PUBLISH）→ 先弹确认（confirmApproveReview 收到该行）→ 调 approveReview(row) → toast「已通过审核」→ 重拉列表（md §5.2「发布类申请提示已通过审核」「记录离开审核列表」）', async () => {
     await mount()
     rowBtn(rowById(2), '通过').click()
     await flush()
@@ -301,7 +274,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(listReviews).toHaveBeenCalledTimes(2)
   })
 
-  it('【通过】停用申请（DELIST）→ toast「已通过停用申请」（md §5.2 L81）', async () => {
+  it('【通过】停用申请（DELIST）→ toast「已通过停用申请」（md §5.2「停用申请提示已通过停用申请」）', async () => {
     await mount()
     rowBtn(rowById(3), '通过').click()
     await flush()
@@ -319,7 +292,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(listReviews).toHaveBeenCalledTimes(1)
   })
 
-  it('【通过】接口失败 → toast 错误原因（md §七 L101 记录已被其他审核人处理）', async () => {
+  it('【通过】接口失败 → toast 错误原因（md §七「记录已被其他审核人处理：操作失败，刷新后记录离开列表」）', async () => {
     approveReview.mockRejectedValueOnce(new Error('审核记录不存在'))
     await mount()
     rowBtn(rowById(1), '通过').click()
@@ -327,7 +300,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('审核记录不存在')
   })
 
-  it('【驳回】→ 开「驳回审核」弹窗 → 确认原因 → rejectReview(row, 原因) → toast「已驳回审核」→ 关弹窗并重拉（md §5.1 L71）', async () => {
+  it('【驳回】→ 开「驳回审核」弹窗 → 确认原因 → rejectReview(row, 原因) → toast「已驳回审核」→ 关弹窗并重拉（md §5.1「记录离开审核列表，并提示已驳回审核」）', async () => {
     await mount()
     rowBtn(rowById(1), '驳回').click()
     await flush()
@@ -340,7 +313,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(listReviews).toHaveBeenCalledTimes(2)
   })
 
-  it('岗位行快照缺失 → 【通过】【驳回】均被闸门拦下：warning 提示、不弹确认、不开弹窗、不调接口（md §七 L102；aa7d251）', async () => {
+  it('岗位行快照缺失 → 【通过】【驳回】均被闸门拦下：warning 提示、不弹确认、不开弹窗、不调接口（md §七「业务快照缺失（岗位 / 专家 / 技能）：…详情页与列表行的【通过】【驳回】均拦截」；aa7d251）', async () => {
     loadReviewSnapshot.mockResolvedValue(null)
     await mount()
     rowBtn(rowById(5), '通过').click()
@@ -390,7 +363,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(container.querySelector('.gov-detail')).toBeNull()
   })
 
-  it('详情底部【通过】→ 走同一通过流程，成功后关详情并重拉（md §5.2 L81「确认后关闭详情并提示」）', async () => {
+  it('详情底部【通过】→ 走同一通过流程，成功后关详情并重拉（md §5.2「确认后关闭详情并提示」）', async () => {
     await mount()
     rowBtn(rowById(3), '查看').click()
     await flush()
@@ -415,5 +388,33 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(rejectReview).toHaveBeenCalledWith(byId(1), 'x')
     expect(container.querySelector('.reject-dialog')).toBeNull()
     expect(container.querySelector('.gov-detail')).toBeNull()
+  })
+
+  it('版本管理行（md §3.1）：名称为「终端 + 版本号」、下一行为更新说明；业务类型「版本管理」、申请类型「新版本发布」', async () => {
+    await mount()
+    const row = rowById(13)
+    expect(row.querySelector('.rev-name').textContent).toBe('Mac v1.2.0')
+    expect(row.querySelector('.rev-desc').textContent).toBe('新增记忆管理 修复若干问题')
+    expect([...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())).toEqual(['版本管理', '新版本发布'])
+  })
+
+  it('版本管理行【查看】→ 打开原生详情抽屉，kind=VERSION、带版本 id，底部 关闭|驳回|通过（md §四：版本管理复用版本管理页的只读查看抽屉）', async () => {
+    await mount()
+    rowBtn(rowById(13), '查看').click()
+    await flush()
+    const detail = container.querySelector('.gov-detail')
+    expect(detail.dataset.kind).toBe('VERSION')
+    expect(detail.dataset.ref).toBe('7')
+    expect([...detail.querySelectorAll('.gov-btn')].map((b) => b.textContent)).toEqual(['关闭', '驳回', '通过'])
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('版本管理行【通过】→ 不查快照直接进审核流程（md §四：版本管理不生成快照）', async () => {
+    await mount()
+    rowBtn(rowById(13), '通过').click()
+    await flush()
+    expect(loadReviewSnapshot).not.toHaveBeenCalled()
+    expect(approveReview).toHaveBeenCalledWith(byId(13))
+    expect(ElMessage.success).toHaveBeenCalledWith('已通过审核')
   })
 })

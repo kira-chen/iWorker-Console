@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
+import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 
 /**
  * PositionDetailTabs · 页签信息架构契约（对齐 md 岗位 §1.2 顶栏 / §1.3 页签；2026-09-12 审计 T26/T53 修头注、补顶栏用例）。
  *
- * - 页签集合：md §1.3 七页签（人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 业务系统）
- *   + demo 扩展「运行」「效果测试」两占位 = 9 个（2026-09-10 负责人选 C「9 页签全留」）；「版本」页签已删。
+ * - 页签集合：md §1.3 七页签（人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 连接器）
+ *   （2026-09-15 连接器替换业务系统，「运行」「效果测试」两占位已移除；「版本」页签已删）。
  *   md §1.3 页签 name `tasks`（2026-09-12 审计 J8③ 已由 `sampleTasks` 改齐），本组不钉 name。
- * - 人格页签为 md §2 六区块（岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格）。
+ * - 人格页签为 md §2 七区块（岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
- * - 顶栏（md §1.2 L144-145）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
+ * - 顶栏（md §1.2「版本号：已发布岗位展示当前版本号（如 v2.1.0）；未发布不展示」「未保存提示：存在未保存修改时展示"有未保存的修改"」）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
  * - 只读态（query.view=1）/ 审核中：顶部隐藏【保存】【发布岗位】。
  * 只钉页面这一层，不测子组件内部（全桩）。
+ *
+ * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §12「加载失败」补：
+ *  store.error 非空 → 不出页签、出【重试】，点【重试】按当前路由 id 重新 store.load。
+ *  失败文案（md「加载失败」vs 代码显示原始错误）与是否另给【返回】待 J19 裁决，此处只钉重试行为。
  */
 
 // reactive：顶栏脏检查 isDirty 是 computed，store.basic 被 patchBasic 整体替换后须能触发重算
@@ -82,9 +87,6 @@ for (const p of [
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
 // el-tabs / el-tab-pane 轻桩：渲染所有 pane 的 label + 内容（便于断言）
-const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }
-const elTabPane = { name: 'el-tab-pane', props: ['label', 'name'], template: '<div class="el-tab-pane" :data-label="label" :data-name="name"><slot /></div>' }
-const passthrough = (t) => ({ name: t, template: `<div class="${t}"><slot /></div>` })
 
 let app, container
 async function mount() {
@@ -111,6 +113,7 @@ beforeEach(() => {
   store.load.mockClear(); store.saveBasic.mockClear(); routeMock.query = {}; store.detail.pendingAction = null
   store.isPublished = false
   store.loading = false
+  store.error = ''
   store.detail = { positionId: 5, status: 'draft', pendingAction: null }
   store.basic = { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] }
   listPublicationsSpy.mockClear()
@@ -138,7 +141,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.el-tabs').dataset.active).toBe('agents')
     app.unmount(); container.remove()
 
-    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（L589 注），旧深链值不再合法
+    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（md §1.3「自动化任务（`tasks`）」），旧深链值不再合法
     await mount()
     expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
     app.unmount(); container.remove()
@@ -175,7 +178,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(store.saveBasic).not.toHaveBeenCalled()
   })
 
-  it('人格Tab名称改动后 → 顶栏显「有未保存的修改」（md §1.2 L145）；未改动时隐藏', async () => {
+  it('人格Tab名称改动后 → 顶栏显「有未保存的修改」（md §1.2「存在未保存修改时展示"有未保存的修改"；无未保存时隐藏」）；未改动时隐藏', async () => {
     await mount()
     expect(container.querySelector('.tb-dirty').textContent.trim()).toBe('')
     // 岗位名称编辑框已移入人格Tab；直接改 store 触发 dirty 检测
@@ -185,7 +188,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.tb-dirty').classList.contains('on')).toBe(true)
   })
 
-  it('已发布岗位 → 顶栏展示当前在架版本号（如 v2.1.0，md §1.2 L144）', async () => {
+  it('已发布岗位 → 顶栏展示当前在架版本号（如 v2.1.0，md §1.2「已发布岗位展示当前版本号」）', async () => {
     store.isPublished = true
     store.detail = { positionId: 5, status: 'published', pendingAction: null }
     listPublicationsSpy.mockImplementation(() => Promise.resolve([
@@ -198,7 +201,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(container.querySelector('.tb-version')?.textContent.trim()).toBe('v2.1.0')
   })
 
-  it('未发布岗位 → 顶栏不展示版本号（md §1.2 L144）', async () => {
+  it('未发布岗位 → 顶栏不展示版本号（md §1.2「未发布不展示」）', async () => {
     await mount()
     await nextTick(); await Promise.resolve(); await nextTick()
     expect(container.querySelector('.tb-version')).toBeNull()
@@ -254,5 +257,26 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
     expect(panes.find((p) => p.getAttribute('data-name') === 'businessSystems')).toBeTruthy()
     expect(panes.find((p) => p.getAttribute('data-name') === 'runtime')).toBeUndefined()
     expect(panes.find((p) => p.getAttribute('data-name') === 'effectTest')).toBeUndefined()
+  })
+})
+
+describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文案待 J19）', () => {
+  const retryBtn = () => [...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '重试')
+
+  it('详情加载失败（store.error 非空）→ 不渲染页签，出【重试】按钮', async () => {
+    store.error = '网络异常'
+    await mount()
+    expect(container.querySelector('.el-tabs')).toBeNull()
+    expect(retryBtn()).toBeTruthy()
+  })
+
+  it('点【重试】→ 按当前路由的岗位 id 重新加载详情（store.load("5")）', async () => {
+    store.error = '网络异常'
+    await mount()
+    const before = store.load.mock.calls.length
+    retryBtn().click()
+    await nextTick()
+    expect(store.load.mock.calls.length).toBe(before + 1)
+    expect(store.load.mock.calls.at(-1)[0]).toBe('5')
   })
 })

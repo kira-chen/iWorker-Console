@@ -13,6 +13,7 @@ import {
   saveRiskTemplate,
   __resetSkillReviewMock
 } from '../skillReviewMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import {
   fullDetectionResults,
   needsManualAudit,
@@ -22,7 +23,10 @@ import {
   ITEM_RISK_OPTIONS
 } from '@/utils/userSkillAuditMeta'
 
-beforeEach(() => __resetSkillReviewMock())
+beforeEach(() => {
+  __resetSkillReviewMock()
+  resetAccessAuditMock()
+})
 
 describe('skillReviewMock · 审核记录', () => {
   // 2026-09-12 测试审计 T22：种子恒 7 条（与下方分页用例 total=7 一致），「≥7」放宽无意义，改精确值
@@ -56,6 +60,13 @@ describe('skillReviewMock · 审核记录', () => {
     expect((await listReviewApplications({ status: 'PENDING' })).total).toBe(3)
     expect((await listReviewApplications({ status: 'PENDING', scale: '通用' })).total).toBe(2)
     expect((await listReviewApplications({ keyword: '不存在的技能' })).total).toBe(0)
+  })
+
+  it('keyword 也能命中「提交人 / 技能名」整串（访问审计【查看】跳转注入的操作对象名，访问审计 §6.3）', async () => {
+    const first = (await listReviewApplications({ page: 1, size: 1 })).list[0]
+    const res = await listReviewApplications({ keyword: `${first.submitter} / ${first.skillName}` })
+    expect(res.total).toBeGreaterThanOrEqual(1)
+    expect(res.list.map((r) => r.id)).toContain(first.id)
   })
 
   it('分页：page/size 切片，total 为筛选后总数', async () => {
@@ -206,5 +217,52 @@ describe('skillReviewMock · 持久化 restore 形状守卫', () => {
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('skillReview 存量数据不可用'), expect.any(Error))
     warn.mockRestore()
+  })
+
+  // 2026-10-08 /test-audit 补缺口（md 用户技能审核 §7.2「保存当前 Tab 的模板配置……只有保存才视为生效」）：保存的风险模板刷新后仍生效。
+  it('保存「严格」尺度的风险模板后刷新 → 读回的是新模板，不是种子', async () => {
+    const m = await import('../skillReviewMock')
+    const before = (await m.getRiskConfig()).templates['严格']
+    // 挑第一个检测项，换成它可选集合里另一个触发等级
+    const item = DETECTION_ITEMS[0]
+    const other = ITEM_RISK_OPTIONS[item].find((v) => v !== before[item])
+    await m.saveRiskTemplate('严格', { ...before, [item]: other })
+
+    vi.resetModules()
+    const reloaded = await import('../skillReviewMock')
+    const after = (await reloaded.getRiskConfig()).templates['严格']
+    expect(after[item]).toBe(other)
+    expect(after).toEqual({ ...before, [item]: other })
+  })
+})
+
+describe('skillReviewMock · 写访问审计（prd.访问审计.md §6.2「用户技能审核记录」、§6.5.2）', () => {
+  const recs = () => opsRecords.filter((r) => r.live && r.module === '用户技能审核')
+
+  it('通过：写「审核通过」记录，target=「提交人 / 技能名」，detail 为空，objectId=审核单 id，meta 带 reviewId / submitter / skillName', async () => {
+    await approveReviewApplication('usr_1', { reviewer: 'audit.admin' })
+    expect(recs()).toHaveLength(1)
+    expect(recs()[0]).toMatchObject({
+      action: '审核通过', target: 'zhangsan / 自动发送邮件', detail: '', objectId: 'usr_1',
+      meta: { reviewId: 'usr_1', submitter: 'zhangsan', skillName: '自动发送邮件' }
+    })
+    expect(recs()[0].operator).toBeTruthy()
+  })
+
+  it('驳回：写「审核驳回」记录，detail = 驳回原因（已 trim）', async () => {
+    await rejectReviewApplication('usr_4', { reason: ' 请缩小权限范围 ' })
+    expect(recs()[0]).toMatchObject({
+      action: '审核驳回', detail: '请缩小权限范围', objectId: 'usr_4',
+      meta: { reviewId: 'usr_4', submitter: 'zhaoliu', skillName: '内网文件同步' }
+    })
+    expect(recs()[0].target).toBe('zhaoliu / 内网文件同步')
+  })
+
+  it('操作失败（已审核 / 原因为空）不写记录', async () => {
+    await approveReviewApplication('usr_1', {})
+    resetAccessAuditMock()
+    await expect(approveReviewApplication('usr_1', {})).rejects.toBeTruthy()
+    await expect(rejectReviewApplication('usr_4', { reason: '  ' })).rejects.toBeTruthy()
+    expect(recs()).toHaveLength(0)
   })
 })

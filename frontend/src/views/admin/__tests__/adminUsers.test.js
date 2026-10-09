@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, render, nextTick } from 'vue'
 import { makeElTableStubs } from './helpers/elTableStub'
 import { COL, COL_NOWRAP } from '@/utils/tableLayout'
+import { passthrough } from './helpers/commonStubs'
 
 /**
  * AdminUsers.vue（用户列表页）—— 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/06组织/用户/prd-用户.md
@@ -17,6 +18,8 @@ import { COL, COL_NOWRAP } from '@/utils/tableLayout'
  *  - §二.2.1 / §二.2.4【更多】菜单：重置密码在上、删除用户在分隔线下危险样式 + title「删除前需二次确认」、
  *    点项进入确认流程、展开箭头 ▾/▴ 翻转、进行期间不可重复点击；
  *  - §二.2.5 / §二.2.6 重置密码 / 删除：统一 confirmDialog 文案（显示名为空用用户名）、成功 toast、失败文案。
+ *  - 2026-10-08 补（md §一.3 / §二.4 / §二.2.2 / §二.2.3）：角色名称缺失用角色标识兜底（下拉与行内标签）、角色无法匹配显示原标识、
+ *    角色选项加载失败时下拉为空但列表照常；编辑保存成功回第 1 页重拉、设置角色保存成功保持当前页重拉。
  *
  * 全桩化（el-table / el-dropdown 等为本地桩），真实 Element Plus 挂载见 adminUsersSmoke.test.js。
  */
@@ -41,14 +44,18 @@ vi.mock('@/components/admin/ListStates.vue', () => ({
   default: { props: ['empty', 'emptyText'], template: '<div class="list-states" :data-empty="empty" :data-empty-text="emptyText"><slot /></div>' }
 }))
 vi.mock('@/components/admin/ListPagination.vue', () => ({ default: { template: '<div class="list-pager" />' } }))
-vi.mock('@/components/admin/UserEditor.vue', () => ({ default: { template: '<div class="user-editor" />' } }))
-vi.mock('@/components/admin/UserRoleDialog.vue', () => ({ default: { template: '<div class="user-role-dialog" />' } }))
+// 编辑 / 设置角色窗口桩：各带一个「保存成功」按钮，点击即 emit saved（模拟窗口内保存成功后的回调）
+vi.mock('@/components/admin/UserEditor.vue', () => ({
+  default: { emits: ['saved'], template: '<div class="user-editor"><button class="ue-saved" @click="$emit(\'saved\')" /></div>' }
+}))
+vi.mock('@/components/admin/UserRoleDialog.vue', () => ({
+  default: { emits: ['saved'], template: '<div class="user-role-dialog"><button class="urd-saved" @click="$emit(\'saved\')" /></div>' }
+}))
 
 const AdminUsers = (await import('@/views/admin/AdminUsers.vue')).default
 
 // 表格桩渲染 header 插槽：最近登录时间列的排序按钮（真实入口）才能被点到
 const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
-const passthrough = (tag) => ({ name: tag, template: `<div class="${tag}"><slot /></div>` })
 const elInput = {
   name: 'el-input',
   props: ['modelValue', 'placeholder'],
@@ -429,5 +436,60 @@ describe('AdminUsers · 重置密码（md §二.2.5 L94-99）', () => {
     await inst().setupState.resetPassword(ROWS[0])
     expect(ElMessage.error).toHaveBeenLastCalledWith('重置失败')
     expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('AdminUsers · 角色选项异常（md §一.3 / §二.4）', () => {
+  it('角色缺少名称（只有标识 X）→ 角色筛选选项与行内角色标签都显示「X」', async () => {
+    listRoles.mockResolvedValue([{ code: 'X' }])
+    listUsers.mockResolvedValue({ list: [{ ...ROWS[0], roles: ['X'] }], total: 1 })
+    await mount()
+    const roleSelect = [...container.querySelectorAll('select.el-select')][0]
+    expect([...roleSelect.options].map((o) => o.textContent)).toEqual(['X'])
+    const tags = [...rowByName('chenyu').querySelectorAll('.users-role-tags .status-tag')]
+    expect(tags.map((t) => t.textContent.trim())).toEqual(['X'])
+  })
+
+  it('用户身上的角色标识在角色选项里找不到（Y）→ 行内角色标签直接显示「Y」（md §二.4「角色名称无法匹配」）', async () => {
+    listUsers.mockResolvedValue({ list: [{ ...ROWS[0], roles: ['普通用户', 'Y'] }], total: 1 })
+    await mount()
+    const tags = [...rowByName('chenyu').querySelectorAll('.users-role-tags .status-tag')]
+    expect(tags.map((t) => t.textContent.trim())).toEqual(['普通用户', 'Y'])
+  })
+
+  it('角色选项加载失败 → 角色筛选没有可选项、不弹失败提示，用户列表照常展示', async () => {
+    listRoles.mockRejectedValue(new Error('boom'))
+    await mount()
+    const roleSelect = [...container.querySelectorAll('select.el-select')][0]
+    expect(roleSelect.options).toHaveLength(0)
+    expect(ElMessage.error).not.toHaveBeenCalled()
+    expect(rowByName('chenyu')).toBeTruthy()
+    expect(rowByName('zhouming')).toBeTruthy()
+  })
+})
+
+describe('AdminUsers · 保存后的刷新位置（md §二.2.2 / §二.2.3）', () => {
+  it('编辑用户保存成功 → 列表回到第 1 页并重新加载', async () => {
+    await mount()
+    inst().setupState.page = 3
+    await flush()
+    listUsers.mockClear()
+    container.querySelector('.ue-saved').click()
+    await flush()
+    expect(inst().setupState.page).toBe(1)
+    expect(listUsers).toHaveBeenCalledTimes(1)
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+  })
+
+  it('设置角色保存成功 → 停留在当前页（第 3 页）并重新加载该页', async () => {
+    await mount()
+    inst().setupState.page = 3
+    await flush()
+    listUsers.mockClear()
+    container.querySelector('.urd-saved').click()
+    await flush()
+    expect(inst().setupState.page).toBe(3)
+    expect(listUsers).toHaveBeenCalledTimes(1)
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }))
   })
 })

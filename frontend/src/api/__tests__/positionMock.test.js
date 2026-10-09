@@ -49,7 +49,7 @@ beforeEach(() => {
 })
 
 describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）', () => {
-  it('种子 4 条照原型：默认按最近更新时间降序，含计数/最新版本字段；市场研究岗无版本', async () => {
+  it('种子 4 条对齐 md §二.1：默认按最近更新时间降序，含计数/最新版本字段；市场研究岗无版本', async () => {
     const { list, total } = await listPositions()
     expect(total).toBe(4)
     expect(list.map((p) => p.name)).toEqual(['经营分析岗', '财务审核岗', '客户成功岗', '市场研究岗'])
@@ -200,7 +200,7 @@ describe('positionMock · 删岗 / 改名回写专家与连接器里的岗位引
   })
 })
 
-describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新后仍在）', () => {
+describe('positionMock · 持久化读回（mockPersist v8，写点 → 刷新后仍在）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（Node 22+ 自带的实验性 localStorage 占位，
   // mockPersist 探测后走纯内存模式），故与 mockPersist.test 同款：注入内存版存储，
   // 用 vi.resetModules + 动态 import 模拟「写入 → 刷新页面 → 重新加载模块」。
@@ -225,11 +225,11 @@ describe('positionMock · 持久化读回（mockPersist v4，写点 → 刷新�
     vi.resetModules()
   })
 
-  it('deletePosition 落盘（v=5）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+  it('deletePosition 落盘（v=8）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(7) // v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
+    expect(snap.v).toBe(8) // v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')

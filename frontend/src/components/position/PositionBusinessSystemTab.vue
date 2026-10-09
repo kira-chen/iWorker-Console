@@ -20,6 +20,7 @@ import { compareTimeText } from '@/utils/datetime'
 import { COL, opsWidth } from '@/utils/tableLayout'
 import { iconIsUrl } from '@/utils/iconDisplay'
 import ListStates from '@/components/admin/ListStates.vue'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 import McpEditor from '@/components/admin/McpEditor.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -319,7 +320,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
                     <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="mc-icon-img" />
                     <span v-else>{{ row.icon }}</span>
                   </span>
-                  <span class="mc-name">{{ row.name }}</span>
+                  <span class="mc-name">{{ row.name }}</span><RevokedTag :info="row.revoked" />
                 </div>
               </template>
             </el-table-column>
@@ -387,7 +388,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
                     <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="mc-icon-img" />
                     <span v-else>{{ row.icon }}</span>
                   </span>
-                  <span class="mc-name">{{ row.name }}</span>
+                  <span class="mc-name">{{ row.name }}</span><RevokedTag :info="row.revoked" />
                 </div>
               </template>
             </el-table-column>
@@ -454,7 +455,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
                     <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="mc-icon-img" />
                     <span v-else>{{ row.icon }}</span>
                   </span>
-                  <span class="mc-name">{{ row.name }}</span>
+                  <span class="mc-name">{{ row.name }}</span><RevokedTag :info="row.revoked" />
                 </div>
               </template>
             </el-table-column>

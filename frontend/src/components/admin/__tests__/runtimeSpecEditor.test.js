@@ -108,7 +108,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(numberValue(d, 'CPU（核）')).toBe('2')
     expect(numberValue(d, '内存（Gi）')).toBe('4')
     expect(numberValue(d, '临时存储（Gi）')).toBe('20')
-    expect(numberValue(d, 'Pod 就绪超时（分钟）')).toBe('10')
+    expect(numberValue(d, '就绪等待超时（分钟）')).toBe('10')
     expect(numberValue(d, '空闲回收（分钟）')).toBe('20')
     expect(numberValue(d, '最大存活时长（小时）')).toBe('0')
     // md §四.4 L300：资源配置区直接展示当前平台单实例上限 + 每个输入项下方同步展示最大值
@@ -118,7 +118,7 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(itemByLabel(d, '临时存储（Gi）').textContent).toContain('最多 500 Gi')
     // 上限来自接口（不由前端固定）
     expect(api.getRuntimeSpecLimits).toHaveBeenCalled()
-    // md §四.2 占位；§四.3 允许用户申请默认开
+    // md §四.2 占位；「允许用户申请」新建默认开为代码现状（md 未写，待裁决）
     expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]')).toBeTruthy()
     expect(d.querySelector('.el-switch').classList.contains('is-checked')).toBe(true)
@@ -187,16 +187,16 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(savedSpy).not.toHaveBeenCalled()
   })
 
-  it('平台上限读取失败 → 抽屉保留、展示「加载失败」+【重试】；重试成功后表单出现（md §四.10 L396 / §四.1 L267）', async () => {
+  it('平台上限读取失败 → 抽屉保留表单、明确提示「平台资源上限获取失败」并可单独重试', async () => {
     api.getRuntimeSpecLimits.mockRejectedValueOnce(new Error('limits down')).mockResolvedValue({ ...LIMITS })
     const d = await open({ specId: null })
-    expect(d.textContent).toContain('加载失败')
-    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeNull() // 不展示空白表单可提交
+    expect(d.textContent).toContain('平台资源上限获取失败')
+    expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     const retry = [...d.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
     expect(retry).toBeTruthy()
     retry.click()
     await flushAll(10)
-    expect(d.textContent).not.toContain('加载失败')
+    expect(d.textContent).not.toContain('平台资源上限获取失败')
     expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(api.getRuntimeSpecLimits).toHaveBeenCalledTimes(2)
   })
@@ -268,7 +268,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     expect(footBtns(d)).toEqual(['关闭'])
   })
 
-  it('编辑默认规格：可改名称，但「允许用户申请」开关禁用（默认规格不开放申请；md §四.3 L284）', async () => {
+  it('编辑默认规格：可改名称，但「允许用户申请」开关禁用（默认规格不开放申请为代码现状，md 未写，待裁决）', async () => {
     api.getRuntimeSpec.mockResolvedValue({ ...DEFAULT_SPEC })
     const d = await open({ specId: 2 })
     expect(title(d)).toBe('编辑规格')

@@ -55,6 +55,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import StatusTag from '@/components/StatusTag.vue'
+import RevokedBanner from '@/components/admin/RevokedBanner.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
@@ -573,6 +574,9 @@ const metaItems = computed(() => {
     </template>
 
     <template #default>
+      <!-- 强制回收提示条（PRD 专家 §3.5.1）：编辑 / 查看抽屉顶部展示回收原因；未回收不渲染 -->
+      <RevokedBanner v-if="isEdit && detail?.revoked" label="专家" :info="detail.revoked" />
+
       <!-- 审核锁定提示（兜底：列表已把审核中行的编辑置灰） -->
         <el-alert
           v-if="locked"

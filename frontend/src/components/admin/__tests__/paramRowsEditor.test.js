@@ -4,9 +4,11 @@ import { createApp, h, nextTick, reactive } from 'vue'
 
 /**
  * ParamRowsEditor.vue 单测 —— 公共参数行编辑器（2026-08-31 B.3 抽象）。
- * 三处消费方：知识库数据源（默认形态，无位置列）/ MCP stdio Env（M5 形态：表头恒显 + 行卡片 + 三步式）/
+ * 三处消费方：知识库数据源（默认形态，无位置列）/ MCP stdio Environment（表头恒显 + 空态 + 三步式）/
  * API KEY 鉴权（showIn 带位置列 + 密码态）。本文件验行渲染、增删行事件、客户端填写互斥联动、
- * 占位提示、行级提示与 clientFillHint 展示（对齐 MCP md §三.4.2 L278-286、API md §三.3 L128-138）。
+ * 占位提示、行级提示与 clientFillHint 展示（对齐 prd-连接器-MCP.md §三.4.2「Environment：选填，以表格形式配置，每行包含变量名、描述、
+ * 填写方式和平台值四列」及改值 / 删除 / 撤销条款；prd-API.md §三.3「API KEY 模式：以多参数表格形式配置」
+ * 及参数值「按敏感信息处理，以密码形式输入」）。
  * inDisabled prop 已于 2026-09-12 随死码清理删除（审计 J13）。
  * Element 组件按仓内范式桩化（同 drawerEditor.test.js）。
  */
@@ -15,7 +17,7 @@ const ParamRowsEditor = (await import('@/components/admin/ParamRowsEditor.vue'))
 
 const elInput = {
   name: 'el-input',
-  // type / showPassword：2026-09-09 批次 3A · A4 的 secretValue 密码态由此透出供断言
+  // type / showPassword：secretValue 密码态（API md §三.3 参数值「以密码形式输入」）由此透出供断言
   props: {
     modelValue: String,
     disabled: Boolean,
@@ -47,7 +49,7 @@ const elCheckbox = {
   // disabled：2026-09-09 · A11 待删除行把勾选框一并禁用，由此透出供断言
   props: { modelValue: Boolean, disabled: Boolean },
   emits: ['update:modelValue', 'change'],
-  // 带默认插槽：clientFillLabel（原型 label.mcp-env-client 的「客户端填写」四字）走这里
+  // 带默认插槽：clientFillLabel（MCP md §三.4.2 填写方式列勾选「客户端填写」四字）走这里
   template:
     '<label class="el-checkbox-wrap"><input class="el-checkbox" type="checkbox" :checked="modelValue"' +
     ' :disabled="disabled"' +
@@ -176,17 +178,16 @@ describe('ParamRowsEditor', () => {
     expect(has.querySelector('.pr-cf-hint').textContent).toContain('客户端收集')
   })
 
-  /* ===== 2026-09-09 原型复刻批次 3A（M5 MCP Env 形态 / A4 API 鉴权形态） ===== */
+  /* ===== 宿主形态：MCP stdio Environment（prd-连接器-MCP.md §三.4.2）/ API KEY 鉴权（prd-API.md §三.3） ===== */
 
-  it('新增 prop 全部默认关闭：默认形态（知识库数据源用）不变——无空态、表头随行、添加在表底、无行卡片', () => {
+  it('形态 prop 全部默认关闭：默认形态（知识库数据源用）不变——无空态、表头随行、自带【添加参数】按钮', () => {
     const el = mountEditor({ rows: [] })
     expect(el.querySelector('.pr-empty')).toBeNull()
     expect(el.querySelector('.pr-row-head')).toBeNull()
     expect(el.querySelector('.pr-add button')).not.toBeNull()
-    expect(el.querySelector('.pr-row.is-card')).toBeNull()
   })
 
-  it('M5 MCP Env 形态：表头恒显 + 第三列「填写方式」+ 空态「暂无环境变量」+ 行卡片 + 添加不在表底', () => {
+  it('MCP Environment 形态（§三.4.2 表格四列）：表头恒显 + 「变量名」「填写方式」列名 + 空态「暂无环境变量」', () => {
     const el = mountEditor({
       rows: [],
       keyHeader: '变量名',
@@ -197,26 +198,22 @@ describe('ParamRowsEditor', () => {
       emptyText: '暂无环境变量'
     })
     const head = el.querySelector('.pr-row-head')
-    expect(head).not.toBeNull() // 无行也显表头（原型 .mcp-env-head）
+    expect(head).not.toBeNull() // 无行也显表头（md「以表格形式配置」）
     expect(head.textContent).toContain('变量名')
     expect(head.textContent).toContain('填写方式')
     expect(el.querySelector('.pr-empty').textContent).toContain('暂无环境变量')
-    // 添加按钮交给宿主摆到 .mcp-env-title 右侧，组件自己不再在表底渲染
-    expect(el.querySelector('.pr-add')).toBeNull()
   })
 
-  it('M5 行卡片 + clientFillLabel：勾选框旁带「客户端填写」四字（原型 label.mcp-env-client）', () => {
+  it('clientFillLabel：填写方式列勾选框旁带「客户端填写」四字（MCP md §三.4.2「勾选"客户端填写"后…」）', () => {
     const el = mountEditor({
       rows: [row({ key: 'API_KEY' })],
       cardRows: true,
       clientFillLabel: '客户端填写'
     })
-    const dataRow = el.querySelector('.pr-row:not(.pr-row-head)')
-    expect(dataRow.classList.contains('is-card')).toBe(true)
     expect(el.querySelector('.pr-cf').textContent).toContain('客户端填写')
   })
 
-  it('A4 API 鉴权形态：参数值密码态 + 客户端填写说明常显（不必先勾选）', () => {
+  it('API KEY 鉴权形态（API md §三.3）：参数值密码态 + 客户端填写说明常显（不必先勾选）', () => {
     const el = mountEditor({
       rows: [row({ key: 'X-Api-Key', value: '' })],
       showIn: true,
@@ -225,13 +222,13 @@ describe('ParamRowsEditor', () => {
       clientFillHint: '客户端填写参数由客户端收集，平台不存值',
       clientFillHintAlways: true
     })
-    // 没有任何客户端填写行，说明仍在（原型 .api-auth-add-note 常显）
+    // 没有任何客户端填写行，说明仍在（常显）
     expect(el.querySelector('.pr-cf-hint').textContent).toContain('平台不存值')
     const valueInput = el.querySelectorAll('.pr-row:not(.pr-row-head) input.el-input')[2]
     expect(valueInput.getAttribute('type')).toBe('password')
   })
 
-  it('A4 密码态遇「客户端填写」行回落明文（值本就由客户端收集、框已禁用，不必再打码）', () => {
+  it('密码态遇「客户端填写」行回落明文（md「勾选后…平台值输入框禁用」，值本就由客户端收集、不必再打码）', () => {
     const el = mountEditor({ rows: [row({ key: 'k', clientFill: true })], secretValue: true })
     const valueInput = el.querySelectorAll('.pr-row:not(.pr-row-head) input.el-input')[2]
     expect(valueInput.getAttribute('type')).toBe('text')
@@ -240,8 +237,8 @@ describe('ParamRowsEditor', () => {
 
   /**
    * 2026-09-09 PRD 复核轮 · G4/A11（Q137「先采纳A（保留 改值+待删除+撤销）」）。
-   * md prd-连接器-MCP.md §三.4.2 L283-286：已配置名称提供【改值】【删除】，删后显示「待删除」
-   * 并提供【撤销】，未修改的内容保存后继续保留原值。
+   * md prd-连接器-MCP.md §三.4.2「每个已配置名称提供【改值】和【删除】」「点击【删除】后，该名称显示"待删除"并提供【撤销】」：
+   * 未修改的内容保存后继续保留原值。
    * 隔离要求（清单第三节 G4 冲突①）：threeStep 不传时 API KEY 鉴权侧行为必须逐字不变。
    */
   describe('A11 三步式改值 / 删除（threeStep）', () => {

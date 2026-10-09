@@ -14,7 +14,7 @@ import '@/assets/admin-shell.css'
  * 视觉效果守卫 · 表格固定列不透底（真浏览器，质量闸 #3 首批用例，2026-08-08）。
  *
  * 背景：EP 固定列 = sticky + background:inherit，主题层 hover/斑马纹色是半透明 token，
- * 曾致悬浮行固定列透出横向滚动内容（docs/update/2026-08-08.md §1）。该缺陷在 jsdom 里
+ * 曾致悬浮行固定列透出横向滚动内容（历史出处 docs/update/2026-08-08.md §1，已归档，可经 git 历史找回）。该缺陷在 jsdom 里
  * 无法表达（不渲染不合成），本用例在真 Chromium 断言**计算样式层的合成事实**：
  *  - 悬浮行/斑马纹行的固定列单元格：背景色必须完全不透明（alpha=1）+ 渐变叠层在位；
  *  - 非固定列悬浮仍保持半透明 hover 色（证明修复是定点的，未误伤整表 hover 观感）；
@@ -173,7 +173,7 @@ describe.each(['light', 'dark'])('固定列不透底 · %s 主题', (theme) => {
 describe.each(['light', 'dark'])('固定列不透底 · admin-scope（后台列表页实际规则）· %s 主题', (theme) => {
   beforeEach(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    document.body.classList.add('admin-scope') // router.afterEach 在 /admin 路由下挂的类（router/index.js:441）
+    document.body.classList.add('admin-scope') // router.afterEach 在 /admin 路由下挂的类（router/index.js「管理后台作用域标记」段 classList.toggle('admin-scope', …)）
   })
 
   it('悬浮行固定列：不透明表面底色 + inset 叠色，叠色 == 非固定列 hover 背景色（--bg-admin-row-hover，合成一致）', async () => {

@@ -13,8 +13,9 @@ import { computeDynPageSize, DYN_PAGE_MIN, DYN_PAGE_MAX } from '@/composables/us
  *  4. **竞态防护**——改造前 0 个页面做对：慢的旧响应不得覆盖快的新响应。
  * 3、4 是本抽象的主要收益，写错了比不抽象更糟（会以"已统一"的名义把 bug 铺到 16 个页面）。
  *
- * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md L48「根据页面可用高度动态计算
- * 每页条数，最少 5 条、最多 30 条，窗口尺寸变化后按新高度重新计算」与 03能力/连接器/MCP/prd-连接器-MCP.md L167
+ * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md L37「列表根据页面可用高度动态计算
+ * 每页条数，最少 5 条、最多 30 条」（resize 重算为 md 未写、前端统筹，见 useDynPageSize.js 头注）
+ * 与 03能力/连接器/MCP/prd-连接器-MCP.md L170
  * 「每页条数按窗口高度动态计算，与平台其余列表页采用同一套分页策略」：默认每页条数走 useDynPageSize
  * `min(30,max(5,floor((h-330)/62)))`，node 环境无 window → 兜底 900 高 → 9 条；
  * paged:'client' 本地切片模式（mock 返全量的角色 / 模型 / 业务系统页）。

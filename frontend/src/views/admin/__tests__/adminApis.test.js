@@ -13,9 +13,21 @@ import { createApp, h, nextTick, ref } from 'vue'
  *     ApiEditor / ProviderSystemEditor（露 props）、useDynPageSize → ref(3)（每页 3 个系统）、
  *     el-table 走 RowScope 行渲染桩（同 adminMcp.test.js）。
  * 真：ListToolbar / ListPagination / ListStates / StatusTag / HealthTag（页面局部 import，全局桩无效）。
+ *
+ * 2026-10-08 对齐同一 md 补缺口（/test-audit 连接器组）：
+ *  - §二.1「引用情况」引用清单按类型分流（「岗位私有为"被岗位引用"（列岗位名）」「通用连接器显示"—"」；yuepu#17、负责人 5618381 拍板）；
+ *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
+ *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
+ *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
+ *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
+ * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，真弹窗交互另见
+ *  utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+// 路由 query 由各用例改写（深链 ?keyword=，写法同 adminBizSystems.test.js）
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeState.query }) }))
 
 const conn = {
   listApis: vi.fn(),
@@ -24,6 +36,7 @@ const conn = {
   publishApi: vi.fn(),
   withdrawApi: vi.fn(),
   deactivateApi: vi.fn(),
+  forceRevokeApi: vi.fn(),
   listProviderSystems: vi.fn(),
   deleteProviderSystem: vi.fn()
 }
@@ -32,6 +45,10 @@ vi.mock('@/api/apiConnector', () => conn)
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
+
+// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
+const askForceRevoke = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 每页个数钉 3（真实是按窗口高度算且最小 5，9 个系统分不出页）
 vi.mock('@/composables/useDynPageSize', () => ({ useDynPageSize: () => ref(3) }))
@@ -60,10 +77,11 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
+  // 与真 el-select 一致：选值后先 update:modelValue 再 change（页面 @change 即刷新，md §一.2「切换连接器类型或状态后列表立即刷新」）
   'el-select': {
     props: ['modelValue'],
-    emits: ['update:modelValue'],
-    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>'
+    emits: ['update:modelValue', 'change'],
+    template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
   },
   'el-option': { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' },
   'el-tag': { template: '<span class="el-tag"><slot /></span>' },
@@ -207,6 +225,7 @@ const toolbarBtn = (text) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeState.query = {}
   conn.listProviderSystems.mockImplementation(async () => ({ list: psWithCounts() }))
   conn.listApis.mockImplementation(async (params = {}) => {
     let list = APIS
@@ -218,6 +237,7 @@ beforeEach(() => {
   conn.publishApi.mockResolvedValue({})
   conn.withdrawApi.mockResolvedValue({})
   conn.deactivateApi.mockResolvedValue({})
+  conn.forceRevokeApi.mockResolvedValue({})
   conn.deleteApi.mockResolvedValue({})
   conn.deleteProviderSystem.mockResolvedValue({})
   msgBox.confirm.mockResolvedValue('confirm')
@@ -227,7 +247,7 @@ afterEach(() => {
   container?.remove()
 })
 
-describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务提供系统分页，不按 API 分页」）', () => {
+describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「本页按服务提供系统分页，不按 API 分页」）', () => {
   it('9 个系统、每页 3 个 → 首屏只有 3 个分组，分页条计数单位是「个」：「共 9 个数据」', async () => {
     await mount()
     expect(groupNames()).toEqual(['系统1号', '系统2号', '系统3号'])
@@ -293,6 +313,26 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
+  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
+  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    APIS.find((a) => a.id === 'a_last').type = 'POSITION' // 末组唯一的 API 改成岗位私有，筛「市场连接器」时 ps_9 应整组消失
+    try {
+      await mount()
+      const sel = container.querySelectorAll('.lt-filter')[0]
+      sel.value = 'PLATFORM'
+      sel.dispatchEvent(new Event('change'))
+      await flush(6)
+      expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'PLATFORM' }) // 前提：类型确实下发了
+      expect(groupNames()).toEqual(['系统1号', '系统2号'])
+    } finally {
+      APIS.find((a) => a.id === 'a_last').type = 'PLATFORM'
+    }
+  })
+
   it('无筛选条件时空分组也展示，且给「该系统下暂无 API · 点「在本系统下新建 API」添加」（md §二.1 L42）', async () => {
     await mount()
     const g3 = groupByName('系统3号')
@@ -300,7 +340,7 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 L44「按服务�
   })
 })
 
-describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () => {
+describe('AdminApis · 操作按钮按状态组合（md §二.2「各状态按钮组合」）', () => {
   it('未发布：【查看】【编辑】【发布】【删除】', async () => {
     await mount()
     expect(btnTexts(rowByName('未发布接口'))).toEqual(['查看', '编辑', '发布', '删除'])
@@ -314,9 +354,9 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () =
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】', async () => {
+  it('已发布：【查看】【编辑】【停用】【强制回收】', async () => {
     await mount()
-    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用'])
+    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('连通性验证未通过：【发布】置灰并提示「连通性验证通过后才可提交发布」（md §二.2 L50 / §二.3 L59）', async () => {
@@ -337,7 +377,7 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () =
   })
 })
 
-describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4 L64-72）', () => {
+describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4）', () => {
   it('发布：确认窗「将「未发布接口」提交审核，审核通过后才对客户端开放。」/ 标题「发布 API」/【提交审核】 → publishApi + 「已提交发布审核」+ 重拉', async () => {
     await mount()
     const before = conn.listApis.mock.calls.length
@@ -435,7 +475,7 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4 L64-72）'
   })
 })
 
-describe('AdminApis · 服务提供系统分组头（md §二.1 L28 / §二.5 L81）', () => {
+describe('AdminApis · 服务提供系统分组头（md §二.1「分组头」/ §二.5「删除：系统下存在 API 时【删除系统】置灰」）', () => {
   it('分组头：名称 + 描述 + 「N 个 API」 + 三个操作【在本系统下新建 API】【编辑系统】【删除系统】', async () => {
     await mount()
     const g1 = groupByName('系统1号')
@@ -499,7 +539,7 @@ describe('AdminApis · 服务提供系统分组头（md §二.1 L28 / §二.5 L8
   })
 })
 
-describe('AdminApis · 空态（md §一.1 L14 / §四）', () => {
+describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹配的 API"」/ §四）', () => {
   it('没有任何服务提供系统 → 「还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API」+【新建服务提供系统】', async () => {
     conn.listProviderSystems.mockResolvedValue({ list: [] })
     conn.listApis.mockResolvedValue({ list: [] })
@@ -524,7 +564,7 @@ describe('AdminApis · 空态（md §一.1 L14 / §四）', () => {
   })
 })
 
-describe('AdminApis · 验证列与引用情况（md §二.1 L35-37 / §二.3 L58）', () => {
+describe('AdminApis · 验证列与引用情况（md §二.1「最近更新时间」「验证」/ §二.3 连通性验证）', () => {
   it('点【↻】重新验证 → healthCheckApi(id)，成功「检活完成 · 连接正常」且行内标签「连接正常」', async () => {
     conn.healthCheckApi.mockResolvedValue({ displayStatus: 'HEALTHY', checkedAt: '2026-08-25T10:00:00+08:00' })
     await mount()
@@ -584,5 +624,162 @@ describe('AdminApis · 验证列与引用情况（md §二.1 L35-37 / §二.3 L5
     await nextTick()
     expect(names()).toEqual(['未发布接口', '在审接口'])
     expect(groupByName('系统1号').querySelector('.time-sort-arrow').textContent).toBe('↑')
+  })
+})
+
+/* ---------------- 2026-10-08 补缺口（/test-audit 连接器组） ---------------- */
+describe('AdminApis · 引用情况按类型分流（md §二.1「引用情况」）', () => {
+  const refCell = (name) => rowByName(name).querySelector('.t-cell[data-label="引用情况"]')
+
+  it('岗位私有被 2 个岗位引用：显「2个岗位引用」，点开弹窗标题「被岗位引用」并列出岗位名', async () => {
+    conn.listApis.mockResolvedValue({
+      list: [
+        mkApi({
+          id: 'a_pos',
+          name: '岗位私有接口',
+          ps: 'ps_1',
+          type: 'POSITION',
+          positionCount: 2,
+          referencedByPositions: [{ positionId: 'p_1', positionName: '财务专员' }, { positionId: 'p_2', positionName: '采购助理' }],
+          // 同时带技能引用：弹窗必须取岗位名而不是技能名
+          referencedBySkills: [{ skillId: 'sk_x', skillName: '不该出现的技能' }]
+        })
+      ]
+    })
+    await mount()
+    btn(rowByName('岗位私有接口'), '2个岗位引用').click()
+    await nextTick()
+    const dlg = container.querySelector('.el-dialog')
+    expect(dlg.dataset.title).toBe('被岗位引用')
+    expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['财务专员', '采购助理'])
+  })
+
+  it('通用连接器：引用情况显「—」，没有可点的引用入口（即使数据里带技能引用数）', async () => {
+    conn.listApis.mockResolvedValue({
+      list: [mkApi({ id: 'a_sys', name: '通用接口', ps: 'ps_1', type: 'SYSTEM_DEFAULT', referencedBySkillCount: 3 })]
+    })
+    await mount()
+    expect(refCell('通用接口').textContent.trim()).toBe('—')
+    expect(refCell('通用接口').querySelector('.el-button')).toBeNull()
+  })
+})
+
+describe('AdminApis · 切筛选与清空即刷新（md §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」）', () => {
+  it('改「连接器类型」下拉、不点【查询】→ 立即重拉，listApis 收到 type', async () => {
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' })
+  })
+
+  it('改「状态」下拉、不点【查询】→ 立即重拉，listApis 收到 state，列表只剩命中分组', async () => {
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    const sel = container.querySelectorAll('.lt-filter')[1]
+    sel.value = 'PUBLISHED'
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ state: 'PUBLISHED' })
+    expect(groupNames()).toEqual(['系统2号'])
+  })
+
+  it('已按关键词查过，再点搜索框 × 清空 → 立即重拉、不再带 keyword，分组恢复全部', async () => {
+    await mount()
+    const input = container.querySelector('.lt-search')
+    input.value = '尾巴'
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    toolbarBtn('查询').click()
+    await flush(6)
+    expect(groupNames()).toEqual(['系统9号'])
+    // el-input 点 × ：先把值清成空串，再派发 clear 事件
+    input.value = ''
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    const before = conn.listApis.mock.calls.length
+    input.dispatchEvent(new Event('clear'))
+    await flush(6)
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(conn.listApis).toHaveBeenLastCalledWith({})
+    expect(groupNames()).toEqual(['系统1号', '系统2号', '系统3号'])
+  })
+})
+
+describe('AdminApis · 深链 ?keyword=（yuepu#22 防回归）', () => {
+  it('?keyword=尾巴&keyword=报销（数组）→ 挂载不抛，首次请求 keyword 取第一个「尾巴」，搜索框回填「尾巴」', async () => {
+    routeState.query = { keyword: ['尾巴', '报销'] }
+    await expect(mount()).resolves.toBeTruthy()
+    expect(conn.listApis.mock.calls[0][0]).toEqual({ keyword: '尾巴' })
+    expect(container.querySelector('.lt-search').value).toBe('尾巴')
+    expect(groupNames()).toEqual(['系统9号'])
+  })
+})
+
+describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立即生效、不进审核、原因必填、两步确认）', () => {
+  it('已发布行点【强制回收】、拿到原因 → forceRevokeApi(id, 原因) + 「已强制回收」+ 重新取数', async () => {
+    askForceRevoke.mockResolvedValue('接口泄露了客户手机号')
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(conn.forceRevokeApi).toHaveBeenCalledWith('a_pub', '接口泄露了客户手机号')
+    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    expect(conn.listApis.mock.calls.length).toBe(before + 1)
+  })
+
+  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+  })
+
+  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    const before = conn.listApis.mock.calls.length
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(conn.forceRevokeApi).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+    expect(conn.listApis.mock.calls.length).toBe(before)
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+    askForceRevoke.mockResolvedValue('原因')
+    conn.forceRevokeApi.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+    await mount()
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
+    conn.forceRevokeApi.mockRejectedValueOnce(new Error(''))
+    btn(rowByName('已上线接口'), '强制回收').click()
+    await flush()
+    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {
+    const revoked = { reason: '接口泄露了客户手机号', at: '2026-10-09 09:30', operator: 'admin' }
+    conn.listApis.mockImplementation(async () => ({
+      list: APIS.map((a) => (a.id === 'a_np' ? { ...a, revoked } : a))
+    }))
+    await mount()
+    const tag = rowByName('未发布接口').querySelector('.revoked-tag')
+    expect(tag?.textContent).toBe('已回收')
+    expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：接口泄露了客户手机号（admin · 2026-10-09 09:30）')
+    expect(rowByName('已上线接口').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('在审接口').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
+    await mount()
+    expect(rowByName('未发布接口').querySelector('.revoked-tag')).toBeNull()
   })
 })

@@ -118,6 +118,12 @@ export function unpublishExpert(expertId) {
   return request.post(`/fde/experts/${expertId}/unpublish`, {}, W)
 }
 
+// 强制回收（PRD 专家 §3.5.1）：不走审核、立即生效；body: { reason }（必填 ≤500 字）。
+export function forceRevokeExpert(expertId, payload) {
+  if (USE_MOCK) return mock.forceRevokeExpert(expertId, payload)
+  return request.post(`/fde/experts/${expertId}/force-revoke`, payload, W)
+}
+
 // V104 审核（ADMIN）/ 撤回（提交人）。approve/reject 无页面调用方（审核在审核中心），不走 mock 分流。
 export function approveExpert(expertId) {
   return request.post(`/fde/experts/${expertId}/approve`, {}, W)

@@ -51,6 +51,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
 import { createPosition, publishPosition, getNextVersionLabel, listPositionPublications } from '@/api/position'
+import { revokedConnectorNames } from '@/api/positionRevokedRefs'
 import { useVersionPublish } from '@/composables/useVersionPublish'
 import { listDataTables } from '@/api/dataTable'
 import { listSampleTasks } from '@/api/sampleTask'
@@ -396,7 +397,13 @@ const publishDialogVisible = ref(false)
 const publishing = ref(false)
 // 2026-09-09 PRD 复核（A1 / Q11）：完整性校验入参 = store.checkInput（名称/描述/示例问题/SOP/agents）
 // + 详情页侧的自动化任务条数（store 不持有样例任务，见 refreshSampleTaskCount）。
-const completenessInput = computed(() => ({ ...store.checkInput, sampleTaskCount: sampleTaskCount.value }))
+// 已被强制回收的连接器名（岗位 PRD §8 / §9.1 发布阻断）：按当前页面上的引用清单实时取（含未保存的绑定 / 移除），
+// 与「连接器」页签所见一致；已回收的技能在 store.checkInput.agents[].skills[].revoked 里，由 computePublishCheck 自行取用。
+const completenessInput = computed(() => ({
+  ...store.checkInput,
+  sampleTaskCount: sampleTaskCount.value,
+  revokedConnectors: revokedConnectorNames(store.basic || {})
+}))
 const publishCheck = computed(() => computePublishCheck(completenessInput.value))
 
 /* ---------- md §9.1 完整性校验 9 项（保存提示 / 发布阻断共用同一口径） ---------- */
