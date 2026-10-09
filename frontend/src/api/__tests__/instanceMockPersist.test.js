@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 
 /**
  * instanceMock · 持久化（mockPersist v2，key iworker-demo-mock:instanceManagement）。
@@ -21,6 +21,12 @@ const makeStorage = () => {
     clear: () => map.clear()
   }
 }
+
+// 冷导入依赖链（运行规格 / 用户 / 岗位 mock）较慢，并行跑全量时用例会越过默认 20s；预热一次，转译缓存不会被 resetModules 清掉
+beforeAll(async () => {
+  Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
+  await import('../instanceMock')
+}, 60000)
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
