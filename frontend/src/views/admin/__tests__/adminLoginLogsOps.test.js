@@ -27,9 +27,12 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案（#64④）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
  *
  * 2026-10-09 起三个页签的列表都是 useAdminList 'client' 分页，每页条数按窗口高度算（useDynPageSize）：
- * 全局挂载把 window.innerHeight 调到 2000（每页 26 条，9 条夹具一页放得下，行数类用例不受分页影响），
+ * 全局挂载把 window.innerHeight 调到 2000（每页 26 条，10 条可展示夹具一页放得下，行数类用例不受分页影响），
  * 分页用例（下载 / 管理端操作两组）经 remountAtHeight(768) 以每页 7 条重新挂载，追加记录凑出多于一页。
  * 管理端操作页签分页由待办 yuepu#80 补齐（§六「列表根据页面高度动态分页」）。
+ *
+ * 2026-10-09 补存储空间记录（§6.1 模块 / 动作筛选、§6.2 存储空间记录块、§6.3 跳转带员工名、§6.4 灰色模块标签与绿色「调整容量」）：
+ *   同意 / 拒绝扩容两类标 hidden——页面不展示、不进搜索 / 筛选 / 分页总数，只留给客户端通知读取（§6.5.4）；夹具共 12 条，可展示 10 条。
  *
  * 2026-09-30 补岗位分配记录（§6.1 / §6.2 / §6.3 / §6.4）；2026-10-09 /test-audit 补：
  * - 强制回收（§6.1 动作筛选完整顺序、§6.4 红色动作标签、技能模块蓝标签与版本号小标签、变更内容 = 回收原因）；
@@ -103,7 +106,7 @@ async function mountPage() {
 }
 const ORIGIN_HEIGHT = window.innerHeight
 beforeEach(async () => {
-  // 默认窗口调高 → 每页 26 条，夹具（9 条）一页放得下，行数类用例不受分页影响；分页用例自行 remountAtHeight 调小
+  // 默认窗口调高 → 每页 26 条，夹具（10 条可展示）一页放得下，行数类用例不受分页影响；分页用例自行 remountAtHeight 调小
   window.innerHeight = 2000
   await mountPage()
 })
@@ -129,10 +132,6 @@ afterEach(() => {
 
 describe('访问审计 · 管理端操作 · 版本管理记录', () => {
   beforeEach(() => switchTab('管理端操作'))
-  it('十条可展示的记录都在默认时间范围内（另有 2 条 hidden 的扩容同意 / 拒绝不展示）', () => {
-    expect(rows()).toHaveLength(10)
-  })
-
   it('模块标签：版本管理灰色（§6.4）；动作标签：发布绿、停用橙', () => {
     const publish = rowOf('Windows v1.2.0', '发布')
     const stop = rowOf('Windows v1.2.0', '停用')
@@ -251,10 +250,16 @@ describe('访问审计 · 管理端操作 · 强制回收与用户技能审核�
     return [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
   }
 
-  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 撤回 / 删除 / 审核通过 / 审核驳回（§6.1）', async () => {
-    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 10 项
+  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 撤回 / 删除 / 审核通过 / 审核驳回 / 调整容量（§6.1，共 11 项）', async () => {
+    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 11 项
     const labels = await openDropdown(1)
-    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 10)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '撤回', '删除', '审核通过', '审核驳回'])
+    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 11)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '撤回', '删除', '审核通过', '审核驳回', '调整容量'])
+  })
+
+  it('模块筛选完整顺序里「存储空间」在「运行规格」之后、「审核中心」之前（§6.1 第 3 条）', async () => {
+    const labels = await openDropdown(0)
+    const i = labels.indexOf('岗位')
+    expect(labels.slice(i, i + 14)).toEqual(['岗位', '岗位分配', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '运行规格', '存储空间', '审核中心', '用户技能审核', '版本管理'])
   })
 
   it('模块筛选含「用户技能审核」', async () => {
@@ -528,9 +533,10 @@ describe('访问审计 · 用户端文件下载 · 分页（§5.2「列表根据
 })
 
 describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面高度动态分页」，待办 yuepu#80）', () => {
-  // 夹具可展示 10 条（另有 2 条 hidden 的扩容同意 / 拒绝不计）+ 追加 6 条 = 16 条，多于 768 高窗口算出的每页 7 条
+  // 可展示总数 = 夹具里非 hidden 的条数 + 追加 6 条（hidden 的扩容同意 / 拒绝不计入分页总数），多于 768 高窗口算出的每页 7 条；
+  // TOTAL 在 beforeEach 里从夹具现算，不手写数字，夹具增删记录时断言不会无声地变义
   const EXTRA = 6
-  const TOTAL = 10 + EXTRA
+  let TOTAL
   const added = []
   const pager = () => pane().querySelector('.list-pager')
   const pageBtns = () => [...pane().querySelectorAll('.list-pager .page-btn')]
@@ -547,6 +553,7 @@ describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面
     const pad = (n) => String(n).padStart(2, '0')
     const day = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
     const { opsRecords } = await import('@/api/accessAuditMock')
+    TOTAL = opsRecords.filter((r) => !r.hidden).length + EXTRA
     // 追加记录比夹具都早（01:00–06:00），倒序时排在后面几页
     for (let i = 1; i <= EXTRA; i++) {
       const rec = { id: 300 + i, time: `${day} 0${i}:00`, operator: 'admin', module: 'API', action: '发布', target: `追加对象${i}`, detail: '' }
@@ -561,10 +568,18 @@ describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面
     for (const rec of added.splice(0)) opsRecords.splice(opsRecords.indexOf(rec), 1)
   })
 
-  it('记录多于一页 → 首页只出一页的行数，分页条写明「共 16 条数据」', () => {
+  it('记录多于一页 → 首页只出一页的行数，分页条写明「共 N 条数据」（N = 可展示记录数）', () => {
     expect(pageSize()).toBeLessThan(TOTAL) // 前提：每页条数小于总数，否则切片断言没意义
     expect(rows()).toHaveLength(pageSize())
     expect(pager().textContent).toContain(`共 ${TOTAL} 条数据`)
+  })
+
+  it('分页总数不含 hidden 的记录（扩容同意 / 拒绝只留给客户端，不进列表也不进总数）', async () => {
+    const { opsRecords } = await import('@/api/accessAuditMock')
+    const hiddenCount = opsRecords.filter((r) => r.hidden).length
+    expect(hiddenCount).toBeGreaterThan(0) // 前提：夹具里确有 hidden 记录
+    expect(pager().textContent).toContain(`共 ${TOTAL} 条数据`)
+    expect(pager().textContent).not.toContain(`共 ${TOTAL + hiddenCount} 条数据`)
   })
 
   it('点第 2 页 → 出下一批记录，首页的最新一条不再出现', async () => {
@@ -676,8 +691,31 @@ describe('访问审计 · 切换页签各页签条件独立（§二 / §三）',
   })
 })
 
-describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09）', () => {
+describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09，§6.1 / §6.2 / §6.3 / §6.4）', () => {
   beforeEach(() => switchTab('管理端操作'))
+
+  it('夹具 12 条里 hidden 的 2 条（同意 / 拒绝扩容）不展示，其余 10 条都在默认时间范围内', () => {
+    expect(rows()).toHaveLength(10)
+  })
+
+  it('hidden 的记录不会经搜索或模块筛选冒出来：搜索只出现在 hidden 记录里的 wangfang → 0 行；模块选「存储空间」→ 只剩「调整容量」1 行；模块下拉含「存储空间」', async () => {
+    const input = pane().querySelector('.lt-search input')
+    input.value = 'wangfang'
+    input.dispatchEvent(new Event('input'))
+    await flushAll(4)
+    expect(rows()).toHaveLength(0)
+    input.value = ''
+    input.dispatchEvent(new Event('input'))
+    await flushAll(4)
+    pane().querySelectorAll('.lt-filter')[0].querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    const items = [...document.body.querySelectorAll('.el-select-dropdown__item')]
+    expect(items.map((i) => i.textContent.trim())).toContain('存储空间')
+    items.find((i) => i.textContent.trim() === '存储空间').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].textContent).toContain('调整容量')
+  })
 
   it('扩容申请的「同意扩容 / 拒绝扩容」不展示（hidden，只留给客户端通知）；「调整容量」展示', () => {
     expect(rowOf('chenyu', '同意扩容')).toBeUndefined()

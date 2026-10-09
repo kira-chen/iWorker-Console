@@ -262,6 +262,18 @@ describe('adminUserMock · 持久化（mockPersist v5，key iworker-demo-mock:ad
     warn.mockRestore()
   })
 
+  it('存量快照是紧邻的上一版（v=4，权限树还没有「存储空间」）→ 同样丢弃回种子，系统管理员角色随之带上「存储空间」', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 4, data: { userSeq: 300, roleSeq: 400, roles: [{ id: 301, code: '系统管理员', name: '系统管理员', modules: ['驾驶舱'], createdAt: '', updatedAt: '' }], users: [{ id: 1, username: 'ghost', displayName: '旧', roles: [], status: 'active', lastLogin: null }] } })
+    )
+    const m = await import('../adminUserMock')
+    expect((await m.listUsers({ keyword: 'ghost' })).total).toBe(0)
+    const admin = (await m.listRoles()).find((r) => r.name === '系统管理员')
+    expect(admin.modules).toContain('存储空间')
+    expect(admin.modules).toHaveLength(25) // 全量 25 页，旧快照里只有 1 页的那份已作废
+  })
+
   it('存量快照版本不符（v=1 旧种子）→ 丢弃并回种子：不会读到旧快照里的用户', async () => {
     globalThis.localStorage.setItem(
       KEY,

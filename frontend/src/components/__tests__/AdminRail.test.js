@@ -14,7 +14,7 @@ import { useUserStore } from '@/stores/user'
  *   02 岗位：岗位 / 岗位管理——随 canFde 显隐。（原「岗位技能」已随三页合一并入 03 能力段的「技能」）
  *   03 能力：专家 / 技能 / 知识库（已落地真实页 AdminKnowledgeBase） / 连接器 / 模型——整段随 canSysConfig 显隐，「模型」仅 ADMIN 逐项收窄。
  *   「技能」（三页合一，2026-08-23）取代原「岗位技能 / 平台技能 / 系统内置技能」三项，显隐由页面权限 CAPABILITY_SKILL_CONSOLE 治理。
- *   04 运行：实例管理 / 运行规格 / 配额与限流——整段仅 ADMIN。
+ *   04 运行：实例管理 / 运行规格 / 存储空间（2026-10-09 新增，page 码 RUNTIME_STORAGE） / 配额与限流——整段仅 ADMIN（非 ADMIN 即使 pages 里有 RUNTIME_STORAGE 也看不到这一段）。
  *   05 治理：审核中心 / 用户技能审核 / 访问审计 / 工具调用审计(2026-09-28 新增) / 用户反馈 / 字段字典 / 版本管理——整段仅 ADMIN。
  *   06 组织：用户 / 角色与权限——整段仅 ADMIN。
  *
