@@ -53,7 +53,9 @@ async function mount() {
       { path: '/', component: { template: '<div />' } },
       { path: '/admin/reviews', name: 'UnifiedReview', component: { template: '<div />' } },
       { path: '/admin/connector', name: 'AdminConnector', component: { template: '<div />' } },
-      { path: '/admin/user-skill-reviews', name: 'SysConfigUserSkillReviews', component: { template: '<div />' } }
+      { path: '/admin/user-skill-reviews', name: 'SysConfigUserSkillReviews', component: { template: '<div />' } },
+      { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
+      { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } }
     ]
   })
   await router.push('/')
@@ -208,6 +210,27 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('SysConfigUserSkillReviews'))
   })
 
+  it('「岗位管理」卡【去分配】→ 跳到岗位管理页面', async () => {
+    await mount()
+    const btn = todoCard('岗位管理').querySelector('button')
+    expect(btn.textContent.trim()).toBe('去分配')
+    btn.click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminPositionAssignments'))
+  })
+
+  it('「存储空间」卡【去处理】→ 跳到存储空间页面', async () => {
+    await mount()
+    const btn = todoCard('存储空间').querySelector('button')
+    expect(btn.textContent.trim()).toBe('去处理')
+    btn.click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminStorageSpace'))
+  })
+
+  it('区块头「共 N 项」= 五张卡片数量之和', async () => {
+    await mount()
+    expect(mounted.container.querySelector('.dash-panel-count').textContent).toContain('共 25 项')
+  })
+
   it('点卡片本身（非行动按钮）→ 不跳转、也不弹提示', async () => {
     await mount()
     const { ElMessage } = await import('element-plus')
@@ -216,6 +239,18 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     await flushAll(4)
     expect(router.currentRoute.value.path).toBe('/')
     expect(ElMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('AdminCockpit · 指标卡第二行（PRD §二）', () => {
+  it('已发布模型数量卡取代「待处理」卡：6 个、75%、全部模型 8 个；页面不再有「待处理」指标', async () => {
+    await mount()
+    const card = [...mounted.container.querySelectorAll('.metric')].find((m) => m.textContent.includes('已发布模型数量'))
+    expect(card.textContent).toContain('6个')
+    expect(card.textContent).toContain('75%')
+    expect(card.textContent).toContain('全部模型 8 个')
+    expect(mounted.container.querySelector('.metric.danger')).toBeNull()
+    expect([...mounted.container.querySelectorAll('.metric-label')].map((e) => e.textContent.trim())).not.toContain('待处理')
   })
 })
 
