@@ -220,3 +220,11 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     expect(r).toMatchObject({ at: '2026-09-01 08:00:00', submitter: 'u1', skillName: 'S1', reviewId: null, rejectReason: 'r' })
   })
 })
+
+describe('种子记录的变更内容符合 §6.2「仅六类」（2026-10-09 /prd-import Q27）', () => {
+  it('业务系统「发布」记录不在六类内 → 变更内容为空（页面显示「—」）', () => {
+    const rec = opsRecords.find((r) => r.module === '业务系统' && r.action === '发布')
+    expect(rec).toBeTruthy()
+    expect(rec.detail).toBe('')
+  })
+})

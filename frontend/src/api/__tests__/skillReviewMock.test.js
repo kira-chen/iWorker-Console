@@ -62,6 +62,13 @@ describe('skillReviewMock · 审核记录', () => {
     expect((await listReviewApplications({ keyword: '不存在的技能' })).total).toBe(0)
   })
 
+  it('keyword 也能命中「提交人 / 技能名」整串（访问审计【查看】跳转注入的操作对象名，访问审计 §6.3）', async () => {
+    const first = (await listReviewApplications({ page: 1, size: 1 })).list[0]
+    const res = await listReviewApplications({ keyword: `${first.submitter} / ${first.skillName}` })
+    expect(res.total).toBeGreaterThanOrEqual(1)
+    expect(res.list.map((r) => r.id)).toContain(first.id)
+  })
+
   it('分页：page/size 切片，total 为筛选后总数', async () => {
     const p1 = await listReviewApplications({ page: 1, size: 3 })
     const p3 = await listReviewApplications({ page: 3, size: 3 })

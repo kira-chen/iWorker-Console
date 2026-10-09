@@ -272,7 +272,7 @@ const cloneConfig = () => ({
 
 /**
  * 列表（服务端分页）。params: { keyword?, scale?, status?, sort?('asc'|'desc'，默认 desc), page, size }。
- * keyword 模糊匹配 技能名称 / 描述 / 提交人（md §三）。返回 { list, total }。
+ * keyword 模糊匹配 技能名称 / 描述 / 提交人（md §三），另可匹配「提交人 / 技能名」整串（访问审计【查看】跳转注入的操作对象名，访问审计 §6.3）。返回 { list, total }。
  */
 export async function listReviewApplications(params = {}) {
   await delay()
@@ -283,7 +283,7 @@ export async function listReviewApplications(params = {}) {
   const list = reviews
     .filter(
       (r) =>
-        (!kw || [r.skillName, r.description, r.submitter].some((v) => String(v || '').toLowerCase().includes(kw))) &&
+        (!kw || [r.skillName, r.description, r.submitter, `${r.submitter} / ${r.skillName}`].some((v) => String(v || '').toLowerCase().includes(kw))) &&
         (!scale || r.scale === scale) &&
         (!status || r.status === status)
     )

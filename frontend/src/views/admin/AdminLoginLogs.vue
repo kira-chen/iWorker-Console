@@ -254,7 +254,7 @@ function opsGoto(row) {
 
 <template>
   <div class="list-page">
-    <PageHeader title="访问审计" subtitle="记录用户登录访问、产物下载与管理端操作的完整行为轨迹" />
+    <PageHeader title="访问审计" subtitle="记录用户登录访问、用户端文件下载与管理端操作的完整行为轨迹" />
 
     <el-tabs v-model="activeTab" class="aa-tabs">
 
@@ -468,7 +468,7 @@ function opsGoto(row) {
           <el-table-column width="170" class-name="col-nowrap">
             <template #header>
               <button type="button" class="ll-sort" @click="toggleOpsSort">
-                时间 <span class="ll-sort-arrow">{{ opsSortArrow }}</span>
+                操作时间 <span class="ll-sort-arrow">{{ opsSortArrow }}</span>
               </button>
             </template>
             <template #default="{ row }"><span class="ll-muted">{{ row.time }}</span></template>

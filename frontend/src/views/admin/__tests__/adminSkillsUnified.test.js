@@ -919,12 +919,12 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     expect(realPost).not.toHaveBeenCalled()
   })
 
-  it('弹窗入参：类型「技能」、对象名、引用数（行上 refCount=3）、引用方描述「岗位 / 专家」', async () => {
+  it('弹窗入参：类型「技能」、对象名、引用数（行上 refCount=3）、引用方按技能类型取（市场技能 → 专家，岗位私有 → 岗位，口径同列表「引用情况」）', async () => {
     askForceRevoke.mockResolvedValue(null)
     const { host } = await mountAndInject([publishedRow])
     opBtn(host, '已发布技能', '强制回收').click()
     await settle(0)
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '岗位 / 专家' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '专家' })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
