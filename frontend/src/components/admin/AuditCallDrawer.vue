@@ -67,6 +67,7 @@ defineEmits(['update:visible'])
             :result="c.result"
             :reason="c.reason"
             :duration="c.duration"
+            :show-params="c.showParams"
             :params="c.params"
             :output="c.output"
           />

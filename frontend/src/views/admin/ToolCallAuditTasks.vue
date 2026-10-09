@@ -158,6 +158,8 @@ const detail = computed(() => {
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
       reason: c.reason,
       duration: c.duration,
+      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，规则同技能调用页签（§8.5）。
+      showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
       params: paramsOf(c),
       output: outputOf(c)
     })),

@@ -183,11 +183,27 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     const row = bodyRows(p).find((r) => r.textContent.includes('拜访前资料准备') && r.textContent.includes('成功'))
     ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
     await flush()
-    const t = document.body.querySelector('.el-drawer__body').textContent
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const t = drawer.textContent
     expect(t).toContain('写')
     expect(t).not.toContain('已确认')
     expect(t).not.toContain('待确认')
     expect(t).not.toContain('已预授权')
+    // 写操作即使成功也展示参数 / 响应入口（2026-10-09 收窄范围只排除"成功的只读调用"）
+    expect(drawer.querySelector('.call-item-toggle')).toBeTruthy()
+  })
+
+  it('成功的只读运行（每周竞品动态汇总）：详情里不展示参数 / 响应入口', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    const row = bodyRows(p).find((r) => r.textContent.includes('每周竞品动态汇总') && r.textContent.includes('成功'))
+    ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
+    await flush()
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.querySelector('.call-item-toggle')).toBeNull()
+    expect(drawer.textContent).toContain('只读调用成功，不保留请求参数与响应内容')
   })
 })
 

@@ -163,15 +163,8 @@ export const toolCallRecords = [
     id: 'C-1010', date: '2026-09-27', time: '15:02:11', user: '刘敏', position: '销售顾问', skill: '方案要点生成',
     reason: '', duration: '0.8 秒',
     calls: [
-      {
-        tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '', duration: '0.8 秒',
-        params: [
-          ['输入内容', 'input', '制造企业数字化转型方案的核心要点'],
-          ['输出格式', 'format', '摘要/要点列表'],
-          ['最大长度', 'max_tokens', '800'],
-          ['语言', 'language', 'zh-CN']
-        ]
-      }
+      // 成功的只读调用不保留请求参数 / 响应（2026-10-09 收窄展示范围，§5.2），不内嵌 params/output
+      { tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '', duration: '0.8 秒' }
     ]
   }
 ].map((r) => ({ ...r, ...deriveExec(r.calls) }))

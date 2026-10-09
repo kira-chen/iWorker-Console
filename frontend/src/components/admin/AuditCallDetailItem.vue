@@ -5,12 +5,19 @@
  * 任务运行没有）、执行结果、耗时；点击【查看请求参数 / 响应结果】就地展开，不影响时间线上
  * 其他项——各自维护自己的展开状态，互不影响（PRD §5.2）。
  *
+ * 2026-10-09 收窄请求参数 / 响应结果的展示范围：仅写操作、或执行结果不是"成功"的调用才展示
+ * 展开入口——高频只读调用是数据量压力的主要来源，且极少被实际查阅；审计价值集中在写操作
+ * （责任凭证、确认内容是否与实际提交一致）与非成功结果（核实实际传参、诊断失败原因）上。
+ * 成功的只读调用不展示入口，原地给一句说明。由调用方（页面）按 nature / result 算好
+ * showParams 传入，本组件不重复判断业务规则。
+ *
  * @prop {string} tool 工具标识（连接器类型·连接器名称）
  * @prop {{label:string,type:string}} nature 操作性质
  * @prop {{label:string,type:string}|null} confirm 用户确认（任务运行传 null，不展示这一项）
  * @prop {{label:string,type:string}} result 执行结果
  * @prop {string} reason 失败 / 拦截 / 取消原因，无则不展示
  * @prop {string} duration 执行耗时
+ * @prop {boolean} showParams 是否展示请求参数 / 响应结果入口（写操作或非成功结果为真）
  * @prop {Array<[string,string,string]>} params 实际请求参数
  * @prop {Object} output 实际响应结果
  * @prop {string} paramsHint 请求参数页签顶部提示
@@ -25,6 +32,7 @@ defineProps({
   result: { type: Object, required: true },
   reason: { type: String, default: '' },
   duration: { type: String, default: '' },
+  showParams: { type: Boolean, default: true },
   params: { type: Array, default: () => [] },
   output: { type: Object, default: null },
   paramsHint: { type: String, default: '敏感字段已脱敏' }
@@ -50,11 +58,12 @@ function toggle() {
     </div>
     <p v-if="reason" class="call-item-reason">{{ reason }}</p>
 
-    <button type="button" class="call-item-toggle" @click="toggle">
+    <p v-if="!showParams" class="call-item-note">只读调用成功，不保留请求参数与响应内容</p>
+    <button v-else type="button" class="call-item-toggle" @click="toggle">
       {{ expanded ? '收起' : '查看' }}请求参数 / 响应结果
     </button>
 
-    <div v-if="expanded" class="call-item-body">
+    <div v-if="showParams && expanded" class="call-item-body">
       <div class="tca-tabs">
         <el-button :type="activeTab === 'input' ? 'primary' : 'default'" size="small" @click="activeTab = 'input'">实际请求参数</el-button>
         <el-button :type="activeTab === 'output' ? 'primary' : 'default'" size="small" @click="activeTab = 'output'">实际响应结果</el-button>
@@ -123,6 +132,11 @@ function toggle() {
   color: var(--c-accent);
   font-size: var(--fs-xs);
   cursor: pointer;
+}
+.call-item-note {
+  margin: 6px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
 }
 .call-item-body {
   margin-top: 8px;

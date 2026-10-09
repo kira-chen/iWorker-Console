@@ -250,6 +250,14 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(items[1].textContent).toContain('1.4 秒')
   })
 
+  it('成功的只读调用（查询客户信息）不展示参数 / 响应入口，原地给一句说明（2026-10-09 收窄展示范围）', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items[0].querySelector('.call-item-toggle')).toBeNull()
+    expect(items[0].textContent).toContain('只读调用成功，不保留请求参数与响应内容')
+  })
+
   it('点击某一项【查看请求参数 / 响应结果】只展开该项，不影响其他项（各自独立状态）', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
@@ -258,7 +266,8 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     toggle1.click()
     await flush()
     expect(items[1].textContent).toContain('实际请求参数')
-    expect(items[0].querySelector('.call-item-toggle').textContent).toContain('查看')
+    // items[0] 是成功的只读调用，本来就没有入口——展开 items[1] 不会把它变出来
+    expect(items[0].querySelector('.call-item-toggle')).toBeNull()
   })
 
   it('展开报价单创建这一项：请求参数脱敏，响应结果展示报价单编号', async () => {

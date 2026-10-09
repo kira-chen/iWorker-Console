@@ -154,6 +154,9 @@ const detail = computed(() => {
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
       reason: c.reason,
       duration: c.duration,
+      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，数据量压力主要来自这部分
+      // 高频调用，且极少被实际查阅；写操作与非成功结果才展示（§5.2）。
+      showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
       params: paramsOf(c),
       output: outputOf(c)
     })),
