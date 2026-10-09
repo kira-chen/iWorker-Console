@@ -65,7 +65,7 @@ describe('yuepu#50 连接器发布态未联动技能工具坞', () => {
     expect(mcpRow('mail_center')).toMatchObject({ publishedAt: null, pendingAction: null })
   })
 
-  it.fails('yuepu#50 工具坞候选不应列出未发布的 MCP（mail_center）', async () => {
+  it('yuepu#50 工具坞候选不应列出未发布的 MCP（mail_center）', async () => {
     const codes = (await skillMock.toolPicker({ type: 'MCP' })).map((t) => t.code)
     expect(codes).not.toContain('mcp__mail_center')
   })
@@ -159,19 +159,19 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     expect(mcpRow('crm').pendingAction).toBe('PUBLISH')
   })
 
-  it.fails('yuepu#57④ 审核中的 MCP（crm）拉取工具应被拒绝', async () => {
+  it('yuepu#57④ 审核中的 MCP（crm）拉取工具应被拒绝', async () => {
     await expect(fetchMcpTools(mcpRow('crm').id)).rejects.toThrow()
   })
 
   // ⑤ 专家整批 skillIds 不按候选（已发布的市场技能）校验。专家 skillIds 契约是数字（domainExpertMock skillNumId），
   // 传 'sk_xxx' 字符串的话，修复若按「id 格式不合法」拒绝也会翻红，报出的原因是错的（专家组 T10）
-  it.fails('yuepu#57⑤ 专家整批写入未发布技能应被拒绝', async () => {
+  it('yuepu#57⑤ 专家整批写入未发布技能应被拒绝', async () => {
     const { skillId } = await skillMock.createSkill({ name: '未发布市场技能', type: 'PLATFORM', categoryName: '办公效率' })
     await expect(updateExpert(201, { skillIds: [302, 304, skillNumId(skillId)] })).rejects.toThrow()
   })
 
   // ⑥ md MCP §三.3 连接器类型必选；mock 以缺省即 PLATFORM 兜底
-  it.fails('yuepu#57⑥ 新建 MCP 不传连接器类型应被拒绝', async () => {
+  it('yuepu#57⑥ 新建 MCP 不传连接器类型应被拒绝', async () => {
     await expect(createMcp({
       code: 'no_type_mcp', name: '无类型 MCP', icon: '🧪', transport: 'streamable-http',
       endpoint: 'https://x.intra/mcp', description: '验证用', exampleQuestions: ['问题一', '问题二', '问题三']
@@ -191,7 +191,7 @@ describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共�
     expect(e.exampleQuestions).toEqual(okQuestions)
   })
 
-  it.fails('yuepu#57⑤ 新建专家示例问题单条超过 300 字符应被拒绝', async () => {
+  it('yuepu#57⑤ 新建专家示例问题单条超过 300 字符应被拒绝', async () => {
     await expect(createExpert({ name: '超长示例问题专家', exampleQuestions: longQuestions })).rejects.toThrow(/300/)
   })
 
@@ -206,11 +206,11 @@ describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共�
     await expect(createMcp(mcpPayload('len_ok_mcp'))).resolves.toMatchObject({ code: 'len_ok_mcp' })
   })
 
-  it.fails('yuepu#57⑥ MCP 服务地址超过 500 字符应被拒绝', async () => {
+  it('yuepu#57⑥ MCP 服务地址超过 500 字符应被拒绝', async () => {
     await expect(createMcp(mcpPayload('long_ep_mcp', { endpoint: 'https://x.intra/' + 'a'.repeat(500) }))).rejects.toThrow(/500/)
   })
 
-  it.fails('yuepu#57⑥ MCP 服务描述超过 2000 字符应被拒绝', async () => {
+  it('yuepu#57⑥ MCP 服务描述超过 2000 字符应被拒绝', async () => {
     await expect(createMcp(mcpPayload('long_desc_mcp', { description: '述'.repeat(2001) }))).rejects.toThrow(/2000/)
   })
 
@@ -224,7 +224,7 @@ describe('yuepu#57 数据层守卫 / 校验缺口（2026-10-08 /test-audit 共�
     await expect(createBizSystem(bizPayload('长度验证业务系统'))).resolves.toMatchObject({ name: '长度验证业务系统' })
   })
 
-  it.fails('yuepu#57⑥ 业务系统登录地址超过 1024 字符应被拒绝', async () => {
+  it('yuepu#57⑥ 业务系统登录地址超过 1024 字符应被拒绝', async () => {
     await expect(createBizSystem(bizPayload('超长登录地址系统', { loginUrl: 'https://crm.intra/' + 'a'.repeat(1024) }))).rejects.toThrow(/1024/)
   })
 

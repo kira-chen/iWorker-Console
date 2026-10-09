@@ -99,6 +99,8 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
   it('发布/撤回/停用流转：提交发布进审核、撤回回修改前状态、停用提交停用审核', async () => {
     // 建议版本号 = 最新历史 patch+1
     expect(await getNextVersionLabel(402)).toBe('v1.4.1')
+    // 种子里 402 引用了已回收的 api_1104（待办 yuepu#83 样例），发布前检查会阻断；本用例测的是发布状态机，先解除该引用
+    await updatePosition(402, { connectorApiIds: ['api_1103'] })
     await publishPosition(402, { bump: 'MINOR', releaseNotes: '新增能力' })
     let row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')

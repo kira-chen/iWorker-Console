@@ -45,6 +45,10 @@ export const opsRecords = [
   // objectId = 用户 id，meta 带用户与前后岗位的名称 + 标识（§6.5.3）。id/岗位取自 adminUserMock / positionMock 种子。
   { id: 18, time: '2026-08-28 11:10', operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗', at: '2026-08-28 11:10:24', objectId: 203, meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 401, name: '经营分析岗' } } },
   { id: 19, time: '2026-08-28 10:50', operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗', at: '2026-08-28 10:50:37', objectId: 202, meta: { userId: 202, username: 'li.na', fromPosition: { id: 402, name: '客户成功岗' }, toPosition: { id: 403, name: '财务审核岗' } } },
+  // 强制回收（§6.2 / §6.5.1）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
+  // （objectId / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
+  { id: 20, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30:41', objectId: 'sk_306' },
+  { id: 21, time: '2026-08-29 10:12', operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12:08', objectId: 'api_1104' }
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */

@@ -313,9 +313,8 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
-  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
-  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
-  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+  // 回归（待办 yuepu#55 已修）：searching 须把「连接器类型」也算筛选，只按类型筛时空分组不展示。
+  it('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
     conn.listApis.mockImplementation(async (params = {}) => ({
       list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
     }))
@@ -732,12 +731,12 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     expect(conn.listApis.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」、引用清单（技能名，供弹窗点击展开）', async () => {
     askForceRevoke.mockResolvedValue(null)
     await mount()
     btn(rowByName('已上线接口'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能', refNames: ['报销查询技能', '财务单据助手'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {

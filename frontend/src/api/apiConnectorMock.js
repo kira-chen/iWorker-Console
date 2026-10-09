@@ -24,6 +24,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
+import { CONNECTOR_TYPE } from './connectorTypes'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
@@ -223,6 +224,9 @@ let apis = [
     url: 'https://crm.example.com/api/follow-up/create',
     exampleQuestions: ['帮我记一条今天的客户拜访跟进', '给这家客户安排下周三的回访', '把刚才的沟通要点存成跟进记录'],
     status: 'NOT_PUBLISHED',
+    publishedAt: '2026-08-22T10:10:00+08:00',
+    // 已回收样例（待办 yuepu#83）：演示列表「已回收」标签与悬停说明、编辑页提示条、402 岗位侧失效标记与发布阻断；配套访问审计种子（accessAuditMock id 21）
+    revoked: { reason: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12', operator: 'admin' },
     displayStatus: 'UNHEALTHY',
     lastCheckedAt: '2026-08-22T10:35:00+08:00',
     lastCheckError: MOCK_FAIL_REASON,
@@ -477,8 +481,9 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// version 7（2026-10-09 待办 yuepu#83）：api_1104 预置「已回收」样例（revoked + publishedAt），旧快照仍是未回收 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -497,6 +502,8 @@ const persist = attachPersist('apiConnector', {
     providerSystems = d.providerSystems
     apis = d.apis.map((a) => ({
       ...a,
+      // 旧快照行缺 revoked 键 → 补 null，与技能 / 专家 / MCP 出参口径一致（待办 yuepu#81）
+      revoked: a.revoked ?? null,
       // 连通性展示态归一：只认三个稳定值，异常快照回「未探测」
       displayStatus: a.displayStatus === 'HEALTHY' || a.displayStatus === 'UNHEALTHY' ? a.displayStatus : null
     }))
@@ -735,11 +742,13 @@ function applyApiPayload(a, payload) {
 
 export async function createApi(payload) {
   await delay(250)
+  // 连接器类型必选（md API §三「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   validateApiPayload(payload)
   // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰该字段
   const a = mkApi({
     code: `api_${apiSeq++}`,
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })

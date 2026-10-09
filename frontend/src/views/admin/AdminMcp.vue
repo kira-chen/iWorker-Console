@@ -39,7 +39,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import { askForceRevoke, connectorRefNames } from '@/utils/forceRevoke'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
@@ -452,7 +452,8 @@ async function forceRevoke(row) {
     typeLabel: 'MCP 服务',
     name: row.name,
     refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
+    refText: '岗位 / 技能',
+    refNames: connectorRefNames(row)
   })
   if (reason == null) return
   runAction(

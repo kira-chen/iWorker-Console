@@ -66,6 +66,7 @@ const PAYLOAD_1101 = {
   exampleQuestions: ['帮我查询报销单的当前审批状态', '我上周提的报销现在到哪一步了', '查一下单号 BX20260801 的报销金额']
 }
 const NEW_API = {
+  type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
   name: '新接口',
   icon: '🧪',
   description: '测试用',
@@ -401,9 +402,12 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     expect(updated).toMatchObject({ type: 'POSITION', name: '改名' })
   })
 
-  it('未传 type → 落 PLATFORM 默认值，且无岗位引用', async () => {
-    const noType = await run(m.createApi({ ...NEW_API }))
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0, referencedByPositions: [] })
+  it('新建未传 / 传非法 type → 拒绝「请选择连接器类型」（md 新建时必须选择；待办 yuepu#57⑥，不再缺省兜底 PLATFORM）；选定类型的新建无岗位引用', async () => {
+    for (const type of [undefined, '', 'BOGUS']) {
+      await expect(run(m.createApi({ ...NEW_API, type }))).rejects.toMatchObject({ field: 'type', message: '请选择连接器类型' })
+    }
+    const ok = await run(m.createApi({ ...NEW_API, type: 'PLATFORM' }))
+    expect(ok).toMatchObject({ type: 'PLATFORM', positionCount: 0, referencedByPositions: [] })
   })
 })
 
@@ -433,7 +437,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(6) // v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
+    expect(harness.options.version).toBe(7) // v7：api_1104 预置已回收样例（待办 yuepu#83）；v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
@@ -546,12 +550,12 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     expect((await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101').revoked.reason).toBe(reason)
   })
 
-  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 视为空）', async () => {
+  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 为 null）', async () => {
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.apis.forEach((a) => delete a.revoked)
     harness.options.restore(snap)
-    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告：低风险缺陷，旧快照实际会被版本号 bump 丢弃）
-    expect((await run(m.getApi('api_1101'))).revoked).toBeUndefined()
+    // 待办 yuepu#81：restore 对缺键行补 null，与另外三个 mock 出参口径一致（不用 ?? null 掩盖）
+    expect((await run(m.getApi('api_1101'))).revoked).toBeNull()
     const row = await run(m.forceRevokeApi('api_1101', reason))
     expect(row.revoked.reason).toBe(reason)
   })

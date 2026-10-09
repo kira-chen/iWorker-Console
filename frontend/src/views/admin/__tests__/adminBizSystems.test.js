@@ -561,7 +561,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     await mount()
     btn(rowByName('客户管理系统'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能', refNames: ['客户拜访准备', '销售方案生成'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {

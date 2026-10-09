@@ -37,7 +37,7 @@ import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
 import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import { askForceRevoke, connectorRefNames } from '@/utils/forceRevoke'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
@@ -188,7 +188,7 @@ const groups = computed(() => {
     const k = a.providerSystemId ?? '__none__'
     ;(byPs[k] ||= []).push(a)
   }
-  const searching = !!applied.keyword || !!applied.state
+  const searching = !!applied.keyword || !!applied.state || !!applied.type
   return providerSystems.value
     .map((ps) => ({ ps, apis: sortApis(byPs[ps.id] || [], ps.id) }))
     .filter((g) => !searching || g.apis.length > 0)
@@ -433,7 +433,8 @@ async function forceRevoke(row) {
     typeLabel: 'API',
     name: row.name,
     refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
+    refText: '岗位 / 技能',
+    refNames: connectorRefNames(row)
   })
   if (reason == null) return
   runAction(row, 'forceRevoke', () => forceRevokeApi(row.id, reason), '已强制回收')

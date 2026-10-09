@@ -893,7 +893,7 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     return { vm, host }
   }
   const ready = { displayCategoryId: '办公效率', icon: '▤', description: 'd', exampleQuestion: 'q', hasSkillMd: true }
-  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, refNames: ['经营分析专家', '法务合规专家', '投研助理专家'], publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
   const draftRow = { ...rowPlatform, ...ready, id: 'r_draft', name: '未发布技能' }
   const rowOf = (host, name) => [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name))
   const opBtn = (host, name, text) =>
@@ -924,16 +924,16 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     const { host } = await mountAndInject([publishedRow])
     opBtn(host, '已发布技能', '强制回收').click()
     await settle(0)
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '专家' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '已发布技能', refCount: 3, refText: '专家', refNames: ['经营分析专家', '法务合规专家', '投研助理专家'] })
   })
 
   it('岗位私有技能的回收弹窗：引用方描述为「岗位」，不是写死的「岗位 / 专家」（/prd-import Q6，口径同列表「引用情况」）', async () => {
     askForceRevoke.mockResolvedValue(null)
-    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2 }
+    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2, refNames: ['销售顾问岗', '财务运营岗'] }
     const { host } = await mountAndInject([positionPublished])
     opBtn(host, '岗位私有已发布技能', '强制回收').click()
     await settle(0)
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '岗位私有已发布技能', refCount: 2, refText: '岗位' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '技能', name: '岗位私有已发布技能', refCount: 2, refText: '岗位', refNames: ['销售顾问岗', '财务运营岗'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {

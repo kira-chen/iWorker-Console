@@ -1008,12 +1008,16 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(before)
   })
 
-  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」、引用清单（技能名，供弹窗点击展开）', async () => {
     askForceRevoke.mockResolvedValue(null)
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, referencedBySkills: [{ skillId: 'sk_1', skillName: '销售方案生成' }, { skillId: 'sk_2', skillName: '客户问题解答' }] } : { ...r })),
+      total: LIST.length
+    }))
     await mount()
     btn(rowByName('已上线服务'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能', refNames: ['销售方案生成', '客户问题解答'] })
   })
 
   it('引用数 = 引用它的技能数 + 岗位数', async () => {

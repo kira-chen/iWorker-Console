@@ -202,7 +202,10 @@ const skills = [
   seed({
     id: 'sk_306', type: 'SYSTEM_DEFAULT', name: '公文润色', icon: '◈',
     description: '', category: '内容创作',
-    status: 'published', version: 'v3.0.2',
+    // 已回收样例（待办 yuepu#83）：曾发布 v3.0.2 后被强制回收——回「未发布」（delisted，保留版本号与快照）并带 revoked，
+    // 配套访问审计种子（accessAuditMock id 20）；演示列表「已回收」标签、编辑页提示条
+    status: 'draft', delisted: true, version: 'v3.0.2',
+    revoked: { reason: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30', operator: 'admin' },
     createdAt: '2026-08-18 10:42', updatedAt: '2026-08-19 09:40', publishedAt: '2026-08-19 09:40',
     exampleQuestion: '帮我把这段通知润色得正式一些',
     toolRefs: ['api__api_1107'],
@@ -366,16 +369,21 @@ export async function listUnifiedSkills(params = {}) {
  * `[a-z][a-z0-9_]*`，三个连接器的 code/id 种子均为小写字母数字下划线，天然兼容。
  */
 function loadToolDirectory() {
+  // available = 已发布且启用（一览表「停用后技能不再可引用该 API」，yuepu#50）：只有 available 的才进工具坞候选；
+  // 已被技能引用、但如今未发布 / 已停用的工具照常回显，checkStatus 给 DISABLED（已停用），不再沿用「连接正常」。
   const dir = {}
+  const put = (key, row, available, health, type) => {
+    dir[key] = { bizName: row.name, description: row.description || '', checkStatus: available ? health : 'DISABLED', type, available }
+  }
   for (const m of listMcpSync()) {
-    dir[`mcp__${m.code}`] = { bizName: m.name, description: m.description || '', checkStatus: m.displayStatus || 'UNKNOWN', type: 'MCP' }
+    put(`mcp__${m.code}`, m, m.stateKey === 'PUBLISHED' && m.status !== 'disabled' && m.status !== 'inactive', m.displayStatus || 'UNKNOWN', 'MCP')
   }
   for (const a of listApisSync()) {
-    dir[`api__${a.code}`] = { bizName: a.name, description: a.description || '', checkStatus: a.displayStatus || 'UNKNOWN', type: 'API' }
+    put(`api__${a.code}`, a, a.status === 'PUBLISHED' && a.enabled !== false, a.displayStatus || 'UNKNOWN', 'API')
   }
   for (const b of listBizSystemsSync()) {
     // 业务系统走登录态托管，无连通性验证概念（无 displayStatus），沿用旧口径 UNKNOWN
-    dir[`biz__${b.id}`] = { bizName: b.name, description: b.description || '', checkStatus: 'UNKNOWN', type: 'BIZ_SYSTEM' }
+    put(`biz__${b.id}`, b, b.status === 'PUBLISHED', 'UNKNOWN', 'BIZ_SYSTEM')
   }
   return dir
 }
@@ -877,7 +885,7 @@ export async function toolPicker(params = {}) {
   const { type = 'MCP', keyword = '' } = params
   const q = String(keyword).trim().toLowerCase()
   return Object.entries(loadToolDirectory())
-    .filter(([, t]) => t.type === type)
+    .filter(([, t]) => t.type === type && t.available)
     .map(([code, t]) => ({
       code,
       bizName: t.bizName,
@@ -1049,8 +1057,8 @@ let reviewSnapshots = {}
 //    配套 fieldDictMock v4（分类枚举同批）。
 // ② 待办 yuepu#9⑤：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用的通用技能 sk_303
 //    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
-// version 7（2026-10-09，待办 yuepu#53）：补 435aa3c 漏 bump——9 条种子技能 toolRefs 由虚构代码改为真实连接器代码、
-//    SKILL.md 加「## 引用工具」；旧 v6 快照保留旧 toolRefs（工具坞显示裸代码 + 「未检测」）。
+// version 7（2026-10-09，待办 yuepu#53 + #83 同版）：补 435aa3c 漏 bump——9 条种子技能 toolRefs 由虚构代码改为真实连接器代码、
+//    SKILL.md 加「## 引用工具」；并预置 sk_306 为「已回收」样例（delisted + revoked）。旧 v6 快照（旧 toolRefs、sk_306 仍是已发布）整体丢弃重播种。
 const persist = attachPersist('unifiedSkill', {
   version: 7,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),

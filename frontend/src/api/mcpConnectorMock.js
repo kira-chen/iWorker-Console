@@ -24,7 +24,8 @@ import { appendOpsRecord } from './accessAuditMock'
 import { makeRevokedInfo } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
-import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
+import { BIZ_QUESTION_MAX, CONNECTOR_URL_MAX, API_DESC_MAX } from '@/utils/defValidate'
+import { CONNECTOR_TYPE } from './connectorTypes'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
@@ -360,7 +361,8 @@ function aggStateKey(id) {
  * 用到，不能改造成 async。
  */
 export function listMcpSync() {
-  return mcps.map(toRow)
+  // stateKey：列表三态聚合键（工具坞按「已发布且启用」过滤候选用，yuepu#50）
+  return mcps.map((m) => ({ ...toRow(m), stateKey: aggStateKey(m.id) }))
 }
 
 /**
@@ -462,8 +464,22 @@ function assertExampleQuestions(list) {
   if (qs.some((q) => q.length > BIZ_QUESTION_MAX)) throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
 }
 
+// 服务描述 ≤2000、服务地址（Endpoint）≤500（一览表 §5.1；md MCP §三.3）。与 API mock 的 validateApiPayload 同写法；
+// mock 的 payload 是部分更新语义，故只在带了该字段时校验（待办 yuepu#57⑥）。
+function assertMcpTextLimits(payload) {
+  if (payload.description != null && String(payload.description).trim().length > API_DESC_MAX) {
+    throw err(`服务描述最多 ${API_DESC_MAX} 个字符`, 'description')
+  }
+  if (payload.endpoint != null && String(payload.endpoint).trim().length > CONNECTOR_URL_MAX) {
+    throw err(`MCP 服务地址最多 ${CONNECTOR_URL_MAX} 个字符`, 'endpoint')
+  }
+}
+
 export async function createMcp(payload) {
   await delay(250)
+  // 连接器类型必选（md MCP §三.3 L262「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
+  assertMcpTextLimits(payload)
   assertExampleQuestions(payload.exampleQuestions)
   const code = (payload.code || '').trim() || `mcp_${mcpSeq}`
   if (findMcp(code)) throw err('code 已存在', 'code')
@@ -471,7 +487,7 @@ export async function createMcp(payload) {
   const m = mkMcp({
     code,
     // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyMcpPayload 不碰该字段
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     displayStatus: 'UNKNOWN',
     connStatus: 'unknown',
     createdAt: nowIso(),
@@ -507,6 +523,7 @@ export async function updateMcp(id, payload) {
   // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
   if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
+  assertMcpTextLimits(payload)
   if ('exampleQuestions' in payload) assertExampleQuestions(payload.exampleQuestions)
   applyMcpPayload(m, payload)
   m.updatedAt = nowIso()
@@ -586,7 +603,9 @@ async function fetchToolsResult(m) {
   }
   return { tools: SPARK_TOOLS.map((t) => ({ ...t })), ...meta }
 }
-export function fetchMcpTools(id) {
+export async function fetchMcpTools(id) {
+  // 审核中的 MCP 已锁定（updateMcp 同口径拒写），拉取工具会覆盖其 tools，一并拦下（待办 yuepu#57④）
+  if (pubAgg[id] === 'PENDING_REVIEW') throw err('审核中不可拉取工具，如需修改请先撤回')
   return fetchToolsResult(findMcp(id))
 }
 export function fetchMcpToolsDraft() {

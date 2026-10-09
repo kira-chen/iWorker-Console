@@ -22,7 +22,8 @@ import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnrol
 import { appendOpsRecord } from './accessAuditMock'
 import { makeRevokedInfo } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
-import { isBlankBizPage } from '@/utils/defValidate'
+import { isBlankBizPage, BIZ_URL_MAX } from '@/utils/defValidate'
+import { CONNECTOR_TYPE } from './connectorTypes'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
@@ -148,7 +149,7 @@ const persist = attachPersist('bizSystem', {
     }
     bizSeq = d.bizSeq
     skillSeq = d.skillSeq
-    bizRows = d.bizRows
+    bizRows = d.bizRows.map((b) => ({ ...b, revoked: b.revoked ?? null })) // 旧快照行缺 revoked 键 → 补 null（待办 yuepu#81）
   }
 })
 
@@ -221,6 +222,8 @@ function validateBizPayload(payload, selfId = null) {
   if (!/^https?:\/\//i.test((payload.loginUrl || '').trim())) {
     throw err('登录地址必须以 http:// 或 https:// 开头', 'loginUrl')
   }
+  // 登录地址 ≤1024（一览表 §十一；md 业务系统 §三 L115，待办 yuepu#57⑥）
+  if (payload.loginUrl.trim().length > BIZ_URL_MAX) throw err(`登录地址最多 ${BIZ_URL_MAX} 个字符`, 'loginUrl')
   const pages = Array.isArray(payload.bizPages) ? payload.bizPages : []
   if (pages.length > 20) throw err('业务页最多 20 条', 'bizPages')
   const qs = [0, 1, 2].map((i) => (payload.exampleQuestions?.[i] || '').trim())
@@ -251,11 +254,13 @@ function applyBizPayload(b, payload) {
 
 export async function createBizSystem(payload) {
   await delay(250)
+  // 连接器类型必选（md 业务系统 §三「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   validateBizPayload(payload)
   // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyBizPayload 不碰该字段
   const b = mkBiz({
     id: `biz_${bizSeq++}`,
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })
