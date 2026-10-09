@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 // （positionMock → request.js → router 链路触达 window，故用 jsdom；同 positionMock.test）
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 
 /**
+ * 2026-10-09 · 待办 yuepu#52 #51 · md 岗位。
  * 待办 yuepu#52：岗位 id 不得复用，删岗要清岗位知识库。
+ * 待办 yuepu#51：岗位保存连接器绑定会回写连接器侧「被岗位引用」清单，且该回写随连接器 mock 落盘（刷新 / 重新加载后仍在）。
  *
  * 背景：按 positionId 存数据的模块（分配 / 任务 / 档案 / 运行规格 / 知识库 / 专家 / 连接器）各自持久化，
  * positionMock 升版本丢弃旧快照后 posSeq 回到 405，新建岗位复用旧 id 即继承旧数据。
@@ -86,8 +88,81 @@ describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#
     expect(after.scopeRefName).toBe('')
     // 其它库不受影响：种子岗位库 kb_4 仍指向 401
     expect(String((await kb.get('kb_4')).scopeRefId)).toBe('401')
-    // 同 id 复用不会发生（水位线），新岗位拿到新 id 且没有任何岗位库指向它
-    const next = await pos.createPosition({ name: '后建岗' })
-    expect(next.positionId).toBeGreaterThan(p.positionId)
+    // 同 id 不复用及岗位库不被继承，见下一条（重新加载后的强断言）
+  })
+
+  it('删岗后模拟升级丢弃岗位快照 + 重新加载两个模块：同 id 不复用（新岗位 id 恰为 p+1），且没有任何岗位库指向它', async () => {
+    const pos = await import('../positionMock')
+    const kb = await import('../knowledgeBaseMock')
+    const p = await pos.createPosition({ name: '水位线收紧岗' })
+    await kb.create({ name: '收紧级联库', icon: '📘', kbType: 'POSITION', scopeRefId: p.positionId, description: '随岗位删除' })
+    await pos.deletePosition(p.positionId)
+    globalThis.localStorage.removeItem(POS_KEY) // 升级丢弃岗位快照，只剩独立落盘的水位线
+    vi.resetModules()
+    const pos2 = await import('../positionMock')
+    const kb2 = await import('../knowledgeBaseMock')
+    const next = await pos2.createPosition({ name: '后建岗' })
+    expect(next.positionId).toBe(p.positionId + 1)
+    const { list } = await kb2.list({ size: 100 })
+    const pointing = list.filter((k) => String(k.scopeRefId) === String(next.positionId))
+    expect(pointing).toEqual([])
+  })
+})
+
+describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', () => {
+  it('清空后重新加载模块，岗位库 scopeRefId 仍为 null（不是只改了内存）', async () => {
+    const kb = await import('../knowledgeBaseMock')
+    expect(String((await kb.get('kb_4')).scopeRefId)).toBe('401')
+    kb.clearPositionScope(401)
+    vi.resetModules()
+    const kb2 = await import('../knowledgeBaseMock')
+    expect((await kb2.get('kb_4')).scopeRefId).toBeNull()
+    // 另一岗位的库不受牵连
+    expect(String((await kb2.get('kb_5')).scopeRefId)).toBe('403')
+  })
+
+  it('kbType 不是 POSITION 但 scopeRefId 同值的库不被清（只清岗位库）', async () => {
+    const kb = await import('../knowledgeBaseMock')
+    const other = await kb.create({ name: '同值非岗位库', icon: '📘', kbType: 'EXPERT', scopeRefId: 401, description: '专家库误指同值' })
+    kb.clearPositionScope(401)
+    expect((await kb.get('kb_4')).scopeRefId).toBeNull()
+    expect(String((await kb.get(other.id)).scopeRefId)).toBe('401')
+    vi.resetModules()
+    const kb2 = await import('../knowledgeBaseMock')
+    expect(String((await kb2.get(other.id)).scopeRefId)).toBe('401')
+  })
+})
+
+describe('positionMock.updatePosition · 连接器引用回写落盘读回（yuepu#51）', () => {
+  // 种子：401（已发布）绑 expense_mcp / api_1101 / biz_2101；biz_2101 另被 402 引用
+  it('解绑：401 清空三类连接器后，重新加载各连接器 mock，引用数与引用清单反映改后状态', async () => {
+    const pos = await import('../positionMock')
+    await pos.updatePosition(401, { connectorMcpIds: [], connectorApiIds: [], businessSystemIds: [] })
+    vi.resetModules()
+    const mcp = await import('../mcpConnectorMock')
+    const api = await import('../apiConnectorMock')
+    const biz = await import('../bizSystemMock')
+    const m = mcp.listMcpSync().find((r) => r.id === 'expense_mcp')
+    const a = api.listApisSync().find((r) => r.id === 'api_1101')
+    const b = biz.listBizSystemsSync().find((r) => r.id === 'biz_2101')
+    expect(m.positionCount).toBe(0)
+    expect(a.positionCount).toBe(0)
+    expect(b.positionCount).toBe(1) // 402 仍引用
+    expect((await mcp.getMcp('expense_mcp')).referencedByPositions).toEqual([])
+    expect((await biz.getBizSystem('biz_2101')).referencedByPositions.map((x) => x.positionId)).toEqual([402])
+  })
+
+  it('绑定：草稿岗 404 绑私有 mail_center / api_1103 / biz_2101 后，重新加载各连接器 mock，引用清单含 404', async () => {
+    const pos = await import('../positionMock')
+    await pos.updatePosition(404, { connectorMcpIds: ['mail_center'], connectorApiIds: ['api_1103'], businessSystemIds: ['biz_2101'] })
+    vi.resetModules()
+    const mcp = await import('../mcpConnectorMock')
+    const api = await import('../apiConnectorMock')
+    const biz = await import('../bizSystemMock')
+    expect(mcp.listMcpSync().find((r) => r.id === 'mail_center').positionCount).toBe(1)
+    expect(api.listApisSync().find((r) => r.id === 'api_1103').positionCount).toBe(2)
+    expect(biz.listBizSystemsSync().find((r) => r.id === 'biz_2101').positionCount).toBe(3)
+    expect((await mcp.getMcp('mail_center')).referencedByPositions.map((x) => x.positionId)).toEqual([404])
+    expect((await api.getApi('api_1103')).referencedByPositions.map((x) => x.positionId)).toContain(404)
   })
 })

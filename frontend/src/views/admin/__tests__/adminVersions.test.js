@@ -14,6 +14,10 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * - §九 空状态 / 加载失败【重试】/ 概览加载失败【重试】。
  *
  * 真实挂载（真 Element Plus / 真 VersionEditor 抽屉），只 mock api 层与确认弹窗；业务规则本身见 versionMock.test.js。
+ *
+ * 【撤回文案真值源】本文件里 withdrawVersion 的 reject 文案（如「该申请已被审核，无法撤回，请查看最新审核结果」）
+ * 是照抄 mock 的桩值，页面只负责原样 toast；该文案的真值与触发条件（版本已不在审核中）由 versionMock.test.js
+ * 「撤回审核中的申请」一组守护，mock 改文案时以那里为准、同步改这里的桩值。
  */
 
 const api = {

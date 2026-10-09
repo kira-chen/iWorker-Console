@@ -287,6 +287,8 @@ describe('【统计口径】说明（§二）', () => {
     expect(text).toContain('调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。')
     expect(text).toContain('执行耗时只统计工具实际执行时间，不含等待用户确认的时间')
     expect(text).toContain('"待确认"反映当前尚未处理的请求，不是历史累计数量。')
+    // 说明块紧随【统计口径】入口之后展开（不是飘在页面别处）
+    expect(container.querySelector('.tca-help-entry').nextElementSibling).toBe(container.querySelector('.tca-help'))
     helpBtn().click()
     await flush()
     expect(container.querySelector('.tca-help')).toBeNull()
@@ -475,7 +477,13 @@ describe('详情抽屉（§5.2 / §5.3 / §5.4）', () => {
 
   it('无需确认的读操作 → 时间线不出「用户确认」节点（md 工具调用审计 §5.2「用户确认（仅『操作性质=写』且需要确认时展示）」）', async () => {
     await openDetail('方案要点生成')
-    expect(timelineTitles().some((t) => t.includes('确认'))).toBe(false)
+    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '成功'])
+  })
+
+  it('写操作但无需确认（C-1003「客户记录更新」，WRITE + NONE）→ 同样不出「用户确认」节点，直接 发起 / 检查 / 执行结果（md §5.2「仅『操作性质=写』且需要确认时展示」）', async () => {
+    await openDetail('客户记录更新')
+    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '成功'])
+    expect(drawer().textContent).not.toContain('用户已确认')
   })
 
   it('四类结果说明文案（§5.3）：失败 / 拦截 / 取消 / 待确认各一句建议动作', async () => {

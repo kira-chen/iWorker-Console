@@ -83,10 +83,11 @@ async function loadPermissionTree() {
   try {
     const data = await getPermissionTree()
     permissionTree.value = Array.isArray(data) ? data : data?.list || []
-  } catch (e) {
+  } catch {
     // 权限树读失败：列表仍可列角色。权限列因无树可对照 → scopeLines 恒空 → 统一显「未开通任何页面」
     // （2026-09-01 拍板：不再回显裸权限标识）；编辑抽屉内保持其自身失败态文案。
-    permissionTree.value = []
+    // 失败不覆盖已加载的树：首次失败时树本就为空；每次开抽屉都会重拉，重拉时的瞬时失败不该把已有的好树清掉，
+    // 否则列表权限列整体退成「未开通任何页面」、抽屉也误报失败。
   }
 }
 

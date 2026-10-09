@@ -12,6 +12,9 @@ import { createApp, h, nextTick } from 'vue'
  *  - §四.1「点击【保存】后更新绑定关系、关闭弹窗…提示岗位绑定已更新」：换绑 / 解绑 → setUserPosition(userId, 新岗位 | null) + 提示「岗位绑定已更新」+ 关窗（update:visible false）+ emit saved；
  *  - 无变化：默认直接关窗，不打接口、不提示；forceSave=true（§五 待分配申请处理「保存后系统自动标记该申请为已处理」）未变化仍保存并 emit saved；
  *  - 保存失败（§七「保存失败：弹窗保持打开并展示失败原因」）：显具体原因或「保存失败，请重试」，窗口保持打开。
+ *
+ * 2026-10-09 头注订正：弹窗标题「分配岗位」已随待办 yuepu#60③ 对齐 md；
+ * 「选未绑定保存不标记申请为已分配」（待办 yuepu#57⑦）的页面编排归 adminPositionAssignments.test.js，本文件只管弹窗自身。
  */
 
 const api = { setUserPosition: vi.fn() }

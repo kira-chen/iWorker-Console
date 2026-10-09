@@ -253,7 +253,7 @@ describe('DossierRuleListEditor · 档案详情规则网格（岗位 md §4.2.3�
     it('x 上限为 10：输入框 max=10（md §4.2.3「x 下限 1，上限 10，默认 5」；yuepu#60⑤ 已修）', async () => {
       const { container: c } = mount([rule('a', 'SUMMARY')])
       await flushAll()
-      // 前提：x 输入框已渲染、下限正确
+      // x 输入框已渲染、下限为 1
       expect(nInput(c, 0).getAttribute('min')).toBe('1')
       expect(nInput(c, 0).getAttribute('max')).toBe('10')
     })
@@ -263,7 +263,7 @@ describe('DossierRuleListEditor · 档案详情规则网格（岗位 md §4.2.3�
       const { container: c, emitted } = mount(rows)
       await flushAll()
       await setNumber(nInput(c, 0), 20)
-      // 前提：修改确有回吐
+      // 修改确有回吐（先确认有回吐，再断言钳值）
       expect(emitted.length).toBeGreaterThan(0)
       expect(emitted.at(-1)[0].params.n).toBe(10)
     })

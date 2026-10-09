@@ -72,6 +72,15 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(l.loadErrorMessage.value).toBe('')
   })
 
+  it('取数失败但 reject 的不是带 message 的 Error（字符串 / 无 message 的对象 / null）：loadError 置真，loadErrorMessage 为空串而非 undefined / 对象', async () => {
+    for (const rejection of ['裸字符串失败', { code: 500 }, null]) {
+      const l = useAdminList(vi.fn(() => Promise.reject(rejection)))
+      await l.reload()
+      expect(l.loadError.value).toBe(true)
+      expect(l.loadErrorMessage.value).toBe('')
+    }
+  })
+
   it('取数失败：置 loadError 且关 loading（不把异常抛给调用方）', async () => {
     const fetcher = vi.fn(() => Promise.reject(new Error('boom')))
     const l = useAdminList(fetcher)
@@ -126,8 +135,13 @@ describe('useAdminList · 列表取数编排契约', () => {
     expect(useAdminList(vi.fn()).pageSize.value).toBe(DYN_DEFAULT)
   })
 
-  it('极矮窗口（可用高度 330–391px，算出 0 条）每页条数夹到下限 5，不落到 10（md 岗位 §列表「最少 5 条」；yuepu#65②）', () => {
+  it('极矮窗口（高度 330–453px，算出 n≤1 条：330–391 为 0、392–453 为 1）每页条数夹到下限 5，不落到 10（md 岗位 §列表「最少 5 条」；yuepu#65②）', () => {
     for (const h of [330, 360, 391, 392, 453]) expect(computeDynPageSize(h)).toBe(DYN_PAGE_MIN)
+  })
+
+  it('高度小于 330（算出负数条）同样夹到下限 5；非正高度（0 / 负数）视为取不到高度，按 900 兜底 → 9 条', () => {
+    for (const h of [329, 300, 100, 1]) expect(computeDynPageSize(h)).toBe(DYN_PAGE_MIN)
+    for (const h of [0, -100]) expect(computeDynPageSize(h)).toBe(9)
   })
 
   it("paged:'client'：不下发 page/size，取回全量后本地切片，total 取全量长度", async () => {
@@ -314,6 +328,39 @@ describe('useAdminList · 列表取数编排契约', () => {
 
     expect(l.loadError.value, '过期请求的失败不该影响当前展示').toBe(false)
     expect(l.rows.value).toEqual([{ id: 'NEW' }])
+  })
+
+  it('竞态：过期请求失败的原因不得写入 loadErrorMessage（当前请求成功时保持空串）', async () => {
+    const slow = deferred()
+    const fast = deferred()
+    const fetcher = vi.fn().mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise)
+    const l = useAdminList(fetcher)
+
+    const p1 = l.reload()
+    const p2 = l.reload()
+    fast.resolve({ list: [{ id: 'NEW' }], total: 1 })
+    await p2
+    slow.resolve(Promise.reject(new Error('过期原因')))
+    await p1.catch(() => {})
+    await nextTick()
+
+    expect(l.loadErrorMessage.value).toBe('')
+    expect(l.loadError.value).toBe(false)
+  })
+
+  it('竞态：当前请求已失败并有原因时，更早发起的过期请求后到的失败不得覆盖该原因', async () => {
+    const slow = deferred()
+    const fetcher = vi.fn().mockReturnValueOnce(slow.promise).mockRejectedValueOnce(new Error('当前原因'))
+    const l = useAdminList(fetcher)
+
+    const p1 = l.reload()
+    await l.reload()
+    expect(l.loadErrorMessage.value).toBe('当前原因')
+    slow.resolve(Promise.reject(new Error('过期原因')))
+    await p1.catch(() => {})
+    await nextTick()
+
+    expect(l.loadErrorMessage.value).toBe('当前原因')
   })
 
   it('mapRow 对行数据做后处理', async () => {
