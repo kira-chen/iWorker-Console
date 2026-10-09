@@ -1,44 +1,35 @@
 <script setup>
 /**
- * AuditCallDrawer —— 工具调用审计三个页签共用的「调用详情」右侧抽屉（只读）。
+ * AuditCallDrawer —— 工具调用审计「技能调用」「岗位自动化任务」两页签共用的详情抽屉（只读）。
+ * 知识库检索页签的详情结构不同（§九.5 没有「工具调用明细」的多项展开），用自己的抽屉，不复用本组件。
  *
- * 【分工】各页签只负责把一条记录翻译成下面这几份数据；抽屉只负责统一渲染，
- * 保证三个页签的详情长得一样（PRD §五 / §八.6 / §九.5）：
- *   操作摘要  → summary   结果标签 + 若干「标签: 值」
- *   执行过程  → steps     时间线；被拦截 / 取消 / 待确认的调用在对应节点停止，由页签决定截到哪一步
- *   结果说明  → explain   一句话解释当前结果与建议动作
- *   请求参数 / 响应结果  → params / output 两个页签，默认展示「实际请求参数」
+ * 2026-10-09 记录单元改版：原「执行过程」时间线（发起 → 检查 → 确认 → 结果，固定 4 步、只对应
+ * 一次工具调用）改为「工具调用明细」时间线——一次技能执行 / 任务运行可能调用零到多个工具，
+ * 每一项是一次具体调用，各自的确认 / 结果 / 参数响应收在 AuditCallDetailItem 里，点开才看，
+ * 互不影响（PRD §5.2）。
  *
  * @prop {boolean} visible v-model:visible
  * @prop {string} title 抽屉标题
- * @prop {{label:string,type:string}} result 结果标签
- * @prop {Array<{label:string,value:string,mono?:boolean}>} summary
- * @prop {Array<{time:string,title:string,desc:string,type:string}>} steps
- * @prop {string} explain
- * @prop {Array<[string,string,string]>} params [参数名, 技术标识, 本次请求值]
- * @prop {{summary?:string,headers?:string[],rows?:string[][],text?:string,note?:string}|null} output
- * @prop {string} paramsHint 请求参数页签顶部的提示
+ * @prop {{label:string,type:string}} result 整体结果标签（成功 / 失败 / 进行中，或任务运行的执行前拦截）
+ * @prop {Array<{label:string,value:string,mono?:boolean}>} summary 操作摘要
+ * @prop {Array<Object>} calls 工具调用明细，字段见 AuditCallDetailItem；为空数组时展示「未调用外部工具」
+ * @prop {string} explain 结果说明
+ * @prop {string} emptyCallsText calls 为空时的占位文案
  */
-import { ref, watch } from 'vue'
-import StatusTag from '@/components/StatusTag.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import AuditCallDetailItem from '@/components/admin/AuditCallDetailItem.vue'
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, default: false },
   title: { type: String, default: '' },
   result: { type: Object, default: null },
   summary: { type: Array, default: () => [] },
-  steps: { type: Array, default: () => [] },
+  calls: { type: Array, default: () => [] },
   explain: { type: String, default: '' },
-  params: { type: Array, default: () => [] },
-  output: { type: Object, default: null },
-  paramsHint: { type: String, default: '敏感字段已脱敏' }
+  emptyCallsText: { type: String, default: '本次执行未调用外部工具' }
 })
 defineEmits(['update:visible'])
-
-// 每次打开都回到「实际请求参数」页签
-const detailTab = ref('input')
-watch(() => props.visible, (v) => { if (v) detailTab.value = 'input' })
 </script>
 
 <template>
@@ -59,57 +50,31 @@ watch(() => props.visible, (v) => { if (v) detailTab.value = 'input' })
     </div>
 
     <div class="detail-section">
-      <h3>执行过程</h3>
-      <el-timeline class="detail-timeline">
+      <h3>工具调用明细</h3>
+      <p v-if="!calls.length" class="tca-empty-calls">{{ emptyCallsText }}</p>
+      <el-timeline v-else class="detail-timeline">
         <el-timeline-item
-          v-for="(step, i) in steps"
+          v-for="(c, i) in calls"
           :key="i"
-          :timestamp="step.time"
-          :type="step.type"
+          :timestamp="c.time || ''"
+          :type="c.result.type"
           placement="top"
         >
-          <strong>{{ step.title }}</strong>
-          <p class="tca-step-desc">{{ step.desc }}</p>
+          <AuditCallDetailItem
+            :tool="c.tool"
+            :nature="c.nature"
+            :confirm="c.confirm"
+            :result="c.result"
+            :reason="c.reason"
+            :duration="c.duration"
+            :params="c.params"
+            :output="c.output"
+          />
         </el-timeline-item>
       </el-timeline>
     </div>
 
     <el-alert :title="explain" type="info" :closable="false" show-icon class="detail-section" />
-
-    <div class="detail-section">
-      <div class="tca-tabs">
-        <el-button :type="detailTab === 'input' ? 'primary' : 'default'" size="small" @click="detailTab = 'input'">实际请求参数</el-button>
-        <el-button :type="detailTab === 'output' ? 'primary' : 'default'" size="small" @click="detailTab = 'output'">实际响应结果</el-button>
-      </div>
-
-      <template v-if="detailTab === 'input'">
-        <p class="tca-tab-hint">{{ paramsHint }}</p>
-        <el-table :data="params" size="small" border>
-          <el-table-column label="参数 / 技术标识">
-            <template #default="{ row }">
-              {{ row[0] }}<span class="tca-secondary tca-mono">{{ row[1] }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="本次请求值">
-            <template #default="{ row }">{{ row[2] }}</template>
-          </el-table-column>
-        </el-table>
-      </template>
-
-      <template v-else-if="output">
-        <p v-if="output.summary">{{ output.summary }}</p>
-        <el-table v-if="output.rows" :data="output.rows" size="small" border>
-          <el-table-column :label="output.headers?.[0] || ''">
-            <template #default="{ row }">{{ row[0] }}</template>
-          </el-table-column>
-          <el-table-column :label="output.headers?.[1] || ''">
-            <template #default="{ row }">{{ row[1] }}</template>
-          </el-table-column>
-        </el-table>
-        <p v-if="output.text">{{ output.text }}</p>
-        <p v-if="output.note" class="tca-secondary">{{ output.note }}</p>
-      </template>
-    </div>
 
     <template #footer>
       <el-button @click="$emit('update:visible', false)">关闭</el-button>
@@ -128,26 +93,10 @@ watch(() => props.visible, (v) => { if (v) detailTab.value = 'input' })
 .detail-timeline {
   margin-top: 8px;
 }
-.tca-step-desc {
-  margin: 2px 0 0;
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-}
-.tca-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.tca-tab-hint {
-  margin: 0 0 8px;
-  font-size: var(--fs-xs);
+.tca-empty-calls {
+  margin: 0;
+  font-size: var(--fs-sm);
   color: var(--c-text-faint);
-}
-.tca-secondary {
-  display: block;
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-  margin-top: 2px;
 }
 .tca-mono {
   font-family: Consolas, monospace;

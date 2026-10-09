@@ -18,7 +18,7 @@ import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import AuditMetricGrid from '@/components/admin/AuditMetricGrid.vue'
-import AuditCallDrawer from '@/components/admin/AuditCallDrawer.vue'
+import AuditStepsDrawer from '@/components/admin/AuditStepsDrawer.vue'
 import { useAuditList } from '@/composables/useAuditList'
 import { downloadCsv } from '@/utils/downloadCsv'
 import { COL, COL_NOWRAP } from '@/utils/tableLayout'
@@ -289,7 +289,7 @@ function timelineSteps(d) {
       @change="list.reload"
     />
 
-    <AuditCallDrawer v-model:visible="detailVisible" v-bind="detail || {}" />
+    <AuditStepsDrawer v-model:visible="detailVisible" v-bind="detail || {}" />
   </div>
 </template>
 
