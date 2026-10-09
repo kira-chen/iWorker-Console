@@ -211,6 +211,8 @@ const {
 // 审核中锁编辑（安全兜底：列表已把审核中行的「编辑」置灰，此处防直开）。
 const locked = computed(() => isLocked(KIND.DOMAIN_EXPERT, detail.value || {}))
 const disabled = computed(() => props.readonly || locked.value)
+/** 自写页脚不走 DrawerEditor 的 submitBlocked：加载中 / 加载失败时【保存】【发布】置灰（yuepu#49） */
+const footerBlocked = computed(() => loading.value || !!loadError.value)
 
 // 三态展示映射（同列表页 displayView：草稿→未发布、各审核中→审核中、已发布→已发布）
 // 2026-09-10 D2 收敛：模板只消费 label/tagType，直接取 deriveTriView（此前先 derivePublishView
@@ -369,6 +371,7 @@ async function load() {
   } catch (e) {
     if (seq !== loadSeq) return
     loadError.value = e?.message || '加载失败'
+    resetForm(null) // 失败态不留上一个专家的表单值，避免误存进当前专家（yuepu#49）
   } finally {
     if (seq === loadSeq) loading.value = false
   }
@@ -460,7 +463,7 @@ function warnInvalid() {
 }
 
 async function save() {
-  if (disabled.value) return
+  if (disabled.value || footerBlocked.value) return
   if (!validate()) {
     warnInvalid()
     return
@@ -491,7 +494,7 @@ async function save() {
  * 由父页打开版本管理侧栏（原型 drawerFoot expert-version：自动保存 → 关抽屉 → openExpertVersion）。
  */
 async function publishFromEditor() {
-  if (disabled.value || !isEdit.value) return
+  if (disabled.value || footerBlocked.value || !isEdit.value) return
   // 发布门先行：0 技能给发布专用文案（原型 openExpertVersion 口径），不淹没在「补齐必填项」里
   if (!form.skillIds.length) {
     errors.skills = '请至少添加 1 个技能'
@@ -887,8 +890,8 @@ const metaItems = computed(() => {
     <template #footer>
       <el-button :disabled="saving" @click="close">{{ props.readonly ? '关闭' : '取消' }}</el-button>
       <template v-if="!props.readonly && !locked">
-        <el-button v-if="isEdit" :loading="saving" @click="publishFromEditor">发布</el-button>
-        <el-button type="primary" :loading="saving" @click="save">
+        <el-button v-if="isEdit" :loading="saving" :disabled="footerBlocked" @click="publishFromEditor">发布</el-button>
+        <el-button type="primary" :loading="saving" :disabled="footerBlocked" @click="save">
           {{ isEdit ? '保存' : '创建专家' }}
         </el-button>
       </template>

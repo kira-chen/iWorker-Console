@@ -136,9 +136,9 @@ describe('KnowledgeSourceDocsDrawer · 解析中轮询（md §五.3 每 3 秒刷
     expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(1)
   })
 
-  // yuepu#62⑦（疑似 → 已复现）：刷新请求在途时关抽屉，stopPolling 先清了定时器，在途请求回来后 refresh()
+  // yuepu#62⑦：刷新请求在途时关抽屉，stopPolling 先清了定时器，在途请求回来后 refresh()
   // 又调 schedulePoll()，3 秒轮询被重新挂上，抽屉关着也在取数。前提（3 秒后发起第二次取数）见上一条。
-  it.fails('yuepu#62⑦ 刷新请求在途时关闭抽屉 → 请求回来后不再重挂轮询（md §五.3 全部结束或离开即停止）', async () => {
+  it('yuepu#62⑦ 刷新请求在途时关闭抽屉 → 请求回来后不再重挂轮询（md §五.3 全部结束或离开即停止）', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const props = await open({ docs: [doc('d1', 'PARSING')] })
     let resolveInflight
