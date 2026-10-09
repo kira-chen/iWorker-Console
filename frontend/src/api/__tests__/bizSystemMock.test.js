@@ -386,3 +386,92 @@ describe('bizSystemMock —— 持久化', () => {
     expect(skill.skillId).toBe('sk_own_77')
   })
 })
+
+describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () => {
+  const reason = '系统停用，紧急回收'
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  // 每例冷 import 拿全新种子；audit 与 mock 同一模块注册表
+  async function fresh() {
+    vi.resetModules()
+    const m = await import('../bizSystemMock')
+    const audit = await import('../accessAuditMock')
+    const harness = persistHarness.modules.get('bizSystem')
+    const run = async (p) => {
+      p.catch(() => {})
+      await vi.runAllTimersAsync()
+      return p
+    }
+    return { m, audit, harness, run }
+  }
+
+  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；不进审核（无待审类型）；引用清单保留', async () => {
+    const { m, harness, run } = await fresh()
+    const before = await run(m.getBizSystem('biz_2101'))
+    expect(before.revoked).toBeNull()
+    harness.persist.mockClear()
+    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.pendingAction).toBeNull()
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect(row.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(row.referencedByPositions).toEqual(before.referencedByPositions)
+    expect(harness.persist).toHaveBeenCalledTimes(1)
+    const listed = (await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101')
+    expect(listed.revoked.reason).toBe(reason)
+  })
+
+  it('写访问审计：模块 业务系统 · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+    const { m, audit, run } = await fresh()
+    const n = audit.opsRecords.length
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(audit.opsRecords.length).toBe(n + 1)
+    expect(audit.opsRecords[0]).toMatchObject({ module: '业务系统', action: '强制回收', target: '客户管理系统 CRM', detail: reason })
+  })
+
+  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
+    const { m, run } = await fresh()
+    await expect(run(m.forceRevokeBizSystem('biz_2103', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeBizSystem('biz_2102', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await run(m.deactivateBizSystem('biz_2101')) // 已发布 → 待审停用
+    await expect(run(m.forceRevokeBizSystem('biz_2101', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeBizSystem('nope', reason))).rejects.toThrow('业务系统不存在')
+  })
+
+  it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清（approveBizSystem 与审核中心落地两条路径）', async () => {
+    const { m, run } = await fresh()
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await run(m.publishBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.withdrawBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    await run(m.rejectBizSystem('biz_2101'))
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    await run(m.approveBizSystem('biz_2101'))
+    let done = await run(m.getBizSystem('biz_2101'))
+    expect(done.status).toBe('PUBLISHED')
+    expect(done.revoked).toBeNull()
+    // 审核中心落地路径
+    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await run(m.publishBizSystem('biz_2101'))
+    expect(m.applyBizSystemReviewResult('biz_2101', undefined, false)).toBe(true)
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
+    await run(m.publishBizSystem('biz_2101'))
+    expect(m.applyBizSystemReviewResult('biz_2101', undefined, true)).toBe(true)
+    done = await run(m.getBizSystem('biz_2101'))
+    expect(done.revoked).toBeNull()
+  })
+
+  it('持久化：restore 兼容缺 revoked 的旧快照行', async () => {
+    const { m, harness, run } = await fresh()
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    snap.bizRows.forEach((b) => delete b.revoked)
+    harness.options.restore(snap)
+    expect((await run(m.getBizSystem('biz_2101'))).revoked ?? null).toBeNull()
+    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(row.revoked.reason).toBe(reason)
+  })
+})

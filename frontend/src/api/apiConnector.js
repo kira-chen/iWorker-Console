@@ -78,6 +78,12 @@ export function deactivateApi(id) {
   return request.post(`${API}/${id}/deactivate`, {}, W)
 }
 
+// 强制回收：立即生效、不进审核中心（PRD §4「强制回收」）
+export function forceRevokeApi(id, reason) {
+  if (USE_MOCK) return mock.forceRevokeApi(id, reason)
+  return request.post(`${API}/${id}/force-revoke`, { reason }, W)
+}
+
 /* ================= 示例问题 AI 生成 ================= */
 export function aiGenerateExampleQuestion(payload) {
   if (USE_MOCK) return mock.aiGenerateExampleQuestion(payload)

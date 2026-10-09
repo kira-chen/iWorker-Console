@@ -314,9 +314,9 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2 L48-52）', () =
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】', async () => {
+  it('已发布：【查看】【编辑】【停用】【强制回收】', async () => {
     await mount()
-    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用'])
+    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('连通性验证未通过：【发布】置灰并提示「连通性验证通过后才可提交发布」（md §二.2 L50 / §二.3 L59）', async () => {

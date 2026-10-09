@@ -19,6 +19,9 @@ import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
+import { appendOpsRecord } from './accessAuditMock'
+import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { isBlankBizPage } from '@/utils/defValidate'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -58,6 +61,8 @@ const mkBiz = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null,
+  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeBizSystem）
+  revoked: null,
   ...over
 })
 
@@ -329,6 +334,24 @@ export async function deactivateBizSystem(id) {
   return toRow(b)
 }
 
+/**
+ * 强制回收（prd-业务系统.md §3）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
+ * 仅「已发布且无审核中操作」可回收；状态回「未发布」（保留 publishedAt），写 revoked，
+ * 引用清单原样保留；写访问审计「管理端操作」。
+ */
+export async function forceRevokeBizSystem(id, reason) {
+  await delay(250)
+  const b = findBiz(id)
+  if (!b) throw err('业务系统不存在')
+  if (b.status !== 'PUBLISHED' || b.pendingAction) throw err('状态已变化，请刷新后重试')
+  b.status = 'NOT_PUBLISHED'
+  b.revoked = makeRevokedInfo(reason)
+  b.updatedAt = nowIso()
+  appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: reason })
+  persist()
+  return toRow(b)
+}
+
 export async function approveBizSystem(id) {
   await delay(250)
   const b = findBiz(id)
@@ -339,6 +362,7 @@ export async function approveBizSystem(id) {
   } else {
     b.status = 'PUBLISHED'
     b.publishedAt = nowIso()
+    b.revoked = null // 重新发布审核通过 → 清「已回收」
   }
   b.pendingAction = null
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
@@ -376,6 +400,7 @@ export function applyBizSystemReviewResult(refId, requestAction, approved) {
     } else {
       b.status = 'PUBLISHED'
       b.publishedAt = nowIso()
+      b.revoked = null // 重新发布审核通过 → 清「已回收」（驳回 / 撤回不清）
     }
   } else {
     b.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'

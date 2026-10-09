@@ -15,6 +15,8 @@ import {
   publishExpert,
   withdrawExpert,
   unpublishExpert,
+  forceRevokeExpert,
+  applyExpertReviewResult,
   getExpertNextVersionLabel,
   listExpertPublications,
   delistExpertPublication,
@@ -22,6 +24,8 @@ import {
   getExpertKbScopeRefId,
   __resetExpertMock
 } from '../domainExpertMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
+import { listReviews } from '../reviewsMock'
 import { _getRaw as getRawSkill, _reset as resetSkillRaw } from '../unifiedSkillMock'
 
 // vitest 用例随机顺序执行：每例前重置种子（含审核快照表，2026-09-12 T23），杜绝状态顺序依赖
@@ -267,5 +271,70 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await expect(delistExpertPublication(201, delisted.id)).rejects.toMatchObject({
       message: expect.stringContaining('最后一个启用版本')
     })
+  })
+})
+
+// 强制回收（PRD 专家 §3.5.1，2026-09-30）：201 经营分析专家 = 已发布 v2.3.0；204 研究报告专家 = 已发布 + 新版在审；203 法务审阅专家 = 未发布
+describe('forceRevokeExpert —— 强制回收', () => {
+  beforeEach(() => resetAccessAuditMock())
+  const reviewTotal = async () => (await listReviews({ size: 1000 })).total
+
+  it('前置条件：仅「已发布且无在途审核」可回收——未发布 / 在审 / 重复回收均抛「状态已变化」', async () => {
+    await expect(forceRevokeExpert(203, { reason: '风险' })).rejects.toThrow('专家状态已变化，请刷新后重试')
+    await expect(forceRevokeExpert(204, { reason: '风险' })).rejects.toThrow('专家状态已变化，请刷新后重试')
+    await forceRevokeExpert(201, { reason: '风险' })
+    await expect(forceRevokeExpert(201, { reason: '再来一次' })).rejects.toThrow('专家状态已变化，请刷新后重试')
+  })
+
+  it('原因必填且 ≤500 字；校验不通过时状态不变', async () => {
+    await expect(forceRevokeExpert(201, { reason: ' ' })).rejects.toThrow('请输入回收原因')
+    await expect(forceRevokeExpert(201, { reason: 'x'.repeat(501) })).rejects.toThrow('最多 500 字')
+    expect((await getExpert(201)).status).toBe('published')
+  })
+
+  it('回收后：立即回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked、不进审核中心', async () => {
+    const before = await getExpert(201)
+    const reviewsBefore = await reviewTotal()
+    const r = await forceRevokeExpert(201, { reason: ' 专家输出异常 ' })
+    expect(r.revoked).toMatchObject({ reason: '专家输出异常' })
+    expect(r.revoked.at).toBeTruthy()
+    expect(r.revoked.operator).toBeTruthy()
+
+    const detail = await getExpert(201)
+    expect(detail).toMatchObject({ status: 'draft', pendingAction: null, latestVersionLabel: 'v2.3.0', publishedAt: before.publishedAt })
+    expect(detail.revoked).toEqual(r.revoked)
+    const { list } = await listExperts({ status: 'draft' })
+    expect(list.find((e) => e.id === 201).revoked).toEqual(r.revoked)
+    expect((await listExpertPublications(201)).length).toBe(2)
+    expect(await reviewTotal()).toBe(reviewsBefore) // 立即生效，不 enrollReview
+    expect((await getExpert(202)).revoked).toBeNull() // 未回收的行 revoked 为 null
+  })
+
+  it('专家自身对市场技能的引用不受影响', async () => {
+    await forceRevokeExpert(201, { reason: '风险' })
+    expect((await getExpert(201)).skillIds).toEqual([302, 304])
+  })
+
+  it('写一条访问审计：模块=专家、动作=强制回收、变更内容=原因、带回收时的版本号', async () => {
+    await forceRevokeExpert(201, { reason: '召唤链路异常' })
+    const rec = opsRecords.find((x) => x.action === '强制回收' && x.target === '经营分析专家')
+    expect(rec).toMatchObject({ module: '专家', detail: '召唤链路异常', version: 'v2.3.0', live: true })
+  })
+
+  it('重新发布：撤回 / 驳回不清 revoked，审核通过后清除并回到已发布', async () => {
+    await forceRevokeExpert(201, { reason: '异常' })
+    await publishExpert(201, { bump: 'NONE', releaseNotes: '修复后重发' })
+    await withdrawExpert(201) // 撤回不清
+    expect((await getExpert(201)).revoked).toBeTruthy()
+
+    await publishExpert(201, { bump: 'NONE', releaseNotes: '修复后重发' })
+    applyExpertReviewResult(201, 'VERSION_PUBLISH', false) // 驳回不清
+    expect((await getExpert(201)).revoked).toBeTruthy()
+
+    await publishExpert(201, { bump: 'NONE', releaseNotes: '修复后重发' })
+    applyExpertReviewResult(201, 'VERSION_PUBLISH', true) // 通过 → 清
+    const d = await getExpert(201)
+    expect(d.revoked).toBeNull()
+    expect(d).toMatchObject({ status: 'published', latestVersionLabel: 'v2.3.1' })
   })
 })

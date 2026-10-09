@@ -36,6 +36,7 @@ import {
 import AdminRail from '@/components/admin/AdminRail.vue'
 import SkillFocusEditor from '@/components/position/SkillFocusEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
+import RevokedBanner from '@/components/admin/RevokedBanner.vue'
 // 组④：效果测试台按需异步加载（重组件，仅点试跑才拉）。
 // 兜底（CR）：加 loading/error 占位 + timeout + chunk 加载失败 toast，弱网不至于浮层空白无反馈。
 const TestLoading = { render: () => h('div', { class: 'se-test-fallback' }, '正在打开试跑…') }
@@ -447,6 +448,8 @@ async function loadSkill(skillId) {
       // N9 平台技能默认安装标记（仅平台技能编辑有意义）：详情回填，随技能 PUT 提交。
       defaultInstall: !!data.defaultInstall,
       skillMd: data.skillMd || '',
+      // 强制回收标记（PRD 技能 §3.5.1）：编辑 / 查看页顶部红色提示条用；未被回收为 null
+      revoked: data.revoked || null,
       referencedTools: data.referencedTools || [],
       agentId: data.agentId ?? null,
       // 派生类别（只读派生标签，前端不可改；保存回显会刷新它）
@@ -1199,6 +1202,8 @@ function onTestMaskClick(e) {
       <!-- 单行融合（去掉独立 topbar band）：返回/技能名/类别/保存态 全在 SkillFocusEditor 的极简顶行一行内。
            AdminSkillEditPage 不再单画顶栏——把「返回(emit back)」「自动保存提示」下沉/透传进 topline。
            整页编辑器无删除入口（SkillFocusEditor 的 show-close 开关与删除 ⋯ 下拉已退役，2026-09-12 审计 J14）。 -->
+      <!-- 强制回收提示条（PRD 技能 §3.5.1）：被回收的技能编辑 / 查看页顶部展示原因；未回收不渲染 -->
+      <RevokedBanner v-if="skill?.revoked" class="se-revoked" label="技能" :info="skill.revoked" />
       <!-- 编辑舞台：为 SkillFocusEditor 提供铺满的定位父级 -->
       <div class="se-stage">
         <SkillFocusEditor
@@ -1334,6 +1339,11 @@ function onTestMaskClick(e) {
 }
 /* 单行融合收口：原独立 .topbar band 已拆除——返回/技能名/类别/保存态 全在 SkillFocusEditor 极简顶行一行内。
    整页编辑器无删除入口（show-close 开关与删除溢出菜单已退役，2026-09-12 J14），不涉及本页样式。 */
+/* 强制回收提示条：贴顶、与内容区同宽，去掉组件自带的下边距用容器 padding 撑开 */
+.se-revoked {
+  margin: var(--space-2) var(--space-3) 0;
+  width: auto;
+}
 /* 编辑舞台（#1 去周边灰边、平铺）：无内边距/无灰底，让 flush 态编辑器铺满整个区域、贴边无外框 */
 .se-stage {
   flex: 1;

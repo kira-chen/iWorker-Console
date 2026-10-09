@@ -284,9 +284,9 @@ describe('AdminBizSystems · 操作按钮按状态组合（md §二.2 L37-41）'
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】共 3 个', async () => {
+  it('已发布：【查看】【编辑】【停用】【强制回收】共 4 个', async () => {
     await mount()
-    expect(btnTexts(rowByName('客户管理系统'))).toEqual(['查看', '编辑', '停用'])
+    expect(btnTexts(rowByName('客户管理系统'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('【查看】只读打开抽屉；【编辑】可写打开；【新建业务系统】无 id 可写打开（md §三.1）', async () => {

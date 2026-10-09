@@ -138,6 +138,7 @@ async function mount(props = {}) {
   app.component('el-table', elTable)
   app.component('el-table-column', elTableColumn)
   app.component('el-tag', elTag)
+  app.component('el-tooltip', { name: 'el-tooltip', props: ['content'], template: '<span class="tip"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -192,6 +193,23 @@ describe('连接器页签 · 三区域展示', () => {
     expect(section('岗位私有 MCP').textContent).toContain('暂无绑定的私有 MCP')
     expect(section('岗位私有 API').textContent).toContain('暂无绑定的私有 API')
     expect(section('岗位私有业务系统').textContent).toContain('暂无绑定的业务系统')
+  })
+})
+
+describe('连接器页签 · 被强制回收的连接器（岗位 PRD §8）', () => {
+  const info = { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' }
+  it('三区域里已回收的行名称旁出「已回收」标签、引用保留、【移除】仍在；未回收的行不出', async () => {
+    listMcp.mockResolvedValue({ list: [{ ...ALL_MCPS[0], revoked: info }, ALL_MCPS[1]], total: 2 })
+    listApis.mockResolvedValue({ list: [{ ...ALL_APIS[0], revoked: info }, ALL_APIS[1]], total: 2 })
+    listBizSystems.mockResolvedValue({ list: [ALL_BIZS[0], ALL_BIZS[1]], total: 2 })
+    store.basic = { connectorMcpIds: ['mcp_1', 'mcp_2'], connectorApiIds: ['api_1'], businessSystemIds: ['biz_1'] }
+    await mount()
+    const tags = (title) => [...section(title).querySelectorAll('.cell .revoked-tag')].map((t) => t.textContent)
+    expect(tags('岗位私有 MCP')).toEqual(['已回收']) // 两行只有 mcp_1 已回收
+    expect(tags('岗位私有 API')).toEqual(['已回收'])
+    expect(tags('岗位私有业务系统')).toEqual([])
+    expect(sectionNames(section('岗位私有 MCP'))).toHaveLength(2)
+    expect(sectionBtn(section('岗位私有 MCP'), '移除')).toBeTruthy()
   })
 })
 

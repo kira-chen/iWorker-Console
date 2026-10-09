@@ -651,6 +651,22 @@ export function computePublishCheck(detail) {
       : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
   })
 
+  // 7.1 引用已被强制回收的技能 / 连接器（硬，岗位 PRD §6.4 / §8「被强制回收」）：每个已回收对象一行；
+  // 没有已回收对象时不出行（不改变原有清单条数与完成度口径）。连接器名由调用方传入 revokedConnectors。
+  const revokedNames = [
+    ...(Array.isArray(d.agents) ? d.agents : []).flatMap((a) => (a?.skills || []).filter((s) => s?.revoked).map((s) => s.name)),
+    ...(Array.isArray(d.revokedConnectors) ? d.revokedConnectors : [])
+  ]
+  revokedNames.forEach((name, i) => {
+    items.push({
+      key: 'revokedRef_' + i,
+      label: '引用「' + name + '」',
+      ok: false,
+      blocking: true,
+      detail: '引用的「' + name + '」已被回收，请移除后再发布'
+    })
+  })
+
   // 8. 自动化任务（硬，md §7.6 / §9.1 第 9 条）
   items.push({
     key: 'sampleTasks',

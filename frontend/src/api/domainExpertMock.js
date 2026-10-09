@@ -33,6 +33,10 @@ import { EXPERT_TYPE } from './expertTypes'
 // 不再是与技能模块脱钩的静态 SKILL_CANDIDATES；引用变化回写技能 refNames（口径同
 // positionMock.addSkillRefName/removeSkillRefNameIfUnused）。listSkillsSync 用同步导出——
 // 本文件 toDetail 会被 seedReviewSnapshots 在模块初始化阶段同步调用，用不了 async。
+// 2026-09-30 强制回收：回收信息构造（共享底座）+ 落访问审计「管理端操作」
+import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 import { listSkillsSync, _getRaw as getRawSkill, _reset as resetSkillRaw } from './unifiedSkillMock'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
@@ -274,6 +278,7 @@ function toRow(e) {
     pendingAction: e.pendingAction,
     pendingVersion: e.pendingVersion || null,
     latestVersionLabel: e.latestVersionLabel || '',
+    revoked: e.revoked ? { ...e.revoked } : null, // 强制回收标记（旧快照无此键 → null）
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
     publishedAt: e.publishedAt || null
@@ -601,6 +606,28 @@ export async function unpublishExpert(id) {
   return {}
 }
 
+/**
+ * 强制回收（PRD 专家 §3.5.1）：与【停用】并列的紧急下线——立即生效、不进审核中心（不 enrollReview）。
+ * 仅「已发布且无在途审核」可回收，否则抛「状态已变化」（含被他人先回收的重复提交）。
+ * 回到「未发布」，版本历史 / 最新版本号 / 最近发布时间保留；写 revoked={reason,at,operator} 并落访问审计。
+ * 重新发布审核通过后清 revoked（见 applyExpertReviewResult）。
+ */
+export async function forceRevokeExpert(id, { reason } = {}) {
+  await delay()
+  const e = findExpert(id)
+  if (!e) throw err('专家不存在', null, 404)
+  if (e.status !== 'published' || e.pendingAction) throw err('专家状态已变化，请刷新后重试', null, 409)
+  const text = String(reason || '').trim()
+  if (!text) throw err('请输入回收原因', 'reason')
+  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
+  e.status = 'draft'
+  e.revoked = makeRevokedInfo(text)
+  // 与停用一致：不刷新最近更新时间（md §二.2 只列保存配置 / 提交审核 / 撤回三种刷新场景）
+  appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: text, version: e.latestVersionLabel })
+  persist()
+  return { revoked: { ...e.revoked } }
+}
+
 /* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
  * 由 reviewsMock.applyReviewResult 分发到此；审核中心不直接改本模块内部数组。
  *
@@ -641,6 +668,7 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
       })
       e.status = 'published'
       e.latestVersionLabel = label
+      delete e.revoked // 重新发布审核通过 → 「已回收」标记清除（PRD 专家 §3.5.1 恢复）；驳回 / 撤回不清
     }
   } else {
     // 驳回 = 恢复提交前状态（md §四.1 L235「审核拒绝…新版本发布回到原"已发布"版本」）。提交时 status 没动，

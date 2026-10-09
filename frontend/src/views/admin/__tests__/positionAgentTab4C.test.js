@@ -224,6 +224,19 @@ describe('Agent 与技能页签 · 二维表（4C #13）', () => {
     expect(secondCol[1]).not.toBe('')
   })
 
+  it('技能被强制回收（md §6.4）：子行名称旁出「已回收」标签、【移除】仍可用；未回收的不出', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [
+      { skillId: 1, name: '已回收技能', category: 'QUERY', revoked: { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' } },
+      { skillId: 2, name: '正常技能', category: 'QUERY', revoked: null }
+    ] }]
+    await mount()
+    const names = [...col('AGENT / 技能').querySelectorAll('.cell')]
+    expect(names[1].querySelector('.revoked-tag')?.textContent).toBe('已回收')
+    expect(names[2].querySelector('.revoked-tag')).toBeNull()
+    const removeBtns = [...container.querySelectorAll('.el-button')].filter((b) => b.textContent.trim() === '移除')
+    expect(removeBtns).toHaveLength(2)
+  })
+
   it('表格包在卡片里：卡头含标题 + 弱色说明 + 【＋ 新增 Agent】', async () => {
     await mount()
     const head = agentPane().querySelector('.pd-card-head')

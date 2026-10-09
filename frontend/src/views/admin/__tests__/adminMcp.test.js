@@ -221,9 +221,9 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
-  it('操作区 · 已发布：【查看】【编辑】【停用】共 3 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
+  it('操作区 · 已发布：【查看】【编辑】【停用】【强制回收】共 4 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
     await mount()
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   it('操作区 · 审核中：【查看】【编辑】【撤回】共 3 个，【编辑】置灰并提示「审核中不可编辑，如需修改请先撤回」（md §二.3.1 L85 / §二.3.3 L103）', async () => {
@@ -331,7 +331,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect.objectContaining({ confirmButtonText: '撤回' })
     )
     expect(stateOf(rowByName('已上线服务'))).toBe('已发布')
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
   })
 
   // ---- 停用（md §二.3.6 L131-135） ----

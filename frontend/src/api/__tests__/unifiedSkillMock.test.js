@@ -20,8 +20,12 @@ import { derivePlatformState } from '@/utils/skillPublication'
 // 动态 import 在那之后拿到的会是另一个模块实例，跟 unifiedSkillMock 内部静态 import 的
 // mcpConnectorMock 对不上（同 positionMock.test.js 排查过的同一类坑，2026-09-23 待办 yuepu#10②）
 import { createMcp, deleteMcp } from '@/api/mcpConnectorMock'
+import { opsRecords, resetAccessAuditMock } from '@/api/accessAuditMock'
+import { listReviews } from '@/api/reviewsMock'
 
 const CAT = '办公效率'
+const pubState = (d) => derivePlatformState(d.publications)
+const reviewTotal = async () => (await listReviews({ size: 1000 })).total
 
 async function mkSkill(over = {}) {
   const { skillId } = await mock.createSkill({ name: over.name || '测试技能', type: over.type || 'PLATFORM', categoryName: CAT })
@@ -156,6 +160,99 @@ describe('三态 + pendingAction 状态机', () => {
     expect(mock.bumpVersion('v1.2.3', 'NONE')).toBe('v1.2.4')
     expect(mock.bumpVersion('v1.2.3', 'MINOR')).toBe('v1.3.0')
     expect(mock.bumpVersion('v1.2.3', 'MAJOR')).toBe('v2.0.0')
+  })
+})
+
+describe('强制回收（PRD 技能 §3.5.1，2026-09-30）', () => {
+  afterEach(() => resetAccessAuditMock())
+
+  /** 自建一条「已发布」技能：提交首发 → 审核通过落地（不依赖种子行的可变状态）。 */
+  async function mkPublished(name) {
+    const id = await mkSkill({ name })
+    await mock.updateSkill(id, { skillMd: '# 回收测试\n\n正文' })
+    await mock.publishSkill(id, { releaseNotes: '首发' })
+    expect(mock.applySkillReviewResult(id, 'FIRST_PUBLISH', true)).toBe(true)
+    return id
+  }
+
+  it('前置条件：仅「已发布且无审核中操作」可回收——未发布 / 审核中 / 重复回收均抛「状态已变化」', async () => {
+    const draft = await mkSkill({ name: '未发布技能' })
+    await expect(mock.forceRevokeSkill(draft, { reason: '风险' })).rejects.toThrow('技能状态已变化，请刷新后重试')
+
+    const id = await mkPublished('前置条件技能')
+    await mock.publishSkill(id, { releaseNotes: '迭代' }) // 已发布 + 新版在审
+    await expect(mock.forceRevokeSkill(id, { reason: '风险' })).rejects.toThrow('技能状态已变化，请刷新后重试')
+    await mock.withdrawPublish(id)
+
+    await mock.forceRevokeSkill(id, { reason: '风险' })
+    await expect(mock.forceRevokeSkill(id, { reason: '再来一次' })).rejects.toThrow('技能状态已变化，请刷新后重试')
+  })
+
+  it('原因必填且 ≤500 字；校验不通过时状态不变', async () => {
+    const id = await mkPublished('原因校验技能')
+    await expect(mock.forceRevokeSkill(id, { reason: '   ' })).rejects.toThrow('请输入回收原因')
+    await expect(mock.forceRevokeSkill(id, { reason: 'x'.repeat(501) })).rejects.toThrow('最多 500 字')
+    expect(pubState(await mock.getSkillDetail(id))).toBe('PUBLISHED')
+  })
+
+  it('回收后：立即回「未发布」（保留版本号与最近发布时间）、写 revoked 三字段、列表行与详情都带、不进审核中心', async () => {
+    const id = await mkPublished('回收后状态技能')
+    const before = await mock.getSkillDetail(id)
+    const reviewsBefore = await reviewTotal()
+    const r = await mock.forceRevokeSkill(id, { reason: '  发现越权调用  ' })
+    expect(r.revoked).toMatchObject({ reason: '发现越权调用' })
+    expect(r.revoked.at).toBeTruthy()
+    expect(r.revoked.operator).toBeTruthy()
+
+    const detail = await mock.getSkillDetail(id)
+    expect(detail.revoked).toEqual(r.revoked)
+    expect(detail.versionLabel).toBe('v1.0.0')
+    expect(detail.lastPublishedAt).toBe(before.lastPublishedAt)
+    expect(pubState(detail)).toBe('DELISTED') // 页面映射为「未发布」
+    const { list } = await mock.listUnifiedSkills({ keyword: '回收后状态技能', status: 'UNPUBLISHED' })
+    expect(list[0]).toMatchObject({ id, revoked: r.revoked })
+    expect(await reviewTotal()).toBe(reviewsBefore) // 立即生效，不 enrollReview
+    expect(mock._getRaw(id).snapshots).toHaveLength(1) // 版本快照保留
+    // 未被回收的行 revoked 为 null（旧快照缺字段同口径）
+    expect((await mock.getSkillDetail('sk_303')).revoked).toBeNull()
+  })
+
+  it('被引用也能回收（不受停用的引用拦截），引用关系保持不动', async () => {
+    const id = await mkPublished('被引用技能')
+    mock._reset(id, { refNames: ['客户成功岗', '经营分析专家'] })
+    await expect(mock.delistSkill(id)).rejects.toThrow('引用') // 停用被拦
+    await expect(mock.forceRevokeSkill(id, { reason: '安全风险' })).resolves.toBeTruthy()
+    const raw = mock._getRaw(id)
+    expect(raw.refNames).toEqual(['客户成功岗', '经营分析专家'])
+    expect(raw.status).toBe('draft')
+  })
+
+  it('写一条访问审计：模块=技能、动作=强制回收、变更内容=原因、带回收时的版本号', async () => {
+    const id = await mkPublished('审计技能')
+    await mock.forceRevokeSkill(id, { reason: '数据泄露风险' })
+    const rec = opsRecords.find((x) => x.action === '强制回收' && x.target === '审计技能')
+    expect(rec).toMatchObject({ module: '技能', detail: '数据泄露风险', version: 'v1.0.0', live: true })
+  })
+
+  it('重新走发布审核：撤回 / 驳回不清 revoked，通过后清除并回到已发布', async () => {
+    const id = await mkPublished('恢复技能')
+    await mock.forceRevokeSkill(id, { reason: '异常' })
+
+    await mock.publishSkill(id, { releaseNotes: '修复后重发' })
+    await mock.withdrawPublish(id) // 撤回不清
+    expect(mock._getRaw(id).revoked).toBeTruthy()
+    expect(pubState(await mock.getSkillDetail(id))).toBe('DELISTED')
+
+    await mock.publishSkill(id, { releaseNotes: '修复后重发' })
+    mock.applySkillReviewResult(id, 'VERSION_PUBLISH', false) // 驳回不清
+    expect(mock._getRaw(id).revoked).toBeTruthy()
+
+    await mock.publishSkill(id, { releaseNotes: '修复后重发' })
+    mock.applySkillReviewResult(id, 'VERSION_PUBLISH', true) // 通过 → 清
+    const detail = await mock.getSkillDetail(id)
+    expect(detail.revoked).toBeNull()
+    expect(pubState(detail)).toBe('PUBLISHED')
+    expect(detail.versionLabel).toBe('v1.0.1')
   })
 })
 

@@ -28,6 +28,7 @@
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import RevokedBanner from '@/components/admin/RevokedBanner.vue'
 import { ElMessage } from 'element-plus'
 import IconField from '@/components/common/IconField.vue'
 import {
@@ -133,6 +134,8 @@ function toggleSchema(name) {
 const referencedBySkills = ref([])
 // 时间信息（PRD §三.9，编辑/查看态底部弱化展示）
 const times = reactive({ createdAt: null, updatedAt: null, publishedAt: null })
+// 强制回收信息（顶部红色提示条用；null=未被回收）
+const revokedInfo = ref(null)
 // 连接元信息（详情 §1.2，编辑态展示；探测后就地刷新）
 const conn = reactive({
   connStatus: 'unknown',
@@ -219,6 +222,7 @@ function resetForm() {
   times.createdAt = null
   times.updatedAt = null
   times.publishedAt = null
+  revokedInfo.value = null
   testResult.value = null
   conn.connStatus = 'unknown'
   conn.protocolVersion = ''
@@ -318,6 +322,7 @@ async function load() {
     times.createdAt = d.createdAt || null
     times.updatedAt = d.updatedAt || null
     times.publishedAt = d.publishedAt || null
+    revokedInfo.value = d.revoked || null
     conn.connStatus = d.connStatus || 'unknown'
     conn.protocolVersion = d.protocolVersion || ''
     conn.serverVersion = d.serverVersion || ''
@@ -675,6 +680,8 @@ async function save() {
     @retry="load"
     @save="save"
   >
+      <!-- 强制回收提示条（md §3.6.1）：编辑 / 查看页顶部红色，未被回收不渲染 -->
+      <RevokedBanner v-if="isEdit" label="MCP" :info="revokedInfo" />
       <!-- 首行元信息（2026-09-01 拍板：与 API 弹窗同款，时间行上移首行；覆盖 PRD §三.9 底部位置）
            抽屉标题：登记态「登记 MCP」（2026-09-12 对齐 md §三.1 L199 · 审计 K44，经 DrawerEditor create-title） -->
       <div v-if="isEdit" class="page-time md-times">

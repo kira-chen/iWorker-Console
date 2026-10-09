@@ -81,7 +81,7 @@ describe('AdminExperts · 真实挂载冒烟（真 Element Plus，只 mock api�
 
     // md §二.3.1 三态按钮组合（真 el-button；审核中「编辑」置灰）
     const ops = (r) => [...r.querySelectorAll('.tbl-ops .el-button')]
-    expect(ops(rows[0]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '停用', '版本管理'])
+    expect(ops(rows[0]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
     expect(ops(rows[1]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '发布', '删除'])
     expect(ops(rows[2]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '撤回'])
     expect(ops(rows[2])[1].disabled).toBe(true)

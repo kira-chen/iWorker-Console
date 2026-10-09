@@ -12,7 +12,7 @@ import { makeElTableStubs } from './helpers/elTableStub'
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：二态状态列 / 「版本发布」单入口 /
  * 查影响面+回填名强确认删除 / 「平台技能」措辞），本文件按新契约重写：
  * - 三态展示映射（未发布/审核中/已发布）；分类列 / 最新版本「—」占位；
- * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理；
+ * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/强制回收/版本管理；
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
@@ -314,11 +314,11 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.ls-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
   })
 
-  it('操作列按状态：已发布=查看/编辑/停用/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
+  it('操作列按状态：已发布=查看/编辑/停用/强制回收/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
     await mount()
     const [pub, draft, review] = rowEls()
     expect([...pub.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
-      .toEqual(['查看', '编辑', '停用', '版本管理'])
+      .toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
     expect([...draft.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
       .toEqual(['查看', '编辑', '发布', '删除'])
     expect([...review.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))

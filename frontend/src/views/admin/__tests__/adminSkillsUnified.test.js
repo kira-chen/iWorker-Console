@@ -744,10 +744,10 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md L61-65）+
     expect(edit.getAttribute('title')).toBe('审核中不可编辑')
   })
 
-  it('已发布 → 查看 / 编辑 / 停用 / 版本管理 4 个；【编辑】可点、无 title（md L65）', async () => {
+  it('已发布 → 查看 / 编辑 / 停用 / 强制回收 / 版本管理 5 个；【编辑】可点、无 title（md L65）', async () => {
     const { host } = await mountRows([published])
     const cell = opsCellOf(host, '已发布技能')
-    expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '版本管理'])
+    expect(btnTexts(cell)).toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
     expect(btn(cell, '编辑').disabled).toBe(false)
     expect(btn(cell, '编辑').getAttribute('title') || '').toBe('')
     // 最新版本列展示当前已发布版本号（md L46）

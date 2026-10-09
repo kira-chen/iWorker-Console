@@ -44,6 +44,7 @@ import { removePositionFromExperts } from './domainExpertMock'
 import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs } from './mcpConnectorMock'
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs } from './bizSystemMock'
+import { revokedConnectorNames } from './positionRevokedRefs'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -677,7 +678,10 @@ function skillRefVO(ref) {
     // 2026-09-10 D1（md §6.4 技能子行「工具数量」）：summary 形状补工具数——读时派生自
     // 技能本体 toolRefs（unifiedSkillMock 单一真相），非落盘字段，无需 bump persist version。
     toolCount: (raw.toolRefs || []).length,
-    deleted: false
+    deleted: false,
+    // 强制回收标记（技能 PRD §3.5.1「引用关系保留、标记失效」）：读时同源取自技能本体，
+    // 岗位侧只标「已回收」、不自动解除引用；回收后技能回未发布，故也不会再出现在选技能的候选里
+    revoked: raw.revoked ? { ...raw.revoked } : null
   }
 }
 
@@ -705,6 +709,8 @@ function detailVO(p) {
     businessSystemIds: [...(wb.businessSystemIds || [])],
     connectorMcpIds: [...(wb.connectorMcpIds || [])],
     connectorApiIds: [...(wb.connectorApiIds || [])],
+    // 发布前检查用：引用里已被强制回收的连接器名（读时派生，不落盘）
+    revokedConnectors: revokedConnectorNames(wb),
     persona: wb.persona || '',
     intakeSchema: (wb.intakeSchema || []).map((r) => ({ ...r, options: [...(r.options || [])] })),
     status: p.status,

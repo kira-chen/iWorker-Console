@@ -468,3 +468,74 @@ describe('示例问题 AI 生成（demo 本地模板）', () => {
     expect(q3.question.length).toBeLessThanOrEqual(60)
   })
 })
+
+describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
+  const reason = '接口下线，紧急回收'
+  const auditOps = async () => (await import('../accessAuditMock')).opsRecords
+
+  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；立即生效不进审核（无待审类型）', async () => {
+    const before = await run(m.getApi('api_1101'))
+    expect(before.revoked).toBeNull()
+    const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.pendingAction).toBeNull()
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
+    const listed = (await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101')
+    expect(listed.revoked.reason).toBe(reason)
+    expect(harness.persist).toHaveBeenCalled()
+  })
+
+  it('引用清单（技能 / 岗位）原样保留', async () => {
+    const before = await run(m.getApi('api_1101'))
+    expect(before.referencedBySkills.length).toBeGreaterThan(0)
+    expect(before.referencedByPositions.length).toBeGreaterThan(0)
+    const after = await run(m.forceRevokeApi('api_1101', reason))
+    expect(after.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(after.referencedByPositions).toEqual(before.referencedByPositions)
+  })
+
+  it('写访问审计：模块 API · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+    const ops = await auditOps()
+    const n = ops.length
+    await run(m.forceRevokeApi('api_1101', reason))
+    expect(ops.length).toBe(n + 1)
+    expect(ops[0]).toMatchObject({ module: 'API', action: '强制回收', target: '报销单查询', detail: reason })
+  })
+
+  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
+    await expect(run(m.forceRevokeApi('api_1104', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
+    await expect(run(m.forceRevokeApi('api_1102', reason))).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await run(m.deactivateApi('api_1103')) // 已发布 → 待审停用
+    await expect(run(m.forceRevokeApi('api_1103', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(run(m.forceRevokeApi('nope', reason))).rejects.toThrow('API 不存在')
+    await run(m.forceRevokeApi('api_1101', reason))
+    await expect(run(m.forceRevokeApi('api_1101', reason))).rejects.toThrow('状态已变化，请刷新后重试')
+  })
+
+  it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清并回已发布', async () => {
+    await run(m.forceRevokeApi('api_1101', reason))
+    await run(m.publishApi('api_1101'))
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.withdrawApi('api_1101'))
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.publishApi('api_1101'))
+    expect(m.applyApiReviewResult('api_1101', undefined, false)).toBe(true)
+    expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
+    await run(m.publishApi('api_1101'))
+    expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+    const done = await run(m.getApi('api_1101'))
+    expect(done.status).toBe('PUBLISHED')
+    expect(done.revoked).toBeNull()
+  })
+
+  it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 视为空）', async () => {
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    snap.apis.forEach((a) => delete a.revoked)
+    harness.options.restore(snap)
+    expect((await run(m.getApi('api_1101'))).revoked ?? null).toBeNull()
+    const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.revoked.reason).toBe(reason)
+  })
+})
