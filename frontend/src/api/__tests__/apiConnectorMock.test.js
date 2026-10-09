@@ -408,7 +408,7 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
 })
 
 describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中间态归一', () => {
-  it('10 个写点各调 persist() 恰一次；读操作不调', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调', async () => {
     await run(m.listApis())
     await run(m.getApi('api_1101'))
     await run(m.listProviderSystems())
@@ -423,6 +423,8 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       () => m.publishApi('api_1106'),
       () => m.withdrawApi('api_1106'),
       () => m.deactivateApi('api_1101'),
+      // 2026-10-09 补缺口 C2：强制回收（prd-API.md §4）也是写点；用另一条已发布种子 api_1103，不与上面的停用撞行
+      () => m.forceRevokeApi('api_1103', '持久化回收'),
       // 删除仅未发布态可用（md-API §2 L54-56，2026-09-23 待办 yuepu#7②）：api_1102 是 PENDING_REVIEW 种子，
       // 改用未发布的 api_1104 验证这一写点
       () => m.deleteApi('api_1104')
@@ -484,7 +486,7 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
     const listed = (await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101')
     expect(listed.revoked.reason).toBe(reason)
-    expect(harness.persist).toHaveBeenCalled()
+    expect(harness.persist).toHaveBeenCalledTimes(1) // 2026-10-09 补缺口 C2：回收是写点，恰落盘一次
   })
 
   it('引用清单（技能 / 岗位）原样保留', async () => {
@@ -530,11 +532,26 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     expect(done.revoked).toBeNull()
   })
 
+  // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
+  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    await run(m.forceRevokeApi('api_1101', reason))
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    vi.resetModules()
+    m = await import('../apiConnectorMock')
+    harness = persistHarness.modules.get('apiConnector')
+    harness.options.restore(snap)
+    const row = await run(m.getApi('api_1101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect((await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101').revoked.reason).toBe(reason)
+  })
+
   it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 视为空）', async () => {
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.apis.forEach((a) => delete a.revoked)
     harness.options.restore(snap)
-    expect((await run(m.getApi('api_1101'))).revoked ?? null).toBeNull()
+    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告：低风险缺陷，旧快照实际会被版本号 bump 丢弃）
+    expect((await run(m.getApi('api_1101'))).revoked).toBeUndefined()
     const row = await run(m.forceRevokeApi('api_1101', reason))
     expect(row.revoked.reason).toBe(reason)
   })

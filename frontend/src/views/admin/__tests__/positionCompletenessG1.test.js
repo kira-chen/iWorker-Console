@@ -14,6 +14,9 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  *  ② 【保存】执行同一套九项校验但**不阻断**：保存照常完成，顶部提示条列出未完成项（可关、可点跳页签）；
  *  ③ 九项齐备时保存不出提示条、发布放行到发布前检查弹窗。
  *
+ * 2026-10-09 /test-audit 补缺口 E3（岗位 PRD §8 / §9.1「被强制回收」）：页面用 revokedConnectorNames(store.basic) 实时取值喂发布前检查，
+ *  引用了已回收的连接器 / 技能 → 清单里出阻断行「引用的「X」已被回收，请移除后再发布」（见文末 describe）。
+ *
  * 另钉 A19（Q455）：知识页签【检索测试】原地开弹窗、不 router.push。
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §8.1–§8.3 / §9.1 第 5 项补：
@@ -23,6 +26,8 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
 
 import { ElMessage } from 'element-plus'
 import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
+import { forceRevokeMcpService, __resetMcpMock } from '@/api/mcpConnectorMock'
+import { resetAccessAuditMock } from '@/api/accessAuditMock'
 
 const basicFull = () => ({
   positionId: 5, name: '销售', icon: '▤', status: 'draft', persona: '',
@@ -110,7 +115,10 @@ for (const p of [
 const visProbe = (cls, prop) => ({
   default: {
     name: cls, props: [prop, 'kb', 'check', 'positionName'],
-    setup: (props) => () => (props[prop] ? h('div', { class: cls }) : null)
+    // 带 check 的探针把清单每行的 detail 渲成 <p class="probe-item">，便于断言发布前检查里出了哪些行
+    setup: (props) => () => (props[prop]
+      ? h('div', { class: cls }, (props.check?.items || []).map((i) => h('p', { class: 'probe-item', 'data-ok': String(i.ok) }, i.detail)))
+      : null)
   }
 })
 vi.doMock('@/components/position/PublishCheckDialog.vue', () => visProbe('publish-check-dialog', 'visible'))
@@ -387,5 +395,41 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）
       query: { tab: 'kb', action: 'view', kbId: 'kb_1', positionId: '5', positionName: '销售' }
     })
     expect(container.querySelector('.kb-search-dialog')).toBeNull()
+  })
+})
+
+describe('E3 · 发布前检查：引用了已被强制回收的对象 → 阻断行（岗位 PRD §8 / §9.1）', () => {
+  afterEach(() => { __resetMcpMock(); resetAccessAuditMock() })
+  const probeRows = () => [...container.querySelectorAll('.publish-check-dialog .probe-item')]
+  const revokedRows = () => probeRows().filter((p) => p.textContent.includes('已被回收'))
+
+  it('岗位引用的 MCP 已被强制回收 → 点【发布岗位】弹出的检查清单里出「引用的「X」已被回收，请移除后再发布」且为未通过', async () => {
+    store.basic = { ...basicFull(), connectorMcpIds: ['expense_mcp'] }
+    await forceRevokeMcpService('expense_mcp', '凭据泄露')
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeTruthy()
+    const rows = revokedRows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toMatch(/^引用的「.+」已被回收，请移除后再发布$/)
+    expect(rows[0].getAttribute('data-ok')).toBe('false')
+  })
+
+  it('岗位引用的 MCP 未被回收 → 清单里没有「已被回收」行', async () => {
+    store.basic = { ...basicFull(), connectorMcpIds: ['expense_mcp'] }
+    await mount()
+    await clickTop('发布岗位')
+    expect(container.querySelector('.publish-check-dialog')).toBeTruthy()
+    expect(revokedRows()).toHaveLength(0)
+  })
+
+  it('Agent 下的技能带回收标记 → 清单里同样出「引用的「技能名」已被回收，请移除后再发布」', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [
+      { skillId: 1, name: '日报周报生成', revoked: { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' } }
+    ] }]
+    await mount()
+    await clickTop('发布岗位')
+    const rows = revokedRows()
+    expect(rows.map((p) => p.textContent)).toEqual(['引用的「日报周报生成」已被回收，请移除后再发布'])
   })
 })

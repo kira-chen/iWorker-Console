@@ -569,4 +569,21 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待�
     // mockPersist 版本不符即 removeItem；之后尚无写点，key 应为空
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
+
+  // 2026-10-09 /test-audit 补缺口 C1（PRD 技能 §3.5.1）：强制回收是写点，刷新后「已回收」必须还在
+  it('强制回收后刷新页面 → 技能仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await import('@/api/unifiedSkillMock')
+    const { skillId } = await first.createSkill({ name: '回收读回技能', type: 'PLATFORM', categoryName: CAT })
+    await first.updateSkill(skillId, { icon: '🧪', skillMd: '# 回收读回\n\n正文' })
+    await first.publishSkill(skillId, { releaseNotes: '首发' })
+    expect(first.applySkillReviewResult(skillId, 'FIRST_PUBLISH', true)).toBe(true)
+    await first.forceRevokeSkill(skillId, { reason: '刷新后仍应标已回收' })
+    vi.resetModules()
+    const fresh = await import('@/api/unifiedSkillMock')
+    const detail = await fresh.getSkillDetail(skillId)
+    expect(pubState(detail)).toBe('DELISTED') // 复用下架语义，页面映射为「未发布」
+    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    const row = (await fresh.listUnifiedSkills({ keyword: '回收读回技能', size: 10 })).list.find((r) => r.id === skillId)
+    expect(row.revoked.reason).toBe('刷新后仍应标已回收')
+  })
 })

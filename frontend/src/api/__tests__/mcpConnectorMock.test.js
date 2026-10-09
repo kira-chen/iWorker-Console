@@ -681,6 +681,20 @@ describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
     expect(auto.code).toBe(`mcp_${snap.data.mcpSeq}`)
   })
 
+  // 2026-09-30 → 2026-10-09 /test-audit 补缺口 C1（md §3.6.1）：强制回收是写点，刷新后「已回收」必须还在
+  it('强制回收后刷新页面 → MCP 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await import('../mcpConnectorMock')
+    await first.forceRevokeMcpService('knowledge_hub', '刷新后仍应标已回收')
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.data.pubAgg.knowledge_hub).toBe('NOT_PUBLISHED')
+    vi.resetModules()
+    const fresh = await import('../mcpConnectorMock')
+    expect((await fresh.getMcpServicePublishStatus('knowledge_hub')).targets[0].aggregateStatus).toBe('NOT_PUBLISHED')
+    const row = await fresh.getMcp('knowledge_hub')
+    expect(row.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    expect((await fresh.listMcp({ state: 'NOT_PUBLISHED' })).list.find((r) => r.code === 'knowledge_hub').revoked.reason).toBe('刷新后仍应标已回收')
+  })
+
   it('旧版本快照（v=5）→ 丢弃并回种子 11 条（不带入旧行）', async () => {
     globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { mcpSeq: 99, mcps: [{ id: 'old', code: 'old', name: '旧', tools: [], env: [] }], pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')

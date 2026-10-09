@@ -333,7 +333,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('10 个写点各调 persist() 恰一次；读操作不调；快照 version=4 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=4 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -346,6 +346,10 @@ describe('bizSystemMock —— 持久化', () => {
       () => m.withdrawBizSystem(row.id),
       () => m.publishBizSystem(row.id),
       () => m.rejectBizSystem(row.id),
+      () => m.publishBizSystem(row.id),
+      () => m.approveBizSystem(row.id),
+      // 2026-10-09 补缺口 C2：强制回收（prd-业务系统.md §3）也是写点；回收后回未发布，重新走一轮发布审核再接着停用
+      () => m.forceRevokeBizSystem(row.id, '持久化回收'),
       () => m.publishBizSystem(row.id),
       () => m.approveBizSystem(row.id),
       () => m.deactivateBizSystem(row.id),
@@ -465,12 +469,26 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     expect(done.revoked).toBeNull()
   })
 
+  // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
+  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await fresh()
+    await first.run(first.m.forceRevokeBizSystem('biz_2101', reason))
+    const snap = JSON.parse(JSON.stringify(first.harness.options.snapshot()))
+    const { m, harness, run } = await fresh()
+    harness.options.restore(snap)
+    const row = await run(m.getBizSystem('biz_2101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect((await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101').revoked.reason).toBe(reason)
+  })
+
   it('持久化：restore 兼容缺 revoked 的旧快照行', async () => {
     const { m, harness, run } = await fresh()
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.bizRows.forEach((b) => delete b.revoked)
     harness.options.restore(snap)
-    expect((await run(m.getBizSystem('biz_2101'))).revoked ?? null).toBeNull()
+    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeUndefined()
     const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
     expect(row.revoked.reason).toBe(reason)
   })

@@ -387,4 +387,17 @@ describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-dem
     expect(list.some((e) => e.name === '伪造专家')).toBe(false)
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
+
+  // 2026-10-09 /test-audit 补缺口 C1（PRD 专家 §3.5.1）：强制回收是写点，刷新后「已回收」必须还在
+  it('强制回收后刷新页面 → 专家仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await import('@/api/domainExpertMock')
+    const r = await first.forceRevokeExpert(201, { reason: '刷新后仍应标已回收' })
+    vi.resetModules()
+    const fresh = await import('@/api/domainExpertMock')
+    const detail = await fresh.getExpert(201)
+    expect(detail.status).toBe('draft')
+    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    expect(detail.revoked).toEqual(r.revoked)
+    expect((await fresh.listExperts({ status: 'draft' })).list.find((e) => e.id === 201).revoked.reason).toBe('刷新后仍应标已回收')
+  })
 })

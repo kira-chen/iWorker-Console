@@ -17,8 +17,9 @@ import {
 import { _getRaw, _reset, createSkill, removeSkill, forceRevokeSkill, listUnifiedSkills } from '../unifiedSkillMock'
 import { listMcpSync, listMcp, forceRevokeMcpService, __resetMcpMock } from '../mcpConnectorMock'
 import { revokedConnectorNames } from '../positionRevokedRefs'
-import { listApisSync, listApis } from '../apiConnectorMock'
-import { listBizSystemsSync, listBizSystems } from '../bizSystemMock'
+import { listApisSync, listApis, forceRevokeApi, __resetApiMock } from '../apiConnectorMock'
+import { listBizSystemsSync, listBizSystems, forceRevokeBizSystem, __resetBizSystemMock } from '../bizSystemMock'
+import { resetAccessAuditMock } from '../accessAuditMock'
 
 beforeEach(() => __resetPositionMock())
 
@@ -299,7 +300,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
   // 岗位 PRD §6.4 / §8「被强制回收」：引用保留 + 详情带回收标记 + 发布阻断；对象回收后自然退出「仅已发布」的候选
   describe('引用了被强制回收的技能 / 连接器', () => {
     const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null })
-    afterEach(() => { restoreSkill(); __resetMcpMock() })
+    afterEach(() => { restoreSkill(); __resetMcpMock(); __resetApiMock(); __resetBizSystemMock(); resetAccessAuditMock() })
 
     it('技能被回收：岗位详情技能子行带 revoked，引用不自动解除，仍可【移除】（detachSkill）', async () => {
       const before = (await getPosition(401)).agents.flatMap((a) => a.skills)
@@ -333,6 +334,38 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
       await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow(`引用的「${name}」已被回收，请移除后再发布`)
       await updatePosition(401, { connectorMcpIds: [] })
       await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({})
+    })
+
+    // 2026-10-09 /test-audit 补缺口 A9/A10（岗位 PRD §8 / §9.1）：API 与业务系统各一条正向 + 三类共存顺序
+    it('API 被回收：revokedConnectorNames 列出其名称；未回收的 API 不列入', async () => {
+      const name = listApisSync().find((a) => a.id === 'api_1101').name
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([])
+      await forceRevokeApi('api_1101', '接口下线')
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([name])
+      expect(revokedConnectorNames({ connectorApiIds: ['api_1103'] })).toEqual([])
+    })
+
+    it('业务系统被回收：revokedConnectorNames 列出其名称；未回收的业务系统不列入', async () => {
+      const name = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([])
+      await forceRevokeBizSystem('biz_2101', '系统停用')
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([name])
+      expect(revokedConnectorNames({ businessSystemIds: ['biz_2102'] })).toEqual([])
+    })
+
+    it('三类都被回收且岗位都引用：名称顺序固定 MCP → API → 业务系统（与回收先后无关）；悬空 id 与未回收项被跳过', async () => {
+      const mcpName = listMcpSync().find((m) => m.id === 'expense_mcp').name
+      const apiName = listApisSync().find((a) => a.id === 'api_1101').name
+      const bizName = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
+      // 故意按「业务系统 → API → MCP」的反序回收，证明顺序由类别决定而不是回收先后
+      await forceRevokeBizSystem('biz_2101', '系统停用')
+      await forceRevokeApi('api_1101', '接口下线')
+      await forceRevokeMcpService('expense_mcp', '凭据泄露')
+      expect(revokedConnectorNames({
+        connectorMcpIds: ['mail_center', 'expense_mcp', '不存在的mcp'], // 未回收 + 已回收 + 悬空
+        connectorApiIds: ['不存在的api', 'api_1103', 'api_1101'],
+        businessSystemIds: ['biz_2101', 'biz_2102', '不存在的biz']
+      })).toEqual([mcpName, apiName, bizName])
     })
 
     it('选择弹窗候选口径：回收后的技能不再出现在「已发布」候选里（回未发布）', async () => {
