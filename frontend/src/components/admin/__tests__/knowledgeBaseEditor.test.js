@@ -196,16 +196,43 @@ describe('KnowledgeBaseEditor · 加载失败态（yuepu#49②）', () => {
     expect(drawer().querySelector('form.el-form')).toBeNull()
   })
 
-  it('yuepu#49② 编辑态加载失败 → 底部不出现可点的【保存】【删除】【提交发布】', async () => {
-    api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
+  /** 编辑态详情加载失败 / 加载中的共用装配（loadPending=true 让详情请求一直悬着 = 加载中） */
+  async function mountEditFail({ loadPending = false } = {}) {
+    if (loadPending) api.getKnowledgeBase.mockReturnValue(new Promise(() => {}))
+    else api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
     api.listKnowledgeSources.mockResolvedValue({ list: [] })
     api.listExpertOptions.mockResolvedValue([])
     api.listPositionOptions.mockResolvedValue([])
     mounted = mountReal(Editor, { visible: true, kbId: 'kb_1' })
     await flushAll(10)
-    const clickable = [...drawer().querySelectorAll('.el-button')]
+  }
+  const clickableFooter = () =>
+    [...drawer().querySelectorAll('.el-button')]
       .filter((b) => !b.disabled && !b.classList.contains('is-disabled'))
       .map((b) => b.textContent.trim())
+
+  it('yuepu#49② 编辑态加载失败 → 底部只剩可点的【关闭】，不出现【保存】【删除】【提交发布】', async () => {
+    await mountEditFail()
+    const clickable = clickableFooter()
+    // 前提：页脚真渲染了（否则「不含保存」会在页脚整个没渲染时也通过）
+    expect(clickable).toContain('关闭')
     for (const text of ['保存', '删除', '提交发布']) expect(clickable).not.toContain(text)
+  })
+
+  it('yuepu#49② 编辑态加载中（详情请求在途）→ 底部同样只留【关闭】', async () => {
+    await mountEditFail({ loadPending: true })
+    expect(drawer().querySelector('form.el-form')).toBeNull() // 前提：表单未渲染 = 加载中
+    const clickable = clickableFooter()
+    expect(clickable).toContain('关闭')
+    for (const text of ['保存', '删除', '提交发布']) expect(clickable).not.toContain(text)
+  })
+
+  it('yuepu#49② formRef 为 null（加载失败）时直接调 save() → 返回 false、不抛 TypeError、不写库', async () => {
+    await mountEditFail()
+    // 页脚已无【保存】入口，直接调组件内部 save() 验证守卫（setupState 为 Vue 开发态可读的内部入口）
+    const { save } = mounted.app._instance.subTree.component.setupState
+    await expect(save()).resolves.toBe(false)
+    expect(api.updateKnowledgeBase).not.toHaveBeenCalled()
+    expect(api.createKnowledgeBase).not.toHaveBeenCalled()
   })
 })
