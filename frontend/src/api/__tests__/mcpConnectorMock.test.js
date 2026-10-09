@@ -27,6 +27,7 @@ import { explainMcpError } from '@/utils/mcpVerify'
 function mkStdio(code) {
   return createMcp({
     code,
+    type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
     name: `测试 MCP ${code}`,
     icon: '⌁',
     description: '测试用 MCP 服务',
@@ -229,6 +230,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 
   const mkStdioIn = (code, extra = {}) => ({
     code,
+    type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
     name: `测试 MCP ${code}`,
     description: '测试用',
     transport: 'stdio',
@@ -441,14 +443,14 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
     expect(sysDefault.list.map((r) => r.code).sort()).toEqual(['assets', 'calendar', 'data_lab', 'local_files'])
   })
 
-  it('type 只在 createMcp 落一次，updateMcp 不改动（创建后不可改）；新建岗位私有不绑定岗位（无引用、payload 带 positionId 也忽略）；未传 type 落 PLATFORM 默认值', async () => {
+  it('type 只在 createMcp 落一次，updateMcp 不改动（创建后不可改）；新建岗位私有不绑定岗位（无引用、payload 带 positionId 也忽略）；新建未传 type 被拒（待办 yuepu#57⑥）', async () => {
     const created = await m.createMcp({ ...mkStdioIn('mcp_pos'), type: 'POSITION', positionId: 402 })
     expect(created).toMatchObject({ type: 'POSITION', positionCount: 0, referencedByPositions: [] })
     expect(created).not.toHaveProperty('positionId')
     const updated = await m.updateMcp(created.id, { description: '改描述', type: 'PLATFORM' })
     expect(updated).toMatchObject({ type: 'POSITION', description: '改描述' })
-    const noType = await m.createMcp(mkStdioIn('mcp_notype'))
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0 })
+    await expect(m.createMcp(mkStdioIn('mcp_notype', { type: undefined }))).rejects.toMatchObject({ field: 'type', message: '请选择连接器类型' })
+    await expect(m.createMcp(mkStdioIn('mcp_badtype', { type: 'BOGUS' }))).rejects.toMatchObject({ field: 'type' })
   })
 
   // ⑦ 新建初值（md §二.2 L58 从未验证：不展示时间；§二.4 新建即未发布）
@@ -647,7 +649,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
     await m.testMcpConn({ id: 'calendar' })
     await m.getMcpServicePublishStatus('calendar')
     expect(writes()).toBe(base)
-    const created = await m.createMcp({ code: 'mcp_persist', name: 'P', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const created = await m.createMcp({ code: 'mcp_persist', type: 'PLATFORM', name: 'P', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     expect(writes()).toBe(base + 1)
     await m.updateMcp(created.id, { description: 'd' })
     expect(writes()).toBe(base + 2)
@@ -665,7 +667,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
 
   it('新建落盘（v=9）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
-    const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const created = await first.createMcp({ code: 'mcp_reload', type: 'PLATFORM', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
     expect(snap.v).toBe(9)
@@ -677,7 +679,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
     expect(row.name).toBe('刷新后还在')
     expect((await fresh.getMcpServicePublishStatus('mcp_reload')).targets[0].aggregateStatus).toBe('PENDING_REVIEW')
     expect((await fresh.listMcp()).total).toBe(12)
-    const auto = await fresh.createMcp({ code: '', name: '自动编号', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const auto = await fresh.createMcp({ code: '', type: 'PLATFORM', name: '自动编号', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     expect(auto.code).toBe(`mcp_${snap.data.mcpSeq}`)
   })
 

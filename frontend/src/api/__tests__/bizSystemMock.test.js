@@ -41,6 +41,7 @@ import {
 } from '../bizSystemMock'
 
 const VALID = {
+  type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
   icon: '✓',
   description: '测试用业务系统',
   loginUrl: 'https://demo.example.com/login',
@@ -94,13 +95,13 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     expect(pos.every((b) => b.type === 'POSITION')).toBe(true)
   })
 
-  it('type 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；未传 type 落 PLATFORM 默认值', async () => {
+  it('type 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；新建未传 type 被拒（待办 yuepu#57⑥）', async () => {
     const created = await createBizSystem({ ...VALID, name: `岗位私有-${Date.now()}`, type: 'POSITION' })
     expect(created).toMatchObject({ type: 'POSITION' })
     const updated = await updateBizSystem(created.id, { ...VALID, name: created.name, description: '改描述', type: 'PLATFORM' })
     expect(updated).toMatchObject({ type: 'POSITION', description: '改描述' })
-    const noType = await createBizSystem({ ...VALID, name: `无类型-${Date.now()}` })
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0 })
+    await expect(createBizSystem({ ...VALID, name: `无类型-${Date.now()}`, type: undefined })).rejects.toMatchObject({ field: 'type', message: '请选择连接器类型' })
+    await expect(createBizSystem({ ...VALID, name: `非法类型-${Date.now()}`, type: 'BOGUS' })).rejects.toMatchObject({ field: 'type' })
   })
 
   it('列表按最近更新时间排序（默认由近到远；sort=asc 反向）（md §二.1 L30）', async () => {

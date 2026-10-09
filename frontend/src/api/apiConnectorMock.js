@@ -24,6 +24,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
+import { CONNECTOR_TYPE } from './connectorTypes'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
@@ -741,11 +742,13 @@ function applyApiPayload(a, payload) {
 
 export async function createApi(payload) {
   await delay(250)
+  // 连接器类型必选（md API §三「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   validateApiPayload(payload)
   // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰该字段
   const a = mkApi({
     code: `api_${apiSeq++}`,
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })

@@ -441,7 +441,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
   })
 
   it('新建的 MCP 未发布时不进工具坞候选、已引用则显示「已停用」；发布通过后才进候选（yuepu#50）；连接器被删除后已引用工具侧回落显示 code', async () => {
-    const created = await createMcp({ name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const created = await createMcp({ type: 'PLATFORM', name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     const pick = async () => (await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })).map((t) => t.code)
     expect(await pick()).not.toContain(`mcp__${created.code}`) // 未发布：不可被技能新引用
 
@@ -464,7 +464,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
   })
 
   it('连接器被删除后已引用工具侧回落显示 code，不再假装「连接正常」', async () => {
-    const created = await createMcp({ name: '待删除 MCP', description: '仅供本用例验证删除回落', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+    const created = await createMcp({ type: 'PLATFORM', name: '待删除 MCP', description: '仅供本用例验证删除回落', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     const id = await mkSkill({ name: '删除回落联动' })
     await mock.updateSkill(id, { skillMd: `# 正文
 

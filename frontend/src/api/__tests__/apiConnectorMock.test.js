@@ -66,6 +66,7 @@ const PAYLOAD_1101 = {
   exampleQuestions: ['帮我查询报销单的当前审批状态', '我上周提的报销现在到哪一步了', '查一下单号 BX20260801 的报销金额']
 }
 const NEW_API = {
+  type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
   name: '新接口',
   icon: '🧪',
   description: '测试用',
@@ -401,9 +402,12 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
     expect(updated).toMatchObject({ type: 'POSITION', name: '改名' })
   })
 
-  it('未传 type → 落 PLATFORM 默认值，且无岗位引用', async () => {
-    const noType = await run(m.createApi({ ...NEW_API }))
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0, referencedByPositions: [] })
+  it('新建未传 / 传非法 type → 拒绝「请选择连接器类型」（md 新建时必须选择；待办 yuepu#57⑥，不再缺省兜底 PLATFORM）；选定类型的新建无岗位引用', async () => {
+    for (const type of [undefined, '', 'BOGUS']) {
+      await expect(run(m.createApi({ ...NEW_API, type }))).rejects.toMatchObject({ field: 'type', message: '请选择连接器类型' })
+    }
+    const ok = await run(m.createApi({ ...NEW_API, type: 'PLATFORM' }))
+    expect(ok).toMatchObject({ type: 'PLATFORM', positionCount: 0, referencedByPositions: [] })
   })
 })
 
