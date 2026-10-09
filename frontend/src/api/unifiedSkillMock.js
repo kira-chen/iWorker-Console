@@ -781,10 +781,17 @@ export async function forceRevokeSkill(id, { reason } = {}) {
   return { skillId: s.id, publications: publicationsOf(s), revoked: { ...s.revoked } }
 }
 
-/** 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。 */
+/**
+ * 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。
+ * 状态守卫（待办 yuepu#57③）：仅「已下架（delisted）、无在途审核、非强制回收」可重新上架；
+ * 从未发布的草稿 / 审核中 / 已回收（须重新提交发布走审核，md 技能 §3.5.1）一律拒绝，避免绕过审核直接回到已发布。
+ */
 export async function relistSkill(id) {
   await delay()
   const s = find(id)
+  if (!s.delisted || s.pendingAction || s.revoked) {
+    throw new ApiError({ code: 40909, message: '技能状态已变化，请刷新后重试' })
+  }
   s.delisted = false
   if (s.version) s.status = 'published'
   s.updatedAt = nowText()

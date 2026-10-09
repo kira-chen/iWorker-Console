@@ -148,8 +148,8 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     await expect(assignSkill(skillId, agentId)).rejects.toThrow()
   })
 
-  // ③ relistSkill 无状态守卫：从未发布的草稿也能被「重新上架」
-  it.fails('yuepu#57③ 未发布的技能调用 relistSkill 应被拒绝', async () => {
+  // ③ relistSkill 状态守卫（已修，转正式回归；正反向用例另见 unifiedSkillMock.test.js「重新上架状态守卫」）
+  it('yuepu#57③ 未发布的技能调用 relistSkill 应被拒绝', async () => {
     const { skillId } = await skillMock.createSkill({ name: '草稿技能', type: 'PLATFORM', categoryName: '办公效率' })
     await expect(skillMock.relistSkill(skillId)).rejects.toThrow()
   })
