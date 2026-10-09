@@ -178,6 +178,7 @@ const opsFiltered = computed(() => {
   const q = opsKeyword.value.toLowerCase()
   const base = opsRecords.filter(
     (r) =>
+      !r.hidden && // 扩容申请的同意 / 拒绝只留给客户端通知，审计页不展示（扩容申请页签自己有处理记录）
       (!q || r.operator.toLowerCase().includes(q) || r.target.toLowerCase().includes(q)) &&
       (!opsModule.value || r.module === opsModule.value) &&
       (!opsAction.value || r.action === opsAction.value) &&
@@ -203,6 +204,7 @@ const MOD_CLS = {
   业务系统: 'tag-gray',
   模型: 'tag-orange',
   运行规格: 'tag-gray',
+  存储空间: 'tag-gray',
   审核中心: 'tag-green',
   用户技能审核: 'tag-orange',
   版本管理: 'tag-gray',
@@ -212,6 +214,7 @@ const ACT_CLS = {
   个人配置: 'tag-green',
   分配: 'tag-green',
   变更: 'tag-green',
+  调整容量: 'tag-green',
   停用: 'tag-orange',
   强制回收: 'tag-red',
   撤回: 'tag-orange',
@@ -234,6 +237,7 @@ const MODULE_ROUTE = {
   业务系统:   { name: 'AdminConnector', extraQuery: { tab: 'bizsystem' } },
   模型:       { name: 'AdminModels' },
   运行规格:   { name: 'AdminRuntimeSpecs' },
+  存储空间:   { name: 'AdminStorageSpace' },
   审核中心:   { name: 'UnifiedReview' },
   用户技能审核: { name: 'SysConfigUserSkillReviews' },
   版本管理:   { name: 'AdminVersions' },
@@ -451,11 +455,11 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','岗位分配','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','岗位分配','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回','调整容量']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button>查询</el-button>

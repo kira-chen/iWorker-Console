@@ -57,7 +57,11 @@ vi.mock('@/api/accessAuditMock', () => {
       { id: 6, time: `${day} 14:00`, operator: 'admin', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' },
       { id: 7, time: `${day} 15:00`, operator: 'admin', module: '技能', action: '强制回收', target: '财税合规助手', version: 'v1.0.0', detail: '存在数据泄露风险' },
       { id: 8, time: `${day} 16:00`, operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 合同管理助手', detail: '岗位与技能权限范围不匹配' },
-      { id: 9, time: `${day} 17:00`, operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 报销助手', detail: '' }
+      { id: 9, time: `${day} 17:00`, operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 报销助手', detail: '' },
+      // 存储空间：「调整容量」展示；扩容申请的「同意 / 拒绝扩容」标 hidden，只留给客户端通知，审计页不展示
+      { id: 10, time: `${day} 18:00`, operator: 'demo', module: '存储空间', action: '调整容量', target: 'zhangwei', detail: '5 GB → 8 GB' },
+      { id: 11, time: `${day} 18:10`, operator: 'demo', module: '存储空间', action: '同意扩容', target: 'chenyu', detail: '5 GB → 10 GB', hidden: true },
+      { id: 12, time: `${day} 18:20`, operator: 'demo', module: '存储空间', action: '拒绝扩容', target: 'wangfang', detail: '先清理历史产物', hidden: true }
     ]
   }
 })
@@ -82,7 +86,8 @@ beforeEach(async () => {
       { path: '/admin/versions', name: 'AdminVersions', component: { template: '<div />' } },
       { path: '/admin/positions', name: 'AdminPositions', component: { template: '<div />' } },
       { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
-      { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: { template: '<div />' } }
+      { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: { template: '<div />' } },
+      { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } }
     ]
   })
   await router.push('/admin/login-logs')
@@ -104,8 +109,8 @@ afterEach(() => {
 
 describe('访问审计 · 管理端操作 · 版本管理记录', () => {
   beforeEach(() => switchTab('管理端操作'))
-  it('九条记录都在默认时间范围内展示', () => {
-    expect(rows()).toHaveLength(9)
+  it('十条可展示的记录都在默认时间范围内（另有 2 条 hidden 的扩容同意 / 拒绝不展示）', () => {
+    expect(rows()).toHaveLength(10)
   })
 
   it('模块标签：版本管理灰色（§6.4）；动作标签：发布绿、停用橙', () => {
@@ -555,7 +560,7 @@ describe('访问审计 · 切换页签各页签条件独立（§二 / §三）',
     await flushAll(4)
     await switchTab('管理端操作')
     expect(pane().querySelector('.lt-search input').value).toBe('')
-    expect(rows()).toHaveLength(9)
+    expect(rows()).toHaveLength(10)
     await switchTab('用户端文件下载')
     expect(dlPane().querySelector('.lt-search input').value).toBe('吴强')
     expect(dlRows()).toHaveLength(1)
@@ -568,6 +573,42 @@ describe('访问审计 · 切换页签各页签条件独立（§二 / §三）',
     expect(dlRows()).toHaveLength(0) // 下载页签按新范围立即过滤（夹具全是今天）
     expect(pickers()[2].props.modelValue).toBe(before)
     await switchTab('管理端操作')
-    expect(rows()).toHaveLength(9)
+    expect(rows()).toHaveLength(10)
+  })
+})
+
+describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09）', () => {
+  beforeEach(() => switchTab('管理端操作'))
+
+  it('扩容申请的「同意扩容 / 拒绝扩容」不展示（hidden，只留给客户端通知）；「调整容量」展示', () => {
+    expect(rowOf('chenyu', '同意扩容')).toBeUndefined()
+    expect(rowOf('wangfang', '拒绝扩容')).toBeUndefined()
+    expect(pane().textContent).not.toContain('先清理历史产物')
+    expect(rowOf('zhangwei', '调整容量')).toBeTruthy()
+  })
+
+  it('模块标签灰色、动作「调整容量」绿；变更内容「原总量 → 新总量」，操作对象为员工用户名', () => {
+    const tr = rowOf('zhangwei', '调整容量')
+    expect(tagOf(tr, '存储空间').className).toContain('tag-gray')
+    expect(tagOf(tr, '调整容量').className).toContain('tag-green')
+    expect(detailCell(tr).textContent.trim()).toBe('5 GB → 8 GB')
+  })
+
+  it('动作筛选只有「调整容量」，没有同意 / 拒绝扩容、修改默认容量', async () => {
+    const select = pane().querySelectorAll('.lt-filter')[1]
+    select.querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    const items = [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
+    expect(items).toContain('调整容量')
+    expect(items).not.toContain('同意扩容')
+    expect(items).not.toContain('拒绝扩容')
+    expect(items).not.toContain('修改默认容量')
+  })
+
+  it('【查看】跳转到存储空间页，并把员工用户名作为关键词带过去（§6.3）', async () => {
+    const tr = rowOf('zhangwei', '调整容量')
+    ;[...tr.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminStorageSpace'))
+    expect(router.currentRoute.value.query.keyword).toBe('zhangwei')
   })
 })

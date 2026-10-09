@@ -46,6 +46,7 @@ function makeRouter() {
       // 04 运行
       { path: '/admin/instances', name: 'AdminInstances', component: blank },
       { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: blank },
+      { path: '/admin/storage-space', name: 'AdminStorageSpace', component: blank },
       { path: '/admin/quota-throttle', name: 'AdminQuotaThrottle', component: blank },
       // 05 治理
       // 2026-09-01 PRD 对齐改造：新增「我的申请」（列于审核中心之前）
@@ -167,7 +168,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
       '岗位', '岗位管理',
       // 「技能」= 三页合一（2026-08-23），取代原 岗位技能/平台技能/系统内置技能 三项
       '专家', '技能', '知识库', '连接器', '模型',
-      '实例管理', '运行规格', '配额与限流',
+      '实例管理', '运行规格', '存储空间', '配额与限流',
       // 2026-09-01 PRD 对齐改造取代旧口径：治理组新增「我的申请」，列于「审核中心」之前
       // 2026-09-28 PRD 首次落地：「工具调用审计」新增，列于「访问审计」之后
       '我的申请', '审核中心', '用户技能审核', '访问审计', '工具调用审计', '用户反馈', '字段字典', '版本管理',

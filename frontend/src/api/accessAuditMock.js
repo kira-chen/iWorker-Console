@@ -72,14 +72,17 @@ const persist = attachPersist('accessAuditOps', {
  * 可选字段（未传则不带键，向后兼容）：
  *   version  岗位 / 专家 / 技能的版本号小标签（强制回收落审计时传回收当时的版本）；
  *   objectId 被操作对象的唯一标识（技能 / 专家 / 连接器 / 岗位 / 用户等，页面不展示，客户端据此匹配本地数据）；
+ *   hidden   true = 不在「管理端操作」页展示，只留在数据层供客户端通知读取（扩容申请的同意 / 拒绝：
+ *            存储空间页的扩容申请页签自己已有处理记录，审计页不重复展示）；
  *   meta     扩展字段：用户技能审核 { reviewId, submitter, skillName }；
  *            岗位分配 { userId?, username, fromPosition:{id,name}|null, toPosition:{id,name} }。
- * @param {{operator:string, module:string, action:string, target:string, detail?:string, version?:string, objectId?:string|number, meta?:object}} rec
+ * @param {{operator:string, module:string, action:string, target:string, detail?:string, version?:string, objectId?:string|number, meta?:object, hidden?:boolean}} rec
  */
-export function appendOpsRecord({ operator, module, action, target, detail = '', version, objectId, meta }) {
+export function appendOpsRecord({ operator, module, action, target, detail = '', version, objectId, meta, hidden = false }) {
   const at = nowSecondText()
   const record = { id: opsSeq++, time: at.slice(0, 16), operator, module, action, target, detail, at, live: true }
   if (version) record.version = version
+  if (hidden) record.hidden = true
   if (objectId != null && objectId !== '') record.objectId = objectId
   if (meta) record.meta = JSON.parse(JSON.stringify(meta)) // 深拷贝，避免调用方后续改动污染库内数据
   opsRecords.unshift(record)
@@ -96,10 +99,11 @@ const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时
 /**
  * 取「客户端要读」的记录视图，按操作时间正序（同秒按记录 id）。
  * @param {{since?: string}} [opts] since = 上次拉取时间（YYYY-MM-DD HH:mm:ss），只返回 at 严格晚于它的记录；缺省 = 全量
- * @returns {Array<object>} 每条带 kind 区分三类，公共字段 recordId（记录标识，去重用）/ at（操作时间，秒级）：
+ * @returns {Array<object>} 每条带 kind 区分四类，公共字段 recordId（记录标识，去重用）/ at（操作时间，秒级）：
  *   forceRevoke   {kind, recordId, at, objectType(=模块), objectId, objectName, reason}                         §6.5.1
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
+ *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
  */
 export function listClientFacingOps({ since } = {}) {
   const out = []
@@ -126,6 +130,16 @@ export function listClientFacingOps({ since } = {}) {
         userId: m.userId ?? r.objectId ?? null,
         fromPosition: m.fromPosition ? { ...m.fromPosition } : null,
         toPosition: m.toPosition ? { ...m.toPosition } : null
+      })
+    } else if (r.module === '存储空间' && ['同意扩容', '拒绝扩容', '调整容量'].includes(r.action)) {
+      const m = r.meta || {}
+      out.push({
+        kind: 'storageQuota', recordId: r.id, at, type: r.action,
+        username: m.username ?? r.target,
+        userId: m.userId ?? r.objectId ?? null,
+        requestId: m.requestId ?? null,
+        newTotalGb: m.newTotalGb ?? null,
+        rejectReason: r.action === '拒绝扩容' ? r.detail || '' : ''
       })
     }
   }
