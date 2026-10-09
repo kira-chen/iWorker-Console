@@ -9,7 +9,7 @@ import { elInput, elSelect, elOption, pick, makeListProbes } from './helpers/lis
  * AdminLoginLogs.vue（访问审计）列表页单测（2026-09-12 测试审计 T56 新建，薄）。
  *
  * 对齐 md `prd.访问审计.md`（三页签版，本文件只覆盖默认页签「登录访问」= §四）：
- * - §一「页面说明」（注：md 现为「记录用户登录访问、用户端文件下载与管理端操作的完整行为轨迹」，下方断言仍取代码现状「产物下载」措辞，差异未在本次处置范围）；
+ * - §一「页面说明」（注：md 现为「记录用户登录访问、用户端文件下载与管理端操作的完整行为轨迹」，代码已于 2026-10-09 /prd-import（Q14）对齐）；
  *   §四.1 查询区（占位「搜索用户名」、在线 / 离线、【查询】「按当前全部条件刷新列表并回到第 1 页」）；
  * - §四.2 列表展示六列：终端仅 Windows / Mac 蓝标签；登录时间 / 登出时间 双列可排序、箭头 ↓ / ↑；
  *   在线记录登出时间「—」、状态 在线绿 / 离线灰；来源 IP；默认按登录时间倒序；
@@ -106,7 +106,7 @@ afterEach(() => {
 describe('AdminLoginLogs · 访问审计（md prd.访问审计.md）', () => {
   it('页面说明取 md §一「页面说明」；挂载即按登录时间倒序拉列表（sortField=loginAt、sortDir=desc、page=1）（md §四.2「默认按登录时间倒序展示」）', async () => {
     await mount()
-    expect(container.querySelector('.ph-sub').textContent).toBe('记录用户登录访问、产物下载与管理端操作的完整行为轨迹')
+    expect(container.querySelector('.ph-sub').textContent).toBe('记录用户登录访问、用户端文件下载与管理端操作的完整行为轨迹')
     expect(listLoginLogs).toHaveBeenCalledWith(expect.objectContaining({ sortField: 'loginAt', sortDir: 'desc', page: 1 }))
   })
 

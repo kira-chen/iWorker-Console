@@ -19,6 +19,7 @@ import { listSkills } from '@/api/position'
 import { LIMITS } from '@/utils/positionModel'
 import { categoryLabel } from '@/utils/skillCategory'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 
 defineProps({
   // 只读态（列表【查看】进入 / 审核中锁定），由父层统一推导
@@ -81,7 +82,7 @@ const agentSkillRows = computed(() => {
   for (const a of store.agents) {
     out.push({ kind: 'agent', agentId: a.agentId, name: a.name, description: a.description || '', skillCount: (a.skills || []).length })
     for (const sk of a.skills || []) {
-      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolCount(sk) })
+      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolCount(sk), revoked: sk.revoked || null })
     }
   }
   return out
@@ -296,7 +297,8 @@ async function onDeleteSkill({ agentId, skillId }) {
           <el-table-column label="AGENT / 技能" min-width="220">
             <template #default="{ row }">
               <span v-if="row.kind === 'agent'" class="pd-agent-name">◆ {{ row.name }}</span>
-              <span v-else class="pd-skill-name">· {{ row.name }}</span>
+              <!-- 技能被强制回收（md §6.4）：引用保留，名称旁标「已回收」，【移除】仍可用 -->
+              <span v-else class="pd-skill-name">· {{ row.name }}<RevokedTag :info="row.revoked" /></span>
             </template>
           </el-table-column>
           <el-table-column label="职责描述 / 分类" min-width="320">

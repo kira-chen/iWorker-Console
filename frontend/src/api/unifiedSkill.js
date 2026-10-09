@@ -91,6 +91,7 @@ const positionSkillApi = {
   publish: (id, payload) => (SKILL_MOCK_ENABLED ? mock.publishSkill(id, payload) : mockOnly('提交发布')()),
   withdrawPublish: (id) => (SKILL_MOCK_ENABLED ? mock.withdrawPublish(id) : mockOnly('撤回提交')()),
   delist: (id) => (SKILL_MOCK_ENABLED ? mock.delistSkill(id) : mockOnly('停用审核')()),
+  forceRevoke: (id, payload) => (SKILL_MOCK_ENABLED ? mock.forceRevokeSkill(id, payload) : mockOnly('强制回收')()),
   relist: (id) => (SKILL_MOCK_ENABLED ? mock.relistSkill(id) : mockOnly('重新上架')()),
   nextVersionLabel: (id) => (SKILL_MOCK_ENABLED ? mock.nextVersionLabel(id) : mockOnly('建议版本号')()),
   listSnapshots: (id) => (SKILL_MOCK_ENABLED ? mock.listSnapshots(id) : mockOnly('版本历史')()),

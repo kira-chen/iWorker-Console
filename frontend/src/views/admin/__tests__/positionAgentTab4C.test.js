@@ -124,7 +124,9 @@ async function mount() {
   app = createApp(PositionDetailTabs)
   app.component('el-tabs', elTabs); app.component('el-tab-pane', elTabPane)
   for (const t of ['el-skeleton', 'el-empty', 'el-form', 'el-form-item', 'el-select', 'el-option',
-    'el-switch', 'el-tag', 'el-icon', 'el-dialog', 'el-tooltip']) app.component(t, passthrough(t))
+    'el-switch', 'el-tag', 'el-icon', 'el-dialog']) app.component(t, passthrough(t))
+  // el-tooltip 不透传：把 content 落到 data-tip 上，便于断言悬停内容（2026-10-09 补缺口 A7/A8）
+  app.component('el-tooltip', { name: 'el-tooltip', props: ['content'], template: '<span class="tip" :data-tip="content"><slot /></span>' })
   app.component('el-button', {
     // 声明 emits：否则父层 @click 既被 $emit 触发又经 attrs 透传到根 <button> 原生 click，处理函数会跑两次
     name: 'el-button', props: ['disabled', 'type', 'link', 'size', 'loading'], emits: ['click'],
@@ -214,6 +216,29 @@ describe('Agent 与技能页签 · 二维表（4C #13）', () => {
     const secondCol = [...col('职责描述 / 分类').querySelectorAll('.cell')].map((c) => c.textContent.trim())
     expect(secondCol[0]).toBe('汇总经营指标并识别异常')
     expect(secondCol[1]).not.toBe('')
+  })
+
+  it('技能被强制回收（md §6.4）：子行名称旁出「已回收」标签、【移除】仍可用；未回收的不出', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [
+      { skillId: 1, name: '已回收技能', category: 'QUERY', revoked: { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' } },
+      { skillId: 2, name: '正常技能', category: 'QUERY', revoked: null }
+    ] }]
+    await mount()
+    const names = [...col('AGENT / 技能').querySelectorAll('.cell')]
+    expect(names[1].querySelector('.revoked-tag')?.textContent).toBe('已回收')
+    expect(names[2].querySelector('.revoked-tag')).toBeNull()
+    const removeBtns = [...container.querySelectorAll('.el-button')].filter((b) => b.textContent.trim() === '移除')
+    expect(removeBtns).toHaveLength(2)
+  })
+
+  // 2026-10-09 /test-audit 补缺口 A7/A8（岗位 PRD §8 被强制回收规则）：悬停内容 = 原因 · 操作人 · 时间
+  it('技能被强制回收：「已回收」标签悬停显示「回收原因：{原因}（{操作人} · {时间}）」', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [
+      { skillId: 1, name: '已回收技能', category: 'QUERY', revoked: { reason: '输出异常', at: '2026-09-30 10:00', operator: 'admin' } }
+    ] }]
+    await mount()
+    const tag = col('AGENT / 技能').querySelector('.revoked-tag')
+    expect(tag.closest('.tip').getAttribute('data-tip')).toBe('回收原因：输出异常（admin · 2026-09-30 10:00）')
   })
 
   it('表格包在卡片里：卡头含标题 + 弱色说明 + 【＋ 新增 Agent】', async () => {

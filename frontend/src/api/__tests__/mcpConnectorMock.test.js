@@ -586,7 +586,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v8；7 个业务写点：
+ * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v9；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 注入内存版存储 + vi.resetModules 动态 import。
  *
@@ -602,7 +602,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
  * 真 Storage 里已写入的 key），必须在每例前后**显式删掉本模块的持久化 key**。vitest 默认 shuffle，
  * 本组可能排在 A19 之前跑，所以 beforeEach 也要清一次，不能只清 afterEach。
  */
-describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
+describe('mcpConnectorMock · 持久化（mockPersist v9）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
   const makeStorage = () => {
     const map = new Map()
@@ -663,12 +663,12 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=8）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=9）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(8)
+    expect(snap.v).toBe(9)
     expect(snap.data.mcps.map((x) => x.code)).toContain('mcp_reload')
     expect(snap.data.pubAgg.mcp_reload).toBe('PENDING_REVIEW')
     vi.resetModules()
@@ -681,6 +681,20 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
     expect(auto.code).toBe(`mcp_${snap.data.mcpSeq}`)
   })
 
+  // 2026-09-30 → 2026-10-09 /test-audit 补缺口 C1（md §3.6.1）：强制回收是写点，刷新后「已回收」必须还在
+  it('强制回收后刷新页面 → MCP 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    const first = await import('../mcpConnectorMock')
+    await first.forceRevokeMcpService('knowledge_hub', '刷新后仍应标已回收')
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    expect(snap.data.pubAgg.knowledge_hub).toBe('NOT_PUBLISHED')
+    vi.resetModules()
+    const fresh = await import('../mcpConnectorMock')
+    expect((await fresh.getMcpServicePublishStatus('knowledge_hub')).targets[0].aggregateStatus).toBe('NOT_PUBLISHED')
+    const row = await fresh.getMcp('knowledge_hub')
+    expect(row.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    expect((await fresh.listMcp({ state: 'NOT_PUBLISHED' })).list.find((r) => r.code === 'knowledge_hub').revoked.reason).toBe('刷新后仍应标已回收')
+  })
+
   it('旧版本快照（v=5）→ 丢弃并回种子 11 条（不带入旧行）', async () => {
     globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { mcpSeq: 99, mcps: [{ id: 'old', code: 'old', name: '旧', tools: [], env: [] }], pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
@@ -691,11 +705,109 @@ describe('mcpConnectorMock · 持久化（mockPersist v8）', () => {
 
   it('坏形状快照（mcps 不是数组）→ restore 抛「mcpConnector 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     expect((await m.listMcp()).total).toBe(11)
     expect(warn).toHaveBeenCalled()
     expect(String(warn.mock.calls[0][1]?.message || '')).toContain('mcpConnector 快照形状不合法')
     warn.mockRestore()
+  })
+})
+
+/**
+ * 强制回收（md §3.6.1）：仅已发布且无审核中操作可回收；立即生效不进审核中心；状态回未发布并带 revoked；
+ * 引用清单保留；写访问审计；重新发布审核通过才清 revoked（驳回 / 撤回不清）。
+ * 每例 vi.resetModules() 拿全新种子（同 A19 组做法：桩立即回调的定时器 + 清落盘 key）。
+ */
+describe('mcpConnectorMock · 强制回收', () => {
+  let m
+  let audit
+  beforeEach(async () => {
+    vi.resetModules()
+    stubInstantTimers()
+    try {
+      const ls = globalThis.localStorage
+      const doomed = []
+      for (let i = 0; i < (ls?.length ?? 0); i++) {
+        const k = ls.key?.(i)
+        if (k && k.startsWith('iworker-demo-mock:')) doomed.push(k)
+      }
+      doomed.forEach((k) => ls.removeItem?.(k))
+    } catch {
+      /* 环境无存储时忽略 */
+    }
+    m = await import('../mcpConnectorMock')
+    audit = await import('../accessAuditMock')
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  const statusOf = async (id) => (await m.getMcpServicePublishStatus(id)).targets[0]
+  const reasonText = '接口下线，紧急回收'
+
+  it('已发布行可回收：聚合态回未发布、写 revoked、保留 publishedAt；列表 / 详情出参都带 revoked', async () => {
+    const before = await m.getMcp('knowledge_hub')
+    expect(before.revoked).toBeNull()
+    const row = await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    expect((await statusOf('knowledge_hub')).aggregateStatus).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toEqual({ reason: reasonText, at: expect.any(String), operator: expect.any(String) })
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect((await m.getMcp('knowledge_hub')).revoked.reason).toBe(reasonText)
+    const listed = (await m.listMcp({ state: 'NOT_PUBLISHED' })).list.find((r) => r.code === 'knowledge_hub')
+    expect(listed.revoked.reason).toBe(reasonText)
+  })
+
+  it('立即生效、不进审核中心：不留待审类型', async () => {
+    await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    expect((await statusOf('knowledge_hub')).pendingAction).toBeNull()
+    expect((await m.getMcp('knowledge_hub')).pendingAction).toBeNull()
+  })
+
+  it('引用清单原样保留（技能引用 / 岗位引用）', async () => {
+    const before = await m.getMcp('knowledge_hub')
+    expect(before.referencedBySkills.length).toBeGreaterThan(0)
+    const after = await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    expect(after.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(after.referencedBySkillCount).toBe(before.referencedBySkillCount)
+    // 岗位私有行：先看引用，再回收（该行种子是已发布，见 expense_mcp），引用同样保留
+    const posBefore = await m.getMcp('expense_mcp')
+    expect(posBefore.referencedByPositions.length).toBeGreaterThan(0)
+    const posAfter = await m.forceRevokeMcpService('expense_mcp', reasonText)
+    expect(posAfter.referencedByPositions).toEqual(posBefore.referencedByPositions)
+  })
+
+  it('写访问审计：模块 MCP · 动作 强制回收 · 变更内容 = 回收原因（不带版本号）', async () => {
+    const n = audit.opsRecords.length
+    await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    expect(audit.opsRecords.length).toBe(n + 1)
+    expect(audit.opsRecords[0]).toMatchObject({ module: 'MCP', action: '强制回收', target: '企业知识库 MCP', detail: reasonText })
+  })
+
+  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝「状态已变化，请刷新后重试」', async () => {
+    await expect(m.forceRevokeMcpService('project_hub', reasonText)).rejects.toThrow('状态已变化，请刷新后重试') // 未发布
+    await expect(m.forceRevokeMcpService('local_files', reasonText)).rejects.toThrow('状态已变化，请刷新后重试') // 待审发布
+    await m.delistMcpService('calendar') // 已发布 → 待审停用
+    await expect(m.forceRevokeMcpService('calendar', reasonText)).rejects.toThrow('状态已变化，请刷新后重试')
+    await expect(m.forceRevokeMcpService('no_such', reasonText)).rejects.toThrow('MCP 不存在')
+    // 已回收的行再回收（已是未发布）也被拒，不产生重复审计
+    await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    await expect(m.forceRevokeMcpService('knowledge_hub', reasonText)).rejects.toThrow('状态已变化，请刷新后重试')
+  })
+
+  it('重新发布：提交 / 撤回 / 驳回都不清 revoked，审核通过才清，且回到已发布', async () => {
+    await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    await m.publishMcpService('knowledge_hub')
+    expect((await m.getMcp('knowledge_hub')).revoked).not.toBeNull() // 提交发布后仍带
+    await m.withdrawMcpService('knowledge_hub')
+    expect((await m.getMcp('knowledge_hub')).revoked).not.toBeNull() // 撤回不清
+    await m.publishMcpService('knowledge_hub')
+    expect(m.applyMcpReviewResult('knowledge_hub', undefined, false)).toBe(true) // 驳回不清
+    expect((await m.getMcp('knowledge_hub')).revoked).not.toBeNull()
+    await m.publishMcpService('knowledge_hub')
+    expect(m.applyMcpReviewResult('knowledge_hub', undefined, true)).toBe(true) // 通过 → 清
+    expect((await m.getMcp('knowledge_hub')).revoked).toBeNull()
+    expect((await statusOf('knowledge_hub')).aggregateStatus).toBe('PUBLISHED')
   })
 })

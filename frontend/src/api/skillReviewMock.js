@@ -18,6 +18,8 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
 import {
@@ -270,7 +272,7 @@ const cloneConfig = () => ({
 
 /**
  * 列表（服务端分页）。params: { keyword?, scale?, status?, sort?('asc'|'desc'，默认 desc), page, size }。
- * keyword 模糊匹配 技能名称 / 描述 / 提交人（md §三）。返回 { list, total }。
+ * keyword 模糊匹配 技能名称 / 描述 / 提交人（md §三），另可匹配「提交人 / 技能名」整串（访问审计【查看】跳转注入的操作对象名，访问审计 §6.3）。返回 { list, total }。
  */
 export async function listReviewApplications(params = {}) {
   await delay()
@@ -281,7 +283,7 @@ export async function listReviewApplications(params = {}) {
   const list = reviews
     .filter(
       (r) =>
-        (!kw || [r.skillName, r.description, r.submitter].some((v) => String(v || '').toLowerCase().includes(kw))) &&
+        (!kw || [r.skillName, r.description, r.submitter, `${r.submitter} / ${r.skillName}`].some((v) => String(v || '').toLowerCase().includes(kw))) &&
         (!scale || r.scale === scale) &&
         (!status || r.status === status)
     )
@@ -299,6 +301,22 @@ export async function getReviewApplication(reviewId) {
   return toRow(r)
 }
 
+/**
+ * 通过 / 驳回成功后写一条访问审计「管理端操作」记录（prd.访问审计.md §6.2「用户技能审核记录」、§6.5.2）：
+ * 操作对象「提交人 / 技能名」，驳回填原因、通过为空；审核单标识 / 提交人 / 技能名另存 meta，客户端据此只通知提交者本人。
+ */
+function writeReviewAudit(r, action, detail) {
+  appendOpsRecord({
+    operator: currentDemoUsername(),
+    module: '用户技能审核',
+    action,
+    target: `${r.submitter} / ${r.skillName}`,
+    detail,
+    objectId: r.id,
+    meta: { reviewId: r.id, submitter: r.submitter, skillName: r.skillName }
+  })
+}
+
 /** 通过（md §6.1）：记录审核人与审核时间，状态 → APPROVED。仅 PENDING 可审。payload: { reviewer } */
 export async function approveReviewApplication(reviewId, payload = {}) {
   await delay()
@@ -310,6 +328,7 @@ export async function approveReviewApplication(reviewId, payload = {}) {
   r.reviewedAt = nowIso()
   r.rejectReason = ''
   persist()
+  writeReviewAudit(r, '审核通过', '')
   return toRow(r)
 }
 
@@ -327,6 +346,7 @@ export async function rejectReviewApplication(reviewId, payload = {}) {
   r.reviewedAt = nowIso()
   r.rejectReason = reason
   persist()
+  writeReviewAudit(r, '审核驳回', reason)
   return toRow(r)
 }
 

@@ -40,6 +40,7 @@
  */
 import { ref, reactive, computed, watch } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
+import RevokedBanner from '@/components/admin/RevokedBanner.vue'
 import { ElMessage } from 'element-plus'
 import { createApi, updateApi, getApi, listProviderSystems } from '@/api/apiConnector'
 import {
@@ -164,6 +165,8 @@ const responseRows = ref([])
 const referencedBySkills = ref([])
 // 时间信息（只读，PRD §三.6）
 const times = reactive({ createdAt: null, updatedAt: null, publishedAt: null })
+// 强制回收信息（顶部红色提示条用；null=未被回收）
+const revokedInfo = ref(null)
 const fieldErrors = reactive({})
 
 const methods = API_METHODS
@@ -237,6 +240,7 @@ function resetForm() {
   times.createdAt = null
   times.updatedAt = null
   times.publishedAt = null
+  revokedInfo.value = null
   clearErrors()
 }
 
@@ -291,6 +295,7 @@ async function load() {
     times.createdAt = d.createdAt || null
     times.updatedAt = d.updatedAt || null
     times.publishedAt = d.publishedAt || null
+    revokedInfo.value = d.revoked || null
   } catch (e) {
     loadError.value = true
   } finally {
@@ -460,6 +465,8 @@ async function save() {
     @retry="load"
     @save="save"
   >
+      <!-- 强制回收提示条（prd-API.md §4）：查看 / 编辑抽屉顶部红色，未被回收不渲染 -->
+      <RevokedBanner v-if="isEdit" label="API" :info="revokedInfo" />
       <!-- 抽屉顶部提示（2026-09-12 对齐 md §三.1 L102 · 审计 K35 / Q114 裁「按 md」）：三态均展示，逐字照 md -->
       <div class="ad-editor-note">1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。</div>
       <!-- 首行元信息（拍板：创建/更新/发布时间上移至此弱色展示） -->

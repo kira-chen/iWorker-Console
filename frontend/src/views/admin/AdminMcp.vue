@@ -26,7 +26,8 @@ import {
   getMcpServicePublishStatus,
   publishMcpService,
   delistMcpService,
-  withdrawMcpService
+  withdrawMcpService,
+  forceRevokeMcpService
 } from '@/api/market'
 import { resolveDisplayStatus } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
@@ -38,6 +39,8 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
+import { askForceRevoke } from '@/utils/forceRevoke'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
 import McpEditor from '@/components/admin/McpEditor.vue'
@@ -73,7 +76,7 @@ const editingId = ref(null)
 const editorReadonly = ref(false)
 const checkBusy = ref(null) // 立即检活进行中的行 id
 
-// 行内动作 busy 态：{ [id]: 'publish' | 'delist' | 'withdraw' | 'delete' }
+// 行内动作 busy 态：{ [id]: 'publish' | 'delist' | 'withdraw' | 'forceRevoke' | 'delete' }
 const busy = ref({})
 
 // 服务级发布态：{ [mcpDefId]: aggregateStatus }。消费后端服务级聚合端点（单目标端 USER_END）。
@@ -209,6 +212,10 @@ function canWithdraw(row) {
 }
 function canDelist(row) {
   return aggOf(row) === 'PUBLISHED' || aggOf(row) === 'PARTIAL'
+}
+/** 强制回收入口：已发布且无审核中操作（聚合态 PUBLISHED 即无待审；md §3.6.1）。 */
+function canForceRevoke(row) {
+  return aggOf(row) === 'PUBLISHED'
 }
 /** 删除守卫：仅未发布可删（已发布/审核中的服务客户端在用或在途，后端亦有引用保护）。 */
 function canDelete(row) {
@@ -435,6 +442,30 @@ async function delist(row) {
   runAction(row, 'delist', (id) => delistMcpService(id, {}), '已提交停用审核')
 }
 
+/**
+ * 强制回收（md §3.6.1）：与【停用】并列的紧急下线，立即生效、不进审核。
+ * 回收弹窗（原因必填）→ 二次确认由 askForceRevoke 承担；回收信息在行上（row.revoked），
+ * 故成功后除刷新发布态外还要重取列表行，「已回收」标签才会出现。
+ */
+async function forceRevoke(row) {
+  const reason = await askForceRevoke({
+    typeLabel: 'MCP 服务',
+    name: row.name,
+    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
+    refText: '岗位 / 技能'
+  })
+  if (reason == null) return
+  runAction(
+    row,
+    'forceRevoke',
+    async (id) => {
+      await forceRevokeMcpService(id, reason)
+      await list.reload()
+    },
+    '已强制回收'
+  )
+}
+
 async function remove(row) {
   const refCount = row.referencedBySkillCount || 0
   try {
@@ -533,9 +564,11 @@ async function remove(row) {
           </template>
         </el-table-column>
         <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
-        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+        <!-- 宽度多留一枚「已回收」小标签的位置 -->
+        <el-table-column label="状态" :width="COL.STATUS + 64" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+            <RevokedTag v-if="stateKey(row) === 'NOT_PUBLISHED'" :info="row.revoked" />
           </template>
         </el-table-column>
 
@@ -717,6 +750,16 @@ async function remove(row) {
                 @click="delist(row)"
               >
                 停用
+              </el-button>
+              <!-- 强制回收：已发布行位于【停用】之后（md §3.6.1），危险红色 -->
+              <el-button
+                v-if="canForceRevoke(row)"
+                link
+                type="danger"
+                :loading="busy[row.id] === 'forceRevoke'"
+                @click="forceRevoke(row)"
+              >
+                强制回收
               </el-button>
 
               <!-- ④ 危险操作置末：仅未发布可删 -->

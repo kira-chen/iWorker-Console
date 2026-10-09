@@ -24,7 +24,8 @@ import {
   deleteBizSystem,
   submitBizSystemPublish,
   withdrawBizSystem,
-  delistBizSystem
+  delistBizSystem,
+  forceRevokeBizSystem
 } from '@/api/admin'
 import { fmtTime } from '@/utils/docMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
@@ -32,6 +33,8 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
+import { askForceRevoke } from '@/utils/forceRevoke'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
@@ -243,6 +246,18 @@ async function deactivate(row) {
   runAction(row, 'deactivate', () => delistBizSystem(row.id, 'USER_END'), '已提交停用审核')
 }
 
+/** 强制回收（prd-业务系统.md §3）：立即生效、不进审核；回收弹窗 + 二次确认由 askForceRevoke 承担。 */
+async function forceRevoke(row) {
+  const reason = await askForceRevoke({
+    typeLabel: '业务系统',
+    name: row.name,
+    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
+    refText: '岗位 / 技能'
+  })
+  if (reason == null) return
+  runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收')
+}
+
 /** 删除（B8/BQ2）：软引用——被技能引用也可删，确认影响后继续。 */
 async function remove(row) {
   // 被技能引用时提示引用数（2026-09-28 待办 yuepu#37③ 负责人拍板补齐，与 MCP 页签一致）
@@ -335,9 +350,11 @@ async function remove(row) {
           </template>
         </el-table-column>
         <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
-        <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">
+        <!-- 宽度多留一枚「已回收」小标签的位置 -->
+        <el-table-column label="状态" :width="COL.STATUS + 64" class-name="col-nowrap" label-class-name="col-nowrap">
           <template #default="{ row }">
             <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+            <RevokedTag v-if="row.status === 'NOT_PUBLISHED'" :info="row.revoked" />
           </template>
         </el-table-column>
 
@@ -441,6 +458,16 @@ async function remove(row) {
                 @click="deactivate(row)"
               >
                 停用
+              </el-button>
+              <!-- 强制回收：已发布行位于【停用】之后（prd-业务系统.md §3），危险红色 -->
+              <el-button
+                v-if="canDeactivate(row)"
+                link
+                type="danger"
+                :loading="busy[row.id] === 'forceRevoke'"
+                @click="forceRevoke(row)"
+              >
+                强制回收
               </el-button>
 
               <!-- ③ 危险操作置末：仅未发布可删（软引用，被引用也可删） -->

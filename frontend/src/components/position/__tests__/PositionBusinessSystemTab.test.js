@@ -145,6 +145,7 @@ async function mount(props = {}) {
   app.component('el-table', elTable)
   app.component('el-table-column', elTableColumn)
   app.component('el-tag', elTag)
+  app.component('el-tooltip', { name: 'el-tooltip', props: ['content'], template: '<span class="tip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -199,6 +200,45 @@ describe('连接器页签 · 三区域展示', () => {
     expect(section('岗位私有 MCP').textContent).toContain('暂无绑定的私有 MCP')
     expect(section('岗位私有 API').textContent).toContain('暂无绑定的私有 API')
     expect(section('岗位私有业务系统').textContent).toContain('暂无绑定的业务系统')
+  })
+})
+
+describe('连接器页签 · 被强制回收的连接器（岗位 PRD §8）', () => {
+  const info = { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' }
+  it('三区域里已回收的行名称旁出「已回收」标签、引用保留、【移除】仍在；未回收的行不出', async () => {
+    listMcp.mockResolvedValue({ list: [{ ...ALL_MCPS[0], revoked: info }, ALL_MCPS[1]], total: 2 })
+    listApis.mockResolvedValue({ list: [{ ...ALL_APIS[0], revoked: info }, ALL_APIS[1]], total: 2 })
+    listBizSystems.mockResolvedValue({ list: [ALL_BIZS[0], ALL_BIZS[1]], total: 2 })
+    store.basic = { connectorMcpIds: ['mcp_1', 'mcp_2'], connectorApiIds: ['api_1'], businessSystemIds: ['biz_1'] }
+    await mount()
+    const tags = (title) => [...section(title).querySelectorAll('.cell .revoked-tag')].map((t) => t.textContent)
+    expect(tags('岗位私有 MCP')).toEqual(['已回收']) // 两行只有 mcp_1 已回收
+    expect(tags('岗位私有 API')).toEqual(['已回收'])
+    expect(tags('岗位私有业务系统')).toEqual([])
+    expect(sectionNames(section('岗位私有 MCP'))).toHaveLength(2)
+    expect(sectionBtn(section('岗位私有 MCP'), '移除')).toBeTruthy()
+  })
+
+  // 2026-10-09 /test-audit 补缺口 A7/A8（岗位 PRD §8 被强制回收规则）：业务系统区正向 + 悬停内容
+  it('业务系统区：已回收的行出「已回收」标签、悬停显示「回收原因：{原因}（{操作人} · {时间}）」；未回收行没有', async () => {
+    listBizSystems.mockResolvedValue({ list: [{ ...ALL_BIZS[0], revoked: info }, ALL_BIZS[1]], total: 2 })
+    store.basic = { connectorMcpIds: ['mcp_1'], connectorApiIds: ['api_1'], businessSystemIds: ['biz_1', 'biz_2'] }
+    await mount()
+    const bizSec = section('岗位私有业务系统')
+    expect(sectionNames(bizSec)).toEqual(['CRM 系统', 'ERP 系统'])
+    const tagged = [...bizSec.querySelectorAll('.cell')].filter((c) => c.querySelector('.revoked-tag'))
+    expect(tagged).toHaveLength(1)
+    expect(tagged[0].querySelector('.mc-name').textContent).toBe('CRM 系统') // 标签挂在被回收的那一行
+    expect(tagged[0].querySelector('.tip').getAttribute('data-tip')).toBe('回收原因：风险（admin · 2026-09-30 10:00）')
+    expect(sectionBtn(bizSec, '移除')).toBeTruthy() // 引用保留，仍可移除
+  })
+
+  it('MCP / API 区悬停内容同样带原因 · 操作人 · 时间', async () => {
+    listMcp.mockResolvedValue({ list: [{ ...ALL_MCPS[0], revoked: info }], total: 1 })
+    listApis.mockResolvedValue({ list: [{ ...ALL_APIS[0], revoked: { ...info, reason: 'API 下线', operator: 'li' } }], total: 1 })
+    await mount()
+    expect(section('岗位私有 MCP').querySelector('.revoked-tag').closest('.tip').getAttribute('data-tip')).toBe('回收原因：风险（admin · 2026-09-30 10:00）')
+    expect(section('岗位私有 API').querySelector('.revoked-tag').closest('.tip').getAttribute('data-tip')).toBe('回收原因：API 下线（li · 2026-09-30 10:00）')
   })
 })
 
