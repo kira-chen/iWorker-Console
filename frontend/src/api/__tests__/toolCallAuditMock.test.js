@@ -8,9 +8,7 @@ import {
   knowledgeParamsOf,
   knowledgeOutputOf,
   EXEC_RESULT_LABEL,
-  UNATTENDED_RESULT_LABEL,
-  KNOWLEDGE_RESULT_LABEL,
-  UNATTENDED_RESULTS
+  KNOWLEDGE_RESULT_LABEL
 } from '../toolCallAuditMock'
 
 /**
@@ -23,9 +21,13 @@ import {
  * 的「预授权」（auth 字段）与「任务运行编号」（runId 字段）随改版废弃。
  *
  * 2026-10-09 同日第二轮改版：单次工具调用不记录耗时与具体执行时刻，系统本来就不采集；
- * 结果收窄为 成功 / 失败（技能调用；任务运行另加"执行前拦截"）；技能调用不展示"执行中"，
- * 原「待确认」的 PENDING 状态没有可展示的记录，C- 系列不再有示例；「用户确认」收窄为
- * 不需要确认 / 已确认两态，确认被拒绝时 confirm 为 null。
+ * 技能调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
+ * 的记录，C- 系列不再有示例；「用户确认」收窄为不需要确认 / 已确认两态，确认被拒绝时
+ * confirm 为 null。
+ *
+ * 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索的整体结果也收窄为 成功 / 失败
+ * 两态——原「执行前拦截」并入「失败」，原因文案保留。三组现在判定规则、取值集合完全一致，
+ * 只是知识库检索的「失败」文案写法不同（"执行失败"），且继续不采用记录单元改版（见下）。
  */
 describe('三组记录', () => {
   it('编号在三组之间不重复，前缀区分来源：C- 技能调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
@@ -36,19 +38,20 @@ describe('三组记录', () => {
     expect(knowledgeCallRecords.every((r) => r.id.startsWith('K-'))).toBe(true)
   })
 
-  it('知识库检索的整体结果取值 key 集合与任务运行相同（均无人值守，没有"进行中"），但显示文案各自独立', () => {
-    expect(UNATTENDED_RESULTS).toEqual(['SUCCESS', 'FAILED', 'BLOCKED'])
+  it('三组记录的整体结果取值 key 集合相同（均只有 成功 / 失败），但"失败"显示文案各自独立', () => {
+    expect(Object.keys(EXEC_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
+    expect(Object.keys(KNOWLEDGE_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
     for (const r of taskCallRecords) {
-      expect(UNATTENDED_RESULTS).toContain(r.result)
-      expect(UNATTENDED_RESULT_LABEL[r.result]).toBeTruthy()
+      expect(['SUCCESS', 'FAILED']).toContain(r.result)
+      expect(EXEC_RESULT_LABEL[r.result]).toBeTruthy()
     }
     for (const r of knowledgeCallRecords) {
-      expect(UNATTENDED_RESULTS).toContain(r.result)
+      expect(['SUCCESS', 'FAILED']).toContain(r.result)
       expect(KNOWLEDGE_RESULT_LABEL[r.result]).toBeTruthy()
     }
     // 两个页签的 PRD 原文"失败"写法不一致（任务运行"失败"、知识库检索"执行失败"），
     // 不能共用同一份标签——这正是本条用例要钉住的，避免以后又合并成一个常量
-    expect(UNATTENDED_RESULT_LABEL.FAILED).toBe('失败')
+    expect(EXEC_RESULT_LABEL.FAILED).toBe('失败')
     expect(KNOWLEDGE_RESULT_LABEL.FAILED).toBe('执行失败')
   })
 
@@ -138,22 +141,21 @@ describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运
     }
   })
 
-  it('hasWrite / result 由 calls 推导：看最后一次调用——成功记成功，拦截记执行前拦截，其余记失败', () => {
+  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与技能调用共用同一套规则（deriveExec）', () => {
     for (const r of taskCallRecords) {
       expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
       const last = r.calls[r.calls.length - 1]
-      const expected = last.result === 'SUCCESS' ? 'SUCCESS' : last.result === 'BLOCKED' ? 'BLOCKED' : 'FAILED'
-      expect(r.result).toBe(expected)
+      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
     }
   })
 
-  it('样例覆盖三种整体结果，且至少各有一条写操作与读操作', () => {
-    expect(new Set(taskCallRecords.map((r) => r.result))).toEqual(new Set(['SUCCESS', 'FAILED', 'BLOCKED']))
+  it('样例覆盖两种整体结果，且至少各有一条写操作与读操作', () => {
+    expect(new Set(taskCallRecords.map((r) => r.result))).toEqual(new Set(['SUCCESS', 'FAILED']))
     expect(taskCallRecords.some((r) => r.hasWrite)).toBe(true)
     expect(taskCallRecords.some((r) => !r.hasWrite)).toBe(true)
   })
 
-  it('失败 / 拦截的记录都有原因概要；执行前拦截的运行没有「未授权」这一类原因（免授权已拍板）', () => {
+  it('失败的记录都有原因概要；没有「未授权」这一类原因（自动化任务免授权已拍板）', () => {
     for (const r of taskCallRecords) {
       if (r.result !== 'SUCCESS') expect(r.reason).toBeTruthy()
       expect(r.reason).not.toContain('未授权')
@@ -192,7 +194,7 @@ describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记�
       }
     }
     const kinds = new Set(knowledgeCallRecords.map((r) => (r.result === 'SUCCESS' ? (r.hitCount ? 'hit' : 'nohit') : r.result)))
-    expect(kinds).toEqual(new Set(['hit', 'nohit', 'FAILED', 'BLOCKED']))
+    expect(kinds).toEqual(new Set(['hit', 'nohit', 'FAILED']))
   })
 
   it('请求参数由记录生成：检索词 + topK，MCP 多一行检索工具', () => {
@@ -203,7 +205,7 @@ describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记�
     expect(knowledgeParamsOf(mcp)[0][2]).toBe(mcp.query)
   })
 
-  it('响应结果：成功有命中列表；无命中 / 失败 / 拦截各有对应说明', () => {
+  it('响应结果：成功有命中列表；无命中 / 失败各有对应说明（失败统一走原因文案，含原"执行前拦截"的情形）', () => {
     const hit = knowledgeCallRecords.find((r) => r.result === 'SUCCESS' && r.hitCount > 0)
     const out = knowledgeOutputOf(hit)
     expect(out.headers).toEqual(['标题', '来源名称'])
@@ -211,7 +213,8 @@ describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记�
     expect(out.summary).toContain(`共命中 ${hit.hitCount} 条`)
 
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'SUCCESS' && !r.hitCount)).text).toContain('命中 0 条')
+    const noAccess = knowledgeCallRecords.find((r) => r.reason.includes('访问权限'))
+    expect(knowledgeOutputOf(noAccess).text).toBe(noAccess.reason)
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'FAILED')).note).toContain('【待补充】')
-    expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'BLOCKED')).text).toContain('没有实际响应结果')
   })
 })

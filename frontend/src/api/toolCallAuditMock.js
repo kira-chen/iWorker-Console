@@ -22,8 +22,13 @@
 //     都有了结果后才出现在审计记录里；连带技能执行层面的整体结果也只剩 成功 / 失败（§一「记录单元」）。
 //   - 「用户确认」字段收窄为 不需要确认 / 已确认 两态；确认环节本身被拒绝（原「用户取消」）不再单独
 //     标确认状态，由执行结果=失败 + 原因文案"用户取消本次操作"表达。
-//   - 岗位自动化任务同样不记录耗时与具体执行时刻；但「执行前拦截」与「失败」两态继续分开（不像技能
-//     调用那样并入失败）——无人值守场景下"压根没跑"和"跑了但出错"对应不同的处置路径，值得区分。
+//   - 岗位自动化任务同样不记录耗时与具体执行时刻。
+//
+// 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索也收窄为只有 成功 / 失败 两态——
+// 原「执行前拦截」并入「失败」，原因文案保留。岗位自动化任务的结果判定规则与技能调用完全一致
+// （看最后一次工具调用是否成功），两处合并成同一个 deriveExec 函数，不再分别定义；岗位自动化
+// 任务的列表层标签直接复用 EXEC_RESULT_LABEL（文案与技能调用一致，都是"失败"）。知识库检索
+// 页签继续用自己的 KNOWLEDGE_RESULT_LABEL（"执行失败"写法不同），但取值也收窄为两态。
 //
 // 技能调用的示例数据参考已退场的旧交互原型（数字员工管理端交互原型.html · 05治理/工具调用审计，
 // 原型本身已于 2026-09-09/10 退场不作依据），本次改版重新分组为执行单元，场景未变、组合方式变了。
@@ -43,19 +48,17 @@ export const CONFIRM_LABEL = { NONE: '不需要确认', CONFIRMED: '已确认' }
 
 export const NATURE_LABEL = { READ: '读', WRITE: '写' }
 
-/** 技能执行（列表层）的整体结果：不展示「执行中」，只有成功 / 失败两态。 */
+/** 技能调用 / 岗位自动化任务（列表层）的整体结果：只有成功 / 失败两态，不展示"执行中"，
+ *  两个页签文案一致，直接共用这一份。 */
 export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
 
-/** 岗位自动化任务（列表层，无人值守）的整体结果：成功 / 失败 / 执行前拦截三态（PRD §8.2/§8.4）。 */
-export const UNATTENDED_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败', BLOCKED: '执行前拦截' }
 /** 知识库检索自己的结果文案（PRD §九），取值 key 与上面相同，但"失败"写法不同（"执行失败"），
- *  两个页签各自的 PRD 原文就不一致，不能共用一套标签——共用会让其中一边文案显示错误。 */
-export const KNOWLEDGE_RESULT_LABEL = { SUCCESS: '成功', FAILED: '执行失败', BLOCKED: '执行前拦截' }
-/** 上面两套结果取值的 key 相同，按口径固定顺序排列，供筛选下拉复用。 */
-export const UNATTENDED_RESULTS = ['SUCCESS', 'FAILED', 'BLOCKED']
+ *  两个页签 PRD 原文就不一致，不能共用一套标签——共用会让其中一边文案显示错误。 */
+export const KNOWLEDGE_RESULT_LABEL = { SUCCESS: '成功', FAILED: '执行失败' }
 
 /**
- * 从一次技能执行的工具调用明细，推导列表层需要的汇总字段（§一「记录单元」判定规则）：
+ * 从一次技能执行 / 任务运行的工具调用明细，推导列表层需要的汇总字段（§一「记录单元」判定规则，
+ * 技能调用与岗位自动化任务共用同一套判定——两者现在都只有 成功 / 失败 两态）：
  *   hasWrite  明细里有没有写操作
  *   result    看明细里最后一次调用是否成功——这是 mock 对「是否完成预期产出」的简化模拟
  *             （真实判定由后端 / Agent 决定，这里只演示规则形态：哪怕中途有调用失败，只要
@@ -66,14 +69,6 @@ function deriveExec(calls) {
   const hasWrite = calls.some((c) => c.nature === 'WRITE')
   const last = calls[calls.length - 1]
   const result = last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
-  return { hasWrite, result }
-}
-
-/** 岗位自动化任务版：BLOCKED 单独保留为「执行前拦截」，不并入「失败」。 */
-function deriveTaskExec(calls) {
-  const hasWrite = calls.some((c) => c.nature === 'WRITE')
-  const last = calls[calls.length - 1]
-  const result = last.result === 'SUCCESS' ? 'SUCCESS' : last.result === 'BLOCKED' ? 'BLOCKED' : 'FAILED'
   return { hasWrite, result }
 }
 
@@ -193,8 +188,9 @@ export async function listToolCallAudits() {
 /* ══════════════ 岗位自动化任务 ══════════════
  * 记录单元＝一次任务运行：calls 是这次运行里按发生顺序调用的工具明细，结构同技能调用，
  * 只是没有 confirm 字段——任务无人值守，全部操作免授权、不经确认（2026-10-09 与研发讨论拍板）。
- * 同样不记录耗时与具体执行时刻。user / position 是任务所属用户（领用该岗位的用户），不是
- * 发起人；发起方是调度，见 trigger。 */
+ * 同样不记录耗时与具体执行时刻；整体结果与技能调用共用同一套判定（deriveExec）与标签
+ * （EXEC_RESULT_LABEL），只有 成功 / 失败 两态，原「执行前拦截」并入「失败」。
+ * user / position 是任务所属用户（领用该岗位的用户），不是发起人；发起方是调度，见 trigger。 */
 export const taskCallRecords = [
   {
     id: 'T-2001', date: '2026-09-21', time: '09:00:03', user: '陈杰', position: '市场研究岗', task: '每周竞品动态汇总', trigger: '定时·每周一 09:00',
@@ -228,7 +224,7 @@ export const taskCallRecords = [
     id: 'T-2005', date: '2026-09-25', time: '17:00:03', user: '张浩', position: '经营分析岗', task: '供应商付款提醒', trigger: '定时·每周五 17:00',
     reason: '业务系统·用友财务 不在工具白名单',
     calls: [
-      { tool: '业务系统·用友财务', action: '提交付款申请', nature: 'WRITE', result: 'BLOCKED', reason: '不在工具白名单' }
+      { tool: '业务系统·用友财务', action: '提交付款申请', nature: 'WRITE', result: 'FAILED', reason: '不在工具白名单' }
     ]
   },
   {
@@ -273,20 +269,21 @@ export const taskCallRecords = [
     id: 'T-2010', date: '2026-09-28', time: '09:00:06', user: '张浩', position: '经营分析岗', task: '库存低位预警', trigger: '定时·每天 09:00',
     reason: 'MCP·知识库 MCP 不在工具白名单',
     calls: [
-      { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'BLOCKED', reason: '不在工具白名单' }
+      { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'FAILED', reason: '不在工具白名单' }
     ]
   }
-].map((r) => ({ ...r, ...deriveTaskExec(r.calls) }))
+].map((r) => ({ ...r, ...deriveExec(r.calls) }))
 
 export async function listTaskCallAudits() {
   return taskCallRecords
 }
 
 /* ══════════════ 知识库检索 ══════════════
- * 2026-10-09 与研发讨论后明确：本页签不采用「记录单元」改版，也不受同日第二轮"不记录耗时 /
- * 具体执行时刻"的调整影响，维持改版前口径——
- * 只记「经 API / MCP 数据源向第三方知识服务发出的检索」：上传型数据源走平台 RAG，不是外部调用，不入本表。
- * 只读、不需确认，结果只有 成功 / 执行失败 / 执行前拦截；命中 0 条属于「成功」，靠 hitCount 区分。
+ * 2026-10-09 与研发讨论后明确：本页签不采用「记录单元」改版、不受"不记录耗时/具体执行时刻"
+ * 的调整影响，维持改版前口径——只记「经 API / MCP 数据源向第三方知识服务发出的检索」：
+ * 上传型数据源走平台 RAG，不是外部调用，不入本表。
+ * 2026-10-09 第三轮改版：执行结果收窄为 成功 / 执行失败 两态（原「执行前拦截」并入「执行失败」，
+ * 原因文案保留，如"无该知识库访问权限"）。只读、不需确认；命中 0 条属于「成功」，靠 hitCount 区分。
  * source 格式与另两组的 tool 一致（数据源类型·名称）；tool 仅 MCP 有（所选检索工具），API 为空。 */
 const HITS_LAW = [
   ['GB/T 22239-2019 信息安全技术 网络安全等级保护基本要求', '法规库检索'],
@@ -299,7 +296,7 @@ export const knowledgeCallRecords = [
   { id: 'K-3007', date: '2026-09-28', time: '09:41:07', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据出境评估办法适用范围', topK: 5, hitCount: 0, hits: [], result: 'SUCCESS', reason: '', duration: '0.7 秒' },
   { id: 'K-3006', date: '2026-09-27', time: '16:21:30', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
   { id: 'K-3005', date: '2026-09-27', time: '16:20:45', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
-  { id: 'K-3004', date: '2026-09-27', time: '10:31:58', user: '张浩', position: '经营分析岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '付款审批权限矩阵', topK: 5, hitCount: 0, hits: [], result: 'BLOCKED', reason: '无该知识库访问权限', duration: '未执行' },
+  { id: 'K-3004', date: '2026-09-27', time: '10:31:58', user: '张浩', position: '经营分析岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '付款审批权限矩阵', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '无该知识库访问权限', duration: '未执行' },
   { id: 'K-3003', date: '2026-09-26', time: '14:15:22', user: '周敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'hybrid_search', query: '出口管制合规声明模板', topK: 5, hitCount: 3, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.1 秒' },
   { id: 'K-3002', date: '2026-09-25', time: '15:48:10', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '等保三级对系统日志留存的要求', topK: 5, hitCount: 4, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.3 秒' },
   { id: 'K-3001', date: '2026-09-24', time: '11:03:19', user: '刘敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据安全法对跨境传输的规定', topK: 5, hitCount: 5, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '0.8 秒' }
@@ -315,9 +312,10 @@ export function knowledgeParamsOf(record) {
   return rows
 }
 
-/** 知识库检索的「实际响应结果」：命中列表 [标题, 来源名称]（PRD §九.5，对应数据源响应映射的 title / sourceName）。 */
+/** 知识库检索的「实际响应结果」：命中列表 [标题, 来源名称]（PRD §九.5，对应数据源响应映射的 title / sourceName）。
+ *  失败统一走 FAILED 分支——原"执行前拦截"（如无访问权限）也并入失败，原因文案区分具体情形，
+ *  不再单独判断"请求有没有真的发出去"。 */
 export function knowledgeOutputOf(record) {
-  if (record.result === 'BLOCKED') return { text: '检索未执行，因此没有实际响应结果。' }
   if (record.result === 'FAILED') return { text: record.reason, note: '错误码及原始响应：【待补充】' }
   if (record.hitCount === 0) return { text: '检索成功，命中 0 条。' }
   return {

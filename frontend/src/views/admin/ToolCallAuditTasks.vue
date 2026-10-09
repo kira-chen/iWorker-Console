@@ -8,15 +8,13 @@
  * 操作免授权、不经确认，读写一致处理——原「写操作预授权」（已预授权 / 未授权）整套字段废弃；
  * 原「任务运行编号」字段随之废弃，记录本身已是运行级，不必再用字段串联。
  *
- * 和「技能调用」页签的差别都来自「没有用户在场」：
- *   - user / position 是任务所属用户（领用该岗位的用户）及其岗位，不是发起人；触发的是调度计划；
- *   - 没有用户确认、没有授权环节，读写操作展示规则一致；
- *   - 没有「进行中」——免授权不会运行到一半停下等人处理，执行结果只有成功 / 失败 / 执行前拦截三类；
- *     「执行前拦截」原因仍可能是白名单、权限等（与是否写操作无关），不会再出现「未授权」。
+ * 和「技能调用」页签的差别都来自「没有用户在场」：user / position 是任务所属用户（领用该岗位
+ * 的用户）及其岗位，不是发起人，触发的是调度计划；没有用户确认、没有授权环节，读写操作展示
+ * 规则一致；不展示「进行中」——免授权不会运行到一半停下等人处理。
  *
- * 2026-10-09 同日第二轮改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程
- * 时间数据。执行结果三态（成功 / 失败 / 执行前拦截）不受影响，继续保留——这条跟技能调用不同，
- * 不并入「失败」，「压根没跑」和「跑了但出错」对无人值守的任务来说是不同的处置路径。
+ * 2026-10-09 同日改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程时间
+ * 数据。执行结果收窄为**成功 / 失败**两态（原「执行前拦截」并入「失败」，原因文案保留）——
+ * 与技能调用完全同构，判定规则与标签都直接复用（deriveExec / EXEC_RESULT_LABEL）。
  */
 import { computed, reactive, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
@@ -35,14 +33,13 @@ import {
   taskCallRecords,
   paramsOf,
   outputOf,
-  UNATTENDED_RESULT_LABEL,
-  UNATTENDED_RESULTS,
+  EXEC_RESULT_LABEL,
   RESULT_LABEL,
   NATURE_LABEL
 } from '@/api/toolCallAuditMock'
 
-const RUN_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning' }
-const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning' }
+const RUN_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const YES_NO = { true: '是', false: '否' }
 const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
 
@@ -72,7 +69,7 @@ const metrics = computed(() => {
       key: 'all',
       label: '运行总数',
       value: all.length,
-      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')} / 拦截 ${count('BLOCKED')}`
+      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'write',
@@ -86,13 +83,6 @@ const metrics = computed(() => {
       value: count('FAILED'),
       sub: '按整体结果判定',
       danger: true
-    },
-    {
-      key: 'blocked',
-      label: '执行前拦截',
-      value: count('BLOCKED'),
-      sub: '未进入工具执行阶段',
-      warn: true
     }
   ]
 })
@@ -100,7 +90,6 @@ const metrics = computed(() => {
 const activeMetric = computed(() => {
   if (query.hasWrite === true) return 'write'
   if (query.result === 'FAILED') return 'failed'
-  if (query.result === 'BLOCKED') return 'blocked'
   return ''
 })
 
@@ -109,12 +98,11 @@ function chooseMetric(key) {
   query.hasWrite = ''
   if (key === 'write') query.hasWrite = true
   if (key === 'failed') query.result = 'FAILED'
-  if (key === 'blocked') query.result = 'BLOCKED'
   list.search()
 }
 
 const HELP = [
-  '执行结果包含成功、失败、执行前拦截三类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
+  '执行结果只有成功、失败两类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
   '单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
@@ -126,7 +114,7 @@ function exportCsv() {
     ['请求编号', '日期', '时间', '用户', '岗位', '任务', '触发方式', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.task, r.trigger,
-      YES_NO[r.hasWrite], UNATTENDED_RESULT_LABEL[r.result], r.reason
+      YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -146,7 +134,7 @@ const detail = computed(() => {
   if (!d) return null
   return {
     title: `运行详情 · ${d.id}`,
-    result: { label: UNATTENDED_RESULT_LABEL[d.result], type: RUN_RESULT_TAG[d.result] },
+    result: { label: EXEC_RESULT_LABEL[d.result], type: RUN_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '自动化任务', value: d.task },
@@ -170,8 +158,7 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体连接器状态，并确认是否已有后续重试记录。'
-  if (d.result === 'BLOCKED') return '请核对该岗位允许使用的工具和任务所属用户权限，任务下次运行时会重新检查。'
+  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
   return '本次运行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>
@@ -193,7 +180,7 @@ function resultExplain(d) {
         class="lt-date-range"
       />
       <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="key in UNATTENDED_RESULTS" :key="key" :label="UNATTENDED_RESULT_LABEL[key]" :value="key" />
+        <el-option v-for="(label, key) in EXEC_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-select v-model="query.hasWrite" placeholder="全部" clearable class="lt-filter" @change="list.search()">
         <el-option label="是" :value="true" />
@@ -252,7 +239,7 @@ function resultExplain(d) {
           </el-table-column>
           <el-table-column label="执行结果 / 原因" min-width="220">
             <template #default="{ row }">
-              <StatusTag :type="RUN_RESULT_TAG[row.result]">{{ UNATTENDED_RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag :type="RUN_RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>

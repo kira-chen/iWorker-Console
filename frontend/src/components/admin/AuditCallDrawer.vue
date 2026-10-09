@@ -11,7 +11,7 @@
  *
  * @prop {boolean} visible v-model:visible
  * @prop {string} title 抽屉标题
- * @prop {{label:string,type:string}} result 整体结果标签（成功 / 失败，或任务运行的执行前拦截）
+ * @prop {{label:string,type:string}} result 整体结果标签（成功 / 失败，两页签取值一致）
  * @prop {Array<{label:string,value:string,mono?:boolean}>} summary 操作摘要
  * @prop {Array<Object>} calls 工具调用明细，字段见 AuditCallDetailItem；为空数组时展示「未调用外部工具」
  * @prop {string} explain 结果说明
