@@ -16,7 +16,7 @@ import { passthrough, elEmpty } from './helpers/commonStubs'
  * 无待分配申请的普通用户分配后直接 reload（不调 markApplicationAssigned）。
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §二.5 / §4.2（批量绑定，此前零用例）：
- * 未勾选点【批量绑定】→ warning；勾选后按钮带已选数徽标、弹窗「已选 N 名用户」；未选岗位 →「请选择要绑定的岗位」；
+ * 未勾选【批量绑定】置灰；勾选后按钮带已选数徽标、弹窗「已选 N 名用户」；未选岗位 →「请选择要绑定的岗位」；
  * 二次确认文案「将 N 名用户（…）统一绑定至「X」？」；取消确认不绑定；确认后逐个 setUserPosition；
  * 有 pendingRequestId 的用户补调 markApplicationAssigned（待办 yuepu#9② 回归）；
  * 成功 toast「已将 N 名用户绑定至「X」」、关弹窗、清勾选、重拉列表与待分配计数；失败 → 错误提示、弹窗保持。
@@ -385,12 +385,14 @@ const confirmBind = async (dlg) => {
 }
 
 describe('AdminPositionAssignments —— 批量绑定（2026-10-08 对齐岗位管理 md §二.5 / §4.2）', () => {
-  it('未勾选任何用户就点【批量绑定】→ 提示「请先勾选要批量绑定的用户」，不弹批量绑定弹窗', async () => {
+  it('未勾选任何用户 →【批量绑定】置灰不可点（md §二.5「勾选用户后激活，未勾选时置灰」），点击不弹批量绑定弹窗；勾选后激活', async () => {
     await mount()
+    expect(batchBtn().disabled).toBe(true)
     batchBtn().click()
     await flush()
-    expect(ElMessage.warning).toHaveBeenCalledWith('请先勾选要批量绑定的用户')
     expect(container.querySelector('.el-dialog[data-title="批量绑定岗位"]')).toBeNull()
+    await tick(0)
+    expect(batchBtn().disabled).toBe(false)
   })
 
   it('勾选 2 名用户 →【批量绑定】按钮右侧徽标显示 2；打开弹窗顶部写「已选 2 名用户」', async () => {

@@ -16,7 +16,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  * 覆盖点：懒加载（仅切到 knowledge 页签才取数）、按岗位 id 过滤、列渲染（数据源汇总 / 文档数 / 三态标签）、
  *         名称搜索 + 状态筛选（点【查询】才生效）、空态、接口失败 + 重试、【查看】路由参数、【检索测试】弹窗。
  *
- * 疑似缺陷 1 条（it.fails）：停用审核在途（显示「审核中」）的已发布知识库仍出【检索测试】。
+ * 停用审核在途（显示「审核中」）的已发布知识库不出【检索测试】（yuepu#60⑦ 已修，按 isOnline 判定）。
  * 真实挂载（真 Element Plus 表格 / 输入框 / 下拉），只 vi.mock：api 层 listKnowledgeBases、vue-router、
  * position store、KnowledgeSearchDialog（替换为暴露 visible / kb 的探针）。activeTab 由宿主 provide('pdActiveTab')。
  */
@@ -198,9 +198,11 @@ describe('知识页签 · 行内操作（md §三.5.2 / §三.11）', () => {
     expect(cellTexts(rowByName('审批中库'))[4]).toBe('审核中')
   })
 
-  it.fails('已发布但停用审核在途（列表显示「审核中」）的知识库不出【检索测试】（疑似缺陷：页签按 row.status===PUBLISHED 判定，未排除 pendingAction；md 岗位 §三.5.2「已发布知识库可用」+ 知识库 md §三.2「待发布和待停用统一展示审核中」「审核中追加【撤回】；已发布追加【停用】【检索测试】」）', async () => {
+  it('已发布但停用审核在途（列表显示「审核中」）的知识库不出【检索测试】，仍有【查看】（知识库 md §三.2：已发布追加【停用】【检索测试】，审核中追加【撤回】；yuepu#60⑦）', async () => {
     await mount()
     expect(btnByText(rowByName('审批中库'), '检索测试')).toBeUndefined()
+    expect(btnByText(rowByName('审批中库'), '查看')).toBeTruthy()
+    expect(btnByText(rowByName('经营制度库'), '检索测试')).toBeTruthy()
   })
 
   it('点【查看】→ 跳知识库模块，query 带 action=view、kbId、岗位上下文（positionId / positionName）', async () => {

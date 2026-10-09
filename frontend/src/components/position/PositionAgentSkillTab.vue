@@ -113,6 +113,14 @@ const agentSkillIdsBefore = ref([])
 const agentSkillOptions = ref([])
 const agentSkillLoading = ref(false)
 const agentSkillKeyword = ref('')
+// md §6.4：候选「仅展示已发布且未被当前岗位引用过的岗位私有技能……同一岗位内同一技能只引用一次」：
+// 排除本岗位其它 Agent 已引用的技能；正在编辑的这个 Agent 自己已引用的保留（要能取消勾选）。（yuepu#60⑥）
+const agentSkillCandidates = computed(() => {
+  const usedElsewhere = new Set(
+    store.agents.filter((a) => a.agentId !== agentEditId.value).flatMap((a) => (a.skills || []).map((s) => s.skillId))
+  )
+  return agentSkillOptions.value.filter((o) => !usedElsewhere.has(o.id))
+})
 const agentSkillAtLimit = computed(() => agentDraft.value.skillIds.length >= LIMITS.SKILL_MAX)
 
 async function loadAgentSkillOptions() {
@@ -212,43 +220,6 @@ async function saveAgentDraft() {
   } finally {
     agentSaving.value = false
   }
-}
-
-async function onReorderSkills(agentId, newSkills) {
-  store.reorderSkillsLocal(agentId, newSkills)
-  // 逐条 PUT sortOrder 持久化（决议 9 整体 PUT 思路，最小代价）
-  try {
-    await Promise.all(
-      newSkills.map((s, i) => store.patchSkill(s.skillId, { sortOrder: i }))
-    )
-  } catch (e) {
-    ElMessage.error('调序保存失败')
-  }
-}
-// Agent↔Agent 跨泳道迁移：走 assign 端点（PUT /skills/{id}/assign）。收纳区退役后，仅服务白板内
-// 把技能从一个 Agent 拖到另一个 Agent。
-async function assignSkillTo(skillId, fromAgentId, toAgentId) {
-  if (fromAgentId === toAgentId) return
-  const target = store.agents.find((a) => a.agentId === toAgentId)
-  try {
-    await store.assignSkillToAgent(skillId, toAgentId)
-    ElMessage.success(`已分配技能到 ${target?.name || 'Agent'}`)
-  } catch (e) {
-    // 1002 该 Agent 技能数上限 / 1003 跨岗位非法 / 其它
-    if (e?.code === 1002) {
-      ElMessage.error(`${target?.name || '该 Agent'} 技能数已达上限`)
-    } else if (e?.code === 1003) {
-      ElMessage.error('该技能不属于本岗位，无法分配')
-    } else {
-      ElMessage.error(e?.message || '分配失败')
-    }
-    // 失败：重拉详情回到后端真实态
-    store.load(store.positionId)
-  }
-}
-
-function onMoveSkill({ skillId, fromAgentId, toAgentId }) {
-  assignSkillTo(skillId, fromAgentId, toAgentId)
 }
 
 /* ============================ 技能从 Agent 移除（V84 引用模型：可逆 detach） ============================
@@ -370,11 +341,11 @@ async function onDeleteSkill({ agentId, skillId }) {
       <div class="pd-card-body">
         <el-input v-model="agentSkillKeyword" placeholder="搜索技能名称、描述或标识" clearable />
         <div v-loading="agentSkillLoading" class="pd-agent-skill-list">
-          <div v-if="!agentSkillLoading && !agentSkillOptions.length" class="pd-agent-skill-empty">
+          <div v-if="!agentSkillLoading && !agentSkillCandidates.length" class="pd-agent-skill-empty">
             暂无可引用的岗位私有技能
           </div>
           <el-checkbox
-            v-for="opt in agentSkillOptions"
+            v-for="opt in agentSkillCandidates"
             :key="opt.id"
             :model-value="agentDraft.skillIds.includes(opt.id)"
             :disabled="agentDrawerReadonly || (agentSkillAtLimit && !agentDraft.skillIds.includes(opt.id))"

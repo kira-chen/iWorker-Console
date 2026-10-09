@@ -10,7 +10,8 @@
  *     ② 编目信息（行内网格 DossierCatalogGrid，N / 8）
  *     ③ 档案详情（行内网格 DossierRuleListEditor，N / 8）
  * 字段定义与校验按 md §4.2.1–4.2.3；原型有而 md 无的（字段类型「标签（枚举）」、唯一 ID 联动必填）不做。
- * 新建档案弹窗按 md §4.2：【取消】【下一步】+ 提示「工作档案已创建，请继续配置编目信息和档案详情」。
+ * 新建档案按 md §4.1：点「＋ 新增」直接在右侧展开空白档案表单（无弹窗），沿用同一套【保存】【取消】
+ * （md §4.2 只有这两个按钮；yuepu#60④）。
  *
  * 事件流 / 档案视图 / 抽取 / 归纳等运行时在客户端，本页只配规则。
  * 保存为手动：元信息 → 卡位（原子批量）→ 策略 / 规则。
@@ -260,9 +261,7 @@ async function selectTable(row) {
   await loadDetail(row.id)
 }
 
-/* ============================ 新建：弹窗起名 →【下一步】进编辑态（md §4.2） ============================ */
-const createDialogOpen = ref(false)
-const createDraft = reactive({ label: '', description: '' })
+/* ============================ 新建：右侧直接展开空白表单（md §4.1「点击新增一条档案，右侧弹出档案表单」） ============================ */
 async function startCreate() {
   if (props.readonly) return
   if (props.positionId == null) {
@@ -270,22 +269,9 @@ async function startCreate() {
     return
   }
   if (!(await confirmDiscardIfDirty())) return
-  createDraft.label = ''
-  createDraft.description = ''
-  createDialogOpen.value = true
-}
-function confirmCreate() {
-  const label = (createDraft.label || '').trim()
-  if (!label) {
-    ElMessage.warning('请填写档案名称')
-    return
-  }
-  createDialogOpen.value = false
   selectedId.value = NEW
   loadError.value = false
-  resetForm(label, (createDraft.description || '').trim())
-  // md §4.2：点【下一步】后提示继续配置编目信息与档案详情
-  ElMessage.success('工作档案已创建，请继续配置编目信息和档案详情')
+  resetForm()
 }
 
 /* ============================ 编目信息 / 档案详情：行内网格 ============================ */
@@ -645,22 +631,6 @@ function cardFieldCount(t) {
         </template>
       </main>
     </div>
-
-    <!-- 弹窗：新建工作档案（md §4.2：【取消】【下一步】） -->
-    <el-dialog v-model="createDialogOpen" title="新建工作档案" width="480px" :close-on-click-modal="false" append-to-body>
-      <el-form label-position="top" class="pd-drawer-form">
-        <el-form-item label="档案名称" required>
-          <el-input v-model="createDraft.label" maxlength="64" placeholder="如「经营分析报告」" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="createDraft.description" type="textarea" :rows="3" maxlength="500" placeholder="描述档案用途，如「沉淀岗位生成的周期分析结论」" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="confirmCreate">下一步</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 

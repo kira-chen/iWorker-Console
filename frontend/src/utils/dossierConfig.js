@@ -39,7 +39,7 @@ export const EXTRACT_MODES = [
 /** 业务规则上限（与卡片字段对称，2026-08-28）。 */
 export const MAX_RULES = 8
 
-export const SUMMARY_N_RANGE = { min: 1, max: 50 }
+export const SUMMARY_N_RANGE = { min: 1, max: 10 } // md 岗位 §4.2.3：x 下限 1，上限 10，默认 5
 export const STALE_DAYS_RANGE = { min: 1, max: 365 }
 export const MAX_KEY_LEN = 64
 

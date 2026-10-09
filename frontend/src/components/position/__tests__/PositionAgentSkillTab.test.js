@@ -301,6 +301,7 @@ describe('新增 / 编辑 Agent 抽屉（md §6.2 + 字段一览表 #5.1/#5.2）
   })
 
   it('打开抽屉即拉技能库候选：listSkills({ page:1, size:200, status:"published" })，候选渲染名称与描述（空描述显示「暂无描述」）', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }] // 本岗位尚无引用，候选全量展示
     await mount()
     await clickNewAgent()
     expect(listSkills).toHaveBeenCalledWith({ page: 1, size: 200, status: 'published' })
@@ -311,6 +312,7 @@ describe('新增 / 编辑 Agent 抽屉（md §6.2 + 字段一览表 #5.1/#5.2）
 
   it('候选接口直接返回数组时同样渲染', async () => {
     listSkills.mockImplementation(() => Promise.resolve(skillFixture(2, 500)))
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }]
     await mount()
     await clickNewAgent()
     expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
@@ -617,17 +619,25 @@ describe('只读态（md §10 审核中全部页签只读 / 列表【查看】�
   })
 })
 
-describe('疑似缺陷钉桩（按 md 期望断言，it.fails = 当前预期失败）', () => {
-  it.fails('候选列表应排除已被当前岗位其他 Agent 引用的技能（疑似缺陷：抽屉直接展示 listSkills 全量已发布技能，未过滤本岗位已引用项；md §6.4「抽屉候选列表仅展示已发布且未被当前岗位引用过的岗位私有技能…同一岗位内同一技能只引用一次」）', async () => {
+describe('Agent 抽屉候选排除本岗位已引用技能（md §6.4，yuepu#60⑥）+ 技能分类列（yuepu#61②）', () => {
+  it('新建 Agent：候选不含本岗位其他 Agent 已引用的技能（md §6.4「同一岗位内同一技能只引用一次」）', async () => {
     // 候选 300/301/302；302 已被 ag_1 引用
     await mount()
     await clickNewAgent()
-    // 前提：抽屉已打开、候选已加载
     expect(drawer().getAttribute('data-title')).toBe('新建 Agent')
-    expect(boxes().length).toBeGreaterThan(0)
-    // md 期望：新建 Agent 的候选里不应再出现本岗位已引用的 302
-    const names = boxes().map((b) => b.querySelector('strong').textContent)
-    expect(names).toEqual(['技能0', '技能1'])
+    expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
+  })
+
+  it('编辑第二个 Agent：看不到第一个 Agent 的技能，但保留自己已引用的（可取消勾选）', async () => {
+    store.agents = [
+      { agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '技能2', category: 'QUERY', toolCount: 1 }] },
+      { agentId: 'ag_2', name: 'B', description: 'd', skills: [{ skillId: 301, name: '技能1', category: 'QUERY', toolCount: 1 }] }
+    ]
+    await mount()
+    await clickRowOp(2, '编辑') // 行序：A、A 下技能、B、B 下技能
+    expect(nameInput().value).toBe('B')
+    expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
+    expect(checked()).toEqual([false, true])
   })
 
   it.fails('技能子行应展示技能分类（如「数据分析」）（疑似缺陷：分类列只认 OPERATION/QUERY 派生类别，md 技能分类取值渲染为空标签；md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2 技能分类取值）', async () => {
