@@ -22,7 +22,7 @@ const props = defineProps({
   // 自动算出的版本号（只读展示）+ 升级说明（v-model 双向，父级持有并提交）。
   versionLabel: { type: String, default: '' },
   releaseNotes: { type: String, default: '' },
-  // 升级类型（v-model）：NONE 修订版本 / MINOR 功能更新 / MAJOR 重大更新
+  // 升级类型（v-model）：NONE 修复更新 / MINOR 功能更新 / MAJOR 重大更新
   bump: { type: String, default: 'NONE' },
   // 首个版本：无升级类型可选，版本号固定 v1.0.0、hint「首个版本」
   firstPublish: { type: Boolean, default: false },

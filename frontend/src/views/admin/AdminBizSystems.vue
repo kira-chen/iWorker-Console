@@ -53,7 +53,7 @@ const editorReadonly = ref(false)
 // 行内动作 busy 态：{ [bizId]: 'publish' | 'withdraw' | 'deactivate' | 'delete' }
 const busy = ref({})
 
-// 引用清单弹窗（B3：点「N 个技能引用」弹出，标题「被技能引用」）
+// 引用清单弹窗（B3：点「N 个岗位 / 技能引用」弹出，标题按引用方类型：被岗位引用 / 被技能引用）
 const refsDialog = reactive({ visible: false, title: '被技能引用', names: [] })
 
 // 状态选项（B4 顺序：未发布 / 审核中 / 已发布）
@@ -498,7 +498,7 @@ async function remove(row) {
       @saved="onSaved"
     />
 
-    <!-- 引用清单弹窗（B3：标题「被技能引用」，正文技能名列表，按钮【关闭】） -->
+    <!-- 引用清单弹窗（B3：标题与正文按引用方类型——被岗位引用/岗位名、被技能引用/技能名，按钮【关闭】） -->
     <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="420px">
       <div v-if="refsDialog.names.length" class="refs-list">
         <div v-for="n in refsDialog.names" :key="n" class="refs-item">

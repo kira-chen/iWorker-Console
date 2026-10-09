@@ -599,7 +599,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 引用情况（PRD §二.1）：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 —；
-             点击弹「被技能引用」清单（原型 L171/L189，批次 2C · M2） -->
+             点击弹引用清单（标题按引用方类型：被岗位引用 / 被技能引用；原型 L171/L189，批次 2C · M2） -->
         <el-table-column label="引用情况" :width="135">
           <template #default="{ row }">
             <template v-if="row.type === CONNECTOR_TYPE.POSITION">

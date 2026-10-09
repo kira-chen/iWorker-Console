@@ -35,7 +35,7 @@ const store = usePositionStore()
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-// 领用页文案（原「岗位认领说明」；纯文本动态列表，必填至少 1 条、≤6 条 × 300 字，md §2.5）
+// 领用页文案（原「岗位认领说明」；纯文本动态列表，必填至少 1 条、≤6 条 × 300 字，md §2.4）
 const claimNotesModel = computed({
   get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
   set: (v) => patchBasic('claimDescriptions', v)
@@ -77,7 +77,7 @@ function useGen(generate, field, doneToast) {
     doneToast
   })
 }
-const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.5 逐字
+const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.4 逐字
 const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md §2.6 逐字
 </script>
 

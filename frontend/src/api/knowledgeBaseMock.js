@@ -37,6 +37,7 @@ import { submitReviewRow, cancelReviewRow } from './reviewsMock'
 import { submitApplicationRow, withdrawApplicationRow } from './myApplicationsMock'
 import { reviewActionMatches } from './reviewEnroll' // 2026-09-18 R1：审核落地前核对申请类型
 import { maskSecret } from '@/utils/secretMask'
+import { nowIsoLocal } from '@/utils/datetime' // 时间戳统一本地 ISO（带真实时区偏移），不用 toISOString 的 UTC「Z」串
 import {
   MAX_SOURCES_PER_TYPE,
   SOURCE_LABELS,
@@ -736,10 +737,10 @@ export async function testSource(sourceType, payload) {
   const failed = /fail|timeout/i.test(String(target))
   // MCP 测试成功返回固定工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）
   const result = failed
-    ? { verifyStatus: 'FAILED', verifiedAt: new Date().toISOString(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
+    ? { verifyStatus: 'FAILED', verifiedAt: nowIsoLocal(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
     : {
         verifyStatus: 'SUCCESS',
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: nowIsoLocal(),
         verifyError: null,
         latencyMs: 168,
         ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})

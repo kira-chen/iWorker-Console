@@ -795,7 +795,7 @@ async function removeApi(row) {
       @saved="onPsSaved"
     />
 
-    <!-- 引用清单弹窗（PRD §二.1；标题照原型 L801 modal('被技能引用')，2026-09-08 批次 2C · A2，与业务系统 / MCP 页统一） -->
+    <!-- 引用清单弹窗（PRD §二.1；标题按引用方类型：被岗位引用 / 被技能引用，见 openRefs；与业务系统 / MCP 页统一） -->
     <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="440px">
       <div v-if="refsDialog.names.length" class="refs-list">
         <div v-for="n in refsDialog.names" :key="n" class="refs-item">

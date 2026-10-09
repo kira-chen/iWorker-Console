@@ -1,17 +1,18 @@
 <script setup>
 /**
- * 模型配置页（ADMIN 专属，V76；V96 定稿：只保留上架/下架，不走审核流程）。
+ * 模型配置页（ADMIN 专属，V76；V98 起发布 / 停用都走审核，见下）。
  *
- * 【发布口径】上架成功=已发布，下架成功=未发布。模型是「活配置」——客户端直接读主表当前值，
- *   上架即生效、无版本快照、无审核中间态。前置仅一条：连通性验证 SUCCESS 才可上架
- *   （上架意味着客户端会真的拿它去调用，连不上就上架等于把故障推给终端用户）。
- *   改连接字段会清空验证态并回落草稿，等价于「改完必须重验才能再上架」。
+ * 【发布口径】发布与停用都是「提交审核」：审核通过才生效，期间状态为「审核中」（可【撤回】）；
+ *   停用待审期间模型对客户端仍可用。模型是「活配置」——无版本快照，客户端直接读主表当前值。
+ *   发布前置仅一条：连通性验证 SUCCESS 才可提交发布
+ *   （发布意味着客户端会真的拿它去调用，连不上就发布等于把故障推给终端用户）。
+ *   改连接字段会清空验证态并回落草稿，等价于「改完必须重验才能再提交发布」。
  *
  * 【列】模型名称 / 类别（标签） / 上下文 / 温度 / 验证（含「验证」入口） / 状态 / 操作。
  *
- * 【操作区】查看 / 编辑 / 上架·下架 / 设为默认 / 删除。
- *   规则：上架↔删除并存（未发布态），下架↔设为默认并存（已发布态）。
- *   配色对齐「平台技能」页：常规=primary、上架=success、下架=warning、删除=danger。
+ * 【操作区】查看 / 编辑 / 发布·停用·撤回 / 设为默认 / 删除。
+ *   规则：发布↔删除并存（未发布态），停用↔设为默认并存（已发布态），审核中只剩查看与撤回。
+ *   配色对齐「平台技能」页：常规=primary、发布=success、停用 / 撤回=warning、删除=danger。
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
@@ -51,7 +52,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 
-// 状态展示口径（V96）：上架成功=已发布，下架成功=未发布。
+// 状态展示口径（V96 起）：发布成功=已发布，停用成功=未发布。
 // PENDING_REVIEW/REJECTED 为 V95 审核制遗留态，V96 迁移已归一为 DRAFT；此处保留兜底映射，
 // 防存量脏数据或回滚场景下渲染出裸枚举。
 // 三态（V98）：发布与停用两条都要过审，中间同为「审核中」。
@@ -179,7 +180,6 @@ function formatWindow(v) {
   if (v >= 1048576 && v % 1048576 === 0) return `${v / 1048576}M`
   return v >= 1024 && v % 1024 === 0 ? `${v / 1024}K` : String(v)
 }
-/** 未发布（草稿 / 已下架，含审核制遗留态）——此态可「上架」与「删除」。 */
 /** 未发布且无待审——此态可「发布」与「删除」。 */
 function isOffline(row) {
   return row.status !== 'PUBLISHED' && !isPending(row)
