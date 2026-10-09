@@ -41,9 +41,9 @@ import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTa
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
 import { removePositionFromExperts } from './domainExpertMock'
-import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs } from './mcpConnectorMock'
-import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs } from './apiConnectorMock'
-import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs } from './bizSystemMock'
+import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs, syncPositionRefs as syncMcpPositionRefs } from './mcpConnectorMock'
+import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs, syncPositionRefs as syncApiPositionRefs } from './apiConnectorMock'
+import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs, syncPositionRefs as syncBizPositionRefs } from './bizSystemMock'
 import { revokedConnectorNames } from './positionRevokedRefs'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
@@ -865,6 +865,10 @@ export async function createAgent(positionId, payload = {}) {
   const name = String(payload.name || '').trim()
   const description = String(payload.description || '').trim()
   assertAgentFields(name, description)
+  // 绑定 / 解绑后回写连接器侧「被岗位引用」清单（待办 yuepu#51），列表计数与引用清单弹窗同源
+  if ('businessSystemIds' in payload) syncBizPositionRefs(p.positionId, p.name, wb.businessSystemIds)
+  if ('connectorMcpIds' in payload) syncMcpPositionRefs(p.positionId, p.name, wb.connectorMcpIds)
+  if ('connectorApiIds' in payload) syncApiPositionRefs(p.positionId, p.name, wb.connectorApiIds)
   // 新建与编辑现共用同一抽屉表单（PositionAgentSkillTab.vue saveAgentDraft），均要求用户显式填写
   // 名称——不再是「快捷加号按钮、默认空名」的场景，故与 updateAgent 同口径拒重名，不静默改名
   // （2026-09-18 待办 yuepu#13·岗位 P4：此前改名静默追加序号，用户不知道保存的其实不是自己填的名字，

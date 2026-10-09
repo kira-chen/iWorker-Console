@@ -35,8 +35,8 @@ import { __resetDataTableMock } from '../dataTableMock'
 import { __resetRuntimeSpecMock } from '../runtimeSpecMock'
 import { updateExpert, createExpert, __resetExpertMock } from '../domainExpertMock'
 import { listMcpSync, createMcp, fetchMcpTools, __resetMcpMock } from '../mcpConnectorMock'
-import { __resetApiMock } from '../apiConnectorMock'
-import { createBizSystem, __resetBizSystemMock } from '../bizSystemMock'
+import { listApisSync, __resetApiMock } from '../apiConnectorMock'
+import { createBizSystem, listBizSystemsSync, __resetBizSystemMock } from '../bizSystemMock'
 import * as skillMock from '../unifiedSkillMock'
 import * as kbMock from '../knowledgeBaseMock'
 
@@ -71,7 +71,7 @@ describe('yuepu#50 连接器发布态未联动技能工具坞', () => {
   })
 })
 
-describe('yuepu#51 岗位侧绑定 / 解绑不回写连接器「N 个岗位引用」', () => {
+describe('yuepu#51（已修）岗位侧绑定 / 解绑回写连接器「N 个岗位引用」', () => {
   // prd-连接器-MCP.md:51「N 为引用了该连接器的岗位数，引用关系在岗位侧产生」
   it('前提：expense_mcp 种子被 401 引用（positionCount=1）；401 解绑、402 改绑的保存都能成功', async () => {
     expect(mcpRow('expense_mcp').positionCount).toBe(1)
@@ -80,15 +80,34 @@ describe('yuepu#51 岗位侧绑定 / 解绑不回写连接器「N 个岗位引�
     await expect(updatePosition(402, { connectorMcpIds: ['expense_mcp'] })).resolves.toMatchObject({ positionId: 402 })
   })
 
-  it.fails('yuepu#51 401 解绑 expense_mcp 后，该连接器的岗位引用数应归 0', async () => {
+  it('yuepu#51 401 解绑 expense_mcp 后，该连接器的岗位引用数归 0、引用清单里不再有 401', async () => {
     await updatePosition(401, { connectorMcpIds: [] })
     expect(mcpRow('expense_mcp').positionCount).toBe(0)
   })
 
-  it.fails('yuepu#51 402 绑定 expense_mcp 后，该连接器的岗位引用数应 +1', async () => {
-    await updatePosition(402, { connectorMcpIds: ['expense_mcp'] })
+  it('yuepu#51 402 绑定 expense_mcp 后，该连接器的岗位引用数 +1，清单带岗位名；重复保存不重复计数', async () => {
+    await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
+    await updatePosition(402, { connectorMcpIds: ['expense_mcp', 'mail_center', 'crm'] })
     expect(mcpRow('expense_mcp').positionCount).toBe(2)
   })
+    expect(mcpRow('expense_mcp').referencedByPositions.map((p) => [p.positionId, p.positionName])).toEqual([[401, '经营分析岗'], [402, '客户成功岗']])
+  })
+
+  it('yuepu#51 API / 业务系统同口径：401 解绑 api_1101 与 biz_2101 → 各自引用数减 1；改名后清单带新名', async () => {
+    const apiRow = (id) => listApisSync().find((a) => a.id === id)
+    const bizRow = (id) => listBizSystemsSync().find((b) => b.id === id)
+    expect(apiRow('api_1101').positionCount).toBe(1)
+    expect(bizRow('biz_2101').positionCount).toBe(2)
+    await updatePosition(401, { connectorApiIds: [], businessSystemIds: [] })
+    expect(apiRow('api_1101').positionCount).toBe(0)
+    expect(bizRow('biz_2101').referencedByPositions.map((p) => p.positionId)).toEqual([402])
+    await updatePosition(402, { name: '客户成功岗（改名）', businessSystemIds: ['biz_2101'] })
+    expect(bizRow('biz_2101').referencedByPositions).toEqual([{ positionId: 402, positionName: '客户成功岗（改名）' }])
+  })
+
+  it('yuepu#51 未带连接器键的普通保存（只改描述）不动连接器引用', async () => {
+    await updatePosition(401, { description: '只改描述' })
+    expect(mcpRow('expense_mcp').positionCount).toBe(1)
 })
 
 describe('yuepu#52 删岗不清知识库可见范围', () => {
