@@ -21,7 +21,13 @@ import { listApisSync, listApis, forceRevokeApi, __resetApiMock } from '../apiCo
 import { listBizSystemsSync, listBizSystems, forceRevokeBizSystem, __resetBizSystemMock } from '../bizSystemMock'
 import { resetAccessAuditMock } from '../accessAuditMock'
 
-beforeEach(() => __resetPositionMock())
+// 岗位保存连接器绑定会回写连接器侧「被岗位引用」清单（yuepu#51），三个连接器 mock 须随例复位，免得跨用例带入引用
+beforeEach(() => {
+  __resetPositionMock()
+  __resetMcpMock()
+  __resetApiMock()
+  __resetBizSystemMock()
+})
 
 describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
   it('getPosition 返回岗位树：身份卡字段齐全 + agents[].skills[] 本体从 unifiedSkillMock 同源取', async () => {
@@ -96,7 +102,7 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
         }
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(7) // 401：1+1+1；402：2+2+1
+    expect(checked).toBeGreaterThanOrEqual(4) // 401：1+1+1；402：0+1+1（MCP / api_1104 随 yuepu#57⑧ 清空）
     // 反向：岗位详情里列出的连接器，连接器侧也必须回引该岗位
     for (const pid of [401, 402, 403, 404]) {
       const d = await getPosition(pid)
@@ -119,6 +125,27 @@ describe('positionMock · 人格新要素与业务系统引用（2026-09-04 PRD-
     expect(apis.length).toBeGreaterThan(0)
     expect(bizs.map((b) => b.id)).toContain('biz_2101')
     for (const r of [...mcps, ...apis, ...bizs]) expect(r.type).toBe('POSITION')
+  })
+
+  it('种子里每个岗位引用的 MCP / API / 业务系统都是岗位私有且已发布的（md 岗位 §8 引用规则；待办 yuepu#57⑧：402 原先绑了未发布的 mail_center、审核中的 crm）', async () => {
+    const cond = { type: 'POSITION', state: 'PUBLISHED' }
+    const ok = {
+      connectorMcpIds: new Set((await listMcp(cond)).list.map((r) => r.id)),
+      connectorApiIds: new Set((await listApis(cond)).list.map((r) => r.id)),
+      businessSystemIds: new Set((await listBizSystems(cond)).list.map((r) => r.id))
+    }
+    for (const pid of [401, 402, 403, 404]) {
+      const d = await getPosition(pid)
+      for (const key of Object.keys(ok)) {
+        for (const id of d[key]) expect(ok[key].has(id), `岗位 ${pid} 的 ${key} 含非「已发布」连接器 ${id}`).toBe(true)
+      }
+    }
+    // 402 的 MCP 区现为空、API 只剩已发布的 api_1103；连接器侧也不再有 402 的引用（mail_center / crm / api_1104）
+    expect((await getPosition(402)).connectorMcpIds).toEqual([])
+    expect((await getPosition(402)).connectorApiIds).toEqual(['api_1103'])
+    expect(listApisSync().find((a) => a.id === 'api_1104').positionCount).toBe(0)
+    expect(listMcpSync().find((m) => m.id === 'mail_center').positionCount).toBe(0)
+    expect(listMcpSync().find((m) => m.id === 'crm').positionCount).toBe(0)
   })
 
   it('updatePosition 部分更新新字段并回详情树；businessSystemIds/connectorMcpIds/connectorApiIds 引用可写', async () => {
@@ -247,12 +274,13 @@ describe('positionMock · 技能引用 assign/detach（与技能页 refNames 同
     const empty = await createPosition({ name: `悬空引用岗_${Date.now()}` })
     const agent = await createAgent(empty.positionId, { name: '研究员', description: '职责描述' })
     const { skillId } = await createSkill({ name: `待删技能_${Date.now()}`, type: 'POSITION', categoryName: '办公效率' })
+    _reset(skillId, { status: 'published' }) // md §6.4：Agent 只能引用已发布的岗位私有技能（yuepu#57②）
     await assignSkill(skillId, agent.agentId)
     let row = (await listPositions({ keyword: empty.name })).list[0]
     expect(row.skillCount).toBe(1)
     // 悬空引用要模拟的是「技能本体没了、岗位侧引用还留着」——不能走 detachSkill（那会同步摘掉引用）；
     // 直接摆脱技能模块自己的引用保护（_reset 清 refNames，同单测惯用法）后再删
-    _reset(skillId, { refNames: [] })
+    _reset(skillId, { refNames: [], status: 'draft' }) // 已发布技能不可删，回草稿再删
     await removeSkill(skillId)
     row = (await listPositions({ keyword: empty.name })).list[0]
     expect(row.skillCount).toBe(0) // 悬空引用不计数

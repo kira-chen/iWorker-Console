@@ -205,8 +205,9 @@ function buildWorkbenchSeed() {
       positionSop:
         '1. 确认拜访对象与目标，收集客户基础资料。\n2. 调用客户洞察 Agent 生成拜访提纲。\n3. 拜访后整理跟进记录，沉淀到工作档案。',
       businessSystemIds: ['biz_2101'],
-      connectorMcpIds: ['mail_center', 'crm'],
-      connectorApiIds: ['api_1103', 'api_1104'],
+      // md 岗位 §8「只能引用已发布」：原先绑的 mail_center（未发布）/ crm（审核中）不合规，改为暂无（yuepu#57⑧）
+      connectorMcpIds: [],
+      connectorApiIds: ['api_1103'], // api_1104 未发布，不得引用（md 岗位 §8；yuepu#57⑧ 同类）
       persona: '热情、周到。拜访前主动准备资料，拜访后提醒记录跟进事项。',
       intakeSchema: [{ label: '负责客户区域', key: 'region', type: 'text', required: true, options: [] }],
       agents: [
@@ -393,6 +394,9 @@ export async function deletePosition(id) {
   // mock 数据层不拦，绕过 UI 直调可删掉仍被领用的岗位（2026-09-23 待办 yuepu#9①）
   const claimed = countAssignedUsers(p.positionId)
   if (claimed > 0) throw err(`该岗位已被 ${claimed} 个用户领用，需先解除领用后再删除`)
+  // md 岗位 §3.6 / §4：仅「未发布」且「不在审核中」的岗位可删；此前只靠列表页按钮态兜，数据层直调可删审核中 / 已发布岗位（yuepu#57①）
+  if (p.pendingAction) throw err('审核中的岗位不可删除，请先撤回审核')
+  if (p.status !== 'draft') throw err('已发布的岗位不可删除，请先停用')
   // 引用联动：删岗前把岗位名从所引用技能的 refNames 摘掉
   const wb = ensureWb(p.positionId)
   const ids = new Set()
@@ -976,6 +980,8 @@ export async function assignSkill(skillId, targetAgentId) {
   // md §6.4「Agent 只能引用岗位私有类型的技能」——UI 候选弹窗已按岗位私有过滤，mock 数据层兜底
   // 不留后门（2026-09-23 待办 yuepu#9⑤：种子 404 曾误引用通用技能 sk_303，即此规则此前无人校验）
   if (raw.type !== 'POSITION') throw err('Agent 只能引用岗位私有类型的技能')
+  // md 岗位 §6.4：候选为「已发布」的岗位私有技能，数据层同样兜底（yuepu#57②；已发布且有新版在审的仍是 published，放行）
+  if (raw.status !== 'published') throw err('仅已发布的岗位私有技能可被 Agent 引用')
   // 已挂本 Agent：幂等返回
   const existed = agent.skills.find((s) => String(s.skillId) === String(skillId))
   if (existed) return skillRefVO(existed)
@@ -1084,9 +1090,11 @@ const persist = attachPersist('position', {
   // 的 Agent 改引 sk_305（原 sk_303 违反 md §6.4 岗位私有类型限制）。存量快照结构/引用已过期，丢弃回种子。
   // v7（2026-09-28 待办 yuepu#42）：401/402 种子补 connectorMcpIds / connectorApiIds（与连接器侧
   // referencedByPositions 同源）；旧快照缺这两个键，不 bump 则演示环境仍显示「暂无绑定」。
+  // v10（2026-10-09 待办 yuepu#57⑧）：402 种子不再绑未发布的 mail_center / 审核中的 crm / 未发布的 api_1104
+  // （connectorMcpIds 清空、connectorApiIds 去掉 api_1104，与 mcpConnector v10 / apiConnector v7 的引用清单同步）；旧快照仍带这两项 → 丢弃回种子。
   // v9（2026-10-09 待办 yuepu#61②）：技能引用 VO 新增 displayCategoryName（技能分类），种子在审岗位的审核版本快照
   // （reviewSnapshots）里内嵌了该 VO，快照形状变了；存量快照缺这个字段 → 丢弃回种子。
-  version: 9,
+  version: 10,
   snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
   restore: (d) => {
     if (

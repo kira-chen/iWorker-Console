@@ -124,12 +124,13 @@ function togglePendingFilter() {
   refreshKeepPage()
 }
 
-async function onSaved() {
+async function onSaved(payload) {
   const row = editingRow.value
   editingRow.value = null
 
-  // 若该用户有待分配申请，自动标记为已分配
-  if (row?.pendingRequestId) {
+  // 若该用户有待分配申请，且这次确实分配了岗位，自动标记为已分配；
+  // 选「未绑定」只是清除绑定，并没有把岗位分配出去，申请继续待分配（yuepu#57⑦，与批量绑定必选岗位同口径）
+  if (row?.pendingRequestId && payload?.positionId) {
     try {
       await markApplicationAssigned(row.pendingRequestId)
     } catch (e) {

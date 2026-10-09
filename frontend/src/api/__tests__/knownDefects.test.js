@@ -144,9 +144,14 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     expect((await listPositions({ size: 50 })).list.find((p) => p.positionId === 403).claimedUserCount).toBe(0)
   })
 
-  it.fails('yuepu#57① 审核中的岗位（403）数据层应拒绝删除', async () => {
+  it('yuepu#57① 审核中的岗位（403）数据层拒绝删除，已发布的岗位（401）也拒绝，列表里都还在', async () => {
     await setUserPosition(204, null)
     await expect(deletePosition(403)).rejects.toThrow(/审核/)
+    // 402 已发布、仅 li.na（202）领用：解绑后只剩「已发布」这道守卫
+    await setUserPosition(202, null)
+    await expect(deletePosition(402)).rejects.toThrow(/已发布/)
+    const ids = (await listPositions({ size: 50 })).list.map((p) => p.positionId)
+    expect(ids).toEqual(expect.arrayContaining([402, 403]))
   })
 
   // ② md 岗位 §6.4 候选为「已发布」的岗位私有技能
@@ -163,9 +168,10 @@ describe('yuepu#57 数据层守卫 / 校验缺口', () => {
     expect(agentId).toBeTruthy()
   })
 
-  it.fails('yuepu#57② Agent 不应能引用未发布的岗位私有技能', async () => {
+  it('yuepu#57② Agent 不能引用未发布的岗位私有技能；已发布的仍可引用', async () => {
     const { skillId, agentId } = await draftPositionSkillAndAgent()
-    await expect(assignSkill(skillId, agentId)).rejects.toThrow()
+    await expect(assignSkill(skillId, agentId)).rejects.toThrow(/已发布/)
+    await expect(assignSkill('sk_301', agentId)).resolves.toBeTruthy()
   })
 
   // ③ relistSkill 无状态守卫：从未发布的草稿也能被「重新上架」

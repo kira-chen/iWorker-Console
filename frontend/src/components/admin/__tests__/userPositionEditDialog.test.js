@@ -123,6 +123,7 @@ describe('UserPositionEditDialog · 保存（md §四.1「点击【保存】后�
     expect(msg.success).toHaveBeenCalledWith('岗位绑定已更新')
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(savedSpy).toHaveBeenCalledTimes(1)
+    expect(savedSpy).toHaveBeenCalledWith({ positionId: 'ps_new' }) // 页面据此决定是否标记待分配申请已分配（yuepu#57⑦）
   })
 
   it('解绑：选「未绑定」保存 → setUserPosition(userId, null) + 提示「岗位绑定已更新」+ 关窗 + emit saved', async () => {
@@ -135,6 +136,7 @@ describe('UserPositionEditDialog · 保存（md §四.1「点击【保存】后�
     expect(msg.success).toHaveBeenCalledWith('岗位绑定已更新')
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(savedSpy).toHaveBeenCalledTimes(1)
+    expect(savedSpy).toHaveBeenCalledWith({ positionId: null })
   })
 
   it('无变化（默认 forceSave=false）：直接关窗，不调 api、不提示、不 emit saved', async () => {

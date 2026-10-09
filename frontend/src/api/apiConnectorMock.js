@@ -213,7 +213,7 @@ let apis = [
   mkApi({
     code: 'api_1104',
     type: 'POSITION',
-    referencedByPositions: [POS_402],
+    referencedByPositions: [], // 未发布，不被岗位引用（md 岗位 §8；yuepu#57⑧ 同类，402 原先绑了它）
     name: '新增客户跟进',
     icon: '✅',
     description: '写入客户跟进记录和下次联系时间',
@@ -477,8 +477,10 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// v7（2026-10-09 待办 yuepu#57⑧）：api_1104（未发布）不再被客户成功岗（402）引用，种子 referencedByPositions 清空；
+//   旧快照仍带这条引用 → 丢弃重播种。
 const persist = attachPersist('apiConnector', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (

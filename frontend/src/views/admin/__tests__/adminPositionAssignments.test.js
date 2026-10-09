@@ -54,7 +54,8 @@ vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
     emits: ['update:visible', 'saved'],
     template:
       '<div class="edit-dialog" :data-visible="String(visible)" :data-user="row && row.username" :data-has-pending="String(!!(row && row.pendingRequestId))">' +
-      '<button class="edit-save" @click="$emit(\'saved\')" /></div>'
+      '<button class="edit-save" @click="$emit(\'saved\', { positionId: \'ps_1\' })" />' +
+      '<button class="edit-save-unbound" @click="$emit(\'saved\', { positionId: null })" /></div>'
   }
 }))
 vi.mock('@/assets/connector.css', () => ({}))
@@ -321,6 +322,19 @@ describe('AdminPositionAssignments —— 单页面（2026-09-15 合并改版）
     expect(lastCall).toEqual(expect.objectContaining({ focusUserId: 12, page: 1 }))
     // 筛选已清空
     expect(lastCall.hasPendingRequest).toBeFalsy()
+  })
+
+  it('有待分配申请的用户在弹窗里选「未绑定」保存 → 申请不标为已分配、徽标不减、不置顶高亮，只刷新列表（md §五：选择合适岗位并保存才算处理；yuepu#57⑦）', async () => {
+    await mount()
+    const rows = [...container.querySelectorAll('.el-row')]
+    ;[...rows[1].querySelectorAll('.el-button')].find((b) => b.textContent.includes('分配岗位')).click()
+    await nextTick()
+    container.querySelector('.edit-save-unbound').click()
+    await flush()
+    expect(markApplicationAssignedApi).not.toHaveBeenCalled()
+    expect(countPendingApplications).toHaveBeenCalledTimes(1) // 只有挂载时那一次
+    const lastCall = listPositionAssignments.mock.calls.at(-1)[0]
+    expect(lastCall?.focusUserId).toBeUndefined()
   })
 
   it('无待分配申请的用户分配后直接 reload，不调 markApplicationAssigned', async () => {
