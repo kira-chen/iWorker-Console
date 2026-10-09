@@ -1042,8 +1042,10 @@ let reviewSnapshots = {}
 //    配套 fieldDictMock v4（分类枚举同批）。
 // ② 待办 yuepu#9⑤：sk_305 的 refNames 补「市场研究岗」（404 改引本技能，原引用的通用技能 sk_303
 //    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
+// version 7（2026-10-09，待办 yuepu#53）：补 435aa3c 漏 bump——9 条种子技能 toolRefs 由虚构代码改为真实连接器代码、
+//    SKILL.md 加「## 引用工具」；旧 v6 快照保留旧 toolRefs（工具坞显示裸代码 + 「未检测」）。
 const persist = attachPersist('unifiedSkill', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
   restore: (d) => {
     if (
