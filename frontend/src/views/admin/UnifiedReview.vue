@@ -159,6 +159,8 @@ async function approve(row) {
     fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '审核失败')
+    // md §七「记录已被其他审核人处理 → 操作失败」：本地列表是旧的，重拉后该记录离开列表（与「我的申请」同类场景一致，按 J24）
+    fetchList()
   } finally {
     busyRowId.value = null
     busyAction.value = null
@@ -185,6 +187,8 @@ async function submitReject(reason) {
     fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '驳回失败')
+    // md §七「记录已被其他审核人处理 → 操作失败」：本地列表是旧的，重拉后该记录离开列表（与「我的申请」同类场景一致，按 J24）
+    fetchList()
   } finally {
     rejecting.value = false
     busyRowId.value = null
