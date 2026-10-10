@@ -5,7 +5,8 @@
  *
  * 和另两个页签的差别：
  *   - 只记外部调用：上传型数据源走平台 RAG，不入本页；管理端的「检索测试」「测试连接」是管理操作，也不入本页；
- *   - 只读、不需确认，结果只有 成功 / 执行失败 / 执行前拦截（如用户无该知识库访问权限）；
+ *   - 只读、不需确认，结果只有 成功 / 执行失败 两态（2026-10-09 改版：原「执行前拦截」如无该知识库
+ *     访问权限，并入「执行失败」，原因文案保留）；
  *   - 命中 0 条属于「成功」，用「命中条数」区分，统计卡片单列「无命中检索」；
  *   - 审计关心的是「检索词发给了谁、命中了哪些内容」，所以列表看检索词与命中条数，没有操作性质 / 确认；
  *   - 检索词的记录与脱敏口径产品尚未定义，页面按原文展示并标【待补充】（docs/04-待补需求定义/）。
@@ -27,17 +28,16 @@ import {
   knowledgeCallRecords,
   knowledgeParamsOf,
   knowledgeOutputOf,
-  RESULT_LABEL,
-  UNATTENDED_RESULTS
+  KNOWLEDGE_RESULT_LABEL
 } from '@/api/toolCallAuditMock'
 
-const RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning' }
+const RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const SOURCE_TYPES = ['API', 'MCP']
 const HIT_LABEL = { HIT: '有命中', NONE: '无命中' }
 
 /** 数据源类型取自 source 前缀（「MCP·法规库检索」→ MCP）。 */
 const sourceTypeOf = (r) => r.source.split('·')[0]
-/** 「无命中」= 检索成功但命中 0 条；失败 / 拦截的检索没有命中一说。 */
+/** 「无命中」= 检索成功但命中 0 条；失败的检索没有命中一说。 */
 const isNoHit = (r) => r.result === 'SUCCESS' && r.hitCount === 0
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
@@ -68,7 +68,7 @@ const metrics = computed(() => {
       key: 'all',
       label: '检索请求总数',
       value: all.length,
-      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')} / 拦截 ${count('BLOCKED')}`
+      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'nohit',
@@ -83,13 +83,6 @@ const metrics = computed(() => {
       value: count('FAILED'),
       sub: '已尝试检索但未成功',
       danger: true
-    },
-    {
-      key: 'blocked',
-      label: '执行前拦截',
-      value: count('BLOCKED'),
-      sub: '未向数据源发出请求',
-      warn: true
     }
   ]
 })
@@ -97,7 +90,6 @@ const metrics = computed(() => {
 const activeMetric = computed(() => {
   if (query.hit === 'NONE') return 'nohit'
   if (query.result === 'FAILED') return 'failed'
-  if (query.result === 'BLOCKED') return 'blocked'
   return ''
 })
 
@@ -107,12 +99,11 @@ function chooseMetric(key) {
   query.hit = ''
   if (key === 'nohit') query.hit = 'NONE'
   if (key === 'failed') query.result = 'FAILED'
-  if (key === 'blocked') query.result = 'BLOCKED'
   list.search()
 }
 
 const HELP = [
-  '检索请求指经 API / MCP 数据源向第三方知识服务发出的检索，包含成功、执行失败和执行前拦截三类结果；上传型数据源走平台检索，不在此记录。',
+  '检索请求指经 API / MCP 数据源向第三方知识服务发出的检索，只有成功、执行失败两类结果（如无该知识库访问权限这类检查不通过，也并入"执行失败"，原因文案区分具体情形）；上传型数据源走平台检索，不在此记录。',
   '命中 0 条的检索属于"成功"，单独统计为"无命中检索"。执行耗时为数据源实际响应时间。'
 ]
 
@@ -124,7 +115,7 @@ function exportCsv() {
     ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
-      r.result === 'SUCCESS' ? r.hitCount : '', RESULT_LABEL[r.result], r.reason, r.duration
+      r.result === 'SUCCESS' ? r.hitCount : '', KNOWLEDGE_RESULT_LABEL[r.result], r.reason, r.duration
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -144,7 +135,7 @@ const detail = computed(() => {
   if (!d) return null
   return {
     title: `检索详情 · ${d.id}`,
-    result: { label: RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
+    result: { label: KNOWLEDGE_RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '知识库', value: d.kb },
@@ -162,29 +153,23 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议在知识库的"数据源管理"中重新测试该数据源的连接，并检查第三方知识服务状态。'
-  if (d.result === 'BLOCKED') return '请核对该用户所属岗位是否引用了该知识库，以及用户的知识库访问权限。'
+  if (d.result === 'FAILED') return '建议核对失败原因，并视情况检查该数据源的连接状态或用户的知识库访问权限。'
   if (d.hitCount === 0) return '检索成功但没有命中内容，可核对检索词与数据源内容是否匹配。'
   return '本次检索已完成，可查看命中的内容来源。'
 }
 
-/** 执行过程时间线：被拦截的检索在「调用检查」节点停止，不展示后续阶段（PRD §九.5）。 */
+/** 执行过程时间线：只有发起、结果两步——结果只有成功 / 失败两态，不再区分"检查未通过"
+ *  与"执行失败"两个阶段（2026-10-09 改版，PRD §九.5）。 */
 function timelineSteps(d) {
-  const steps = [
-    { time: d.time, title: '发起检索', desc: `${d.user} 通过「${d.position}」提问，引用的知识库「${d.kb}」向数据源「${d.source}」发起检索。`, type: 'primary' }
+  return [
+    { time: d.time, title: '发起检索', desc: `${d.user} 通过「${d.position}」提问，引用的知识库「${d.kb}」向数据源「${d.source}」发起检索。`, type: 'primary' },
+    {
+      time: '',
+      title: KNOWLEDGE_RESULT_LABEL[d.result],
+      desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
+      type: d.result === 'FAILED' ? 'danger' : 'success'
+    }
   ]
-  if (d.result === 'BLOCKED') {
-    steps.push({ time: '', title: '检查未通过，已拦截', desc: `${d.reason}。请求未发送到数据源。`, type: 'danger' })
-    return steps
-  }
-  steps.push({ time: '', title: '调用检查通过', desc: '请求发送到数据源。', type: 'primary' })
-  steps.push({
-    time: '',
-    title: RESULT_LABEL[d.result],
-    desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
-    type: d.result === 'FAILED' ? 'danger' : 'success'
-  })
-  return steps
 }
 </script>
 
@@ -205,7 +190,7 @@ function timelineSteps(d) {
         class="lt-date-range"
       />
       <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="key in UNATTENDED_RESULTS" :key="key" :label="RESULT_LABEL[key]" :value="key" />
+        <el-option v-for="(label, key) in KNOWLEDGE_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-select v-model="query.sourceType" placeholder="全部数据源类型" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="t in SOURCE_TYPES" :key="t" :label="t" :value="t" />
@@ -266,7 +251,7 @@ function timelineSteps(d) {
           </el-table-column>
           <el-table-column label="执行结果 / 原因" min-width="180">
             <template #default="{ row }">
-              <StatusTag :type="RESULT_TAG[row.result]">{{ RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag :type="RESULT_TAG[row.result]">{{ KNOWLEDGE_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>

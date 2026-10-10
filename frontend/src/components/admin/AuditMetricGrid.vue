@@ -1,30 +1,34 @@
 <script setup>
 /**
- * AuditMetricGrid —— 工具调用审计三个页签共用的顶部统计区：4 张可点击的统计卡片 +
+ * AuditMetricGrid —— 工具调用审计三个页签共用的顶部统计区：可点击的统计卡片 +
  * 卡片下方的【统计口径】说明入口（默认收起，PRD §二）。
  *
  * 只负责展示与上报点击；点某张卡片"筛选条件怎么变"由各页签自己决定（PRD 各页签统计卡片表）。
+ * 卡片数不固定为 4——技能调用页签 2026-10-09 改版后只剩 3 张（去掉"进行中"），网格列数按
+ * metrics.length 动态给，不强行留一个空位。
  *
  * @prop {Array<{key:string,label:string,value:number,sub:string,danger?:boolean,warn?:boolean}>} metrics
  * @prop {string} activeKey 当前与筛选条件吻合的卡片 key，高亮显示；无则不高亮
  * @prop {string[]} help 统计口径说明，一项一段
  * @emits choose(key) 点击卡片
  */
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-defineProps({
+const props = defineProps({
   metrics: { type: Array, required: true },
   activeKey: { type: String, default: '' },
   help: { type: Array, default: () => [] }
 })
 defineEmits(['choose'])
 
+const gridStyle = computed(() => ({ gridTemplateColumns: `repeat(${props.metrics.length}, minmax(0, 1fr))` }))
+
 const helpOpen = ref(false)
 </script>
 
 <template>
   <div class="audit-stats">
-    <div class="metric-grid">
+    <div class="metric-grid" :style="gridStyle">
       <button
         v-for="m in metrics"
         :key="m.key"
@@ -56,7 +60,6 @@ const helpOpen = ref(false)
 }
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 .metric-card {
