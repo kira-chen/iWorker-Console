@@ -29,6 +29,8 @@ import { computed } from 'vue'
 import { PERIODIC_PRESETS, inferPeriodicPreset } from '@/utils/periodicPreset'
 
 const props = defineProps({
+  // 只读态（岗位审核中 / 查看态，md §10）：禁用全部可交互控件
+  disabled: { type: Boolean, default: false },
   // Schedule 对象（受控）
   schedule: { type: Object, required: true },
   // 字段级错误（父级表单校验命中时传入，描红+提示）
@@ -228,6 +230,7 @@ function prettyTime(t) {
           v-for="m in MODES"
           :key="m.value"
           type="button"
+          :disabled="disabled"
           class="sp-seg-btn"
           :class="{ on: mode === m.value }"
           @click="onMode(m.value)"
@@ -243,6 +246,7 @@ function prettyTime(t) {
           v-for="p in PERIODIC_PRESETS"
           :key="p.value"
           type="button"
+          :disabled="disabled"
           class="sp-seg-btn"
           :class="{ on: currentPreset === p.value }"
           @click="onPreset(p)"
@@ -257,6 +261,7 @@ function prettyTime(t) {
         <span class="sp-interval-label">每</span>
         <input
           type="number"
+          :disabled="disabled"
           min="1"
           class="sp-interval-input"
           :value="schedule.intervalCount || 1"
@@ -268,6 +273,7 @@ function prettyTime(t) {
             v-for="u in INTERVAL_UNITS"
             :key="u.value"
             type="button"
+            :disabled="disabled"
             class="sp-seg-btn"
             :class="{ on: (schedule.intervalUnit || 'DAY') === u.value }"
             @click="onIntervalUnit(u.value)"
@@ -283,6 +289,7 @@ function prettyTime(t) {
       <el-date-picker
         :model-value="schedule.onceAt"
         type="datetime"
+        :disabled="disabled"
         placeholder="选择具体日期和时间"
         format="YYYY-MM-DD HH:mm"
         value-format="YYYY-MM-DDTHH:mm"
@@ -301,6 +308,7 @@ function prettyTime(t) {
               v-for="u in IDLE_COUNT_UNITS"
               :key="u.value"
               type="button"
+              :disabled="disabled"
               class="sp-seg-btn"
               :class="{ on: (schedule.idleCountUnit || 'DAY') === u.value }"
               @click="onIdleCountUnit(u.value)"
@@ -308,6 +316,7 @@ function prettyTime(t) {
           </div>
           <input
             type="number"
+            :disabled="disabled"
             min="1"
             class="sp-interval-input"
             :value="schedule.idleCount || 1"
@@ -324,6 +333,7 @@ function prettyTime(t) {
             v-for="w in IDLE_WINDOWS"
             :key="w.value"
             type="button"
+            :disabled="disabled"
             class="sp-seg-btn"
             :class="{ on: (schedule.idleWindow || 'NIGHT') === w.value }"
             @click="onIdleWindow(w.value)"
@@ -343,6 +353,7 @@ function prettyTime(t) {
             <span class="sp-time-icon">⏰</span>
             <input
               type="time"
+              :disabled="disabled"
               :value="t"
               :aria-label="mode === 'INTERVAL' ? '起始时刻' : '定点时间'"
               @input="setTime(i, $event.target.value)"
@@ -351,13 +362,14 @@ function prettyTime(t) {
           <button
             v-if="mode === 'PERIODIC' && times.length > 1"
             type="button"
+            :disabled="disabled"
             class="sp-time-remove"
             title="移除该时间点"
             aria-label="移除该时间点"
             @click="removeTime(i)"
           >×</button>
         </div>
-        <button v-if="mode === 'PERIODIC'" type="button" class="sp-add-time-link" @click="addTime">＋ 添加时间</button>
+        <button v-if="mode === 'PERIODIC'" type="button" class="sp-add-time-link" :disabled="disabled" @click="addTime">＋ 添加时间</button>
         <p class="sp-tip">
           {{ mode === 'INTERVAL' ? '每间隔模式下为起始时刻，系统按固定间隔循环触发。' : '支持一天多个时间点，系统自动对同一天时间去重。' }}
         </p>
@@ -371,6 +383,7 @@ function prettyTime(t) {
         <el-date-picker
           :model-value="schedule.startDate"
           type="date"
+          :disabled="disabled"
           placeholder="从哪天开始（不填 = 立即生效）"
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD"
@@ -381,6 +394,7 @@ function prettyTime(t) {
           <el-date-picker
             :model-value="schedule.endDate"
             type="date"
+            :disabled="disabled"
             placeholder="到哪天结束（不填 = 一直有效）"
             format="YYYY-MM-DD"
             value-format="YYYY-MM-DD"
