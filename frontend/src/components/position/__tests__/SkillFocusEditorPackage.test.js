@@ -376,7 +376,7 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
       activeFilePath: ref('SKILL.md'),
       activeFileType: ref('md'),
       activeFileContent: ref(''),
-      extra: { positionId: 9, positionName: '客服岗', agents: [], currentAgentId: null }
+      extra: { positionId: 9, agents: [], currentAgentId: null }
     })
     // 极简顶行唯一可编辑技能名（input.value）
     expect(el.querySelector('.eh-name')?.value).toBe('搭子')
@@ -395,7 +395,7 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
       activeFilePath: ref('SKILL.md'),
       activeFileType: ref('md'),
       activeFileContent: ref(''),
-      extra: { positionId: 9, positionName: '客服岗', agents: [], currentAgentId: null }
+      extra: { positionId: 9, agents: [], currentAgentId: null }
     })
     expect(el.querySelectorAll('.eh-category').length).toBe(1)
     expect(el.querySelector('.crumb-category')).toBeNull()
@@ -413,7 +413,6 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     const topline = el.querySelector('.ed-topline')
     expect(topline).toBeTruthy() // 顶行恒在（技能名落点）
     expect(topline.querySelector('.crumb-agent')).toBeNull() // 游离无导航
-    expect(topline.textContent).not.toContain('客服岗')
     expect(el.querySelector('.eh-name')?.value).toBe('搭子')
   })
 
@@ -430,7 +429,6 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
           activeFileType: 'md',
           activeFileContent: '',
           positionId: 9,
-          positionName: '客服岗',
           backLabel: '← 返回',
           // 组① 四态保存灯：传 saved 态（替代旧 autosaveText 字符串）。
           saveStatus: { phase: 'saved', savedAt: Date.now() },
@@ -454,11 +452,10 @@ describe('SkillFocusEditor · 极简顶行收口（技能名唯一 + 顶行导�
     const filebar = container.querySelector('.ed-filebar')
     expect(filebar.querySelector('.save-ind')).toBeTruthy()
     expect(filebar.querySelector('.save-ind')?.textContent).toContain('已保存')
-    // #4：整页编辑器不要删除入口 → 无 ⋯；J14 后即使传了 positionId/positionName 也不再渲染岗位面包屑与「↩ 返回总览」
+    // #4：整页编辑器不要删除入口 → 无 ⋯；J14 后即使传了 positionId 也不再渲染岗位面包屑与「↩ 返回总览」
     expect(topline.querySelector('.crumb-more')).toBeNull()
     expect(topline.querySelector('.ed-close')).toBeNull()
     expect(topline.querySelector('.crumb-link')).toBeNull()
-    expect(topline.textContent).not.toContain('客服岗')
     expect(container.querySelector('.focus-editor')).toBeTruthy()
   })
 
