@@ -206,7 +206,7 @@ describe('StorageQuotaPane · 批量设置（md §三·5）', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
   })
 
-  it.fails('yuepu#88 批量里只有 1 名员工不高于已用时，确认文案也应是「其中 1 名员工的」（md §三·4：批量时 X 为「其中 N 名员工」；现状直接写了该员工姓名）', async () => {
+  it('批量里只有 1 名员工不高于已用时，确认文案也是「其中 1 名员工的」而不是员工姓名（md §三·4：批量时 X 为「其中 N 名员工」）', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
     const c = await mountPane()
     await openBatch(c, ['正常员工', '已满员工'])
