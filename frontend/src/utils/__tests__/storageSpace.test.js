@@ -23,10 +23,9 @@ describe('quotaInputError —— 容量输入校验文案', () => {
     expect(quotaInputError('8.5')).toBe('容量只能填整数')
   })
 
-  it('小于下限提示「容量不能小于 N GB」，默认下限 1 GB', () => {
+  it('小于下限提示「容量不能小于 1 GB」（下限固定为 QUOTA_MIN_GB）', () => {
     expect(quotaInputError(0)).toBe('容量不能小于 1 GB')
     expect(quotaInputError(-3)).toBe('容量不能小于 1 GB')
-    expect(quotaInputError(3, 5)).toBe('容量不能小于 5 GB')
   })
 
   it('合法返回空串；1 与 20 都在范围内；数字字符串也认', () => {
