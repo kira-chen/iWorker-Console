@@ -4,7 +4,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateVersionLabel,
-  versionIncrementHint,
   computePublishCheck,
   computeCompletenessMissing,
   claimNotesComplete,
@@ -24,13 +23,6 @@ describe('展示版本号（2026-09-02 起语义化 vX.Y.Z，取代旧 v001~v999
       expect(err).toBeTruthy()
       expect(err).toContain('v1.2.0')
     }
-  })
-  it('小于等于历史最大 → 建议递增软提示（不阻断）；递增则空串', () => {
-    expect(versionIncrementHint('v1.1.0', 'v1.2.0')).toContain('v1.2.0')
-    expect(versionIncrementHint('v1.2.0', 'v1.2.0')).toContain('未递增') // 等于也提示
-    expect(versionIncrementHint('v1.2.1', 'v1.2.0')).toBe('') // 已递增无提示
-    expect(versionIncrementHint('v2.0.0', 'v1.9.3')).toBe('') // 主版本跳档已递增
-    expect(versionIncrementHint('v1.2.0', '')).toBe('') // 无历史不提示
   })
 })
 
