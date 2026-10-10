@@ -28,9 +28,11 @@ const props = defineProps({
   firstPublish: { type: Boolean, default: false },
   // 无法自动建议版本号时父级传 atMax=true（人话提示 + 禁发）。
   atMax: { type: Boolean, default: false },
+  // 建议号拉取失败（md 岗位 §3.7：提示 + 重试，不支持手填）：父级传 loadFailed=true，点【重试】emit('retry')。
+  loadFailed: { type: Boolean, default: false },
   nextLoading: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:visible', 'update:releaseNotes', 'update:bump', 'publish'])
+const emit = defineEmits(['update:visible', 'update:releaseNotes', 'update:bump', 'publish', 'retry'])
 
 const canPublish = computed(() => props.check?.blockingPassed)
 
@@ -46,7 +48,7 @@ const bumpHint = computed(() =>
 
 // 可提交发布：硬检查通过 + 版本号已算出 + 升级说明非空 + 非到顶。
 const canSubmit = computed(
-  () => canPublish.value && !props.atMax && !versionErr.value && !notesErr.value
+  () => canPublish.value && !props.atMax && !props.loadFailed && !versionErr.value && !notesErr.value
 )
 </script>
 
@@ -81,6 +83,10 @@ const canSubmit = computed(
       <!-- 无法自动建议是「告知非错误」→ 用 warning 语义，不用 danger 红底。 -->
       <div v-if="atMax" class="check-hint warn">
         无法自动生成建议版本号；如需继续发布请联系管理员处理版本策略。
+      </div>
+      <div v-else-if="loadFailed" class="check-hint warn load-failed">
+        版本号获取失败，请重试。
+        <el-button link type="primary" :loading="nextLoading" @click="emit('retry')">重试</el-button>
       </div>
       <template v-else>
         <div v-if="!firstPublish" class="pub-row">

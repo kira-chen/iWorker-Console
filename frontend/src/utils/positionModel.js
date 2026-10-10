@@ -231,21 +231,6 @@ export function validateVersionLabel(label) {
   return null
 }
 
-// 语义化版本三段数值化（供比较）；非法返回 null。
-function semverTriple(label) {
-  const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(String(label || ''))
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
-}
-
-// 建议是否递增：填的号 ≤ 历史最大号 → 软提示（不阻断）。both 为 vX.Y.Z 字符串；缺失历史返回空串。
-export function versionIncrementHint(label, prevMaxLabel) {
-  const cur = semverTriple(label)
-  const prev = semverTriple(prevMaxLabel)
-  if (!cur || !prev) return ''
-  const cmp = cur[0] - prev[0] || cur[1] - prev[1] || cur[2] - prev[2]
-  return cmp <= 0 ? `建议版本号递增（历史最大 ${prevMaxLabel}），当前 ${label} 未递增` : ''
-}
-
 /* ============================ skill.md 工具引用解析（决议 6 / §5.4） ============================ */
 // 解析正文中的 :::tool{code=x} 与 @tool[x] 两种标记，去重返回 code 列表 + 每 code 引用次数。
 // 与后端 SkillMdToolParser 口径**严格对齐**（CR-P0/P1）：
