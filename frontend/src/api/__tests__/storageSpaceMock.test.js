@@ -22,7 +22,7 @@ import { setUserPosition, getAssignmentByUserId, __resetPositionAssignmentMock }
 
 // 2026-10-09 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md（§一·4 状态判定 / §三 容量分配 / §四 扩容申请 / §五 用户联动 / §六 审计）
 // 与 05治理/访问审计 §6.2 / §6.5.4。覆盖：状态与排序、调整 / 批量 / 恢复默认、有待处理申请不可调整、申请处理与并发、
-// 审计 hidden 与客户端视图、与用户 / 岗位模块联动（reconcile）、种子自洽；持久化与读回见 storageSpaceMockPersist.test.js。
+// 审计记录与客户端视图、与用户 / 岗位模块联动（reconcile）、种子自洽；持久化与读回见 storageSpaceMockPersist.test.js。
 //
 // 种子速查（员工 id 取自 adminUserMock 种子，用户名 → id）：zhangwei 201 / li.na 202 / chenyu 203 / wangfang 204 /
 // sun.xin 206 / liuqiang 207 / zhaomin 208 / hejing 210 / xulin 212 / yangfan 209（未统计）/ ma.chao 213（未统计）；停用的 zhouming 205、wujie 211 不进清单。
@@ -85,14 +85,13 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
 })
 
 describe('storageSpaceMock —— 访问审计可见性', () => {
-  it('同意 / 拒绝扩容的审计记录标 hidden（访问审计页不展示），调整容量不标；客户端读取视图三类都在', async () => {
+  it('同意 / 拒绝扩容 / 调整容量三类审计记录都写进访问审计（都不带 hidden，页面全展示）；客户端读取视图三类都在', async () => {
     await approveExpansionRequest('ER-1006', 10)
     await rejectExpansionRequest('ER-1005', '先清理历史产物')
     await adjustStorageQuota(201, 8)
     const byAction = Object.fromEntries(liveOps().map((r) => [r.action, r]))
-    expect(byAction['同意扩容'].hidden).toBe(true)
-    expect(byAction['拒绝扩容'].hidden).toBe(true)
-    expect(byAction['调整容量'].hidden).toBeUndefined()
+    expect(Object.keys(byAction).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
+    for (const r of Object.values(byAction)) expect(r).not.toHaveProperty('hidden')
     expect(liveClientOps().map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
   })
 })
@@ -369,18 +368,17 @@ describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审�
     }
   })
 
-  it('已处理的申请在访问审计种子里有对应的 hidden 记录（处理人、时间、申请单标识一致），个人设置的徐琳有「调整容量」记录', async () => {
+  it('已处理的申请在访问审计种子里有对应的审计记录（处理人、时间、申请单标识一致），个人设置的徐琳有「调整容量」记录', async () => {
     const reqs = (await listExpansionRequests({ size: 50 })).list.filter((r) => r.status !== 'PENDING')
     const seeds = opsRecords.filter((r) => r.module === '存储空间' && !r.live)
     for (const r of reqs) {
       const rec = seeds.find((x) => x.meta?.requestId === r.id)
       expect(rec, `申请 ${r.id} 应有审计种子`).toBeTruthy()
-      expect(rec).toMatchObject({ hidden: true, operator: r.handler, time: r.handledAt, target: r.username })
+      expect(rec).toMatchObject({ operator: r.handler, time: r.handledAt, target: r.username })
       expect(rec.action).toBe(r.status === 'APPROVED' ? '同意扩容' : '拒绝扩容')
     }
     const adjust = seeds.find((x) => x.action === '调整容量')
     expect(adjust).toMatchObject({ target: 'xulin', detail: '5 GB → 8 GB' })
-    expect(adjust.hidden).toBeUndefined()
     expect((await memberOf('xulin')).totalGb).toBe(8)
   })
 

@@ -7,8 +7,7 @@ import {
   outputOf,
   knowledgeParamsOf,
   knowledgeOutputOf,
-  EXEC_RESULT_LABEL,
-  KNOWLEDGE_RESULT_LABEL
+  EXEC_RESULT_LABEL
 } from '../toolCallAuditMock'
 
 /**
@@ -27,7 +26,10 @@ import {
  *
  * 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索的整体结果也收窄为 成功 / 失败
  * 两态——原「执行前拦截」并入「失败」，原因文案保留。三组现在判定规则、取值集合完全一致，
- * 只是知识库检索的「失败」文案写法不同（"执行失败"），且继续不采用记录单元改版（见下）。
+ * 继续不采用记录单元改版（见下）。
+ *
+ * 2026-10-09 第四轮改版（同日）：知识库检索原来单独用的「执行失败」文案也去掉，与另两组
+ * 统一为「失败」，三组现在直接共用同一份 EXEC_RESULT_LABEL，不再有 KNOWLEDGE_RESULT_LABEL。
  */
 describe('三组记录', () => {
   it('编号在三组之间不重复，前缀区分来源：C- 技能调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
@@ -38,21 +40,16 @@ describe('三组记录', () => {
     expect(knowledgeCallRecords.every((r) => r.id.startsWith('K-'))).toBe(true)
   })
 
-  it('三组记录的整体结果取值 key 集合相同（均只有 成功 / 失败），但"失败"显示文案各自独立', () => {
-    expect(Object.keys(EXEC_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
-    expect(Object.keys(KNOWLEDGE_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
+  it('三组记录的整体结果取值集合与显示文案完全一致（均只有 成功 / 失败，直接共用 EXEC_RESULT_LABEL）', () => {
+    expect(EXEC_RESULT_LABEL).toEqual({ SUCCESS: '成功', FAILED: '失败' })
     for (const r of taskCallRecords) {
       expect(['SUCCESS', 'FAILED']).toContain(r.result)
       expect(EXEC_RESULT_LABEL[r.result]).toBeTruthy()
     }
     for (const r of knowledgeCallRecords) {
       expect(['SUCCESS', 'FAILED']).toContain(r.result)
-      expect(KNOWLEDGE_RESULT_LABEL[r.result]).toBeTruthy()
+      expect(EXEC_RESULT_LABEL[r.result]).toBeTruthy()
     }
-    // 两个页签的 PRD 原文"失败"写法不一致（任务运行"失败"、知识库检索"执行失败"），
-    // 不能共用同一份标签——这正是本条用例要钉住的，避免以后又合并成一个常量
-    expect(EXEC_RESULT_LABEL.FAILED).toBe('失败')
-    expect(KNOWLEDGE_RESULT_LABEL.FAILED).toBe('执行失败')
   })
 
   it('技能调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {

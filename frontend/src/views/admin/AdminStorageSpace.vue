@@ -14,15 +14,18 @@ import StorageQuotaPane from '@/components/admin/storage/StorageQuotaPane.vue'
 import StorageRequestPane from '@/components/admin/storage/StorageRequestPane.vue'
 import { getStorageOverview } from '@/api/storageSpace'
 
-// 访问审计「查看」（调整容量的记录）会带 ?keyword=员工用户名 跳到容量分配页签（访问审计 §6.3）；
-// 同意 / 拒绝扩容的记录不在审计页展示，所以没有跳进扩容申请页签的入口
+// 访问审计「查看」会带 ?keyword=员工用户名 跳过来（访问审计 §6.3）：
+// 调整容量的记录进容量分配页签；同意 / 拒绝扩容的记录带 ?tab=request 进扩容申请页签，筛选项为「全部状态」
 const route = useRoute()
-const activeTab = ref('quota')
+const fromAuditRequest = route.query.tab === 'request'
+const activeTab = ref(fromAuditRequest ? 'request' : 'quota')
 const pendingCount = ref(0)
 // 容量分配页点「待处理」时带过去的员工用户名；两个页签用 v-if 懒挂载，切过去时扩容申请页读它作初始搜索词
-const focusKeyword = ref('')
+const focusKeyword = ref(fromAuditRequest ? queryString(route.query.keyword) : '')
+// 扩容申请页签的初始状态筛选：容量分配页点「待处理」过来是待处理，审计页过来是全部状态（''）
+const focusStatus = ref(fromAuditRequest ? '' : 'PENDING')
 // 审计页跳过来的员工用户名，只在首次进入容量分配页签时生效
-const quotaKeyword = ref(queryString(route.query.keyword))
+const quotaKeyword = ref(fromAuditRequest ? '' : queryString(route.query.keyword))
 
 async function refreshPending() {
   try {
@@ -34,12 +37,16 @@ async function refreshPending() {
 
 function openRequest(row) {
   focusKeyword.value = row.username
+  focusStatus.value = 'PENDING'
   activeTab.value = 'request'
 }
 
 // 离开页签后，跳转带来的搜索词作废，下次手动切回来是干净的默认状态
 watch(activeTab, (_now, old) => {
-  if (old === 'request') focusKeyword.value = ''
+  if (old === 'request') {
+    focusKeyword.value = ''
+    focusStatus.value = 'PENDING'
+  }
   if (old === 'quota') quotaKeyword.value = ''
 })
 
@@ -59,7 +66,7 @@ onMounted(refreshPending)
           <span>扩容申请</span>
           <span v-if="pendingCount" class="ss-badge">{{ pendingCount }}</span>
         </template>
-        <StorageRequestPane v-if="activeTab === 'request'" :focus-keyword="focusKeyword" @changed="refreshPending" />
+        <StorageRequestPane v-if="activeTab === 'request'" :focus-keyword="focusKeyword" :focus-status="focusStatus" @changed="refreshPending" />
       </el-tab-pane>
     </el-tabs>
   </div>

@@ -125,6 +125,9 @@ describe('岗位自动化任务页签（PRD §八）', () => {
     // 单次工具调用不记录耗时与具体执行时刻，列表不展示"执行耗时"
     expect(text).not.toContain('执行耗时')
     expect(p.querySelector('input[placeholder="搜索用户 / 岗位 / 任务 / 工具"]')).toBeTruthy()
+    // 2026-10-09 第四轮改版：筛选项占位文案与另两页签统一
+    expect(text).toContain('全部执行结果')
+    expect(p.querySelectorAll('.lt-filter').length).toBe(2)
   })
 
   it('点「涉及写操作的运行」卡片 → 只剩涉及写操作的运行记录', async () => {
@@ -230,6 +233,12 @@ describe('知识库检索页签（PRD §九）', () => {
     expect(text).not.toContain('操作性质')
     expect(text).not.toContain('用户确认')
     expect(text).not.toContain('当前待确认')
+    // 2026-10-09 第四轮改版：筛选项收到跟另两页签一致的两项——执行结果 + 本页专属的数据源类型，
+    // 去掉独立的「命中情况」下拉（无命中改为只能靠统计卡片筛选）
+    expect(text).toContain('全部执行结果')
+    expect(text).toContain('全部数据源类型')
+    expect(text).not.toContain('全部命中情况')
+    expect(p.querySelectorAll('.lt-filter').length).toBe(2)
   })
 
   it('点「无命中检索」卡片 → 只剩检索成功且命中 0 条的记录', async () => {
@@ -251,7 +260,7 @@ describe('知识库检索页签（PRD §九）', () => {
     })
   })
 
-  it('搜索框按检索词过滤；命中执行失败时展示失败原因', async () => {
+  it('搜索框按检索词过滤；命中失败的检索时展示失败原因（结果文案与另两页签统一为"失败"）', async () => {
     mountReal()
     await flush()
     await openTab('knowledge')
@@ -264,7 +273,8 @@ describe('知识库检索页签（PRD §九）', () => {
     const rows = bodyRows(p)
     expect(rows.length).toBe(2)
     rows.forEach((r) => {
-      expect(r.textContent).toContain('执行失败')
+      expect(r.textContent).toContain('失败')
+      expect(r.textContent).not.toContain('执行失败')
       expect(r.textContent).toContain('连接超时（8000 ms）')
     })
   })
