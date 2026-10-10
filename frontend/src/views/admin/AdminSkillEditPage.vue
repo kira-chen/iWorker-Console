@@ -68,6 +68,7 @@ import {
 // 治理借用态仅按需触发，动态引在功能上等价且不扩大既有测试的模块图。
 import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
 import { loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
+import { queryString } from '@/utils/routeQuery'
 import {
   confirmApproveReview,
   confirmWithdrawMyApp,
@@ -926,11 +927,13 @@ function backToList() {
   }
   // 岗位借用态（2026-09-09 批次 4C #15）：从岗位详情「Agent 与技能」页签行内【编辑】进来，
   // 「← 返回」回到该岗位详情的来源页签，不再落到技能列表。
-  if (route.query?.fromPosition) {
+  // fromPosition / fromTab 经 queryString 归一：地址栏重复参数（数组）取第一个（yuepu#89⑤）
+  const fromPosition = queryString(route.query?.fromPosition)
+  if (fromPosition) {
     router.push({
       name: 'PositionWorkbench',
-      params: { id: route.query.fromPosition },
-      query: { tab: route.query.fromTab || 'agents' }
+      params: { id: fromPosition },
+      query: { tab: queryString(route.query.fromTab) || 'agents' }
     })
     return
   }

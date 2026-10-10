@@ -157,6 +157,8 @@ async function retryResourceLimits() {
   }
 }
 
+// 潜伏项（yuepu#89②，保留不改）：只 watch visible——抽屉由列表页按需 v-if 打开，打开即取数；若改成常驻挂载，
+// 对象（id）变化时不会重新取数，届时需补 watch(() => props.xxxId)。KnowledgeBaseEditor 同理。
 watch(() => props.visible, (v) => { if (v) load() })
 
 /**

@@ -177,6 +177,8 @@ defineExpose({ snapshot, snapshotMissing })
     </section>
   </DrawerEditor>
 
+  <!-- 潜伏项（yuepu#89④，保留不改）：下面 ExpertEditor 首次 load 取的是当前配置，审核快照（snapshot）可能晚于它到达，
+       届时先显示当前配置、快照到后才切换；mock 同步返回故不闪。接真实后端需让编辑器等快照就绪再渲染。 -->
   <!-- EXPERT：只读查看走审核版本快照（A5，md §四 L48）；编辑态（我的申请「前往修改」）仍取当前配置 -->
   <ExpertEditor
     v-else-if="kind === 'EXPERT'"

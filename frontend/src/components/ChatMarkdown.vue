@@ -88,6 +88,7 @@ const previewId = `chat-md-${Math.random().toString(36).slice(2)}`
     preview-theme="default"
     :no-katex="true"
     :no-mermaid="true"
+    :no-echarts="true"
     :no-highlight="true"
     :no-img-zoom-in="true"
   />
