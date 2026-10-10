@@ -295,6 +295,18 @@ describe('知识库检索页签（PRD §九）', () => {
   })
 })
 
+describe('筛选占位（PRD §八 §九）', () => {
+  it('任务页签与知识库页签的下拉占位与 md 一致', async () => {
+    mountReal()
+    await flush()
+    for (const name of ['task', 'knowledge']) {
+      await openTab(name)
+      const holders = [...pane(name).querySelectorAll('.lt-filter .el-select__placeholder')].map((e) => e.textContent.trim())
+      expect(holders).toEqual(name === 'task' ? ['全部结果', '全部'] : ['全部结果', '全部', '全部'])
+    }
+  })
+})
+
 describe('导出 CSV（PRD §三）', () => {
   it('两个新页签各自导出当前筛选结果', async () => {
     mountReal()
@@ -302,7 +314,7 @@ describe('导出 CSV（PRD §三）', () => {
     for (const name of ['task', 'knowledge']) {
       await openTab(name)
       createObjectURL.mockClear()
-      buttonOf(pane(name), '导出筛选结果 CSV').click()
+      buttonOf(pane(name), '导出 CSV').click()
       await flush()
       expect(createObjectURL).toHaveBeenCalledTimes(1)
     }

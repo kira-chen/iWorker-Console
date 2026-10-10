@@ -189,13 +189,13 @@ function timelineSteps(d) {
         @change="list.search()"
         class="lt-date-range"
       />
-      <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="(label, key) in KNOWLEDGE_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
-      <el-select v-model="query.sourceType" placeholder="全部数据源类型" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.sourceType" placeholder="全部" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="t in SOURCE_TYPES" :key="t" :label="t" :value="t" />
       </el-select>
-      <el-select v-model="query.hit" placeholder="全部命中情况" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.hit" placeholder="全部" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="(label, key) in HIT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-input
@@ -210,7 +210,7 @@ function timelineSteps(d) {
       </el-input>
       <el-button @click="applySearch">查询</el-button>
       <template #right>
-        <el-button @click="exportCsv">导出筛选结果 CSV</el-button>
+        <el-button @click="exportCsv">导出 CSV</el-button>
       </template>
     </ListToolbar>
 

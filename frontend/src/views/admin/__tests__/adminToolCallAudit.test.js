@@ -316,7 +316,7 @@ describe('导出 CSV（§三）', () => {
     cardOf('执行失败').click()
     await flush()
     const n = bodyRows().length
-    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出筛选结果 CSV')
+    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出 CSV')
     exportBtn.click()
     await flush()
     expect(createObjectURL).toHaveBeenCalledTimes(1)
