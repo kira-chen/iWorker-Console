@@ -36,7 +36,7 @@
  * 跳过并记录：D4 鉴权区按 md 多参数表（Q56/Q57，现状即 md）；D9 检索工具保持平铺复选框（md §七.3 字面「多选复选框形式」）、
  *   不加原型「拉取工具」按钮（清单由测试连接返回，md §七.3）。
  */
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
@@ -141,20 +141,9 @@ const fieldErrors = reactive({})
 const verify = ref(null)
 const testing = ref(false)
 const embeddingModels = ref([])
-let muteVerifyReset = false
-/**
- * 回填详情但不触发「验证状态重置」：回填会改变 connSig，其 watch 在下一轮才跑，
- * 此时 loading 已复位，不静默就会把刚回填的 SUCCESS 冲成「修改连接配置后需要重新测试」（yuepu#62④）。
- */
-async function hydrateQuietly(d) {
-  muteVerifyReset = true
-  try {
-    hydrate(d)
-    await nextTick()
-  } finally {
-    muteVerifyReset = false
-  }
-}
+// 验证状态对应的连接配置签名基线：回填详情 / 拿到测试结果时记下当时的 connSig，之后 connSig 与它不同才算「用户改了连接配置」。
+// 回填、测试成功后精简已选工具这类程序性改动不会触发重置（yuepu#62④；J62 起不再用静默标志 + nextTick 兜）。
+let verifiedSig = ''
 
 /** 超时时间必填且须在区间内（md §六.1 API 1000～60000 / §七.6 MCP 1000～120000）；清空后 el-input-number 回 null，一并拦。 */
 const timeoutRule = (min, max) => ({
@@ -333,7 +322,10 @@ async function load() {
   loading.value = true
   try {
     embeddingModels.value = await listEmbeddingModelOptions().catch(() => [])
-    if (targetId.value) await hydrateQuietly(await getKnowledgeSource(targetId.value))
+    if (targetId.value) {
+      hydrate(await getKnowledgeSource(targetId.value))
+      verifiedSig = connSig.value
+    }
   } catch (e) {
     loadError.value = e?.message || '加载失败'
   } finally {
@@ -382,8 +374,8 @@ const connSig = computed(() => {
   }
   return ''
 })
-watch(connSig, () => {
-  if (loading.value || muteVerifyReset || viewMode.value || form.sourceType === 'UPLOAD') return
+watch(connSig, (sig) => {
+  if (loading.value || sig === verifiedSig || viewMode.value || form.sourceType === 'UPLOAD') return
   if (verify.value && verify.value.verifyStatus !== 'UNVERIFIED') verify.value = { verifyStatus: 'UNVERIFIED' }
 })
 
@@ -392,7 +384,6 @@ async function doTest() {
   testing.value = true
   try {
     const r = await testKnowledgeSource(form.sourceType, { sourceId: targetId.value, config: buildConfig(), authValue: authValueOut() })
-    muteVerifyReset = true
     verify.value = r
     if (r.verifyStatus === 'SUCCESS') {
       if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
@@ -404,11 +395,10 @@ async function doTest() {
     } else {
       ElMessage.error(r.verifyError || '连接失败')
     }
-    await nextTick()
+    verifiedSig = connSig.value
   } catch (e) {
     ElMessage.error(e?.message || '测试失败')
   } finally {
-    muteVerifyReset = false
     testing.value = false
   }
 }
