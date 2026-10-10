@@ -5,9 +5,13 @@
  *
  * 和另两个页签的差别：
  *   - 只记外部调用：上传型数据源走平台 RAG，不入本页；管理端的「检索测试」「测试连接」是管理操作，也不入本页；
- *   - 只读、不需确认，结果只有 成功 / 执行失败 两态（2026-10-09 改版：原「执行前拦截」如无该知识库
- *     访问权限，并入「执行失败」，原因文案保留）；
- *   - 命中 0 条属于「成功」，用「命中条数」区分，统计卡片单列「无命中检索」；
+ *   - 只读、不需确认，结果只有 成功 / 失败 两态（2026-10-09 改版：原「执行前拦截」如无该知识库
+ *     访问权限，并入「失败」，原因文案保留；同日第四轮改版：失败文案与另两页签统一，不再单独用
+ *     "执行失败"，直接共用 EXEC_RESULT_LABEL）；
+ *   - 命中 0 条属于「成功」，用「命中条数」区分，统计卡片单列「无命中检索」——同轮改版去掉了独立的
+ *     「命中情况」筛选下拉，无命中的筛选改为只能通过「无命中检索」统计卡片触发；
+ *   - 筛选项与另两页签对齐为「执行结果 + 一个页签专属筛选」的两项结构：这里专属筛选是「数据源类型」
+ *     （技能调用 / 岗位自动化任务是「涉及写操作」，知识库检索没有这个概念，换成它本来就有的筛选）；
  *   - 审计关心的是「检索词发给了谁、命中了哪些内容」，所以列表看检索词与命中条数，没有操作性质 / 确认；
  *   - 检索词的记录与脱敏口径产品尚未定义，页面按原文展示并标【待补充】（docs/04-待补需求定义/）。
  */
@@ -28,12 +32,11 @@ import {
   knowledgeCallRecords,
   knowledgeParamsOf,
   knowledgeOutputOf,
-  KNOWLEDGE_RESULT_LABEL
+  EXEC_RESULT_LABEL
 } from '@/api/toolCallAuditMock'
 
 const RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const SOURCE_TYPES = ['API', 'MCP']
-const HIT_LABEL = { HIT: '有命中', NONE: '无命中' }
 
 /** 数据源类型取自 source 前缀（「MCP·法规库检索」→ MCP）。 */
 const sourceTypeOf = (r) => r.source.split('·')[0]
@@ -41,7 +44,9 @@ const sourceTypeOf = (r) => r.source.split('·')[0]
 const isNoHit = (r) => r.result === 'SUCCESS' && r.hitCount === 0
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
-const query = reactive({ result: '', sourceType: '', hit: '' })
+/* 2026-10-09 第四轮改版：去掉独立的「命中情况」筛选下拉，hit 不再对应界面上的选择器，
+ * 只由「无命中检索」统计卡片（chooseMetric）置为 true——筛选项收到跟另两页签一致的两项。 */
+const query = reactive({ result: '', sourceType: '', hit: false })
 
 const {
   dateRange, disabledDate, onCalendarChange,
@@ -54,7 +59,7 @@ const {
   matches: (r) =>
     (!query.result || r.result === query.result) &&
     (!query.sourceType || sourceTypeOf(r) === query.sourceType) &&
-    (!query.hit || (query.hit === 'NONE' ? isNoHit(r) : r.result === 'SUCCESS' && r.hitCount > 0)),
+    (!query.hit || isNoHit(r)),
   keywordOf: (r) => [r.user, r.position, r.kb, r.source, r.query, r.id]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
@@ -88,7 +93,7 @@ const metrics = computed(() => {
 })
 
 const activeMetric = computed(() => {
-  if (query.hit === 'NONE') return 'nohit'
+  if (query.hit) return 'nohit'
   if (query.result === 'FAILED') return 'failed'
   return ''
 })
@@ -96,15 +101,15 @@ const activeMetric = computed(() => {
 function chooseMetric(key) {
   query.result = ''
   query.sourceType = ''
-  query.hit = ''
-  if (key === 'nohit') query.hit = 'NONE'
+  query.hit = false
+  if (key === 'nohit') query.hit = true
   if (key === 'failed') query.result = 'FAILED'
   list.search()
 }
 
 const HELP = [
-  '检索请求指经 API / MCP 数据源向第三方知识服务发出的检索，只有成功、执行失败两类结果（如无该知识库访问权限这类检查不通过，也并入"执行失败"，原因文案区分具体情形）；上传型数据源走平台检索，不在此记录。',
-  '命中 0 条的检索属于"成功"，单独统计为"无命中检索"。执行耗时为数据源实际响应时间。'
+  '检索请求指经 API / MCP 数据源向第三方知识服务发出的检索，只有成功、失败两类结果（如无该知识库访问权限这类检查不通过，也并入"失败"，原因文案区分具体情形）；上传型数据源走平台检索，不在此记录。',
+  '命中 0 条的检索属于"成功"，单独统计为"无命中检索"，只能通过该统计卡片筛选，没有单独的筛选下拉。执行耗时为数据源实际响应时间。'
 ]
 
 /* ── 导出 CSV ── */
@@ -115,7 +120,7 @@ function exportCsv() {
     ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
-      r.result === 'SUCCESS' ? r.hitCount : '', KNOWLEDGE_RESULT_LABEL[r.result], r.reason, r.duration
+      r.result === 'SUCCESS' ? r.hitCount : '', EXEC_RESULT_LABEL[r.result], r.reason, r.duration
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -135,7 +140,7 @@ const detail = computed(() => {
   if (!d) return null
   return {
     title: `检索详情 · ${d.id}`,
-    result: { label: KNOWLEDGE_RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
+    result: { label: EXEC_RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '知识库', value: d.kb },
@@ -165,7 +170,7 @@ function timelineSteps(d) {
     { time: d.time, title: '发起检索', desc: `${d.user} 通过「${d.position}」提问，引用的知识库「${d.kb}」向数据源「${d.source}」发起检索。`, type: 'primary' },
     {
       time: '',
-      title: KNOWLEDGE_RESULT_LABEL[d.result],
+      title: EXEC_RESULT_LABEL[d.result],
       desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
       type: d.result === 'FAILED' ? 'danger' : 'success'
     }
@@ -190,13 +195,10 @@ function timelineSteps(d) {
         class="lt-date-range"
       />
       <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="(label, key) in KNOWLEDGE_RESULT_LABEL" :key="key" :label="label" :value="key" />
+        <el-option v-for="(label, key) in EXEC_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-select v-model="query.sourceType" placeholder="全部数据源类型" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="t in SOURCE_TYPES" :key="t" :label="t" :value="t" />
-      </el-select>
-      <el-select v-model="query.hit" placeholder="全部命中情况" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="(label, key) in HIT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
       <el-input
         v-model="keyword"
@@ -251,7 +253,7 @@ function timelineSteps(d) {
           </el-table-column>
           <el-table-column label="执行结果 / 原因" min-width="180">
             <template #default="{ row }">
-              <StatusTag :type="RESULT_TAG[row.result]">{{ KNOWLEDGE_RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag :type="RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>
