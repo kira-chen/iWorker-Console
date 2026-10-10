@@ -40,7 +40,9 @@ const props = defineProps({
   height: { type: String, default: '520px' },
   // 启用内置 pageFullscreen（铺满视口，由 md-editor-v3 内部托管，不自研全屏逻辑）。
   // 默认 false：既有 SOP/技能编辑用法零回归；技能聚焦态白板编辑置 true。
-  fullscreen: { type: Boolean, default: false }
+  fullscreen: { type: Boolean, default: false },
+  // 只读态：编辑区不可输入（透传 md-editor-v3 的 read-only / disabled）
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -119,6 +121,8 @@ defineExpose({ insertText })
       :theme="themeStore.theme"
       preview-theme="default"
       :preview="false"
+      :read-only="readonly"
+      :disabled="readonly"
       :toolbars="toolbars"
       :placeholder="placeholder"
       :no-katex="true"

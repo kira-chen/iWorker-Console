@@ -9,8 +9,7 @@
  *   - §7.9 保存与创建：创建后「左侧列表刷新并自动选中新建任务」；保存失败提示具体错误原因；
  *   - §7.10 删除任务：确认后删除、列表刷新；删除当前选中任务后右侧回空态占位；
  *   - §12 异常场景：加载失败给出【重试】。
- * 只读态（§10 审核中全部页签只读）由父级 PositionDetailTabs 的 .pd-ro-freeze 指针冻结兜底，本组件无 readonly 入参，
- *   不在本文件覆盖（见 PositionDetailTabs 注释「工作档案 / 自动化任务两个内嵌 Stage 暂无 readonly prop」）。
+ * 只读态（§10 审核中全部页签只读，J20 已补 readonly 入参）见 SampleTaskEditorReadonly.test.js，不在本文件覆盖。
  *
  * 覆盖点（默认选中第一条 / 有脏切换条目确认 / 卡头开关启停 toast 三条需真编辑器，见 SampleTaskEditor.test.js「Stage × 真编辑器集成」组，此处不重复）：
  *   ① 未保存岗位（positionId=null）：不拉列表、计数 0、点新增提示「请先保存岗位」；
