@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 /**
@@ -295,7 +295,14 @@ describe('知识库检索页签（PRD §九）', () => {
   })
 })
 
-describe('筛选占位（PRD §八 §九）', () => {
+describe('筛选占位（PRD §三 §八 §九）', () => {
+  it('技能调用页签：执行结果占位「全部结果」，涉及写操作占位「全部」', async () => {
+    mountReal()
+    await flush()
+    const holders = [...pane('skill').querySelectorAll('.lt-filter .el-select__placeholder')].map((e) => e.textContent.trim())
+    expect(holders).toEqual(['全部结果', '全部'])
+  })
+
   it('任务页签与知识库页签的下拉占位与 md 一致', async () => {
     mountReal()
     await flush()
@@ -308,15 +315,37 @@ describe('筛选占位（PRD §八 §九）', () => {
 })
 
 describe('导出 CSV（PRD §三）', () => {
-  it('两个新页签各自导出当前筛选结果', async () => {
-    mountReal()
-    await flush()
-    for (const name of ['task', 'knowledge']) {
+  // 三个页签各挑一张卡片筛选，使导出条数 n 与总数不等，才能证明导出的是「筛选结果」条数
+  const CASES = [
+    { name: 'skill', card: '执行失败' },
+    { name: 'task', card: '涉及写操作的运行' },
+    { name: 'knowledge', card: '无命中检索' }
+  ]
+
+  it.each(CASES)('$name 页签：按钮文案为「导出 CSV」，导出提示「已导出 N 条筛选结果」且 N 为筛选后条数', async ({ name, card }) => {
+    const success = vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
+    try {
+      mountReal()
+      await flush()
       await openTab(name)
+      const p = pane(name)
+      expect(buttonOf(p, '导出 CSV')).toBeTruthy()
+      expect(buttonOf(p, '导出筛选结果 CSV')).toBeUndefined()
+
+      const total = Number(cards(p)[0].querySelector('.metric-value').textContent)
+      cardOf(p, card).click()
+      await flush()
+      const n = Number(cardOf(p, card).querySelector('.metric-value').textContent)
+      expect(n).toBeGreaterThan(0)
+      expect(n).not.toBe(total)
+
       createObjectURL.mockClear()
-      buttonOf(pane(name), '导出 CSV').click()
+      buttonOf(p, '导出 CSV').click()
       await flush()
       expect(createObjectURL).toHaveBeenCalledTimes(1)
+      expect(success).toHaveBeenCalledWith(`已导出 ${n} 条筛选结果`)
+    } finally {
+      success.mockRestore()
     }
   })
 })

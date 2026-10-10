@@ -134,15 +134,35 @@ describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', (
 })
 
 describe('positionMock.createPosition · 带连接器 id 新建同样回写引用清单（yuepu#90①）', () => {
-  it('新建岗位 payload 带三类连接器 id，连接器侧引用清单含新岗位', async () => {
+  const NAME = '带连接器新建岗'
+  const KINDS = [
+    { kind: 'mcp', field: 'connectorMcpIds', id: 'mail_center', mod: '../mcpConnectorMock', getter: 'getMcp' },
+    { kind: 'api', field: 'connectorApiIds', id: 'api_1103', mod: '../apiConnectorMock', getter: 'getApi' },
+    { kind: 'bizSystem', field: 'businessSystemIds', id: 'biz_2101', mod: '../bizSystemMock', getter: 'getBizSystem' }
+  ]
+
+  it.each(KINDS)('新建岗位 payload 带 $kind 连接器 id，连接器侧引用清单含新岗位（id 与岗位名都对得上）', async ({ field, id, mod, getter }) => {
     const pos = await import('../positionMock')
-    const created = await pos.createPosition({ name: '带连接器新建岗', connectorMcpIds: ['mail_center'], connectorApiIds: ['api_1103'], businessSystemIds: ['biz_2101'] })
+    const created = await pos.createPosition({ name: NAME, [field]: [id] })
+    const conn = await import(mod)
+    const refs = (await conn[getter](id)).referencedByPositions
+    const ref = refs.find((x) => x.positionId === created.positionId)
+    expect(ref).toBeTruthy()
+    expect(ref.positionName).toBe(NAME)
+  })
+
+  it('反向：新建时不带任何连接器字段，不改动任何连接器的引用清单', async () => {
     const mcp = await import('../mcpConnectorMock')
     const api = await import('../apiConnectorMock')
     const biz = await import('../bizSystemMock')
-    expect((await mcp.getMcp('mail_center')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
-    expect((await api.getApi('api_1103')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
-    expect((await biz.getBizSystem('biz_2101')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
+    const snapshot = async () => JSON.stringify([
+      mcp.listMcpSync(), api.listApisSync(), biz.listBizSystemsSync(),
+      await Promise.all(KINDS.map(async (k) => (await ({ mcp, api, bizSystem: biz }[k.kind])[k.getter](k.id)).referencedByPositions))
+    ])
+    const before = await snapshot()
+    const pos = await import('../positionMock')
+    await pos.createPosition({ name: '无连接器新建岗' })
+    expect(await snapshot()).toBe(before)
   })
 })
 
