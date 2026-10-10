@@ -21,7 +21,7 @@
  *   ⑥ 编辑器回调：saved 逐条透出 warnings 并刷新列表；created 自动选中新条目 / 无 id 回占位；
  *   ⑦ 新建态：已在新建态再点不重复确认；脏态下点新增走「切换将丢弃」确认，取消则留在原条目；
  *   ⑧ 拖拽排序：drop 后即时 reorderSampleTasks(新 id 序)；失败回滚 + 「调序保存失败」；同位 drop 不下发；
- *   ⑨ 试跑面板（EFFECT_TEST_ENABLED 构建期开关，当前关闭；md §7 未规定试跑，按代码现状只做开关两态与结果面板基本态）。
+ *   ⑨ 试跑面板（EFFECT_TEST_ENABLED 构建期开关，当前关闭；md §7 未规定试跑，按代码现状只做开关两态与结果面板基本态；J18：此组用例受开关控制、md 未写，仅作代码说明保留）。
  *
  *   ⑩ 左侧列表规则（2026-10-08 T12 自原 SampleTaskPrototype4B 迁入）：缺指令红标 / 软上限 20 / 19 条可新增 / 无脏直接切换 / 删除确认取消。
  *
@@ -491,6 +491,7 @@ describe('自动化任务 · 拖拽排序即时保存（md §7.1「排序后即�
 })
 
 /* ============================ ⑨ 试跑面板（构建期开关） ============================ */
+// J18（2026-10-10 按团队建议选 A）：试跑面板受 EFFECT_TEST_ENABLED 控制（当前关），md 未写，本组 5 条用例作代码说明，不改行为。
 describe('自动化任务 · 试跑入口（EFFECT_TEST_ENABLED 开关；md §7 未规定，按开关两态与面板基本态）', () => {
   const testBtn = (i) => itemEls()[i].querySelector('.st-op-test')
   const drawer = () => container.querySelector('.stub-drawer')

@@ -397,7 +397,7 @@ function retryTest() {
                 >
                   <span class="st-flag">缺指令</span>
                 </el-tooltip>
-                <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js） -->
+                <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js）；md 岗位 §7 未写试跑，本入口仅作代码说明（J18） -->
                 <el-button
                   v-if="EFFECT_TEST_ENABLED"
                   link
