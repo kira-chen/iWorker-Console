@@ -1043,7 +1043,7 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     expect(adminApi.listMcp.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     marketApi.forceRevokeMcpService.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
     await mount()
@@ -1053,7 +1053,7 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     marketApi.forceRevokeMcpService.mockRejectedValueOnce(new Error(''))
     btn(rowByName('已上线服务'), '强制回收').click()
     await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(msg.success).not.toHaveBeenCalled()
   })
 

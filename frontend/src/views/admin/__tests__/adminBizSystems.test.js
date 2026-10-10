@@ -575,7 +575,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     expect(admin.listBizSystems.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     admin.forceRevokeBizSystem.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
     await mount()
@@ -585,7 +585,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     admin.forceRevokeBizSystem.mockRejectedValueOnce(new Error(''))
     btn(rowByName('客户管理系统'), '强制回收').click()
     await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(msg.success).not.toHaveBeenCalled()
   })
 

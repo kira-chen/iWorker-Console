@@ -363,14 +363,14 @@ async function checkNow(row) {
 }
 
 // 行内服务级动作统一封装：busy 态 + 失败 message 提示 + 成功刷新发布态
-async function runAction(row, action, fn, successMsg) {
+async function runAction(row, action, fn, successMsg, failMsg = '操作失败') {
   busy.value[row.id] = action
   try {
     await fn(row.id)
     if (successMsg) ElMessage.success(successMsg)
     await loadPubSummary()
   } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || failMsg)
   } finally {
     delete busy.value[row.id]
   }
@@ -463,7 +463,8 @@ async function forceRevoke(row) {
       await forceRevokeMcpService(id, reason)
       await list.reload()
     },
-    '已强制回收'
+    '已强制回收',
+    '强制回收失败'
   )
 }
 

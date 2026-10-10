@@ -253,7 +253,7 @@ async function forceRevoke(row) {
     ElMessage.success('已强制回收')
     fetchList()
   } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || '强制回收失败')
   } finally {
     actionBusy.value = null
   }
