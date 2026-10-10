@@ -37,10 +37,10 @@ export function fmtGb(value) {
  * 输入框不设 precision（小数原样保留），所以「只能填整数」由这里提示；小于下限时输入框会先把值拉回下限，
  * 「不能小于」主要给绕过页面的调用兜底。
  */
-export function quotaInputError(value, min = QUOTA_MIN_GB) {
+export function quotaInputError(value) {
   if (value == null || value === '' || Number.isNaN(Number(value))) return '请输入正整数'
   const n = Number(value)
   if (!Number.isInteger(n)) return '容量只能填整数'
-  if (n < min) return `容量不能小于 ${min} GB`
+  if (n < QUOTA_MIN_GB) return `容量不能小于 ${QUOTA_MIN_GB} GB`
   return ''
 }

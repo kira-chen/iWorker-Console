@@ -95,7 +95,7 @@ const overusedTargets = computed(() => {
 const minGb = QUOTA_MIN_GB
 
 // 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
-const validate = () => quotaInputError(dialog.value, minGb)
+const validate = () => quotaInputError(dialog.value)
 
 /** 调整后总量不高于已用 → 员工会立刻变成已满，提交前二次确认（调整容量、批量设置、恢复默认共用一句话）。 */
 async function confirmFull(who) {
