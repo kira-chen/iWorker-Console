@@ -38,9 +38,9 @@ const stubs = {
       ' @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
   },
   'el-button': {
-    props: ['type', 'loading'],
+    props: ['type', 'loading', 'disabled'],
     emits: ['click'],
-    template: '<button class="el-button" @click="$emit(\'click\')"><slot /></button>'
+    template: '<button class="el-button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
   }
 }
 
@@ -192,6 +192,29 @@ describe('ProviderSystemEditor · 服务提供系统弹窗（md §二.5 L78）',
     findBtn(el, '取消').click()
     await nextTick()
     expect(visible.value).toBe(false)
+    expect(conn.updateProviderSystem).not.toHaveBeenCalled()
+  })
+
+  it('J5 前提：详情加载成功时【保存】可点', async () => {
+    const el = await mountEditor('pv_1')
+    expect(findBtn(el, '保存').disabled).toBe(false)
+  })
+
+  it('J5 加载失败后：表单清空（不残留上次打开的名称描述）、【保存】置灰，点击不调保存接口', async () => {
+    const el = await mountEditor('pv_1')
+    expect(inputOf(el, '系统名称').value).toBe('财务服务系统')
+    // 弹窗常驻：关闭后重开，这次详情拉取失败
+    conn.getProviderSystem.mockRejectedValueOnce({ message: '服务提供系统不存在' })
+    visible.value = false
+    await flush()
+    visible.value = true
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('服务提供系统不存在')
+    expect(inputOf(el, '系统名称').value).toBe('')
+    expect(inputOf(el, '系统描述').value).toBe('')
+    expect(findBtn(el, '保存').disabled).toBe(true)
+    findBtn(el, '保存').click()
+    await flush()
     expect(conn.updateProviderSystem).not.toHaveBeenCalled()
   })
 })
