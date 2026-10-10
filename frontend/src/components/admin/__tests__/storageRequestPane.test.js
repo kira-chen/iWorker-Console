@@ -95,23 +95,19 @@ describe('StorageRequestPane · 列表行与筛选（md §四·1 / §四·2）',
     expect(api.listExpansionRequests.mock.calls.at(-1)[0].status).toBeUndefined()
   })
 
-  it('搜索词变化 300ms 后自动重新取数（防抖），回车立即取数', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      const c = await mountPane()
-      const input = c.querySelector('.lt-search input')
-      const callsBefore = api.listExpansionRequests.mock.calls.length
-      input.value = 'chenyu'
+  it('搜索框清空后自动重新取数（md §四·1：清空搜索自动刷新；不钉具体延迟）', async () => {
+    const c = await mountPane()
+    const input = c.querySelector('.lt-search input')
+    const type = (v) => {
+      input.value = v
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await flushAll(2)
-      vi.advanceTimersByTime(299)
-      expect(api.listExpansionRequests.mock.calls.length).toBe(callsBefore)
-      vi.advanceTimersByTime(1)
-      await flushAll(4)
-      expect(api.listExpansionRequests.mock.calls.at(-1)[0].keyword).toBe('chenyu')
-    } finally {
-      vi.useRealTimers()
     }
+    type('chenyu')
+    await vi.waitFor(() => expect(api.listExpansionRequests.mock.calls.at(-1)[0].keyword).toBe('chenyu'), { timeout: 3000 })
+    const callsBefore = api.listExpansionRequests.mock.calls.length
+    type('')
+    await vi.waitFor(() => expect(api.listExpansionRequests.mock.calls.length).toBeGreaterThan(callsBefore), { timeout: 3000 })
+    expect(api.listExpansionRequests.mock.calls.at(-1)[0].keyword || '').toBe('')
   })
 
   it('没有申请时展示「暂无扩容申请」且没有【清空筛选】；有筛选条件无结果时展示「没有符合条件的申请」+【清空筛选】，点击后回到默认「待处理」', async () => {
