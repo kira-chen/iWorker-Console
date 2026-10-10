@@ -180,7 +180,6 @@ function opsPipeline(all) {
   const q = opsKeyword.value.toLowerCase()
   const base = all.filter(
     (r) =>
-      !r.hidden && // 扩容申请的同意 / 拒绝只留给客户端通知，审计页不展示（扩容申请页签自己有处理记录）
       (!q || r.operator.toLowerCase().includes(q) || r.target.toLowerCase().includes(q)) &&
       (!opsModule.value || r.module === opsModule.value) &&
       (!opsAction.value || r.action === opsAction.value) &&
@@ -220,6 +219,8 @@ const ACT_CLS = {
   个人配置: 'tag-green',
   分配: 'tag-green',
   变更: 'tag-green',
+  同意扩容: 'tag-green',
+  拒绝扩容: 'tag-red',
   调整容量: 'tag-green',
   停用: 'tag-orange',
   强制回收: 'tag-red',
@@ -255,9 +256,11 @@ function opsGoto(row) {
     ElMessage.info(`正式系统中将跳转至「${row.module}」模块`)
     return
   }
+  // 存储空间：调整容量落在容量分配页签（默认页签），同意 / 拒绝扩容落在扩容申请页签（访问审计 §6.3）
+  const extra = row.module === '存储空间' && row.action !== '调整容量' ? { tab: 'request' } : def.extraQuery
   router.push({
     name: def.name,
-    query: { ...(def.extraQuery || {}), keyword: row.target }
+    query: { ...(extra || {}), keyword: row.target }
   })
 }
 </script>
@@ -469,7 +472,7 @@ function opsGoto(row) {
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回','调整容量']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button @click="opsList.search">查询</el-button>

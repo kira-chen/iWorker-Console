@@ -162,7 +162,7 @@ describe('查询区（§三）', () => {
   it('执行结果下拉只有成功 / 失败两项，不含旧版的执行前拦截 / 待确认 / 进行中（"用户取消"作为失败原因文案仍会出现，不是独立状态，不在此断言范围）', () => {
     expect(container.querySelector('.lt-filter')).toBeTruthy()
     const text = container.textContent
-    expect(text).toContain('全部结果')
+    expect(text).toContain('全部执行结果')
     expect(text).not.toContain('进行中')
     expect(text).not.toContain('执行前拦截')
   })
@@ -338,11 +338,11 @@ describe('导出 CSV（§三）', () => {
 })
 
 describe('筛选占位（§三）', () => {
-  it('执行结果占位「全部结果」，涉及写操作占位「全部」', async () => {
+  it('执行结果占位「全部执行结果」，写操作筛选占位「涉及写操作」（PRD §三.2 / §三.3，2026-10-10 随 PRD 筛选项统一改版）', async () => {
     mountReal()
     await flush()
     const holders = [...container.querySelectorAll('.lt-filter .el-select__placeholder')].map((e) => e.textContent.trim())
-    expect(holders).toEqual(['全部结果', '全部'])
+    expect(holders).toEqual(['全部执行结果', '涉及写操作'])
   })
 })
 

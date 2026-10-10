@@ -45,15 +45,15 @@ export const opsRecords = [
   // objectId = 用户 id，meta 带用户与前后岗位的名称 + 标识（§6.5.3）。id/岗位取自 adminUserMock / positionMock 种子。
   { id: 18, time: '2026-08-28 11:10', operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗', at: '2026-08-28 11:10:24', objectId: 203, meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 401, name: '经营分析岗' } } },
   { id: 19, time: '2026-08-28 10:50', operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗', at: '2026-08-28 10:50:37', objectId: 202, meta: { userId: 202, username: 'li.na', fromPosition: { id: 402, name: '客户成功岗' }, toPosition: { id: 403, name: '财务审核岗' } } },
-  // 存储空间（§6.2 存储空间记录 / §6.5.4）：只有「调整容量」在审计页展示；扩容申请的同意 / 拒绝标 hidden，
-  // 页面不展示、只留给客户端通知读取（扩容申请页签自己有处理记录）。与 storageSpaceMock 的种子一一对应：
+  // 存储空间（§6.2 存储空间记录 / §6.5.4）：调整容量、同意扩容、拒绝扩容三类都在审计页展示，也都是客户端通知的来源。
+  // 与 storageSpaceMock 的种子一一对应：
   // 徐琳个人设置 8 GB、赵敏申请已同意（5→10）、何静 / 刘强 / 孙欣三条被拒绝申请（处理人 demo / zhangwei），
   // 由 storageSpaceMock.test.js 的「审计种子与存储空间种子一致」用例守着。
   { id: 20, time: '2026-10-08 14:30', operator: 'zhangwei', module: '存储空间', action: '调整容量', target: 'xulin', detail: '5 GB → 8 GB', at: '2026-10-08 14:30:12', objectId: 212, meta: { userId: 212, username: 'xulin', fromGb: 5, newTotalGb: 8 } },
-  { id: 21, time: '2026-10-07 16:02', operator: 'demo', module: '存储空间', action: '同意扩容', target: 'zhaomin', detail: '5 GB → 10 GB', hidden: true, at: '2026-10-07 16:02:41', objectId: 208, meta: { userId: 208, username: 'zhaomin', requestId: 'ER-1002', fromGb: 5, newTotalGb: 10 } },
-  { id: 22, time: '2026-10-05 15:18', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'hejing', detail: '客户资料归档建议放进「我的资料」，该库独立计量、不占存储空间，也不受这里的容量限制，不需要为此扩容。同时请先清理历史产物里已经不再使用的中间文件和重复版本，确认清理后仍然不够再重新提交申请，并在说明里写清楚预计新增的数据量和用途，方便评估合理的扩容幅度。', hidden: true, at: '2026-10-05 15:18:07', objectId: 210, meta: { userId: 210, username: 'hejing', requestId: 'ER-1001' } },
-  { id: 23, time: '2026-09-28 11:40', operator: 'demo', module: '存储空间', action: '拒绝扩容', target: 'liuqiang', detail: '申请说明过于简单，请补充使用场景和预计增量后重新提交。', hidden: true, at: '2026-09-28 11:40:30', objectId: 207, meta: { userId: 207, username: 'liuqiang', requestId: 'ER-0999' } },
-  { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。', hidden: true, at: '2026-09-20 14:05:19', objectId: 206, meta: { userId: 206, username: 'sun.xin', requestId: 'ER-0998' } },
+  { id: 21, time: '2026-10-07 16:02', operator: 'demo', module: '存储空间', action: '同意扩容', target: 'zhaomin', detail: '5 GB → 10 GB', at: '2026-10-07 16:02:41', objectId: 208, meta: { userId: 208, username: 'zhaomin', requestId: 'ER-1002', fromGb: 5, newTotalGb: 10 } },
+  { id: 22, time: '2026-10-05 15:18', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'hejing', detail: '客户资料归档建议放进「我的资料」，该库独立计量、不占存储空间，也不受这里的容量限制，不需要为此扩容。同时请先清理历史产物里已经不再使用的中间文件和重复版本，确认清理后仍然不够再重新提交申请，并在说明里写清楚预计新增的数据量和用途，方便评估合理的扩容幅度。', at: '2026-10-05 15:18:07', objectId: 210, meta: { userId: 210, username: 'hejing', requestId: 'ER-1001' } },
+  { id: 23, time: '2026-09-28 11:40', operator: 'demo', module: '存储空间', action: '拒绝扩容', target: 'liuqiang', detail: '申请说明过于简单，请补充使用场景和预计增量后重新提交。', at: '2026-09-28 11:40:30', objectId: 207, meta: { userId: 207, username: 'liuqiang', requestId: 'ER-0999' } },
+  { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。', at: '2026-09-20 14:05:19', objectId: 206, meta: { userId: 206, username: 'sun.xin', requestId: 'ER-0998' } },
   // 强制回收（§6.2 / §6.5.1）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
   // （objectId / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
   { id: 25, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30:41', objectId: 'sk_306' },
@@ -85,17 +85,14 @@ const persist = attachPersist('accessAuditOps', {
  * 可选字段（未传则不带键，向后兼容）：
  *   version  岗位 / 专家 / 技能的版本号小标签（强制回收落审计时传回收当时的版本）；
  *   objectId 被操作对象的唯一标识（技能 / 专家 / 连接器 / 岗位 / 用户等，页面不展示，客户端据此匹配本地数据）；
- *   hidden   true = 不在「管理端操作」页展示，只留在数据层供客户端通知读取（扩容申请的同意 / 拒绝：
- *            存储空间页的扩容申请页签自己已有处理记录，审计页不重复展示）；
  *   meta     扩展字段：用户技能审核 { reviewId, submitter, skillName }；
  *            岗位分配 { userId?, username, fromPosition:{id,name}|null, toPosition:{id,name} }。
- * @param {{operator:string, module:string, action:string, target:string, detail?:string, version?:string, objectId?:string|number, meta?:object, hidden?:boolean}} rec
+ * @param {{operator:string, module:string, action:string, target:string, detail?:string, version?:string, objectId?:string|number, meta?:object}} rec
  */
-export function appendOpsRecord({ operator, module, action, target, detail = '', version, objectId, meta, hidden = false }) {
+export function appendOpsRecord({ operator, module, action, target, detail = '', version, objectId, meta }) {
   const at = nowSecondText()
   const record = { id: opsSeq++, time: at.slice(0, 16), operator, module, action, target, detail, at, live: true }
   if (version) record.version = version
-  if (hidden) record.hidden = true
   if (objectId != null && objectId !== '') record.objectId = objectId
   if (meta) record.meta = JSON.parse(JSON.stringify(meta)) // 深拷贝，避免调用方后续改动污染库内数据
   opsRecords.unshift(record)

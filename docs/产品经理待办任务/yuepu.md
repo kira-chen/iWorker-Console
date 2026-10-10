@@ -48,7 +48,7 @@
 
 
 
-| 87 | 未处理 | 浦月（2026-10-09，/test-audit changed 发现） | **【低】存储空间三处小问题（04 运行 · 存储空间）。** **（2026-10-10 进度：①②已完成，仅余 ③ 待产品裁决——数据层是否拒绝停用账号。）** ①持久化快照里 `requests` 仍带 `username / name / active` 等派生值（每次读写前 reconcile() 会覆盖），与提交说明「快照只存业务字段」不符，目前只对 `members` 成立；②`StorageRequestPane.vue` 里 `watch(() => props.focusKeyword)` 是死代码——两个页签用 v-if 懒挂载，扩容申请 Pane 已挂载时不会再从容量分配页触发跳转；③`adjustStorageQuota` / 批量调整对已停用账号仍能写入并写审计（`findMember` 查含停用的 members），而页面清单不含他们——md 五「停用账号不进清单」对数据层调用没有规定。期望：①snapshot 里 requests 只存业务字段；②删掉死 watch；③数据层是否拒绝停用账号，先由产品在 `测试审计待决策-20261009-存储空间批.md` 的 J 项里裁决。 |
+| 87 | 未处理 | 浦月（2026-10-09，/test-audit changed 发现） | **【低】存储空间三处小问题（04 运行 · 存储空间）。** **（2026-10-10 进度：① 已完成；② 作废——上游 PR #72 让访问审计可跳到扩容申请页签，`focusKeyword` 的 watch 在“已挂载再次跳来”时有触发路径，不是死代码，已保留；③ 待产品裁决——数据层是否拒绝停用账号。）** ①持久化快照里 `requests` 仍带 `username / name / active` 等派生值（每次读写前 reconcile() 会覆盖），与提交说明「快照只存业务字段」不符，目前只对 `members` 成立；②`StorageRequestPane.vue` 里 `watch(() => props.focusKeyword)` 是死代码——两个页签用 v-if 懒挂载，扩容申请 Pane 已挂载时不会再从容量分配页触发跳转；③`adjustStorageQuota` / 批量调整对已停用账号仍能写入并写审计（`findMember` 查含停用的 members），而页面清单不含他们——md 五「停用账号不进清单」对数据层调用没有规定。期望：①snapshot 里 requests 只存业务字段；②删掉死 watch；③数据层是否拒绝停用账号，先由产品在 `测试审计待决策-20261009-存储空间批.md` 的 J 项里裁决。 |
 
 
 

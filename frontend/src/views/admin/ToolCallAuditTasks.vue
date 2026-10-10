@@ -15,6 +15,9 @@
  * 2026-10-09 同日改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程时间
  * 数据。执行结果收窄为**成功 / 失败**两态（原「执行前拦截」并入「失败」，原因文案保留）——
  * 与技能调用完全同构，判定规则与标签都直接复用（deriveExec / EXEC_RESULT_LABEL）。
+ *
+ * 2026-10-09 第四轮改版（同日）：筛选项占位文案与另两页签统一——执行结果筛选统一叫
+ * 「全部执行结果」，写操作筛选从裸的"全部"改叫「涉及写操作」，意思更明确。
  */
 import { computed, reactive, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
@@ -179,10 +182,10 @@ function resultExplain(d) {
         @change="list.search()"
         class="lt-date-range"
       />
-      <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
         <el-option v-for="(label, key) in EXEC_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
-      <el-select v-model="query.hasWrite" placeholder="全部" clearable class="lt-filter" @change="list.search()">
+      <el-select v-model="query.hasWrite" placeholder="涉及写操作" clearable class="lt-filter" @change="list.search()">
         <el-option label="是" :value="true" />
         <el-option label="否" :value="false" />
       </el-select>
