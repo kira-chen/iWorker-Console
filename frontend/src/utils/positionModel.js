@@ -585,10 +585,10 @@ export function computePublishCheck(detail) {
   // 1. 岗位名称与描述（硬）
   items.push({
     key: 'name',
-    label: '岗位名称与描述',
+    label: '岗位名称',
     ok: nameOk && descOk,
     blocking: true,
-    detail: nameOk && descOk ? '必填内容已填写' : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
+    detail: nameOk && descOk ? `已填写"${String(d.name).trim()}"` : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
   })
 
   // 2. 岗位图标（硬，2026-09-21 负责人拍板：必填）
@@ -597,7 +597,7 @@ export function computePublishCheck(detail) {
     label: '岗位图标',
     ok: iconOk,
     blocking: true,
-    detail: iconOk ? '岗位图标已选择' : '请先选择岗位图标'
+    detail: iconOk ? '已选择' : '请先选择岗位图标'
   })
 
   // 3. 领用页文案（硬，2026-09-21 负责人拍板：至少 1 条）
@@ -606,7 +606,7 @@ export function computePublishCheck(detail) {
     label: '领用页文案',
     ok: claimOk,
     blocking: true,
-    detail: claimOk ? '领用页文案已填写' : '请先填写领用页文案（至少 1 条）'
+    detail: claimOk ? '已填写' : '请先填写领用页文案（至少 1 条）'
   })
 
   // 4. 示例问题 3 条（硬）
@@ -615,7 +615,7 @@ export function computePublishCheck(detail) {
     label: '示例问题',
     ok: eqComplete,
     blocking: true,
-    detail: eqComplete ? '3 条示例问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
+    detail: eqComplete ? '3 个引导问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
   // 5. 岗位 SOP（硬）
@@ -633,7 +633,7 @@ export function computePublishCheck(detail) {
     label: '采集字段',
     ok: intakeOk,
     blocking: true,
-    detail: intakeOk ? `已配置 ${intakeCount} 个采集字段` : '至少配置 1 个采集字段'
+    detail: intakeOk ? `已配置 ${intakeCount} 个` : '至少配置 1 个采集字段'
   })
 
   // 7. Agent 与技能（硬，md §6.5 / §9.1 第 8 条）
@@ -648,7 +648,7 @@ export function computePublishCheck(detail) {
     actionable: hasUnhealthy,
     detail: agentsOk
       ? hasUnhealthy
-        ? `已配置 Agent 与技能；存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
+        ? `存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
         : '已配置 Agent 与技能'
       : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
   })
