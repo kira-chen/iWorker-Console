@@ -456,6 +456,19 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.version-dialog')).toBeNull()
   })
 
+  // 待决策 J40（浦月 2026-10-10 选 A）：技能 md §3.5.1 含已回收引用的专家发布前检查阻断
+  it('J40 未发布专家引用了已回收的技能，点「发布」→ 「引用的「技能名」已被回收，请移除后再发布」拦下，不开侧栏', async () => {
+    listExperts.mockResolvedValue({
+      list: EXPERTS.map((e) => (e.id === 203 ? { ...e, skillCount: 1, revokedSkillNames: ['合同风险检查'] } : e)),
+      total: 3
+    })
+    await mount()
+    rowBtn(rowEls()[1], '发布').click()
+    await nextTick()
+    expect(ElMessage.warning).toHaveBeenCalledWith('引用的「合同风险检查」已被回收，请移除后再发布')
+    expect(container.querySelector('.version-dialog')).toBeNull()
+  })
+
   it('已发布点「版本管理」→ 开侧栏，适配器带专家词表（版本管理/禁用/专家名称）', async () => {
     await mount()
     rowBtn(rowEls()[0], '版本管理').click()

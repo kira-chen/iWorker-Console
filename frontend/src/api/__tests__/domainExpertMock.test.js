@@ -301,6 +301,35 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
 })
 
 // 强制回收（PRD 专家 §3.5.1，2026-09-30）：201 经营分析专家 = 已发布 v2.3.0；204 研究报告专家 = 已发布 + 新版在审；203 法务审阅专家 = 未发布
+// 待决策 J40（浦月 2026-10-10 选 A）：技能 md §3.5.1「专家对市场技能的引用保持不动，该行改为红色已回收标签；
+// 含已回收引用的专家再次发布时，发布前检查提示并阻断」
+describe('专家引用了被强制回收的市场技能（技能 md §3.5.1）', () => {
+  // 直接改技能本体的回收标记（等价 forceRevokeSkill 的落点；绕开其「已发布且无在审」前置，避免受其它用例残留状态影响）
+  const revokeSk304 = (reason) =>
+    resetSkillRaw('sk_304', { status: 'draft', delisted: true, revoked: { reason, at: '2026-10-10 10:00', operator: 'admin' } })
+  afterEach(() => resetSkillRaw('sk_304', { status: 'published', delisted: false, revoked: null }))
+
+  it('引用保持不动：专家 skillIds 仍含该技能，详情 skills[] 带 revoked，行带 revokedSkillNames', async () => {
+    revokeSk304('违规内容')
+    const d = await getExpert(201)
+    expect(d.skillIds).toContain(304)
+    expect(d.skills.find((s) => s.skillId === 304).revoked).toMatchObject({ reason: '违规内容' })
+    expect(d.skills.find((s) => s.skillId === 302).revoked).toBeNull()
+    expect(d.revokedSkillNames).toEqual(['合同风险检查'])
+  })
+
+  it('提交发布被阻断：「引用的「合同风险检查」已被回收，请移除后再发布」，不进在途审核；移除后可发布', async () => {
+    await addExpertSkill(203, 304)
+    revokeSk304('违规内容')
+    await expect(publishExpert(203, { releaseNotes: '首发' })).rejects.toThrow('引用的「合同风险检查」已被回收，请移除后再发布')
+    expect((await getExpert(203)).pendingAction).toBeNull()
+    await removeExpertSkill(203, 304)
+    await addExpertSkill(203, 302)
+    await publishExpert(203, { releaseNotes: '首发' })
+    expect((await getExpert(203)).pendingAction).toBe('PUBLISH')
+  })
+})
+
 describe('forceRevokeExpert —— 强制回收', () => {
   beforeEach(() => resetAccessAuditMock())
   const reviewTotal = async () => (await listReviews({ size: 1000 })).total

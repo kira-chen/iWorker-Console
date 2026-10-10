@@ -206,6 +206,12 @@ function openVersion(row) {
     ElMessage.warning('至少引用 1 个市场技能才能发布')
     return
   }
+  // 含已回收技能引用 → 发布前检查阻断（技能 md §3.5.1，待决策 J40）
+  const revokedName = isDraft ? row.revokedSkillNames?.[0] : null
+  if (revokedName) {
+    ElMessage.warning(`引用的「${revokedName}」已被回收，请移除后再发布`)
+    return
+  }
   versionRow.value = row
   versionDlgVisible.value = true
 }
