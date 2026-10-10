@@ -54,6 +54,10 @@ export const opsRecords = [
   { id: 22, time: '2026-10-05 15:18', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'hejing', detail: '客户资料归档建议放进「我的资料」，该库独立计量、不占存储空间，也不受这里的容量限制，不需要为此扩容。同时请先清理历史产物里已经不再使用的中间文件和重复版本，确认清理后仍然不够再重新提交申请，并在说明里写清楚预计新增的数据量和用途，方便评估合理的扩容幅度。', at: '2026-10-05 15:18:07', objectId: 210, meta: { userId: 210, username: 'hejing', requestId: 'ER-1001' } },
   { id: 23, time: '2026-09-28 11:40', operator: 'demo', module: '存储空间', action: '拒绝扩容', target: 'liuqiang', detail: '申请说明过于简单，请补充使用场景和预计增量后重新提交。', at: '2026-09-28 11:40:30', objectId: 207, meta: { userId: 207, username: 'liuqiang', requestId: 'ER-0999' } },
   { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。', at: '2026-09-20 14:05:19', objectId: 206, meta: { userId: 206, username: 'sun.xin', requestId: 'ER-0998' } },
+  // 强制回收（§6.2 / §6.5.1）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
+  // （objectId / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
+  { id: 25, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30:41', objectId: 'sk_306' },
+  { id: 26, time: '2026-08-29 10:12', operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12:08', objectId: 'api_1104' }
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */

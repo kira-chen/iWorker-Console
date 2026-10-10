@@ -17,7 +17,7 @@ import DossierRuleListEditor from '@/components/position/dossier/DossierRuleList
  * 删除指定行；规则名 / 规则描述行内编辑回吐（其余行不动）；规则描述 maxlength=200；
  * 归纳方式切 SUMMARY 联动出现 / 切走消失「最近 x 条」；x 修改回吐且保留其它 params；
  * 父级行错误回显（红框 + 行下错误文案）与全局错误；只读态无增删入口、控件全禁用。
- * 疑似缺陷（it.fails）：x 上限代码为 50，md 为 10。
+ * x 上限与 md 一致为 10（yuepu#60⑤ 已修）。
  *
  * 挂载方式：真装 Element Plus；宿主用 ref 实现 v-model:rows 回写，同时记录每次 update:rows 载荷。
  */
@@ -250,20 +250,20 @@ describe('DossierRuleListEditor · 档案详情规则网格（岗位 md §4.2.3�
       expect(emitted.at(-1)).toEqual([{ key: 'a', desc: '', strategy: 'SUMMARY', params: { n: 3 } }])
     })
 
-    it.fails('x 上限应为 10：输入框 max=10（疑似缺陷：代码 SUMMARY_N_RANGE.max=50；md §4.2.3「x 下限 1，上限 10，默认 5」）', async () => {
+    it('x 上限为 10：输入框 max=10（md §4.2.3「x 下限 1，上限 10，默认 5」；yuepu#60⑤ 已修）', async () => {
       const { container: c } = mount([rule('a', 'SUMMARY')])
       await flushAll()
-      // 前提：x 输入框已渲染、下限正确
+      // x 输入框已渲染、下限为 1
       expect(nInput(c, 0).getAttribute('min')).toBe('1')
       expect(nInput(c, 0).getAttribute('max')).toBe('10')
     })
 
-    it.fails('输入 x=20 超上限 → 应被钳到 10 再回吐（疑似缺陷：代码按 50 钳，原样回吐 20；md §4.2.3 上限 10）', async () => {
+    it('输入 x=20 超上限 → 被钳到 10 再回吐（md §4.2.3 上限 10；yuepu#60⑤ 已修）', async () => {
       const rows = [rule('a', 'SUMMARY')]
       const { container: c, emitted } = mount(rows)
       await flushAll()
       await setNumber(nInput(c, 0), 20)
-      // 前提：修改确有回吐
+      // 修改确有回吐（先确认有回吐，再断言钳值）
       expect(emitted.length).toBeGreaterThan(0)
       expect(emitted.at(-1)[0].params.n).toBe(10)
     })

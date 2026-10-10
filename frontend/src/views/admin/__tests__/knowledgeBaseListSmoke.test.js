@@ -88,9 +88,8 @@ describe('KnowledgeBaseList · 加载失败与重试（md §三.2 L73 / §八.2�
     await vi.waitFor(() => expect(rowOf('2026 产品白皮书库')).toBeTruthy(), { timeout: 3000 })
   })
 
-  // 疑似缺陷：ListStates 失败态只有固定的「加载失败」，useAdminList 的 loadError 是布尔值、不保留原因，
-  // md §三.2 L73「失败展示错误原因和重试」、§八.2「列表加载失败：……展示原因和【重试】」。前提见上两条。
-  it.fails('取数失败 → 页面上能看到失败原因（疑似缺陷：只显示「加载失败」，不显示原因；md §三.2 L73 / §八.2）', async () => {
+  // md §三.2 L73「失败展示错误原因和重试」、§八.2「列表加载失败：……展示原因和【重试】」（yuepu#74 已修：useAdminList 保留原因，ListStates 展示）。
+  it('取数失败 → 页面上能看到失败原因（md §三.2 L73 / §八.2）', async () => {
     await mountFailing()
     expect(text()).toContain(FAIL)
   })

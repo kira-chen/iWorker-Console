@@ -53,7 +53,7 @@ const scaleOptions = AUDIT_SCALES
 
 // 取数编排统一走 useAdminList：四态 / 动态分页 / 空筛选项过滤 / 防空页回退 / 竞态防护由其承担
 const list = useAdminList(listReviewApplications, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -180,6 +180,7 @@ onMounted(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="没有符合条件的审核记录"
         @retry="fetchList"

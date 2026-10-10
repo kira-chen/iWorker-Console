@@ -112,6 +112,12 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
     expect(document.body.querySelector('.el-message')?.textContent).toContain('请先修正标红项')
   })
 
+  it('模型名称占位逐字为 md 模型 §三.2「如 DeepSeek V3」（yuepu#63③）', async () => {
+    mounted = mountReal(Dialog, { visible: true, model: null })
+    await flushAll(10)
+    expect(drawer().querySelector('input[placeholder="如 DeepSeek V3"]')).toBeTruthy()
+  })
+
   it('A12 · base_url：输 ftp://x 失焦 → 红字「服务地址必须以 http:// 或 https:// 开头，且不能包含空格、? 或 #」；改成 https://api.deepseek.com/v1 → 红字消失（md §三.2 / §三.8）', async () => {
     mounted = mountReal(Dialog, { visible: true, model: null })
     await flushAll(10)
@@ -208,9 +214,9 @@ describe('ModelConfigEditDialog · 真实挂载冒烟（真 el-drawer / el-form�
 })
 
 /* 2026-10-08 /test-audit 补缺口：对齐 docs/PRD/数字员工管理端PRD/03能力/模型/prd-模型.md §三.8
- * 「模型名称重复：提示名称已存在，并定位到模型名称位置」。已登记疑似缺陷 yuepu#63⑦：保存时 updateModel 回
- * { field:'name' } 后，代码只 `validateField('name')` 走本地规则（名称非空 → 通过）并 toast，名称项不出红字、也不聚焦。
- * 前提（toast 展示失败原因、接口确被调）拆普通 it；缺陷断言单独 it.fails，修好后改回 it。 */
+ * 「模型名称重复：提示名称已存在，并定位到模型名称位置」。原登记疑似缺陷 yuepu#63⑦（保存时 updateModel 回
+ * { field:'name' } 后名称项不出红字）已修并转正：下面的红字用例与「改名后红字消失」均为正式回归用例，
+ * 文件里已没有 it.fails；「toast 展示失败原因、接口确被调」的前提用例仍保留为普通 it。 */
 describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 · yuepu#63⑦）', () => {
   const DRAFT = {
     id: 'md_x', name: '重名模型', providerName: 'deepseek', category: 'TEXT', icon: '▦',
@@ -239,11 +245,22 @@ describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 �
     expect(nameItem().querySelector('input').value).toBe('重名模型')
   })
 
-  it.fails('yuepu#63⑦ updateModel 回 {field:name} → 名称项就地红字「…已存在」或焦点定位到名称输入框（疑似缺陷：只 toast 不定位，md 模型 §三.8）', async () => {
+  it('yuepu#63⑦ updateModel 回 {field:name} → 名称项就地红字「…已存在」（md 模型 §三.8「定位到模型名称位置」）', async () => {
     await saveWithDupName()
-    const input = nameItem().querySelector('input')
     const red = nameItem().querySelector('.el-form-item__error')?.textContent ?? ''
-    expect(red.includes('已存在') || document.activeElement === input).toBe(true)
+    expect(red).toContain('已存在')
+  })
+
+  it('重名红字出现后改名 → 红字消失（改名即清服务端回的重名提示）', async () => {
+    await saveWithDupName()
+    expect(nameItem().querySelector('.el-form-item__error')?.textContent ?? '').toContain('已存在') // 前提：红字确已出现
+    // 只改值、不失焦：排除「失焦触发本地校验顺手清红字」的干扰，专守「改名即清」这条
+    const nameInput = nameItem().querySelector('input')
+    nameInput.value = '另一个模型名'
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await settleErrors()
+    expect(nameItem().querySelector('.el-form-item__error')).toBeNull()
+    expect(errorTexts()).toEqual([])
   })
 })
 

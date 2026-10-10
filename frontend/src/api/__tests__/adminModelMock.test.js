@@ -66,8 +66,77 @@ describe('adminModelMock —— 模型三态状态机 + 密钥掩码（2026-09-0
   })
 
   it('名称平台内唯一 + ≤64 → 按 name 字段级报错（md §三.2「最多 64 字符」/ §三.8「模型名称重复」）', async () => {
-    await expect(mk('DeepSeek R1')).rejects.toMatchObject({ field: 'name' })
+    await expect(mk('DeepSeek R1')).rejects.toMatchObject({ field: 'name', message: '模型名称已存在' }) // md §三.8「提示名称已存在」
     await expect(mk('x'.repeat(65))).rejects.toMatchObject({ field: 'name' })
+  })
+
+  // 待办 yuepu#63⑥：数据层补齐 md 模型 §三.2 / §三.3 / §三.4 的必填与长度 / 格式（此前只靠 UI 兜底）
+  it('提供商 / 类别必填且在枚举内；base_url ≤500、模型标识 ≤200（md §三.2）', async () => {
+    const s = Date.now()
+    await expect(mk(`补齐-p-${s}`, { providerName: '' })).rejects.toMatchObject({ field: 'providerName' })
+    await expect(mk(`补齐-p2-${s}`, { providerName: 'nope' })).rejects.toMatchObject({ field: 'providerName' })
+    await expect(mk(`补齐-c-${s}`, { category: '' })).rejects.toMatchObject({ field: 'category' })
+    await expect(mk(`补齐-u-${s}`, { baseUrl: 'https://a.com/' + 'x'.repeat(490) })).rejects.toMatchObject({ field: 'baseUrl' })
+    await expect(mk(`补齐-m-${s}`, { model: 'm'.repeat(201) })).rejects.toMatchObject({ field: 'model' })
+    // 边界值通过
+    const ok = await mk(`补齐-ok-${s}`, { baseUrl: 'https://a.com/' + 'x'.repeat(486), model: 'm'.repeat(200) })
+    expect(ok.model).toHaveLength(200)
+  })
+
+  it('额外参数须为 ≤2000 字符的合法 JSON 对象；留空可过（md §三.4 L281 / §八 L352）', async () => {
+    const s = Date.now()
+    await expect(mk(`补齐-e1-${s}`, { extraBody: '{bad' })).rejects.toMatchObject({ field: 'extraBody' })
+    await expect(mk(`补齐-e2-${s}`, { extraBody: '[1,2]' })).rejects.toMatchObject({ field: 'extraBody' })
+    await expect(mk(`补齐-e3-${s}`, { extraBody: JSON.stringify({ k: 'v'.repeat(2000) }) })).rejects.toMatchObject({ field: 'extraBody' })
+    await expect(mk(`补齐-e4-${s}`, { extraBody: '{"enable_thinking": false}' })).resolves.toBeTruthy()
+    await expect(mk(`补齐-e5-${s}`, { extraBody: '' })).resolves.toBeTruthy()
+  })
+
+  it('AppID / AppSecret 鉴权：app_id 必填且 ≤200，新接入时 app_secret 必填（md §三.3.2）', async () => {
+    const s = Date.now()
+    const base = { authType: 'APP_ID_SECRET', apiKey: 'k-12345678', appSecret: 'sec-12345678' }
+    await expect(mk(`补齐-a1-${s}`, { ...base, appId: '' })).rejects.toMatchObject({ field: 'appId' })
+    await expect(mk(`补齐-a2-${s}`, { ...base, appId: 'a'.repeat(201) })).rejects.toMatchObject({ field: 'appId' })
+    await expect(mk(`补齐-a3-${s}`, { ...base, appId: 'iw', appSecret: '' })).rejects.toMatchObject({ field: 'appSecret' })
+    await expect(mk(`补齐-a4-${s}`, { ...base, appId: 'iw' })).resolves.toBeTruthy()
+  })
+
+  it('额外参数恰 2000 字符的合法 JSON 对象通过，多 1 个字符被拒（边界；md §三.4 L281）', async () => {
+    const s = Date.now()
+    const json = (n) => '{"k":"' + 'v'.repeat(n) + '"}' // 外壳 8 个字符
+    expect(json(1992)).toHaveLength(2000)
+    await expect(mk(`补齐-e6-${s}`, { extraBody: json(1992) })).resolves.toMatchObject({ name: `补齐-e6-${s}` })
+    await expect(mk(`补齐-e7-${s}`, { extraBody: json(1993) })).rejects.toMatchObject({ field: 'extraBody' })
+  })
+
+  it('API_KEY 鉴权新接入：api_key 缺失或全空白 → 按 apiKey 字段拒绝，且不落库（md §三.3.1）', async () => {
+    const s = Date.now()
+    await expect(mk(`补齐-k1-${s}`, { authType: 'API_KEY', apiKey: '' })).rejects.toMatchObject({ field: 'apiKey', message: 'api_key 必填' })
+    await expect(mk(`补齐-k2-${s}`, { authType: 'API_KEY', apiKey: '   ' })).rejects.toMatchObject({ field: 'apiKey' })
+    const { list } = await listModels({ keyword: `补齐-k` })
+    expect(list.filter((m) => m.name.endsWith(String(s)))).toHaveLength(0)
+  })
+
+  it('编辑态省略提供商 / 类别 → 沿用存量值，不被「请选择」拦下，也不被改写（md §三.2）', async () => {
+    const s = Date.now()
+    const row = await mk(`补齐-ed1-${s}`, { providerName: 'moonshot', category: 'VISION' })
+    const updated = await updateModel(row.id, {
+      name: `补齐-ed1-${s}`, baseUrl: 'https://api.example.com/v1', model: 'demo-chat', contextWindow: 65536, description: '只改描述'
+    })
+    expect(updated).toMatchObject({ providerName: 'moonshot', category: 'VISION' })
+    expect(await getModel(row.id)).toMatchObject({ providerName: 'moonshot', category: 'VISION' })
+  })
+
+  it('编辑态 AppID / AppSecret：app_secret 留空放行并保留原密钥（出参仍有掩码）；app_id 仍必填（md §三.3.2 L261-262）', async () => {
+    const s = Date.now()
+    const base = { authType: 'APP_ID_SECRET', appId: 'iw', apiKey: 'k-12345678', appSecret: 'sec-12345678' }
+    const row = await mk(`补齐-ed2-${s}`, base)
+    expect(row.hasAppSecret).toBe(true)
+    const same = { name: `补齐-ed2-${s}`, baseUrl: 'https://api.example.com/v1', model: 'demo-chat', contextWindow: 65536, providerName: 'deepseek', category: 'TEXT', authType: 'APP_ID_SECRET' }
+    const updated = await updateModel(row.id, { ...same, appId: 'iw', appSecret: '' })
+    expect(updated.hasAppSecret).toBe(true)
+    expect(updated.appSecretMasked).toBe(row.appSecretMasked)
+    await expect(updateModel(row.id, { ...same, appId: '', appSecret: '' })).rejects.toMatchObject({ field: 'appId' })
   })
 
   // 2026-09-12 测试审计 T55：md §三.2 base_url「必须以 http:// 或 https:// 开头」/ 模型标识必填 /

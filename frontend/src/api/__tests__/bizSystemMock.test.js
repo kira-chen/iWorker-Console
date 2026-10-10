@@ -41,6 +41,7 @@ import {
 } from '../bizSystemMock'
 
 const VALID = {
+  type: 'PLATFORM', // 连接器类型新建必选（待办 yuepu#57⑥）
   icon: '✓',
   description: '测试用业务系统',
   loginUrl: 'https://demo.example.com/login',
@@ -94,13 +95,13 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     expect(pos.every((b) => b.type === 'POSITION')).toBe(true)
   })
 
-  it('type 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；未传 type 落 PLATFORM 默认值', async () => {
+  it('type 只在 createBizSystem 落一次，updateBizSystem 不改动（创建后不可改）；新建未传 type 被拒（待办 yuepu#57⑥）', async () => {
     const created = await createBizSystem({ ...VALID, name: `岗位私有-${Date.now()}`, type: 'POSITION' })
     expect(created).toMatchObject({ type: 'POSITION' })
     const updated = await updateBizSystem(created.id, { ...VALID, name: created.name, description: '改描述', type: 'PLATFORM' })
     expect(updated).toMatchObject({ type: 'POSITION', description: '改描述' })
-    const noType = await createBizSystem({ ...VALID, name: `无类型-${Date.now()}` })
-    expect(noType).toMatchObject({ type: 'PLATFORM', positionCount: 0 })
+    await expect(createBizSystem({ ...VALID, name: `无类型-${Date.now()}`, type: undefined })).rejects.toMatchObject({ field: 'type', message: '请选择连接器类型' })
+    await expect(createBizSystem({ ...VALID, name: `非法类型-${Date.now()}`, type: 'BOGUS' })).rejects.toMatchObject({ field: 'type' })
   })
 
   it('列表按最近更新时间排序（默认由近到远；sort=asc 反向）（md §二.1 L30）', async () => {
@@ -145,6 +146,20 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
     await expect(createBizSystem({ ...base, bizPages: Array.from({ length: 21 }, () => ({ url: 'https://a.com', name: 'p' })) })).rejects.toMatchObject({
       field: 'bizPages',
       message: '业务页最多 20 条'
+    })
+  })
+
+  // 一览表 §十一 / md 业务系统 §三 L115「登录地址 ≤1024」：边界值——恰好 1024 放行，1025 被拦（超限的单独钉桩见 knownDefects 已转正的 yuepu#57⑥）
+  it('登录地址长度边界：恰好 1024 字符放行并原样落库；1025 字符 → rejects field=loginUrl', async () => {
+    const prefix = 'https://crm.intra/'
+    const at1024 = prefix + 'a'.repeat(1024 - prefix.length)
+    const at1025 = at1024 + 'a'
+    const created = await createBizSystem({ ...VALID, name: `登录地址边界-${Date.now()}`, loginUrl: at1024 })
+    expect(created.loginUrl).toBe(at1024)
+    expect(created.loginUrl.length).toBe(1024)
+    await expect(createBizSystem({ ...VALID, name: `登录地址超限-${Date.now()}`, loginUrl: at1025 })).rejects.toMatchObject({
+      field: 'loginUrl',
+      message: '登录地址最多 1024 个字符'
     })
   })
 
@@ -487,8 +502,8 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.bizRows.forEach((b) => delete b.revoked)
     harness.options.restore(snap)
-    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
-    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeUndefined()
+    // 待办 yuepu#81：restore 对缺键行补 null，与另外三个 mock 出参口径一致（不用 ?? null 掩盖）
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeNull()
     const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
     expect(row.revoked.reason).toBe(reason)
   })

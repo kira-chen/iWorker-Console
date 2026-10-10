@@ -22,6 +22,7 @@
  *   沿用 domainExpert.js 既有端点口径）。
  */
 import { ApiError } from './request'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
@@ -254,6 +255,24 @@ function parseVersion(label) {
 
 const normQuestions = (qs) => [0, 1, 2].map((i) => String((qs || [])[i] || ''))
 
+/** 示例问题每条 ≤300 字符（一览表「专家帮你做」固定 3 条、每条最多 300；待办 yuepu#57⑤）。create / update 带了该字段时校验。 */
+function assertExpertQuestions(qs) {
+  if (normQuestions(qs).some((q) => q.trim().length > BIZ_QUESTION_MAX)) {
+    throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
+  }
+}
+
+/**
+ * 整批 skillIds 须在候选内（已发布的市场技能；待办 yuepu#57⑤）：此前只有 addExpertSkill 逐个校验，整批写入可塞入未发布 / 不存在的技能。
+ * keep = 该专家当前已引用的 id——存量引用即使技能后来被停用 / 强制回收也保留（md 专家 §3.5.1「专家自身对市场技能的引用不受影响」），
+ * 不因保存其它字段而被拒；只有「新增」的引用必须在候选内。
+ */
+function assertSkillIdsInCandidates(skillIds, keep = []) {
+  const ok = new Set([...marketSkillCandidates().map((c) => String(c.id)), ...keep.map(String)])
+  const bad = skillIds.filter((id) => !ok.has(String(id)))
+  if (bad.length) throw err('只能引用已发布的市场技能，请刷新候选后重试', 'skillIds')
+}
+
 /** 所属岗位 id 列表归一：非数组当空、去掉空值、去重（多选下拉理论上不会重复，兜底防脏数据）。 */
 const normPositionIds = (ids) => (Array.isArray(ids) ? [...new Set(ids.filter((id) => id != null))] : [])
 
@@ -345,6 +364,8 @@ export async function createExpert(payload = {}) {
   // 类型创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰；所属岗位可在编辑时增减（见 updateExpert）。
   const type = payload.type ? String(payload.type) : EXPERT_TYPE.PLATFORM
   if (!Object.values(EXPERT_TYPE).includes(type)) throw err('请选择专家类型', 'type')
+  if (payload.exampleQuestions !== undefined) assertExpertQuestions(payload.exampleQuestions)
+  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds)
   const now = nowIso()
   const e = {
     id: expertSeq++,
@@ -379,6 +400,8 @@ export async function updateExpert(id, payload = {}) {
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('审核中，专家已锁定不可修改', null, 409)
+  if (payload.exampleQuestions !== undefined) assertExpertQuestions(payload.exampleQuestions)
+  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds, e.skillIds)
   if (payload.name !== undefined) {
     const name = String(payload.name || '').trim()
     if (!name) throw err('请填写专家名', 'name')

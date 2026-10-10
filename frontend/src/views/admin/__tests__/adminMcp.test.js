@@ -26,7 +26,7 @@ import { fmtTime } from '@/utils/docMeta'
  * - §三.8「登记成功后提示"已登记"，关闭抽屉，返回列表第 1 页并刷新列表」（编辑同）；§三.6「拉取成功后提示"已拉取 N 个工具"，
  *   并刷新当前抽屉中的连接信息和工具清单」→ 列表行工具数随之更新（编辑器桩 emit saved / probed）。
  * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ *   弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
@@ -1008,12 +1008,16 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(before)
   })
 
-  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」、引用清单（技能名，供弹窗点击展开）', async () => {
     askForceRevoke.mockResolvedValue(null)
+    adminApi.listMcp.mockImplementation(async () => ({
+      list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, referencedBySkills: [{ skillId: 'sk_1', skillName: '销售方案生成' }, { skillId: 'sk_2', skillName: '客户问题解答' }] } : { ...r })),
+      total: LIST.length
+    }))
     await mount()
     btn(rowByName('已上线服务'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能', refNames: ['销售方案生成', '客户问题解答'] })
   })
 
   it('引用数 = 引用它的技能数 + 岗位数', async () => {

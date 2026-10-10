@@ -18,7 +18,7 @@ import { makeListProbes } from './helpers/listPageStubs'
  * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
  * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ *   弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
  * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
@@ -29,6 +29,9 @@ const routeState = vi.hoisted(() => ({ query: {} }))
 vi.mock('vue-router', () => ({ useRoute: () => routeState, useRouter: () => ({}) }))
 
 const listExperts = vi.fn()
+// 引用清单弹窗按 positionIds 解析岗位名（岗位列表接口桩）
+const listPositions = vi.fn()
+vi.mock('@/api/position', () => ({ listPositions: (...a) => listPositions(...a) }))
 const deleteExpert = vi.fn()
 const unpublishExpert = vi.fn()
 const withdrawExpert = vi.fn()
@@ -154,6 +157,8 @@ async function mount() {
   app.component('el-table-column', tableColStub)
   app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
+  app.component('el-tag', { template: '<span class="el-tag"><slot /></span>' })
+  app.component('el-dialog', { props: ['modelValue', 'title'], template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><slot name="footer" /></div>' })
   // 悬停说明：已回收标签的 el-tooltip，桩内把 content 落到 data-tip 供断言
   app.component('el-tooltip', { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
@@ -185,6 +190,7 @@ beforeEach(() => {
   publishDetail.value = null
   editorProps.mockReset()
   listExperts.mockReset().mockResolvedValue({ list: EXPERTS, total: 3 })
+  listPositions.mockReset().mockResolvedValue({ list: [{ positionId: 401, name: '经营分析岗' }, { positionId: 402, name: '客户成功岗' }], total: 2 })
   deleteExpert.mockReset()
   unpublishExpert.mockReset()
   withdrawExpert.mockReset()
@@ -247,18 +253,62 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.textContent).not.toContain('应用引用')
   })
 
-  // 已知缺陷钉桩（2026-10-08 待办 yuepu#56）：md prd.专家.md:48「岗位私有点击弹出引用清单（展示岗位名）」，
-  // 页面只渲染普通 span 点不开。断言按三个连接器页同款写法（引用数是可点的链接按钮）。
-  // 修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
-  it.fails('yuepu#56 岗位私有专家的「N个岗位引用」应可点击（打开引用清单）', async () => {
+  // md prd.专家.md:48「岗位私有点击弹出引用清单（展示岗位名）」（待办 yuepu#56）：引用数是可点的链接按钮，点开弹窗列岗位名
+  it('岗位私有专家的「N个岗位引用」可点击，弹窗标题「被岗位引用」并列出岗位名；无引用显「暂无引用」不可点', async () => {
     listExperts.mockResolvedValueOnce({
-      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionCount: 3 }],
+      list: [
+        { ...EXPERTS[0], id: 303, type: 'POSITION', positionIds: [401, 402], positionCount: 2 },
+        { ...EXPERTS[1], id: 304, type: 'POSITION', positionIds: [], positionCount: 0 }
+      ],
+      total: 2
+    })
+    await mount()
+    const cellOf = (i) => rowEls()[i].querySelector('.el-table-column[data-label="引用情况"]')
+    expect(cellOf(0).textContent.trim()).toBe('2个岗位引用') // 前提：渲染的就是岗位引用数
+    expect(cellOf(1).textContent.trim()).toBe('暂无引用')
+    expect(cellOf(1).querySelector('.el-button')).toBeNull()
+    expect(container.querySelector('.el-dialog')).toBeNull()
+    cellOf(0).querySelector('.el-button').click()
+    await flush(6)
+    const dlg = container.querySelector('.el-dialog')
+    expect(dlg.dataset.title).toBe('被岗位引用')
+    expect([...dlg.querySelectorAll('.refs-item')].map((e) => e.textContent.trim())).toEqual(['经营分析岗', '客户成功岗'])
+    ;[...dlg.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '关闭').click()
+    await flush()
+    expect(container.querySelector('.el-dialog')).toBeNull()
+  })
+
+  // openRefs 的两个分支（yuepu#56 补）：岗位列表接口失败 → toast 报错；岗位名查不到（已删/改名未同步）→ 「岗位 #id」兜底
+  const openFirstRefs = async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [{ ...EXPERTS[0], id: 303, type: 'POSITION', positionIds: [401, 999], positionCount: 2 }],
       total: 1
     })
     await mount()
-    const cell = rowEls()[0].querySelector('.el-table-column[data-label="引用情况"]')
-    expect(cell.textContent.trim()).toBe('3个岗位引用') // 前提：渲染的就是岗位引用数
-    expect(cell.querySelector('.el-button')).not.toBeNull()
+    rowEls()[0].querySelector('.el-table-column[data-label="引用情况"] .el-button').click()
+    await flush(6)
+  }
+  const refItems = () => [...container.querySelectorAll('.el-dialog .refs-item')].map((e) => e.textContent.trim())
+
+  it('引用清单：岗位列表接口失败 → toast 带上失败原因，弹窗里不列岗位名也不卡在加载态', async () => {
+    listPositions.mockRejectedValueOnce(new Error('岗位服务不可用'))
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('岗位服务不可用')
+    expect(container.querySelector('.el-dialog')).toBeTruthy()
+    expect(refItems()).toEqual([])
+    expect(container.querySelector('.el-dialog').textContent).toContain('暂无引用') // loading 已收，落到空态而非一直转圈
+  })
+
+  it('引用清单：岗位列表接口失败且无错误信息 → toast 兜底「加载引用清单失败」', async () => {
+    listPositions.mockRejectedValueOnce({})
+    await openFirstRefs()
+    expect(ElMessage.error).toHaveBeenCalledWith('加载引用清单失败')
+  })
+
+  it('引用清单：某个岗位已不在岗位列表里 → 该项显示「岗位 #id」兜底，其余岗位照常显示岗位名', async () => {
+    await openFirstRefs() // 默认岗位桩只有 401 经营分析岗 / 402 客户成功岗；专家挂的 999 查不到
+    expect(refItems()).toEqual(['经营分析岗', '岗位 #999'])
+    expect(ElMessage.error).not.toHaveBeenCalled()
   })
 
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
@@ -594,12 +644,12 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不
     expect(listExperts.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「专家」、对象名、引用数 0（专家无引用方统计）', async () => {
+  it('弹窗入参：类型「专家」、对象名；不传引用数（md 专家回收弹窗无「影响范围」项）', async () => {
     askForceRevoke.mockResolvedValue(null)
     await mount()
     rowBtn(rowOf('经营分析专家'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0 })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家' }) // md §3.5.1 专家回收弹窗没有「影响范围」项，不传 refCount
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {

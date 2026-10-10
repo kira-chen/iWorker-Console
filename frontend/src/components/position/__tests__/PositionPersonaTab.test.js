@@ -7,7 +7,7 @@ import { createApp, h, nextTick, reactive, ref } from 'vue'
  *  - 岗位描述为空 → 两处【AI 生成】disabled + title「请先填写岗位描述」；填了描述恢复可用；
  *  - 点【AI 生成】→ 按钮变「生成中…」，500ms 后示例问题 3 条填入 / SOP 填入，toast「已生成示例问题」「已生成岗位 SOP」；
  *  - 示例问题占位：第 1 条「如：帮我分析本周经营数据」、第 2-3 条「请输入示例问题」，每条 maxlength 300；
- *  - 只读态不出【AI 生成】；
+ *  - 只读态【AI 生成】置灰不可点（yuepu#60①）；
  *  - 2026-09-12 审计 J18：领用页文案满 6 条【＋ 新增一条】不隐藏，点击直调 ClaimNotesEditor.startAdd。
  * 数据走 usePositionStore（reactive 桩），三个重子组件（IconField / ClaimNotesEditor / SkillMilkdownEditor）桩掉。
  *
@@ -79,6 +79,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   claimStub.atLimit = false
   claimStub.editing = false
+  store.positionId = 5 // 切岗位用例会改成 6；不复位的话乱序下后跑的切岗位用例「5→6」变成空操作
   store.basic = { positionId: 5, name: '经营分析岗', description: '', icon: '▤', claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', persona: '' }
 })
 afterEach(() => {
@@ -166,11 +167,9 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.5 示例问
   })
 })
 
-// 已知缺陷钉桩（2026-10-08 待办 yuepu#54）：aiGenQuestions / aiGenSop 是手写 500ms setTimeout，没走 useAiLiveGenerate——
-// 无撤销、不核对对象，回调直接写 Pinia 全局 store。#26 同类问题在这里仍在。
-// 修好后本组会报红——把 it.fails 改回 it 即成正式回归用例。
+// yuepu#54（已修）：aiGenQuestions / aiGenSop 改走 useAiLiveGenerate（核对岗位 id + resetOn 撤销），切岗位不串数据。
 describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54）', () => {
-  it.fails('yuepu#54 点【AI 生成】后 500ms 内切到另一个岗位 → 生成结果不得写进新岗位、不弹成功提示', async () => {
+  it('点【AI 生成】后 500ms 内切到另一个岗位 → 生成结果不得写进新岗位、不弹成功提示', async () => {
     const { ElMessage } = await import('element-plus')
     vi.useFakeTimers()
     store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
@@ -186,6 +185,36 @@ describe('人格页签 · 【AI 生成】切换岗位时不串数据（yuepu#54�
     await flush()
     expect(store.basic.exampleQuestions).toEqual(['原问题一', '原问题二', '原问题三'])
     expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('岗位 SOP【AI 生成】在途时切岗位：旧结果不写进新岗位、不弹提示；按钮 busy 复位为「AI 生成」且可再点，再点正常生成', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '负责经营数据汇总、异常识别与经营分析报告输出'
+    await mount()
+    aiBtns()[1].click()
+    await flush()
+    expect(aiBtns()[1].textContent.trim()).toBe('生成中…') // 前提：生成已发起
+    store.positionId = 6
+    store.basic = { positionId: 6, name: '客户成功岗', description: '负责客户跟进', icon: '◎', claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '原 SOP', persona: '' }
+    await flush()
+    // 切岗位即撤销在途生成：按钮立刻复位，不必等旧定时器
+    expect(aiBtns()[1].textContent.trim()).toBe('AI 生成')
+    expect(aiBtns()[1].disabled).toBe(false)
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSop).toBe('原 SOP')
+    expect(ElMessage.success).not.toHaveBeenCalled()
+    // 复位后可再点：对新岗位正常生成并提示一次
+    aiBtns()[1].click()
+    await flush()
+    expect(aiBtns()[1].textContent.trim()).toBe('生成中…')
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSop).not.toBe('原 SOP')
+    expect(store.basic.positionSop.trim().length).toBeGreaterThan(0)
+    expect(ElMessage.success).toHaveBeenCalledTimes(1)
+    expect(ElMessage.success).toHaveBeenCalledWith('已生成岗位 SOP')
   })
 })
 
@@ -250,13 +279,39 @@ describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.3 �
     expect(store.basic.exampleQuestions).toEqual(['', '帮我看看本月异常指标', ''])
   })
 
-  it('只读态 → 不出【AI 生成】，描述 / 示例问题 / SOP 输入框均 disabled', async () => {
+  it('只读态 → 两处【AI 生成】仍展示但置灰不可点（md §2.6「只读态下按钮同样置灰不可点」，yuepu#60①），描述 / 示例问题 / SOP 输入框均 disabled', async () => {
     store.basic.description = '有描述'
     await mount({ isReadonly: true })
-    expect(aiBtns()).toHaveLength(0)
+    expect(aiBtns()).toHaveLength(2)
+    for (const b of aiBtns()) {
+      expect(b.disabled).toBe(true)
+      expect(b.getAttribute('title')).toBeNull() // 只读不是「没填描述」，不给「请先填写」引导
+    }
     expect(container.querySelector('.pd-desc-input').disabled).toBe(true)
     expect(container.querySelector('.pd-sop-input').disabled).toBe(true)
     for (const i of container.querySelectorAll('.pd-eq-row .el-input')) expect(i.disabled).toBe(true)
+  })
+
+  it('点击发起后、500ms 内进入只读 → 结果不回填、不弹成功提示', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.description = '有描述'
+    const ro = ref(false)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    app = createApp({ render: () => h(PositionPersonaTab, { isReadonly: ro.value }) })
+    app.component('el-button', elButton)
+    app.component('el-input', elInput)
+    app.mount(container)
+    await flush()
+    aiBtns()[1].click()
+    await flush()
+    ro.value = true
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSop).toBe('')
+    expect(ElMessage.success).not.toHaveBeenCalled()
   })
 })
 

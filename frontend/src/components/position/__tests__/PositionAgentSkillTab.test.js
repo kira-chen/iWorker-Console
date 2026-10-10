@@ -19,7 +19,7 @@ import { passthrough } from '../../../views/admin/__tests__/helpers/commonStubs'
  *
  * 覆盖点：正常路径（二维表渲染、抽屉新建/编辑/差集同步、删除、移除、跳转）、边界（空列表、20 个 Agent、100 个技能、工具数兜底）、
  * 异常路径（技能库加载失败 + loading 态、保存/删除/移除失败、确认框取消、ensurePersisted 拦截）、只读态（查看按钮 / 只读抽屉）。
- * 疑似缺陷以 it.fails 按 md 期望钉桩（见文末 describe）。
+ * 候选排除（yuepu#60⑥）与技能分类列（yuepu#61②）见文末 describe。
  *
  * 依赖打桩：usePositionStore（reactive 桩）、@/api/position.listSkills、vue-router、element-plus 的 ElMessage/ElMessageBox、
  * DrawerEditor（轻桩：visible 时渲染默认插槽 + footer）；Element Plus 组件以最小桩注册（el-table 按 data 渲染列插槽）。
@@ -301,6 +301,7 @@ describe('新增 / 编辑 Agent 抽屉（md §6.2 + 字段一览表 #5.1/#5.2）
   })
 
   it('打开抽屉即拉技能库候选：listSkills({ page:1, size:200, status:"published" })，候选渲染名称与描述（空描述显示「暂无描述」）', async () => {
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }] // 本岗位尚无引用，候选全量展示
     await mount()
     await clickNewAgent()
     expect(listSkills).toHaveBeenCalledWith({ page: 1, size: 200, status: 'published' })
@@ -311,6 +312,7 @@ describe('新增 / 编辑 Agent 抽屉（md §6.2 + 字段一览表 #5.1/#5.2）
 
   it('候选接口直接返回数组时同样渲染', async () => {
     listSkills.mockImplementation(() => Promise.resolve(skillFixture(2, 500)))
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }]
     await mount()
     await clickNewAgent()
     expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
@@ -617,25 +619,37 @@ describe('只读态（md §10 审核中全部页签只读 / 列表【查看】�
   })
 })
 
-describe('疑似缺陷钉桩（按 md 期望断言，it.fails = 当前预期失败）', () => {
-  it.fails('候选列表应排除已被当前岗位其他 Agent 引用的技能（疑似缺陷：抽屉直接展示 listSkills 全量已发布技能，未过滤本岗位已引用项；md §6.4「抽屉候选列表仅展示已发布且未被当前岗位引用过的岗位私有技能…同一岗位内同一技能只引用一次」）', async () => {
+describe('Agent 抽屉候选排除本岗位已引用技能（md §6.4，yuepu#60⑥）+ 技能分类列（yuepu#61②）', () => {
+  it('新建 Agent：候选不含本岗位其他 Agent 已引用的技能（md §6.4「同一岗位内同一技能只引用一次」）', async () => {
     // 候选 300/301/302；302 已被 ag_1 引用
     await mount()
     await clickNewAgent()
-    // 前提：抽屉已打开、候选已加载
     expect(drawer().getAttribute('data-title')).toBe('新建 Agent')
-    expect(boxes().length).toBeGreaterThan(0)
-    // md 期望：新建 Agent 的候选里不应再出现本岗位已引用的 302
-    const names = boxes().map((b) => b.querySelector('strong').textContent)
-    expect(names).toEqual(['技能0', '技能1'])
+    expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
   })
 
-  it.fails('技能子行应展示技能分类（如「数据分析」）（疑似缺陷：分类列只认 OPERATION/QUERY 派生类别，md 技能分类取值渲染为空标签；md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2 技能分类取值）', async () => {
+  it('编辑第二个 Agent：看不到第一个 Agent 的技能，但保留自己已引用的（可取消勾选）', async () => {
+    store.agents = [
+      { agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '技能2', category: 'QUERY', toolCount: 1 }] },
+      { agentId: 'ag_2', name: 'B', description: 'd', skills: [{ skillId: 301, name: '技能1', category: 'QUERY', toolCount: 1 }] }
+    ]
+    await mount()
+    await clickRowOp(2, '编辑') // 行序：A、A 下技能、B、B 下技能
+    expect(nameInput().value).toBe('B')
+    expect(boxes().map((b) => b.querySelector('strong').textContent)).toEqual(['技能0', '技能1'])
+    expect(checked()).toEqual([false, true])
+  })
+
+  it('技能子行展示技能分类（如「数据分析」）：优先取 VO 的 displayCategoryName（md §6.4「技能子行展示：技能名称、技能分类、工具数量」+ 一览表 三.#2；yuepu#61②）', async () => {
     store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '经营数据分析', category: '数据分析', toolCount: 5 }] }]
     await mount()
-    // 前提：技能子行已渲染
+    // 技能子行已渲染（下面分类断言的依托）
     expect(cellTexts('AGENT / 技能')).toEqual(['◆ A', '· 经营数据分析'])
     // md 期望：分类列展示技能分类原值
     expect(cellTexts('职责描述 / 分类')[1]).toBe('数据分析')
+    // 数据层 VO 形状：displayCategoryName 优先于 OPERATION / QUERY 派生类别
+    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 302, name: '经营数据分析', category: 'QUERY', displayCategoryName: '办公效率', toolCount: 5 }] }]
+    await flush()
+    expect(cellTexts('职责描述 / 分类')[1]).toBe('办公效率')
   })
 })

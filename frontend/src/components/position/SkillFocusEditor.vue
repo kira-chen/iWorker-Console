@@ -43,7 +43,6 @@ import { PUBLISH_READY_TIP, publishDisabledTitle } from '@/api/unifiedSkill'
 import { useAiLiveGenerate, skillExampleQuestion } from '@/utils/aiLiveGenerate'
 import SaveStatusIndicator from '@/components/position/SaveStatusIndicator.vue'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
-import { SKILL_TYPE } from '@/api/unifiedSkill'
 import {
   ENTRY_PATH,
   fileIconName,
@@ -54,6 +53,7 @@ import {
 } from '@/utils/skillFileTree'
 import { analyzeFrontmatter } from '@/utils/yamlLint'
 import StatusTag from '@/components/StatusTag.vue'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { categoryLabel, categoryTagType, hasCategory, CATEGORY_TOOLTIP } from '@/utils/skillCategory'
 import {
   parseSkillMdTools,
@@ -78,7 +78,7 @@ const props = defineProps({
   skill: { type: Object, default: null },
   loading: { type: Boolean, default: false },
   loadError: { type: Boolean, default: false },
-  positionName: { type: String, default: '岗位' },
+  positionName: { type: String, default: '岗位' }, // 已不再展示（顶行无岗位标签，yuepu#63⑤），仅保留入参兼容
   positionId: { type: [Number, String], default: null },
   // showClose / closeLabel 已退役（2026-09-12 审计 J14）：唯一挂载点 AdminSkillEditPage 恒传 false，
   // true 侧（岗位面包屑 / ↩ 返回总览 / 删除 ⋯）零可达；返回统一走 backLabel + emit('back')。
@@ -213,7 +213,7 @@ function onIconPick(payload) {
 
 // 【AI 生成】示例问题（2026-09-04 PRD-20260903 对齐：改统一 AI 实况生成机制，取代旧
 // mock 固定例句即填）：源=技能描述（空则按钮禁用 + title「请先填写技能描述」），点击进
-// 「生成中…」约 420ms，按描述本地模板生成『请帮我使用这个技能完成"…"』1 条，
+// 「生成中…」约 500ms，按描述本地模板生成『请帮我使用这个技能完成"…"』1 条，
 // 完成 toast「AI 内容已生成，请确认后保存」。机制见 utils/aiLiveGenerate.js。
 // 注意：skillDescription / ro 定义在下方（闭包惰性求值，仅点击时读取，无 TDZ 风险）。
 const {
@@ -767,14 +767,7 @@ onBeforeUnmount(() => {
         <el-icon class="eh-name-pen" title="可编辑技能名"><EditPen /></el-icon>
       </span>
       <span v-else class="eh-name-ro" :title="skillName">{{ skillName || '未命名技能' }}</span>
-      <!-- 所属岗位标签（岗位私有类型时显示） -->
-      <StatusTag
-        v-if="skill?.type === SKILL_TYPE.POSITION && positionName"
-        type="info"
-        class="eh-position-tag"
-      >
-        {{ positionName }}
-      </StatusTag>
+      <!-- 顶行不显示所属岗位标签：md 技能 §三.3 顶行组成里没有它（原默认值恒为「岗位」，待办 yuepu#63⑤） -->
       <!-- 类别只读标签：全页唯一一处（面包屑/信息条均无） -->
       <el-tooltip
         v-if="hasCategory(skill?.category)"
@@ -943,10 +936,10 @@ onBeforeUnmount(() => {
           v-if="!ro"
           v-model="exampleQuestion"
           class="ib-input"
-          :maxlength="300"
+          :maxlength="BIZ_QUESTION_MAX"
           show-word-limit
           :placeholder="adminContext
-            ? '输入 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'
+            ? '填 1 个终端用户会问的问题'
             : '选填：填 1 个终端用户会问的问题，如「帮我记一条今天的客户拜访」'"
         />
         <!-- 统一 AI 实况生成（2026-09-04）：描述为空禁用 + title 引导；生成中按钮文案「生成中…」 -->
@@ -1389,12 +1382,6 @@ onBeforeUnmount(() => {
 .eh-name-wrap:hover .eh-name-pen,
 .eh-name-wrap:focus-within .eh-name-pen {
   opacity: 1;
-}
-/* 所属岗位标签：技能名后显示 */
-.eh-position-tag {
-  flex-shrink: 0;
-  margin-left: var(--space-2);
-  cursor: default;
 }
 .eh-category {
   flex-shrink: 0;

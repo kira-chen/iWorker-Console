@@ -24,7 +24,8 @@ import { appendOpsRecord } from './accessAuditMock'
 import { makeRevokedInfo } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
-import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
+import { BIZ_QUESTION_MAX, CONNECTOR_URL_MAX, API_DESC_MAX } from '@/utils/defValidate'
+import { CONNECTOR_TYPE } from './connectorTypes'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
@@ -175,7 +176,6 @@ const iso = (s) => `${s.replace(' ', 'T')}:00+08:00`
 // type/posRefs：POSITION 行用 posRefs 给出「被哪些岗位引用」（401=经营分析岗 / 402=客户成功岗，
 // 取自 positionMock.js 已发布岗位种子）；不给 type 的行按 seedToMcp 兜底落 PLATFORM。
 const POS_401 = { positionId: 401, positionName: '经营分析岗' }
-const POS_402 = { positionId: 402, positionName: '客户成功岗' }
 const PROTO_SEEDS = [
   { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, refs: ['市场研究助手', '销售方案生成', '客户问题解答'], updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp', type: 'PLATFORM' },
   { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, refs: ['报销单查询', '财务单据助手'], updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posRefs: [POS_401] },
@@ -187,9 +187,9 @@ const PROTO_SEEDS = [
   ], type: 'SYSTEM_DEFAULT' },
   { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, refs: ['项目周报', '任务风险识别', '研发进度跟踪', '会议行动项'], updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp', type: 'PLATFORM' },
   { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, refs: [], updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx', type: 'SYSTEM_DEFAULT' },
-  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION', posRefs: [POS_402] },
+  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION' },
   { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, refs: ['会议行动项'], updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp', type: 'SYSTEM_DEFAULT' },
-  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, refs: ['销售方案生成'], updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION', posRefs: [POS_402] },
+  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, refs: ['销售方案生成'], updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION' },
   { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, refs: [], updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM' },
   { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, refs: [], updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp', type: 'SYSTEM_DEFAULT' }
 ]
@@ -299,7 +299,9 @@ const persist = attachPersist('mcpConnector', {
   //    旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种
   // v8：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
   //    旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种
-  version: 9,
+  // v10（2026-10-09 待办 yuepu#57⑧）：mail_center（未发布）/ crm（审核中）不再被客户成功岗（402）引用——岗位只能引用已发布的
+  //    连接器（md 岗位 §8），种子 referencedByPositions 随岗位侧同步清空；旧快照仍带这两条引用 → 丢弃重播种
+  version: 10,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -360,7 +362,8 @@ function aggStateKey(id) {
  * 用到，不能改造成 async。
  */
 export function listMcpSync() {
-  return mcps.map(toRow)
+  // stateKey：列表三态聚合键（工具坞按「已发布且启用」过滤候选用，yuepu#50）
+  return mcps.map((m) => ({ ...toRow(m), stateKey: aggStateKey(m.id) }))
 }
 
 /**
@@ -462,8 +465,22 @@ function assertExampleQuestions(list) {
   if (qs.some((q) => q.length > BIZ_QUESTION_MAX)) throw err(`示例问题每条最多 ${BIZ_QUESTION_MAX} 个字符`, 'exampleQuestions')
 }
 
+// 服务描述 ≤2000、服务地址（Endpoint）≤500（一览表 §5.1；md MCP §三.3）。与 API mock 的 validateApiPayload 同写法；
+// mock 的 payload 是部分更新语义，故只在带了该字段时校验（待办 yuepu#57⑥）。
+function assertMcpTextLimits(payload) {
+  if (payload.description != null && String(payload.description).trim().length > API_DESC_MAX) {
+    throw err(`服务描述最多 ${API_DESC_MAX} 个字符`, 'description')
+  }
+  if (payload.endpoint != null && String(payload.endpoint).trim().length > CONNECTOR_URL_MAX) {
+    throw err(`MCP 服务地址最多 ${CONNECTOR_URL_MAX} 个字符`, 'endpoint')
+  }
+}
+
 export async function createMcp(payload) {
   await delay(250)
+  // 连接器类型必选（md MCP §三.3 L262「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
+  assertMcpTextLimits(payload)
   assertExampleQuestions(payload.exampleQuestions)
   const code = (payload.code || '').trim() || `mcp_${mcpSeq}`
   if (findMcp(code)) throw err('code 已存在', 'code')
@@ -471,7 +488,7 @@ export async function createMcp(payload) {
   const m = mkMcp({
     code,
     // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyMcpPayload 不碰该字段
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     displayStatus: 'UNKNOWN',
     connStatus: 'unknown',
     createdAt: nowIso(),
@@ -507,6 +524,7 @@ export async function updateMcp(id, payload) {
   // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
   if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
+  assertMcpTextLimits(payload)
   if ('exampleQuestions' in payload) assertExampleQuestions(payload.exampleQuestions)
   applyMcpPayload(m, payload)
   m.updatedAt = nowIso()
@@ -586,7 +604,9 @@ async function fetchToolsResult(m) {
   }
   return { tools: SPARK_TOOLS.map((t) => ({ ...t })), ...meta }
 }
-export function fetchMcpTools(id) {
+export async function fetchMcpTools(id) {
+  // 审核中的 MCP 已锁定（updateMcp 同口径拒写），拉取工具会覆盖其 tools，一并拦下（待办 yuepu#57④）
+  if (pubAgg[id] === 'PENDING_REVIEW') throw err('审核中不可拉取工具，如需修改请先撤回')
   return fetchToolsResult(findMcp(id))
 }
 export function fetchMcpToolsDraft() {
@@ -788,6 +808,29 @@ export function renamePositionRefs(positionId, positionName) {
         changed = true
       }
     })
+  })
+  if (changed) persist()
+}
+
+/**
+ * 岗位侧保存绑定后回写「被岗位引用」清单（待办 yuepu#51，positionMock.updatePosition 调用）：
+ * 岗位私有连接器的引用关系在岗位侧产生，列表「N 个岗位引用」与引用清单弹窗读的都是 referencedByPositions，
+ * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
+ */
+export function syncPositionRefs(positionId, positionName, boundIds) {
+  const bound = new Set((boundIds || []).map(String))
+  let changed = false
+  mcps.forEach((r) => {
+    if (r.type !== 'POSITION') return
+    const list = r.referencedByPositions || []
+    const has = list.some((p) => String(p.positionId) === String(positionId))
+    if (bound.has(String(r.id)) && !has) {
+      r.referencedByPositions = [...list, { positionId, positionName }]
+      changed = true
+    } else if (!bound.has(String(r.id)) && has) {
+      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
+      changed = true
+    }
   })
   if (changed) persist()
 }

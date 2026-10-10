@@ -69,7 +69,7 @@ const rejecting = ref(false)
 
 // 取数编排统一走 useAdminList：四态 / 分页 / 空筛选项过滤 / 防空页回退 / 竞态防护由其承担
 const list = useAdminList(listReviews, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -221,6 +221,7 @@ async function submitReject(reason) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="暂无审核数据"
         @retry="fetchList"

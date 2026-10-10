@@ -34,6 +34,7 @@ import {
   deriveSkillDisplayView
 } from '@/api/unifiedSkill'
 import AdminRail from '@/components/admin/AdminRail.vue'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import SkillFocusEditor from '@/components/position/SkillFocusEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import RevokedBanner from '@/components/admin/RevokedBanner.vue'
@@ -242,7 +243,7 @@ const versionAdapter = computed(() => {
     // 【发布】按钮已按完整必填集置灰（publishReadiness），此处保留市场技能分类门兜底（原型 version-gate）。
     submitGate: () =>
       pageSkillType.value === SKILL_TYPE.PLATFORM && !(sk.displayCategoryId ?? null)
-        ? '该技能还未选择「技能分类」，按规则不可提交发布。请到技能编辑页选择分类并保存后再来发布。'
+        ? '该技能还未选择「技能分类」，按规则不可提交发布'
         : '',
     // 疑点10：撤回确认保留现状分场景文案
     withdrawText: (state) =>
@@ -618,8 +619,8 @@ async function saveConfig() {
     return
   }
   const exampleText = String(s.exampleQuestion || '').trim()
-  if (!isBizSystem.value && (!exampleText || exampleText.length > 300)) {
-    ElMessage.warning('请填写最多 300 个字符的示例问题')
+  if (!isBizSystem.value && (!exampleText || exampleText.length > BIZ_QUESTION_MAX)) {
+    ElMessage.warning(`请填写最多 ${BIZ_QUESTION_MAX} 个字符的示例问题`)
     return
   }
   const catChanged = (s.displayCategoryId ?? null) !== savedConfig.displayCategoryId

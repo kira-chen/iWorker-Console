@@ -74,6 +74,7 @@ import { useAiLiveGenerate, expertQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { EXPERT_TYPE, EXPERT_TYPE_LABEL, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
+import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { kbRouteLocation } from '@/utils/knowledgeDeepLink'
 
 const props = defineProps({
@@ -177,7 +178,7 @@ const soulLen = computed(() => (form.roleDesc || '').length)
 
 /* ==================== 「专家帮你做」AI 生成（2026-09-04：统一 AI 实况生成机制） ====================
  * 取代旧「固定文案即填」实现：源=专家简介（空则禁用 + title「请先填写专家简介」），
- * 点击进「生成中…」约 420ms，按简介本地模板生成 3 条『请围绕"…"给出专业分析』式问题（60 字截断），
+ * 点击进「生成中…」约 500ms，按简介本地模板生成 3 条『请围绕"…"给出专业分析』式问题（300 字截断），
  * 完成 toast「AI 内容已生成，请确认后保存」。机制细节见 utils/aiLiveGenerate.js。
  *
  * 2026-09-09 PRD-20260908 复核批次 0 · Q363：上下文补齐《AI生成按钮Prompt规范.md》§4 的四变量
@@ -211,6 +212,8 @@ const {
 // 审核中锁编辑（安全兜底：列表已把审核中行的「编辑」置灰，此处防直开）。
 const locked = computed(() => isLocked(KIND.DOMAIN_EXPERT, detail.value || {}))
 const disabled = computed(() => props.readonly || locked.value)
+/** 自写页脚不走 DrawerEditor 的 submitBlocked：加载中 / 加载失败时【保存】【发布】置灰（yuepu#49） */
+const footerBlocked = computed(() => loading.value || !!loadError.value)
 
 // 三态展示映射（同列表页 displayView：草稿→未发布、各审核中→审核中、已发布→已发布）
 // 2026-09-10 D2 收敛：模板只消费 label/tagType，直接取 deriveTriView（此前先 derivePublishView
@@ -369,6 +372,7 @@ async function load() {
   } catch (e) {
     if (seq !== loadSeq) return
     loadError.value = e?.message || '加载失败'
+    resetForm(null) // 失败态不留上一个专家的表单值，避免误存进当前专家（yuepu#49）
   } finally {
     if (seq === loadSeq) loading.value = false
   }
@@ -460,7 +464,7 @@ function warnInvalid() {
 }
 
 async function save() {
-  if (disabled.value) return
+  if (disabled.value || footerBlocked.value) return
   if (!validate()) {
     warnInvalid()
     return
@@ -491,7 +495,7 @@ async function save() {
  * 由父页打开版本管理侧栏（原型 drawerFoot expert-version：自动保存 → 关抽屉 → openExpertVersion）。
  */
 async function publishFromEditor() {
-  if (disabled.value || !isEdit.value) return
+  if (disabled.value || footerBlocked.value || !isEdit.value) return
   // 发布门先行：0 技能给发布专用文案（原型 openExpertVersion 口径），不淹没在「补齐必填项」里
   if (!form.skillIds.length) {
     errors.skills = '请至少添加 1 个技能'
@@ -756,7 +760,7 @@ const metaItems = computed(() => {
                 <el-input
                   :ref="(el) => setQuestionRef(el, i)"
                   v-model="form.exampleQuestions[i]"
-                  maxlength="300"
+                  :maxlength="BIZ_QUESTION_MAX"
                   :disabled="disabled"
                   :class="{ 'ee-q-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
                   :placeholder="i === 0 ? '帮我生成一份行业调研报告' : '请输入示例问题'"
@@ -887,8 +891,8 @@ const metaItems = computed(() => {
     <template #footer>
       <el-button :disabled="saving" @click="close">{{ props.readonly ? '关闭' : '取消' }}</el-button>
       <template v-if="!props.readonly && !locked">
-        <el-button v-if="isEdit" :loading="saving" @click="publishFromEditor">发布</el-button>
-        <el-button type="primary" :loading="saving" @click="save">
+        <el-button v-if="isEdit" :loading="saving" :disabled="footerBlocked" @click="publishFromEditor">发布</el-button>
+        <el-button type="primary" :loading="saving" :disabled="footerBlocked" @click="save">
           {{ isEdit ? '保存' : '创建专家' }}
         </el-button>
       </template>

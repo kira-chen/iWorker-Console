@@ -43,7 +43,7 @@ async function load() {
   loading.value = true
   try {
     docs.value = await listKnowledgeDocs(props.source.id)
-    schedulePoll()
+    if (props.visible) schedulePoll()
   } catch (e) {
     loadError.value = e?.message || '加载失败'
   } finally {
@@ -53,7 +53,8 @@ async function load() {
 async function refresh() {
   // 轮询用的静默刷新（不打骨架）
   docs.value = await listKnowledgeDocs(props.source.id).catch(() => docs.value)
-  schedulePoll()
+  // 在途请求返回时抽屉可能已关：关了就不再重挂轮询（md §五.3 离开即停止，yuepu#62⑦）
+  if (props.visible) schedulePoll()
 }
 function schedulePoll() {
   stopPolling()

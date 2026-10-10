@@ -35,6 +35,7 @@ const doc = (id, parseStatus, over = {}) => ({
 })
 
 let mounted
+let resolveLoad
 afterEach(() => {
   vi.useRealTimers()
   ElMessage.closeAll()
@@ -45,8 +46,10 @@ afterEach(() => {
 })
 
 /** 以 visible=false 挂载后打开；props 为 reactive，可在用例里改 visible 模拟关抽屉。 */
-async function open({ docKind = 'DOC', docs = [] } = {}) {
-  api.listKnowledgeDocs.mockResolvedValue(docs)
+async function open({ docKind = 'DOC', docs = [], pendingLoad = false } = {}) {
+  // pendingLoad：首次取数一直悬着，由用例通过 resolveLoad(清单) 放行（模拟「首次加载在途」）
+  if (pendingLoad) api.listKnowledgeDocs.mockImplementation(() => new Promise((r) => (resolveLoad = r)))
+  else api.listKnowledgeDocs.mockResolvedValue(docs)
   const props = reactive({
     visible: false,
     source: { id: 'ks_t', name: '测试文档源', config: { docKind } },
@@ -136,9 +139,9 @@ describe('KnowledgeSourceDocsDrawer · 解析中轮询（md §五.3 每 3 秒刷
     expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(1)
   })
 
-  // yuepu#62⑦（疑似 → 已复现）：刷新请求在途时关抽屉，stopPolling 先清了定时器，在途请求回来后 refresh()
+  // yuepu#62⑦：刷新请求在途时关抽屉，stopPolling 先清了定时器，在途请求回来后 refresh()
   // 又调 schedulePoll()，3 秒轮询被重新挂上，抽屉关着也在取数。前提（3 秒后发起第二次取数）见上一条。
-  it.fails('yuepu#62⑦ 刷新请求在途时关闭抽屉 → 请求回来后不再重挂轮询（md §五.3 全部结束或离开即停止）', async () => {
+  it('yuepu#62⑦ 刷新请求在途时关闭抽屉 → 请求回来后不再重挂轮询（md §五.3 全部结束或离开即停止）', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const props = await open({ docs: [doc('d1', 'PARSING')] })
     let resolveInflight
@@ -149,6 +152,30 @@ describe('KnowledgeSourceDocsDrawer · 解析中轮询（md §五.3 每 3 秒刷
     resolveInflight([doc('d1', 'PARSING')])
     await flushAll(6)
     await vi.advanceTimersByTimeAsync(10000)
+    expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('KnowledgeSourceDocsDrawer · 首次加载在途时关抽屉（load() 路径的 visible 守卫）', () => {
+  // refresh() 的守卫见上一组 yuepu#62⑦；这里是另一条路径：打开抽屉的首次 load() 还没回来就关了，回来后 load() 不得再挂轮询
+  it('yuepu#62⑦ 首次加载在途时关闭抽屉 → 清单回来后不再轮询（md §五.3 离开即停止）', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const props = await open({ pendingLoad: true })
+    expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(1) // 前提：首次取数已发出、悬着
+    props.visible = false
+    await flushAll(6)
+    resolveLoad([doc('d1', 'PARSING')]) // 带「解析中」文档回来：若守卫失效，会挂上 3 秒轮询
+    await flushAll(6)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(1)
+  })
+
+  it('对照：首次加载在途、抽屉一直开着 → 清单回来含「解析中」后照常 3 秒轮询', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await open({ pendingLoad: true })
+    resolveLoad([doc('d1', 'PARSING')])
+    await flushAll(6)
+    await vi.advanceTimersByTimeAsync(3000)
     expect(api.listKnowledgeDocs).toHaveBeenCalledTimes(2)
   })
 })

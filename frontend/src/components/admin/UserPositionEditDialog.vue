@@ -71,7 +71,8 @@ async function onSubmit() {
     // 保存成功提示统一（2026-09-01 PRD 对齐，原型 notify 文案，首绑/换绑/解绑同一句）
     ElMessage.success('岗位绑定已更新')
     dialogVisible.value = false
-    emit('saved')
+    // 带上落库后的岗位（未绑定为 null）：页面据此判断是否把待分配申请标为「已分配」（yuepu#57⑦）
+    emit('saved', { positionId: selected.value || null })
   } catch (e) {
     ElMessage.error(e?.message || '保存失败，请重试')
   } finally {
@@ -81,7 +82,7 @@ async function onSubmit() {
 </script>
 
 <template>
-  <el-dialog v-model="dialogVisible" title="修改绑定岗位" width="440px" append-to-body>
+  <el-dialog v-model="dialogVisible" title="分配岗位" width="440px" append-to-body>
     <!-- 顶部提示与下拉首项文案照原型 openAssignment（2026-09-01 PRD 对齐） -->
     <div class="upe-target">为 <b>{{ userLabel }}</b> 选择绑定岗位，保存后即时生效。</div>
     <!-- 字段标签「绑定岗位」照原型 L1604 form-label（2026-09-08 PRD-20260908 对齐） -->

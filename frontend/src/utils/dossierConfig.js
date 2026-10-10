@@ -27,7 +27,7 @@ export const REDUCE_STRATEGIES = [
 
 /** 用户确认方式（2026-08-28 管理端三选一）。 */
 export const CONFIRM_MODES = [
-  { value: 'LOW_ONLY', label: '低置信度需确认（推荐）', hint: '有把握的直接记；没把握的先问你' },
+  { value: 'LOW_ONLY', label: '低置信需确认（推荐）', hint: '有把握的直接记；没把握的先问你' },
   { value: 'ALL', label: '全部需要确认', hint: '每一条都先问你再记' },
   { value: 'NONE', label: '不需要确认', hint: '达到阈值就直接记，低于阈值丢弃' }
 ]
@@ -39,7 +39,7 @@ export const EXTRACT_MODES = [
 /** 业务规则上限（与卡片字段对称，2026-08-28）。 */
 export const MAX_RULES = 8
 
-export const SUMMARY_N_RANGE = { min: 1, max: 50 }
+export const SUMMARY_N_RANGE = { min: 1, max: 10 } // md 岗位 §4.2.3：x 下限 1，上限 10，默认 5
 export const STALE_DAYS_RANGE = { min: 1, max: 365 }
 export const MAX_KEY_LEN = 64
 

@@ -24,6 +24,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
+import { CONNECTOR_TYPE } from './connectorTypes'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
@@ -213,7 +214,7 @@ let apis = [
   mkApi({
     code: 'api_1104',
     type: 'POSITION',
-    referencedByPositions: [POS_402],
+    referencedByPositions: [POS_402], // 已回收样例（yuepu#83）：md 规定回收后引用保留、标「已回收」，402 仍引用它以演示失效标记与发布阻断
     name: '新增客户跟进',
     icon: '✅',
     description: '写入客户跟进记录和下次联系时间',
@@ -223,6 +224,9 @@ let apis = [
     url: 'https://crm.example.com/api/follow-up/create',
     exampleQuestions: ['帮我记一条今天的客户拜访跟进', '给这家客户安排下周三的回访', '把刚才的沟通要点存成跟进记录'],
     status: 'NOT_PUBLISHED',
+    publishedAt: '2026-08-22T10:10:00+08:00',
+    // 已回收样例（待办 yuepu#83）：演示列表「已回收」标签与悬停说明、编辑页提示条、402 岗位侧失效标记与发布阻断；配套访问审计种子（accessAuditMock id 21）
+    revoked: { reason: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12', operator: 'admin' },
     displayStatus: 'UNHEALTHY',
     lastCheckedAt: '2026-08-22T10:35:00+08:00',
     lastCheckError: MOCK_FAIL_REASON,
@@ -477,8 +481,10 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// version 7（2026-10-09 待办 yuepu#83）：api_1104 预置「已回收」样例（revoked + publishedAt），旧快照仍是未回收 → 丢弃重播种。
+// （同 v7）yuepu#57⑧ 合并说明：402 不再引用未发布的 mail_center / crm，但 api_1104 是「已回收」样例，引用按 md 保留（不清理）。
 const persist = attachPersist('apiConnector', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -497,6 +503,8 @@ const persist = attachPersist('apiConnector', {
     providerSystems = d.providerSystems
     apis = d.apis.map((a) => ({
       ...a,
+      // 旧快照行缺 revoked 键 → 补 null，与技能 / 专家 / MCP 出参口径一致（待办 yuepu#81）
+      revoked: a.revoked ?? null,
       // 连通性展示态归一：只认三个稳定值，异常快照回「未探测」
       displayStatus: a.displayStatus === 'HEALTHY' || a.displayStatus === 'UNHEALTHY' ? a.displayStatus : null
     }))
@@ -735,11 +743,13 @@ function applyApiPayload(a, payload) {
 
 export async function createApi(payload) {
   await delay(250)
+  // 连接器类型必选（md API §三「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   validateApiPayload(payload)
   // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyApiPayload 不碰该字段
   const a = mkApi({
     code: `api_${apiSeq++}`,
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })
@@ -891,21 +901,6 @@ export async function forceRevokeApi(id, reason) {
   return toRow(a)
 }
 
-/* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */
-const QUESTION_TEMPLATES = [
-  (n, d) => `帮我用「${n}」${d ? d.replace(/[。.]$/, '') : '查一下相关信息'}`,
-  (n) => `什么情况下应该用「${n}」？给我举个例子`,
-  (n) => `用「${n}」帮我处理一下今天的这件事`
-]
-
-export async function aiGenerateExampleQuestion({ name, description, index = 0 } = {}) {
-  await delay(600) // 模拟模型生成耗时
-  const n = (name || '').trim() || '这个 API'
-  const d = (description || '').trim()
-  const tpl = QUESTION_TEMPLATES[index % QUESTION_TEMPLATES.length]
-  return { question: tpl(n, d).slice(0, 60) }
-}
-
 /**
  * 岗位被删 / 改名后同步「被岗位引用」清单（2026-09-23 待办 yuepu#23⑥，positionMock.deletePosition / updatePosition 调用）。
  * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
@@ -930,6 +925,29 @@ export function renamePositionRefs(positionId, positionName) {
         changed = true
       }
     })
+  })
+  if (changed) persist()
+}
+
+/**
+ * 岗位侧保存绑定后回写「被岗位引用」清单（待办 yuepu#51，positionMock.updatePosition 调用）：
+ * 岗位私有连接器的引用关系在岗位侧产生，列表「N 个岗位引用」与引用清单弹窗读的都是 referencedByPositions，
+ * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
+ */
+export function syncPositionRefs(positionId, positionName, boundIds) {
+  const bound = new Set((boundIds || []).map(String))
+  let changed = false
+  apis.forEach((r) => {
+    if (r.type !== 'POSITION') return
+    const list = r.referencedByPositions || []
+    const has = list.some((p) => String(p.positionId) === String(positionId))
+    if (bound.has(String(r.id)) && !has) {
+      r.referencedByPositions = [...list, { positionId, positionName }]
+      changed = true
+    } else if (!bound.has(String(r.id)) && has) {
+      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
+      changed = true
+    }
   })
   if (changed) persist()
 }

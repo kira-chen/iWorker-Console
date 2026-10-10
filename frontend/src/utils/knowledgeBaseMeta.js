@@ -376,8 +376,12 @@ export const DOC_PARSE_META = {
  * 提交发布前置校验，入参为知识库行（含 name / icon / description / kbType / scopeRefId / sources）。
  * 返回 null 表示可发布，否则返回第一条不满足的原因（供 toast / tooltip）。
  * 校验失败时调用方须保留当前编辑内容、就地展示原因，不进入审核中（md §三.6）。
+ *
+ * 「有效的可见对象」（md §三.6 第 5 条，yuepu#62⑧）= 已选且对象仍存在，两路判存在：
+ * - 调用方传 opts.scopeOptionIds（编辑器里已加载的专家 / 岗位候选 id 列表）→ 所选 id 不在其中即失效；
+ * - 行自带 scopeRefName（mock / 后端 VO 按 scopeRefId 解析出的名称）且为空 → 对象已被删除。
  */
-export function publishBlockReason(row) {
+export function publishBlockReason(row, opts = {}) {
   // ① 基本信息必填项完整
   if (row && ('name' in row || 'description' in row)) {
     if (!String(row.name || '').trim()) return '请填写知识库名称'
@@ -388,6 +392,12 @@ export function publishBlockReason(row) {
   // ⑤ 专家或岗位知识库已选择有效的可见对象（提前判，属基本信息段）
   if (row?.kbType && row.kbType !== 'ENTERPRISE' && !row.scopeRefId) {
     return row.kbType === 'EXPERT' ? '请选择可见范围专家' : '请选择可见范围岗位'
+  }
+  if (row?.kbType && row.kbType !== 'ENTERPRISE') {
+    const gone = Array.isArray(opts.scopeOptionIds)
+      ? !opts.scopeOptionIds.map(String).includes(String(row.scopeRefId))
+      : 'scopeRefName' in row && !row.scopeRefName
+    if (gone) return row.kbType === 'EXPERT' ? '所选可见范围专家已不存在，请重新选择' : '所选可见范围岗位已不存在，请重新选择'
   }
   // ② 至少引用 1 个已启用数据源
   const enabled = (row?.sources || []).filter((s) => s.status !== 'DISABLED')

@@ -247,11 +247,13 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     expect(mounted.container.querySelector('.ls-empty-text').textContent).toBe('没有符合条件的运行规格')
   })
 
-  it('加载失败 → 「加载失败」+【重试】；点重试按当前条件重拉（md §二.3）', async () => {
-    api.listRuntimeSpecs.mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ list: LIST, total: 5, summary: SUMMARY })
+  it('加载失败 → 「加载失败」+ 失败原因 +【重试】；点重试按当前条件重拉（md §二.3）', async () => {
+    api.listRuntimeSpecs.mockRejectedValueOnce(new Error('运行规格服务暂不可用')).mockResolvedValue({ list: LIST, total: 5, summary: SUMMARY })
     mounted = mountReal(AdminRuntimeSpecs)
     await flushAll(10)
     expect(mounted.container.textContent).toContain('加载失败')
+    // md 要求失败展示原因：reject 带的文案出现在页面上（yuepu#74）
+    expect(mounted.container.querySelector('.ls-error-reason').textContent).toBe('运行规格服务暂不可用')
     const retry = [...mounted.container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试')
     retry.click()
     await flushAll(10)

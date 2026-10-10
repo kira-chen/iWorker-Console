@@ -92,6 +92,14 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     expect(again.status).toBe('DRAFT')
   })
 
+  it('yuepu#62⑧ 发布完整校验：专家库的可见对象已不存在（scopeRefId 查无此专家）被拦、不进审核中；换成存在的专家后放行', async () => {
+    const kb = await create({ name: uniq('失效可见对象库'), kbType: 'EXPERT', scopeRefId: 'ex_gone', description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '所选可见范围专家已不存在，请重新选择' })
+    expect((await list({ keyword: kb.name })).list[0].pendingAction).toBe(null)
+    const ok = await create({ name: uniq('有效可见对象库'), kbType: 'EXPERT', scopeRefId: 'ex_1', description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    expect((await transition(ok.id, 'publish')).pendingAction).toBe('PUBLISH')
+  })
+
   it('发布完整校验：引用连接失败的 API 源被拦，换成验证成功的源后可提交', async () => {
     const bad = await createSource({ sourceType: 'API', name: uniq('未验证接口'), config: apiConfig() })
     const kb = await create({ name: uniq('接口库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [bad.id] })

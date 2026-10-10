@@ -19,12 +19,12 @@ import {
   SOP_MAX_LEN
 } from '@/utils/positionModel'
 // 「生成中…」按钮文案走全站共享常量（本页原先硬写三个 ASCII 点，与其余 5 个编辑器不一致）
-import { AI_LIVE_BUSY_LABEL } from '@/utils/aiLiveGenerate'
+import { useAiLiveGenerate } from '@/utils/aiLiveGenerate'
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import SkillMilkdownEditor from '@/components/position/SkillMilkdownEditor.vue'
 
-defineProps({
+const props = defineProps({
   // 只读态（列表【查看】进入 / 审核中锁定），由父层统一推导
   isReadonly: { type: Boolean, default: false }
 })
@@ -35,7 +35,7 @@ const store = usePositionStore()
 function patchBasic(key, value) {
   store.basic = { ...store.basic, [key]: value }
 }
-// 领用页文案（原「岗位认领说明」；纯文本动态列表，必填至少 1 条、≤6 条 × 300 字，md §2.5）
+// 领用页文案（原「岗位认领说明」；纯文本动态列表，必填至少 1 条、≤6 条 × 300 字，md §2.4）
 const claimNotesModel = computed({
   get: () => (Array.isArray(store.basic?.claimDescriptions) ? store.basic.claimDescriptions : []),
   set: (v) => patchBasic('claimDescriptions', v)
@@ -61,28 +61,24 @@ function onPickIcon({ icon, iconSource }) {
   store.basic = { ...store.basic, icon, iconSource }
 }
 
-/* ---------- AI 生成（本地拟真：延迟 500ms；描述为空禁用并 title 提示） ---------- */
-const descEmpty = computed(() => !String(store.basic?.description || '').trim())
-const aiQuestionsBusy = ref(false)
-const aiSopBusy = ref(false)
-function aiGenQuestions() {
-  if (descEmpty.value || aiQuestionsBusy.value) return
-  aiQuestionsBusy.value = true
-  setTimeout(() => {
-    patchBasic('exampleQuestions', genExampleQuestions(store.basic?.name, store.basic?.description))
-    aiQuestionsBusy.value = false
-    ElMessage.success('已生成示例问题') // md §2.5 逐字
-  }, 500)
+/* ---------- AI 生成（本地拟真：延迟 500ms；描述为空禁用并 title 提示；只读态按钮同样置灰，md §2.6） ----------
+ * 走全站统一的 useAiLiveGenerate（yuepu#54）：点击那刻取名称 / 描述快照，500ms 后核对岗位 id 没变、仍非只读才回填；
+ * 切换岗位（resetOn）立即撤销在途生成，不会把结果写进另一个岗位的 store.basic。 */
+function useGen(generate, field, doneToast) {
+  return useAiLiveGenerate({
+    getSourceText: () => store.basic?.description,
+    sourceLabel: '岗位描述',
+    getSourceContext: () => ({ name: store.basic?.name, description: store.basic?.description }),
+    generate: ({ name, description }) => generate(name, description),
+    apply: (v) => patchBasic(field, v),
+    isReadonly: () => props.isReadonly,
+    getEntityId: () => store.positionId,
+    resetOn: () => store.positionId,
+    doneToast
+  })
 }
-function aiGenSop() {
-  if (descEmpty.value || aiSopBusy.value) return
-  aiSopBusy.value = true
-  setTimeout(() => {
-    patchBasic('positionSop', genPositionSop(store.basic?.name, store.basic?.description))
-    aiSopBusy.value = false
-    ElMessage.success('已生成岗位 SOP') // md §2.6 逐字
-  }, 500)
-}
+const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.5 逐字
+const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md §2.6 逐字
 </script>
 
 <template>
@@ -174,16 +170,15 @@ function aiGenSop() {
         <span class="pd-card-sub">帮助用户快速了解如何使用该岗位</span>
         <span class="pd-card-spacer"></span>
         <el-button
-          v-if="!isReadonly"
           class="pd-ai-btn"
           size="small"
           plain
-          :loading="aiQuestionsBusy"
-          :disabled="descEmpty || aiQuestionsBusy"
-          :title="descEmpty ? '请先填写岗位描述' : undefined"
-          @click="aiGenQuestions"
+          :loading="aiQuestions.busy.value"
+          :disabled="aiQuestions.disabled.value"
+          :title="aiQuestions.title.value || undefined"
+          @click="aiQuestions.run"
         >
-          {{ aiQuestionsBusy ? AI_LIVE_BUSY_LABEL : 'AI 生成' }}
+          {{ aiQuestions.label.value }}
         </el-button>
       </div>
       <div class="pd-card-body">
@@ -211,16 +206,15 @@ function aiGenSop() {
         <span class="pd-card-sub">对该岗位绑定的所有能力进行综述</span>
         <span class="pd-card-spacer"></span>
         <el-button
-          v-if="!isReadonly"
           class="pd-ai-btn"
           size="small"
           plain
-          :loading="aiSopBusy"
-          :disabled="descEmpty || aiSopBusy"
-          :title="descEmpty ? '请先填写岗位描述' : undefined"
-          @click="aiGenSop"
+          :loading="aiSop.busy.value"
+          :disabled="aiSop.disabled.value"
+          :title="aiSop.title.value || undefined"
+          @click="aiSop.run"
         >
-          {{ aiSopBusy ? AI_LIVE_BUSY_LABEL : 'AI 生成' }}
+          {{ aiSop.label.value }}
         </el-button>
       </div>
       <div class="pd-card-body">

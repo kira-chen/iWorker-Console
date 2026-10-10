@@ -88,7 +88,7 @@ function toggleSort() {
 const list = useAdminList(listPositions, {
   params: () => ({ keyword: query.keyword.trim(), status: query.status || 'all', sort: query.sort })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -362,7 +362,7 @@ async function doPublish() {
 /**
  * 岗位版本适配器（喂给统一 VersionDrawer）。
  * delist/relist 按 **version** 定位（与专家按 publicationId 不同），故此处原样封装。
- * 2026-09-01 PRD 对齐：抽屉标题「版本管理」、更新类型词 修订版本/功能更新/重大更新 + 岗位 hint、
+ * 2026-09-01 PRD 对齐：抽屉标题「版本管理」、更新类型词 修复更新/功能更新/重大更新 + 岗位 hint、
  * 历史区副标题、状态词 已启用/已禁用 + 动作词 启用/禁用、确认文案「启用|禁用「名」的 vX.Y.Z？」、
  * 最后一个启用版本禁用置灰、启用互斥；版本行不再带「pin N 技能」（Q9：原型无）。
  */
@@ -544,6 +544,7 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="没有符合条件的岗位"
         @retry="fetchList"

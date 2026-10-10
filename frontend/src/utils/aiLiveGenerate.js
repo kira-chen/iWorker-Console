@@ -31,6 +31,7 @@
  */
 import { ref, computed, watch, getCurrentScope, onScopeDispose } from 'vue'
 import { ElMessage } from 'element-plus'
+import { BIZ_QUESTION_MAX } from './defValidate'
 
 /** 「生成中…」态时长（2026-09-06 负责人拍板 Q10：全站统一 500ms，原型 420ms 口径废止） */
 export const AI_LIVE_DELAY_MS = 500
@@ -40,7 +41,7 @@ export const AI_LIVE_DONE_TOAST = 'AI 内容已生成，请确认后保存'
 export const AI_LIVE_BUSY_LABEL = '生成中…'
 /** 生成的示例问题截断长度（一览表示例类统一规则；2026-09-18 待办 yuepu#5⑥：此前 7 处硬编码 60，
  *  输入框已放宽到 300，生成内容仍被这里截到 60 字，活 bug——收成一个常量，改一处生效） */
-export const AI_LIVE_QUESTION_MAX = 300
+export const AI_LIVE_QUESTION_MAX = BIZ_QUESTION_MAX
 
 /** 压空白 + 截断加省略号（原型 shortText 同口径），用于把源文本收成模板主语。 */
 export function shortText(text, max) {
@@ -73,7 +74,7 @@ function pickSubject(candidates, max) {
 }
 
 /**
- * 专家「专家帮你做」3 条（模板照原型 questionSet('expert') 逐字，60 字截断）。
+ * 专家「专家帮你做」3 条（模板照原型 questionSet('expert') 逐字，300 字截断）。
  *
  * 2026-09-09 Q363：上下文由「仅简介」扩为规范 §4 的四变量（名称 / 简介 / 职责描述 / 分类）。
  * 签名向下兼容——首参仍可传字符串（老调用方等价于「只有简介」）。
@@ -144,6 +145,7 @@ export function skillExampleQuestion(ctx) {
  *   复位 busy、不回填不弹 toast。传抽屉的 [visible, 对象 id]：列表页的编辑器常驻挂载、关抽屉不卸载，500ms 内
  *   关抽屉再打开另一条记录，回调照常执行会把 A 的生成结果写进已载入的 B 表单并弹成功 toast
  *   （2026-09-23 待办 yuepu#26）。组件卸载（scope 销毁）时无论传不传都会清掉在途定时器。
+ * @param {string} [options.doneToast] 完成 toast 文案，默认 AI_LIVE_DONE_TOAST；md 另有逐字提示的入口（如岗位人设页「已生成示例问题」）传入覆盖
  * @returns {{ busy, sourceEmpty, disabled, title, label, run, cancel }} 均为 ref/computed + 触发函数
  */
 export function useAiLiveGenerate({
@@ -156,7 +158,8 @@ export function useAiLiveGenerate({
   delayMs = AI_LIVE_DELAY_MS,
   idleLabel = 'AI 生成',
   getEntityId = null,
-  resetOn = null
+  resetOn = null,
+  doneToast = AI_LIVE_DONE_TOAST
 }) {
   const busy = ref(false)
   const sourceEmpty = computed(() => !String(getSourceText() || '').trim())
@@ -187,7 +190,7 @@ export function useAiLiveGenerate({
       if (getEntityId && getEntityId() !== entityAtClick) return // 生成期间切换了对象，结果作废
       if (isReadonly()) return // isReadonly 原先只在 run() 入口判一次，500ms 内进入只读 / 锁定态不能再写表单
       apply(generate(ctx))
-      ElMessage.success(AI_LIVE_DONE_TOAST)
+      ElMessage.success(doneToast)
     }, delayMs)
   }
 

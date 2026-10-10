@@ -143,10 +143,36 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
   })
 
   it('更新：部分字段 + skillIds 全量替换；审核中锁定拒改', async () => {
-    const d = await updateExpert(203, { intro: '改简介', skillIds: [302, 307] })
+    const d = await updateExpert(203, { intro: '改简介', skillIds: [302, 304] })
     expect(d.intro).toBe('改简介')
-    expect(d.skills.map((s) => s.skillId)).toEqual([302, 307])
+    expect(d.skills.map((s) => s.skillId)).toEqual([302, 304])
     await expect(updateExpert(204, { intro: 'x' })).rejects.toMatchObject({ code: 409 })
+  })
+
+  // 待办 yuepu#57⑤：整批 skillIds 须在候选内（已发布的市场技能）；存量引用不因技能后来被回收而被拒（md §3.5.1 专家自身的技能引用不受影响）
+  it('skillIds 整批校验：新增未发布 / 不存在的技能被拒（create / update 都拦）；存量引用的技能被回收后，保存其它字段与原引用不被拒', async () => {
+    await expect(updateExpert(201, { skillIds: [302, 307] })).rejects.toMatchObject({ field: 'skillIds' }) // 307 竞品信息汇总：未发布
+    await expect(updateExpert(201, { skillIds: [302, 99999] })).rejects.toMatchObject({ field: 'skillIds' })
+    await expect(createExpert({ name: '整批校验新专家', skillIds: [307] })).rejects.toMatchObject({ field: 'skillIds' })
+    expect((await getExpert(201)).skills.map((s) => s.skillId)).toEqual([302, 304]) // 被拒后原引用不变
+    // 304 被强制回收（回未发布）后不再是候选，但 201 的存量引用保留：改简介 + 原样带回 skillIds 仍成功
+    resetSkillRaw('sk_304', { status: 'draft', delisted: true })
+    try {
+      const d = await updateExpert(201, { intro: '回收后仍可改', skillIds: [302, 304] })
+      expect(d.intro).toBe('回收后仍可改')
+      expect(d.skills.map((s) => s.skillId)).toEqual([302, 304])
+      await expect(updateExpert(201, { skillIds: [302, 304, 307] })).rejects.toMatchObject({ field: 'skillIds' }) // 新增的仍须在候选内
+    } finally {
+      resetSkillRaw('sk_304', { status: 'published', delisted: false })
+    }
+  })
+
+  it('示例问题每条 ≤300 字符：create / update 超长被拒回 field，恰 300 通过（一览表「专家帮你做」）', async () => {
+    const long = ['问'.repeat(301), 'b', 'c']
+    await expect(createExpert({ name: '超长示例专家', exampleQuestions: long })).rejects.toMatchObject({ field: 'exampleQuestions', message: '示例问题每条最多 300 个字符' })
+    await expect(updateExpert(201, { exampleQuestions: long })).rejects.toMatchObject({ field: 'exampleQuestions' })
+    const ok = await updateExpert(201, { exampleQuestions: ['问'.repeat(300), 'b', 'c'] })
+    expect(ok.exampleQuestions[0]).toHaveLength(300)
   })
 
   // 2026-09-12 测试审计 T55：md §二.3.7「【删除】仅在"未发布"且无审核中操作时展示」——

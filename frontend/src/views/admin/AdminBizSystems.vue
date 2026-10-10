@@ -33,7 +33,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import { askForceRevoke, connectorRefNames } from '@/utils/forceRevoke'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -53,7 +53,7 @@ const editorReadonly = ref(false)
 // 行内动作 busy 态：{ [bizId]: 'publish' | 'withdraw' | 'deactivate' | 'delete' }
 const busy = ref({})
 
-// 引用清单弹窗（B3：点「N 个技能引用」弹出，标题「被技能引用」）
+// 引用清单弹窗（B3：点「N 个岗位 / 技能引用」弹出，标题按引用方类型：被岗位引用 / 被技能引用）
 const refsDialog = reactive({ visible: false, title: '被技能引用', names: [] })
 
 // 状态选项（B4 顺序：未发布 / 审核中 / 已发布）
@@ -108,7 +108,7 @@ const list = useAdminList(listBizSystems, {
         : compareTimeText(a.updatedAt, b.updatedAt)
     )
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 
 // 排序方向箭头
@@ -252,7 +252,8 @@ async function forceRevoke(row) {
     typeLabel: '业务系统',
     name: row.name,
     refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
+    refText: '岗位 / 技能',
+    refNames: connectorRefNames(row)
   })
   if (reason == null) return
   runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收')
@@ -320,6 +321,7 @@ async function remove(row) {
     <ListStates
       :loading="loading"
       :error="loadError"
+      :error-message="loadErrorMessage"
       :empty="isEmpty"
       empty-text="没有匹配的业务系统"
       @retry="fetchList"
@@ -496,7 +498,7 @@ async function remove(row) {
       @saved="onSaved"
     />
 
-    <!-- 引用清单弹窗（B3：标题「被技能引用」，正文技能名列表，按钮【关闭】） -->
+    <!-- 引用清单弹窗（B3：标题与正文按引用方类型——被岗位引用/岗位名、被技能引用/技能名，按钮【关闭】） -->
     <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="420px">
       <div v-if="refsDialog.names.length" class="refs-list">
         <div v-for="n in refsDialog.names" :key="n" class="refs-item">

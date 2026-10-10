@@ -419,7 +419,7 @@ const {
   releaseNotes, // 升级说明（必填）
   atMax: versionAtMax, // 无法自动建议版本号（人话提示 + 禁发）
   nextLoading: nextLabelLoading,
-  bump: versionBump, // 更新类型（NONE 修订版本 / MINOR 功能更新 / MAJOR 重大更新，md §3.7）
+  bump: versionBump, // 更新类型（NONE 修复更新 / MINOR 功能更新 / MAJOR 重大更新，md §3.7）
   firstPublish: versionFirstPublish, // 首个版本：无更新类型可选，固定 v1.0.0
   setBump: setVersionBump,
   load: loadNextVersionLabel

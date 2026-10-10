@@ -15,7 +15,7 @@ import { describe, it, expect, vi } from 'vitest'
  * 改种子的正确姿势：bump version → 跑本用例 → 按报错把新 version / fp 抄进下表。
  *
  * 【确定性】种子里有按「当前时间」生成的值，故固定 Date（只假 Date，不假定时器）；TZ 由 vitest.config.js 固定为东八区。
- * 实测同一份代码独立运行 3 次指纹完全一致。下表不追溯历史：unifiedSkill 的 v6 已知漏 bump 一次（yuepu#53），由该待办处理。
+ * 实测同一份代码独立运行 3 次指纹完全一致。下表不追溯历史：unifiedSkill 的 v6 曾漏 bump 一次，已于 v7 补上（yuepu#53）。
  */
 vi.useFakeTimers({ toFake: ['Date'] })
 vi.setSystemTime(new Date('2026-10-08T12:00:00+08:00'))
@@ -34,16 +34,16 @@ const FINGERPRINTS = {
   accessAuditOps: { version: 1, fp: 'ebadc885' },
   adminModel: { version: 2, fp: '2887e06b' },
   adminUser: { version: 5, fp: '0e60d0d7' },
-  apiConnector: { version: 6, fp: 'a2767de2' },
+  apiConnector: { version: 7, fp: 'aca4ffcf' },
   bizSystem: { version: 4, fp: 'c73c6be1' },
   dataTable: { version: 2, fp: '592831be' },
   domainExpert: { version: 6, fp: 'c7cb441c' },
   fieldDict: { version: 4, fp: '40d8527d' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
   knowledgeBase: { version: 9, fp: '04ba3a72' },
-  mcpConnector: { version: 9, fp: '17ba4020' },
+  mcpConnector: { version: 10, fp: '6381f876' },
   myApplications: { version: 7, fp: 'b8042447' },
-  position: { version: 8, fp: '6dde3c4d' },
+  position: { version: 10, fp: 'a693a16c' },
   positionApplications: { version: 4, fp: 'bf5160f2' },
   positionAssignment: { version: 2, fp: 'a3b870be' },
   reviews: { version: 8, fp: 'ffc05ceb' },
@@ -51,7 +51,7 @@ const FINGERPRINTS = {
   sampleTask: { version: 6, fp: '01a9bf8e' },
   skillReview: { version: 3, fp: 'aa231c01' },
   storageSpace: { version: 5, fp: '3301ae52' },
-  unifiedSkill: { version: 6, fp: '8c59fbb1' },
+  unifiedSkill: { version: 7, fp: '625171be' },
   version: { version: 5, fp: '45a0afc5' }
 }
 

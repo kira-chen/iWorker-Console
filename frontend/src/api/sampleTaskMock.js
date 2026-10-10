@@ -296,6 +296,8 @@ const persist = attachPersist('sampleTask', {
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
   // v5（2026-09-12 审计 K1）：preKick 缺省由 false 改 true（md §7.3 L398「默认开启」），VO 形状变更 bump
   // v6（2026-09-23 负责人拍板）：删除 preKick 字段、执行频率新增「闲时」模式，VO 形状变更 bump
+  // 注：execType（执行动作）缺省值 a1a1888 起由 AGENT 改为 SKILL，读取时回落（toVO / 保存归一），不 bump 版本——
+  // 存量快照里未显式带 execType 的任务会随之显示为 SKILL
   version: 6,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {

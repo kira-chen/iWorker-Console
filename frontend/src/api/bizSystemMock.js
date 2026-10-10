@@ -22,7 +22,8 @@ import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnrol
 import { appendOpsRecord } from './accessAuditMock'
 import { makeRevokedInfo } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
-import { isBlankBizPage } from '@/utils/defValidate'
+import { isBlankBizPage, BIZ_URL_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
+import { CONNECTOR_TYPE } from './connectorTypes'
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
@@ -33,10 +34,9 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let bizSeq = 2104
 let skillSeq = 3
 
-// 与 utils/defValidate.js 的同名 BIZ_QUESTION_MAX 同口径（mock 不 import utils，数值对齐即可；
-// 2026-09-18 待办 yuepu#5⑥ 改口径时两处曾一度失配：这里卡在 60、defValidate 已经是 300，
-// 导致输入框能填 300 字、保存却被这里拒——改这个值时务必同步另一处）
-export const BIZ_QUESTION_MAX = 300
+// 示例问题上限的单一来源是 utils/defValidate.js（页面校验与各 mock 共用；曾因两处各写一份而失配：
+// 一处卡 60、一处 300，输入框能填、保存却被拒）。此处转出供既有引用方沿用。
+export { BIZ_QUESTION_MAX }
 
 const mkBiz = (over) => ({
   id: over.id,
@@ -148,7 +148,7 @@ const persist = attachPersist('bizSystem', {
     }
     bizSeq = d.bizSeq
     skillSeq = d.skillSeq
-    bizRows = d.bizRows
+    bizRows = d.bizRows.map((b) => ({ ...b, revoked: b.revoked ?? null })) // 旧快照行缺 revoked 键 → 补 null（待办 yuepu#81）
   }
 })
 
@@ -221,6 +221,8 @@ function validateBizPayload(payload, selfId = null) {
   if (!/^https?:\/\//i.test((payload.loginUrl || '').trim())) {
     throw err('登录地址必须以 http:// 或 https:// 开头', 'loginUrl')
   }
+  // 登录地址 ≤1024（一览表 §十一；md 业务系统 §三 L115，待办 yuepu#57⑥）
+  if (payload.loginUrl.trim().length > BIZ_URL_MAX) throw err(`登录地址最多 ${BIZ_URL_MAX} 个字符`, 'loginUrl')
   const pages = Array.isArray(payload.bizPages) ? payload.bizPages : []
   if (pages.length > 20) throw err('业务页最多 20 条', 'bizPages')
   const qs = [0, 1, 2].map((i) => (payload.exampleQuestions?.[i] || '').trim())
@@ -251,11 +253,13 @@ function applyBizPayload(b, payload) {
 
 export async function createBizSystem(payload) {
   await delay(250)
+  // 连接器类型必选（md 业务系统 §三「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
+  if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   validateBizPayload(payload)
   // 类型创建后不可更改（PRD），只在这里从 payload 落一次；applyBizPayload 不碰该字段
   const b = mkBiz({
     id: `biz_${bizSeq++}`,
-    type: payload.type || 'PLATFORM',
+    type: payload.type,
     createdAt: nowIso(),
     updatedAt: nowIso()
   })
@@ -466,6 +470,29 @@ export function renamePositionRefs(positionId, positionName) {
         changed = true
       }
     })
+  })
+  if (changed) persist()
+}
+
+/**
+ * 岗位侧保存绑定后回写「被岗位引用」清单（待办 yuepu#51，positionMock.updatePosition 调用）：
+ * 岗位私有连接器的引用关系在岗位侧产生，列表「N 个岗位引用」与引用清单弹窗读的都是 referencedByPositions，
+ * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
+ */
+export function syncPositionRefs(positionId, positionName, boundIds) {
+  const bound = new Set((boundIds || []).map(String))
+  let changed = false
+  bizRows.forEach((r) => {
+    if (r.type !== 'POSITION') return
+    const list = r.referencedByPositions || []
+    const has = list.some((p) => String(p.positionId) === String(positionId))
+    if (bound.has(String(r.id)) && !has) {
+      r.referencedByPositions = [...list, { positionId, positionName }]
+      changed = true
+    } else if (!bound.has(String(r.id)) && has) {
+      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
+      changed = true
+    }
   })
   if (changed) persist()
 }

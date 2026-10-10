@@ -8,12 +8,14 @@
  * 这些逻辑是工作台交互的核心（决议 6/13/3/2/8/9），独立成纯函数供组件复用 + 单测断言。
  */
 
+import { BIZ_QUESTION_MAX } from './defValidate'
+
 /* ============================ 上限 / 软上限（交互规格 §12） ============================ */
 export const LIMITS = {
-  AGENT_MAX: 20, // 单岗位 Agent 上限（硬）；api/positionMock.js 的 AGENT_MAX 是同口径的独立副本，改这里务必同步那边
+  AGENT_MAX: 20, // 单岗位 Agent 上限（硬）；api/positionMock.js 直接引用本常量
   // 单 Agent 技能引用上限（硬）：2026-09-09 负责人 Q378 决议由 20 放宽到 100，
   // 落点改为 Agent 抽屉内「引用技能」勾选区（达上限未勾选项置灰），md §6.4 同口径。
-  // api/positionMock.js 的 SKILL_PER_AGENT_MAX 是同口径的独立副本，改这里务必同步那边。
+  // api/positionMock.js 直接引用本常量。
   SKILL_MAX: 100,
   INTAKE_MAX: 10, // 采集字段上限（硬）
   TRIGGER_MAX: 10, // 触发词个数上限（硬）
@@ -139,7 +141,7 @@ export const CLAIM_NOTE_MAX = 6
 export const CLAIM_NOTE_LEN = 300
 // 示例问题：固定 3 条，每条不超过 300 字（一览表示例类统一规则）。
 export const EXAMPLE_Q_COUNT = 3
-export const EXAMPLE_Q_MAX_LEN = 300
+export const EXAMPLE_Q_MAX_LEN = BIZ_QUESTION_MAX // 示例问题 300 的单一来源在 defValidate.js，各处只引用不另写
 // 岗位 SOP：必填，最多 4000 字。
 export const SOP_MAX_LEN = 4000
 // 自动化任务「提示词」：必填，最多 8000 字（md §7.4）。UI 校验 / 字数计数与 sampleTaskMock 共用这一处，
@@ -483,7 +485,7 @@ export function normalizePublishWarnings(warnings) {
 }
 
 /* ============================ 升级类型（md §3.7 · 原型 positionPublishHtml L1224） ============================ */
-// 更新类型词 + hint（原型 positionBumpHint），顺序照原型：修订版本 / 功能更新 / 重大更新。
+// 更新类型词 + hint（原型 positionBumpHint），顺序照原型：修复更新 / 功能更新 / 重大更新。
 // 列表页版本管理侧栏（AdminPositions bumpOptions）与详情页发布前检查弹窗共用同一份。
 export const POSITION_BUMP_OPTIONS = [
   { value: 'NONE', label: '修复更新', hint: '修复问题或小幅配置调整' }, // md §3.7 逐字（Patch）

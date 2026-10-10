@@ -20,8 +20,8 @@ import { createApp, h, nextTick, ref } from 'vue'
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
  *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
- * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，真弹窗交互另见
- *  utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，弹窗 vnode 级交互另见
+ *  utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -313,9 +313,8 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
-  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
-  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
-  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+  // 回归（待办 yuepu#55 已修）：searching 须把「连接器类型」也算筛选，只按类型筛时空分组不展示。
+  it('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
     conn.listApis.mockImplementation(async (params = {}) => ({
       list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
     }))
@@ -562,6 +561,22 @@ describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹�
     expect(groups().length).toBe(0)
     expect(container.querySelector('.lt-search').value).toBe('不存在的关键词')
   })
+
+  // yuepu#55 的另一面：只按「连接器类型」筛、且一个都没命中 → 不能剩一屏空白，要落到「没有匹配的 API」
+  it('yuepu#55 只按「连接器类型」筛且全不命中 → 「没有匹配的 API」，不残留空分组', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    await mount()
+    expect(groups().length).toBeGreaterThan(0) // 前提：未筛选时有分组
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION' // 夹具里没有岗位私有的 API
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' }) // 前提：类型确实下发了
+    expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
+    expect(groups().length).toBe(0)
+  })
 })
 
 describe('AdminApis · 验证列与引用情况（md §二.1「最近更新时间」「验证」/ §二.3 连通性验证）', () => {
@@ -732,12 +747,12 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     expect(conn.listApis.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
+  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」、引用清单（技能名，供弹窗点击展开）', async () => {
     askForceRevoke.mockResolvedValue(null)
     await mount()
     btn(rowByName('已上线接口'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能', refNames: ['报销查询技能', '财务单据助手'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {

@@ -18,7 +18,7 @@ import { createApp, h, nextTick, ref } from 'vue'
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）。
  * 2026-10-09 对齐 prd-业务系统.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *  真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ *  弹窗 vnode 级交互另见 utils/__tests__/forceRevoke.test.js，真实弹窗挂载一条见同文件末尾）与未发布行「已回收」标签。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -561,7 +561,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     await mount()
     btn(rowByName('客户管理系统'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能' })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能', refNames: ['客户拜访准备', '销售方案生成'] })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {

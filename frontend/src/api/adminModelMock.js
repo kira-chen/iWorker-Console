@@ -27,11 +27,17 @@ const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
 // localeCompare 排序会排反；改引 utils/datetime 单一真相 nowIsoLocal（另五个 mock 早已迁完，这里漏了）
 import { nowIsoLocal as nowIso, compareTimeText } from '@/utils/datetime'
+import { MODEL_PROVIDER_OPTIONS, MODEL_CATEGORY_OPTIONS } from '@/utils/modelPresets'
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let modelSeq = 106
 
 export const MODEL_NAME_MAX = 64
+// md 模型 §三.2 / §三.3 / §三.4：base_url ≤500、模型标识 ≤200、app_id ≤200、额外参数 ≤2000 且为合法 JSON 对象
+const BASE_URL_MAX = 500
+const MODEL_ID_MAX = 200
+const APP_ID_MAX = 200
+const EXTRA_BODY_MAX = 2000
 
 // 能力四件套（ModelCapabilityTags 消费口径）：true=支持 / false=不支持 / null=未探测
 const CAPS_UNPROBED = {
@@ -271,14 +277,40 @@ function validateModelPayload(payload, selfId = null) {
   if (!name) throw err('模型名称必填', 'name')
   if (name.length > MODEL_NAME_MAX) throw err(`模型名称最多 ${MODEL_NAME_MAX} 个字符`, 'name')
   if (models.some((m) => m.name === name && m.id !== selfId)) {
-    throw err('模型名称平台内不可重复', 'name')
+    throw err('模型名称已存在', 'name') // md 模型 §三.8「提示名称已存在」
   }
   if (!/^https?:\/\/[^?#\s]+$/.test((payload.baseUrl || '').trim())) {
     throw err('服务地址（Base URL）必须以 http:// 或 https:// 开头，且不含空格、? 或 #', 'baseUrl')
   }
-  if (!(payload.model || '').trim()) throw err('模型标识必填', 'model')
+  if ((payload.baseUrl || '').trim().length > BASE_URL_MAX) throw err(`服务地址（Base URL）最多 ${BASE_URL_MAX} 个字符`, 'baseUrl')
+  const modelId = (payload.model || '').trim()
+  if (!modelId) throw err('模型标识必填', 'model')
+  if (modelId.length > MODEL_ID_MAX) throw err(`模型标识最多 ${MODEL_ID_MAX} 个字符`, 'model')
   const cw = Number(payload.contextWindow)
   if (!Number.isInteger(cw) || cw < 1024) throw err('上下文窗口须为不小于 1024 的整数', 'contextWindow')
+  // 提供商 / 类别：必填且在枚举内；编辑时沿用存量值（applyModelPayload 同口径回落）。UI 是下拉，数据层兜底不留后门
+  const cur = selfId ? models.find((m) => m.id === selfId) : null
+  if (!MODEL_PROVIDER_OPTIONS.some((o) => o.value === (payload.providerName || cur?.providerName))) throw err('请选择模型提供商', 'providerName')
+  if (!MODEL_CATEGORY_OPTIONS.some((o) => o.value === (payload.category || cur?.category))) throw err('请选择模型类别', 'category')
+  // 额外参数：选填；填了须 ≤2000 字符且为合法 JSON 对象（§三.4 L281、§八 L352）
+  const extra = (payload.extraBody || '').trim()
+  if (extra) {
+    if (extra.length > EXTRA_BODY_MAX) throw err(`额外参数最多 ${EXTRA_BODY_MAX} 个字符`, 'extraBody')
+    let parsed
+    try {
+      parsed = JSON.parse(extra)
+    } catch (e) {
+      throw err('额外参数须为合法的 JSON 对象', 'extraBody')
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw err('额外参数须为合法的 JSON 对象', 'extraBody')
+  }
+  // 鉴权信息：AppID / AppSecret 方式 app_id 必填（≤200）；新接入时 app_secret 必填（api_key 必填由 createModel 校验）
+  if (payload.authType === 'APP_ID_SECRET') {
+    const appId = (payload.appId || '').trim()
+    if (!appId) throw err('app_id 必填', 'appId')
+    if (appId.length > APP_ID_MAX) throw err(`app_id 最多 ${APP_ID_MAX} 个字符`, 'appId')
+    if (!selfId && !(payload.appSecret || '').trim()) throw err('app_secret 必填', 'appSecret')
+  }
 }
 
 // 连接字段是否变更（口径同 ModelConfigEditDialog.connectionChanged）：

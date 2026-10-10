@@ -37,6 +37,7 @@ import { submitReviewRow, cancelReviewRow } from './reviewsMock'
 import { submitApplicationRow, withdrawApplicationRow } from './myApplicationsMock'
 import { reviewActionMatches } from './reviewEnroll' // 2026-09-18 R1：审核落地前核对申请类型
 import { maskSecret } from '@/utils/secretMask'
+import { nowIsoLocal } from '@/utils/datetime' // 时间戳统一本地 ISO（带真实时区偏移），不用 toISOString 的 UTC「Z」串
 import {
   MAX_SOURCES_PER_TYPE,
   SOURCE_LABELS,
@@ -362,6 +363,21 @@ export async function update(id, payload) {
   if ((refsChanged || scopeChanged) && r.status === 'PUBLISHED') r.status = 'DRAFT'
   persist()
   return vo(r)
+}
+/**
+ * 删岗级联（待办 yuepu#52）：岗位知识库（kbType=POSITION）的可见范围 scopeRefId 指向被删岗位时置空——
+ * 否则它悬空指向已删岗位，岗位 id 被复用时还会错挂到新岗位上。知识库本体与数据源保留（不动审核状态），
+ * 置空后 scopeName 显示为空，管理员编辑时需重新选择可见范围（validate 会要求）。只动 scopeRefId 等于该岗位的行。
+ */
+export function clearPositionScope(positionId) {
+  let changed = false
+  rows.forEach((r) => {
+    if (r.kbType === 'POSITION' && String(r.scopeRefId) === String(positionId)) {
+      r.scopeRefId = null
+      changed = true
+    }
+  })
+  if (changed) persist()
 }
 export async function remove(id) {
   await delay()
@@ -721,10 +737,10 @@ export async function testSource(sourceType, payload) {
   const failed = /fail|timeout/i.test(String(target))
   // MCP 测试成功返回固定工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）
   const result = failed
-    ? { verifyStatus: 'FAILED', verifiedAt: new Date().toISOString(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
+    ? { verifyStatus: 'FAILED', verifiedAt: nowIsoLocal(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
     : {
         verifyStatus: 'SUCCESS',
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: nowIsoLocal(),
         verifyError: null,
         latencyMs: 168,
         ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})

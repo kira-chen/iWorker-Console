@@ -74,7 +74,7 @@ const list = useAdminList(listUnifiedSkills, {
     return p
   }
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 const categoryOptions = ref([])
 const actionBusy = ref(null) // 行级互斥：停用/删除/撤回共用（一次只允许一行在途）
@@ -243,7 +243,8 @@ async function forceRevoke(row) {
     typeLabel: '技能',
     name: row.name,
     refCount: refCountOf(row),
-    refText: refSubject(row)
+    refText: refSubject(row),
+    refNames: refNamesOf(row)
   })
   if (reason == null) return
   actionBusy.value = row.id
@@ -467,8 +468,8 @@ function onSkillCreated(payload) {
 function onSkillsCreatedBatch(payload) {
   createVisible.value = false
   const n = payload?.skillIds?.length
-  // 2026-09-04 PRD-20260903 对齐：文案照新原型（「编辑」带直引号）
-  if (n) ElMessage.success(`已导入 ${n} 个技能包，请从列表点击"编辑"继续配置`)
+  // #63① 对齐 md 技能 §三.2：「编辑」不带引号（2026-09-04 曾照旧原型带直引号，已废）
+  if (n) ElMessage.success(`已导入 ${n} 个技能包，请从列表点击编辑继续配置`)
   fetchList()
 }
 
@@ -558,6 +559,7 @@ onBeforeUnmount(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="hasFilter ? '没有符合条件的技能' : '还没有技能，点击「新建技能」创建第一个'"
         @retry="fetchList"
