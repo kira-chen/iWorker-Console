@@ -359,3 +359,37 @@ describe('导出 CSV（PRD §三）', () => {
     }
   })
 })
+
+describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范围；按 J23）', () => {
+  const TABS = [
+    { name: 'skill', total: '执行总数', ph: '搜索用户 / 岗位 / 技能 / 工具' },
+    { name: 'task', total: '运行总数', ph: '搜索用户 / 岗位 / 任务 / 工具' },
+    { name: 'knowledge', total: '检索请求总数', ph: '搜索用户 / 岗位 / 知识库 / 检索词' }
+  ]
+  for (const { name, total, ph } of TABS) {
+    it(`${name} 页签：搜索后点「${total}」→ 搜索框清空、列表恢复全量；点「执行失败」则保留搜索词`, async () => {
+      mountReal()
+      await flush()
+      if (name !== 'skill') await openTab(name)
+      const p = pane(name)
+      const input = () => p.querySelector(`input[placeholder="${ph}"]`)
+      const fullCount = Number(cardOf(p, total).querySelector('.metric-value').textContent)
+
+      input().value = '张'
+      input().dispatchEvent(new Event('input'))
+      input().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+      await flush()
+      // 统计卡片随筛选联动：搜索后总数小于全量，证明搜索词确实生效
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBeLessThan(fullCount)
+
+      cardOf(p, '执行失败').click()
+      await flush()
+      expect(input().value).toBe('张')
+
+      cardOf(p, total).click()
+      await flush()
+      expect(input().value).toBe('')
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBe(fullCount)
+    })
+  }
+})
