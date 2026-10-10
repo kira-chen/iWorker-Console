@@ -262,6 +262,9 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     await rejectExpansionRequest('ER-1006', '请先清理历史产物')
     expect(liveOps()[0]).toMatchObject({ action: '拒绝扩容', target: 'chenyu', detail: '请先清理历史产物' })
     expect(liveClientOps()[0]).toMatchObject({ type: '拒绝扩容', rejectReason: '请先清理历史产物' })
+    // J55 / J56：拒绝扩容没有新总量，键恒存在且为 null；客户端字段键集钉死
+    expect(liveClientOps()[0]).toMatchObject({ requestId: 'ER-1006', newTotalGb: null })
+    expect(Object.keys(liveClientOps()[0]).sort()).toEqual(['at', 'kind', 'newTotalGb', 'recordId', 'rejectReason', 'requestId', 'type', 'userId', 'username'])
   })
 
   it('500 字刚好允许', async () => {
@@ -332,6 +335,18 @@ describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconci
     expect(await memberOf('hejing')).toBeUndefined()
     await updateUser(210, { status: 'active' })
     expect(await memberOf('hejing')).toMatchObject({ finalGb: 5, state: 'FULL' })
+  })
+
+  it('停用账号：单个 / 批量调整绕过页面也被拒绝（员工不存在），不写容量不写审计；重新启用后可调整', async () => {
+    await updateUser(210, { status: 'disabled' })
+    const before = opsRecords.length
+    await expect(adjustStorageQuota(210, 9)).rejects.toThrow('员工不存在')
+    await expect(adjustStorageQuota(210, 5, { restoreDefault: true })).rejects.toThrow('员工不存在')
+    await expect(batchAdjustStorageQuota([201, 210], 9)).rejects.toThrow('员工不存在')
+    expect(opsRecords.length).toBe(before)
+    await updateUser(210, { status: 'active' })
+    expect(await memberOf('hejing')).toMatchObject({ totalGb: 5 })
+    await expect(adjustStorageQuota(210, 9)).resolves.toMatchObject({ totalGb: 9 })
   })
 
   it('停用有待处理申请的账号：其申请不展示、不计入角标、不能被处理；重新启用后恢复', async () => {
