@@ -124,9 +124,10 @@ async function submitDialog() {
   dialog.error = validate()
   if (dialog.error) return
   if (overusedTargets.value.length) {
-    const who = overusedTargets.value.length === 1
-      ? `${overusedTargets.value[0].name}的`
-      : `其中 ${overusedTargets.value.length} 名员工的`
+    // 批量设置一律写「其中 N 名员工」（哪怕只有 1 人）；单个调整才写员工姓名（md §三·4）
+    const who = dialog.kind === 'batch'
+      ? `其中 ${overusedTargets.value.length} 名员工的`
+      : `${overusedTargets.value[0].name}的`
     if (!(await confirmFull(who))) return
   }
   dialog.submitting = true

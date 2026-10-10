@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 
 /**
- * storageSpaceMock · 持久化（mockPersist v5，key iworker-demo-mock:storageSpace）。
+ * storageSpaceMock · 持久化（mockPersist v6，key iworker-demo-mock:storageSpace）。
  * 2026-10-09 /test-audit 补缺口：storageSpaceMock.test.js 整体 vi.mock 了 mockPersist，只能验业务规则，
  * 验不到「写入 → 刷新 → 真读回」。对齐项目 mock 持久化约定（刷新后数据仍在；改种子 / 快照结构须 bump version，
  * 旧快照作废回种子；坏快照不白屏）与 prd.存储空间.md 的持久化口径（快照只存业务数据，员工身份 / 岗位是派生值）。
@@ -83,11 +83,26 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
     const m = await import('../storageSpaceMock')
     await m.adjustStorageQuota(201, 8)
     const { v, data } = readSnapshot()
-    expect(v).toBe(5)
+    expect(v).toBe(6)
     expect(Object.keys(data).sort()).toEqual(['members', 'requests'])
     for (const member of data.members) {
       expect(Object.keys(member).sort()).toEqual(['cacheGb', 'finalGb', 'quotaGb', 'statAt', 'userId'])
     }
+  })
+
+  it('落盘的快照里扩容申请同样只存业务字段，用户名 / 显示名 / 在职标记不落存档，刷新后仍显示当前值', async () => {
+    const m = await import('../storageSpaceMock')
+    await m.rejectExpansionRequest('ER-1005', '请先清理历史产物')
+    const { data } = readSnapshot()
+    expect(data.requests.length).toBeGreaterThan(0)
+    for (const r of data.requests) {
+      expect(r).not.toHaveProperty('username')
+      expect(r).not.toHaveProperty('name')
+      expect(r).not.toHaveProperty('active')
+    }
+    vi.resetModules()
+    const fresh = await import('../storageSpaceMock')
+    expect(await fresh.getExpansionRequest('ER-1005')).toMatchObject({ username: 'wangfang', status: 'REJECTED' })
   })
 
   it('只含业务字段的快照 restore 后，首次读取经 reconcile 补出用户名 / 显示名 / 在职，岗位取岗位分配当前值', async () => {
@@ -102,7 +117,7 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
     expect(row.position).toBeTruthy() // 张伟绑定了岗位分配里的岗位，列表上显示岗位名而不是「—」
   })
 
-  it('本地存着 v4 旧版快照（紧邻的上一版，申请里还带申请时用量）→ 丢弃旧数据，回到种子（陈宇仍有待处理申请、容量来自种子）', async () => {
+  it('本地存着 v5 旧版快照（紧邻的上一版，申请里还带派生的用户名 / 显示名）→ 丢弃旧数据，回到种子（陈宇仍有待处理申请、容量来自种子）', async () => {
     globalThis.localStorage.setItem(KEY, JSON.stringify({
       v: 4,
       data: { members: [{ userId: 201, username: 'zhangwei', finalGb: 1, cacheGb: 0, quotaGb: 77, statAt: null }], requests: [] }
@@ -114,7 +129,7 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
 
   it('本地快照版本对但形状不合法（members 不是数组）→ 兜底回种子，页面不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { members: 'oops', requests: [] } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 6, data: { members: 'oops', requests: [] } }))
     const m = await import('../storageSpaceMock')
     expect((await m.getStorageOverview()).pendingCount).toBe(4)
     expect(warn).toHaveBeenCalled()

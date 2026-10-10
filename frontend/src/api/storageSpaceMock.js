@@ -31,7 +31,8 @@ const clone = (value) => structuredClone(value)
 const round1 = (n) => Math.round(n * 10) / 10
 
 /** 已用 ≥ 总量的 90% 且未满为预警（PRD 一·4）。 */
-const WARN_RATIO = 0.9
+// 比较时放大成「十分位整数」：used*10 >= total*9，避免 13*0.9=11.700000000000001 这类浮点误判。
+const tenths = (n) => Math.round(n * 10)
 
 // 用量与容量种子，按用户模块的 userId 对应（id / 用户名 / 显示名 / 岗位不存这里，reconcile() 每次从用户模块与岗位分配取当前值）。
 // 杨帆、马超从未登录过，员工端没统计过用量 → 「未统计」；停用账号（周明、吴杰）不进清单。
@@ -160,12 +161,13 @@ const visibleRequests = () => requests.filter((r) => r.active)
 // v3（2026-10-09）：去掉「修改默认容量」，默认容量固定 5 GB，快照不再含 defaultQuotaGb，旧快照弃用回种子。
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
 // v5（2026-10-09）：扩容申请只展示当前用量，申请记录不再带申请时的 usedGb / totalGb，种子随之变，旧快照弃用回种子。
+// v6（2026-10-10）：快照里 requests 也只存业务字段（去掉派生的 username / name / active，读时 reconcile 补回），旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
-  version: 5,
+  version: 6,
   // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
   snapshot: () => ({
     members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
-    requests
+    requests: requests.map(({ username, name, active, ...business }) => business)
   }),
   restore: (data) => {
     if (!data || !Array.isArray(data.members) || !Array.isArray(data.requests)) {
@@ -186,7 +188,7 @@ function stateOf(m) {
   if (used == null) return 'UNKNOWN'
   const total = totalOf(m)
   if (used >= total) return 'FULL'
-  if (used >= total * WARN_RATIO) return 'WARN'
+  if (tenths(used) * 10 >= tenths(total) * 9) return 'WARN'
   return 'NORMAL'
 }
 const STATE_ORDER = { FULL: 0, WARN: 1, NORMAL: 2, UNKNOWN: 3 }
