@@ -248,6 +248,8 @@ async function withdrawFromList(row) {
 /* ---------- 引用清单（md prd.专家.md §二.1「岗位私有点击弹出引用清单（展示岗位名）」，口径同三个连接器页 openRefs） ----------
  * 专家行只带 positionIds，岗位名按 id 从岗位列表解析；岗位已被删则不会在 positionIds 里（deletePosition 会摘除）。 */
 const refsDialog = reactive({ visible: false, title: '被岗位引用', names: [], loading: false })
+// 注意（yuepu#90③，潜伏项不改）：这里用 size:1000 取全量岗位再映射名称；真实后端若限制 size，会退化成「岗位 #id」，
+// 弹窗也无分页——接真实接口时应改为按 positionIds 批量取名。
 async function openRefs(row) {
   refsDialog.names = []
   refsDialog.loading = true

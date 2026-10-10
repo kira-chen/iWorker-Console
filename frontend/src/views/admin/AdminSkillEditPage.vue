@@ -68,6 +68,7 @@ import {
 // 治理借用态仅按需触发，动态引在功能上等价且不扩大既有测试的模块图。
 import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
 import { loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
+import { queryString } from '@/utils/routeQuery'
 import {
   confirmApproveReview,
   confirmWithdrawMyApp,
@@ -155,9 +156,8 @@ const skill = ref(null)
 const loading = ref(false)
 const loadError = ref(false)
 
-// 岗位上下文（positionId 非空时装载）：岗位名供面包屑回返（反馈 5：已去 Agent▾/同组，不再需要 agents/currentAgentId）。
+// 岗位上下文（positionId 非空时装载）。岗位名不再维护：SkillFocusEditor 顶行已无岗位标签（yuepu#63⑤ / #90⑥）。
 const positionId = ref(null)
-const positionName = ref('岗位')
 
 // 全线 ID 改造 方案B/B3：skill id 已字符串化（sk_*），路由参数原样作字符串用，不再 Number()（会变 NaN）。
 const currentSkillId = computed(() => route.params.id)
@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
 /* ---------- 加载技能 + 岗位上下文 ----------
  * B7 首屏并行（性能批次一）：详情（loadDetail）与目录树（listSkillFiles）无依赖（skillId 来自路由、
  * entryPath 恒 SKILL.md）→ 两请求**同时发起**并发，去掉「详情→岗位→树」三段串行瀑布，首屏 RTT 由「和」降为「max」。
- * 岗位名（store.load）依赖详情返回的 positionId，且仅供面包屑、失败不阻断 → 详情到达后**异步补**、不进首屏关键路径。
+ * 岗位树（store.load，供 patchSkill 回写岗位树）依赖详情返回的 positionId，失败不阻断 → 详情到达后**异步补**、不进首屏关键路径。
  * 竞态护栏：两路各自回填前校验 currentSkillId 仍为发起时 skillId（与原逻辑一致）；
  * 树须等详情设好 skill 后再 apply（syncEntryCache 读 skill.skillMd 做脏态基线）。 */
 async function loadSkill(skillId) {
@@ -399,7 +399,6 @@ async function loadSkill(skillId) {
   treeLoading.value = true
   treeLoadError.value = false
   positionId.value = null
-  positionName.value = '岗位'
   // 并发发起：详情 + 目录树（互不依赖，同时打出请求）。
   // N8：业务系统技能无独立文件端点 → 不拉目录树，files 恒空，编辑器退化为单 SKILL.md 两栏（复用 SkillFocusEditor 既有降级）。
   const detailP = loadDetail(skillId)
@@ -470,17 +469,12 @@ async function loadSkill(skillId) {
     // 2026-09-01：三类技能统一携带 publications（岗位私有已接入同构状态机，mock 派生）。
     publications.value = data.publications || []
     detailResolve() // 通知树分支：skill 已就绪，可 apply tree
-    // 岗位名：依赖详情的 positionId，仅供面包屑、失败不阻断 → 异步补，不 await 进首屏关键路径。
+    // 岗位树：依赖详情的 positionId，失败不阻断 → 异步补，不 await 进首屏关键路径。
     if (data.positionId != null) {
       positionId.value = data.positionId
-      store
-        .load(data.positionId)
-        .then(() => {
-          if (currentSkillId.value === skillId) positionName.value = store.basic?.name || '岗位'
-        })
-        .catch(() => {
-          /* 岗位详情拉取失败不阻断技能编辑：面包屑降级到岗位名占位即可 */
-        })
+      store.load(data.positionId).catch(() => {
+        /* 岗位详情拉取失败不阻断技能编辑 */
+      })
     }
     // 汇合树分支（已并发，此处仅等其完成，不再串行新请求）。
     await applyTree
@@ -933,11 +927,13 @@ function backToList() {
   }
   // 岗位借用态（2026-09-09 批次 4C #15）：从岗位详情「Agent 与技能」页签行内【编辑】进来，
   // 「← 返回」回到该岗位详情的来源页签，不再落到技能列表。
-  if (route.query?.fromPosition) {
+  // fromPosition / fromTab 经 queryString 归一：地址栏重复参数（数组）取第一个（yuepu#89⑤）
+  const fromPosition = queryString(route.query?.fromPosition)
+  if (fromPosition) {
     router.push({
       name: 'PositionWorkbench',
-      params: { id: route.query.fromPosition },
-      query: { tab: route.query.fromTab || 'agents' }
+      params: { id: fromPosition },
+      query: { tab: queryString(route.query.fromTab) || 'agents' }
     })
     return
   }
@@ -1211,7 +1207,6 @@ function onTestMaskClick(e) {
           :skill="skill"
           :loading="loading"
           :load-error="loadError"
-          :position-name="positionName"
           :position-id="positionId"
           :readonly="readonly"
           :back-label="backLabel"

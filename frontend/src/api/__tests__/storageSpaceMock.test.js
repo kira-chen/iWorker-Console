@@ -394,19 +394,27 @@ describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审�
   })
 })
 
-describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md 存储空间 §一·4「已用 ≥ 总量 90% 且未满为预警」）', () => {
-  // 前提单独成条：it.fails 遇任何异常都算通过，前提若写在里面会「为错误的原因通过」
-  it('前提：构造 11.7 GB / 13 GB 的员工（恰好 90%，未满）', async () => {
+describe('预警 / 已满阈值按整数比较（md 存储空间 §一·4「已用 ≥ 总量 90% 且未满为预警」；原 yuepu#86 浮点误判）', () => {
+  const stateWith = async (usedGb, quotaGb) => {
     const snap = persistHarness.options.snapshot()
-    Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
+    Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: usedGb, cacheGb: 0, quotaGb })
     persistHarness.options.restore(snap)
-    expect(await memberOf('zhangwei')).toMatchObject({ usedGb: 11.7, totalGb: 13 })
+    return memberOf('zhangwei')
+  }
+
+  // 用量保留一位小数时，这些组合恰好 90%，浮点比较会误判成正常
+  it.each([[11.7, 13], [18.9, 21], [23.4, 26], [27.9, 31], [33.3, 37], [37.8, 42], [42.3, 47], [46.8, 52]])(
+    '%s / %s GB 恰好 90% 为预警',
+    async (used, total) => {
+      expect(await stateWith(used, total)).toMatchObject({ usedGb: used, totalGb: total, state: 'WARN' })
+    },
+  )
+
+  it('略低于 90%（11.6 / 13）为正常', async () => {
+    expect((await stateWith(11.6, 13)).state).toBe('NORMAL')
   })
 
-  it.fails('yuepu#86 11.7 / 13 恰好 90% 应为预警（现状：13*0.9 = 11.700000000000001，被判成正常）', async () => {
-    const snap = persistHarness.options.snapshot()
-    Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
-    persistHarness.options.restore(snap)
-    expect((await memberOf('zhangwei')).state).toBe('WARN')
+  it('恰好 100%（13 / 13）为已满，不是预警', async () => {
+    expect((await stateWith(13, 13)).state).toBe('FULL')
   })
 })

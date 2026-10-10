@@ -133,6 +133,39 @@ describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', (
   })
 })
 
+describe('positionMock.createPosition · 带连接器 id 新建同样回写引用清单（yuepu#90①）', () => {
+  const NAME = '带连接器新建岗'
+  const KINDS = [
+    { kind: 'mcp', field: 'connectorMcpIds', id: 'mail_center', mod: '../mcpConnectorMock', getter: 'getMcp' },
+    { kind: 'api', field: 'connectorApiIds', id: 'api_1103', mod: '../apiConnectorMock', getter: 'getApi' },
+    { kind: 'bizSystem', field: 'businessSystemIds', id: 'biz_2101', mod: '../bizSystemMock', getter: 'getBizSystem' }
+  ]
+
+  it.each(KINDS)('新建岗位 payload 带 $kind 连接器 id，连接器侧引用清单含新岗位（id 与岗位名都对得上）', async ({ field, id, mod, getter }) => {
+    const pos = await import('../positionMock')
+    const created = await pos.createPosition({ name: NAME, [field]: [id] })
+    const conn = await import(mod)
+    const refs = (await conn[getter](id)).referencedByPositions
+    const ref = refs.find((x) => x.positionId === created.positionId)
+    expect(ref).toBeTruthy()
+    expect(ref.positionName).toBe(NAME)
+  })
+
+  it('反向：新建时不带任何连接器字段，不改动任何连接器的引用清单', async () => {
+    const mcp = await import('../mcpConnectorMock')
+    const api = await import('../apiConnectorMock')
+    const biz = await import('../bizSystemMock')
+    const snapshot = async () => JSON.stringify([
+      mcp.listMcpSync(), api.listApisSync(), biz.listBizSystemsSync(),
+      await Promise.all(KINDS.map(async (k) => (await ({ mcp, api, bizSystem: biz }[k.kind])[k.getter](k.id)).referencedByPositions))
+    ])
+    const before = await snapshot()
+    const pos = await import('../positionMock')
+    await pos.createPosition({ name: '无连接器新建岗' })
+    expect(await snapshot()).toBe(before)
+  })
+})
+
 describe('positionMock.updatePosition · 连接器引用回写落盘读回（yuepu#51）', () => {
   // 种子：401（已发布）绑 expense_mcp / api_1101 / biz_2101；biz_2101 另被 402 引用
   it('解绑：401 清空三类连接器后，重新加载各连接器 mock，引用数与引用清单反映改后状态', async () => {

@@ -330,6 +330,18 @@ describe('返回（md §三.1「点击顶部【← 返回】回到技能列表�
     expect(routerPushSpy).not.toHaveBeenCalledWith({ name: 'AdminSkillsUnified' })
     expect(closeSpy).not.toHaveBeenCalled()
   })
+
+  it('?fromPosition / ?fromTab 重复参数（数组）取第一个，不把数组塞进路由 params（yuepu#89⑤）', async () => {
+    routeState.meta = { skillSource: 'platform' }
+    routeState.params = { id: '9' }
+    routeState.query = { fromPosition: ['5', '6'], fromTab: ['skills', 'agents'] }
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.back()
+    await vi.runOnlyPendingTimersAsync()
+    await Promise.resolve()
+    expect(routerPushSpy).toHaveBeenCalledWith({ name: 'PositionWorkbench', params: { id: '5' }, query: { tab: 'skills' } })
+  })
 })
 
 /* ====================================================================================== */

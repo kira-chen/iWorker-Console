@@ -266,14 +266,6 @@ export const usePositionStore = defineStore('position', () => {
     )
   }
 
-  /* ---------- 调序（决议 9：逐条 PUT 持久化；跨泳道迁移见 assignSkillToAgent） ---------- */
-  // 同泳道内技能重排：本地先更新顺序，再按新顺序逐条 PUT sortOrder（最小代价持久化）。
-  function reorderSkillsLocal(agentId, newSkills) {
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === agentId ? { ...a, skills: newSkills } : a
-    )
-  }
-
   // 取某技能详情（聚焦态加载 referencedTools）
   function fetchSkillDetail(skillId) {
     return getSkill(skillId)
@@ -309,7 +301,6 @@ export const usePositionStore = defineStore('position', () => {
     patchSkill,
     assignSkillToAgent,
     detachSkillFromAgent,
-    reorderSkillsLocal,
     fetchSkillDetail,
     reset
   }

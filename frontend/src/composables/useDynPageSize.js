@@ -33,8 +33,8 @@ export function computeDynPageSize(innerHeight, options = {}) {
   const { min = DYN_PAGE_MIN, max = DYN_PAGE_MAX, reserved = DYN_PAGE_RESERVED, rowHeight = DYN_PAGE_ROW } = options
   const h = Number(innerHeight) > 0 ? Number(innerHeight) : FALLBACK_HEIGHT
   const n = Math.floor((h - reserved) / rowHeight)
-  // 只对非有限数兜底：n=0（高度 330–391px）是合法值，应夹到下限 5，不能被当假值落到 10（待办 yuepu#65②）
-  return Math.min(max, Math.max(min, Number.isFinite(n) ? n : 10))
+  // n=0（高度 330–391px）是合法值，夹到下限 5（待办 yuepu#65②）；h 取自窗口高度（正数），n 经 Math.min / Math.max 夹在 [min, max]，无入口会传 NaN，故不另设兜底（#90⑤）
+  return Math.min(max, Math.max(min, n))
 }
 
 function readHeight() {

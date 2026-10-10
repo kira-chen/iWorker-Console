@@ -109,6 +109,8 @@ async function loadPublishedPositions() {
   try {
     // 获取已发布岗位列表
     const { listPositions } = await import('@/api/position')
+    // 潜伏项（yuepu#89①，保留不改）：未传 size，mock 默认只回 12 条；当前岗位数在其内，demo 无触发入口。
+    // 接真实后端时应传足量 size 或改远程搜索下拉。
     const res = await listPositions({ status: 'published' })
     publishedPositions.value = res.list || []
   } catch (err) {
