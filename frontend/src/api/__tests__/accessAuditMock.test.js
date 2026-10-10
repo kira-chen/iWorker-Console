@@ -205,7 +205,7 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     const list = listClientFacingOps().filter((r) => r.kind === 'skillReview')
     const rejected = list.find((r) => r.result === '审核驳回')
     expect(rejected).toEqual({
-      kind: 'skillReview', recordId: expect.any(Number), at: '2026-08-27 16:08:00',
+      kind: 'skillReview', recordId: expect.any(Number), at: expect.stringMatching(/^[0-9]{4}-[0-9]{2}-[0-9]{2} 16:08:00$/), // 日期是相对今天生成的（J27），只钉时分秒
       result: '审核驳回', reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手', rejectReason: '岗位与技能权限范围不匹配'
     })
     expect(list.find((r) => r.result === '审核通过')).toMatchObject({ submitter: 'wang.fang', skillName: '合同管理助手', rejectReason: '' })
@@ -222,13 +222,21 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
   it('since 增量：只返回操作时间严格晚于 since 的记录；按时间正序；不受页面 90 天窗口限制', () => {
     const all = listClientFacingOps()
     for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
-    expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
-    const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
-    // 08-28 11:10:24 的岗位分配 + 08-29 的两条强制回收种子（待办 yuepu#83）+ 存储空间种子（调整容量 / 同意 / 拒绝扩容，页面展示、客户端也读）
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-08-29 09:30:41', '2026-08-29 10:12:08', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12'])
+    // 种子里大部分日期是相对今天生成的（J27），另有版本管理 / 存储空间种子是绝对日期，二者的先后会随日子推移变化——
+    // 所以不断言绝对时间戳，也不钉「第几条是什么」，只钉语义：最早一条是用户技能审核（通过）；since 之后 = 全量里 at 严格更晚的那些。
+    expect(all[0]).toMatchObject({ kind: 'skillReview', result: '审核通过', submitter: 'wang.fang' })
+    const since = all.find((r) => r.kind === 'positionAssign' && r.type === '变更').at // 种子里的一条岗位变更
+    const cut = listClientFacingOps({ since })
+    expect(cut.map((r) => r.recordId)).toEqual(all.filter((r) => r.at > since).map((r) => r.recordId))
+    expect(cut.length).toBeGreaterThan(0)
+    expect(cut.length).toBeLessThan(all.length)
+    expect(cut.every((r) => r.at > since)).toBe(true) // 严格晚于，不含 since 本身
     const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
     expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    const later = listClientFacingOps({ since: '2026-10-08 14:30:12' }) // 严格晚于最后一条存储空间种子
+    // 不受页面 90 天窗口限制：再造一条远早于窗口的老记录，仍在全量视图里（种子最老也只有约一个半月，证明不了这点）
+    opsRecords.unshift({ id: 901, time: '2020-01-01 08:00', operator: 'a', module: '技能', action: '强制回收', target: 'OLD', detail: '', objectId: 'old-1', live: true })
+    expect(listClientFacingOps()[0]).toMatchObject({ objectName: 'OLD', at: '2020-01-01 08:00:00' })
+    const later = listClientFacingOps({ since: all[all.length - 1].at }) // 严格晚于全量里最晚的一条种子
     expect(later.map((r) => r.recordId)).toEqual([fresh.id])
   })
 

@@ -6,20 +6,24 @@
  * （prd.访问审计.md §五：未识别终端由数据接入层映射后再展示）；
  * location 字段保留在数据里但页面不展示（md §四）。
  */
+import { daysAgo } from '@/utils/seedDate'
+
+// 2026-10-10（测试审计 J27）：种子的登录 / 登出时间写成 daysAgo(n, 'HH:mm')（n 天前），不再写死绝对日期——
+// 页面默认只看近 90 天，写死的日期过几个月整页会变空。n 取自原日期距 2026-10-10 的天数，先后顺序与间隔不变。
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
 const AUDITS = [
-  { id: 1, username: 'zhangwei', terminal: 'Windows', location: '上海 · 总部办公网', loginAt: '2026-08-28 09:16', logoutAt: '', status: 'ONLINE', ip: '10.20.14.36' },
-  { id: 2, username: 'zhangwei', terminal: 'Windows', location: '杭州 · 移动网络', loginAt: '2026-08-28 08:12', logoutAt: '2026-08-28 08:46', status: 'OFFLINE', ip: '223.104.40.18' },
-  { id: 3, username: 'zhangwei', terminal: 'Mac', location: '上海 · 家庭网络', loginAt: '2026-08-27 20:05', logoutAt: '2026-08-27 22:18', status: 'OFFLINE', ip: '116.228.72.91' },
-  { id: 4, username: 'li.na', terminal: 'Windows', location: '北京 · 分公司办公网', loginAt: '2026-08-28 08:48', logoutAt: '2026-08-28 12:06', status: 'OFFLINE', ip: '10.20.18.11' },
-  { id: 5, username: 'li.na', terminal: 'Windows', location: '北京 · 移动网络', loginAt: '2026-08-27 21:06', logoutAt: '2026-08-27 21:42', status: 'OFFLINE', ip: '120.245.63.27' },
-  { id: 6, username: 'chenyu', terminal: 'Mac', location: '深圳 · 家庭网络', loginAt: '2026-08-27 17:32', logoutAt: '2026-08-27 19:45', status: 'OFFLINE', ip: '113.87.128.66' },
-  { id: 7, username: 'chenyu', terminal: 'Mac', location: '深圳 · 移动网络', loginAt: '2026-08-28 10:21', logoutAt: '', status: 'ONLINE', ip: '183.240.21.19' },
-  { id: 8, username: 'wangfang', terminal: 'Windows', location: '成都 · 办公网', loginAt: '2026-08-27 15:08', logoutAt: '2026-08-27 18:22', status: 'OFFLINE', ip: '10.20.21.19' },
-  { id: 9, username: 'wangfang', terminal: 'Mac', location: '成都 · 家庭网络', loginAt: '2026-08-28 07:30', logoutAt: '', status: 'ONLINE', ip: '171.221.32.105' },
-  { id: 10, username: 'sun.xin', terminal: 'Windows', location: '上海 · 总部办公网', loginAt: '2026-08-28 10:03', logoutAt: '', status: 'ONLINE', ip: '10.20.12.88' },
-  { id: 11, username: 'sun.xin', terminal: 'Windows', location: '苏州 · 移动网络', loginAt: '2026-08-26 19:40', logoutAt: '2026-08-26 20:15', status: 'OFFLINE', ip: '117.136.46.73' }
+  { id: 1, username: 'zhangwei', terminal: 'Windows', location: '上海 · 总部办公网', loginAt: daysAgo(43, '09:16'), logoutAt: '', status: 'ONLINE', ip: '10.20.14.36' },
+  { id: 2, username: 'zhangwei', terminal: 'Windows', location: '杭州 · 移动网络', loginAt: daysAgo(43, '08:12'), logoutAt: daysAgo(43, '08:46'), status: 'OFFLINE', ip: '223.104.40.18' },
+  { id: 3, username: 'zhangwei', terminal: 'Mac', location: '上海 · 家庭网络', loginAt: daysAgo(44, '20:05'), logoutAt: daysAgo(44, '22:18'), status: 'OFFLINE', ip: '116.228.72.91' },
+  { id: 4, username: 'li.na', terminal: 'Windows', location: '北京 · 分公司办公网', loginAt: daysAgo(43, '08:48'), logoutAt: daysAgo(43, '12:06'), status: 'OFFLINE', ip: '10.20.18.11' },
+  { id: 5, username: 'li.na', terminal: 'Windows', location: '北京 · 移动网络', loginAt: daysAgo(44, '21:06'), logoutAt: daysAgo(44, '21:42'), status: 'OFFLINE', ip: '120.245.63.27' },
+  { id: 6, username: 'chenyu', terminal: 'Mac', location: '深圳 · 家庭网络', loginAt: daysAgo(44, '17:32'), logoutAt: daysAgo(44, '19:45'), status: 'OFFLINE', ip: '113.87.128.66' },
+  { id: 7, username: 'chenyu', terminal: 'Mac', location: '深圳 · 移动网络', loginAt: daysAgo(43, '10:21'), logoutAt: '', status: 'ONLINE', ip: '183.240.21.19' },
+  { id: 8, username: 'wangfang', terminal: 'Windows', location: '成都 · 办公网', loginAt: daysAgo(44, '15:08'), logoutAt: daysAgo(44, '18:22'), status: 'OFFLINE', ip: '10.20.21.19' },
+  { id: 9, username: 'wangfang', terminal: 'Mac', location: '成都 · 家庭网络', loginAt: daysAgo(43, '07:30'), logoutAt: '', status: 'ONLINE', ip: '171.221.32.105' },
+  { id: 10, username: 'sun.xin', terminal: 'Windows', location: '上海 · 总部办公网', loginAt: daysAgo(43, '10:03'), logoutAt: '', status: 'ONLINE', ip: '10.20.12.88' },
+  { id: 11, username: 'sun.xin', terminal: 'Windows', location: '苏州 · 移动网络', loginAt: daysAgo(45, '19:40'), logoutAt: daysAgo(45, '20:15'), status: 'OFFLINE', ip: '117.136.46.73' }
 ]
 
 /**
