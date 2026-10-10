@@ -161,12 +161,13 @@ const visibleRequests = () => requests.filter((r) => r.active)
 // v3（2026-10-09）：去掉「修改默认容量」，默认容量固定 5 GB，快照不再含 defaultQuotaGb，旧快照弃用回种子。
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
 // v5（2026-10-09）：扩容申请只展示当前用量，申请记录不再带申请时的 usedGb / totalGb，种子随之变，旧快照弃用回种子。
+// v6（2026-10-10）：快照里 requests 也只存业务字段（去掉派生的 username / name / active，读时 reconcile 补回），旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
-  version: 5,
+  version: 6,
   // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
   snapshot: () => ({
     members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
-    requests
+    requests: requests.map(({ username, name, active, ...business }) => business)
   }),
   restore: (data) => {
     if (!data || !Array.isArray(data.members) || !Array.isArray(data.requests)) {

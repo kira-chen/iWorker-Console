@@ -18,7 +18,7 @@ import { REQUEST_STATE, REJECT_REASON_MAX as REJECT_MAX, quotaInputError, fmtGb 
 
 
 const props = defineProps({
-  /** 从容量分配页「待处理」跳转过来时带入的员工用户名，作为初始搜索词 */
+  /** 从容量分配页「待处理」跳转过来时带入的员工用户名，作为初始搜索词（页签 v-if 懒挂载，每次进入都是新挂载，只需在初始化时读一次） */
   focusKeyword: { type: String, default: '' }
 })
 const emit = defineEmits(['changed'])
@@ -35,12 +35,6 @@ let keywordTimer = null
 watch(() => query.keyword, () => {
   if (keywordTimer) clearTimeout(keywordTimer)
   keywordTimer = setTimeout(reload, 300)
-})
-// 已挂载后再次从容量分配页跳来：同步搜索词并回到待处理
-watch(() => props.focusKeyword, (kw) => {
-  query.keyword = kw
-  query.status = 'PENDING'
-  reload()
 })
 onBeforeUnmount(() => keywordTimer && clearTimeout(keywordTimer))
 onMounted(list.reload)
