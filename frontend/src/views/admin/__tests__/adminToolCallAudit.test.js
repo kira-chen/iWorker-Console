@@ -162,7 +162,7 @@ describe('查询区（§三）', () => {
   it('执行结果下拉只有成功 / 失败两项，不含旧版的执行前拦截 / 待确认 / 进行中（"用户取消"作为失败原因文案仍会出现，不是独立状态，不在此断言范围）', () => {
     expect(container.querySelector('.lt-filter')).toBeTruthy()
     const text = container.textContent
-    expect(text).toContain('全部结果')
+    expect(text).toContain('全部执行结果')
     expect(text).not.toContain('进行中')
     expect(text).not.toContain('执行前拦截')
   })
