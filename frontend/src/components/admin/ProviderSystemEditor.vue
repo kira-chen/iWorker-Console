@@ -22,6 +22,8 @@ const emit = defineEmits(['update:visible', 'saved'])
 const isEdit = computed(() => props.systemId != null)
 const loading = ref(false)
 const saving = ref(false)
+// 详情加载失败：表单已清空、【保存】禁用（否则会拿空表单/上一个系统的残留值覆盖真实数据，同 yuepu#43/#49）
+const loadFailed = ref(false)
 
 const form = reactive({ name: '', description: '' })
 const fieldErrors = reactive({})
@@ -37,6 +39,7 @@ function resetForm() {
 
 async function load() {
   clearErrors()
+  loadFailed.value = false
   if (!isEdit.value) {
     resetForm()
     return
@@ -47,6 +50,8 @@ async function load() {
     form.name = d.name || ''
     form.description = d.description || ''
   } catch (e) {
+    resetForm()
+    loadFailed.value = true
     ElMessage.error(e?.message || '加载失败')
   } finally {
     loading.value = false
@@ -82,6 +87,7 @@ function validate() {
 }
 
 async function save() {
+  if (loadFailed.value) return
   if (!validate()) {
     ElMessage.warning('请先修正标红项')
     return
@@ -140,7 +146,7 @@ async function save() {
     </el-form>
     <template #footer>
       <el-button @click="close">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+      <el-button type="primary" :loading="saving" :disabled="loadFailed || loading" @click="save">保存</el-button>
     </template>
   </el-dialog>
 </template>
