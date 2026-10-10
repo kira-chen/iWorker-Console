@@ -3,7 +3,7 @@
  * SkillCreateDialog —— 新建技能对话框（技能页 / 岗位白板共用一套）。
  *
  * 【2026-09-01 PRD 对齐改造（对齐交互原型 v2 最终覆写态 openSkillCreate/saveSkillCreate）】
- * 技能页语境（传 typeOptions 启用内置类型选择）下：
+ * 内置类型选择（typeOptions 必传）：
  * - zip 模式：上传区文案「拖拽技能包 .zip 到此 · 或点击选择」/「支持一次选择多个 .zip · 每个包上传后
  *   分别选择技能分类」；每个技能包**独立必选**技能分类（固定 11 类，fieldDict 同源，占位「请选择技能分类」，
  *   三类技能均显示）；确认按钮【导入技能包】（疑点2 处置）；未选拦截红字
@@ -14,8 +14,9 @@
  *   成功 emit('created') 由父级 toast「技能已创建，已进入编辑页」并同标签进编辑页。
  * - createFn 契约升级：typeOptions[].createFn({ name, categoryName })（技能页走 createSkillOfType）。
  *
- * 岗位白板等既有调用方（不传 typeOptions）行为保持改造前一致：无类型区/无分类列、单包成功仍走
- * created 直达编辑器、createFn(name) 旧签名。
+ * 【2026-10-10 J7/J10 退役「不传 typeOptions」旧分支】岗位白板的旧调用方已不存在（唯一调用方 AdminSkillsUnified
+ * 总传 typeOptions），原“无类型区/无分类列、单包成功直达编辑器、createFn(name) 旧签名”分支与 source / createFn /
+ * hint 三个仅服务旧分支的 props 一并删除。
  *
  * 【2026-09-09 原型复刻批次 3C · B1/B3（静态布局照原型 html，逻辑不动）】
  * - B1 弹窗宽 480→520（原型 `.modal.wide{width:min(520px,100vw-32px)}` L110）；拖拽区最小高
@@ -38,44 +39,27 @@ import { listFieldDict } from '@/api/fieldDict'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '新建技能' },
-  /**
-   * 文件接口数据源：'fde' | 'platform' | 'system'（透传 importSkillZip 的 source）。
-   * <b>仅在未启用内置类型选择（typeOptions 为空）时生效</b>——启用时由弹窗内所选类型推导。
-   */
-  source: { type: String, default: 'fde' },
   /** 可选：zip 导入直接挂到该 Agent 下（岗位白板场景）；不传则建游离/平台技能 */
   agentId: { type: [String, Number], default: null },
   /**
-   * 手动创建空白技能。启用内置类型选择时签名为 async ({ name, categoryName }) => 含 skillId 的 VO；
-   * 未启用时保持旧签名 async (name) => VO（岗位白板等既有调用方不受影响）。
+   * 技能类型内置选择（必传）：在本弹窗顶部渲染类型单选。
+   * 每项 { value, label, source, createFn }；source 透传 importSkillZip，
+   * createFn 签名 async ({ name, categoryName }) => 含 skillId 的 VO。
    */
-  createFn: { type: Function, default: null },
-  /** 手动创建模式下的提示文案（未启用内置类型选择时使用） */
-  hint: { type: String, default: '' },
-  /**
-   * 技能类型内置选择：传入非空数组即在本弹窗顶部渲染类型单选。
-   * 每项 { value, label, source, createFn }。不传（默认空）时组件行为与改造前完全一致。
-   */
-  typeOptions: { type: Array, default: () => [] }
+  typeOptions: { type: Array, required: true }
 })
 const emit = defineEmits(['update:modelValue', 'created', 'created-batch'])
 
 /* ---------- 技能类型 ---------- */
-const typeEnabled = computed(() => props.typeOptions.length > 0)
 /** 不预选：类型建后不可更改，强制手动选一次。 */
 const pickedType = ref(null)
 const pickedTypeOption = computed(
   () => props.typeOptions.find((t) => t.value === pickedType.value) || null
 )
-const typeMissing = computed(() => typeEnabled.value && !pickedType.value)
+const typeMissing = computed(() => !pickedType.value)
 
-const effectiveSource = computed(() =>
-  typeEnabled.value ? pickedTypeOption.value?.source || '' : props.source
-)
-const effectiveCreateFn = computed(() =>
-  typeEnabled.value ? pickedTypeOption.value?.createFn || null : props.createFn
-)
-const effectiveHint = computed(() => (typeEnabled.value ? '' : props.hint))
+const effectiveSource = computed(() => pickedTypeOption.value?.source || '')
+const effectiveCreateFn = computed(() => pickedTypeOption.value?.createFn || null)
 
 // 新建模式：'zip'（主，默认）/ 'manual'（次，就地切换）。
 const createMode = ref('zip')
@@ -93,9 +77,7 @@ const zipUploadRef = ref(null)
 
 /* ---------- 技能分类（2026-09-01：固定 11 类 fieldDict 同源；三类技能均显示、每包独立必选） ---------- */
 const categoryOptions = ref([])
-const showCategorySelect = computed(() => typeEnabled.value)
 async function loadCategoryOptions() {
-  if (!typeEnabled.value) return
   try {
     const dict = await listFieldDict()
     categoryOptions.value = (dict?.skillCategory || []).map((c) => ({ id: c.name, name: c.name }))
@@ -155,12 +137,11 @@ const GUARD_TEXT = '请选择技能类型、技能分类并填写创建内容'
 async function confirmImportZip() {
   // 拦截（md L153 统一文案）：类型未选 / 无包 / 任一包未选分类（分类校验仅技能页语境）
   const pendingItems = zipItems.value.filter((i) => i.status !== 'done')
-  const missingCategory = typeEnabled.value && pendingItems.some((i) => !i.categoryId)
+  const missingCategory = pendingItems.some((i) => !i.categoryId)
   if (typeMissing.value || !zipItems.value.length || missingCategory) {
-    zipError.value = typeEnabled.value ? GUARD_TEXT : '请先选择 .zip 技能包'
+    zipError.value = GUARD_TEXT
     return
   }
-  const single = zipItems.value.length === 1
   zipImporting.value = true
   zipError.value = ''
   const created = []
@@ -189,14 +170,8 @@ async function confirmImportZip() {
   const failed = zipItems.value.filter((i) => i.status === 'error')
   if (!failed.length) {
     close()
-    if (typeEnabled.value) {
-      // 技能页语境：zip 导入完成统一返回列表（单包也不自动进编辑页），父级 toast 引导从列表点编辑。
-      emit('created-batch', { skillIds: created, mode: 'zip', skillType: pickedType.value })
-    } else if (single) {
-      emit('created', { skillId: created[0], mode: 'zip', skillType: pickedType.value }) // 岗位白板旧行为：单包直达编辑器
-    } else {
-      emit('created-batch', { skillIds: created, mode: 'zip', skillType: pickedType.value })
-    }
+    // zip 导入完成统一返回列表（单包也不自动进编辑页），父级 toast 引导从列表点编辑。
+    emit('created-batch', { skillIds: created, mode: 'zip', skillType: pickedType.value })
   } else {
     // 部分失败：成功项移出列表（防重复导入）并即时通知父级刷列表；失败项留列表可修正后重试/删除。
     zipItems.value = failed
@@ -211,22 +186,15 @@ async function confirmImportZip() {
 // 确认新建：createFn 建空白技能拿 skillId 后交回父级继续（同标签进编辑页由父级决定）。
 async function confirmCreate() {
   const name = createName.value.trim()
-  if (typeEnabled.value) {
-    // 拦截（md L153 统一文案）：类型 / 分类 / 技能名任一缺失
-    if (typeMissing.value || !createCategory.value || !name) {
-      manualError.value = GUARD_TEXT
-      return
-    }
-  } else if (!name) {
-    ElMessage.warning('请输入技能名')
+  // 拦截（md L153 统一文案）：类型 / 分类 / 技能名任一缺失
+  if (typeMissing.value || !createCategory.value || !name) {
+    manualError.value = GUARD_TEXT
     return
   }
   manualError.value = ''
   creating.value = true
   try {
-    const data = typeEnabled.value
-      ? await effectiveCreateFn.value({ name, categoryName: createCategory.value })
-      : await effectiveCreateFn.value(name)
+    const data = await effectiveCreateFn.value({ name, categoryName: createCategory.value })
     close()
     emit('created', { skillId: data.skillId, mode: 'manual', skillType: pickedType.value })
   } catch (e) {
@@ -247,7 +215,7 @@ async function confirmCreate() {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <!-- 技能类型：不预选，选定前提交按钮禁用；类型决定分发通道，建后不可更改。 -->
-    <div v-if="typeEnabled" class="type-pick-block">
+    <div class="type-pick-block">
       <div class="type-pick-label">技能类型<span class="type-pick-req">*</span></div>
       <el-radio-group v-model="pickedType" class="type-pick" :disabled="zipImporting || creating">
         <el-radio v-for="t in typeOptions" :key="t.value" :value="t.value" border>
@@ -292,7 +260,6 @@ async function confirmCreate() {
             <span class="zip-item-name" :title="item.name">{{ item.name }}</span>
             <span class="zip-item-right">
               <el-select
-                v-if="showCategorySelect"
                 v-model="item.categoryId"
                 class="zip-item-cat"
                 size="small"
@@ -330,7 +297,7 @@ async function confirmCreate() {
     <!-- 次入口：手动创建空白技能（同对话框就地切换）——必选分类 + 技能名 -->
     <template v-else>
       <el-form label-position="top" @submit.prevent>
-        <el-form-item v-if="showCategorySelect" required>
+        <el-form-item required>
           <template #label>技能分类</template>
           <el-select
             v-model="createCategory"
@@ -342,7 +309,7 @@ async function confirmCreate() {
             <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item :required="typeEnabled">
+        <el-form-item required>
           <template #label>技能名</template>
           <el-input
             v-model="createName"
@@ -352,7 +319,6 @@ async function confirmCreate() {
             @keyup.enter="confirmCreate"
           />
         </el-form-item>
-        <p v-if="effectiveHint" class="create-hint">{{ effectiveHint }}</p>
         <div v-if="manualError" class="zip-error">{{ manualError }}</div>
         <button type="button" class="create-alt-link" @click="createMode = 'zip'">
           ← 改用上传技能包（zip）
@@ -369,7 +335,7 @@ async function confirmCreate() {
         :disabled="typeMissing"
         @click="confirmCreate"
       >
-        {{ typeEnabled ? '创建' : '创建并编辑' }}
+        创建
       </el-button>
       <el-button
         v-else
@@ -378,8 +344,8 @@ async function confirmCreate() {
         :disabled="typeMissing"
         @click="confirmImportZip"
       >
-        <!-- 疑点2 处置：zip 导入确认按钮文案「导入技能包」（技能页语境）；旧调用方保持原文案 -->
-        {{ zipImporting ? '导入中…' : (typeEnabled ? '导入技能包' : (zipItems.length > 1 ? `导入 ${zipItems.length} 个技能包` : '导入并编辑')) }}
+        <!-- 疑点2 处置：zip 导入确认按钮文案「导入技能包」 -->
+        {{ zipImporting ? '导入中…' : '导入技能包' }}
       </el-button>
     </template>
   </el-dialog>
@@ -414,12 +380,6 @@ async function confirmCreate() {
   margin-top: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--c-danger);
-  line-height: 1.5;
-}
-.create-hint {
-  margin: var(--space-1) 0 var(--space-2);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
   line-height: 1.5;
 }
 .create-cat {
