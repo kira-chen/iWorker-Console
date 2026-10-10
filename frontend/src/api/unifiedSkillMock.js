@@ -369,9 +369,10 @@ export async function listUnifiedSkills(params = {}) {
  * 连接器删除/停用后技能侧仍显示「连接正常」）。code 字符集需满足 utils/skillToolRef.js 的
  * `[a-z][a-z0-9_]*`，三个连接器的 code/id 种子均为小写字母数字下划线，天然兼容。
  */
-// 下方 MCP `disabled/inactive`、API `enabled === false` 两个分支是防御性分支：当前 UI 无路径置位（yuepu#90⑨），
-// 保留以便研发接真实后端的状态枚举时直接可用。
 function loadToolDirectory() {
+  // 注意：API 的 `enabled === false` 是可达分支（ApiEditor 可停用 API，yuepu#50 用例守着）；
+  // 只有 MCP 的 `status: disabled / inactive` 是防御性分支——当前 mock 与 UI 无路径置位（yuepu#90⑨），
+  // 保留以便接真实后端的状态枚举时直接可用。
   // available = 已发布且启用（一览表「停用后技能不再可引用该 API」，yuepu#50）：只有 available 的才进工具坞候选；
   // 已被技能引用、但如今未发布 / 已停用的工具照常回显，checkStatus 给 DISABLED（已停用），不再沿用「连接正常」。
   const dir = {}

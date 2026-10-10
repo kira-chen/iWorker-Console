@@ -164,8 +164,9 @@ function refWarnings(type) {
     })
 }
 
-// 注意（yuepu#90②，潜伏项不改）：下面两个候选只取默认首页；真实后端分页上限（如 size:200）下，超出的对象会在发布门
-// 「可见对象仍存在」被误判为已不存在——接真实接口时应改为按 id 查存在性。mock 的专家候选也是写死的 ex_1/ex_2。
+// 注意（yuepu#90②，潜伏项不改）：真实模式下 listExpertOptions / listPositionOptions 已写 size:200，候选超过 200 条时，
+// 发布门用候选判「可见对象仍存在」会把存在的对象误判为已不存在——接真实接口时应改为按 id 查存在性。
+// mock 的专家候选也是写死的 ex_1 / ex_2，与 domainExpertMock 脱节。
 async function loadOptions() {
   const [e, p, pool] = await Promise.all([
     listExpertOptions().catch(() => []),

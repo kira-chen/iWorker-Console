@@ -157,8 +157,9 @@ async function retryResourceLimits() {
   }
 }
 
-// 潜伏项（yuepu#89②，保留不改）：只 watch visible——抽屉由列表页按需 v-if 打开，打开即取数；若改成常驻挂载，
-// 对象（id）变化时不会重新取数，届时需补 watch(() => props.xxxId)。KnowledgeBaseEditor 同理。
+// 潜伏项（yuepu#89②，保留不改）：只 watch visible。AdminRuntimeSpecs 是常驻挂载、靠 v-model:visible 开关抽屉，
+// 每次 false→true 触发取数；若 visible 保持 true 而 specId 变化（目前没有这种入口）则不会重新取数，
+// 届时需补 watch(() => props.specId)。KnowledgeBaseEditor 另有 immediate watch，治理侧是条件挂载，不属同一情形。
 watch(() => props.visible, (v) => { if (v) load() })
 
 /**

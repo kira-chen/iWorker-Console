@@ -119,8 +119,8 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
 
   it('本地存着 v5 旧版快照（紧邻的上一版，申请里还带派生的用户名 / 显示名）→ 丢弃旧数据，回到种子（陈宇仍有待处理申请、容量来自种子）', async () => {
     globalThis.localStorage.setItem(KEY, JSON.stringify({
-      v: 4,
-      data: { members: [{ userId: 201, username: 'zhangwei', finalGb: 1, cacheGb: 0, quotaGb: 77, statAt: null }], requests: [] }
+      v: 5,
+      data: { members: [{ userId: 201, username: 'zhangwei', finalGb: 1, cacheGb: 0, quotaGb: 77, statAt: null }], requests: [{ id: 'ER-OLD', userId: 201, username: 'zhangwei', name: '张伟', active: true }] }
     }))
     const m = await import('../storageSpaceMock')
     expect((await memberOf(m, 'zhangwei')).totalGb).toBe(5) // 旧快照里的 77 作废
