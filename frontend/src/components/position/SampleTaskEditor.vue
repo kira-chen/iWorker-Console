@@ -60,7 +60,9 @@ const props = defineProps({
   // null = 新建态；样例条目 = 编辑态（回填自该条目）
   sample: { type: Object, default: null },
   // 启停请求进行中（父组件 PositionSampleTaskStage 持有 setSampleTaskStatus 调用）
-  statusBusy: { type: Boolean, default: false }
+  statusBusy: { type: Boolean, default: false },
+  // 只读态（岗位审核中 / 查看态，md §10「审核中全部页签只读」）：表单控件全部 disabled、隐藏保存按钮
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['saved', 'created', 'dirty-change', 'toggle-status'])
 
@@ -660,6 +662,7 @@ onMounted(async () => {
             <el-switch
               :model-value="taskEnabled"
               :loading="statusBusy"
+              :disabled="readonly"
               size="small"
               @change="emit('toggle-status')"
             />
@@ -677,6 +680,7 @@ onMounted(async () => {
           <el-input
             v-model="form.name"
             :maxlength="NAME_MAX"
+            :disabled="readonly"
             placeholder="如：每日经营分析报告"
             :class="{ 'is-err': errors.name }"
             @input="markDirty(); clearError('name')"
@@ -690,6 +694,7 @@ onMounted(async () => {
             type="textarea"
             :rows="4"
             :maxlength="PROMPT_MAX"
+            :disabled="readonly"
             placeholder="描述任务目标，如：分析昨日核心指标并生成周报"
             :class="{ 'is-err': errors.prompt }"
             @input="markDirty(); clearError('prompt')"
@@ -704,6 +709,7 @@ onMounted(async () => {
             type="textarea"
             :rows="4"
             :maxlength="REMARK_MAX"
+            :disabled="readonly"
             placeholder="补充任务背景或注意事项"
             @input="markDirty"
           />
@@ -719,6 +725,7 @@ onMounted(async () => {
         <div class="te-card-body">
           <SchedulePicker
             v-model:schedule="form.schedule"
+            :disabled="readonly"
             :error="errors.schedule"
             :preview-summary="previewSummary"
             :preview-times="previewTimes"
@@ -742,6 +749,7 @@ onMounted(async () => {
           <MarkdownEditor
             v-model="form.sopDoc"
             :error="errors.sopDoc"
+            :readonly="readonly"
             height="320px"
             placeholder="例如：每天上班前，用「工单查询工具」拉取昨日工单，汇总成今日待办清单。"
             @update:model-value="markDirty(); clearError('sopDoc')"
@@ -781,6 +789,7 @@ onMounted(async () => {
                 class="tl-remove"
                 title="移除该工具"
                 aria-label="移除该工具"
+                :disabled="readonly"
                 @click="removeToolRef(r)"
               >✕</button>
             </div>
@@ -793,7 +802,7 @@ onMounted(async () => {
             <template v-else>暂无引用工具，点击下方添加</template>
           </div>
 
-          <button type="button" class="te-dash-add" @click="openToolPicker">+ 添加工具</button>
+          <button type="button" class="te-dash-add" :disabled="readonly" @click="openToolPicker">+ 添加工具</button>
           <p v-if="errors.tools" class="te-err">{{ errors.tools }}</p>
         </div>
       </section>
@@ -807,7 +816,7 @@ onMounted(async () => {
           <p class="te-card-guide">
             触发时由谁来办：整个交给某个 <b>Agent</b>，或按下面指定的<b>技能</b>执行。
           </p>
-          <el-radio-group v-model="form.execType" class="te-exec-type-group" @change="markDirty">
+          <el-radio-group v-model="form.execType" :disabled="readonly" class="te-exec-type-group" @change="markDirty">
             <el-radio value="SKILL">技能</el-radio>
             <el-radio value="AGENT">Agent</el-radio>
           </el-radio-group>
@@ -815,6 +824,7 @@ onMounted(async () => {
             <el-select
               v-model="form.execAgentId"
               placeholder="选择要执行的 Agent"
+              :disabled="readonly"
               clearable
               class="te-exec-agent-select"
               @change="markDirty"
@@ -843,6 +853,7 @@ onMounted(async () => {
           <el-select
             v-model="form.execModel"
             placeholder="跟随平台默认模型"
+            :disabled="readonly"
             clearable
             class="te-exec-model-select"
             @change="markDirty"
@@ -878,6 +889,7 @@ onMounted(async () => {
                 class="sk-chip-x"
                 title="移除"
                 aria-label="移除"
+                :disabled="readonly"
                 @click="removeSkillRef(s.platformSkillId)"
               >✕</button>
             </span>
@@ -937,7 +949,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <button type="button" class="te-dash-add" @click="toggleSkillPicker">
+          <button type="button" class="te-dash-add" :disabled="readonly" @click="toggleSkillPicker">
             {{ skillPickerOpen ? '收起技能候选' : '+ 添加技能' }}
           </button>
           <p v-if="errors.skills" class="te-err">{{ errors.skills }}</p>
@@ -966,7 +978,7 @@ onMounted(async () => {
     </el-dialog>
 
     <!-- 底部 sticky 操作条（复刻数据底座 .meta-actions；单一保存，无启用/草稿双态） -->
-    <div class="meta-actions">
+    <div v-if="!readonly" class="meta-actions">
       <el-button type="primary" :loading="saving" @click="save">
         {{ isEdit ? '保存' : '创建样例' }}
       </el-button>

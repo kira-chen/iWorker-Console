@@ -62,7 +62,7 @@ vi.mock('@/api/sampleTask', () => ({ listSampleTasks: vi.fn(() => Promise.resolv
 // 知识页签只读列表（2026-09-04 新增）：懒加载，Tab 骨架测试给空列表即可
 vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [], total: 0 })) }))
 vi.mock('@/composables/useVersionPublish', () => ({
-  useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
+  useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
 // featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
 // 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
