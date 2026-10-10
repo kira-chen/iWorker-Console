@@ -73,6 +73,20 @@ jobs:
           TZ: Asia/Shanghai
         run: npm run test
 
+      - name: 安装浏览器（browser 用例用）
+        working-directory: frontend
+        # 2026-10-10 测试审计 J39（负责人按团队建议选 A）：固定列透底 / 主题令牌 / Esc 加固 / 编辑器响应式这 5 个文件 30 条
+        # 用例必须在真浏览器里算样式与布局，jsdom 里恒为 0，所以走单独的 vitest browser 跑道（vitest.browser.config.js）；
+        # 此前只靠本地手跑 npm run test:browser，漏跑没人拦。每轮 CI 约多 1-2 分钟（下载 Chromium + 5 个文件 30 条用例）。
+        # --with-deps 顺带装 Chromium 在 Linux 上依赖的系统库（ubuntu-latest 上 CI 里的标准写法）。
+        run: npx playwright install --with-deps chromium
+
+      - name: 跑 browser 用例
+        working-directory: frontend
+        env:
+          TZ: Asia/Shanghai
+        run: npm run test:browser
+
       - name: 核验待办状态与 commit 说明一致
         # commit 说明里写了「关闭待办 xx#n」的，对应行必须已在该人待办文件的「已处理」表里
         # （本地 post-commit 钩子会自动搬；没装钩子就会在这里红）。见 scripts/todo.mjs。

@@ -25,6 +25,12 @@ import { fileURLToPath } from 'node:url'
  *    jsdom 不排版，这些值恒为 0 或空，写了就是假绿；布局断言归 *.browser.test.js。
  *  ⑥ 页面读 route.query.keyword 必须经 utils/routeQuery 的 queryString()——同名参数重复时 query 值是数组，
  *    直接 .trim() 会整页白屏（待办 yuepu#22，致命级）。
+ *
+ * 2026-10-10 测试审计 J64 新增一条（负责人按团队建议选 A）：
+ *  ⑦ 每个 <ListStates ... :error="x"> 必须同时带 :error-message——失败原因（#74）漏接时页面只剩笼统的「加载失败」，
+ *    09-09 运行规格 / 用户技能审核就漏接过。取数用 useAdminList 的页面都有 loadErrorMessage，照接即可。
+ *    实测存量 11 处命中（9 个文件），其中 AdminApis / FieldManagement / AdminInstances 三页是 J63 拍板「md 未要求展示原因，故不接入」，
+ *    其余按归属补齐或登记豁免（见下方 LIST_STATES_ERROR_MESSAGE_EXEMPT，每项写明理由）。
  * 同轮把 v-for / debugger / 冲突标记三条规则抽成纯函数，自检改为调用规则本体（原自检抄了一份正则，规则写错照样绿）。
  */
 
@@ -141,6 +147,22 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
     expect(offenders, 'route.query.keyword 未经 queryString 归一').toEqual([])
   })
 
+  it('⑦ 每个 <ListStates :error=…> 必须同时带 :error-message（失败原因不漏接；豁免项见 LIST_STATES_ERROR_MESSAGE_EXEMPT）', () => {
+    let total = 0
+    const offenders = []
+    for (const f of vueFiles) {
+      if (f.endsWith(`${path.sep}ListStates.vue`)) continue // 组件自身，只有注释里的用法示例
+      const src = fs.readFileSync(f, 'utf8')
+      const { total: n, missing } = listStatesErrorMessageCheck(src)
+      total += n
+      if (missing.length && !(rel(f).split(path.sep).join('/') in LIST_STATES_ERROR_MESSAGE_EXEMPT)) {
+        offenders.push(`${rel(f)}:${missing.join(',')}`)
+      }
+    }
+    expect(total, '至少应扫到若干个带 :error 的 <ListStates>（解析失败会让规则空转）').toBeGreaterThan(20)
+    expect(offenders, '<ListStates :error> 缺 :error-message').toEqual([])
+  })
+
   it('自检：规则本身能识别违规样例（防规则写错导致永远通过）', () => {
     const tpl = (body) => `<template>\n${body}\n</template>`
     expect(vForOffenders(tpl('<div v-for="x in list">{{ x }}</div>'))).toHaveLength(1)
@@ -179,6 +201,15 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
     })
     expect(bad.refs).toBe(3)
     expect(bad.missing.map((m) => m.name)).toEqual(['--ghost', '--y'])
+    // ⑦ 带 :error 缺 :error-message 报（含跨行标签、属性值里含 > 的标签）；两者齐全 / 没有 :error / 注释里的用法不报
+    const ls = (attrs) => `<template>\n<div>\n${attrs}\n</div>\n</template>`
+    expect(listStatesErrorMessageCheck(ls('<ListStates :loading="l" :error="x.loadError" @retry="r">')).missing).toEqual([3])
+    expect(listStatesErrorMessageCheck(ls('<ListStates\n  :loading="l"\n  :error="loadError"\n  :empty="n > 0"\n>')).missing).toEqual([3])
+    expect(listStatesErrorMessageCheck(ls('<ListStates :error="a > b ? 1 : 2" :empty="!a">')).missing).toEqual([3]) // 属性值里的 > 不截断标签
+    expect(listStatesErrorMessageCheck(ls('<ListStates :error="e" :error-message="m">')).missing).toEqual([])
+    expect(listStatesErrorMessageCheck(ls('<ListStates :loading="l" :empty="n">')).missing).toEqual([]) // 没接 :error，不在本规则范围
+    expect(listStatesErrorMessageCheck(ls('<!-- <ListStates :error="e"> 示例 -->')).total).toBe(0)
+    expect(listStatesErrorMessageCheck(ls('<ListStates :error="e" /><ListStates :error="e" :error-message="m" />')).missing).toEqual([3])
   })
 })
 
@@ -217,6 +248,52 @@ const skipMarkers = (src) => codeLinesMatching(src, /\b(describe|it|test)\.(skip
 const layoutApiUses = (src) =>
   codeLinesMatching(src, /\b(getBoundingClientRect|getComputedStyle)\s*\(|\.(offset|client|scroll)(Width|Height|Top|Left)\b/)
 const rawKeywordReads = (src) => codeLinesMatching(src, /(?<!queryString\()\broute\??\.query\??\.keyword\b/)
+
+/**
+ * ⑦ <ListStates> 的 :error 与 :error-message 必须成对（J64）。返回 { total: 带 :error 的标签数, missing: 缺 :error-message 的标签所在行号[] }。
+ * 标签边界按「引号外的第一个 >」截取（属性值里可能有 `n > 0` 之类的 >），先把 HTML 注释抹成空格（保留换行，行号不变）。
+ */
+function listStatesErrorMessageCheck(src) {
+  const tplM = src.match(/<template>([\s\S]*)<\/template>/)
+  if (!tplM) return { total: 0, missing: [] }
+  const innerStart = src.indexOf(tplM[0]) + '<template>'.length
+  const body = tplM[1].replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, ' '))
+  let total = 0
+  const missing = []
+  for (const m of body.matchAll(/<ListStates\b/g)) {
+    let i = m.index + m[0].length
+    let quote = ''
+    for (; i < body.length; i++) {
+      const ch = body[i]
+      if (quote) {
+        if (ch === quote) quote = ''
+      } else if (ch === '"' || ch === "'") quote = ch
+      else if (ch === '>') break
+    }
+    const tag = body.slice(m.index, i)
+    if (!/(?:^|\s)(?::|v-bind:)error\s*=/.test(tag)) continue
+    total++
+    if (!/(?::|v-bind:)error-message\s*=/.test(tag)) missing.push(src.slice(0, innerStart + m.index).split('\n').length)
+  }
+  return { total, missing }
+}
+
+/**
+ * ⑦ 的豁免清单（相对 src 的路径 → 理由）。新增豁免须写明理由并经负责人同意；漏接的页面优先补 :error-message 而不是加豁免。
+ */
+const LIST_STATES_ERROR_MESSAGE_EXEMPT = {
+  // J63（2026-10-10 浦月选 A）：三页自己取数、不走 useAdminList，md 没有展示失败原因的条款（实例管理 md 只写「加载失败」+【重试】）。
+  'views/admin/AdminApis.vue': 'J63：md 未要求展示失败原因',
+  'views/admin/FieldManagement.vue': 'J63：md 未要求展示失败原因',
+  'views/admin/AdminInstances.vue': 'J63：md 未要求展示失败原因',
+  // 以下三组归属其它批次正在改的页面（存储空间 / 岗位 / 工具调用审计），本批不越界编辑；对应批次合入后应补 :error-message 并删掉这几行。
+  'components/admin/storage/StorageQuotaPane.vue': '存储空间批在改，合入后补 :error-message 并移除豁免',
+  'components/admin/storage/StorageRequestPane.vue': '存储空间批在改，合入后补 :error-message 并移除豁免',
+  'components/position/PositionBusinessSystemTab.vue': '岗位批在改；该页三处错误态是自管的 mcpError/apiError/bizError，需先确认是否有原因文案再接',
+  'views/admin/ToolCallAuditKnowledge.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免',
+  'views/admin/ToolCallAuditSkills.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免',
+  'views/admin/ToolCallAuditTasks.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免'
+}
 
 /* ================= J20 三条规则的实现（导出给自检用例，纯函数、不读磁盘） ================= */
 

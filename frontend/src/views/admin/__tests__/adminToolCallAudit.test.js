@@ -13,8 +13,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
  * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 种子数据固定在 2026-09-20 ~ 2026-09-27（toolCallAuditMock.js），固定系统时间到
- * 2026-09-28，避免默认 90 天窗口随真实日期推移把种子数据挤出窗口、用例到期变红。
+ * 种子日期是「相对今天」生成的（toolCallAuditMock.js 的 dateDaysAgo，2026-10-10 测试审计 J27），永远落在默认 90 天窗口内，
+ * 因此不再固定系统时间（原先固定到 2026-09-28 就是为了防种子被窗口挤出；种子相对化后反而不能固定——种子按真实今天算）。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -33,11 +33,7 @@ const flush = async () => {
   }
 }
 
-const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
-
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(FIXED_NOW)
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -54,7 +50,6 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  vi.useRealTimers()
 })
 
 function mountReal() {

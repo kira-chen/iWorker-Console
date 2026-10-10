@@ -230,6 +230,7 @@ async function fetchAll() {
     providerSystems.value = psData?.list || []
     apis.value = apiData?.list || []
   } catch (e) {
+    // md 未要求展示失败原因，故不接入 loadErrorMessage（只显示「加载失败」+【重试】；测试审计 J63，2026-10-10 浦月选 A）
     loadError.value = true
   } finally {
     loading.value = false
