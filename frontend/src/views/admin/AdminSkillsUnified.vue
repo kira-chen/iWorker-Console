@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
           <el-table-column label="状态" :width="COL.STATUS + 56" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="displayStateTag(row)">{{ displayStateLabel(row) }}</StatusTag>
-              <RevokedTag :info="row.revoked" />
+              <RevokedTag v-if="displayState(row) === 'UNPUBLISHED'" :info="row.revoked" />
             </template>
           </el-table-column>
           <!-- 技能描述：独立列，单行缩略悬停全文；无描述占位符 -->

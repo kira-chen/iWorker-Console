@@ -688,6 +688,15 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不
     expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
   })
 
+  // 待决策 J46（浦月 2026-10-10 选 B）：标签只在「未发布」显示；回收后重新提交发布进「审核中」不显示
+  it('J46 带回收信息但已进「审核中」的行 → 不显示「已回收」标签', async () => {
+    const revoked = { reason: '专家知识库被污染', at: '2026-10-09 09:30', operator: 'admin' }
+    listExperts.mockResolvedValue({ list: EXPERTS.map((e) => (e.id === 204 ? { ...e, revoked } : e)), total: 3 })
+    await mount()
+    expect(rowOf('研究报告专家').querySelector('.status-tag').textContent).toBe('审核中')
+    expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
+  })
+
   it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
     await mount()
     expect(rowOf('法务审阅专家').querySelector('.revoked-tag')).toBeNull()

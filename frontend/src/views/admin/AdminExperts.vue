@@ -406,7 +406,7 @@ async function forceRevokeFromList(row) {
           <el-table-column label="状态" :width="COL.STATUS + 56" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <StatusTag :type="displayView(row).tagType">{{ displayView(row).label }}</StatusTag>
-              <RevokedTag :info="row.revoked" />
+              <RevokedTag v-if="displayView(row).label === '未发布'" :info="row.revoked" />
             </template>
           </el-table-column>
           <el-table-column label="专家类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
