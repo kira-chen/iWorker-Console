@@ -194,6 +194,13 @@ const adminChildren = [
     meta: { title: '运行规格', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
+    // 04 运行 → 存储空间（2026-10-09 落地）：员工产物存储容量分配 + 扩容申请处理，仅 ADMIN。
+    path: 'storage-space',
+    name: 'AdminStorageSpace',
+    component: () => import('@/views/admin/AdminStorageSpace.vue'),
+    meta: { title: '存储空间', roles: ['ADMIN'], module: 'SYSCONFIG' }
+  },
+  {
     // 04 运行 → 配额与限流（规划中）。
     path: 'quota-throttle',
     name: 'AdminQuotaThrottle',

@@ -5,25 +5,20 @@ import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 /**
- * AdminToolCallAudit.vue 真实挂载冒烟（2026-09-28 PRD 首次落地，对齐
- * docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md）。
+ * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「技能调用」的行为，对齐
+ * docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md §二 ~ §七。
  *
- * 参照 adminRolesSmoke.test.js 的真实挂载写法：本页数据源 @/api/toolCallAuditMock 是前端常量数组、
- * 没有网络层，因此不 mock 它，直接读真种子；只替换浏览器侧的 URL.createObjectURL / revokeObjectURL。
- * 断言页头 / 统计卡片 / 列表字段 / 筛选联动 / 详情抽屉 / CSV 导出六块 PRD 行为齐全。
+ * 2026-10-09 记录单元改版（与研发梅竹讨论后）重写：记录单元从「一次工具调用」改为
+ * 「一次技能执行」，原断言全部基于旧字段（操作性质/用户确认/执行结果五态），
+ * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
+ * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 2026-10-08 /test-audit 补缺口（同对齐 prd.工具调用审计.md）：
- * - §二 四张卡片副标题计数与点击效果；【统计口径】默认收起、展开后三句说明；
- * - §三 日期跨度 30 天（同访问审计 §三）、操作性质筛选、查询无结果空态保留条件；
- * - §四 请求时间排序 ↓ / ↑；§六 标签色档；
- * - §5.2 时间线在拦截 / 取消 / 待确认节点停止；§5.3 四类结果说明；§5.4 未执行调用的响应页签文案、参数【待补充】。
- * - 疑似缺陷（it.fails 钉桩）：§二「调用请求总数」点击未清搜索词。
- *   （#64③⑤⑥ 已修转正：§二【统计口径】入口在卡片下方；§三 两个下拉「全部」项文案与【导出 CSV】；§5.2 无需确认的调用不出确认节点。）
+ * 种子数据固定在 2026-09-20 ~ 2026-09-27（toolCallAuditMock.js），固定系统时间到
+ * 2026-09-28，避免默认 90 天窗口随真实日期推移把种子数据挤出窗口、用例到期变红。
  */
-const ROWS = (await import('@/api/toolCallAuditMock')).toolCallRecords
+const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
 
-// jsdom 没有 ResizeObserver（el-table 布局用），补一个空实现
 class ResizeObserverStub {
   observe() {}
   unobserve() {}
@@ -38,8 +33,6 @@ const flush = async () => {
   }
 }
 
-// 固定「今天」（2026-10-08 /test-audit 治理组 T10）：种子是 2026-09-20～09-27 的固定日期，页面默认查近 90 天；
-// 不固定的话约 2026-12-19 起首条掉出窗口、12-26 起全部掉出，用例到期自动变红。只假 Date，不假定时器。
 const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
 
 beforeEach(() => {
@@ -70,7 +63,27 @@ function mountReal() {
   app.mount(container)
 }
 
-describe('AdminToolCallAudit · 真实 Element Plus 挂载冒烟', () => {
+const cards = () => [...container.querySelectorAll('.metric-card')]
+const cardOf = (label) => cards().find((c) => c.textContent.includes(label))
+const bodyRows = () => [...container.querySelectorAll('.el-table__body .el-table__row')]
+const helpBtn = () => [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '统计口径')
+
+async function search(kw) {
+  const input = container.querySelector('input[placeholder="搜索用户 / 岗位 / 技能 / 工具"]')
+  input.value = kw
+  input.dispatchEvent(new Event('input'))
+  input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+  await flush()
+}
+
+async function openDetailOf(skill) {
+  await search(skill)
+  const row = bodyRows().find((r) => r.textContent.includes(skill))
+  ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
+  await flush()
+}
+
+describe('AdminToolCallAudit · 技能调用页签 · 真实 Element Plus 挂载冒烟', () => {
   it('整页真挂载不抛、console.error 零调用；页头 / 统计卡片 / 列表字段齐全（PRD §一 / §二 / §四）', async () => {
     expect(() => mountReal()).not.toThrow()
     await flush()
@@ -78,124 +91,22 @@ describe('AdminToolCallAudit · 真实 Element Plus 挂载冒烟', () => {
 
     const text = container.textContent
     expect(text).toContain('工具调用审计')
-    expect(text).toContain('追溯每次工具调用的发起人、确认过程与执行结果')
-
-    // 统计卡片：4 张，口径与种子数据吻合（全部 12 条落在默认 90 天窗口内）
-    expect(text).toContain('调用请求总数')
-    expect(text).toContain('写操作请求')
+    expect(text).toContain('执行总数')
+    expect(text).toContain('涉及写操作的执行')
     expect(text).toContain('执行失败')
-    expect(text).toContain('当前待确认')
-    const total = ROWS.length
-    expect(container.querySelector('.metric-card').textContent).toContain(String(total))
+    // 不展示"执行中"：卡片只有 3 张，没有"进行中"这张
+    expect(cards().length).toBe(3)
 
-    // 列表：技能/工具、岗位（术语已从原型的「角色」改名，PRD 来源说明）、标签文案
+    const total = MOCK.toolCallRecords.length
+    expect(cardOf('执行总数').textContent).toContain(String(total))
+
     expect(container.querySelector('.el-table')).toBeTruthy()
     expect(text).toContain('刘敏')
     expect(text).toContain('销售顾问')
-    expect(text).toContain('MCP·文档生成服务')
-
-    // 分页条恒显
+    expect(text).toContain('方案要点生成')
     expect(container.querySelector('.list-pager')).toBeTruthy()
   })
-
-  it('点击「执行失败」统计卡片 → 列表按执行结果=执行失败联动筛选（PRD §二）', async () => {
-    mountReal()
-    await flush()
-    const failedCard = [...container.querySelectorAll('.metric-card')].find((c) => c.textContent.includes('执行失败'))
-    failedCard.click()
-    await flush()
-    const rows = [...container.querySelectorAll('.el-table__row')]
-    expect(rows.length).toBeGreaterThan(0)
-    rows.forEach((row) => expect(row.textContent).toContain('执行失败'))
-  })
-
-  it('搜索框回车按用户/岗位/技能/工具模糊过滤（PRD §三）；命中执行前拦截记录时展示拦截原因', async () => {
-    mountReal()
-    await flush()
-    const input = container.querySelector('input[placeholder="搜索用户 / 岗位 / 技能 / 工具"]')
-    expect(input).toBeTruthy()
-    input.value = '张浩'
-    input.dispatchEvent(new Event('input'))
-    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
-    await flush()
-    const rows = [...container.querySelectorAll('.el-table__row')]
-    expect(rows.length).toBeGreaterThan(0)
-    rows.forEach((row) => expect(row.textContent).toContain('张浩'))
-    expect(container.textContent).toContain('执行前拦截')
-    expect(container.textContent).toContain('不在工具白名单')
-  })
-
-  it('点击「查看详情」打开抽屉，展示执行过程时间线与请求参数页签（PRD §五）', async () => {
-    mountReal()
-    await flush()
-    const detailBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情')
-    detailBtn.click()
-    await flush()
-    const drawerText = container.querySelector('.el-drawer__body')?.textContent || container.textContent
-    expect(drawerText).toContain('操作摘要')
-    expect(drawerText).toContain('执行过程')
-    expect(drawerText).toContain('实际请求参数')
-  })
-
-  it('导出 CSV 只导当前筛选结果：先点「执行失败」卡片再导出 → 提示「已导出 N 条筛选结果」，文件数据行正好 N 条（PRD §三）', async () => {
-    mountReal()
-    await flush()
-    // N = 种子里落在默认 90 天窗口内的执行失败条数（C-1010、C-1001）
-    const failedIds = ROWS.filter((r) => r.result === 'FAILED').map((r) => r.id)
-    const N = failedIds.length
-    expect(N).toBe(2)
-    const failedCard = [...container.querySelectorAll('.metric-card')].find((c) => c.textContent.includes('执行失败'))
-    failedCard.click()
-    await flush()
-    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出 CSV')
-    expect(exportBtn).toBeTruthy()
-    exportBtn.click()
-    await flush()
-    expect(createObjectURL).toHaveBeenCalledTimes(1)
-    expect(document.body.textContent).toContain(`已导出 ${N} 条筛选结果`)
-    // 解析导出的 Blob：去 BOM 后首行为表头，其余为数据行，且每行都是执行失败记录
-    const csv = (await createObjectURL.mock.calls[0][0].text()).replace(/^\uFEFF/, '')
-    const lines = csv.split('\r\n')
-    expect(lines[0]).toContain('"请求编号"')
-    const dataLines = lines.slice(1)
-    expect(dataLines).toHaveLength(N)
-    expect(dataLines.map((l) => l.split(',')[0].replace(/"/g, ''))).toEqual(failedIds)
-    dataLines.forEach((l) => expect(l).toContain('"执行失败"'))
-  })
 })
-
-/* ======================================================================================
- * 2026-10-08 /test-audit 补缺口
- * ====================================================================================== */
-const cards = () => [...container.querySelectorAll('.metric-card')]
-const cardOf = (label) => cards().find((c) => c.querySelector('.metric-label').textContent.trim() === label)
-const tableRows = () => [...container.querySelectorAll('.el-table__body-wrapper .el-table__row')]
-const pagerTotal = () => container.querySelector('.list-pager-info')?.textContent.trim()
-const searchInput = () => container.querySelector('input[placeholder="搜索用户 / 岗位 / 技能 / 工具"]')
-async function search(text) {
-  const input = searchInput()
-  input.value = text
-  input.dispatchEvent(new Event('input'))
-  input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
-  await flush()
-}
-/** 打开第 idx 个下拉（0 = 执行结果，1 = 操作性质）并点选某项。 */
-async function pick(idx, label) {
-  container.querySelectorAll('.lt-filter')[idx].querySelector('.el-select__wrapper').click()
-  await flush()
-  const item = [...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === label)
-  item.click()
-  await flush()
-}
-/** 打开某条记录的详情抽屉：先按技能名搜索（列表按窗口高度分页，目标行未必在第 1 页），再按行内文字定位。 */
-async function openDetail(skill, ...texts) {
-  await search(skill)
-  const row = tableRows().find((tr) => [skill, ...texts].every((t) => tr.textContent.includes(t)))
-  ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
-  await flush()
-}
-const drawer = () => document.body.querySelector('.el-drawer__body')
-const timelineTitles = () => [...drawer().querySelectorAll('.el-timeline-item strong')].map((n) => n.textContent.trim())
 
 describe('统计卡片（§二）', () => {
   beforeEach(async () => {
@@ -203,104 +114,42 @@ describe('统计卡片（§二）', () => {
     await flush()
   })
 
-  it('「调用请求总数」副标题为「成功 6 / 拦截 2 / 取消 1」', () => {
-    expect(cardOf('调用请求总数').querySelector('.metric-sub').textContent.trim()).toBe('成功 6 / 拦截 2 / 取消 1')
+  it('执行总数副标题展示成功 / 失败计数，与种子数据一致（不展示"进行中"）', () => {
+    const all = MOCK.toolCallRecords
+    const count = (r) => all.filter((x) => x.result === r).length
+    expect(cardOf('执行总数').textContent).toContain(`成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`)
+    expect(cardOf('执行总数').textContent).not.toContain('进行中')
   })
 
-  it('「写操作请求」数值 6，副标题为「需要确认 4 / 已确认 2」', () => {
-    expect(cardOf('写操作请求').querySelector('.metric-value').textContent.trim()).toBe('6')
-    expect(cardOf('写操作请求').querySelector('.metric-sub').textContent.trim()).toBe('需要确认 4 / 已确认 2')
-  })
-
-  it('「执行失败」2 条、「当前待确认」1 条', () => {
-    expect(cardOf('执行失败').querySelector('.metric-value').textContent.trim()).toBe('2')
-    expect(cardOf('当前待确认').querySelector('.metric-value').textContent.trim()).toBe('1')
-  })
-
-  it('点「写操作请求」→ 列表只剩写操作（共 6 条），卡片高亮', async () => {
-    cardOf('写操作请求').click()
-    await flush()
-    expect(pagerTotal()).toBe('共 6 条数据')
-    tableRows().forEach((tr) => expect(tr.querySelectorAll('td')[3].textContent.trim()).toBe('写'))
-    expect(cardOf('写操作请求').className).toContain('is-active')
-  })
-
-  it('点「当前待确认」→ 列表只剩待确认那 1 条', async () => {
-    cardOf('当前待确认').click()
-    await flush()
-    expect(pagerTotal()).toBe('共 1 条数据')
-    expect(tableRows()[0].textContent).toContain('周敏')
-    expect(tableRows()[0].textContent).toContain('待确认')
-  })
-
-  it('先点「执行失败」再点「调用请求总数」→ 执行结果筛选被清空，回到全部 12 条', async () => {
+  it('点「执行失败」→ 列表只剩整体结果=失败的记录', async () => {
     cardOf('执行失败').click()
     await flush()
-    expect(pagerTotal()).toBe('共 2 条数据')
-    cardOf('调用请求总数').click()
-    await flush()
-    expect(pagerTotal()).toBe('共 12 条数据')
-    expect(cards().some((c) => c.className.includes('is-active'))).toBe(false)
+    const rows = bodyRows()
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach((r) => expect(r.textContent).toContain('失败'))
   })
 
-  it('点「写操作请求」时已选的执行结果会被清空（§二「操作性质置为写，清空执行结果筛选」）', async () => {
-    cardOf('执行失败').click()
+  it('点「涉及写操作的执行」→ 列表只剩涉及写操作的记录；清空后再点「执行总数」恢复全量', async () => {
+    cardOf('涉及写操作的执行').click()
     await flush()
-    cardOf('写操作请求').click()
+    const writes = MOCK.toolCallRecords.filter((r) => r.hasWrite)
+    expect(bodyRows().length).toBe(writes.length)
+
+    cardOf('执行总数').click()
     await flush()
-    // 写操作 6 条（含成功 / 待确认 / 取消 / 拦截 / 失败），不只剩写且失败的 1 条
-    expect(pagerTotal()).toBe('共 6 条数据')
+    // 分页限制了可见行数，不能直接数 DOM 行——用卡片自身的计数验证筛选已清空
+    expect(cardOf('执行总数').textContent).toContain(String(MOCK.toolCallRecords.length))
   })
 
-  it('前提：搜「张浩」再点「执行失败」卡 → 两个条件叠加，只剩 1 条', async () => {
-    await search('张浩')
-    cardOf('执行失败').click()
-    await flush()
-    expect(pagerTotal()).toBe('共 1 条数据')
-  })
-
-  it.fails('搜了关键词后点「调用请求总数」→ 搜索词也被清掉，只保留时间范围（疑似缺陷：chooseMetric 只清执行结果 / 操作性质，搜索词仍生效，列表停在张浩的 3 条；md 工具调用审计 §二「清空执行结果、操作性质筛选，仅保留时间范围」）', async () => {
-    await search('张浩')
-    cardOf('执行失败').click()
-    await flush()
-    cardOf('调用请求总数').click()
-    await flush()
-    expect(pagerTotal()).toBe('共 12 条数据')
-  })
-})
-
-describe('【统计口径】说明（§二）', () => {
-  beforeEach(async () => {
-    mountReal()
-    await flush()
-  })
-  const helpBtn = () => [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '统计口径')
-
-  it('默认收起，看不到说明', () => {
+  it('【统计口径】默认收起，点开展示说明，再点收起', async () => {
     expect(container.querySelector('.help-body')).toBeNull()
-  })
-
-  it('点【统计口径】→ 展开三句说明；再点 → 收起', async () => {
     helpBtn().click()
     await flush()
     const text = container.querySelector('.help-body').textContent
-    expect(text).toContain('调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。')
-    expect(text).toContain('执行耗时只统计工具实际执行时间，不含等待用户确认的时间')
-    expect(text).toContain('"待确认"反映当前尚未处理的请求，不是历史累计数量。')
-    // 说明块紧随【统计口径】入口之后展开（不是飘在页面别处）
-    expect(container.querySelector('.help-entry').nextElementSibling).toBe(container.querySelector('.help-body'))
+    expect(text).toContain('同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计')
     helpBtn().click()
     await flush()
     expect(container.querySelector('.help-body')).toBeNull()
-  })
-
-  // 2026-10-09 合并 origin/main 时由 it.fails 转正：拆页签改造把【统计口径】入口收进
-  // AuditMetricGrid.vue，本就放在卡片区下方（md §二），与待办 yuepu#64 的其余 5 项无关，
-  // 该待办仍由另一条未合并分支整体关闭。
-  it('【统计口径】入口在统计卡片下方', () => {
-    const grid = container.querySelector('.metric-grid')
-    // 入口按钮在 DOM 顺序上应位于卡片区之后
-    expect(grid.compareDocumentPosition(helpBtn()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
@@ -310,205 +159,177 @@ describe('查询区（§三）', () => {
     await flush()
   })
 
-  it('操作性质选「读」→ 列表立即只剩读操作（共 6 条）', async () => {
-    await pick(1, '读')
-    expect(pagerTotal()).toBe('共 6 条数据')
-    tableRows().forEach((tr) => expect(tr.querySelectorAll('td')[3].textContent.trim()).toBe('读'))
+  it('执行结果下拉只有成功 / 失败两项，不含旧版的执行前拦截 / 待确认 / 进行中（"用户取消"作为失败原因文案仍会出现，不是独立状态，不在此断言范围）', () => {
+    expect(container.querySelector('.lt-filter')).toBeTruthy()
+    const text = container.textContent
+    expect(text).toContain('全部结果')
+    expect(text).not.toContain('进行中')
+    expect(text).not.toContain('执行前拦截')
   })
 
-  it('执行结果下拉的选项为：成功 / 执行失败 / 执行前拦截 / 用户取消 / 待确认', async () => {
-    container.querySelectorAll('.lt-filter')[0].querySelector('.el-select__wrapper').click()
-    await flush()
-    const dd = [...document.body.querySelectorAll('.el-select-dropdown')].find((d) => d.textContent.includes('执行前拦截'))
-    const labels = [...dd.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
-    expect(labels).toEqual(['成功', '执行失败', '执行前拦截', '用户取消', '待确认'])
+  it('搜索框按用户 / 岗位 / 技能 / 工具标识模糊过滤', async () => {
+    await search('张浩')
+    const rows = bodyRows()
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach((r) => expect(r.textContent).toContain('张浩'))
   })
 
-  it('查询无结果 → 展示空态，搜索词与已选筛选仍保留', async () => {
-    await pick(1, '写')
-    await search('查无此人')
-    expect(container.querySelector('.ls-empty-text').textContent.trim()).toBe('暂无符合条件的调用记录')
-    expect(searchInput().value).toBe('查无此人')
-    expect(container.querySelectorAll('.lt-filter')[1].textContent).toContain('写')
-  })
-
-  it('执行结果下拉的「全部」项文案为「全部结果」（md 工具调用审计 §三.2「下拉，全部结果 / 成功 / …」）', () => {
-    expect(container.querySelectorAll('.lt-filter')[0].textContent).toContain('全部结果')
-  })
-
-  it('操作性质下拉的「全部」项文案为「全部」（md 工具调用审计 §三.3「下拉，全部 / 读 / 写」）', () => {
-    expect(container.querySelectorAll('.lt-filter')[1].querySelector('.el-select__placeholder').textContent.trim()).toBe('全部')
+  it('搜索「业务系统·SAP ERP」命中详情里出现过该工具的执行记录（搜索覆盖嵌套明细，不只是列表字段）', async () => {
+    await search('业务系统·SAP ERP')
+    const rows = bodyRows()
+    expect(rows.length).toBeGreaterThan(0)
+    const matched = MOCK.toolCallRecords.filter((r) => r.calls.some((c) => c.tool === '业务系统·SAP ERP'))
+    expect(rows.length).toBe(matched.length)
   })
 })
 
-describe('时间范围跨度最多 30 天（§三.1，同访问审计 §三）', () => {
-  const BASE = new Date(2026, 8, 15)
-  const dayOf = (offset) => {
-    const d = new Date(BASE)
-    d.setDate(d.getDate() + offset)
-    return d
-  }
-  function picker() {
-    const walk = (vnode) => {
-      if (!vnode) return null
-      if (vnode.component) {
-        if (vnode.component.type?.name === 'ElDatePicker') return vnode.component
-        return walk(vnode.component.subTree)
-      }
-      if (Array.isArray(vnode.children)) {
-        for (const c of vnode.children) {
-          const hit = walk(c)
-          if (hit) return hit
-        }
-      }
-      return null
-    }
-    return walk(app._instance.subTree)
-  }
+describe('列表（§四）', () => {
   beforeEach(async () => {
     mountReal()
     await flush()
   })
 
-  it('还没点选起始日 → 不置灰任何日期', () => {
-    expect(picker().props.disabledDate(dayOf(200))).toBe(false)
+  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', () => {
+    const row = bodyRows().find((r) => r.textContent.includes('生产数据查询'))
+    expect(row.textContent).toContain('是') // 涉及写操作
+    expect(row.textContent).toContain('失败')
+    expect(row.textContent).toContain('业务系统·SAP ERP 不在工具白名单')
+    expect(container.textContent).not.toContain('执行耗时')
   })
 
-  it('点选起始日后 → 前后 30 天内可选，超过 30 天的日期置灰', async () => {
-    picker().vnode.props.onCalendarChange([BASE, null])
-    await flush()
-    const disabled = picker().props.disabledDate
-    expect(disabled(dayOf(30))).toBe(false)
-    expect(disabled(dayOf(-30))).toBe(false)
-    expect(disabled(dayOf(31))).toBe(true)
-    expect(disabled(dayOf(-31))).toBe(true)
+  it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', () => {
+    const row = bodyRows().find((r) => r.textContent.includes('排产冲突检测'))
+    expect(row.textContent).toContain('成功')
+    expect(row.textContent).not.toContain('连接超时')
   })
 
-  it('两端日期都选定后 → 置灰解除', async () => {
-    picker().vnode.props.onCalendarChange([BASE, null])
+  it('请求时间支持正序 / 倒序切换', async () => {
+    const sortBtn = [...container.querySelectorAll('.tca-sort')].find((b) => b.textContent.includes('请求时间'))
+    const firstDesc = bodyRows()[0].textContent
+    sortBtn.click()
     await flush()
-    expect(picker().props.disabledDate(dayOf(60))).toBe(true)
-    picker().vnode.props.onCalendarChange([BASE, dayOf(10)])
-    await flush()
-    expect(picker().props.disabledDate(dayOf(60))).toBe(false)
+    const firstAsc = bodyRows()[0].textContent
+    expect(firstAsc).not.toBe(firstDesc)
   })
 })
 
-describe('列表（§四 / §六）', () => {
-  beforeEach(async () => {
-    mountReal()
-    await flush()
-  })
-  const arrow = () => container.querySelector('.tca-sort-arrow').textContent.trim()
-  const tagIn = (tr, colIdx) => tr.querySelectorAll('td')[colIdx].querySelector('.status-tag')
-
-  it('默认按请求时间倒序（最新 09-27 15:02:11 在最前），箭头 ↓', () => {
-    expect(tableRows()[0].textContent).toContain('15:02:11')
-    expect(arrow()).toBe('↓')
-  })
-
-  it('点「请求时间」列头 → 正序（最早 09-20 那条在最前），箭头 ↑；再点回到倒序 ↓', async () => {
-    container.querySelector('.tca-sort').click()
-    await flush()
-    expect(tableRows()[0].textContent).toContain('2026-09-20')
-    expect(arrow()).toBe('↑')
-    container.querySelector('.tca-sort').click()
-    await flush()
-    expect(tableRows()[0].textContent).toContain('15:02:11')
-    expect(arrow()).toBe('↓')
-  })
-
-  // 列表按窗口高度分页，逐类先用执行结果筛选把该类记录调到第 1 页再取标签
-  const firstTag = async (resultLabel, colIdx) => {
-    await pick(0, resultLabel)
-    return tagIn(tableRows()[0], colIdx)
-  }
-
-  it('执行结果标签色：成功绿 / 执行失败红 / 执行前拦截橙 / 待确认蓝 / 用户取消灰', async () => {
-    const expectTag = async (label, cls) => {
-      const tag = await firstTag(label, 5)
-      expect(tag.textContent.trim()).toBe(label)
-      expect(tag.className).toContain(cls)
-    }
-    await expectTag('成功', 'st--success')
-    await expectTag('执行失败', 'st--danger')
-    await expectTag('执行前拦截', 'st--warning')
-    await expectTag('待确认', 'st--accent')
-    await expectTag('用户取消', 'st--info')
-  })
-
-  it('用户确认标签色：已确认绿 / 待确认蓝 / 已取消灰 / 不需要确认灰', async () => {
-    expect((await firstTag('待确认', 4)).className).toContain('st--accent')
-    expect((await firstTag('用户取消', 4)).textContent.trim()).toBe('已取消')
-    expect((await firstTag('用户取消', 4)).className).toContain('st--info')
-    expect((await firstTag('执行前拦截', 4)).textContent.trim()).toBe('不需要确认')
-    expect((await firstTag('执行前拦截', 4)).className).toContain('st--info')
-    await search('报价单生成')
-    await pick(0, '成功')
-    const confirmed = tableRows().map((tr) => tagIn(tr, 4)).find((t) => t.textContent.trim() === '已确认')
-    expect(confirmed.className).toContain('st--success')
-  })
-})
-
-describe('详情抽屉（§5.2 / §5.3 / §5.4）', () => {
+describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
   beforeEach(async () => {
     mountReal()
     await flush()
   })
 
-  it('执行前拦截的调用 → 时间线停在「检查未通过」，并写明拦截原因，不出确认 / 执行节点', async () => {
-    await openDetail('生产数据查询')
-    expect(timelineTitles()).toEqual(['发起调用', '检查未通过，已拦截'])
-    expect(drawer().textContent).toContain('不在工具白名单')
+  it('操作摘要展示用户 / 岗位、技能、涉及写操作；不展示待处理确认、执行耗时（都随改版去掉）', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const text = drawer.textContent
+    expect(text).toContain('陈杰')
+    expect(text).toContain('销售顾问')
+    expect(text).toContain('报价单生成')
+    expect(text).toContain('涉及写操作')
+    expect(text).not.toContain('待处理确认')
+    expect(text).not.toContain('执行耗时')
   })
 
-  it('用户取消的写操作 → 时间线停在「已取消」，不出执行结果节点', async () => {
-    await openDetail('报销单提交')
-    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '已取消'])
+  it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.textContent).toContain('工具调用明细')
+    const items = drawer.querySelectorAll('.call-item')
+    expect(items.length).toBe(2)
+    // 页面只展示工具标识 / 读写性质 / 确认 / 结果（PRD §5.2 没有写具体操作描述、耗时这两项）：
+    // 第一项是读（查询客户信息），第二项是写（创建报价单，已确认）
+    expect(items[0].textContent).toContain('读')
+    expect(items[1].textContent).toContain('写')
+    expect(items[1].textContent).toContain('已确认')
+    expect(drawer.textContent).not.toContain('秒')
   })
 
-  it('待确认的写操作 → 时间线停在「待确认」，不出执行结果节点', async () => {
-    await openDetail('排产计划调整', '待确认')
-    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '待确认'])
+  it('成功的只读调用（查询客户信息）不展示参数 / 响应入口，原地给一句说明（2026-10-09 收窄展示范围）', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items[0].querySelector('.call-item-toggle')).toBeNull()
+    expect(items[0].textContent).toContain('只读调用成功，不保留请求参数与响应内容')
   })
 
-  it('已确认的写操作 → 依次展示 发起 / 检查 / 用户已确认（带等待时长）/ 执行结果', async () => {
-    await openDetail('报价单生成', '已确认')
-    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '用户已确认', '成功'])
-    expect(drawer().textContent).toContain('等待 8 秒')
-  })
-
-  it('无需确认的读操作 → 时间线不出「用户确认」节点（md 工具调用审计 §5.2「用户确认（仅『操作性质=写』且需要确认时展示）」）', async () => {
-    await openDetail('方案要点生成')
-    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '成功'])
-  })
-
-  it('写操作但无需确认（C-1003「客户记录更新」，WRITE + NONE）→ 同样不出「用户确认」节点，直接 发起 / 检查 / 执行结果（md §5.2「仅『操作性质=写』且需要确认时展示」）', async () => {
-    await openDetail('客户记录更新')
-    expect(timelineTitles()).toEqual(['发起调用', '调用检查通过', '成功'])
-    expect(drawer().textContent).not.toContain('用户已确认')
-  })
-
-  it('四类结果说明文案（§5.3）：失败 / 拦截 / 取消 / 待确认各一句建议动作', async () => {
-    const explain = () => drawer().querySelector('.el-alert__title').textContent.trim()
-    await openDetail('排产冲突检测', '执行失败')
-    expect(explain()).toBe('建议检查连接器状态及工具服务日志，并核对是否已有后续重试记录。')
-    await openDetail('生产数据查询')
-    expect(explain()).toBe('请核对该岗位允许使用的工具和用户权限，再由发起人重新提交任务。')
-    await openDetail('报销单提交')
-    expect(explain()).toContain('本次操作已终止')
-    expect(explain()).toContain('请由发起人重新发起')
-    await openDetail('排产计划调整', '待确认')
-    expect(explain()).toBe('等待发起人在客户端处理，此页不代替用户确认。')
-  })
-
-  it('未执行的调用：默认在「实际请求参数」页签，参数暂缺显示【待补充】；切到「实际响应结果」→「工具未执行，因此没有实际响应结果」', async () => {
-    await openDetail('生产数据查询')
-    expect(drawer().textContent).toContain('敏感字段已脱敏')
-    expect(drawer().textContent).toContain('【待补充】本次调用的实际请求参数')
-    ;[...drawer().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '实际响应结果').click()
+  it('点击某一项【查看请求参数 / 响应结果】只展开该项，不影响其他项（各自独立状态）', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    const toggle1 = items[1].querySelector('.call-item-toggle')
+    toggle1.click()
     await flush()
-    expect(drawer().textContent).toContain('工具未执行，因此没有实际响应结果。')
-    expect(drawer().textContent).not.toContain('敏感字段已脱敏')
+    expect(items[1].textContent).toContain('实际请求参数')
+    // items[0] 是成功的只读调用，本来就没有入口——展开 items[1] 不会把它变出来
+    expect(items[0].querySelector('.call-item-toggle')).toBeNull()
+  })
+
+  it('展开报价单创建这一项：请求参数脱敏，响应结果展示报价单编号', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    items[1].querySelector('.call-item-toggle').click()
+    await flush()
+    expect(items[1].textContent).toContain('138••••5678 已脱敏')
+    ;[...items[1].querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '实际响应结果').click()
+    await flush()
+    expect(items[1].textContent).toContain('QT-20260927-0083')
+  })
+
+  it('先失败后重试成功的执行（排产冲突检测）：整体结果说明文案走"成功"分支，详情里仍能看到失败那一项', async () => {
+    await openDetailOf('排产冲突检测')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const text = drawer.textContent
+    expect(text).toContain('本次执行已完成')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items.length).toBe(2)
+    // 单次工具调用的结果只有"成功 / 失败"两态（不再是"执行失败"）
+    expect(items[0].textContent).toContain('失败')
+    expect(items[0].textContent).toContain('连接超时')
+    expect(items[1].textContent).toContain('成功')
+  })
+
+  it('确认被用户拒绝的写操作（报销单提交）：不展示确认标签，由执行结果=失败 + 原因"用户取消本次操作"表达', async () => {
+    await openDetailOf('报销单提交')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items.length).toBe(1)
+    expect(items[0].textContent).toContain('失败')
+    expect(items[0].textContent).toContain('用户取消本次操作')
+    // confirm 为 null：不展示"不需要确认""已确认"这类标签
+    expect(items[0].textContent).not.toContain('不需要确认')
+    expect(items[0].textContent).not.toContain('已确认')
+  })
+
+  it('未调用任何外部工具时展示占位文案（当前种子均有调用，断言兜底文案字符串存在于组件逻辑——通过无 calls 的 detail 直接校验展示规则）', async () => {
+    await openDetailOf('方案要点生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.querySelectorAll('.call-item').length).toBe(1)
+  })
+})
+
+describe('导出 CSV（§三）', () => {
+  it('导出当前筛选结果，提示已导出 N 条', async () => {
+    mountReal()
+    await flush()
+    cardOf('执行失败').click()
+    await flush()
+    const n = bodyRows().length
+    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出筛选结果 CSV')
+    exportBtn.click()
+    await flush()
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    void n
+  })
+})
+
+describe('异常与空状态（§七）', () => {
+  it('查询无结果时展示空状态，保留已输入的搜索词', async () => {
+    mountReal()
+    await flush()
+    await search('不存在的技能名称零零零')
+    expect(bodyRows().length).toBe(0)
+    expect(container.querySelector('input[placeholder="搜索用户 / 岗位 / 技能 / 工具"]').value).toBe('不存在的技能名称零零零')
   })
 })

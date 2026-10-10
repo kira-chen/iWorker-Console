@@ -7,70 +7,28 @@ import {
   outputOf,
   knowledgeParamsOf,
   knowledgeOutputOf,
-  listToolCallAudits,
-  RESULT_LABEL,
-  UNATTENDED_RESULTS
+  EXEC_RESULT_LABEL,
+  KNOWLEDGE_RESULT_LABEL
 } from '../toolCallAuditMock'
 
 /**
- * toolCallAuditMock 的两组用例（合并自两条独立分支，2026-10-09 合并时手动拼合，内容互补非冲突）：
+ * toolCallAuditMock 三组数据的口径约束（PRD 正本 §一「记录单元」/ §八 / §九）。
+ * 页面测试只验渲染；这里钉数据本身别自相矛盾——数据错了，页面上的统计卡片和详情会一起错。
  *
- * 1. 「技能调用」详情抽屉取数（2026-10-08 /test-audit 补缺口新建），对齐
- *    docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md §5.4：
- *    - 「实际请求参数」：敏感字段（联系方式、操作凭证）脱敏；暂无法提供时展示「【待补充】」（§七）；
- *    - 「实际响应结果」：未执行的调用（执行前拦截 / 用户取消 / 待确认）展示「工具未执行，因此没有实际响应结果」；
- *      执行失败展示失败原因；暂无法提供的原始响应展示「【待补充】」（§七）。
- *    覆盖 outputOf 四个分支（有实录的成功调用 / 未执行三类 / 执行失败 / 其余成功）与 paramsOf 两个分支（有实录 / 暂缺）。
+ * 2026-10-09 记录单元改版（与研发梅竹讨论后）整份重写：toolCallRecords / taskCallRecords
+ * 的记录单元从「一次工具调用」改为「一次技能执行 / 一次任务运行」，每条记录带 calls 数组
+ * （工具调用明细）与由 calls 推导出的 hasWrite / result 汇总字段；taskCallRecords
+ * 的「预授权」（auth 字段）与「任务运行编号」（runId 字段）随改版废弃。
  *
- * 2. 三组 mock（技能调用 / 岗位自动化任务 / 知识库检索）的口径约束（PRD 正本 §一 / §八 / §九，
- *    2026-09-28 新增两组时建）。页面测试只验渲染；这里钉数据本身别自相矛盾——数据错了，页面上的
- *    统计卡片和详情会一起错。
+ * 2026-10-09 同日第二轮改版：单次工具调用不记录耗时与具体执行时刻，系统本来就不采集；
+ * 技能调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
+ * 的记录，C- 系列不再有示例；「用户确认」收窄为不需要确认 / 已确认两态，确认被拒绝时
+ * confirm 为 null。
+ *
+ * 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索的整体结果也收窄为 成功 / 失败
+ * 两态——原「执行前拦截」并入「失败」，原因文案保留。三组现在判定规则、取值集合完全一致，
+ * 只是知识库检索的「失败」文案写法不同（"执行失败"），且继续不采用记录单元改版（见下）。
  */
-const rec = (id) => toolCallRecords.find((r) => r.id === id)
-
-describe('outputOf · 实际响应结果（§5.4）', () => {
-  it('有实录的成功调用（C-1011 创建报价单）→ 返回摘要与结果明细行', () => {
-    expect(outputOf(rec('C-1011'))).toEqual({
-      summary: '报价单创建成功',
-      rows: [['报价单编号', 'QT-20260927-0083'], ['返回状态', '已创建']]
-    })
-  })
-
-  it('执行前拦截 / 用户取消 / 待确认 → 都是「工具未执行，因此没有实际响应结果。」', () => {
-    for (const result of ['BLOCKED', 'CANCELLED', 'PENDING']) {
-      const r = toolCallRecords.find((x) => x.result === result)
-      expect(outputOf(r)).toEqual({ text: '工具未执行，因此没有实际响应结果。' })
-    }
-  })
-
-  it('执行失败 → 正文是失败原因，附「错误码及原始响应：【待补充】」', () => {
-    expect(outputOf(rec('C-1010'))).toEqual({ text: '连接超时', note: '错误码及原始响应：【待补充】' })
-  })
-
-  it('其余成功调用 → 「调用成功，实际响应内容【待补充】。」', () => {
-    expect(outputOf(rec('C-1002'))).toEqual({ text: '调用成功，实际响应内容【待补充】。' })
-  })
-})
-
-describe('paramsOf · 实际请求参数（§5.4）', () => {
-  it('有实录的调用（C-1011）→ 逐项列出参数，操作凭证与联系电话已脱敏', () => {
-    const params = paramsOf(rec('C-1011'))
-    expect(params.map((p) => p[1])).toEqual(['customer_id', 'customer_name', 'amount', 'discount_rate', 'operator_token', 'contact_phone'])
-    expect(params.find((p) => p[1] === 'operator_token')[2]).toContain('已脱敏')
-    expect(params.find((p) => p[1] === 'contact_phone')[2]).toBe('138••••5678 已脱敏')
-  })
-
-  it('没有实录的调用 → 一行「【待补充】」占位（§七：暂无法提供不视为异常）', () => {
-    expect(paramsOf(rec('C-1007'))).toEqual([['请求数据', 'payload', '【待补充】本次调用的实际请求参数']])
-  })
-})
-
-describe('listToolCallAudits', () => {
-  it('返回全量记录（由页面本地筛选 / 排序 / 分页）', async () => {
-    expect(await listToolCallAudits()).toHaveLength(toolCallRecords.length)
-  })
-})
-
 describe('三组记录', () => {
   it('编号在三组之间不重复，前缀区分来源：C- 技能调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
     const ids = [...toolCallRecords, ...taskCallRecords, ...knowledgeCallRecords].map((r) => r.id)
@@ -80,67 +38,140 @@ describe('三组记录', () => {
     expect(knowledgeCallRecords.every((r) => r.id.startsWith('K-'))).toBe(true)
   })
 
-  it('无人值守的两组只会出现 成功 / 执行失败 / 执行前拦截，没有用户取消 / 待确认', () => {
-    expect(UNATTENDED_RESULTS).toEqual(['SUCCESS', 'FAILED', 'BLOCKED'])
-    for (const r of [...taskCallRecords, ...knowledgeCallRecords]) {
-      expect(UNATTENDED_RESULTS).toContain(r.result)
-      expect(RESULT_LABEL[r.result]).toBeTruthy()
+  it('三组记录的整体结果取值 key 集合相同（均只有 成功 / 失败），但"失败"显示文案各自独立', () => {
+    expect(Object.keys(EXEC_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
+    expect(Object.keys(KNOWLEDGE_RESULT_LABEL).sort()).toEqual(['FAILED', 'SUCCESS'])
+    for (const r of taskCallRecords) {
+      expect(['SUCCESS', 'FAILED']).toContain(r.result)
+      expect(EXEC_RESULT_LABEL[r.result]).toBeTruthy()
+    }
+    for (const r of knowledgeCallRecords) {
+      expect(['SUCCESS', 'FAILED']).toContain(r.result)
+      expect(KNOWLEDGE_RESULT_LABEL[r.result]).toBeTruthy()
+    }
+    // 两个页签的 PRD 原文"失败"写法不一致（任务运行"失败"、知识库检索"执行失败"），
+    // 不能共用同一份标签——这正是本条用例要钉住的，避免以后又合并成一个常量
+    expect(EXEC_RESULT_LABEL.FAILED).toBe('失败')
+    expect(KNOWLEDGE_RESULT_LABEL.FAILED).toBe('执行失败')
+  })
+
+  it('技能调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {
+    expect(EXEC_RESULT_LABEL).toEqual({ SUCCESS: '成功', FAILED: '失败' })
+    for (const r of toolCallRecords) {
+      expect(['SUCCESS', 'FAILED']).toContain(r.result)
+      expect(EXEC_RESULT_LABEL[r.result]).toBeTruthy()
+    }
+  })
+
+  it('单次工具调用不带 duration / endAt / confirmedAt / wait——这类过程时间数据系统不采集', () => {
+    for (const c of [...toolCallRecords, ...taskCallRecords].flatMap((r) => r.calls)) {
+      expect(c.duration).toBeUndefined()
+      expect(c.endAt).toBeUndefined()
+      expect(c.confirmedAt).toBeUndefined()
+      expect(c.wait).toBeUndefined()
     }
   })
 })
 
-describe('岗位自动化任务 taskCallRecords', () => {
-  it('工具标识是「连接器类型·名称」，类型只会是 MCP / API / 业务系统', () => {
-    for (const r of taskCallRecords) expect(r.tool).toMatch(/^(MCP|API|业务系统)·.+/)
+describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', () => {
+  it('每条记录至少有一次工具调用；calls 的工具标识均为「连接器类型·名称」', () => {
+    for (const r of toolCallRecords) {
+      expect(r.calls.length).toBeGreaterThan(0)
+      for (const c of r.calls) expect(c.tool).toMatch(/^(MCP|API|业务系统)·.+/)
+    }
   })
 
-  it('写操作授权与结果自洽：读操作无需授权；未授权的写操作必被拦截；已预授权的写操作带授权人和授权时间且不会被拦截', () => {
+  it('hasWrite / result 由 calls 推导，与明细自洽（§一「记录单元」判定规则：看最后一次调用是否成功）', () => {
+    for (const r of toolCallRecords) {
+      expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
+      const last = r.calls[r.calls.length - 1]
+      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
+    }
+  })
+
+  it('样例覆盖两种整体结果；至少一条执行里有多次工具调用（演示先失败后重试成功，仍记"成功"）', () => {
+    expect(new Set(toolCallRecords.map((r) => r.result))).toEqual(new Set(['SUCCESS', 'FAILED']))
+    const multi = toolCallRecords.filter((r) => r.calls.length > 1)
+    expect(multi.length).toBeGreaterThan(0)
+    const retried = multi.find((r) => r.calls.some((c) => c.result === 'FAILED') && r.result === 'SUCCESS')
+    expect(retried).toBeTruthy()
+  })
+
+  it('失败的记录都有原因概要', () => {
+    for (const r of toolCallRecords) {
+      if (r.result === 'FAILED') expect(r.reason).toBeTruthy()
+    }
+  })
+
+  it('单次工具调用的结果只有 成功 / 失败；写操作的 confirm 只会是 不需要确认 / 已确认 / null（确认被拒绝，由失败原因表达）', () => {
+    for (const c of toolCallRecords.flatMap((r) => r.calls)) {
+      expect(['SUCCESS', 'FAILED']).toContain(c.result)
+      if (c.nature === 'WRITE') expect([null, 'NONE', 'CONFIRMED']).toContain(c.confirm)
+    }
+    const writeCalls = toolCallRecords.flatMap((r) => r.calls).filter((c) => c.nature === 'WRITE')
+    expect(writeCalls.length).toBeGreaterThan(0)
+    // 样例要覆盖"确认被拒绝"（confirm=null，由 reason 说明是用户取消）这一情形
+    const rejected = writeCalls.find((c) => c.confirm === null)
+    expect(rejected).toBeTruthy()
+    expect(rejected.reason).toContain('取消')
+  })
+
+  it('paramsOf / outputOf 接收单次工具调用（call）：call 自带 params/output 则用，否则按结果兜底', () => {
+    const withParams = toolCallRecords.flatMap((r) => r.calls).find((c) => c.params)
+    expect(withParams).toBeTruthy()
+    expect(paramsOf(withParams)).toBe(withParams.params)
+    expect(paramsOf({ result: 'SUCCESS' })[0][2]).toContain('【待补充】')
+
+    expect(outputOf(withParams)).toBe(withParams.output)
+    expect(outputOf({ result: 'FAILED', reason: '连接超时' })).toEqual({ text: '连接超时', note: '错误码及原始响应：【待补充】' })
+    expect(outputOf({ result: 'SUCCESS' }).text).toContain('【待补充】')
+  })
+})
+
+describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运行）', () => {
+  it('每条记录至少有一次工具调用，字段里没有 confirm / auth / runId（预授权与运行编号已废弃）', () => {
     for (const r of taskCallRecords) {
-      if (r.nature === 'READ') expect(r.auth).toBe('NONE')
-      if (r.auth === 'UNAUTHORIZED') {
-        expect(r.nature).toBe('WRITE')
-        expect(r.result).toBe('BLOCKED')
-      }
-      if (r.auth === 'AUTHORIZED') {
-        expect(r.nature).toBe('WRITE')
-        expect(r.result).not.toBe('BLOCKED')
-        expect(r.authBy).toBeTruthy()
-        expect(r.authAt).toBeTruthy()
+      expect(r.calls.length).toBeGreaterThan(0)
+      expect(r.runId).toBeUndefined()
+      for (const c of r.calls) {
+        expect(c.tool).toMatch(/^(MCP|API|业务系统)·.+/)
+        expect(c.confirm).toBeUndefined()
+        expect(c.auth).toBeUndefined()
       }
     }
-    // 样例要覆盖三种授权状态，演示才完整
-    expect(new Set(taskCallRecords.map((r) => r.auth))).toEqual(new Set(['NONE', 'AUTHORIZED', 'UNAUTHORIZED']))
   })
 
-  it('被拦截或失败的调用都有原因；被拦截的调用未执行', () => {
+  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与技能调用共用同一套规则（deriveExec）', () => {
+    for (const r of taskCallRecords) {
+      expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
+      const last = r.calls[r.calls.length - 1]
+      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
+    }
+  })
+
+  it('样例覆盖两种整体结果，且至少各有一条写操作与读操作', () => {
+    expect(new Set(taskCallRecords.map((r) => r.result))).toEqual(new Set(['SUCCESS', 'FAILED']))
+    expect(taskCallRecords.some((r) => r.hasWrite)).toBe(true)
+    expect(taskCallRecords.some((r) => !r.hasWrite)).toBe(true)
+  })
+
+  it('失败的记录都有原因概要；没有「未授权」这一类原因（自动化任务免授权已拍板）', () => {
     for (const r of taskCallRecords) {
       if (r.result !== 'SUCCESS') expect(r.reason).toBeTruthy()
-      if (r.result === 'BLOCKED') expect(r.duration).toBe('未执行')
+      expect(r.reason).not.toContain('未授权')
+      expect(r.reason).not.toContain('预授权')
     }
   })
 
-  it('同一次任务运行编号 RUN-日期-任务id：同 runId 的记录属于同一任务、同一天、同一用户', () => {
-    const byRun = new Map()
-    for (const r of taskCallRecords) byRun.set(r.runId, [...(byRun.get(r.runId) || []), r])
-    expect(byRun.size).toBeLessThan(taskCallRecords.length) // 至少有一次运行调了多次工具
-    for (const [runId, calls] of byRun) {
-      expect(runId).toMatch(/^RUN-\d{8}-\d+$/)
-      expect(new Set(calls.map((c) => c.task)).size).toBe(1)
-      expect(new Set(calls.map((c) => c.date)).size).toBe(1)
-      expect(new Set(calls.map((c) => c.user)).size).toBe(1)
-      expect(runId).toContain(calls[0].date.replaceAll('-', ''))
-    }
-  })
-
-  it('请求参数 / 响应结果：有覆盖的记录用覆盖值，其余走兜底（技能调用共用同一套）', () => {
-    expect(paramsOf({ id: 'T-2006' }).some((p) => p[1] === 'customer_id')).toBe(true)
-    expect(outputOf({ id: 'T-2006', result: 'SUCCESS' }).summary).toBe('拜访提纲已写入客户档案')
-    expect(outputOf({ id: 'T-2005', result: 'BLOCKED' }).text).toContain('工具未执行')
-    expect(paramsOf({ id: 'T-2001' })[0][2]).toContain('【待补充】')
+  it('请求参数 / 响应结果：有覆盖的 call 用覆盖值，其余走兜底（与技能调用共用同一套 paramsOf / outputOf）', () => {
+    const withParams = taskCallRecords.flatMap((r) => r.calls).find((c) => c.params)
+    expect(withParams).toBeTruthy()
+    expect(paramsOf(withParams).some((p) => p[1] === 'customer_id')).toBe(true)
+    expect(outputOf(withParams).summary).toBeTruthy()
   })
 })
 
-describe('知识库检索 knowledgeCallRecords', () => {
+describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记录单元改版，维持现状）', () => {
   it('只记外部数据源：类型只有 API / MCP；MCP 带所选检索工具，API 不带', () => {
     for (const r of knowledgeCallRecords) {
       const [type] = r.source.split('·')
@@ -162,9 +193,8 @@ describe('知识库检索 knowledgeCallRecords', () => {
         expect(r.hits.length).toBeLessThanOrEqual(r.hitCount)
       }
     }
-    // 三种需要在页面上演示的情形都要有样例：有命中 / 无命中 / 失败 / 拦截
     const kinds = new Set(knowledgeCallRecords.map((r) => (r.result === 'SUCCESS' ? (r.hitCount ? 'hit' : 'nohit') : r.result)))
-    expect(kinds).toEqual(new Set(['hit', 'nohit', 'FAILED', 'BLOCKED']))
+    expect(kinds).toEqual(new Set(['hit', 'nohit', 'FAILED']))
   })
 
   it('请求参数由记录生成：检索词 + topK，MCP 多一行检索工具', () => {
@@ -175,7 +205,7 @@ describe('知识库检索 knowledgeCallRecords', () => {
     expect(knowledgeParamsOf(mcp)[0][2]).toBe(mcp.query)
   })
 
-  it('响应结果：成功有命中列表；无命中 / 失败 / 拦截各有对应说明', () => {
+  it('响应结果：成功有命中列表；无命中 / 失败各有对应说明（失败统一走原因文案，含原"执行前拦截"的情形）', () => {
     const hit = knowledgeCallRecords.find((r) => r.result === 'SUCCESS' && r.hitCount > 0)
     const out = knowledgeOutputOf(hit)
     expect(out.headers).toEqual(['标题', '来源名称'])
@@ -183,7 +213,8 @@ describe('知识库检索 knowledgeCallRecords', () => {
     expect(out.summary).toContain(`共命中 ${hit.hitCount} 条`)
 
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'SUCCESS' && !r.hitCount)).text).toContain('命中 0 条')
+    const noAccess = knowledgeCallRecords.find((r) => r.reason.includes('访问权限'))
+    expect(knowledgeOutputOf(noAccess).text).toBe(noAccess.reason)
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'FAILED')).note).toContain('【待补充】')
-    expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'BLOCKED')).text).toContain('没有实际响应结果')
   })
 })

@@ -3,6 +3,8 @@
  * 驾驶舱（01 总览）—— 全局概览：资产发布率、岗位领用、待办、点踩反馈统计。
  * 数据静态 mock，对应原型 renderDashboard 内容（2026-09-17 负责人裁决：删去本月成本卡，
  * 点赞/点踩统计模块收窄为「点踩统计 + 点踩上下文明细」，不再展示点赞相关数据）。
+ * 2026-10-09 负责人裁决：顶部核心指标卡区整块删除，「用户端当前下发版本」上移到页头下第一块，
+ * 「岗位领用 Top 5」标题旁补「领用岗位员工数量」。
  * 唯一例外是「用户端当前下发版本」面板：取自版本管理（api/version 的 getVersionOverview，与版本管理页
  * 概览条同一数据源），版本管理里发布 / 停用经审核通过后，这里随之变化。
  */
@@ -21,32 +23,13 @@ const router = useRouter()
 const refreshTime = ref('09:30')
 const refreshing = ref(false)
 
-// 5 张指标卡
-// pct：圆环弧长（取整，供 conic-gradient 用）；pctText：环内文字（精确到小数点后一位，与原型
-// renderDashboard 逐值一致——弧长可以四舍五入，但文字要精确，两者原型里本就不是同一个数）。
-const metrics = [
-  { label: '已发布岗位数量', tag: '已发布', value: 14, unit: '个', sub: '全部岗位 18 个', pct: 78, pctText: '78%', type: '' },
-  { label: '领用岗位员工数量', tag: '覆盖率', value: 241, unit: '人', sub: '启用员工 268 人', pct: 90, pctText: '89.9%', type: '' },
-  { label: '已发布技能数量', tag: '已发布', value: 68, unit: '个', sub: '全部技能 82 个', pct: 83, pctText: '82.9%', type: '' },
-  { label: '已发布专家数量', tag: '已发布', value: 18, unit: '个', sub: '全部专家 22 个', pct: 82, pctText: '81.8%', type: '' },
-  { label: '知识资产', tag: '资产构成', type: 'dual', knowledge: 12, source: 19, sub: '点击查看知识资产明细' },
-]
-
-// 待处理指标（右上角独立 danger 卡）
-const pendingMetric = {
-  label: '待处理', tag: '需处理', value: 16, unit: '项',
-  breakdown: [
-    { label: '待审核', value: 11 },
-    { label: '高风险', value: 2 },
-    { label: '连接失败', value: 3 },
-  ]
-}
-
 // 异常与待办：行动按钮真实跳转对应模块页面（原型是 toast 占位，这里改为路由跳转）
 const alerts = [
   { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
   { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
   { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
+  { count: 5,  level: 'medium', label: '待分配',   text: '岗位管理有 5 条待分配申请',    meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments' },
+  { count: 4,  level: 'medium', label: '待扩容',   text: '存储空间有 4 条扩容申请待处理', meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace' },
 ]
 const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 
@@ -80,6 +63,8 @@ const posTop = [
 ]
 const publishedPosTop = computed(() => posTop.filter((p) => p.status === '已发布'))
 const maxUsers = 48
+// 领用岗位员工数量（原指标卡，启用员工 268 人中 241 人已领用；静态示例）
+const claimedUsers = 241
 
 // 用户端当前下发版本：各终端「下发中版本」（含停用审核期间仍在下发的）+ 更新说明，只读展示。
 // verOverview 为 null = 尚未取回（骨架屏）；{ WINDOWS: 版本行|null, MAC: 版本行|null }，null 表示该终端暂无下发版本。
@@ -244,56 +229,31 @@ function openAlertAction(item) {
       </template>
     </PageHeader>
 
-    <!-- 指标卡区 -->
-    <section class="metrics" aria-label="核心指标">
-      <!-- 普通 4 张（带圆环） -->
-      <button
-        v-for="m in metrics.slice(0, 4)"
-        :key="m.label"
-        class="metric"
-        @click="tip(m.label)"
-      >
-        <span class="metric-head">
-          <span class="metric-label">{{ m.label }}</span>
-          <span class="metric-tag">{{ m.tag }}</span>
-        </span>
-        <span class="metric-main">
-          <span class="metric-value">{{ m.value }}<small>{{ m.unit }}</small></span>
-          <span class="dash-ring" :style="`--pct:${m.pct}`"><b>{{ m.pctText }}</b></span>
-        </span>
-        <span class="metric-sub">{{ m.sub }}</span>
-      </button>
-
-      <!-- 知识资产（wide，本月成本卡删去后占其余 2 列） -->
-      <button class="metric wide" @click="tip('知识库')">
-        <span class="metric-head">
-          <span class="metric-label">知识资产</span>
-          <span class="metric-tag">资产构成</span>
-        </span>
-        <span class="metric-main">
-          <span class="dual-stat">
-            <span><b>{{ metrics[4].knowledge }}</b>知识库</span>
-            <span><b>{{ metrics[4].source }}</b>数据源</span>
-          </span>
-        </span>
-        <span class="metric-sub">{{ metrics[4].sub }}</span>
-      </button>
-
-      <!-- 待处理（danger，wide，本月成本卡删去后占其余 2 列） -->
-      <button class="metric danger wide" @click="tip('待处理事项')">
-        <span class="metric-head">
-          <span class="metric-label">{{ pendingMetric.label }}</span>
-          <span class="metric-tag">{{ pendingMetric.tag }}</span>
-        </span>
-        <span class="metric-main">
-          <span class="metric-value">{{ pendingMetric.value }}<small>{{ pendingMetric.unit }}</small></span>
-        </span>
-        <span class="pending-breakdown">
-          <span v-for="b in pendingMetric.breakdown" :key="b.label">
-            <b>{{ b.value }}</b>{{ b.label }}
-          </span>
-        </span>
-      </button>
+    <!-- 用户端当前下发版本：Windows / Mac 各一张只读卡片，版本号 + 发布时间 + 更新说明（数据同版本管理概览条） -->
+    <section class="dash-panel" aria-label="用户端当前下发版本">
+      <div class="dash-panel-head">
+        <h2 class="dash-panel-title">用户端当前下发版本</h2>
+        <span class="dash-panel-count">用户端检测更新时将提示升级到该版本</span>
+      </div>
+      <div v-if="verError" class="ver-error">
+        加载失败
+        <el-button link type="primary" @click="loadVerOverview">重试</el-button>
+      </div>
+      <div v-else class="ver-grid">
+        <div v-for="c in verCards" :key="c.value" class="ver-card" :data-terminal="c.value">
+          <StatusTag type="accent">{{ c.label }}</StatusTag>
+          <div v-if="verLoading" class="ver-skeleton"></div>
+          <template v-else-if="c.row">
+            <div class="ver-line">
+              <span class="ver-version">{{ c.row.version }}</span>
+              <span class="ver-time">发布于 {{ fmtTime(c.row.publishedAt) }}</span>
+            </div>
+            <div class="ver-notes-label">更新说明</div>
+            <div class="ver-notes">{{ c.row.releaseNotes }}</div>
+          </template>
+          <div v-else class="ver-empty">暂无下发版本</div>
+        </div>
+      </div>
     </section>
 
     <!-- 异常与待办 -->
@@ -356,6 +316,7 @@ function openAlertAction(item) {
       <section class="dash-panel" style="margin-top:0">
         <div class="dash-panel-head">
           <h2 class="dash-panel-title">岗位领用 Top 5</h2>
+          <span class="dash-panel-count">领用岗位员工数量 {{ claimedUsers }} 人</span>
         </div>
         <table class="dash-table">
           <thead>
@@ -390,33 +351,6 @@ function openAlertAction(item) {
         </table>
       </section>
     </div>
-
-    <!-- 用户端当前下发版本：Windows / Mac 各一张只读卡片，版本号 + 发布时间 + 更新说明（数据同版本管理概览条） -->
-    <section class="dash-panel" aria-label="用户端当前下发版本">
-      <div class="dash-panel-head">
-        <h2 class="dash-panel-title">用户端当前下发版本</h2>
-        <span class="dash-panel-count">用户端检测更新时将提示升级到该版本</span>
-      </div>
-      <div v-if="verError" class="ver-error">
-        加载失败
-        <el-button link type="primary" @click="loadVerOverview">重试</el-button>
-      </div>
-      <div v-else class="ver-grid">
-        <div v-for="c in verCards" :key="c.value" class="ver-card" :data-terminal="c.value">
-          <StatusTag type="accent">{{ c.label }}</StatusTag>
-          <div v-if="verLoading" class="ver-skeleton"></div>
-          <template v-else-if="c.row">
-            <div class="ver-line">
-              <span class="ver-version">{{ c.row.version }}</span>
-              <span class="ver-time">发布于 {{ fmtTime(c.row.publishedAt) }}</span>
-            </div>
-            <div class="ver-notes-label">更新说明</div>
-            <div class="ver-notes">{{ c.row.releaseNotes }}</div>
-          </template>
-          <div v-else class="ver-empty">暂无下发版本</div>
-        </div>
-      </div>
-    </section>
 
     <!-- 点踩统计（2026-09-17 裁决：精简为点踩统计 + 点踩上下文明细两件事，不再展示点赞数据） -->
     <section class="dash-panel fb-panel">
@@ -540,166 +474,6 @@ function openAlertAction(item) {
   font-variant-numeric: tabular-nums;
   margin-right: 6px;
 }
-
-/* ---- 指标卡区 ---- */
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-lg);
-  background: var(--border-base);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  margin-bottom: 0;
-}
-.metric {
-  position: relative;
-  min-height: 154px;
-  padding: 17px 18px 15px;
-  border: 0;
-  background: #fff;
-  text-align: left;
-  transition: background 0.15s ease;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-}
-.metric.wide {
-  grid-column: span 2;
-}
-.metric:hover {
-  background: #fbfdfc;
-}
-.metric::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  background: var(--c-accent);
-}
-.metric.danger::before {
-  background: var(--c-danger);
-}
-.metric.danger .metric-tag {
-  border-color: #f0c7c4;
-  background: var(--c-danger-soft, #fdebea);
-  color: var(--c-danger);
-}
-.metric-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.metric-label {
-  color: #59655f;
-  font-size: 13px;
-  font-weight: 600;
-}
-.metric-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  border: 1px solid #d6e2db;
-  background: #f0f5f2;
-  color: #5a6a63;
-  white-space: nowrap;
-}
-.metric-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 9px;
-  flex: 1;
-}
-.metric-value {
-  color: #17211c;
-  font: 700 30px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace;
-  letter-spacing: -0.04em;
-  white-space: nowrap;
-}
-.metric-value small {
-  margin-left: 3px;
-  color: #617069;
-  font: 500 13px system-ui, sans-serif;
-  letter-spacing: 0;
-}
-.metric-sub {
-  margin-top: 9px;
-  color: #66736c;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* 圆环进度 */
-.dash-ring {
-  --pct: 0;
-  position: relative;
-  width: 50px;
-  height: 50px;
-  display: grid;
-  flex: 0 0 50px;
-  place-items: center;
-  border-radius: 50%;
-  background: conic-gradient(var(--c-accent) calc(var(--pct) * 1%), #e7ece9 0);
-}
-.dash-ring::after {
-  content: '';
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: #fff;
-}
-.dash-ring b {
-  position: relative;
-  z-index: 1;
-  color: #4c5a53;
-  font: 600 10px ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-
-/* 双格知识资产 */
-.dual-stat {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  width: 100%;
-}
-.dual-stat span {
-  padding: 9px 10px;
-  border-left: 3px solid var(--c-accent);
-  background: #f5faf7;
-  color: #6c7771;
-  font-size: 11px;
-}
-.dual-stat b {
-  display: block;
-  margin-bottom: 2px;
-  color: #213028;
-  font: 700 22px ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-
-/* 待处理分项 */
-.pending-breakdown {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
-  color: #6a756f;
-  font-size: 11px;
-}
-.pending-breakdown b {
-  display: block;
-  font: 700 16px ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-.pending-breakdown span:nth-child(1) b { color: var(--c-warning, #e6921e); }
-.pending-breakdown span:nth-child(2) b,
-.pending-breakdown span:nth-child(3) b { color: var(--c-danger); }
 
 /* ---- 面板 ---- */
 .dash-panel {
@@ -1019,9 +793,6 @@ function openAlertAction(item) {
 }
 
 /* shimmer loading */
-.loading .metric-label,
-.loading .metric-value,
-.loading .metric-sub,
 .loading .dash-alert-list,
 .loading .dash-asset-row,
 .loading .dash-table tbody tr {
@@ -1030,7 +801,6 @@ function openAlertAction(item) {
   background-size: 200% 100%;
   animation: shimmer 1s linear infinite;
 }
-.loading .metric::before,
 .loading .dash-severity-dot { opacity: 0; }
 /* 刷新期间整页不可交互（PRD §一.2 / §八）：骨架屏只处理视觉，点击仍会穿透触发 toast，
    pointer-events:none 挂在根节点，靴子一次性罩住全部卡片/按钮/弹窗触发点。 */
@@ -1042,8 +812,6 @@ function openAlertAction(item) {
   .dash-todo-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .metrics { grid-template-columns: repeat(2, 1fr); }
-  .metric.wide { grid-column: span 2; }
   .ver-grid { grid-template-columns: 1fr; }
 }
 

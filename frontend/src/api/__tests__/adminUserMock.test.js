@@ -97,14 +97,16 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
     expect(roles.find((r) => r.name === '普通用户').modules).toEqual(['对话', '定时任务', '个人空间', '设置'])
   })
 
-  it('权限树：原型 permissionGroups 形态（用户端 1 组 4 页 + 管理端 01-06 六组 20 页，共 24 页；05 治理含「版本管理」）', async () => {
+  it('权限树：原型 permissionGroups 形态（用户端 1 组 4 页 + 管理端 01-06 六组 21 页，共 25 页；05 治理含「版本管理」）', async () => {
     const tree = await getPermissionTree()
     expect(tree.map((s) => s.scope)).toEqual(['用户端', '管理端'])
     expect(tree[1].groups.map((g) => g.name)).toEqual(['01 总览', '02 岗位', '03 能力', '04 运行', '05 治理', '06 组织'])
     const pages = tree.flatMap((s) => s.groups.flatMap((g) => g.pages))
-    expect(pages).toHaveLength(24)
+    expect(pages).toHaveLength(25)
     // 版本管理（2026-09-20 新增）：列于 05 治理末位，系统管理员角色随全量页面自动带上
     expect(tree[1].groups[4].pages.at(-1)).toBe('版本管理')
+    // 存储空间（2026-10-09 新增）：列于 04 运行「运行规格」之后、「配额与限流」之前
+    expect(tree[1].groups[3].pages).toEqual(['实例管理', '运行规格', '存储空间', '配额与限流'])
     expect(pages).toContain('专家')
     expect(pages).toContain('实例管理')
     expect(pages).not.toContain('实例与会话')
@@ -162,12 +164,12 @@ describe('adminUserMock —— 用户/角色 mock（2026-09-01 PRD 对齐轮）'
 })
 
 /**
- * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（当前mockPersist v4，写点：用户 CRUD / 设角色 /
+ * 2026-09-12 测试审计补缺口（T52 · F2）：adminUserMock 持久化零用例（当前mockPersist v5，写点：用户 CRUD / 设角色 /
  * 角色 CRUD / 改权限 / __resetOrgMock）。与 dataTableMock.test 同款：注入内存版存储 + vi.resetModules 动态 import，
  * 模拟「写入 → 刷新 → 重载」；坏形状 / 旧版本快照须回种子（13 用户 / 5 角色）不白屏。
  * K15（createUser 用户名长度文案对齐 md「请输入 3–32 个字符」）已闭环，见上方「新建用户」用例。
  */
-describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:adminUser）', () => {
+describe('adminUserMock · 持久化（mockPersist v5，key iworker-demo-mock:adminUser）', () => {
   const KEY = 'iworker-demo-mock:adminUser'
   const makeStorage = () => {
     const map = new Map()
@@ -220,11 +222,11 @@ describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:ad
     expect(writes()).toBe(base + 9)
   })
 
-  it('createUser 后快照 v=4、形状 { userSeq, roleSeq, roles, users }，新用户在首位且 userSeq 递增', async () => {
+  it('createUser 后快照 v=5、形状 { userSeq, roleSeq, roles, users }，新用户在首位且 userSeq 递增', async () => {
     const m = await import('../adminUserMock')
     await m.createUser({ username: 'newuser', displayName: '新人', roleCodes: ['普通用户'] })
     const s = snap()
-    expect(s.v).toBe(4)
+    expect(s.v).toBe(5)
     expect(Object.keys(s.data).sort()).toEqual(['roleSeq', 'roles', 'userSeq', 'users'])
     expect(s.data.users).toHaveLength(14)
     expect(s.data.users[0]).toMatchObject({ id: 214, username: 'newuser', status: 'active', lastLogin: null })
@@ -252,12 +254,24 @@ describe('adminUserMock · 持久化（mockPersist v4，key iworker-demo-mock:ad
 
   it('存量快照形状不合法（users 不是数组）→ restore 抛错被兜底：清 key、回种子 13 用户 / 5 角色，不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 4, data: { userSeq: 214, roleSeq: 306, roles: [], users: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { userSeq: 214, roleSeq: 306, roles: [], users: 'oops' } }))
     const m = await import('../adminUserMock')
     expect((await m.listUsers()).total).toBe(13)
     expect(await m.listRoles()).toHaveLength(5)
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('存量快照是紧邻的上一版（v=4，权限树还没有「存储空间」）→ 同样丢弃回种子，系统管理员角色随之带上「存储空间」', async () => {
+    globalThis.localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 4, data: { userSeq: 300, roleSeq: 400, roles: [{ id: 301, code: '系统管理员', name: '系统管理员', modules: ['驾驶舱'], createdAt: '', updatedAt: '' }], users: [{ id: 1, username: 'ghost', displayName: '旧', roles: [], status: 'active', lastLogin: null }] } })
+    )
+    const m = await import('../adminUserMock')
+    expect((await m.listUsers({ keyword: 'ghost' })).total).toBe(0)
+    const admin = (await m.listRoles()).find((r) => r.name === '系统管理员')
+    expect(admin.modules).toContain('存储空间')
+    expect(admin.modules).toHaveLength(25) // 全量 25 页，旧快照里只有 1 页的那份已作废
   })
 
   it('存量快照版本不符（v=1 旧种子）→ 丢弃并回种子：不会读到旧快照里的用户', async () => {

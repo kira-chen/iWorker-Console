@@ -1,14 +1,20 @@
 <script setup>
 /**
- * 工具调用审计 · 「岗位自动化任务」页签——岗位自动化任务按调度计划触发（无人值守）后，
- * 通过「引用工具」或所引用的技能 / Agent 调用连接器工具的事后审计记录，只读。对应 PRD §八。
+ * 工具调用审计 · 「岗位自动化任务」页签——岗位自动化任务按调度计划触发（无人值守）的一次任务运行，
+ * 运行中通过任务「引用工具」或所引用的技能 / Agent 调用连接器工具的事后审计记录，只读。对应 PRD §八。
  *
- * 和「技能调用」页签的差别都来自「没有用户在场」：
- *   - user / position 是任务所属用户（领用该岗位的用户）及其岗位，不是发起人；触发的是调度计划；
- *   - 写操作无法当场确认，演示口径为「任务里预授权」——已预授权才执行，否则执行前拦截
- *     （该授权配置入口岗位 PRD 尚未定义，见 docs/04-待补需求定义/，此处只呈现调用发生时的结果）；
- *   - 因此没有「用户取消 / 待确认」两种结果，统计卡片里的「当前待确认」换成「执行前拦截」；
- *   - 一次任务运行会连续调多次工具，runId（任务运行编号）把同一次运行内的调用串起来。
+ * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次任务运行」，
+ * 与「技能调用」页签同一套模型，工具调用明细挪进详情（§8.5）。同轮讨论拍板：自动化任务全部
+ * 操作免授权、不经确认，读写一致处理——原「写操作预授权」（已预授权 / 未授权）整套字段废弃；
+ * 原「任务运行编号」字段随之废弃，记录本身已是运行级，不必再用字段串联。
+ *
+ * 和「技能调用」页签的差别都来自「没有用户在场」：user / position 是任务所属用户（领用该岗位
+ * 的用户）及其岗位，不是发起人，触发的是调度计划；没有用户确认、没有授权环节，读写操作展示
+ * 规则一致；不展示「进行中」——免授权不会运行到一半停下等人处理。
+ *
+ * 2026-10-09 同日改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程时间
+ * 数据。执行结果收窄为**成功 / 失败**两态（原「执行前拦截」并入「失败」，原因文案保留）——
+ * 与技能调用完全同构，判定规则与标签都直接复用（deriveExec / EXEC_RESULT_LABEL）。
  */
 import { computed, reactive, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
@@ -27,17 +33,18 @@ import {
   taskCallRecords,
   paramsOf,
   outputOf,
+  EXEC_RESULT_LABEL,
   RESULT_LABEL,
-  NATURE_LABEL,
-  AUTH_LABEL,
-  UNATTENDED_RESULTS
+  NATURE_LABEL
 } from '@/api/toolCallAuditMock'
 
-const RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning' }
-const AUTH_TAG = { NONE: 'info', AUTHORIZED: 'success', UNAUTHORIZED: 'warning' }
+const RUN_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const YES_NO = { true: '是', false: '否' }
+const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
-const query = reactive({ result: '', nature: '' })
+const query = reactive({ result: '', hasWrite: '' })
 
 const {
   dateRange, disabledDate, onCalendarChange,
@@ -47,65 +54,56 @@ const {
 } = useAuditList({
   fetcher: listTaskCallAudits,
   records: taskCallRecords,
-  matches: (r) => (!query.result || r.result === query.result) && (!query.nature || r.nature === query.nature),
-  keywordOf: (r) => [r.user, r.position, r.task, r.tool, r.id, r.runId]
+  matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
+  keywordOf: (r) => [r.user, r.position, r.task, r.trigger, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
-/* ── 统计卡片（PRD §八.3） ── */
+/* ── 统计卡片（PRD §8.2） ── */
 const metrics = computed(() => {
   const all = statsAll.value
   const count = (result) => all.filter((r) => r.result === result).length
-  const writes = all.filter((r) => r.nature === 'WRITE')
+  const writes = all.filter((r) => r.hasWrite)
   return [
     {
       key: 'all',
-      label: '调用请求总数',
+      label: '运行总数',
       value: all.length,
-      sub: `成功 ${count('SUCCESS')} / 拦截 ${count('BLOCKED')}`
+      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'write',
-      label: '写操作请求',
+      label: '涉及写操作的运行',
       value: writes.length,
-      sub: `已预授权 ${writes.filter((r) => r.auth === 'AUTHORIZED').length} / 未授权拦截 ${writes.filter((r) => r.auth === 'UNAUTHORIZED').length}`
+      sub: `成功 ${writes.filter((r) => r.result === 'SUCCESS').length} / 失败 ${writes.filter((r) => r.result === 'FAILED').length}`
     },
     {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
-      sub: '已尝试执行但未成功',
+      sub: '按整体结果判定',
       danger: true
-    },
-    {
-      key: 'blocked',
-      label: '执行前拦截',
-      value: count('BLOCKED'),
-      sub: '未进入工具执行阶段',
-      warn: true
     }
   ]
 })
 
 const activeMetric = computed(() => {
-  if (query.nature === 'WRITE') return 'write'
+  if (query.hasWrite === true) return 'write'
   if (query.result === 'FAILED') return 'failed'
-  if (query.result === 'BLOCKED') return 'blocked'
   return ''
 })
 
 function chooseMetric(key) {
   query.result = ''
-  query.nature = ''
-  if (key === 'write') query.nature = 'WRITE'
+  query.hasWrite = ''
+  if (key === 'write') query.hasWrite = true
   if (key === 'failed') query.result = 'FAILED'
-  if (key === 'blocked') query.result = 'BLOCKED'
   list.search()
 }
 
 const HELP = [
-  '调用请求包含成功、执行失败和执行前拦截三类结果；任务无人值守，不存在用户取消和待确认。一次任务运行内的重试按新的调用请求单独记录，可用任务运行编号串联。',
-  '写操作需在任务中预先授权：已预授权的执行，未授权的在执行前拦截。执行耗时只统计工具实际执行时间。'
+  '执行结果只有成功、失败两类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
+  '单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
 /* ── 导出 CSV ── */
@@ -113,10 +111,10 @@ function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-岗位自动化任务-筛选结果.csv',
-    ['请求编号', '任务运行编号', '日期', '时间', '用户', '岗位', '任务', '触发方式', '工具', '性质', '写操作授权', '结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '任务', '触发方式', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
-      r.id, r.runId, r.date, r.time, r.user, r.position, r.task, r.trigger, r.tool,
-      NATURE_LABEL[r.nature], AUTH_LABEL[r.auth], RESULT_LABEL[r.result], r.reason, r.duration
+      r.id, r.date, r.time, r.user, r.position, r.task, r.trigger,
+      YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
@@ -135,54 +133,33 @@ const detail = computed(() => {
   const d = current.value
   if (!d) return null
   return {
-    title: `调用详情 · ${d.id}`,
-    result: { label: RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
+    title: `运行详情 · ${d.id}`,
+    result: { label: EXEC_RESULT_LABEL[d.result], type: RUN_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '自动化任务', value: d.task },
       { label: '触发方式', value: d.trigger },
-      { label: '任务运行编号', value: d.runId, mono: true },
-      { label: '工具标识', value: d.tool, mono: true },
-      { label: '执行耗时', value: d.duration }
+      { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
-    steps: timelineSteps(d),
+    calls: d.calls.map((c) => ({
+      tool: c.tool,
+      nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
+      confirm: null,
+      result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
+      reason: c.reason,
+      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，规则同技能调用页签（§8.5）。
+      showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
+      params: paramsOf(c),
+      output: outputOf(c)
+    })),
     explain: resultExplain(d),
-    params: paramsOf(d),
-    output: outputOf(d)
+    emptyCallsText: '本次运行未调用外部工具'
   }
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议检查连接器状态及工具服务日志，并按任务运行编号核对同一次运行内是否已有后续重试记录。'
-  if (d.result === 'BLOCKED' && d.auth === 'UNAUTHORIZED') {
-    return '该任务未对写操作预授权，无人值守时不会自动执行。如需执行，请在岗位自动化任务中核对工具授权，或改由用户在对话中发起。'
-  }
-  if (d.result === 'BLOCKED') return '请核对该岗位允许使用的工具和任务所属用户权限，任务下次运行时会重新检查。'
-  return '本次调用已完成，可查看返回信息。'
-}
-
-/** 执行过程时间线：被拦截的调用在「调用检查」节点停止，不展示后续阶段（PRD §八.6）。 */
-function timelineSteps(d) {
-  const steps = [
-    { time: d.time, title: '任务触发', desc: `按「${d.trigger}」触发任务「${d.task}」，所属用户 ${d.user}（${d.position}）。`, type: 'primary' }
-  ]
-  if (d.result === 'BLOCKED') {
-    steps.push({ time: '', title: '检查未通过，已拦截', desc: `${d.reason}。请求未进入工具执行阶段。`, type: 'danger' })
-    return steps
-  }
-  steps.push({ time: '', title: '调用检查通过', desc: '请求进入后续处理。', type: 'primary' })
-  if (d.auth === 'AUTHORIZED') {
-    steps.push({ time: '', title: '写操作已预授权', desc: `任务保存时由 ${d.authBy} 授权（${d.authAt}），运行期间无需再次确认。`, type: 'success' })
-  } else {
-    steps.push({ time: '', title: '无需授权', desc: '读操作直接进入执行阶段。', type: 'primary' })
-  }
-  steps.push({
-    time: d.endAt || '',
-    title: RESULT_LABEL[d.result],
-    desc: `工具执行耗时 ${d.duration}${d.reason ? ' / ' + d.reason : ''}`,
-    type: d.result === 'FAILED' ? 'danger' : 'success'
-  })
-  return steps
+  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  return '本次运行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>
 
@@ -202,11 +179,12 @@ function timelineSteps(d) {
         @change="list.search()"
         class="lt-date-range"
       />
-      <el-select v-model="query.result" placeholder="全部执行结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="key in UNATTENDED_RESULTS" :key="key" :label="RESULT_LABEL[key]" :value="key" />
+      <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
+        <el-option v-for="(label, key) in EXEC_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
-      <el-select v-model="query.nature" placeholder="全部操作性质" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="(label, key) in NATURE_LABEL" :key="key" :label="label" :value="key" />
+      <el-select v-model="query.hasWrite" placeholder="全部" clearable class="lt-filter" @change="list.search()">
+        <el-option label="是" :value="true" />
+        <el-option label="否" :value="false" />
       </el-select>
       <el-input
         v-model="keyword"
@@ -229,7 +207,7 @@ function timelineSteps(d) {
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        empty-text="暂无符合条件的调用记录"
+        empty-text="暂无符合条件的运行记录"
         @retry="list.reload"
       >
         <el-table :data="rows" class="tca-table">
@@ -248,32 +226,22 @@ function timelineSteps(d) {
               {{ row.user }}<span class="tca-secondary">{{ row.position }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="任务 / 工具" :min-width="COL.NAME_MIN" show-overflow-tooltip>
-            <template #default="{ row }">
-              {{ row.task }}<span class="tca-secondary tca-mono">{{ row.tool }}</span>
-            </template>
+          <el-table-column label="任务" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.task }}</template>
           </el-table-column>
           <el-table-column label="触发方式" min-width="150" show-overflow-tooltip>
             <template #default="{ row }">{{ row.trigger }}</template>
           </el-table-column>
-          <el-table-column label="性质" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
+          <el-table-column label="涉及写操作" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #default="{ row }">
-              <StatusTag :type="row.nature === 'WRITE' ? 'accent' : 'info'">{{ NATURE_LABEL[row.nature] }}</StatusTag>
+              <StatusTag :type="YES_NO_TAG(row.hasWrite)">{{ YES_NO[row.hasWrite] }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="写操作授权" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
+          <el-table-column label="执行结果 / 原因" min-width="220">
             <template #default="{ row }">
-              <StatusTag :type="AUTH_TAG[row.auth]">{{ AUTH_LABEL[row.auth] }}</StatusTag>
-            </template>
-          </el-table-column>
-          <el-table-column label="执行结果 / 原因" min-width="180">
-            <template #default="{ row }">
-              <StatusTag :type="RESULT_TAG[row.result]">{{ RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag :type="RUN_RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
-          </el-table-column>
-          <el-table-column label="执行耗时" width="110">
-            <template #default="{ row }">{{ row.duration }}</template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
@@ -319,8 +287,5 @@ function timelineSteps(d) {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   margin-top: 2px;
-}
-.tca-mono {
-  font-family: Consolas, monospace;
 }
 </style>

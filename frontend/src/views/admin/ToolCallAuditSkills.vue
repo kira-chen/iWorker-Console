@@ -1,13 +1,17 @@
 <script setup>
 /**
- * 工具调用审计 · 「技能调用」页签——用户在对话中触发，技能调用连接器工具（MCP / API / 业务系统）的
- * 事后审计记录，只读。对应 PRD §二 ~ §七（prd.工具调用审计.md）。
+ * 工具调用审计 · 「技能调用」页签——用户在对话中触发的一次技能执行，执行中调用连接器工具
+ * （MCP / API / 业务系统）的事后审计记录，只读。对应 PRD §二 ~ §七（prd.工具调用审计.md）。
  *
- * 2026-09-28 PRD 首次落地：本模块此前仅存在于已退场的旧交互原型，按新写的 PRD 正本改造为规范实现，
- * 字段/术语已与原型有出入（role→position，时间筛选改用访问审计同款日期区间选择器）。
- * 同日拆页签：页头与页签外壳移到 AdminToolCallAudit.vue，取数 / 时间范围 / 排序 / 搜索收进
- * useAuditList，统计卡片与详情抽屉收进 AuditMetricGrid / AuditCallDrawer，本文件只保留
- * 「技能调用」自己的筛选、统计口径、列与时间线。
+ * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次技能执行」——
+ * 单次对话可能多次调用工具，按单条工具调用上报数据量大，且单个工具失败、整体兜底成功时单纯记
+ * 工具失败意义有限。列表层只看整体结果与一个布尔态（是否涉及写操作），工具调用的明细挪进
+ * 详情（§5.2）。
+ *
+ * 2026-10-09 同日第二轮改版：不展示耗时与「执行中」——系统本来就不采集单次工具调用的过程
+ * 时间数据，技能执行只在确认 / 执行都有结果后才入账，没有「待确认」这个可展示的中间态；
+ * 执行结果收窄为 成功 / 失败 两态（原「进行中」随之消失）。
+ *
  * 列表分页走全站统一的 useAdminList paged:'client'（2026-09-08 原型复刻批次 1 负责人拍板：全站所有列表页都分页）。
  */
 import { computed, reactive, ref } from 'vue'
@@ -27,16 +31,20 @@ import {
   toolCallRecords,
   paramsOf,
   outputOf,
+  EXEC_RESULT_LABEL,
   RESULT_LABEL,
   CONFIRM_LABEL,
   NATURE_LABEL
 } from '@/api/toolCallAuditMock'
 
-const RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger', BLOCKED: 'warning', CANCELLED: 'info', PENDING: 'accent' }
-const CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success', PENDING: 'accent', CANCELLED: 'info' }
+const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
+const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success' }
+const YES_NO = { true: '是', false: '否' }
+const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
-const query = reactive({ result: '', nature: '' })
+const query = reactive({ result: '', hasWrite: '' })
 
 const {
   dateRange, disabledDate, onCalendarChange,
@@ -46,66 +54,56 @@ const {
 } = useAuditList({
   fetcher: listToolCallAudits,
   records: toolCallRecords,
-  matches: (r) => (!query.result || r.result === query.result) && (!query.nature || r.nature === query.nature),
-  keywordOf: (r) => [r.user, r.position, r.skill, r.tool, r.id]
+  matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
+  keywordOf: (r) => [r.user, r.position, r.skill, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
-/* ── 统计卡片（口径基于当前时间范围 + 筛选后的全量结果，与列表联动） ── */
+/* ── 统计卡片（PRD §二） ── */
 const metrics = computed(() => {
   const all = statsAll.value
   const count = (result) => all.filter((r) => r.result === result).length
-  const writes = all.filter((r) => r.nature === 'WRITE')
+  const writes = all.filter((r) => r.hasWrite)
   return [
     {
       key: 'all',
-      label: '调用请求总数',
+      label: '执行总数',
       value: all.length,
-      sub: `成功 ${count('SUCCESS')} / 拦截 ${count('BLOCKED')} / 取消 ${count('CANCELLED')}`
+      sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'write',
-      label: '写操作请求',
+      label: '涉及写操作的执行',
       value: writes.length,
-      sub: `需要确认 ${writes.filter((r) => r.confirm !== 'NONE').length} / 已确认 ${writes.filter((r) => r.confirm === 'CONFIRMED').length}`
+      sub: `已确认 ${writes.filter((r) => r.calls.some((c) => c.confirm === 'CONFIRMED')).length} / 不需要确认 ${writes.filter((r) => r.calls.every((c) => c.nature !== 'WRITE' || c.confirm === 'NONE')).length}`
     },
     {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
-      sub: '已尝试执行但未成功',
+      sub: '按整体结果判定',
       danger: true
-    },
-    {
-      key: 'pending',
-      label: '当前待确认',
-      value: count('PENDING'),
-      sub: '等待用户确认，尚未执行',
-      warn: true
     }
   ]
 })
 
 const activeMetric = computed(() => {
-  if (query.nature === 'WRITE') return 'write'
+  if (query.hasWrite === true) return 'write'
   if (query.result === 'FAILED') return 'failed'
-  if (query.result === 'PENDING') return 'pending'
   return ''
 })
 
 function chooseMetric(key) {
   query.result = ''
-  query.nature = ''
-  if (key === 'write') query.nature = 'WRITE'
+  query.hasWrite = ''
+  if (key === 'write') query.hasWrite = true
   if (key === 'failed') query.result = 'FAILED'
-  if (key === 'pending') query.result = 'PENDING'
   list.search()
 }
 
-/* ── 统计口径说明（PRD §二，卡片下方【统计口径】入口展开） ── */
 const HELP = [
-  '调用请求包含成功、执行失败、执行前拦截、用户取消和待确认五类结果；一次任务内的重试按新的调用请求单独记录。',
-  '执行耗时只统计工具实际执行时间，不含等待用户确认的时间；"待确认"反映当前尚未处理的请求，不是历史累计数量。'
+  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：一次技能执行只在确认与执行都有结果后才入账。',
+  '同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
 /* ── 导出 CSV ── */
@@ -113,16 +111,16 @@ function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-技能调用-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '工具', '性质', '确认', '结果', '原因', '执行耗时', '确认等待'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
-      r.id, r.date, r.time, r.user, r.position, r.skill, r.tool,
-      NATURE_LABEL[r.nature], CONFIRM_LABEL[r.confirm], RESULT_LABEL[r.result], r.reason, r.duration, r.wait
+      r.id, r.date, r.time, r.user, r.position, r.skill,
+      YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
   ElMessage.success(`已导出 ${rowsToExport.length} 条筛选结果`)
 }
 
-/* ── 详情抽屉：把一条记录翻译成抽屉需要的几份数据 ── */
+/* ── 详情抽屉：把一条执行记录翻译成抽屉需要的几份数据 ── */
 const detailVisible = ref(false)
 const current = ref(null)
 
@@ -135,57 +133,32 @@ const detail = computed(() => {
   const d = current.value
   if (!d) return null
   return {
-    title: `调用详情 · ${d.id}`,
-    result: { label: RESULT_LABEL[d.result], type: RESULT_TAG[d.result] },
+    title: `执行详情 · ${d.id}`,
+    result: { label: EXEC_RESULT_LABEL[d.result], type: EXEC_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
       { label: '技能', value: d.skill },
-      { label: '工具标识', value: d.tool, mono: true },
-      { label: '执行耗时 / 等待确认', value: `${d.duration} / ${d.wait}` }
+      { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
-    steps: timelineSteps(d),
-    explain: resultExplain(d),
-    params: paramsOf(d),
-    output: outputOf(d)
+    calls: d.calls.map((c) => ({
+      tool: c.tool,
+      nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
+      confirm: c.confirm ? { label: CONFIRM_LABEL[c.confirm], type: CALL_CONFIRM_TAG[c.confirm] } : null,
+      result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
+      reason: c.reason,
+      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，数据量压力主要来自这部分
+      // 高频调用，且极少被实际查阅；写操作与非成功结果才展示（§5.2）。
+      showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
+      params: paramsOf(c),
+      output: outputOf(c)
+    })),
+    explain: resultExplain(d)
   }
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议检查连接器状态及工具服务日志，并核对是否已有后续重试记录。'
-  if (d.result === 'BLOCKED') return '请核对该岗位允许使用的工具和用户权限，再由发起人重新提交任务。'
-  if (d.result === 'CANCELLED') return '本次操作已终止。如仍需执行，请由发起人重新发起。'
-  if (d.result === 'PENDING') return '等待发起人在客户端处理，此页不代替用户确认。'
-  return '本次调用已完成，可查看返回信息。'
-}
-
-/** 执行过程时间线：拦截 / 取消 / 待确认会在对应节点停止，不展示后续阶段（PRD §5.2）。 */
-function timelineSteps(d) {
-  const steps = [
-    { time: d.time, title: '发起调用', desc: `${d.user} 通过「${d.position}」执行「${d.skill}」。`, type: 'primary' }
-  ]
-  if (d.result === 'BLOCKED') {
-    steps.push({ time: '', title: '检查未通过，已拦截', desc: `${d.reason}。请求未进入工具执行阶段。`, type: 'danger' })
-    return steps
-  }
-  steps.push({ time: '', title: '调用检查通过', desc: '请求进入后续处理。', type: 'primary' })
-  if (d.confirm === 'CONFIRMED') {
-    steps.push({ time: d.confirmedAt || '【待补充】', title: '用户已确认', desc: `确认人：${d.user} / 客户端 / 等待 ${d.wait}`, type: 'success' })
-  } else if (d.confirm === 'PENDING' || d.confirm === 'CANCELLED') {
-    steps.push({
-      time: '',
-      title: d.confirm === 'PENDING' ? '待确认' : '已取消',
-      desc: d.confirm === 'PENDING' ? '请发起人在客户端确认。' : '用户在客户端取消，工具未执行。',
-      type: 'danger'
-    })
-    return steps
-  }
-  steps.push({
-    time: d.endAt || '',
-    title: RESULT_LABEL[d.result],
-    desc: `工具执行耗时 ${d.duration}${d.reason ? ' / ' + d.reason : ''}`,
-    type: d.result === 'FAILED' ? 'danger' : 'success'
-  })
-  return steps
+  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  return '本次执行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>
 
@@ -206,10 +179,11 @@ function timelineSteps(d) {
         class="lt-date-range"
       />
       <el-select v-model="query.result" placeholder="全部结果" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="(label, key) in RESULT_LABEL" :key="key" :label="label" :value="key" />
+        <el-option v-for="(label, key) in EXEC_RESULT_LABEL" :key="key" :label="label" :value="key" />
       </el-select>
-      <el-select v-model="query.nature" placeholder="全部" clearable class="lt-filter" @change="list.search()">
-        <el-option v-for="(label, key) in NATURE_LABEL" :key="key" :label="label" :value="key" />
+      <el-select v-model="query.hasWrite" placeholder="全部" clearable class="lt-filter" @change="list.search()">
+        <el-option label="是" :value="true" />
+        <el-option label="否" :value="false" />
       </el-select>
       <el-input
         v-model="keyword"
@@ -223,7 +197,7 @@ function timelineSteps(d) {
       </el-input>
       <el-button @click="applySearch">查询</el-button>
       <template #right>
-        <el-button @click="exportCsv">导出 CSV</el-button>
+        <el-button @click="exportCsv">导出筛选结果 CSV</el-button>
       </template>
     </ListToolbar>
 
@@ -232,7 +206,7 @@ function timelineSteps(d) {
         :loading="loading"
         :error="loadError"
         :empty="isEmpty"
-        empty-text="暂无符合条件的调用记录"
+        empty-text="暂无符合条件的执行记录"
         @retry="list.reload"
       >
         <el-table :data="rows" class="tca-table">
@@ -251,30 +225,18 @@ function timelineSteps(d) {
               {{ row.user }}<span class="tca-secondary">{{ row.position }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能 / 工具" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+          <el-table-column label="技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.skill }}</template>
+          </el-table-column>
+          <el-table-column label="涉及写操作" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #default="{ row }">
-              {{ row.skill }}<span class="tca-secondary tca-mono">{{ row.tool }}</span>
+              <StatusTag :type="YES_NO_TAG(row.hasWrite)">{{ YES_NO[row.hasWrite] }}</StatusTag>
             </template>
           </el-table-column>
-          <el-table-column label="性质" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
+          <el-table-column label="执行结果 / 原因" min-width="220">
             <template #default="{ row }">
-              <StatusTag :type="row.nature === 'WRITE' ? 'accent' : 'info'">{{ NATURE_LABEL[row.nature] }}</StatusTag>
-            </template>
-          </el-table-column>
-          <el-table-column label="用户确认" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
-            <template #default="{ row }">
-              <StatusTag :type="CONFIRM_TAG[row.confirm]">{{ CONFIRM_LABEL[row.confirm] }}</StatusTag>
-            </template>
-          </el-table-column>
-          <el-table-column label="执行结果 / 原因" min-width="180">
-            <template #default="{ row }">
-              <StatusTag :type="RESULT_TAG[row.result]">{{ RESULT_LABEL[row.result] }}</StatusTag>
-              <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="执行 / 等待确认" width="140">
-            <template #default="{ row }">
-              {{ row.duration }}<span class="tca-secondary">确认：{{ row.wait }}</span>
+              <StatusTag :type="EXEC_RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
+              <span v-if="row.result === 'FAILED' && row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
@@ -321,8 +283,5 @@ function timelineSteps(d) {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   margin-top: 2px;
-}
-.tca-mono {
-  font-family: Consolas, monospace;
 }
 </style>
