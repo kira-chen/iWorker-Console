@@ -499,6 +499,14 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     await expect(run(m.forceRevokeApi('api_1101', 'x'.repeat(500)))).resolves.toBeTruthy() // 恰 500 字放行
   })
 
+  // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
+  it('J42 回收前后最近更新时间不变（API）', async () => {
+    const before = (await run(m.getApi('api_1101'))).updatedAt
+    const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.updatedAt).toBe(before)
+    expect((await run(m.getApi('api_1101'))).updatedAt).toBe(before)
+  })
+
   it('写访问审计：模块 API · 动作 强制回收 · 变更内容 = 回收原因', async () => {
     const ops = await auditOps()
     const n = ops.length

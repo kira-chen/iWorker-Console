@@ -898,7 +898,7 @@ export async function forceRevokeApi(id, reason) {
   if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   a.status = 'NOT_PUBLISHED'
   a.revoked = makeRevokedInfo(text)
-  a.updatedAt = nowIso()
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
   appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: text })
   persist()
   return toRow(a)

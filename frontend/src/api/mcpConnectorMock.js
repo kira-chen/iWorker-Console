@@ -781,7 +781,7 @@ export async function forceRevokeMcpService(id, reason) {
   if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   pubAgg[m.id] = 'NOT_PUBLISHED'
   m.revoked = makeRevokedInfo(text)
-  m.updatedAt = nowIso()
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
   appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: text })
   persist()
   return toRow(m)

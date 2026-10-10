@@ -318,6 +318,13 @@ describe('forceRevokeExpert —— 强制回收', () => {
     expect((await getExpert(201)).status).toBe('published')
   })
 
+  // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
+  it('J42 回收前后最近更新时间不变（专家）', async () => {
+    const before = (await getExpert(201)).updatedAt
+    await forceRevokeExpert(201, { reason: '风险' })
+    expect((await getExpert(201)).updatedAt).toBe(before)
+  })
+
   it('回收后：立即回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked、不进审核中心', async () => {
     const before = await getExpert(201)
     const reviewsBefore = await reviewTotal()

@@ -353,7 +353,7 @@ export async function forceRevokeBizSystem(id, reason) {
   if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   b.status = 'NOT_PUBLISHED'
   b.revoked = makeRevokedInfo(text)
-  b.updatedAt = nowIso()
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
   appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: text })
   persist()
   return toRow(b)
