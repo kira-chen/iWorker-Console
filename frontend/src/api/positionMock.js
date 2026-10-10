@@ -380,6 +380,11 @@ export async function createPosition(payload = {}) {
   publications[p.positionId] = []
   // 工作台条目同步初始化（新建岗位小弹窗 → 跳工作台即可编辑；工作台新建态首存 hydrate 需完整详情树）
   workbench[String(p.positionId)] = emptyWorkbench(payload)
+  // payload 带连接器 id 时同样回写连接器侧「被岗位引用」清单，与 updatePosition 同口径（yuepu#90①；UI 新建弹窗不传这些字段）
+  const wb = workbench[String(p.positionId)]
+  if ('businessSystemIds' in payload) syncBizPositionRefs(p.positionId, p.name, wb.businessSystemIds)
+  if ('connectorMcpIds' in payload) syncMcpPositionRefs(p.positionId, p.name, wb.connectorMcpIds)
+  if ('connectorApiIds' in payload) syncApiPositionRefs(p.positionId, p.name, wb.connectorApiIds)
   writeIdFloor()
   persist()
   return detailVO(p)

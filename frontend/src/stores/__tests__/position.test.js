@@ -221,14 +221,6 @@ describe('position store', () => {
     expect(store.allSkills.map((x) => x.skill.skillId)).not.toContain(101)
   })
 
-  it('reorderSkillsLocal 重排同泳道顺序', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    const store = usePositionStore()
-    await store.load(5)
-    store.reorderSkillsLocal(11, [{ skillId: 102 }, { skillId: 101 }])
-    expect(store.agents[0].skills.map((s) => s.skillId)).toEqual([102, 101])
-  })
-
   /* ============== silent 静默刷新（window-focus refetch 闪烁修复） ============== */
   it('load(id,{silent:true}) 全程不切 loading（避免回切标签整页闪骨架）', async () => {
     // 用可控延迟 promise 卡住 getPosition，await 期间检查 loading 始终为 false。

@@ -133,6 +133,19 @@ describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', (
   })
 })
 
+describe('positionMock.createPosition · 带连接器 id 新建同样回写引用清单（yuepu#90①）', () => {
+  it('新建岗位 payload 带三类连接器 id，连接器侧引用清单含新岗位', async () => {
+    const pos = await import('../positionMock')
+    const created = await pos.createPosition({ name: '带连接器新建岗', connectorMcpIds: ['mail_center'], connectorApiIds: ['api_1103'], businessSystemIds: ['biz_2101'] })
+    const mcp = await import('../mcpConnectorMock')
+    const api = await import('../apiConnectorMock')
+    const biz = await import('../bizSystemMock')
+    expect((await mcp.getMcp('mail_center')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
+    expect((await api.getApi('api_1103')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
+    expect((await biz.getBizSystem('biz_2101')).referencedByPositions.map((x) => x.positionId)).toContain(created.positionId)
+  })
+})
+
 describe('positionMock.updatePosition · 连接器引用回写落盘读回（yuepu#51）', () => {
   // 种子：401（已发布）绑 expense_mcp / api_1101 / biz_2101；biz_2101 另被 402 引用
   it('解绑：401 清空三类连接器后，重新加载各连接器 mock，引用数与引用清单反映改后状态', async () => {
