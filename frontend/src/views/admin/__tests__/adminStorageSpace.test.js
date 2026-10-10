@@ -346,6 +346,26 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     expect(api.listStorageMembers.mock.calls[0][0].keyword).toBeUndefined()
   })
 
+  it('从访问审计点同意 / 拒绝扩容的【查看】（?tab=request&keyword=）：直接落在扩容申请页签，按用户名搜索，状态筛选为「全部状态」（访问审计 §6.3）；切走再切回恢复默认待处理、搜索词清空', async () => {
+    route.query = { tab: 'request', keyword: 'chenyu' }
+    const c = await mountPage()
+    expect(c.querySelector('.el-tabs__item.is-active').textContent).toContain('扩容申请')
+    expect(api.listStorageMembers).not.toHaveBeenCalled() // 容量分配页签懒挂载，没进来
+    const first = api.listExpansionRequests.mock.calls[0][0]
+    expect(first.keyword).toBe('chenyu')
+    expect(first.status).toBeUndefined() // 全部状态：参数为空，useAdminList 会去掉
+    expect(c.querySelector('.lt-filter .el-select__placeholder')?.textContent.trim()).toBe('全部状态')
+    const tabs = c.querySelectorAll('.el-tabs__item')
+    tabs[0].click()
+    await flushAll(12)
+    api.listExpansionRequests.mockClear()
+    tabs[1].click()
+    await flushAll(12)
+    const again = api.listExpansionRequests.mock.calls.at(-1)[0]
+    expect(again.keyword).toBeUndefined()
+    expect(again.status).toBe('PENDING')
+  })
+
   it('手动进入扩容申请页签，状态筛选默认「待处理」（md §四·1），没有搜索词', async () => {
     await openRequestTab()
     const params = api.listExpansionRequests.mock.calls.at(-1)[0]

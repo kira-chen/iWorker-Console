@@ -19,12 +19,14 @@ import { REQUEST_STATE, REJECT_REASON_MAX as REJECT_MAX, quotaInputError, fmtGb 
 
 const props = defineProps({
   /** 从容量分配页「待处理」跳转过来时带入的员工用户名，作为初始搜索词 */
-  focusKeyword: { type: String, default: '' }
+  focusKeyword: { type: String, default: '' },
+  /** 跳转带入的初始状态筛选：待处理（默认）或 ''（全部状态，访问审计跳来时用） */
+  focusStatus: { type: String, default: 'PENDING' }
 })
 const emit = defineEmits(['changed'])
 
 // sortOrder：「处理时间」列头箭头，默认倒序（↓），只影响已处理的申请；待处理永远排在前面、先到先处理
-const query = reactive({ keyword: props.focusKeyword, status: 'PENDING', sortOrder: 'descending' })
+const query = reactive({ keyword: props.focusKeyword, status: props.focusStatus, sortOrder: 'descending' })
 const list = useAdminList(listExpansionRequests, { params: () => ({ ...query }) })
 const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
 const reload = list.search
@@ -36,10 +38,10 @@ watch(() => query.keyword, () => {
   if (keywordTimer) clearTimeout(keywordTimer)
   keywordTimer = setTimeout(reload, 300)
 })
-// 已挂载后再次从容量分配页跳来：同步搜索词并回到待处理
+// 已挂载后再次跳来：同步搜索词与状态筛选
 watch(() => props.focusKeyword, (kw) => {
   query.keyword = kw
-  query.status = 'PENDING'
+  query.status = props.focusStatus
   reload()
 })
 onBeforeUnmount(() => keywordTimer && clearTimeout(keywordTimer))
