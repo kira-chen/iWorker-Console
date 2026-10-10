@@ -893,10 +893,13 @@ export async function forceRevokeApi(id, reason) {
   const a = findApi(id)
   if (!a) throw err('API 不存在')
   if (a.status !== 'PUBLISHED' || a.pendingAction) throw err('API状态已变化，请刷新后重试')
+  const text = String(reason || '').trim() // 服务端校验与技能 / 专家一致（待决策 J41）
+  if (!text) throw err('请输入回收原因', 'reason')
+  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   a.status = 'NOT_PUBLISHED'
-  a.revoked = makeRevokedInfo(reason)
+  a.revoked = makeRevokedInfo(text)
   a.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: reason })
+  appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: text })
   persist()
   return toRow(a)
 }

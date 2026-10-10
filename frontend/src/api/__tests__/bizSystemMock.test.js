@@ -441,6 +441,16 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     expect(listed.revoked.reason).toBe(reason)
   })
 
+  // 待决策 J41（浦月 2026-10-10 选 A）：原因校验在 mock 层与技能 / 专家一致，不只靠 UI 的 inputValidator
+  it('J41 原因为空 / 纯空白 → 抛「请输入回收原因」，状态不变；超 500 字 → 「回收原因最多 500 字」', async () => {
+    const { m, run } = await fresh()
+    await expect(run(m.forceRevokeBizSystem('biz_2101', ""))).rejects.toThrow('请输入回收原因')
+    await expect(run(m.forceRevokeBizSystem('biz_2101', "   "))).rejects.toThrow('请输入回收原因')
+    await expect(run(m.forceRevokeBizSystem('biz_2101', 'x'.repeat(501)))).rejects.toThrow('回收原因最多 500 字')
+    expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeNull()
+    await expect(run(m.forceRevokeBizSystem('biz_2101', 'x'.repeat(500)))).resolves.toBeTruthy() // 恰 500 字放行
+  })
+
   it('写访问审计：模块 业务系统 · 动作 强制回收 · 变更内容 = 回收原因', async () => {
     const { m, audit, run } = await fresh()
     const n = audit.opsRecords.length

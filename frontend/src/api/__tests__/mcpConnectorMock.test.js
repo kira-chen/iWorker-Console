@@ -803,6 +803,15 @@ describe('mcpConnectorMock · 强制回收', () => {
     expect(posAfter.referencedByPositions).toEqual(posBefore.referencedByPositions)
   })
 
+  // 待决策 J41（浦月 2026-10-10 选 A）：原因校验在 mock 层与技能 / 专家一致，不只靠 UI 的 inputValidator
+  it('J41 原因为空 / 纯空白 → 抛「请输入回收原因」，状态不变；超 500 字 → 「回收原因最多 500 字」', async () => {
+    await expect(m.forceRevokeMcpService('knowledge_hub', "")).rejects.toThrow('请输入回收原因')
+    await expect(m.forceRevokeMcpService('knowledge_hub', "   ")).rejects.toThrow('请输入回收原因')
+    await expect(m.forceRevokeMcpService('knowledge_hub', 'x'.repeat(501))).rejects.toThrow('回收原因最多 500 字')
+    expect((await m.getMcp('knowledge_hub')).revoked).toBeNull()
+    await expect(m.forceRevokeMcpService('knowledge_hub', 'x'.repeat(500))).resolves.toBeTruthy() // 恰 500 字放行
+  })
+
   it('写访问审计：模块 MCP · 动作 强制回收 · 变更内容 = 回收原因（不带版本号）', async () => {
     const n = audit.opsRecords.length
     await m.forceRevokeMcpService('knowledge_hub', reasonText)
