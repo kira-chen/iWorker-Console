@@ -108,25 +108,28 @@ export function appendOpsRecord({ operator, module, action, target, detail = '',
 }
 
 /* ---------------- 落给客户端的数据（PRD §6.5，只读查询） ---------------- */
-// 客户端登录时和之后每 5 分钟拉取，按「上次拉取时间之后」增量处理；不受页面 90 天窗口限制（这里不按日期截断），
+// 客户端登录时和之后每 5 分钟拉取，按「上次拉取之后新增」增量处理（以记录标识游标为准，见 listClientFacingOps 的 afterId）；不受页面 90 天窗口限制（这里不按日期截断），
 // 不含操作人。页面暂不消费，用于演示与测试「管理端落给客户端的数据」长什么样。
 const FORCE_REVOKE_MODULES = ['技能', '专家', 'MCP', 'API', '业务系统']
 const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时，按分钟补 :00
 
 /**
- * 取「客户端要读」的记录视图，按操作时间正序（同秒按记录 id）。
- * @param {{since?: string}} [opts] since = 上次拉取时间（YYYY-MM-DD HH:mm:ss），只返回 at 严格晚于它的记录；缺省 = 全量
+ * 取「客户端要读」的记录视图，按操作时间正序（同秒按记录 id；仅是返回顺序，增量游标用 recordId）。
+ * @param {{afterId?: number}} [opts] afterId = 记录标识游标（客户端上次拉到的最大 recordId），只返回 recordId 严格大于它的记录；缺省 = 全量。
+ *   增量以「记录标识 / 序号游标」为准、时间 at 仅作展示（PRD §6.5，2026-10-10 J48）：at 只到秒，同一秒内先后写入两条时，
+ *   若拿时间当游标取到那一秒，后写的会漏；recordId 是写入顺序的单调序号（appendOpsRecord 的 opsSeq++），不会漏也不会重。
+ *   2026-10-10 起明确替换原先的 since（按 at 过滤）参数，不再保留。
  * @returns {Array<object>} 每条带 kind 区分四类，公共字段 recordId（记录标识，去重用）/ at（操作时间，秒级）：
  *   forceRevoke   {kind, recordId, at, objectType(=模块), objectId, objectName, reason}                         §6.5.1
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
  *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
  */
-export function listClientFacingOps({ since } = {}) {
+export function listClientFacingOps({ afterId } = {}) {
   const out = []
   for (const r of opsRecords) {
     const at = atOf(r)
-    if (since && !(at > since)) continue
+    if (afterId != null && !(r.id > afterId)) continue
     if (r.action === '强制回收' && FORCE_REVOKE_MODULES.includes(r.module)) {
       out.push({ kind: 'forceRevoke', recordId: r.id, at, objectType: r.module, objectId: r.objectId ?? null, objectName: r.target, reason: r.detail || '' })
     } else if (r.module === '用户技能审核' && (r.action === '审核通过' || r.action === '审核驳回')) {
