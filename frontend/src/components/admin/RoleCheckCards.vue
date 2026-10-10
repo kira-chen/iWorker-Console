@@ -3,7 +3,7 @@
  * 角色卡片复选（check-card）——用户新建窗「初始角色」与设置角色窗共用（2026-09-08 原型复刻批次 2A · G#6 / #8）。
  *
  * 【形态】照原型 L110 `.check-list{grid 两列 gap 10}` + `.check-card{flex;gap 9;padding 11;边框 8px 圆角}`
- *   卡内 = 原生 checkbox（accent 绿）+ `<strong>角色名</strong><small>授予对应平台权限</small>`；
+ *   卡内 = 原生 checkbox（accent 绿）+ `<strong>角色名</strong>`（副文案「授予对应平台权限」为原型残留、md 无，2026-10-10 按 J35 删除）；
  *   选中态 `:has(input:checked)` 绿边 + 浅绿底；未选校验错误 `.error-text`「请至少选择一个角色」内联在区块下方。
  * 【为什么不用 el-checkbox】原型是整卡可点的 label 包裹原生框，EP 复选的框 + 文案结构与之不同，
  *   用原生 input 更贴且测试可直接取 input 断言。
@@ -44,7 +44,6 @@ function toggle(code, on) {
         />
         <span>
           <strong>{{ o.name }}</strong>
-          <small>授予对应平台权限</small>
         </span>
       </label>
     </div>
@@ -90,12 +89,6 @@ function toggle(code, on) {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   color: var(--c-text-strong);
-}
-.check-card small {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
 }
 .rcc.is-invalid .check-card {
   border-color: var(--c-danger);
