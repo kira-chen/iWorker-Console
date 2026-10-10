@@ -56,6 +56,7 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let posSeq = 405
 let agentSeq = 520
 
+// 口径（J61，2026-10-10 浦月批复）：水位线只升不降；只有整体重置 __resetPositionMock（含清站点数据 / resetMock=1）会把它归零，其它模块的重置不联动。
 /* ---------------- 岗位 id 水位线（待办 yuepu#52） ----------------
  * 按 positionId 存数据的模块（分配 / 自动化任务 / 工作档案 / 运行规格 / 知识库 / 专家 / 三个连接器）各自持久化，
  * 而本模块升版本会丢弃旧快照、posSeq 回到 405——新建岗位复用旧 id，立刻「继承」旧岗位遗留的任务 / 档案 / 领用关系。
