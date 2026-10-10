@@ -56,6 +56,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedBanner from '@/components/admin/RevokedBanner.vue'
+import RevokedTag from '@/components/admin/RevokedTag.vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import IconField from '@/components/common/IconField.vue'
 import KnowledgeSearchDialog from '@/components/admin/KnowledgeSearchDialog.vue'
@@ -243,11 +244,20 @@ async function loadCandidates() {
   }
 }
 
+// 已引用、但如今被强制回收的市场技能（技能 md §3.5.1「引用保持不动，该行改为红色已回收标签」，待决策 J40）：
+// 候选只含已发布技能，回收后的技能不在其中——这里从详情的引用明细补回来，才看得见、也能取消勾选。
+const revokedRefs = computed(() =>
+  (detail.value?.skills || [])
+    .filter((s) => s.revoked)
+    .map((s) => ({ id: s.skillId, name: s.name, description: s.description, category: s.category, revoked: s.revoked }))
+)
+const choices = computed(() => [...revokedRefs.value, ...candidates.value]) // 已回收引用置顶，默认收起时也能看到
+
 // 过滤（按名称/描述/分类，原型 renderExpertSkillChoices 同口径）
 const filteredCandidates = computed(() => {
   const kw = skillKeyword.value.trim().toLowerCase()
-  if (!kw) return candidates.value
-  return candidates.value.filter((s) =>
+  if (!kw) return choices.value
+  return choices.value.filter((s) =>
     [s.name, s.description, s.category].some((v) => String(v || '').toLowerCase().includes(kw))
   )
 })
@@ -502,6 +512,13 @@ async function publishFromEditor() {
   if (!form.skillIds.length) {
     errors.skills = '请至少添加 1 个技能'
     ElMessage.warning('至少引用 1 个市场技能才能发布')
+    return
+  }
+  // 发布前检查（技能 md §3.5.1，待决策 J40）：仍勾选着已回收的技能 → 阻断，移除（取消勾选）后可发布
+  const stale = revokedRefs.value.find((r) => form.skillIds.includes(r.id))
+  if (stale) {
+    errors.skills = `引用的「${stale.name}」已被回收，请移除后再发布`
+    ElMessage.warning(errors.skills)
     return
   }
   if (!validate()) {
@@ -806,6 +823,7 @@ const metaItems = computed(() => {
               <span class="ee-skill-body">
                 <span class="ee-skill-titlerow">
                   <strong>{{ s.name }}</strong>
+                  <RevokedTag :info="s.revoked" />
                   <span class="ee-skill-cat">{{ s.category }}</span>
                 </span>
                 <small>{{ s.description || '暂无技能描述' }}</small>

@@ -948,7 +948,7 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     expect(listSpy.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文（如「技能状态已变化，请刷新后重试」）；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文（如「技能状态已变化，请刷新后重试」）；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     const { host } = await mountAndInject([publishedRow])
     const { ElMessage } = await import('element-plus')
@@ -960,7 +960,7 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     forceRevokeSpy.mockRejectedValueOnce(new Error(''))
     opBtn(host, '已发布技能', '强制回收').click()
     await settle(0)
-    expect(ElMessage.error).toHaveBeenLastCalledWith('操作失败')
+    expect(ElMessage.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(ElMessage.success).not.toHaveBeenCalled()
   })
 
@@ -976,5 +976,15 @@ describe('强制回收（prd.技能.md §3.5.1：立即生效、不进审核、�
     expect(tag.parentElement.getAttribute('content')).toBe('回收原因：技能内含违规内容（admin · 2026-10-09 09:30）')
     expect(stateCell(host, '已发布技能').querySelector('.revoked-tag')).toBeNull()
     expect(stateCell(host, '未发布技能').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  // 待决策 J46（浦月 2026-10-10 选 B）：标签只在「未发布」显示；回收后重新提交发布进「审核中」不显示
+  it('J46 带回收信息但已进「审核中」的行 → 不显示「已回收」标签', async () => {
+    const revoked = { reason: '技能内含违规内容', at: '2026-10-09 09:30', operator: 'admin' }
+    const { host } = await mountAndInject([
+      { ...draftRow, id: 'r_rev', name: '回收后重提技能', revoked, publications: [{ target: 'USER_END', status: 'PENDING_REVIEW' }] }
+    ])
+    expect(stateCell(host, '回收后重提技能').textContent).toContain('审核中')
+    expect(stateCell(host, '回收后重提技能').querySelector('.revoked-tag')).toBeNull()
   })
 })

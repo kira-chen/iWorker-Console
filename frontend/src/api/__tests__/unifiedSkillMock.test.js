@@ -239,6 +239,13 @@ describe('强制回收（PRD 技能 §3.5.1，2026-09-30）', () => {
     expect(pubState(await mock.getSkillDetail(id))).toBe('PUBLISHED')
   })
 
+  // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
+  it('J42 回收前后最近更新时间不变（技能）', async () => {
+    const before = (await mock.getSkillDetail('sk_301')).updatedAt
+    await mock.forceRevokeSkill('sk_301', { reason: '风险' })
+    expect((await mock.getSkillDetail('sk_301')).updatedAt).toBe(before)
+  })
+
   it('回收后：立即回「未发布」（保留版本号与最近发布时间）、写 revoked 三字段、列表行与详情都带、不进审核中心', async () => {
     const id = await mkPublished('回收后状态技能')
     const before = await mock.getSkillDetail(id)

@@ -190,14 +190,14 @@ function openRefs(row) {
 }
 
 /* ---------------- 发布 / 撤回 / 停用 / 删除（状态机动作） ---------------- */
-async function runAction(row, action, fn, successMsg) {
+async function runAction(row, action, fn, successMsg, failMsg = '操作失败') {
   busy.value[row.id] = action
   try {
     await fn()
     if (successMsg) ElMessage.success(successMsg)
     await fetchList()
   } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || failMsg)
   } finally {
     delete busy.value[row.id]
   }
@@ -256,7 +256,7 @@ async function forceRevoke(row) {
     refNames: connectorRefNames(row)
   })
   if (reason == null) return
-  runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收')
+  runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收', '强制回收失败')
 }
 
 /** 删除（B8/BQ2）：软引用——被技能引用也可删，确认影响后继续。 */

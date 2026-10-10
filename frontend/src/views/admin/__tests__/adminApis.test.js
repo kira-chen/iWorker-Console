@@ -766,7 +766,7 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     expect(conn.listApis.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     conn.forceRevokeApi.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
     await mount()
@@ -776,7 +776,7 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     conn.forceRevokeApi.mockRejectedValueOnce(new Error(''))
     btn(rowByName('已上线接口'), '强制回收').click()
     await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(msg.success).not.toHaveBeenCalled()
   })
 

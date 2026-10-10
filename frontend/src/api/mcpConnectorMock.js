@@ -776,10 +776,13 @@ export async function forceRevokeMcpService(id, reason) {
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
   if (pubAgg[m.id] !== 'PUBLISHED' || m.pendingAction) throw err('MCP状态已变化，请刷新后重试')
+  const text = String(reason || '').trim() // 服务端校验与技能 / 专家一致（待决策 J41）
+  if (!text) throw err('请输入回收原因', 'reason')
+  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   pubAgg[m.id] = 'NOT_PUBLISHED'
-  m.revoked = makeRevokedInfo(reason)
-  m.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
+  m.revoked = makeRevokedInfo(text)
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
+  appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: text })
   persist()
   return toRow(m)
 }

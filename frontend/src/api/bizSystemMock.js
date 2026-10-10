@@ -348,10 +348,13 @@ export async function forceRevokeBizSystem(id, reason) {
   const b = findBiz(id)
   if (!b) throw err('业务系统不存在')
   if (b.status !== 'PUBLISHED' || b.pendingAction) throw err('业务系统状态已变化，请刷新后重试')
+  const text = String(reason || '').trim() // 服务端校验与技能 / 专家一致（待决策 J41）
+  if (!text) throw err('请输入回收原因', 'reason')
+  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
   b.status = 'NOT_PUBLISHED'
-  b.revoked = makeRevokedInfo(reason)
-  b.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: reason })
+  b.revoked = makeRevokedInfo(text)
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
+  appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: text })
   persist()
   return toRow(b)
 }

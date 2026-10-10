@@ -786,7 +786,7 @@ export async function forceRevokeSkill(id, { reason } = {}) {
   s.delisted = true
   s.status = 'draft'
   s.revoked = makeRevokedInfo(text)
-  s.updatedAt = nowText()
+  // 待决策 J42（浦月 2026-10-10 选 A）：回收与停用一致，不刷新最近更新时间
   appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: text, version: s.version })
   persist()
   return { skillId: s.id, publications: publicationsOf(s), revoked: { ...s.revoked } }
