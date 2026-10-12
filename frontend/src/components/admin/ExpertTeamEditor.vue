@@ -551,6 +551,8 @@ const metaItems = computed(() => {
             <template #label>
               <span class="et-label-row">
                 <span><span class="et-req">*</span>团介绍</span>
+                <span v-if="!disabled" class="et-head-ops">
+                  <span v-if="aiIntro.disabled.value && aiIntro.title.value" class="et-ai-hint" data-testid="team-intro-ai-hint">{{ aiIntro.title.value }}</span>
                 <el-button
                   v-if="!disabled"
                   plain
@@ -560,6 +562,7 @@ const metaItems = computed(() => {
                   :title="aiIntro.title.value || undefined"
                   @click="aiIntro.run"
                 >{{ aiIntro.label.value }}</el-button>
+                </span>
               </span>
             </template>
             <el-input
@@ -574,6 +577,43 @@ const metaItems = computed(() => {
             />
           </el-form-item>
         </el-form>
+
+        <!-- 团队帮你做（示例问题）：并入基本信息卡末尾作子分区，位置同专家详情页的「专家帮你做」 -->
+        <div class="et-subsection" data-testid="team-examples">
+          <div class="et-sec-headrow">
+            <h3 class="section-title et-sub-title">
+              <span class="et-req">*</span>
+              团队帮你做
+              <span class="section-sub">必填，3 条示例问题，员工点击后带着团回到输入框</span>
+            </h3>
+            <div v-if="!disabled" class="et-head-ops">
+              <span v-if="aiQuestions.disabled.value && aiQuestions.title.value" class="et-ai-hint">{{ aiQuestions.title.value }}</span>
+              <el-button
+                plain
+                size="small"
+                class="et-ai"
+                :disabled="aiQuestions.disabled.value"
+                :title="aiQuestions.title.value || undefined"
+                @click="aiQuestions.run"
+              >{{ aiQuestions.label.value }}</el-button>
+            </div>
+          </div>
+          <div class="et-q-list">
+            <div v-for="(q, i) in form.exampleQuestions" :key="i" class="et-q-row">
+              <span class="et-row-index">{{ i + 1 }}</span>
+              <el-input
+                :ref="(el) => (questionInputRefs[i] = el)"
+                v-model="form.exampleQuestions[i]"
+                maxlength="300"
+                :disabled="disabled"
+                :class="{ 'et-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
+                :placeholder="i === 0 ? '把这份合同交给团队看一遍' : '请输入示例问题'"
+                @input="errors.examples = ''"
+              />
+            </div>
+          </div>
+          <div v-if="errors.examples" class="et-err">{{ errors.examples }}</div>
+        </div>
       </section>
 
       <!-- ② 团队成员与团长 -->
@@ -680,6 +720,8 @@ const metaItems = computed(() => {
           <div v-if="form.leaderId != null" class="et-leader-duty" data-testid="team-leader-duty">
             <div class="et-label-row">
               <span><span class="et-req">*</span>团长职责</span>
+              <span v-if="!disabled" class="et-head-ops">
+              <span v-if="aiLeaderDuty.disabled.value && aiLeaderDuty.title.value" class="et-ai-hint">{{ aiLeaderDuty.title.value }}</span>
               <el-button
                 v-if="!disabled"
                 plain
@@ -689,6 +731,7 @@ const metaItems = computed(() => {
                 :title="aiLeaderDuty.title.value || undefined"
                 @click="aiLeaderDuty.run"
               >{{ aiLeaderDuty.label.value }}</el-button>
+              </span>
             </div>
             <el-input
               v-model="form.leaderDuty"
@@ -715,6 +758,7 @@ const metaItems = computed(() => {
             <span class="section-sub">{{ form.leaderId == null ? '没设团长时必填' : '选填' }}，拆解依据，员工端不展示</span>
           </h3>
           <div class="et-head-ops">
+            <span v-if="!props.readonly && trialDisabledReason" class="et-ai-hint" data-testid="team-trial-hint">{{ trialDisabledReason }}</span>
             <el-button
               v-if="!props.readonly"
               plain
@@ -725,6 +769,7 @@ const metaItems = computed(() => {
               data-testid="team-trial-btn"
               @click="openTrial"
             >试跑拆解</el-button>
+            <span v-if="!disabled && aiCollab.disabled.value && aiCollab.title.value" class="et-ai-hint">{{ aiCollab.title.value }}</span>
             <el-button
               v-if="!disabled"
               plain
@@ -757,42 +802,7 @@ const metaItems = computed(() => {
         </div>
       </section>
 
-      <!-- ④ 团队帮你做（示例问题） -->
-      <section class="section-card">
-        <div class="et-sec-headrow">
-          <h3 class="section-title et-sub-title">
-            <span class="et-req">*</span>
-            团队帮你做
-            <span class="section-sub">必填，3 条示例问题，员工点击后带着团回到输入框</span>
-          </h3>
-          <el-button
-            v-if="!disabled"
-            plain
-            size="small"
-            class="et-ai"
-            :disabled="aiQuestions.disabled.value"
-            :title="aiQuestions.title.value || undefined"
-            @click="aiQuestions.run"
-          >{{ aiQuestions.label.value }}</el-button>
-        </div>
-        <div class="et-q-list">
-          <div v-for="(q, i) in form.exampleQuestions" :key="i" class="et-q-row">
-            <span class="et-row-index">{{ i + 1 }}</span>
-            <el-input
-              :ref="(el) => (questionInputRefs[i] = el)"
-              v-model="form.exampleQuestions[i]"
-              maxlength="300"
-              :disabled="disabled"
-              :class="{ 'et-invalid': errors.examples && !String(form.exampleQuestions[i] || '').trim() }"
-              :placeholder="i === 0 ? '把这份合同交给团队看一遍' : '请输入示例问题'"
-              @input="errors.examples = ''"
-            />
-          </div>
-        </div>
-        <div v-if="errors.examples" class="et-err">{{ errors.examples }}</div>
-      </section>
-
-      <!-- ⑤ 时间信息 -->
+      <!-- ④ 时间信息 -->
       <div v-if="isEdit && detail" class="et-meta">
         <span v-for="m in metaItems" :key="m">{{ m }}</span>
       </div>
@@ -884,7 +894,14 @@ const metaItems = computed(() => {
 }
 .et-head-ops {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+}
+/* 置灰原因：直接显示在按钮左侧（置灰按钮的原生 title 在浏览器里不稳定，看不到） */
+.et-ai-hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  white-space: nowrap;
 }
 /* 【AI 生成】/【试跑拆解】：常规字重（一览表附录「AI 生成按钮样式」） */
 .et-ai {
@@ -1115,6 +1132,12 @@ const metaItems = computed(() => {
   color: var(--c-text-muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
+}
+/* 子分区：上边框分隔（同专家详情页 .ee-basic-subsection） */
+.et-subsection {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
 }
 .et-purpose {
   margin-bottom: var(--space-3);

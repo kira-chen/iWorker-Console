@@ -70,7 +70,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: null })
     await flushAll(12)
     const drawer = drawerOf()
-    const labels = () => [...drawer.querySelectorAll('.et-grid .el-form-item__label')].map((l) => l.textContent.replace(/\*|AI 生成/g, '').trim())
+    const labels = () => [...drawer.querySelectorAll('.et-grid .el-form-item__label')].map((l) => (l.querySelector('.et-label-row > span') || l).textContent.replace('*', '').trim())
     expect(labels()).toEqual(['团类型', '团名称', '分类', '图标', '团介绍'])
     const seg = drawer.querySelector('[data-testid="team-type-seg"]')
     expect([...seg.querySelectorAll('.el-radio-button')].map((b) => b.textContent.trim())).toEqual(['岗位团', '市场团', '通用团'])
@@ -97,6 +97,40 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(input.value).toBe('解答制度类问题')
     expect(drawerOf().querySelector('[data-testid="team-collab-card"]').textContent).toContain('团的用途')
     expect(drawerOf().querySelector('[data-testid="team-collab-card"]').textContent).toContain('选填')
+  })
+
+  it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与团长 → 团队协作关系；团介绍在成员之前', async () => {
+    api.getTeam.mockResolvedValue(detail())
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(14)
+    const drawer = drawerOf()
+    const cards = [...drawer.querySelectorAll('.section-card')]
+    expect(cards.map((c) => c.dataset.testid || c.querySelector('.section-title').textContent.trim().slice(0, 4))).toEqual(['基本信息', 'team-members-card', 'team-collab-card'])
+    // 「团队帮你做」是基本信息卡内的子分区，不是独立卡；排在团介绍之后
+    const basic = cards[0]
+    expect(basic.querySelector('[data-testid="team-examples"]')).toBeTruthy()
+    expect(basic.querySelectorAll('.et-q-row').length).toBe(3)
+    expect(cards.slice(1).some((c) => c.querySelector('.et-q-row'))).toBe(false)
+  })
+
+  it('AI 生成置灰时，原因直接显示在按钮旁（不靠悬停）：成员不足 2 位 → 团介绍 / 协作关系 / 试跑拆解都写明；补够后提示消失', async () => {
+    api.getTeam.mockResolvedValue(detail({ members: [detail().members[0]] }))
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(14)
+    const drawer = drawerOf()
+    const introHint = () => drawer.querySelector('[data-testid="team-intro-ai-hint"]')
+    expect(introHint().textContent).toBe('请先选择至少 2 位成员')
+    expect(drawer.querySelector('[data-testid="team-trial-hint"]').textContent).toBe('请先选择至少 2 位成员')
+    expect([...drawer.querySelectorAll('.et-ai-hint')].map((h) => h.textContent)).toEqual(['请先选择至少 2 位成员', '请先选择至少 2 位成员', '请先选择至少 2 位成员'])
+    const introBtn = [...drawer.querySelectorAll('.et-grid .et-ai')][0]
+    expect(introBtn.disabled).toBe(true)
+    drawer.querySelector('[data-testid="team-cand-201"] input').click()
+    await flushAll(6)
+    expect(introHint()).toBeNull()
+    expect([...drawer.querySelectorAll('.et-grid .et-ai')][0].disabled).toBe(false)
+    expect(drawer.querySelector('[data-testid="team-trial-hint"]')).toBeNull()
   })
 
   it('新建态直接点【创建专家团】：必填项标红、不调用创建接口（md §三.8 保存校验）', async () => {
