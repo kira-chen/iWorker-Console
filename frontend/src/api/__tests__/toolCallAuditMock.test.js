@@ -19,8 +19,11 @@ import {
  * （工具调用明细）与由 calls 推导出的 hasWrite / result 汇总字段；taskCallRecords
  * 的「预授权」（auth 字段）与「任务运行编号」（runId 字段）随改版废弃。
  *
+ * 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」，字段 skill → skills 数组（会话内可调用多个技能），
+ * 每个工具调用带 skill（在哪个技能名下调用，null＝会话直接调用，PRD §5.2「调用来源」）。
+ *
  * 2026-10-09 同日第二轮改版：单次工具调用不记录耗时与具体执行时刻，系统本来就不采集；
- * 技能调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
+ * 会话调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
  * 的记录，C- 系列不再有示例；「用户确认」收窄为不需要确认 / 已确认两态，确认被拒绝时
  * confirm 为 null。
  *
@@ -32,7 +35,7 @@ import {
  * 统一为「失败」，三组现在直接共用同一份 EXEC_RESULT_LABEL，不再有 KNOWLEDGE_RESULT_LABEL。
  */
 describe('三组记录', () => {
-  it('编号在三组之间不重复，前缀区分来源：C- 技能调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
+  it('编号在三组之间不重复，前缀区分来源：C- 会话调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
     const ids = [...toolCallRecords, ...taskCallRecords, ...knowledgeCallRecords].map((r) => r.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(toolCallRecords.every((r) => r.id.startsWith('C-'))).toBe(true)
@@ -52,7 +55,7 @@ describe('三组记录', () => {
     }
   })
 
-  it('技能调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {
+  it('会话调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {
     expect(EXEC_RESULT_LABEL).toEqual({ SUCCESS: '成功', FAILED: '失败' })
     for (const r of toolCallRecords) {
       expect(['SUCCESS', 'FAILED']).toContain(r.result)
@@ -70,7 +73,7 @@ describe('三组记录', () => {
   })
 })
 
-describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', () => {
+describe('会话调用 toolCallRecords（记录单元＝一次会话，2026-10-12 第五轮改版）', () => {
   it('每条记录至少有一次工具调用；calls 的工具标识均为「连接器类型·名称」', () => {
     for (const r of toolCallRecords) {
       expect(r.calls.length).toBeGreaterThan(0)
@@ -92,6 +95,18 @@ describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', 
     expect(multi.length).toBeGreaterThan(0)
     const retried = multi.find((r) => r.calls.some((c) => c.result === 'FAILED') && r.result === 'SUCCESS')
     expect(retried).toBeTruthy()
+  })
+
+  it('每条记录有 skills 数组；每个工具调用的 skill 为 null（会话直接调用）或本会话 skills 之一（PRD §5.2「调用来源」）', () => {
+    for (const r of toolCallRecords) {
+      expect(Array.isArray(r.skills) && r.skills.length > 0).toBe(true)
+      for (const c of r.calls) expect(c.skill === null || r.skills.includes(c.skill)).toBe(true)
+    }
+  })
+
+  it('样例覆盖：一次会话调用多个技能；存在未经技能、会话直接调用的工具', () => {
+    expect(toolCallRecords.some((r) => r.skills.length > 1)).toBe(true)
+    expect(toolCallRecords.some((r) => r.calls.some((c) => c.skill === null))).toBe(true)
   })
 
   it('失败的记录都有原因概要', () => {
@@ -138,7 +153,7 @@ describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运
     }
   })
 
-  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与技能调用共用同一套规则（deriveExec）', () => {
+  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与会话调用共用同一套规则（deriveExec）', () => {
     for (const r of taskCallRecords) {
       expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
       const last = r.calls[r.calls.length - 1]
@@ -160,7 +175,7 @@ describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运
     }
   })
 
-  it('请求参数 / 响应结果：有覆盖的 call 用覆盖值，其余走兜底（与技能调用共用同一套 paramsOf / outputOf）', () => {
+  it('请求参数 / 响应结果：有覆盖的 call 用覆盖值，其余走兜底（与会话调用共用同一套 paramsOf / outputOf）', () => {
     const withParams = taskCallRecords.flatMap((r) => r.calls).find((c) => c.params)
     expect(withParams).toBeTruthy()
     expect(paramsOf(withParams).some((p) => p[1] === 'customer_id')).toBe(true)
