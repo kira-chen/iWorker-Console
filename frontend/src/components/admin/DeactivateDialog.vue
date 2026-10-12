@@ -20,6 +20,8 @@ const props = defineProps({
   typeLabel: { type: String, required: true },
   /** 普通停用的弹窗标题；缺省按「停用{typeLabel}」拼（个别模块 PRD 标题带空格，如「停用 MCP 服务」，由调用方覆盖） */
   plainTitle: { type: String, default: '' },
+  /** 强制回收红色警示里“谁将失去它”的措辞，各模块 PRD 不同：连接器「已绑定该连接器的员工」、技能「已获得该技能的员工」、专家「已召唤该专家的员工」 */
+  holderText: { type: String, default: '已获得它的员工' },
   /** 对象名称 */
   name: { type: String, default: '' },
   /** 普通停用弹窗的提示正文（各模块 PRD 文案不同，由调用方给） */
@@ -99,7 +101,7 @@ function onConfirm() {
         ><template v-else>。</template>
       </p>
       <p class="dd-danger" data-test="dd-danger">
-        强制回收经审核通过后生效，生效后不可撤销：已获得它的员工将失去它，引用它的自动化将被挂起。审核通过前仍可正常使用。
+        强制回收经审核通过后生效，生效后不可撤销：{{ holderText }}将失去它，引用它的自动化将被挂起。审核通过前仍可正常使用。
       </p>
       <div class="dd-label"><b class="dd-required">*</b> 回收原因</div>
       <el-input

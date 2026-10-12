@@ -777,6 +777,7 @@ async function removeApi(row) {
     <DeactivateDialog
       v-model="deactivateVisible"
       type-label="API"
+      holder-text="已绑定该连接器的员工"
       :name="deactivateTarget?.name || ''"
       :plain-message="`停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${deactivateTarget?.name || ''}」？`"
       confirm-text="继续停用"

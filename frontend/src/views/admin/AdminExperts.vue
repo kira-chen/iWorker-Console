@@ -499,6 +499,7 @@ async function confirmStop({ forceRevoke, reason }) {
     <DeactivateDialog
       v-model="stopDialogVisible"
       type-label="专家"
+      holder-text="已召唤该专家的员工"
       :name="stopTarget?.name || ''"
       :plain-message="`停用「${stopTarget?.name || ''}」需提交审核。审核通过前客户端仍可使用。`"
       confirm-text="提交停用审核"

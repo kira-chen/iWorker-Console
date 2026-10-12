@@ -742,6 +742,7 @@ onBeforeUnmount(() => {
     <DeactivateDialog
       v-model="stopDialogVisible"
       type-label="技能"
+      holder-text="已获得该技能的员工"
       :name="stopTarget?.name || ''"
       :plain-message="`停用「${stopTarget?.name || ''}」需提交停用审核。审核通过前客户端仍可使用。`"
       confirm-text="提交停用审核"

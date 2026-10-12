@@ -486,6 +486,7 @@ async function remove(row) {
     <DeactivateDialog
       v-model="stopDialogVisible"
       type-label="业务系统"
+      holder-text="已绑定该连接器的员工"
       :name="stopTarget?.name || ''"
       :plain-message="`停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${stopTarget?.name || ''}」？`"
       confirm-text="继续停用"

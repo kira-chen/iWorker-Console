@@ -775,6 +775,7 @@ async function remove(row) {
     <DeactivateDialog
       v-model="delistDialogVisible"
       type-label="MCP 服务"
+      holder-text="已绑定该连接器的员工"
       plain-title="停用 MCP 服务"
       :name="delistTarget?.name"
       :plain-message="delistPlainMessage"
