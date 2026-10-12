@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { useAdminList } from '@/composables/useAdminList'
-import { computeDynPageSize, DYN_PAGE_MIN, DYN_PAGE_MAX } from '@/composables/useDynPageSize'
+import { computeDynPageSize, DYN_PAGE_MIN, DYN_PAGE_MAX, DYN_PAGE_RESERVED, DYN_PAGE_ROW } from '@/composables/useDynPageSize'
 
 /**
  * useAdminList（管理后台列表取数编排）行为契约。
@@ -137,6 +137,11 @@ describe('useAdminList · 列表取数编排契约', () => {
 
   it('极矮窗口（高度 330–453px，算出 n≤1 条：330–391 为 0、392–453 为 1）每页条数夹到下限 5，不落到 10（md 岗位 §列表「最少 5 条」；yuepu#65②）', () => {
     for (const h of [330, 360, 391, 392, 453]) expect(computeDynPageSize(h)).toBe(DYN_PAGE_MIN)
+  })
+
+  it('n=0 边界：高度 350px（330–391 区间，floor((350-330)/62)=0）得到最小值 5，而非 0 或默认 10', () => {
+    expect(Math.floor((350 - DYN_PAGE_RESERVED) / DYN_PAGE_ROW)).toBe(0) // 前提：确实落在 n=0
+    expect(computeDynPageSize(350)).toBe(5)
   })
 
   it('高度小于 330（算出负数条）同样夹到下限 5；非正高度（0 / 负数）视为取不到高度，按 900 兜底 → 9 条', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 /**
@@ -310,17 +310,39 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
 })
 
 describe('导出 CSV（§三）', () => {
-  it('导出当前筛选结果，提示已导出 N 条', async () => {
+  it('导出当前筛选结果：按钮文案「导出 CSV」，提示「已导出 N 条筛选结果」且 N 为筛选后条数（非总数）', async () => {
+    const success = vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
+    try {
+      mountReal()
+      await flush()
+      const btns = () => [...container.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+      expect(btns()).toContain('导出 CSV')
+      expect(btns()).not.toContain('导出筛选结果 CSV')
+
+      const total = MOCK.toolCallRecords.length
+      cardOf('执行失败').click()
+      await flush()
+      const n = Number(cardOf('执行失败').querySelector('.metric-value').textContent)
+      expect(n).toBeGreaterThan(0)
+      expect(n).toBeLessThan(total)
+
+      const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出 CSV')
+      exportBtn.click()
+      await flush()
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      expect(success).toHaveBeenCalledWith(`已导出 ${n} 条筛选结果`)
+    } finally {
+      success.mockRestore()
+    }
+  })
+})
+
+describe('筛选占位（§三）', () => {
+  it('执行结果占位「全部执行结果」，写操作筛选占位「涉及写操作」（PRD §三.2 / §三.3，2026-10-10 随 PRD 筛选项统一改版）', async () => {
     mountReal()
     await flush()
-    cardOf('执行失败').click()
-    await flush()
-    const n = bodyRows().length
-    const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出筛选结果 CSV')
-    exportBtn.click()
-    await flush()
-    expect(createObjectURL).toHaveBeenCalledTimes(1)
-    void n
+    const holders = [...container.querySelectorAll('.lt-filter .el-select__placeholder')].map((e) => e.textContent.trim())
+    expect(holders).toEqual(['全部执行结果', '涉及写操作'])
   })
 })
 

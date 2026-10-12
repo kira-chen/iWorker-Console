@@ -200,7 +200,7 @@ function resultExplain(d) {
       </el-input>
       <el-button @click="applySearch">查询</el-button>
       <template #right>
-        <el-button @click="exportCsv">导出筛选结果 CSV</el-button>
+        <el-button @click="exportCsv">导出 CSV</el-button>
       </template>
     </ListToolbar>
 

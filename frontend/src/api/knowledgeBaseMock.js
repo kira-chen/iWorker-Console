@@ -60,6 +60,8 @@ const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let seq = 100
 const nid = (p) => `${p}_${(seq++).toString(36).padStart(11, 'x')}`
 
+// 潜伏项（yuepu#89⑦，保留不改）：知识库「专家可见范围」候选写死 ex_1 / ex_2，与专家管理模块（domainExpertMock）的真实专家列表脱节；
+// 接真实后端时应改为读专家列表。
 const EXPERTS = [
   { id: 'ex_1', name: '方案专家' },
   { id: 'ex_2', name: '售后专家' }

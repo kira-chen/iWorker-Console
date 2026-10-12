@@ -328,7 +328,7 @@ function connChanged(m, payload) {
 }
 
 function applyModelPayload(m, payload) {
-  m.providerName = payload.providerName || m.providerName || 'other'
+  m.providerName = payload.providerName || m.providerName
   m.name = payload.name.trim()
   if ('icon' in payload) m.icon = String(payload.icon || '').trim()
   m.category = payload.category || m.category
