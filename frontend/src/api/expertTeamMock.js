@@ -245,7 +245,6 @@ function toRow(t) {
     category: t.category,
     intro: t.intro,
     memberCount: members.length,
-    memberPreview: members.slice(0, 5).map((m) => ({ expertId: m.expertId, name: m.name, avatar: m.avatar, backgroundColor: m.backgroundColor })),
     memberNames: members.map((m) => m.name),
     leaderId: t.leaderId ?? null,
     leaderName: leader?.name || '',

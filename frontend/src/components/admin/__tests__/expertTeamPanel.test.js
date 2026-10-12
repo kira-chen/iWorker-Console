@@ -37,14 +37,14 @@ const Panel = (await import('@/components/admin/ExpertTeamPanel.vue')).default
 const ROWS = [
   {
     id: 301, name: '经营研究团', type: 'PLATFORM', avatar: '◈', backgroundColor: '#DCECF7', category: '投资', intro: '经营与研究',
-    memberCount: 2, memberPreview: [{ expertId: 201, name: '经营分析专家', avatar: '▤', backgroundColor: '#DCF5E4' }, { expertId: 204, name: '研究报告专家', avatar: '◎', backgroundColor: '#DCF5E4' }],
+    memberCount: 2,
     memberNames: ['经营分析专家', '研究报告专家'], leaderId: 201, leaderName: '经营分析专家', trialed: false,
     missingCount: 1, missing: [{ expertId: 204, name: '研究报告专家', reason: '已回收' }],
     positionIds: [], positionCount: 0, status: 'published', pendingAction: null, latestVersionLabel: 'v1.0.0', revoked: null, updatedAt: '2026-09-08T15:30:00+08:00'
   },
   {
     id: 303, name: '岗位协同团', type: 'POSITION', avatar: '◎', backgroundColor: '#E7E4F7', category: '投资', intro: '服务经营分析岗',
-    memberCount: 2, memberPreview: [], memberNames: ['研究报告专家', '企业知识助手'], leaderId: null, leaderName: '', trialed: false,
+    memberCount: 2, memberNames: ['研究报告专家', '企业知识助手'], leaderId: null, leaderName: '', trialed: false,
     missingCount: 0, missing: [], positionIds: [401], positionCount: 1, status: 'draft', pendingAction: null, latestVersionLabel: '', revoked: null, updatedAt: '2026-09-10T14:00:00+08:00'
   }
 ]
@@ -72,7 +72,15 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     const r1 = rowOf(c, '经营研究团')
     const r3 = rowOf(c, '岗位协同团')
     expect(r1.textContent).toContain('市场团')
-    expect(r1.textContent).toContain('2 位成员')
+    // 成员列只列专家名称（无图标），专家数单独一列
+    expect(r1.textContent).toContain('经营分析专家、研究报告专家')
+    expect(r1.querySelector('.etp-mini')).toBeNull()
+    const headers = [...c.querySelectorAll('.el-table__header th')].map((h) => h.textContent.trim())
+    expect(headers).toContain('成员')
+    expect(headers).toContain('专家数')
+    const countCell = (r) => r.querySelectorAll('td')[headers.indexOf('专家数')].textContent.trim()
+    expect(countCell(r1)).toBe('2')
+    expect(countCell(r3)).toBe('2')
     expect(r1.textContent).toContain('经营分析专家') // 团长
     expect(r1.querySelector('[data-testid="team-missing-tag"]').textContent).toBe('缺员 1')
     expect(r1.textContent).toContain('v1.0.0')

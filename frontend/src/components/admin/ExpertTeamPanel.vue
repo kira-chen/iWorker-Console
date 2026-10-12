@@ -361,21 +361,12 @@ async function forceRevokeFromList(row) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="成员" :width="190" class-name="col-nowrap" label-class-name="col-nowrap">
-            <template #default="{ row }">
-              <el-tooltip :content="row.memberNames.join('、')" placement="top">
-                <span class="etp-members">
-                  <span
-                    v-for="m in row.memberPreview"
-                    :key="m.expertId"
-                    class="etp-mini"
-                    :style="{ backgroundColor: m.backgroundColor }"
-                  >{{ (m.avatar && !iconIsUrl(m.avatar)) ? m.avatar : (m.name || '').slice(0, 1) }}</span>
-                  <span v-if="row.memberCount > row.memberPreview.length" class="etp-more">+{{ row.memberCount - row.memberPreview.length }}</span>
-                  <span class="etp-count">{{ row.memberCount }} 位成员</span>
-                </span>
-              </el-tooltip>
-            </template>
+          <!-- 成员：只列专家名称（不放图标）；超长省略，悬停看全部。专家数单独一列 -->
+          <el-table-column label="成员" :min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.memberNames.join('、') }}</template>
+          </el-table-column>
+          <el-table-column label="专家数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+            <template #default="{ row }">{{ row.memberCount }}</template>
           </el-table-column>
           <el-table-column label="团长" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
@@ -507,31 +498,6 @@ async function forceRevokeFromList(row) {
   color: var(--c-danger);
   background: var(--c-danger-soft, rgba(245, 108, 108, 0.12));
   cursor: default;
-}
-.etp-members {
-  display: inline-flex;
-  align-items: center;
-}
-.etp-mini {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin-left: -4px;
-  border: 2px solid var(--bg-surface, #fff);
-  border-radius: 50%;
-  font-size: 11px;
-  color: #1f1f1f;
-}
-.etp-mini:first-child {
-  margin-left: 0;
-}
-.etp-more,
-.etp-count {
-  margin-left: 6px;
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
 }
 .etp-time-sort {
   display: inline-flex;
