@@ -28,6 +28,11 @@ vi.mock('@element-plus/icons-vue', () => ({ Plus: {}, Search: {} }))
 const routeState = vi.hoisted(() => ({ query: {} }))
 vi.mock('vue-router', () => ({ useRoute: () => routeState, useRouter: () => ({}) }))
 
+// 专家团引用查询（prd.专家团.md 四）：默认无引用；个别用例改写返回值验证提示
+const listTeamsReferencingExpert = vi.fn(async () => [])
+vi.mock('@/api/expertTeam', () => ({ listTeamsReferencingExpert }))
+vi.mock('@/components/admin/ExpertTeamPanel.vue', () => ({ default: { name: 'ExpertTeamPanel', template: '<div class="team-panel-stub" />' } }))
+
 const listExperts = vi.fn()
 const deleteExpert = vi.fn()
 const unpublishExpert = vi.fn()
@@ -144,7 +149,7 @@ async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminExperts)
-  for (const t of ['el-pagination', 'el-icon']) {
+  for (const t of ['el-pagination', 'el-icon', 'el-radio-group', 'el-radio-button']) {
     app.component(t, passthrough(t))
   }
   app.component('el-input', elInput)
@@ -189,6 +194,7 @@ beforeEach(() => {
   unpublishExpert.mockReset()
   withdrawExpert.mockReset()
   forceRevokeExpert.mockReset().mockResolvedValue({})
+  listTeamsReferencingExpert.mockReset().mockResolvedValue([])
   askForceRevoke.mockReset()
   ElMessageBox.confirm.mockReset()
   ElMessageBox.alert.mockReset()
@@ -466,6 +472,29 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
   })
 
+  it('停用被专家团引用：只在确认文案里追加缺员提示，不拦截仍可提交停用审核（prd.专家团.md 四）', async () => {
+    listTeamsReferencingExpert.mockResolvedValue([{ id: 301, name: '经营研究团', status: 'published' }])
+    ElMessageBox.confirm.mockResolvedValueOnce()
+    unpublishExpert.mockResolvedValueOnce({})
+    await mount()
+    rowBtn(rowEls()[0], '停用').click()
+    await flush()
+    expect(ElMessageBox.confirm.mock.calls[0][0]).toBe('停用「经营分析专家」需提交审核。审核通过前客户端仍可使用。\n该专家被 1 个专家团引用（经营研究团），停用后这些团在客户端将标「缺员」。')
+    expect(unpublishExpert).toHaveBeenCalledWith(201)
+  })
+
+  it('「专家 | 专家团」视图切换：默认专家视图；?view=team 直达专家团并换页面说明（prd.专家团.md 一）', async () => {
+    await mount()
+    expect(container.querySelector('.ph-sub').textContent).toBe('平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理')
+    expect(container.querySelector('.team-panel-stub')).toBeNull() // 专家团面板首次切入才挂载
+    app.unmount()
+    container.remove()
+    routeState.query = { view: 'team' }
+    await mount()
+    expect(container.querySelector('.team-panel-stub')).toBeTruthy()
+    expect(container.querySelector('.ph-sub').textContent).toContain('平台全部专家团')
+  })
+
   it('列表撤回：确认文案对齐 md §二.3.4 → withdrawExpert → 「审核申请已撤回」+ 重拉', async () => {
     ElMessageBox.confirm.mockResolvedValueOnce()
     withdrawExpert.mockResolvedValueOnce({})
@@ -599,7 +628,17 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不
     await mount()
     rowBtn(rowOf('经营分析专家'), '强制回收').click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0 })
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0, refText: '专家团' })
+  })
+
+  it('被专家团引用：回收弹窗入参带团数与引用方文案「专家团」（prd.专家团.md 四：回收不拦截、引用保留）', async () => {
+    listTeamsReferencingExpert.mockResolvedValue([{ id: 301, name: '经营研究团', status: 'published' }, { id: 302, name: '知识问答团', status: 'published' }])
+    askForceRevoke.mockResolvedValue(null)
+    await mount()
+    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await flush()
+    expect(listTeamsReferencingExpert).toHaveBeenCalledWith(201)
+    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 2, refText: '专家团' })
   })
 
   it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {

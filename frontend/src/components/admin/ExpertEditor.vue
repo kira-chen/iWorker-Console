@@ -133,6 +133,7 @@ const form = reactive({
   backgroundColor: BACKGROUND_FALLBACK,
   intro: '',
   roleDesc: '',
+  leadGuide: '', // 带团分工说明（选填）：非空即视为「可带团」，专家团选团长时带徽章并作团长职责自动回填
   exampleQuestions: ['', '', ''],
   skillIds: []
 })
@@ -152,6 +153,7 @@ function resetForm(d) {
   form.backgroundColor = safeBackground(d?.backgroundColor)
   form.intro = d?.intro || ''
   form.roleDesc = d?.roleDesc || ''
+  form.leadGuide = d?.leadGuide || ''
   form.exampleQuestions = [0, 1, 2].map((i) => String((d?.exampleQuestions || [])[i] || ''))
   form.skillIds = (d?.skillIds || (d?.skills || []).map((s) => s.skillId)).slice()
   clearErrors()
@@ -434,6 +436,7 @@ function buildPayload() {
     backgroundColor: safeBackground(form.backgroundColor),
     intro: form.intro,
     roleDesc: form.roleDesc,
+    leadGuide: form.leadGuide,
     exampleQuestions: form.exampleQuestions.map((q) => String(q || '').trim()),
     skillIds: [...form.skillIds]
   }
@@ -875,6 +878,28 @@ const metaItems = computed(() => {
               {{ kbExpanded ? '收起' : `展开更多（${kbExtraCount}）` }}
             </el-button>
           </div>
+        </section>
+
+        <!-- 带团设置（选填，prd.专家.md 三.3）：独立成卡，放在知识库之后（知识库须紧随技能引用，见 md 三.5），不挤进基本信息 -->
+        <section class="section-card">
+          <h3 class="section-title">
+            带团设置
+            <span class="section-sub">选填，专家做专家团团长时用</span>
+          </h3>
+          <el-form label-position="top">
+            <el-form-item label="带团分工说明">
+              <el-input
+                v-model="form.leadGuide"
+                type="textarea"
+                :rows="3"
+                maxlength="2000"
+                show-word-limit
+                :disabled="disabled"
+                placeholder="当这位专家做专家团的团长时，团里怎么分工？如：先从法律视角拆解，税务和履约各分一块"
+              />
+              <div class="ee-type-hint">填写后该专家在专家团里选团长时带「可带团」徽章并优先展示，且作为团长职责的自动回填内容</div>
+            </el-form-item>
+          </el-form>
         </section>
 
         <!-- 底部时间条（编辑/查看态；原型 metaHtml：创建/最近更新/最近发布/最新版本） -->

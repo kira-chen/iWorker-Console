@@ -208,6 +208,7 @@ export async function getMyApplication(id) {
 const MODULES = {
   POSITION: () => import('./positionMock').then((m) => ({ withdraw: m.withdrawPosition, publish: (id, notes) => m.publishPosition(id, { releaseNotes: notes }), delist: m.unpublishPosition })),
   EXPERT: () => import('./domainExpertMock').then((m) => ({ withdraw: m.withdrawExpert, publish: (id, notes) => m.publishExpert(id, { releaseNotes: notes }), delist: m.unpublishExpert })),
+  EXPERT_TEAM: () => import('./expertTeamMock').then((m) => ({ withdraw: m.withdrawTeam, publish: (id, notes) => m.publishTeam(id, { releaseNotes: notes }), delist: m.unpublishTeam })),
   SKILL: () => import('./unifiedSkillMock').then((m) => ({ withdraw: m.withdrawPublish, publish: (id, notes) => m.publishSkill(id, { releaseNotes: notes }), delist: m.delistSkill })),
   KNOWLEDGE_BASE: () => import('./knowledgeBaseMock').then((m) => ({ withdraw: (id) => m.transition(id, "withdraw"), publish: (id) => m.transition(id, "publish"), delist: (id) => m.transition(id, "delist") })),
   MCP: () => import('./mcpConnectorMock').then((m) => ({ withdraw: m.withdrawMcpService, publish: m.publishMcpService, delist: m.delistMcpService })),

@@ -111,6 +111,7 @@ function seedExperts() {
       positionIds: [],
       category: '投资',
       roleDesc: '你是一名经营分析专家。围绕收入、成本、效率和风险提供可追溯的分析结论。',
+      leadGuide: '先从经营数据里识别需要核对的异常，再把行业与竞品对照分给研究类专家，最后汇总成可追溯的管理建议。', // 带团分工说明（专家团选团长时带「可带团」徽章）
       exampleQuestions: ['帮我生成一份行业调研报告', '帮我分析本月经营数据中的异常', '帮我整理一份管理层决策建议'],
       skillIds: [302, 304],
       status: 'published',
@@ -149,6 +150,7 @@ function seedExperts() {
       positionIds: [401, 402],
       category: '法律',
       roleDesc: '你是一名严谨的合同审阅专家，按风险等级说明问题并给出修改建议。',
+      leadGuide: '',
       exampleQuestions: ['帮我审阅这份合同的风险条款', '帮我生成一份合同修改建议', '帮我解释这条违约责任'],
       skillIds: [304],
       // 本条是全套种子里唯一的「草稿 + 无版本 + 无在途」样本，多处用例依赖它验证
@@ -222,7 +224,8 @@ const persist = attachPersist('domainExpert', {
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
-  version: 6,
+  // v7（2026-10-12）：专家新增选填「带团分工说明」leadGuide，201 种子带一段（专家团选团长时展示「可带团」）。
+  version: 7,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
@@ -285,11 +288,17 @@ function toRow(e) {
   }
 }
 
+/** 同步取全量专家行（含带团分工说明）：供专家团模块解析成员，不走 delay、不暴露内存引用。 */
+export function listExpertsSync() {
+  return experts.map((e) => ({ ...toRow(e), leadGuide: e.leadGuide || '' }))
+}
+
 /** 详情出参：行 + 职责描述 + 示例问题 + 已引用技能明细（实时按候选表解析——引用非复制） */
 function toDetail(e) {
   return {
     ...toRow(e),
     roleDesc: e.roleDesc,
+    leadGuide: e.leadGuide || '',
     exampleQuestions: normQuestions(e.exampleQuestions),
     skills: e.skillIds
       .map((id) => getRawSkill(skillRawId(id)))
@@ -356,6 +365,7 @@ export async function createExpert(payload = {}) {
     backgroundColor: safeBackground(payload.backgroundColor),
     category: String(payload.category || '').trim(),
     roleDesc: String(payload.roleDesc || ''),
+    leadGuide: String(payload.leadGuide || ''),
     exampleQuestions: normQuestions(payload.exampleQuestions),
     skillIds: Array.isArray(payload.skillIds) ? [...payload.skillIds] : [],
     status: 'draft',
@@ -401,6 +411,7 @@ export async function updateExpert(id, payload = {}) {
   if (payload.category !== undefined) e.category = String(payload.category || '').trim()
   if (payload.positionIds !== undefined && e.type === EXPERT_TYPE.POSITION) e.positionIds = normPositionIds(payload.positionIds)
   if (payload.roleDesc !== undefined) e.roleDesc = String(payload.roleDesc || '')
+  if (payload.leadGuide !== undefined) e.leadGuide = String(payload.leadGuide || '')
   if (payload.exampleQuestions !== undefined) e.exampleQuestions = normQuestions(payload.exampleQuestions)
   if (payload.skillIds !== undefined) {
     const nextIds = Array.isArray(payload.skillIds) ? [...payload.skillIds] : []
@@ -434,6 +445,10 @@ export async function deleteExpert(id) {
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('审核中的专家不可删除，请先撤回或等待审核完成', null, 409)
   if (e.status !== 'draft') throw err('已发布的专家不可删除，需先完成停用审核', null, 409)
+  // 被专家团引用时拦截（prd.专家团.md §四）；动态 import 避免与 expertTeamMock 成环
+  const { listTeamsReferencingExpert } = await import('./expertTeamMock')
+  const refTeams = listTeamsReferencingExpert(e.id)
+  if (refTeams.length) throw err(`该专家被 ${refTeams.length} 个专家团引用（${refTeams.map((t) => t.name).join('、')}），需先从团中移除后再删除`, null, 409)
   const removed = e.skillIds.length
   // 删专家级联：把本专家名从所引用技能的 refNames 摘掉，避免删专家后 sk_304 之类的引用清单
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）

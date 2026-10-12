@@ -159,7 +159,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型', '全部审核结果'])
     const opts = (i) => [...selects[i].querySelectorAll('.el-option')].map((o) => o.textContent)
-    expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
+    expect(opts(0)).toEqual(['专家', '专家团', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
     expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用'])
     expect(opts(2)).toEqual(['待审核', '已通过', '已驳回', '已撤回'])
     expect(toolbarBtn('查询')).toBeTruthy()

@@ -343,7 +343,7 @@ describe('forceRevokeExpert —— 强制回收', () => {
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.7（创建专家后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
  * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
  * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
-describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-demo-mock:domainExpert）', () => {
+describe('domainExpertMock · 持久化读回（mockPersist v7；key iworker-demo-mock:domainExpert）', () => {
   const KEY = 'iworker-demo-mock:domainExpert'
   const makeStorage = () => {
     const map = new Map()
@@ -365,10 +365,10 @@ describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-dem
     vi.resetModules()
   })
 
-  it('createExpert 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
+  it('createExpert 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
     const first = await import('@/api/domainExpertMock')
     const created = await first.createExpert({ name: '读回验证专家', type: 'PLATFORM', category: '通用', avatar: '☆', intro: '读回', roleDesc: '你是读回专家', exampleQuestions: ['一', '二', '三'] })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
     vi.resetModules()
     const fresh = await import('@/api/domainExpertMock')
     const { list } = await fresh.listExperts({ keyword: '读回验证专家' })

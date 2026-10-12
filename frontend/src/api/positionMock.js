@@ -379,6 +379,9 @@ export async function deletePosition(id) {
   unassignPositionFromAllSpecs(p.positionId)
   // 专家 positionIds / 连接器「被岗位引用」清单同样只清本岗位这一条（待办 yuepu#23⑤⑥）
   removePositionFromExperts(p.positionId)
+  // 岗位私有专家团同理（prd.专家团.md §四）；动态 import 避免 positionMock ⇄ expertTeamMock 成环
+  const { removePositionFromTeams } = await import('./expertTeamMock')
+  removePositionFromTeams(p.positionId)
   removeMcpPositionRefs(p.positionId)
   removeApiPositionRefs(p.positionId)
   removeBizPositionRefs(p.positionId)

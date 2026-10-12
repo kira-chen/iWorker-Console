@@ -99,7 +99,7 @@ export function appendOpsRecord({ operator, module, action, target, detail = '',
 /* ---------------- 落给客户端的数据（PRD §6.5，只读查询） ---------------- */
 // 客户端登录时和之后每 5 分钟拉取，按「上次拉取时间之后」增量处理；不受页面 90 天窗口限制（这里不按日期截断），
 // 不含操作人。页面暂不消费，用于演示与测试「管理端落给客户端的数据」长什么样。
-const FORCE_REVOKE_MODULES = ['技能', '专家', 'MCP', 'API', '业务系统']
+const FORCE_REVOKE_MODULES = ['技能', '专家', '专家团', 'MCP', 'API', '业务系统']
 const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时，按分钟补 :00
 
 /**

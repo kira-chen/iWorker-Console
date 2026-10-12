@@ -363,6 +363,7 @@ describe('ExpertEditor — 新建', () => {
       backgroundColor: '#DCF5E4', // 背景色默认色随建落库
       intro: '一句话简介',
       roleDesc: '我是新专家',
+      leadGuide: '',
       exampleQuestions: ['问题一', '问题二', '问题三'],
       skillIds: [302]
     })
@@ -442,7 +443,7 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
     // 代码现状顺序（与 md §三.2 列举顺序不同，待裁决）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
-    expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述'])
+    expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述', '带团分工说明'])
   })
 
   /** 所属岗位下拉（第 3 个 select）；loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms
@@ -559,7 +560,7 @@ describe('ExpertEditor — 抽屉内部形态（md §三.1/§三.2：分区卡�
     // 编辑态卡：基本信息 / 市场技能引用 / 知识库（「专家帮你做」已并入第一张卡）
     const cards = [...container.querySelectorAll('.section-card')]
     const cardTitles = cards.map((c) => c.querySelector(':scope > .section-title')?.textContent.trim().split(/\s+/)[0])
-    expect(cardTitles).toEqual(['基本信息', '市场技能引用', '知识库'])
+    expect(cardTitles).toEqual(['基本信息', '市场技能引用', '知识库', '带团设置'])
     // 「专家帮你做」在基本信息卡内的子分区里，不再自成一卡
     const sub = container.querySelector('.ee-basic-subsection')
     expect(sub).toBeTruthy()
@@ -572,7 +573,7 @@ describe('ExpertEditor — 抽屉内部形态（md §三.1/§三.2：分区卡�
     const titles = [...container.querySelectorAll('.section-card > .section-title')].map((t) =>
       t.textContent.trim().split(/\s+/)[0]
     )
-    expect(titles).toEqual(['基本信息', '市场技能引用', '知识库'])
+    expect(titles).toEqual(['基本信息', '市场技能引用', '知识库', '带团设置'])
   })
 
   it('E2/C5：图标行是显式双按钮（IconField：预览块 +【从图标库选择】【上传图标】），不再是头像触发式 popover', async () => {
@@ -773,6 +774,7 @@ describe('ExpertEditor — 编辑', () => {
       backgroundColor: '#DCF5E4',
       intro: '汇总经营数据',
       roleDesc: '你是一名经营分析专家。',
+      leadGuide: '',
       exampleQuestions: DETAIL.exampleQuestions,
       skillIds: [302, 304]
     })
