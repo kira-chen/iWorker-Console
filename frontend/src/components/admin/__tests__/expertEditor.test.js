@@ -230,7 +230,7 @@ async function checkSkill(index, on = true) {
 /** 填满全部必填项（专家名/分类/类型/图标/简介/职责描述/3 条示例问题/≥1 技能）。 */
 async function fillRequired(name = '新专家') {
   await type(inputs()[0], name) // 专家名
-  await selectType('PLATFORM') // 先选类型：分类只有市场专家才出现
+  await selectType('PLATFORM')
   await selectCategory('通用')
   container.querySelector('.icon-picker').click()
   await flush(2)
@@ -318,7 +318,7 @@ describe('ExpertEditor — 新建', () => {
     expect(createExpert).not.toHaveBeenCalled()
     const errs = errTexts()
     expect(errs).toContain('请填写专家名')
-    expect(errs).not.toContain('请选择专家分类') // 未选类型时没有分类字段，不校验
+    expect(errs).toContain('请选择专家分类')
     expect(errs).toContain('请选择专家类型') // 2026-10-08 补：md §三.7「专家类型未选提示"请选择专家类型"」
     expect(errs).toContain('请选择图标')
     expect(errs).toContain('请填写简介')
@@ -327,16 +327,14 @@ describe('ExpertEditor — 新建', () => {
     expect(errs).toContain('请至少添加 1 个技能')
   })
 
-  it('分类只有市场专家展示并必选：选「市场专家」后出现分类，空着创建 → 就地报错；岗位私有 / 通用专家不出现分类', async () => {
+  it('分类所有类型的专家都有且必选：不论选哪种专家类型，分类都在，空着创建 → 就地报错', async () => {
     await mount({ expertId: null })
     const labels = () => [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
-    expect(labels()).not.toContain('分类')
-    await selectType('POSITION')
-    expect(labels()).not.toContain('分类')
-    await selectType('SYSTEM_DEFAULT')
-    expect(labels()).not.toContain('分类')
-    await selectType('PLATFORM')
     expect(labels()).toContain('分类')
+    for (const t of ['POSITION', 'SYSTEM_DEFAULT', 'PLATFORM']) {
+      await selectType(t)
+      expect(labels()).toContain('分类')
+    }
     btn('创建专家').click()
     await flush()
     expect(errTexts()).toContain('请选择专家分类')
@@ -409,7 +407,8 @@ describe('ExpertEditor — 新建', () => {
     createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
     await mount({ expertId: null })
     await type(inputs()[0], '新专家')
-    await selectType('POSITION') // 不选「所属岗位」，留空；岗位私有专家没有分类
+    await selectCategory('通用')
+    await selectType('POSITION') // 不选「所属岗位」，留空
     container.querySelector('.icon-picker').click()
     await flush(2)
     await type(inputs()[1], '一句话简介')
@@ -473,9 +472,9 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 字段顺序：专家类型（分段选择，最前）→ 专家名 →（市场专家才有）分类 → 图标 → 背景色 → 简介 → 职责描述；新建未选类型时无分类
+    // 字段顺序：专家类型（分段选择，最前）→ 专家名 → 分类 → 图标 → 背景色 → 简介 → 职责描述
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
-    expect(labels).toEqual(['专家类型', '专家名', '图标', '背景色', '简介', '职责描述', '带团分工说明'])
+    expect(labels).toEqual(['专家类型', '专家名', '分类', '图标', '背景色', '简介', '职责描述', '带团分工说明'])
   })
 
   /** 所属岗位下拉（第 3 个 select）；loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms
@@ -538,8 +537,7 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     const positionSelect = container.querySelector('select.el-select[multiple]')
     expect(container.querySelector('.el-radio-group').dataset.disabled).toBe('1')
     expect(container.textContent).toContain('专家类型建成后不可更改')
-    // 岗位私有专家没有分类字段（只有市场专家展示分类）
-    expect([...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).not.toContain('分类')
+    expect([...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).toContain('分类')
     expect(positionSelect.disabled).toBe(false)
     expect(positionSelect.dataset.values).toBe('[401,402]')
     expect(container.textContent).not.toContain('未绑定岗位')

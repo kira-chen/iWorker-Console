@@ -384,8 +384,7 @@ function validate() {
     errors.name = '请填写专家名'
     ok = false
   }
-  // 分类只有市场专家有，其余类型不校验
-  if (form.type === EXPERT_TYPE.PLATFORM && !String(form.category || '').trim()) {
+  if (!String(form.category || '').trim()) {
     errors.category = '请选择专家分类'
     ok = false
   }
@@ -430,7 +429,7 @@ function validate() {
 function buildPayload() {
   return {
     name: String(form.name).trim(),
-    category: form.type === EXPERT_TYPE.PLATFORM ? form.category : '',
+    category: form.category,
     type: form.type,
     positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
     avatar: form.avatar,
@@ -621,8 +620,7 @@ const metaItems = computed(() => {
                 placeholder="如 经营分析专家"
               />
             </el-form-item>
-            <!-- 分类：只有市场专家有（客户端专家市场的分类筛选用），其余类型不展示 -->
-            <el-form-item v-if="form.type === EXPERT_TYPE.PLATFORM" label="分类" required :error="errors.category" class="ee-full">
+            <el-form-item label="分类" required :error="errors.category" class="ee-full">
               <el-select
                 v-model="form.category"
                 placeholder="请选择分类"

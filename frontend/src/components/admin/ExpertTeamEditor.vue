@@ -28,7 +28,7 @@ import {
   listTeamMemberCandidates,
   trialTeam
 } from '@/api/expertTeam'
-import { useAiLiveGenerate, teamLeaderDutyText, teamCollabText, teamQuestionSet } from '@/utils/aiLiveGenerate'
+import { useAiLiveGenerate, teamIntroText, teamLeaderDutyText, teamCollabText, teamQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { EXPERT_TYPE, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
@@ -50,7 +50,8 @@ const emit = defineEmits(['update:visible', 'saved', 'publish'])
 /** 团类型文案（与专家类型同值，名称带「团」）。 */
 const TEAM_TYPE_OPTIONS = EXPERT_TYPE_OPTIONS.map((o) => ({
   value: o.value,
-  label: { [EXPERT_TYPE.POSITION]: '岗位私有', [EXPERT_TYPE.PLATFORM]: '市场专家团', [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用专家团' }[o.value]
+  // 叫法同客户端 PRD：岗位团 / 市场团 / 通用团
+  label: { [EXPERT_TYPE.POSITION]: '岗位团', [EXPERT_TYPE.PLATFORM]: '市场团', [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用团' }[o.value]
 }))
 
 const MEMBER_MAX = 20
@@ -73,6 +74,7 @@ const form = reactive({
   members: [], // [{ expertId, duty }]，顺序即团内排位
   leaderId: null,
   leaderDuty: '',
+  purpose: '',
   collab: '',
   exampleQuestions: ['', '', '']
 })
@@ -98,6 +100,7 @@ function resetForm(d) {
   form.leaderId = d?.leaderId ?? null
   form.leaderDuty = d?.leaderDuty || ''
   form.collab = d?.collab || ''
+  form.purpose = d?.purpose || ''
   form.exampleQuestions = [0, 1, 2].map((i) => String((d?.exampleQuestions || [])[i] || ''))
   trialed.value = !!d?.trialed
   memberInfo.clear()
@@ -212,11 +215,20 @@ function toggleLeader(id) {
   if (!form.leaderDuty.trim()) form.leaderDuty = infoOf(id).leadGuide || ''
 }
 
+/** 团介绍首次自动填入：成员凑满 2 位且团介绍为空时填一版（客户端 PRD §7 第 3 条：默认按成员能力汇总生成），之后不再自动覆盖。 */
 let hydrating = false
+watch(
+  () => form.members.length,
+  (n, old) => {
+    if (hydrating || disabled.value || n < MEMBER_MIN || old >= n || form.intro.trim()) return
+    form.intro = teamIntroText(aiCtx())
+    errors.intro = ''
+  }
+)
 
 /** 成员或团长、职责、协作关系变了 → 已试跑状态清零（md §三.9）。 */
 const structureKey = computed(() =>
-  JSON.stringify([form.members.map((m) => [m.expertId, m.duty]), form.leaderId, form.leaderDuty, form.collab])
+  JSON.stringify([form.members.map((m) => [m.expertId, m.duty]), form.leaderId, form.leaderDuty, form.collab, form.purpose])
 )
 watch(structureKey, () => {
   if (!hydrating) trialed.value = false
@@ -238,6 +250,11 @@ const NEED_MEMBERS = '请先选择至少 2 位成员'
 const enoughMembers = () => (form.members.length >= MEMBER_MIN ? 'ok' : '')
 const aiOptsBase = { isReadonly: () => disabled.value, resetOn: () => [props.visible, props.teamId] }
 
+const aiIntro = useAiLiveGenerate({
+  ...aiOptsBase, getSourceText: enoughMembers, sourceLabel: '成员', emptyTitle: NEED_MEMBERS,
+  getSourceContext: aiCtx, generate: teamIntroText,
+  apply: (text) => { form.intro = text; errors.intro = '' }
+})
 const aiLeaderDuty = useAiLiveGenerate({
   ...aiOptsBase, getSourceText: () => (form.leaderId != null ? 'ok' : ''), sourceLabel: '团长', emptyTitle: '请先设置团长',
   getSourceContext: aiCtx, generate: teamLeaderDutyText,
@@ -342,8 +359,7 @@ function validate() {
   const fail = (k, msg) => { errors[k] = msg; ok = false }
   if (!form.name.trim()) fail('name', '请填写团名称')
   if (!form.type) fail('type', '请选择团类型')
-  // 分类只有市场专家团有
-  if (form.type === EXPERT_TYPE.PLATFORM && !form.category) fail('category', '请选择专家分类')
+  if (!form.category) fail('category', '请选择专家分类')
   if (!form.avatar.trim()) fail('avatar', '请选择图标')
   if (!form.intro.trim()) fail('intro', '请填写团介绍')
   if (!form.exampleQuestions.every((q) => q.trim())) fail('examples', '请填写 3 条"团队帮你做"示例问题')
@@ -363,11 +379,12 @@ function buildPayload() {
     type: form.type,
     positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
     avatar: form.avatar,
-    category: form.type === EXPERT_TYPE.PLATFORM ? form.category : '',
+    category: form.category,
     intro: form.intro,
     members: form.members.map((m) => ({ expertId: m.expertId, duty: m.duty.trim() })),
     leaderId: form.leaderId,
     leaderDuty: form.leaderId != null ? form.leaderDuty : '',
+    purpose: form.purpose.trim(),
     collab: form.collab,
     exampleQuestions: form.exampleQuestions.map((q) => q.trim()),
     trialed: trialed.value
@@ -506,8 +523,8 @@ const metaItems = computed(() => {
           <el-form-item label="团名称" required :error="errors.name" class="et-full">
             <el-input v-model="form.name" maxlength="64" show-word-limit :disabled="disabled" placeholder="如 合同会审团" />
           </el-form-item>
-          <!-- 分类：只有市场专家团有（客户端「专家团 · 市场」的分类筛选用），其余团型不展示 -->
-          <el-form-item v-if="form.type === EXPERT_TYPE.PLATFORM" label="分类" required :error="errors.category" class="et-full">
+          <!-- 分类：所有团都有；客户端「专家团 · 市场」的分类筛选条用，不在团卡片上展示 -->
+          <el-form-item label="分类" required :error="errors.category" class="et-full">
             <el-select v-model="form.category" placeholder="请选择分类" :disabled="disabled" style="width: 100%" @change="errors.category = ''">
               <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
             </el-select>
@@ -531,6 +548,20 @@ const metaItems = computed(() => {
             <IconField :icon="form.avatar" :name="form.name" :readonly="disabled" placeholder="—" @pick="onPickIcon" />
           </el-form-item>
           <el-form-item label="团介绍" required :error="errors.intro" class="et-full">
+            <template #label>
+              <span class="et-label-row">
+                <span><span class="et-req">*</span>团介绍</span>
+                <el-button
+                  v-if="!disabled"
+                  plain
+                  size="small"
+                  class="et-ai"
+                  :disabled="aiIntro.disabled.value"
+                  :title="aiIntro.title.value || undefined"
+                  @click="aiIntro.run"
+                >{{ aiIntro.label.value }}</el-button>
+              </span>
+            </template>
             <el-input
               v-model="form.intro"
               type="textarea"
@@ -704,6 +735,10 @@ const metaItems = computed(() => {
               @click="aiCollab.run"
             >{{ aiCollab.label.value }}</el-button>
           </div>
+        </div>
+        <div class="et-purpose">
+          <div class="et-label-row"><span>团的用途<span class="section-sub">选填，一句话说明这个团用来干什么；不填则按成员专业自动写一句，同样作为拆解依据</span></span></div>
+          <el-input v-model="form.purpose" maxlength="200" show-word-limit :disabled="disabled" placeholder="如：把一份合同从法律、税务、履约三个角度一起看一遍" data-testid="team-purpose" />
         </div>
         <el-input
           v-model="form.collab"
@@ -1080,6 +1115,9 @@ const metaItems = computed(() => {
   color: var(--c-text-muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
+}
+.et-purpose {
+  margin-bottom: var(--space-3);
 }
 .et-leader-duty {
   margin-top: var(--space-3);

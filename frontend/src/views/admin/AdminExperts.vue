@@ -88,7 +88,7 @@ watch(view, (v) => {
   if (v === 'team') teamMounted.value = true
 })
 const pageSubtitle = computed(() =>
-  view.value === 'team' ? '平台全部专家团 —— 通用 / 岗位私有 / 市场专家团 统一管理' : '平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理'
+  view.value === 'team' ? '平台全部专家团 —— 通用团 / 岗位团 / 市场团 统一管理' : '平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理'
 )
 
 onMounted(() => {

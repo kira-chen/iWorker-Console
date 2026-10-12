@@ -44,9 +44,9 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 import '@/assets/connector.css'
 
 const TEAM_TYPE_LABEL = {
-  [EXPERT_TYPE.POSITION]: '岗位私有',
-  [EXPERT_TYPE.PLATFORM]: '市场专家团',
-  [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用专家团'
+  [EXPERT_TYPE.POSITION]: '岗位团',
+  [EXPERT_TYPE.PLATFORM]: '市场团',
+  [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用团'
 }
 const TYPE_OPTIONS = Object.entries(TEAM_TYPE_LABEL).map(([value, label]) => ({ value, label }))
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')

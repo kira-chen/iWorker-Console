@@ -66,6 +66,7 @@ function seedTeams() {
       positionIds: [],
       avatar: '◈',
       category: '投资',
+      purpose: '把经营数据分析和行业研究放在一起，给出可追溯的管理建议',
       intro: '把经营数据分析和行业研究放在一起看：先识别经营异常，再用公开资料做行业与竞品对照，给出可追溯的管理建议。',
       members: [
         { expertId: 201, duty: '经营数据分析口径与管理建议' },
@@ -89,7 +90,8 @@ function seedTeams() {
       type: EXPERT_TYPE.SYSTEM_DEFAULT,
       positionIds: [],
       avatar: '⌕',
-      category: '',
+      category: '通用',
+      purpose: '解答制度、流程和业务知识类问题',
       intro: '解答制度、流程和业务知识类问题：由企业知识助手检索依据，经营分析专家补充数据口径，给出带出处的回答。',
       members: [
         { expertId: 202, duty: '检索制度与流程依据并标注出处' },
@@ -113,7 +115,7 @@ function seedTeams() {
       type: EXPERT_TYPE.POSITION,
       positionIds: [401],
       avatar: '◎',
-      category: '',
+      category: '投资',
       intro: '服务经营分析岗：研究报告专家负责外部资料，企业知识助手负责内部制度依据，两边合并给出分析底稿。',
       members: [
         { expertId: 204, duty: '外部公开资料与行业研究' },
@@ -154,9 +156,10 @@ let publications = seedPublications()
 let reviewSnapshots = {}
 
 // v1（2026-10-12）：专家团模块首次接入持久化。
-// v2（2026-10-12）：专家团去掉背景色字段、分类只留市场专家团，种子 302 / 303 的 category 置空，丢弃旧快照。
+// v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
+// v3（2026-10-12）：专家团新增选填「用途」purpose（客户端 PRD §2.1：拆解依据之一），301 / 302 种子带一句；分类仍是所有团都有。
 const persist = attachPersist('expertTeam', {
-  version: 2,
+  version: 3,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -201,7 +204,7 @@ const normMembers = (ms) => {
 
 /** 成员配置里会影响「试跑结果」的部分的签名；变了就要清掉「已试跑」（md §三.9）。 */
 const structureSig = (t) =>
-  JSON.stringify([t.members.map((m) => [m.expertId, m.duty]), t.leaderId ?? null, t.leaderDuty || '', t.collab || ''])
+  JSON.stringify([t.members.map((m) => [m.expertId, m.duty]), t.leaderId ?? null, t.leaderDuty || '', t.collab || '', t.purpose || ''])
 
 /* ---------------- 出参 ---------------- */
 
@@ -264,6 +267,7 @@ function toDetail(t) {
     ...toRow(t),
     members: resolveMembers(t),
     leaderDuty: t.leaderDuty || '',
+    purpose: t.purpose || '',
     collab: t.collab || '',
     exampleQuestions: normQuestions(t.exampleQuestions)
   }
@@ -275,8 +279,7 @@ function toDetail(t) {
 export function checkTeamSavable(t) {
   if (!String(t.name || '').trim()) return { field: 'name', message: '请填写团名称' }
   if (!String(t.type || '').trim()) return { field: 'type', message: '请选择团类型' }
-  // 分类只有市场专家团有（客户端市场筛选用），其余团型不展示、不校验（md §三.2）
-  if (t.type === EXPERT_TYPE.PLATFORM && !String(t.category || '').trim()) return { field: 'category', message: '请选择专家分类' }
+  if (!String(t.category || '').trim()) return { field: 'category', message: '请选择专家分类' }
   if (!String(t.avatar || '').trim()) return { field: 'avatar', message: '请选择图标' }
   if (!String(t.intro || '').trim()) return { field: 'intro', message: '请填写团介绍' }
   if (!normQuestions(t.exampleQuestions).every((q) => q.trim())) return { field: 'examples', message: '请填写 3 条"团队帮你做"示例问题' }
@@ -401,11 +404,12 @@ export async function createTeam(payload = {}) {
     type,
     positionIds: type === EXPERT_TYPE.POSITION ? normPositionIds(payload.positionIds) : [],
     avatar: String(payload.avatar || '').trim(),
-    category: type === EXPERT_TYPE.PLATFORM ? String(payload.category || '').trim() : '',
+    category: String(payload.category || '').trim(),
     intro: String(payload.intro || '').trim(),
     members,
     leaderId,
     leaderDuty: leaderId != null ? String(payload.leaderDuty || '') : '',
+    purpose: String(payload.purpose || '').trim(),
     collab: String(payload.collab || ''),
     exampleQuestions: normQuestions(payload.exampleQuestions),
     trialed: !!payload.trialed,
@@ -437,7 +441,7 @@ export async function updateTeam(id, payload = {}) {
     t.name = name
   }
   if (payload.avatar !== undefined) t.avatar = String(payload.avatar || '').trim()
-  if (payload.category !== undefined && t.type === EXPERT_TYPE.PLATFORM) t.category = String(payload.category || '').trim()
+  if (payload.category !== undefined) t.category = String(payload.category || '').trim()
   if (payload.intro !== undefined) t.intro = String(payload.intro || '').trim()
   if (payload.positionIds !== undefined && t.type === EXPERT_TYPE.POSITION) t.positionIds = normPositionIds(payload.positionIds)
   if (payload.exampleQuestions !== undefined) t.exampleQuestions = normQuestions(payload.exampleQuestions)
@@ -450,6 +454,7 @@ export async function updateTeam(id, payload = {}) {
   }
   if (payload.leaderDuty !== undefined) t.leaderDuty = String(payload.leaderDuty || '')
   if (payload.collab !== undefined) t.collab = String(payload.collab || '')
+  if (payload.purpose !== undefined) t.purpose = String(payload.purpose || '').trim()
   // 「已试跑」：结构被改过则清零，除非本次明确带了 trialed=true（编辑器在改动后重新试跑过）
   if (payload.trialed !== undefined) t.trialed = !!payload.trialed
   else if (structureSig(t) !== sigBefore) t.trialed = false

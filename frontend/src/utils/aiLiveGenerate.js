@@ -119,6 +119,18 @@ export function skillExampleQuestion(ctx) {
 
 /* ==================== 专家团（prd.专家团.md §三.7；Prompt 见《AI生成按钮Prompt规范》§8–11） ==================== */
 
+/** 成员行 → 「名（分类）」展示串；members: [{ name, category, duty? }] */
+const memberLabel = (m) => `${m.name}${m.category ? `（${m.category}）` : ''}`
+
+/** 团介绍：成员 + 能力，讲清适合什么事、各负责哪块（不讲协作机制）。ctx: { name?, members: [{name,category,duty?}] } */
+export function teamIntroText(ctx) {
+  const c = ctx || {}
+  const ms = c.members || []
+  const who = ms.map(memberLabel).join('、')
+  const parts = ms.map((m) => `${m.name}负责${m.duty ? shortText(m.duty, 16) : `${m.category || '专业'}视角的判断`}`).join('，')
+  return limitLen(`${c.name ? `${c.name}适合` : '这个团适合'}需要多位专家共同判断的事项。成员包括${who}。${parts}。`, 2000)
+}
+
 /** 团长职责：按团长专长写分工口径。ctx: { leader: {name,category}, members: [{name,category}] } */
 export function teamLeaderDutyText(ctx) {
   const c = ctx || {}
