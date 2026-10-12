@@ -687,7 +687,13 @@ const metaItems = computed(() => {
                   <span v-if="String(form.leaderId) === String(m.expertId)" class="et-leader-badge">团长</span>
                   <span v-if="infoOf(m.expertId).unavailable" class="et-warn-tag">{{ infoOf(m.expertId).unavailable }}</span>
                 </div>
+                <!-- 团长这一行不填「团内负责什么」：团长的分工就是下面的「团长职责」，两处会重复；
+                     取消团长后输入框恢复，之前填过的值保留 -->
+                <div v-if="String(form.leaderId) === String(m.expertId)" class="et-row-leader-note" data-testid="team-leader-row-note">
+                  团长的分工见下方「团长职责」
+                </div>
                 <el-input
+                  v-else
                   v-model="m.duty"
                   maxlength="200"
                   :disabled="disabled"
@@ -860,6 +866,11 @@ const metaItems = computed(() => {
 }
 .et-full {
   grid-column: 1 / -1;
+}
+.et-row-leader-note {
+  padding: 6px 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
 }
 .et-hint {
   margin-top: 4px;

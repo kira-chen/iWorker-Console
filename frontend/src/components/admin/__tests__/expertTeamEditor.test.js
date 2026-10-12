@@ -209,6 +209,26 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(drawer.querySelector('[data-testid="team-collab-card"]').textContent).toContain('没设团长时必填')
   })
 
+  it('团长那一行不再有「团内负责什么」输入框（与团长职责重复），只提示见团长职责；取消团长后恢复且已填值保留（md §三.3.1）', async () => {
+    api.getTeam.mockResolvedValue(detail())
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(14)
+    const drawer = drawerOf()
+    const row = (id) => drawer.querySelector(`[data-testid="team-member-${id}"]`)
+    const leaderBtn = (id) => [...row(id).querySelectorAll('.et-row-ops .el-button')].find((b) => /团长/.test(b.textContent))
+    expect(row(201).querySelector('input')).toBeTruthy()
+    leaderBtn(201).click()
+    await flushAll(6)
+    expect(row(201).querySelector('input')).toBeNull()
+    expect(row(201).querySelector('[data-testid="team-leader-row-note"]').textContent).toContain('团长职责')
+    expect(row(202).querySelector('input')).toBeTruthy() // 其他成员不受影响
+    leaderBtn(201).click()
+    await flushAll(6)
+    expect(row(201).querySelector('input').value).toBe('补充口径')
+    expect(row(201).querySelector('[data-testid="team-leader-row-note"]')).toBeNull()
+  })
+
   it('移除团长本人 → 团长清空；成员少于 2 位时试跑拆解置灰并提示原因（md §三.3.2 / §三.9）', async () => {
     api.getTeam.mockResolvedValue(detail({ leaderId: 201, leaderDuty: '按经营口径' }))
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
