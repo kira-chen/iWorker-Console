@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  quotaInputError, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX
+  quotaInputError, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX
 } from '../storageSpace'
 
 /**
@@ -66,9 +66,10 @@ describe('状态文案与常量', () => {
     })
   })
 
-  it('下限 1 GB、默认容量固定 5 GB、拒绝原因限长 500', () => {
+  it('下限 1 GB、默认容量出厂 1 GB、磁盘总量出厂 1000 GB、拒绝原因限长 500', () => {
     expect(QUOTA_MIN_GB).toBe(1)
-    expect(DEFAULT_QUOTA_GB).toBe(5)
+    expect(DEFAULT_QUOTA_GB).toBe(1)
+    expect(DISK_TOTAL_GB).toBe(1000)
     expect(REJECT_REASON_MAX).toBe(500)
   })
 })

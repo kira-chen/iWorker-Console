@@ -12,6 +12,7 @@ vi.mock('../mockPersist', () => ({
 }))
 
 import {
+  setDefaultQuota, setDiskTotal,
   getStorageOverview, listStorageMembers, adjustStorageQuota, batchAdjustStorageQuota,
   listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest, __resetStorageSpaceMock
 } from '../storageSpaceMock'
@@ -42,7 +43,8 @@ beforeEach(() => {
 
 describe('storageSpaceMock —— 容量口径与状态判定', () => {
   it('员工总量 = 个人设置值，没有则取默认容量；容量来源据此标注', async () => {
-    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'DEFAULT' })
+    expect(await memberOf('yangfan')).toMatchObject({ totalGb: 1, quotaSource: 'DEFAULT' })
+    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'PERSONAL' }) // 存量员工固化成个人设置 5 GB
     expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 10, quotaSource: 'PERSONAL' })
   })
 
@@ -79,8 +81,10 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
   })
 
   it('概览给出默认容量、按默认值计算的人数与待处理申请数', async () => {
-    // 在职 11 人 − 个人设置 2 人（赵敏 10 GB、徐琳 8 GB）= 9 人用默认；待处理 4 条
-    expect(await getStorageOverview()).toEqual({ defaultQuotaGb: 5, defaultMemberCount: 9, pendingCount: 4 })
+    // 在职 11 人，只有杨帆、马超（未统计）用默认 1 GB；已分配 = 7×5 + 10 + 8 + 2×1 = 55，磁盘总量 1000，余量 945；待处理 4 条
+    expect(await getStorageOverview()).toEqual({
+      defaultQuotaGb: 1, defaultMemberCount: 2, pendingCount: 4, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945
+    })
   })
 })
 
@@ -103,11 +107,11 @@ describe('storageSpaceMock —— 调整容量', () => {
     expect(liveOps()[0]).toMatchObject({ action: '调整容量', target: 'zhangwei', detail: '5 GB → 8 GB', objectId: 201 })
   })
 
-  it('总量没变不写审计，也不改变容量来源：默认员工填 5 仍是「默认」，不会悄悄变成个人设置', async () => {
-    await adjustStorageQuota(201, 5)
+  it('总量没变不写审计，也不改变容量来源：默认员工填 1 仍是「默认」，不会悄悄变成个人设置', async () => {
+    await adjustStorageQuota(209, 1)
     expect(liveOps()).toHaveLength(0)
-    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'DEFAULT' })
-    expect((await getStorageOverview()).defaultMemberCount).toBe(9)
+    expect(await memberOf('yangfan')).toMatchObject({ totalGb: 1, quotaSource: 'DEFAULT' })
+    expect((await getStorageOverview()).defaultMemberCount).toBe(2)
   })
 
   it('调整容量可任意调小，不受当前容量限制：10 GB 的员工直接调到 3 GB，已用不高于新总量时随即处于已满状态', async () => {
@@ -129,8 +133,8 @@ describe('storageSpaceMock —— 调整容量', () => {
 
   it('恢复默认：清除个人设置值，总量回到默认容量', async () => {
     await adjustStorageQuota(208, null, { restoreDefault: true })
-    expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 5, quotaSource: 'DEFAULT' })
-    expect(liveOps()[0]).toMatchObject({ action: '调整容量', detail: '10 GB → 5 GB' })
+    expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 1, quotaSource: 'DEFAULT' })
+    expect(liveOps()[0]).toMatchObject({ action: '调整容量', detail: '10 GB → 1 GB' })
   })
 
   it('批量设置最小 1 GB', async () => {
@@ -157,7 +161,7 @@ describe('storageSpaceMock —— 调整容量', () => {
   })
 
   it('恢复默认对本来就是默认的员工没有变化：不写审计', async () => {
-    await adjustStorageQuota(201, null, { restoreDefault: true })
+    await adjustStorageQuota(209, null, { restoreDefault: true })
     expect(liveOps()).toHaveLength(0)
   })
 
@@ -314,7 +318,7 @@ describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconci
 
   it('用户模块新增员工 → 出现在清单里，没统计过 = 未统计；改显示名同步', async () => {
     await createUser({ username: 'newbie', displayName: '新人', roleCodes: ['普通用户'] })
-    expect(await memberOf('newbie')).toMatchObject({ name: '新人', state: 'UNKNOWN', usedGb: null, totalGb: 5 })
+    expect(await memberOf('newbie')).toMatchObject({ name: '新人', state: 'UNKNOWN', usedGb: null, totalGb: 1 })
     const zhangwei = listUsersSync().find((u) => u.username === 'zhangwei')
     await updateUser(zhangwei.id, { displayName: '张伟伟' })
     expect((await memberOf('zhangwei')).name).toBe('张伟伟')
@@ -409,5 +413,40 @@ describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md
     Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
     persistHarness.options.restore(snap)
     expect((await memberOf('zhangwei')).state).toBe('WARN')
+  })
+})
+
+describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', () => {
+  it('修改默认容量：只影响未单独设置的员工，逐人写「调整容量」审计，概览同步', async () => {
+    const res = await setDefaultQuota(3)
+    expect(res).toEqual({ defaultQuotaGb: 3, count: 2 })
+    expect(await memberOf('yangfan')).toMatchObject({ totalGb: 3, quotaSource: 'DEFAULT' })
+    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'PERSONAL' })
+    expect(liveOps().map((r) => r.detail)).toEqual(['1 GB → 3 GB', '1 GB → 3 GB'])
+    expect(await getStorageOverview()).toMatchObject({ defaultQuotaGb: 3, allocatedGb: 59, remainingGb: 941 })
+  })
+
+  it('默认容量同样限定 1–20 GB；填原值不写审计', async () => {
+    await expect(setDefaultQuota(21)).rejects.toThrow('容量不能大于 20 GB')
+    await expect(setDefaultQuota(0)).rejects.toThrow('容量不能小于 1 GB')
+    await setDefaultQuota(1)
+    expect(liveOps()).toHaveLength(0)
+  })
+
+  it('磁盘总量可改，余量 = 总量 − 已分配；不得低于已分配', async () => {
+    expect(await setDiskTotal(500)).toEqual({ diskTotalGb: 500, remainingGb: 445 })
+    await expect(setDiskTotal(54)).rejects.toThrow('磁盘总量不能低于已分配的 55 GB')
+    await expect(setDiskTotal(1.5)).rejects.toThrow('磁盘总量只能填整数')
+    expect((await getStorageOverview()).diskTotalGb).toBe(500)
+  })
+
+  it('不超分：余量不足时调大容量、批量设置、同意扩容、改默认容量都被拦', async () => {
+    await setDiskTotal(57) // 已分配 55，余量 2
+    await expect(adjustStorageQuota(209, 4)).rejects.toThrow('磁盘余量不足：当前余量 2 GB，本次需要增加 3 GB')
+    await expect(setDefaultQuota(3)).rejects.toThrow('磁盘余量不足') // 2 名默认员工各增 2，共 4 > 余量 2
+    await expect(batchAdjustStorageQuota([209, 213], 2)).resolves.toMatchObject({ count: 2 }) // 各增 1，共 2，刚好
+    await expect(approveExpansionRequest('ER-1006', 6)).rejects.toThrow('磁盘余量不足')
+    await adjustStorageQuota(201, 1) // 调小永远放行
+    expect((await getStorageOverview()).remainingGb).toBe(4)
   })
 })
