@@ -469,6 +469,18 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.version-dialog')).toBeNull()
   })
 
+  it('J40 已发布专家带 revokedSkillNames 时，【版本管理】仍能打开侧栏（发布前检查的阻断在提交时由数据层 / 抽屉兜底，页面不预判）', async () => {
+    listExperts.mockResolvedValue({
+      list: EXPERTS.map((e) => (e.id === 201 ? { ...e, revokedSkillNames: ['合同风险检查'] } : e)),
+      total: 3
+    })
+    await mount()
+    rowBtn(rowEls()[0], '版本管理').click()
+    await nextTick()
+    expect(container.querySelector('.version-dialog').textContent).toBe('201')
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+  })
+
   it('已发布点「版本管理」→ 开侧栏，适配器带专家词表（版本管理/禁用/专家名称）', async () => {
     await mount()
     rowBtn(rowEls()[0], '版本管理').click()

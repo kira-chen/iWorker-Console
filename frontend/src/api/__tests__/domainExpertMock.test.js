@@ -328,6 +328,20 @@ describe('专家引用了被强制回收的市场技能（技能 md §3.5.1）',
     await publishExpert(203, { releaseNotes: '首发' })
     expect((await getExpert(203)).pendingAction).toBe('PUBLISH')
   })
+
+  it('已发布专家走版本管理路径（bump:NONE）同样被阻断，且不进在途审核（pendingAction 仍为 null）', async () => {
+    expect((await getExpert(201)).skillIds).toContain(304) // 前提：201 引用 sk_304
+    revokeSk304('违规内容')
+    await expect(publishExpert(201, { bump: 'NONE', releaseNotes: 'x' })).rejects.toThrow('引用的「合同风险检查」已被回收，请移除后再发布')
+    expect((await getExpert(201)).pendingAction).toBeNull()
+  })
+
+  it('列表行带 revokedSkillNames（不止详情）；技能未回收时为空', async () => {
+    const row = async () => (await listExperts()).list.find((e) => e.id === 201)
+    expect((await row()).revokedSkillNames ?? []).toEqual([])
+    revokeSk304('违规内容')
+    expect((await row()).revokedSkillNames).toEqual(['合同风险检查'])
+  })
 })
 
 describe('forceRevokeExpert —— 强制回收', () => {
