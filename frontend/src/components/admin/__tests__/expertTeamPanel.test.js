@@ -67,25 +67,24 @@ const rowOf = (c, name) => [...c.querySelectorAll('.el-table__body tr')].find((r
 const btn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
-  it('列：团类型文案 / 成员数 / 团长（未设显示「未设团长」）/ 引用情况（仅岗位私有有值）/ 已发布缺员标签（md §二.1 / §四）', async () => {
+  it('列：团类型文案 / 专家数（没有成员、团长两列）/ 引用情况（仅岗位私有有值）/ 已发布缺员标签（md §二.1 / §四）', async () => {
     const c = await mountPanel()
     const r1 = rowOf(c, '经营研究团')
     const r3 = rowOf(c, '岗位协同团')
     expect(r1.textContent).toContain('市场团')
-    // 成员列只列专家名称（无图标），专家数单独一列
-    expect(r1.textContent).toContain('经营分析专家、研究报告专家')
-    expect(r1.querySelector('.etp-mini')).toBeNull()
     const headers = [...c.querySelectorAll('.el-table__header th')].map((h) => h.textContent.trim())
-    expect(headers).toContain('成员')
+    // 列表不展示成员与团长（只留专家数）
+    expect(headers).not.toContain('成员')
+    expect(headers).not.toContain('团长')
     expect(headers).toContain('专家数')
+    expect(r1.textContent).not.toContain('经营分析专家')
     const countCell = (r) => r.querySelectorAll('td')[headers.indexOf('专家数')].textContent.trim()
     expect(countCell(r1)).toBe('2')
     expect(countCell(r3)).toBe('2')
-    expect(r1.textContent).toContain('经营分析专家') // 团长
     expect(r1.querySelector('[data-testid="team-missing-tag"]').textContent).toBe('缺员 1')
     expect(r1.textContent).toContain('v1.0.0')
     expect(r3.textContent).toContain('岗位团')
-    expect(r3.textContent).toContain('未设团长')
+    expect(r3.textContent).not.toContain('未设团长')
     expect(r3.textContent).toContain('1个岗位引用')
     expect(r3.querySelector('[data-testid="team-missing-tag"]')).toBeNull()
     // 操作按钮三态：已发布 = 查看 编辑 停用 强制回收 版本管理；未发布 = 查看 编辑 发布 删除

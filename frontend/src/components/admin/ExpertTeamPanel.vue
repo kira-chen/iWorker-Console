@@ -361,18 +361,8 @@ async function forceRevokeFromList(row) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <!-- 成员：只列专家名称（不放图标）；超长省略，悬停看全部。专家数单独一列 -->
-          <el-table-column label="成员" :min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.memberNames.join('、') }}</template>
-          </el-table-column>
           <el-table-column label="专家数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.memberCount }}</template>
-          </el-table-column>
-          <el-table-column label="团长" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
-            <template #default="{ row }">
-              <span v-if="row.leaderName">{{ row.leaderName }}</span>
-              <span v-else class="cell-na">未设团长</span>
-            </template>
           </el-table-column>
           <el-table-column label="引用情况" :width="COL.COUNT + 24" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
