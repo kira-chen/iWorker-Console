@@ -165,6 +165,14 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect((await sampleMock.getSampleTask(401, task.id)).execTeamId).toBeNull()
   })
 
+  it('岗位绑定情况（删除岗位确认文案用）：绑定本岗位的岗位团与岗位私有专家；其他岗位为空', async () => {
+    const { getPositionBindings } = await import('../positionMock')
+    const b = await getPositionBindings(401)
+    expect(b.teams).toEqual([{ id: 303, name: '岗位协同团', status: 'draft' }])
+    expect(b.experts.map((e) => e.name)).toEqual(['法务审阅专家']) // 种子 203 绑了 401 / 402
+    expect(await getPositionBindings(999)).toEqual({ teams: [], experts: [] })
+  })
+
   it('提交发布 → 进入审核 + 审核中心落行 + 存快照；撤回清快照；通过后 v1.0.0 已发布、驳回回到未发布', async () => {
     await expect(publishTeam(303, { releaseNotes: '  ' })).rejects.toMatchObject({ field: 'releaseNotes' })
     await publishTeam(303, { releaseNotes: '首发' })

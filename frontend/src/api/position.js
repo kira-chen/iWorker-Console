@@ -88,6 +88,12 @@ export function withdrawPosition(id) {
 }
 
 // 1.6.3 删除影响面（强确认弹窗用）
+// 岗位绑定的专家团 / 岗位专家 { teams: [{id,name,status}], experts: [{id,name}] }（删除确认文案用）
+export function getPositionBindings(id) {
+  if (USE_MOCK) return mock.getPositionBindings(id)
+  return request.get(`/fde/positions/${id}/bindings`)
+}
+
 export function getDeleteImpact(id) {
   if (USE_MOCK) return mock.getDeleteImpact(id)
   return request.get(`/fde/positions/${id}/delete-impact`)

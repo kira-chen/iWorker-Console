@@ -539,6 +539,13 @@ export async function listTeamsForAutomation(positionId) {
     })
 }
 
+/** 绑定了某岗位的岗位团（岗位删除确认文案用）。 */
+export function listTeamsBoundToPosition(positionId) {
+  return teams
+    .filter((t) => t.type === EXPERT_TYPE.POSITION && normPositionIds(t.positionIds).some((id) => String(id) === String(positionId)))
+    .map((t) => ({ id: t.id, name: t.name, status: t.status }))
+}
+
 /** 岗位被删后把它从岗位私有团的 positionIds 摘掉（口径同 removePositionFromExperts）。 */
 export function removePositionFromTeams(positionId) {
   let changed = false

@@ -40,7 +40,7 @@ import { computePublishCheck } from '@/utils/positionModel'
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
-import { removePositionFromExperts } from './domainExpertMock'
+import { removePositionFromExperts, listExpertsBoundToPosition } from './domainExpertMock'
 import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs } from './mcpConnectorMock'
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs } from './bizSystemMock'
@@ -387,6 +387,15 @@ export async function deletePosition(id) {
   removeBizPositionRefs(p.positionId)
   persist()
   return {}
+}
+
+/**
+ * 岗位绑定的专家团 / 岗位专家（删除确认文案用，prd.岗位.md §3.6）。团走动态 import：
+ * expertTeamMock 静态依赖本文件，反向静态引会成环。
+ */
+export async function getPositionBindings(id) {
+  const { listTeamsBoundToPosition } = await import('./expertTeamMock')
+  return { teams: listTeamsBoundToPosition(id), experts: listExpertsBoundToPosition(id) }
 }
 
 export async function getDeleteImpact(id) {

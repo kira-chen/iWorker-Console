@@ -37,6 +37,7 @@ const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 const assets = [
   { name: '岗位',   published: 14, review: 2, draft: 2 },
   { name: '专家',   published: 18, review: 1, draft: 3 },
+  { name: '专家团', published:  3, review: 0, draft: 1 },
   { name: '技能',   published: 68, review: 5, draft: 9 },
   { name: 'MCP',    published:  9, review: 1, draft: 2 },
   { name: 'API',    published: 11, review: 2, draft: 4 },

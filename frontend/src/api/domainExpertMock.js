@@ -743,6 +743,13 @@ export async function relistExpertPublication(expertId, publicationId) {
   return { ...row }
 }
 
+/** 绑定了某岗位的岗位私有专家（岗位删除确认文案用）。 */
+export function listExpertsBoundToPosition(positionId) {
+  return experts
+    .filter((e) => e.type === EXPERT_TYPE.POSITION && Array.isArray(e.positionIds) && e.positionIds.some((id) => String(id) === String(positionId)))
+    .map((e) => ({ id: e.id, name: e.name }))
+}
+
 /**
  * 岗位被删后把它从岗位私有专家的 positionIds 摘掉（2026-09-23 待办 yuepu#23⑤，positionMock.deletePosition 调用）：
  * 否则专家列表「N 个岗位引用」虚高，引用的还是已不存在的岗位。专家本体不删，摘空后即「暂无引用」。
