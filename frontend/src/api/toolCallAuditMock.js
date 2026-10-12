@@ -1,10 +1,13 @@
 // 工具调用审计 —— 数字员工调用外部工具 / 第三方知识服务的事后审计记录，只读 mock 数据。
 // 三组数据对应页面的三个页签（口径见 PRD 正本 §一 页签结构）：
-//   1. toolCallRecords    技能调用    用户在对话中触发的一次技能执行，执行中调连接器（MCP / API / 业务系统）
+//   1. toolCallRecords    会话调用    用户的一次会话（会话内调用技能），会话中执行中调连接器（MCP / API / 业务系统）
 //   2. taskCallRecords    岗位自动化任务  定时触发、无人值守的一次任务运行，运行中调连接器
 //   3. knowledgeCallRecords 知识库检索  岗位 / 专家引用的知识库，经 API / MCP 数据源检索第三方知识服务
 //
-// 2026-10-09 与研发（梅竹）讨论后改版：技能调用 / 岗位自动化任务两组的记录单元从「一次工具调用」
+// 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」（会话内可调用多个技能，字段 skill → skills 数组），
+// 工具调用明细不局限于技能引用的工具；岗位自动化任务同理，工具不局限于任务引用的工具。
+//
+// 2026-10-09 与研发（梅竹）讨论后改版：会话调用 / 岗位自动化任务两组的记录单元从「一次工具调用」
 // 改为「一次技能执行 / 一次任务运行」（§一「记录单元」）——单次对话可能多次调用工具，按单条工具调用
 // 上报数据量大，且单个工具失败、整体兜底成功时单纯记工具失败意义有限。改版后：
 //   - 列表层是执行 / 运行记录，带「是否涉及写操作」「整体执行结果」；
@@ -18,29 +21,26 @@
 // 是错的，不是「数值算错了要修」，是这类字段压根不该存在。连带调整：
 //   - 单次工具调用的执行结果只有 成功 / 失败 两态；原来的「执行前拦截」「用户取消」收作「失败」的
 //     具体原因文案，不再是独立状态。
-//   - 技能调用不展示「执行中」的记录——没有「待确认」这个可展示的中间态，一次执行只在确认 / 执行
+//   - 会话调用不展示「执行中」的记录——没有「待确认」这个可展示的中间态，一次执行只在确认 / 执行
 //     都有了结果后才出现在审计记录里；连带技能执行层面的整体结果也只剩 成功 / 失败（§一「记录单元」）。
 //   - 「用户确认」字段收窄为 不需要确认 / 已确认 两态；确认环节本身被拒绝（原「用户取消」）不再单独
 //     标确认状态，由执行结果=失败 + 原因文案"用户取消本次操作"表达。
 //   - 岗位自动化任务同样不记录耗时与具体执行时刻。
 //
 // 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索也收窄为只有 成功 / 失败 两态——
-// 原「执行前拦截」并入「失败」，原因文案保留。岗位自动化任务的结果判定规则与技能调用完全一致
+// 原「执行前拦截」并入「失败」，原因文案保留。岗位自动化任务的结果判定规则与会话调用完全一致
 // （看最后一次工具调用是否成功），两处合并成同一个 deriveExec 函数，不再分别定义；岗位自动化
-// 任务的列表层标签直接复用 EXEC_RESULT_LABEL（文案与技能调用一致，都是"失败"）。
+// 任务的列表层标签直接复用 EXEC_RESULT_LABEL（文案与会话调用一致，都是"失败"）。
 //
 // 2026-10-09 第四轮改版（同日）：知识库检索的「失败」文案与另两个页签统一，去掉原来单独的
 // 「执行失败」写法——原 KNOWLEDGE_RESULT_LABEL 删除，三个页签直接共用同一份 EXEC_RESULT_LABEL。
-// 连带三个页签的筛选项占位文案统一：执行结果筛选统一叫「全部执行结果」，技能调用 / 岗位自动化
+// 连带三个页签的筛选项占位文案统一：执行结果筛选统一叫「全部执行结果」，会话调用 / 岗位自动化
 // 任务的写操作筛选统一叫「涉及写操作」（原来占位是裸的"全部"，含义不明确）；知识库检索没有
 // 「涉及写操作」概念（只读），换成它本来就有的「全部数据源类型」。知识库检索原本还有一个独立的
 // 「命中情况」筛选下拉，一并去掉——命中 0 条的筛选改为只能通过「无命中检索」统计卡片触发，
 // 不再占一个筛选位（§九.2 的卡片本来就能做到同样的事）。
 //
-// 注意：岗位自动化任务种子里的触发文案（trigger，如「定时·每周一 09:00」「定时·每月 25 日 10:00」）只是展示用文字，
-// 不与同条记录的 date 对应（date 是相对今天生成的，不一定恰好落在周一 / 25 日）；不要据此推断或校验触发时间。
-//
-// 技能调用的示例数据参考已退场的旧交互原型（数字员工管理端交互原型.html · 05治理/工具调用审计，
+// 会话调用的示例数据参考已退场的旧交互原型（数字员工管理端交互原型.html · 05治理/工具调用审计，
 // 原型本身已于 2026-09-09/10 退场不作依据），本次改版重新分组为执行单元，场景未变、组合方式变了。
 // 岗位自动化任务、知识库检索两组是 2026-09-28 按 PRD 新增页签补的，任务名 / 知识库名 / 数据源名
 // 取自 sampleTaskMock / knowledgeBaseMock 的种子，不另造名字。
@@ -48,14 +48,17 @@
 // 原型字段 role（如"销售顾问"）在本次改造中更名为 position（岗位），避免与 06组织/角色 的
 // 权限角色概念混淆。
 
-// 2026-10-10（测试审计 J27）：三组种子的 date 一律写成 dateDaysAgo(n)（n 天前），不再写死绝对日期——页面默认只看近 90 天，
-// 写死的日期过几个月整页会变空。最新一天 = 1 天前（昨天），其余与原绝对日期的天数间隔不变，先后顺序不变。
 import { dateDaysAgo } from '@/utils/seedDate'
 
-/** 工具调用（详情层，技能调用 / 岗位自动化任务两页签共用）的执行结果，只有成功 / 失败两态。 */
+// 2026-10-10（测试审计 J27）：种子的 date 一律写成 dateDaysAgo(n)（n 天前），不再写死绝对日期——页面默认只看近 90 天，
+// 写死的日期过几个月整页会变空。偏移量按 2026-10-10 反推，所以当天的取值与原绝对日期一致，先后顺序、间隔不变。
+// 注意：岗位自动化任务种子里的触发文案（trigger，如「定时·每周一 09:00」「定时·每月 25 日 10:00」）只是展示用文字，
+// 不与同条记录的 date 对应（date 是相对今天生成的，不一定恰好落在周一 / 25 日）；不要据此推断或校验触发时间。
+
+/** 工具调用（详情层，会话调用 / 岗位自动化任务两页签共用）的执行结果，只有成功 / 失败两态。 */
 export const RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
 
-/** 工具调用（详情层，仅技能调用页签——岗位自动化任务免授权、不出现确认环节）的用户确认状态。
+/** 工具调用（详情层，仅会话调用页签——岗位自动化任务免授权、不出现确认环节）的用户确认状态。
  *  只有「不需要确认 / 已确认」两态：确认环节被拒绝的调用不单独标确认状态，由执行结果=失败 +
  *  原因文案表达（见 C-1006），confirm 字段留空（null）。 */
 export const CONFIRM_LABEL = { NONE: '不需要确认', CONFIRMED: '已确认' }
@@ -68,7 +71,7 @@ export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
 
 /**
  * 从一次技能执行 / 任务运行的工具调用明细，推导列表层需要的汇总字段（§一「记录单元」判定规则，
- * 技能调用与岗位自动化任务共用同一套判定——两者现在都只有 成功 / 失败 两态）：
+ * 会话调用与岗位自动化任务共用同一套判定——两者现在都只有 成功 / 失败 两态）：
  *   hasWrite  明细里有没有写操作
  *   result    看明细里最后一次调用是否成功——这是 mock 对「是否完成预期产出」的简化模拟
  *             （真实判定由后端 / Agent 决定，这里只演示规则形态：哪怕中途有调用失败，只要
@@ -82,8 +85,8 @@ function deriveExec(calls) {
   return { hasWrite, result }
 }
 
-/* ══════════════ 技能调用 ══════════════
- * 记录单元＝一次技能执行：calls 是这次执行里按发生顺序调用的工具明细（§五.2）。不展示「执行中」
+/* ══════════════ 会话调用 ══════════════
+ * 记录单元＝一次会话：calls 是这次会话里实际调用的（不限于技能引用的）按发生顺序调用的工具明细（§五.2）。不展示「执行中」
  * 的记录——没有「待确认」这个中间态可展示，一次执行只在确认 / 执行都有结果后才入账，故这里没有
  * 类似「排产计划调整·待确认中」的记录。同一次对话里技能被循环调用多次，每次各自算一条独立执行，
  * 不合并——下面 9 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
@@ -91,68 +94,68 @@ function deriveExec(calls) {
  * 失败盖掉整体结果）。 */
 export const toolCallRecords = [
   {
-    id: 'C-1001', date: dateDaysAgo(9), time: '09:10:15', user: '周敏', position: '生产计划员', skill: '排产计划调整',
+    id: 'C-1001', date: dateDaysAgo(20), time: '09:10:15', user: '周敏', position: '生产计划员', skills: ['排产计划调整'],
     reason: '业务系统·SAP ERP 连接超时',
     calls: [
-      { tool: '业务系统·SAP ERP', action: '修改排产计划', nature: 'WRITE', confirm: 'CONFIRMED', result: 'FAILED', reason: '连接超时' }
+      { skill: '排产计划调整', tool: '业务系统·SAP ERP', action: '修改排产计划', nature: 'WRITE', confirm: 'CONFIRMED', result: 'FAILED', reason: '连接超时' }
     ]
   },
   {
-    id: 'C-1002', date: dateDaysAgo(3), time: '12:01:10', user: '李强', position: '财务助手', skill: '报销查询',
+    id: 'C-1002', date: dateDaysAgo(14), time: '12:01:10', user: '李强', position: '财务助手', skills: ['报销查询'],
     reason: '',
     calls: [
-      { tool: 'API·费控系统', action: '查询报销进度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { skill: '报销查询', tool: 'API·费控系统', action: '查询报销进度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'C-1003', date: dateDaysAgo(3), time: '16:20:08', user: '陈杰', position: '销售顾问', skill: '客户记录更新',
+    id: 'C-1003', date: dateDaysAgo(14), time: '16:20:08', user: '陈杰', position: '销售顾问', skills: ['客户记录更新'],
     reason: '',
     calls: [
-      { tool: '业务系统·Salesforce CRM', action: '添加客户跟进记录', nature: 'WRITE', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { skill: '客户记录更新', tool: '业务系统·Salesforce CRM', action: '添加客户跟进记录', nature: 'WRITE', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
     // 原「执行前拦截」并入「失败」，原因文案保留——仍能看出是白名单 / 权限这类检查没通过。
-    id: 'C-1004', date: dateDaysAgo(2), time: '14:41:08', user: '刘敏', position: '销售顾问', skill: '客户信息查询',
+    id: 'C-1004', date: dateDaysAgo(13), time: '14:41:08', user: '刘敏', position: '销售顾问', skills: ['客户信息查询'],
     reason: '业务系统·Salesforce CRM 权限不足',
     calls: [
-      { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
+      { skill: '客户信息查询', tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
     ]
   },
   {
-    id: 'C-1005', date: dateDaysAgo(2), time: '14:45:12', user: '张浩', position: '生产计划员', skill: '生产数据查询',
+    id: 'C-1005', date: dateDaysAgo(13), time: '14:45:12', user: '张浩', position: '生产计划员', skills: ['生产数据查询'],
     reason: '业务系统·SAP ERP 不在工具白名单',
     calls: [
-      { tool: '业务系统·SAP ERP', action: '删除生产订单', nature: 'WRITE', confirm: 'NONE', result: 'FAILED', reason: '不在工具白名单' }
+      { skill: '生产数据查询', tool: '业务系统·SAP ERP', action: '删除生产订单', nature: 'WRITE', confirm: 'NONE', result: 'FAILED', reason: '不在工具白名单' }
     ]
   },
   {
     // 原「用户取消」并入「失败」：确认环节被拒绝，没有单独的确认状态可标——confirm 留空（null），
     // 由执行结果=失败 + 原因文案表达"这是一次被用户拒绝的写操作"，不是系统自身执行失败。
-    id: 'C-1006', date: dateDaysAgo(2), time: '14:52:05', user: '李强', position: '财务助手', skill: '报销单提交',
+    id: 'C-1006', date: dateDaysAgo(13), time: '14:52:05', user: '李强', position: '财务助手', skills: ['报销单提交'],
     reason: '用户取消本次操作',
     calls: [
-      { tool: '业务系统·用友财务', action: '提交报销单', nature: 'WRITE', confirm: null, result: 'FAILED', reason: '用户取消本次操作' }
+      { skill: '报销单提交', tool: '业务系统·用友财务', action: '提交报销单', nature: 'WRITE', confirm: null, result: 'FAILED', reason: '用户取消本次操作' }
     ]
   },
   {
     // 先失败（连接超时）后重试成功：列表层仍记「成功」，失败细节只在详情里看到——与梅竹讨论的
     // G3 场景对应：工具本身失败、兜底 / 重试后整体仍完成，不应让单次失败盖掉整体结果。
-    id: 'C-1007', date: dateDaysAgo(2), time: '15:00:52', user: '张浩', position: '生产计划员', skill: '排产冲突检测',
+    id: 'C-1007', date: dateDaysAgo(13), time: '15:00:52', user: '张浩', position: '生产计划员', skills: ['排产冲突检测'],
     reason: '',
     calls: [
-      { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
-      { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { skill: '排产冲突检测', tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
+      { skill: '排产冲突检测', tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
     // 先查客户信息（读）再创建报价单（写，需确认）：一次执行里既有读也有写，"涉及写操作"记是。
-    id: 'C-1008', date: dateDaysAgo(2), time: '15:01:25', user: '陈杰', position: '销售顾问', skill: '报价单生成',
+    id: 'C-1008', date: dateDaysAgo(13), time: '15:01:25', user: '陈杰', position: '销售顾问', skills: ['客户信息查询', '报价单生成'],
     reason: '',
     calls: [
-      { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
+      { skill: '客户信息查询', tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
       {
-        tool: '业务系统·Salesforce CRM', action: '创建报价单', nature: 'WRITE', confirm: 'CONFIRMED',
+        skill: '报价单生成', tool: '业务系统·Salesforce CRM', action: '创建报价单', nature: 'WRITE', confirm: 'CONFIRMED',
         result: 'SUCCESS', reason: '',
         params: [
           ['客户编号', 'customer_id', 'C-20240612-0083'],
@@ -167,11 +170,14 @@ export const toolCallRecords = [
     ]
   },
   {
-    id: 'C-1009', date: dateDaysAgo(2), time: '15:02:11', user: '刘敏', position: '销售顾问', skill: '方案要点生成',
+    id: 'C-1009', date: dateDaysAgo(13), time: '15:02:11', user: '刘敏', position: '销售顾问', skills: ['方案要点生成'],
     reason: '',
     calls: [
       // 成功的只读调用不保留请求参数 / 响应（2026-10-09 收窄展示范围，§5.2），不内嵌 params/output
-      { tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      // skill 缺省（null）＝没经过任何技能，模型在会话里直接调用的工具；也可能是超出技能引用范围的调用，
+      // 审计不再区分，只标是哪个技能名下发生的（2026-10-12）
+      { skill: null, tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
+      { skill: '方案要点生成', tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   }
 ].map((r) => ({ ...r, ...deriveExec(r.calls) }))
@@ -196,49 +202,49 @@ export async function listToolCallAudits() {
 }
 
 /* ══════════════ 岗位自动化任务 ══════════════
- * 记录单元＝一次任务运行：calls 是这次运行里按发生顺序调用的工具明细，结构同技能调用，
+ * 记录单元＝一次任务运行：calls 是这次运行里按发生顺序调用的工具明细，结构同会话调用，
  * 只是没有 confirm 字段——任务无人值守，全部操作免授权、不经确认（2026-10-09 与研发讨论拍板）。
- * 同样不记录耗时与具体执行时刻；整体结果与技能调用共用同一套判定（deriveExec）与标签
+ * 同样不记录耗时与具体执行时刻；整体结果与会话调用共用同一套判定（deriveExec）与标签
  * （EXEC_RESULT_LABEL），只有 成功 / 失败 两态，原「执行前拦截」并入「失败」。
  * user / position 是任务所属用户（领用该岗位的用户），不是发起人；发起方是调度，见 trigger。 */
 export const taskCallRecords = [
   {
-    id: 'T-2001', date: dateDaysAgo(8), time: '09:00:03', user: '陈杰', position: '市场研究岗', task: '每周竞品动态汇总', trigger: '定时·每周一 09:00',
+    id: 'T-2001', date: dateDaysAgo(19), time: '09:00:03', user: '陈杰', position: '市场研究岗', task: '每周竞品动态汇总', trigger: '定时·每周一 09:00',
     reason: '',
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索竞品动态', nature: 'READ', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'T-2002', date: dateDaysAgo(5), time: '08:00:04', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
+    id: 'T-2002', date: dateDaysAgo(16), time: '08:00:04', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
     reason: '客户档案已锁定，写入被拒绝',
     calls: [
       { tool: 'API·客户数据 API', action: '写入拜访提纲', nature: 'WRITE', result: 'FAILED', reason: '客户档案已锁定，写入被拒绝' }
     ]
   },
   {
-    id: 'T-2003', date: dateDaysAgo(5), time: '08:30:04', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
+    id: 'T-2003', date: dateDaysAgo(16), time: '08:30:04', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
     reason: '',
     calls: [
       { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'T-2004', date: dateDaysAgo(4), time: '10:00:05', user: '刘敏', position: '经营分析岗', task: '月度目标达成预警', trigger: '定时·每月 25 日 10:00',
+    id: 'T-2004', date: dateDaysAgo(15), time: '10:00:05', user: '刘敏', position: '经营分析岗', task: '月度目标达成预警', trigger: '定时·每月 25 日 10:00',
     reason: 'API·客户数据 API 连接超时',
     calls: [
       { tool: 'API·客户数据 API', action: '查询目标达成率', nature: 'READ', result: 'FAILED', reason: '连接超时' }
     ]
   },
   {
-    id: 'T-2005', date: dateDaysAgo(4), time: '17:00:03', user: '张浩', position: '经营分析岗', task: '供应商付款提醒', trigger: '定时·每周五 17:00',
+    id: 'T-2005', date: dateDaysAgo(15), time: '17:00:03', user: '张浩', position: '经营分析岗', task: '供应商付款提醒', trigger: '定时·每周五 17:00',
     reason: '业务系统·用友财务 不在工具白名单',
     calls: [
       { tool: '业务系统·用友财务', action: '提交付款申请', nature: 'WRITE', result: 'FAILED', reason: '不在工具白名单' }
     ]
   },
   {
-    id: 'T-2006', date: dateDaysAgo(1), time: '08:00:03', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
+    id: 'T-2006', date: dateDaysAgo(12), time: '08:00:03', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
     reason: '',
     calls: [
       {
@@ -253,7 +259,7 @@ export const taskCallRecords = [
     ]
   },
   {
-    id: 'T-2007', date: dateDaysAgo(1), time: '08:30:04', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
+    id: 'T-2007', date: dateDaysAgo(12), time: '08:30:04', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
     reason: '',
     calls: [
       { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'SUCCESS', reason: '' },
@@ -261,14 +267,14 @@ export const taskCallRecords = [
     ]
   },
   {
-    id: 'T-2008', date: dateDaysAgo(1), time: '09:00:03', user: '陈杰', position: '市场研究岗', task: '每周竞品动态汇总', trigger: '定时·每周一 09:00',
+    id: 'T-2008', date: dateDaysAgo(12), time: '09:00:03', user: '陈杰', position: '市场研究岗', task: '每周竞品动态汇总', trigger: '定时·每周一 09:00',
     reason: '',
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索竞品动态', nature: 'READ', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'T-2009', date: dateDaysAgo(1), time: '09:00:04', user: '刘敏', position: '经营分析岗', task: '季度财务简报', trigger: '定时·每月 28 日 09:00',
+    id: 'T-2009', date: dateDaysAgo(12), time: '09:00:04', user: '刘敏', position: '经营分析岗', task: '季度财务简报', trigger: '定时·每月 28 日 09:00',
     reason: 'MCP·知识库 MCP 连接超时',
     calls: [
       { tool: 'API·客户数据 API', action: '汇总本季度财务数据', nature: 'READ', result: 'SUCCESS', reason: '' },
@@ -276,7 +282,7 @@ export const taskCallRecords = [
     ]
   },
   {
-    id: 'T-2010', date: dateDaysAgo(1), time: '09:00:06', user: '张浩', position: '经营分析岗', task: '库存低位预警', trigger: '定时·每天 09:00',
+    id: 'T-2010', date: dateDaysAgo(12), time: '09:00:06', user: '张浩', position: '经营分析岗', task: '库存低位预警', trigger: '定时·每天 09:00',
     reason: 'MCP·知识库 MCP 不在工具白名单',
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'FAILED', reason: '不在工具白名单' }
@@ -304,14 +310,14 @@ const HITS_LAW = [
 ]
 
 export const knowledgeCallRecords = [
-  { id: 'K-3008', date: dateDaysAgo(1), time: '10:12:33', user: '刘敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '智能排产系统的合规认证要求', topK: 5, hitCount: 5, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '0.9 秒' },
-  { id: 'K-3007', date: dateDaysAgo(1), time: '09:41:07', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据出境评估办法适用范围', topK: 5, hitCount: 0, hits: [], result: 'SUCCESS', reason: '', duration: '0.7 秒' },
-  { id: 'K-3006', date: dateDaysAgo(2), time: '16:21:30', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
-  { id: 'K-3005', date: dateDaysAgo(2), time: '16:20:45', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
-  { id: 'K-3004', date: dateDaysAgo(2), time: '10:31:58', user: '张浩', position: '经营分析岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '付款审批权限矩阵', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '无该知识库访问权限', duration: '未执行' },
-  { id: 'K-3003', date: dateDaysAgo(3), time: '14:15:22', user: '周敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'hybrid_search', query: '出口管制合规声明模板', topK: 5, hitCount: 3, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.1 秒' },
-  { id: 'K-3002', date: dateDaysAgo(4), time: '15:48:10', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '等保三级对系统日志留存的要求', topK: 5, hitCount: 4, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.3 秒' },
-  { id: 'K-3001', date: dateDaysAgo(5), time: '11:03:19', user: '刘敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据安全法对跨境传输的规定', topK: 5, hitCount: 5, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '0.8 秒' }
+  { id: 'K-3008', date: dateDaysAgo(12), time: '10:12:33', user: '刘敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '智能排产系统的合规认证要求', topK: 5, hitCount: 5, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '0.9 秒' },
+  { id: 'K-3007', date: dateDaysAgo(12), time: '09:41:07', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据出境评估办法适用范围', topK: 5, hitCount: 0, hits: [], result: 'SUCCESS', reason: '', duration: '0.7 秒' },
+  { id: 'K-3006', date: dateDaysAgo(13), time: '16:21:30', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
+  { id: 'K-3005', date: dateDaysAgo(13), time: '16:20:45', user: '李强', position: '财务审核岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '差旅报销超标准处理流程', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '连接超时（8000 ms）', duration: '8 秒' },
+  { id: 'K-3004', date: dateDaysAgo(13), time: '10:31:58', user: '张浩', position: '经营分析岗', kb: '财务审核制度库', source: 'API·情报平台接口', tool: '', query: '付款审批权限矩阵', topK: 5, hitCount: 0, hits: [], result: 'FAILED', reason: '无该知识库访问权限', duration: '未执行' },
+  { id: 'K-3003', date: dateDaysAgo(14), time: '14:15:22', user: '周敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'hybrid_search', query: '出口管制合规声明模板', topK: 5, hitCount: 3, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.1 秒' },
+  { id: 'K-3002', date: dateDaysAgo(15), time: '15:48:10', user: '陈杰', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '等保三级对系统日志留存的要求', topK: 5, hitCount: 4, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '1.3 秒' },
+  { id: 'K-3001', date: dateDaysAgo(16), time: '11:03:19', user: '刘敏', position: '客户成功岗', kb: '产品与解决方案库', source: 'MCP·法规库检索', tool: 'search_documents', query: '数据安全法对跨境传输的规定', topK: 5, hitCount: 5, hits: HITS_LAW, result: 'SUCCESS', reason: '', duration: '0.8 秒' }
 ]
 
 /** 知识库检索的「实际请求参数」：检索词 + 返回条数上限（+ MCP 所选检索工具），由记录字段直接生成。 */

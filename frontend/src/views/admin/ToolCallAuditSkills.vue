@@ -1,7 +1,9 @@
 <script setup>
 /**
- * 工具调用审计 · 「技能调用」页签——用户在对话中触发的一次技能执行，执行中调用连接器工具
+ * 工具调用审计 · 「会话调用」页签——用户的一次会话（会话内调用技能），会话中调用连接器工具（不局限于技能引用的工具）
  * （MCP / API / 业务系统）的事后审计记录，只读。对应 PRD §二 ~ §七（prd.工具调用审计.md）。
+ *
+ * 2026-10-12 第五轮改版：记录单元改为「一次会话」，一条记录可含多个技能（skills 数组），工具明细不限于技能引用的工具。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次技能执行」——
  * 单次对话可能多次调用工具，按单条工具调用上报数据量大，且单个工具失败、整体兜底成功时单纯记
@@ -58,7 +60,7 @@ const {
   fetcher: listToolCallAudits,
   records: toolCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
-  keywordOf: (r) => [r.user, r.position, r.skill, r.id, ...r.calls.map((c) => c.tool)]
+  keywordOf: (r) => [r.user, r.position, ...r.skills, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
@@ -107,18 +109,18 @@ function chooseMetric(key) {
 }
 
 const HELP = [
-  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：一次技能执行只在确认与执行都有结果后才入账。',
-  '同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
+  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：会话内确认与执行都有结果后才入账。',
+  '一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
 /* ── 导出 CSV ── */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
-    '工具调用审计-技能调用-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '涉及写操作', '执行结果', '原因'],
+    '工具调用审计-会话调用-筛选结果.csv',
+    ['请求编号', '日期', '时间', '用户', '岗位', '调用的技能', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
-      r.id, r.date, r.time, r.user, r.position, r.skill,
+      r.id, r.date, r.time, r.user, r.position, r.skills.join('、'),
       YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
@@ -142,11 +144,13 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: EXEC_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '技能', value: d.skill },
+      { label: '调用的技能', value: d.skills.join('、') },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
       tool: c.tool,
+      // 调用来源：该工具在哪个技能名下调用；未经技能的为会话直接调用（PRD §5.2）
+      source: c.skill || '会话直接调用',
       nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
       confirm: c.confirm ? { label: CONFIRM_LABEL[c.confirm], type: CALL_CONFIRM_TAG[c.confirm] } : null,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
@@ -230,8 +234,8 @@ function resultExplain(d) {
               {{ row.user }}<span class="tca-secondary">{{ row.position }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.skill }}</template>
+          <el-table-column label="调用的技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.skills.join('、') }}</template>
           </el-table-column>
           <el-table-column label="涉及写操作" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #default="{ row }">

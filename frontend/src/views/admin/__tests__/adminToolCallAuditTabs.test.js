@@ -10,7 +10,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *
  * 真实挂载整页，断言五件事：页签结构与懒挂载、页签间筛选互不影响、
  * 岗位自动化任务页签（无人值守口径）、知识库检索页签（命中口径）、两页签各自的详情与导出。
- * 「技能调用」页签自身行为由 adminToolCallAudit.test.js 覆盖，这里不重复。
+ * 「会话调用」页签自身行为由 adminToolCallAudit.test.js 覆盖，这里不重复。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：「岗位自动化任务」一节整段重写——记录单元
  * 从「一次工具调用」改为「一次任务运行」，且全部操作免授权、不经确认，原「写操作预授权」
@@ -68,14 +68,14 @@ const bodyRows = (p) => [...p.querySelectorAll('.el-table__body .el-table__row')
 const buttonOf = (p, text) => [...p.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 describe('页签结构（PRD §一）', () => {
-  it('三个页签，默认进入「技能调用」；另两个页签首次点开才挂载', async () => {
+  it('三个页签，默认进入「会话调用」；另两个页签首次点开才挂载', async () => {
     mountReal()
     await flush()
     expect(errorSpy).not.toHaveBeenCalled()
 
     const labels = [...container.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())
-    expect(labels).toEqual(['技能调用', '岗位自动化任务', '知识库检索'])
-    expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('技能调用')
+    expect(labels).toEqual(['会话调用', '岗位自动化任务', '知识库检索'])
+    expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('会话调用')
 
     expect(pane('skill').textContent).toContain('涉及写操作的执行')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
@@ -87,7 +87,7 @@ describe('页签结构（PRD §一）', () => {
     expect(pane('knowledge')).toBeNull()
   })
 
-  it('各页签查询条件互不影响：技能调用筛到「执行失败」，切走再切回仍保持', async () => {
+  it('各页签查询条件互不影响：会话调用筛到「执行失败」，切走再切回仍保持', async () => {
     mountReal()
     await flush()
     cardOf(pane('skill'), '执行失败').click()
@@ -97,7 +97,7 @@ describe('页签结构（PRD §一）', () => {
     failedOnly.forEach((r) => expect(r.textContent).toContain('失败'))
 
     await openTab('task')
-    // 任务页签自己的筛选是空的，不受技能调用页签影响：列表里仍有成功的记录
+    // 任务页签自己的筛选是空的，不受会话调用页签影响：列表里仍有成功的记录
     expect(bodyRows(pane('task')).some((r) => r.textContent.includes('成功'))).toBe(true)
     await openTab('skill')
     bodyRows(pane('skill')).forEach((r) => expect(r.textContent).toContain('失败'))
