@@ -42,12 +42,15 @@ const DETAIL = {
   agents: []
 }
 const getPosition = vi.fn()
+const getNextVersionLabel = vi.fn()
+const updatePosition = vi.fn()
+const listSampleTasks = vi.fn()
 vi.mock('@/api/position', () => ({
   getPosition: (...a) => getPosition(...a),
-  updatePosition: vi.fn(() => Promise.resolve({})),
+  updatePosition: (...a) => updatePosition(...a),
   createPosition: vi.fn(),
   publishPosition: vi.fn(() => Promise.resolve({})),
-  getNextVersionLabel: vi.fn(() => Promise.resolve('v1.0.0')),
+  getNextVersionLabel: (...a) => getNextVersionLabel(...a),
   listPositionPublications: vi.fn(() => Promise.resolve([])),
   createAgent: vi.fn(),
   updateAgent: vi.fn(),
@@ -65,7 +68,7 @@ vi.mock('@/api/position', () => ({
   uploadIcon: vi.fn()
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn(() => Promise.resolve({ list: [] })) }))
-vi.mock('@/api/sampleTask', () => ({ listSampleTasks: vi.fn(() => Promise.resolve({ list: [] })) }))
+vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(...a) }))
 vi.mock('@/api/knowledgeBase', () => ({
   listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [], total: 0 })),
   searchKnowledgeBase: vi.fn(() => Promise.resolve({ list: [] }))
@@ -97,6 +100,9 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
   routeMock.query = {}
   getPosition.mockReset().mockResolvedValue(JSON.parse(JSON.stringify(DETAIL)))
+  getNextVersionLabel.mockReset().mockResolvedValue('v1.0.0')
+  updatePosition.mockReset().mockResolvedValue({})
+  listSampleTasks.mockReset().mockResolvedValue({ list: [] })
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => {
@@ -124,5 +130,33 @@ describe('PositionDetailTabs · 真实 Element Plus + Pinia 挂载冒烟', () =>
     expect(nameCard.querySelector('input').value).toBe('经营分析岗')
     // 顶栏静态名称
     expect(container.querySelector('.tb-name-display').textContent.trim()).toBe('经营分析岗')
+  })
+})
+
+// 待决策 J36（md 岗位 §3.7）：建议版本号拉取失败 → 发布前检查弹窗提示「版本号获取失败」+【重试】，不支持手填；
+// 页面须把 useVersionPublish 的 loadFailed / loadNextVersionLabel 接到 PublishCheckDialog 的 :load-failed / @retry（删掉任一接线本组变红）。
+describe('PositionDetailTabs · 发布弹窗版本号获取失败可重试（J36）', () => {
+  it('getNextVersionLabel 拒绝 → 弹窗显「版本号获取失败」；点【重试】再次取号并显示版本号', async () => {
+    const full = { ...JSON.parse(JSON.stringify(DETAIL)), agents: [{ agentId: 1, name: 'A1', skills: [{ skillId: 1, name: 's' }] }] }
+    getPosition.mockResolvedValue(full)
+    updatePosition.mockResolvedValue(full) // 发布前先自动保存，store 以保存回包为准，回包须是完整详情
+    listSampleTasks.mockResolvedValue({ list: [{ id: 1 }] }) // 九项完整性校验要 ≥1 条自动化任务
+    getNextVersionLabel.mockReset().mockRejectedValueOnce(new Error('网络错误')).mockResolvedValue('v1.0.0')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mounted = mountReal(PositionDetailTabs, {}, { plugins: [createPinia()] })
+    await flushAll(12)
+    ;[...mounted.container.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '发布岗位').click()
+    await flushAll(12)
+    expect(getNextVersionLabel).toHaveBeenCalledTimes(1)
+    const hint = () => document.body.querySelector('.load-failed')
+    expect(hint().textContent).toContain('版本号获取失败')
+    expect(document.body.textContent).not.toContain('v1.0.0')
+
+    ;[...hint().querySelectorAll('button')].find((b) => b.textContent.trim() === '重试').click()
+    await flushAll(12)
+    expect(getNextVersionLabel).toHaveBeenCalledTimes(2)
+    expect(hint()).toBeNull()
+    expect(document.body.textContent).toContain('v1.0.0')
+    warnSpy.mockRestore()
   })
 })
