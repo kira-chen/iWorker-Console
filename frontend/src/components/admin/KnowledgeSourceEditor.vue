@@ -36,7 +36,7 @@
  * 跳过并记录：D4 鉴权区按 md 多参数表（Q56/Q57，现状即 md）；D9 检索工具保持平铺复选框（md §七.3 字面「多选复选框形式」）、
  *   不加原型「拉取工具」按钮（清单由测试连接返回，md §七.3）。
  */
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
 import ParamRowsEditor from '@/components/admin/ParamRowsEditor.vue'
@@ -274,6 +274,7 @@ function resetForm() {
   mcpResponseRows.value = mkMcpResponseMapRows()
   availableTools.value = []
   verify.value = null
+  verifiedSig = ''
   clearErrors()
 }
 function hydrate(d) {
@@ -324,10 +325,14 @@ async function load() {
     embeddingModels.value = await listEmbeddingModelOptions().catch(() => [])
     if (targetId.value) {
       hydrate(await getKnowledgeSource(targetId.value))
+      // 等回填引发的监听（如详情带脏数据的 stdio 源会触发「切 stdio 清空 Endpoint / 鉴权」）跑完再记基线，
+      // 否则这类程序性清空会被当成「用户改了连接配置」冲掉已验证状态（loading 期间监听不重置）
+      await nextTick()
       verifiedSig = connSig.value
     }
   } catch (e) {
     loadError.value = e?.message || '加载失败'
+    verifiedSig = ''
   } finally {
     loading.value = false
   }
@@ -382,8 +387,14 @@ watch(connSig, (sig) => {
 /* ---------- 测试连接（API / MCP，md §六.4 / §七.5） ---------- */
 async function doTest() {
   testing.value = true
+  // 发请求时的配置签名：测试进行中用户若又改了连接配置，返回的结果属于旧配置，不能当成新配置已验证
+  const sigAtSend = connSig.value
   try {
     const r = await testKnowledgeSource(form.sourceType, { sourceId: targetId.value, config: buildConfig(), authValue: authValueOut() })
+    if (connSig.value !== sigAtSend) {
+      verify.value = { verifyStatus: 'UNVERIFIED' }
+      return
+    }
     verify.value = r
     if (r.verifyStatus === 'SUCCESS') {
       if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
@@ -391,11 +402,11 @@ async function doTest() {
         availableTools.value = [...r.tools]
         mcpToolsSelected.value = mcpToolsSelected.value.filter((t) => r.tools.includes(t))
       }
-      ElMessage.success('连接测试成功')
-    } else {
-      ElMessage.error(r.verifyError || '连接失败')
     }
+    // 基线须在弹 toast 之前记：ElMessage 挂载会顺带冲刷待执行的 connSig 监听，晚记会把精简已选工具误判成「用户改了配置」
     verifiedSig = connSig.value
+    if (r.verifyStatus === 'SUCCESS') ElMessage.success('连接测试成功')
+    else ElMessage.error(r.verifyError || '连接失败')
   } catch (e) {
     ElMessage.error(e?.message || '测试失败')
   } finally {
