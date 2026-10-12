@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // （业务 mock → request.js → router 触达 window，故用 jsdom）
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 /**
  * 审核联动全链路集成测试（2026-09-18 R1 修复的守卫）
@@ -326,6 +326,13 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
     const TYPES = Object.keys(KINDS)
     const forceRevokeOps = async () => (await import('../accessAuditMock')).opsRecords.filter((r) => r.live && r.action === '强制回收')
     const stopOps = async () => (await import('../accessAuditMock')).opsRecords.filter((r) => r.live && r.action === '停用')
+    // 模块态跨用例共享：通过用例会让对象留在「已回收」，而同文件的岗位发布用例引用了这些对象（发布前检查会因“引用了已回收对象”阻断），
+    // 随机序下就会偶发红。每条用例结束都把五类对象与访问审计摆回起点，不把回收状态泄漏出去。
+    afterEach(async () => {
+      for (const k of Object.values(KINDS)) await k.setup()
+      ;(await import('../accessAuditMock')).resetAccessAuditMock()
+    })
+
     /** 摆好起点并提交强制回收停用，返回提交后的两张表待审行 */
     async function submitForced(type) {
       const k = KINDS[type]
