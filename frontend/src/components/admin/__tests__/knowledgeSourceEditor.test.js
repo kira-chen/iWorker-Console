@@ -43,6 +43,7 @@ const EMB = [
 let mounted
 let onVisible
 let onSaved
+let editorProps
 afterEach(async () => {
   ElMessage.closeAll()
   // 二次确认框（更换向量模型）若残留，点掉，别漏到下一个用例
@@ -81,6 +82,7 @@ async function mountEditor(props = {}) {
   onSaved = vi.fn()
   // 组件在 visible 由 false→true 时才重置表单并加载（与列表页打开抽屉同路径），故先关后开
   const p = reactive({ visible: false, sourceId: null, 'onUpdate:visible': onVisible, onSaved, ...props })
+  editorProps = p
   mounted = mountReal(Editor, p)
   await flushAll(4)
   p.visible = true
@@ -458,6 +460,56 @@ describe('KnowledgeSourceEditor · 连接测试（md §六.4 / §七.7）', () =
     expect(drawer().querySelector('.ksrc-test').textContent).toContain('修改连接配置后需要重新测试')
     expect(btn('测试连接')).toBeTruthy()
   })
+
+  it('测试进行中用户改了请求地址 → 旧配置的 SUCCESS 返回后不算新配置已验证，仍是「修改连接配置后需要重新测试」', async () => {
+    let resolveTest
+    api.testKnowledgeSource.mockReturnValue(new Promise((r) => (resolveTest = r)))
+    await mountApiReady()
+    clickBtn('测试连接')
+    await flushAll(4)
+    expect(api.testKnowledgeSource).toHaveBeenCalledTimes(1) // 前提：测试在途
+
+    formModel().api.url = 'https://rag.example.com/v2/search' // 在途时改配置
+    await flushAll(4)
+    resolveTest({ verifyStatus: 'SUCCESS', verifiedAt: null, verifyError: null, latencyMs: 50 })
+    await flushAll(10)
+
+    expect(drawer().querySelector('.ksrc-verify')).toBeNull()
+    expect(drawer().querySelector('.ksrc-test').textContent).toContain('修改连接配置后需要重新测试')
+    expect(btn('测试连接')).toBeTruthy()
+  })
+
+  it('测试进行中配置没改 → 结果正常落定为「连接正常」（竞态守卫不误伤）', async () => {
+    let resolveTest
+    api.testKnowledgeSource.mockReturnValue(new Promise((r) => (resolveTest = r)))
+    await mountApiReady()
+    clickBtn('测试连接')
+    await flushAll(4)
+    resolveTest({ verifyStatus: 'SUCCESS', verifiedAt: null, verifyError: null, latencyMs: 50 })
+    await flushAll(10)
+    expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常 · 50 ms')
+  })
+
+  it('测试成功后关闭再重开为新建：回到干净的未验证态，切 API 后无验证状态行', async () => {
+    api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', verifiedAt: null, verifyError: null, latencyMs: 50 })
+    await mountApiReady()
+    clickBtn('测试连接')
+    await flushAll(10)
+    expect(drawer().querySelector('.ksrc-verify.ok')).toBeTruthy() // 前提：上一次已验证成功
+
+    // 关后重开（与列表页复用抽屉同路径）
+    editorProps.visible = false
+    await flushAll(4)
+    editorProps.visible = true
+    await flushAll(10)
+    await pickType('API')
+    formModel().api.url = 'https://rag.example.com/search'
+    formModel().api.authType = 'NONE'
+    await flushAll(6)
+
+    expect(drawer().querySelector('.ksrc-verify')).toBeNull()
+    expect(btn('测试连接')).toBeTruthy()
+  })
 })
 
 /* ====================================================================== */
@@ -812,6 +864,57 @@ describe('KnowledgeSourceEditor · 编辑回填与敏感信息遮罩（md §四.
     expect(drawer().querySelector('.ksrc-hint').textContent).toContain('修改连接配置后需要重新测试')
     expect(btn('测试连接')).toBeTruthy()
     expect(btn('重新测试')).toBeUndefined()
+  })
+
+  const mcpOkDetail = (cfg) => ({
+    id: 'ks_mcp_ok',
+    sourceType: 'MCP',
+    name: 'MCP 已验证',
+    status: 'ENABLED',
+    verifyStatus: 'SUCCESS',
+    verifiedAt: null,
+    verifyError: null,
+    referencedBy: [],
+    config: { timeoutMs: 10000, tools: ['a_tool', 'b_tool'], ...cfg }
+  })
+
+  it('J62 编辑打开 stdio 源，详情里带非空 endpoint / authType 非 none（脏数据）：仍显示「连接正常」，不被 stdio 清空逻辑冲成未验证', async () => {
+    api.getKnowledgeSource.mockResolvedValue(
+      mcpOkDetail({ transport: 'stdio', command: 'npx', args: ['-y', 'srv'], endpoint: 'https://old.example.com/mcp', authType: 'bearer', authHeaderName: 'X-Old', credentialMasked: 'ab****yz' })
+    )
+    await mountEditor({ sourceId: 'ks_mcp_ok' })
+
+    expect(formModel().mcp.transport).toBe('stdio') // 前提：确实走到了 stdio 回填（清空 watch 会触发）
+    expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常')
+    expect(btn('重新测试')).toBeTruthy()
+    expect(drawer().querySelector('.ksrc-hint')).toBeNull()
+  })
+
+  it('J62 编辑打开 API KEY 源且详情里鉴权参数行为空（打开时补一空行）：仍显示「连接正常」', async () => {
+    api.getKnowledgeSource.mockResolvedValue(apiDetail({ config: { ...apiDetail().config, authType: 'API_KEY', bearerMasked: '', authParams: [] } }))
+    await mountEditor({ sourceId: 'ks_api' })
+
+    expect(formModel().api.authType).toBe('API_KEY') // 前提
+    expect(drawer().querySelectorAll('.pr-row:not(.pr-row-head)').length).toBeGreaterThan(0) // 前提：已补出一空行
+    expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常')
+    expect(drawer().querySelector('.ksrc-hint')).toBeNull()
+  })
+
+  it('J62 MCP 已验证源重新测试成功、清单精简掉已选工具后：验证状态仍为「连接正常」（精简不触发重置）', async () => {
+    api.getKnowledgeSource.mockResolvedValue(
+      mcpOkDetail({ transport: 'streamable-http', endpoint: 'https://mcp.example.com/mcp', authType: 'none' })
+    )
+    api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', tools: ['a_tool'], toolCount: 1 })
+    await mountEditor({ sourceId: 'ks_mcp_ok' })
+    expect(drawer().querySelector('.ksrc-verify.ok')).toBeTruthy() // 前提
+
+    clickBtn('重新测试')
+    await flushAll(10)
+
+    const boxes = [...drawer().querySelectorAll('.ksrc-card .el-checkbox')]
+    expect(boxes.map((b) => b.textContent.trim())).toEqual(['a_tool']) // 前提：b_tool 已被精简
+    expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常 · 1 个工具')
+    expect(drawer().querySelector('.ksrc-hint')).toBeNull()
   })
 
   it('查看态打开最近测试成功的源：展示「连接正常」验证结果', async () => {
