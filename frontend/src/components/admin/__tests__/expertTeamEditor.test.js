@@ -66,6 +66,28 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(errSpy).not.toHaveBeenCalled()
   })
 
+  it('基本信息字段与顺序：团类型（分段选择，最前）→ 团名称 → 图标 → 团介绍；没有背景色、团介绍没有 AI 生成；分类只在选了「市场专家团」后出现（md §三.2）', async () => {
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: null })
+    await flushAll(12)
+    const drawer = drawerOf()
+    const labels = () => [...drawer.querySelectorAll('.et-grid .el-form-item__label')].map((l) => l.textContent.replace('*', '').trim())
+    expect(labels()).toEqual(['团类型', '团名称', '图标', '团介绍'])
+    // 分段选择：三个按钮 + 提示
+    const seg = drawer.querySelector('[data-testid="team-type-seg"]')
+    expect([...seg.querySelectorAll('.el-radio-button')].map((b) => b.textContent.trim())).toEqual(['岗位私有', '市场专家团', '通用专家团'])
+    expect(drawer.textContent).toContain('团类型建成后不可更改')
+    // 团介绍 / 无背景色
+    expect(drawer.textContent).not.toContain('背景色')
+    expect(drawer.querySelector('.et-grid').textContent).not.toContain('AI 生成')
+    const click = async (label) => { [...seg.querySelectorAll('.el-radio-button')].find((b) => b.textContent.trim() === label).click(); await flushAll(6) }
+    await click('通用专家团')
+    expect(labels()).not.toContain('分类')
+    await click('岗位私有')
+    expect(labels()).toEqual(['团类型', '团名称', '所属岗位', '图标', '团介绍'])
+    await click('市场专家团')
+    expect(labels()).toEqual(['团类型', '团名称', '分类', '图标', '团介绍'])
+  })
+
   it('新建态直接点【创建专家团】：必填项标红、不调用创建接口（md §三.8 保存校验）', async () => {
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: null })
     await flushAll(12)
@@ -77,6 +99,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     const text = drawerOf().textContent
     expect(text).toContain('请填写团名称')
     expect(text).toContain('请选择团类型')
+    expect(text).not.toContain('请选择专家分类') // 未选市场专家团时没有分类字段
     expect(text).toContain('请填写团介绍')
     expect(text).toContain('请填写 3 条"团队帮你做"示例问题')
     expect(api.createTeam).not.toHaveBeenCalled()

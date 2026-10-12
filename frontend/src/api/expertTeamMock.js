@@ -35,12 +35,6 @@ let teamSeq = 305
 export const TEAM_MEMBER_MIN = 2
 export const TEAM_MEMBER_MAX = 20
 
-/* ---------------- 背景色：与专家同一套 7 色板（md §三.2） ---------------- */
-export const TEAM_BACKGROUND_COLORS = ['#FAE9DF', '#DCECF7', '#DCF5E4', '#E7E4F7', '#F7E6F2', '#F7EFCD', '#DDF0EF']
-export const TEAM_BACKGROUND_FALLBACK = '#DCF5E4'
-const safeBackground = (v) =>
-  /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toUpperCase() : TEAM_BACKGROUND_FALLBACK
-
 /* ---------------- 候选范围（md §三.3.1 表） ----------------
  * 三类团都可放通用专家和市场专家；岗位私有专家只能进岗位私有团（2026-10-12 负责人拍板）。 */
 export function candidateTypesOf(teamType) {
@@ -71,7 +65,6 @@ function seedTeams() {
       type: EXPERT_TYPE.PLATFORM,
       positionIds: [],
       avatar: '◈',
-      backgroundColor: '#DCECF7',
       category: '投资',
       intro: '把经营数据分析和行业研究放在一起看：先识别经营异常，再用公开资料做行业与竞品对照，给出可追溯的管理建议。',
       members: [
@@ -96,8 +89,7 @@ function seedTeams() {
       type: EXPERT_TYPE.SYSTEM_DEFAULT,
       positionIds: [],
       avatar: '⌕',
-      backgroundColor: '#DCF5E4',
-      category: '通用',
+      category: '',
       intro: '解答制度、流程和业务知识类问题：由企业知识助手检索依据，经营分析专家补充数据口径，给出带出处的回答。',
       members: [
         { expertId: 202, duty: '检索制度与流程依据并标注出处' },
@@ -121,8 +113,7 @@ function seedTeams() {
       type: EXPERT_TYPE.POSITION,
       positionIds: [401],
       avatar: '◎',
-      backgroundColor: '#E7E4F7',
-      category: '投资',
+      category: '',
       intro: '服务经营分析岗：研究报告专家负责外部资料，企业知识助手负责内部制度依据，两边合并给出分析底稿。',
       members: [
         { expertId: 204, duty: '外部公开资料与行业研究' },
@@ -163,8 +154,9 @@ let publications = seedPublications()
 let reviewSnapshots = {}
 
 // v1（2026-10-12）：专家团模块首次接入持久化。
+// v2（2026-10-12）：专家团去掉背景色字段、分类只留市场专家团，种子 302 / 303 的 category 置空，丢弃旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -224,7 +216,7 @@ function resolveMembers(t) {
       duty: m.duty,
       name: x?.name || `（专家 ${m.expertId}）`,
       avatar: x?.avatar || '',
-      backgroundColor: x?.backgroundColor || TEAM_BACKGROUND_FALLBACK,
+      backgroundColor: x?.backgroundColor || '',
       category: x?.category || '',
       expertType: x?.type || '',
       positionIds: x?.positionIds || [],
@@ -246,7 +238,6 @@ function toRow(t) {
     positionIds: t.type === EXPERT_TYPE.POSITION ? normPositionIds(t.positionIds) : [],
     positionCount: t.type === EXPERT_TYPE.POSITION ? normPositionIds(t.positionIds).length : 0,
     avatar: t.avatar,
-    backgroundColor: safeBackground(t.backgroundColor),
     category: t.category,
     intro: t.intro,
     memberCount: members.length,
@@ -284,9 +275,9 @@ function toDetail(t) {
 export function checkTeamSavable(t) {
   if (!String(t.name || '').trim()) return { field: 'name', message: '请填写团名称' }
   if (!String(t.type || '').trim()) return { field: 'type', message: '请选择团类型' }
-  if (!String(t.category || '').trim()) return { field: 'category', message: '请选择专家分类' }
+  // 分类只有市场专家团有（客户端市场筛选用），其余团型不展示、不校验（md §三.2）
+  if (t.type === EXPERT_TYPE.PLATFORM && !String(t.category || '').trim()) return { field: 'category', message: '请选择专家分类' }
   if (!String(t.avatar || '').trim()) return { field: 'avatar', message: '请选择图标' }
-  if (!TEAM_BACKGROUND_COLORS.includes(safeBackground(t.backgroundColor))) return { field: 'backgroundColor', message: '请选择背景色' }
   if (!String(t.intro || '').trim()) return { field: 'intro', message: '请填写团介绍' }
   if (!normQuestions(t.exampleQuestions).every((q) => q.trim())) return { field: 'examples', message: '请填写 3 条"团队帮你做"示例问题' }
   const members = t.members || []
@@ -410,8 +401,7 @@ export async function createTeam(payload = {}) {
     type,
     positionIds: type === EXPERT_TYPE.POSITION ? normPositionIds(payload.positionIds) : [],
     avatar: String(payload.avatar || '').trim(),
-    backgroundColor: safeBackground(payload.backgroundColor),
-    category: String(payload.category || '').trim(),
+    category: type === EXPERT_TYPE.PLATFORM ? String(payload.category || '').trim() : '',
     intro: String(payload.intro || '').trim(),
     members,
     leaderId,
@@ -447,8 +437,7 @@ export async function updateTeam(id, payload = {}) {
     t.name = name
   }
   if (payload.avatar !== undefined) t.avatar = String(payload.avatar || '').trim()
-  if (payload.backgroundColor !== undefined) t.backgroundColor = safeBackground(payload.backgroundColor)
-  if (payload.category !== undefined) t.category = String(payload.category || '').trim()
+  if (payload.category !== undefined && t.type === EXPERT_TYPE.PLATFORM) t.category = String(payload.category || '').trim()
   if (payload.intro !== undefined) t.intro = String(payload.intro || '').trim()
   if (payload.positionIds !== undefined && t.type === EXPERT_TYPE.POSITION) t.positionIds = normPositionIds(payload.positionIds)
   if (payload.exampleQuestions !== undefined) t.exampleQuestions = normQuestions(payload.exampleQuestions)

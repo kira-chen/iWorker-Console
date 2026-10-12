@@ -327,7 +327,7 @@ async function forceRevokeFromList(row) {
           <el-table-column label="团名" :min-width="COL.NAME_MIN">
             <template #default="{ row }">
               <span class="etp-primary">
-                <span class="etp-avatar" :style="row.backgroundColor ? { backgroundColor: row.backgroundColor } : undefined">
+                <span class="etp-avatar">
                   <img v-if="iconIsUrl(row.avatar)" :src="row.avatar" alt="" class="etp-avatar-img" />
                   <span v-else>{{ row.avatar || '☆' }}</span>
                 </span>
@@ -478,9 +478,6 @@ async function forceRevokeFromList(row) {
   border-radius: 8px;
   background: var(--bg-sunken);
   overflow: hidden;
-}
-.etp-avatar[style*='background'] {
-  color: #1f1f1f; /* 定值：浅色色板底在暗色主题下不能用跟随主题翻白的令牌 */
 }
 .etp-avatar-img {
   width: 100%;

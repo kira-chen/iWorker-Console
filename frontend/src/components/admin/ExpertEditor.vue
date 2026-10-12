@@ -384,7 +384,8 @@ function validate() {
     errors.name = '请填写专家名'
     ok = false
   }
-  if (!String(form.category || '').trim()) {
+  // 分类只有市场专家有，其余类型不校验
+  if (form.type === EXPERT_TYPE.PLATFORM && !String(form.category || '').trim()) {
     errors.category = '请选择专家分类'
     ok = false
   }
@@ -429,7 +430,7 @@ function validate() {
 function buildPayload() {
   return {
     name: String(form.name).trim(),
-    category: form.category,
+    category: form.type === EXPERT_TYPE.PLATFORM ? form.category : '',
     type: form.type,
     positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
     avatar: form.avatar,
@@ -599,7 +600,19 @@ const metaItems = computed(() => {
           <h3 class="section-title">基本信息</h3>
 
           <el-form label-position="top" class="ee-form-grid">
-            <el-form-item label="专家名" required :error="errors.name">
+            <!-- 专家类型：分段选择（创建后置灰），放最前——决定分类 / 所属岗位是否出现 -->
+            <el-form-item label="专家类型" required :error="errors.type" class="ee-full">
+              <el-radio-group
+                v-model="form.type"
+                class="ee-type-seg"
+                :disabled="disabled || isEdit"
+                @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
+              >
+                <el-radio-button v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</el-radio-button>
+              </el-radio-group>
+              <div class="ee-type-hint">专家类型建成后不可更改。</div>
+            </el-form-item>
+            <el-form-item label="专家名" required :error="errors.name" class="ee-full">
               <el-input
                 v-model="form.name"
                 maxlength="64"
@@ -608,7 +621,8 @@ const metaItems = computed(() => {
                 placeholder="如 经营分析专家"
               />
             </el-form-item>
-            <el-form-item label="分类" required :error="errors.category">
+            <!-- 分类：只有市场专家有（客户端专家市场的分类筛选用），其余类型不展示 -->
+            <el-form-item v-if="form.type === EXPERT_TYPE.PLATFORM" label="分类" required :error="errors.category" class="ee-full">
               <el-select
                 v-model="form.category"
                 placeholder="请选择分类"
@@ -619,46 +633,27 @@ const metaItems = computed(() => {
                 <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
-            <!-- 类型和所属岗位同行，宽度与名称框一致 -->
-            <div class="ee-form-row">
-              <el-form-item label="专家类型" required :error="errors.type" class="ee-row-item">
-                <el-select
-                  v-model="form.type"
-                  placeholder="请选择专家类型"
-                  :disabled="disabled || isEdit"
-                  style="width: 100%"
-                  @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
-                >
-                  <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-                </el-select>
-                <div v-if="isEdit" class="ee-type-hint">专家类型创建后不可更改</div>
-              </el-form-item>
-              <!-- 所属岗位：多选，一个专家可绑定多个不同岗位；不强制必选，编辑时可增减（审核中锁定期间置灰） -->
-              <el-form-item
-                v-if="form.type === EXPERT_TYPE.POSITION"
-                label="所属岗位"
-                class="ee-row-item"
+            <!-- 所属岗位：多选，一个专家可绑定多个不同岗位；不强制必选，编辑时可增减（审核中锁定期间置灰） -->
+            <el-form-item v-if="form.type === EXPERT_TYPE.POSITION" label="所属岗位" class="ee-full">
+              <el-select
+                v-model="form.positionIds"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="选择已发布的岗位（可多选）"
+                clearable
+                :disabled="disabled"
+                style="width: 100%"
               >
-                <el-select
-                  v-model="form.positionIds"
-                  multiple
-                  collapse-tags
-                  collapse-tags-tooltip
-                  placeholder="选择已发布的岗位（可多选）"
-                  clearable
-                  :disabled="disabled"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="pos in publishedPositions"
-                    :key="pos.positionId"
-                    :label="pos.name"
-                    :value="pos.positionId"
-                  />
-                </el-select>
-                <div v-if="isEdit && !form.positionIds.length" class="ee-type-hint">未绑定岗位</div>
-              </el-form-item>
-            </div>
+                <el-option
+                  v-for="pos in publishedPositions"
+                  :key="pos.positionId"
+                  :label="pos.name"
+                  :value="pos.positionId"
+                />
+              </el-select>
+              <div v-if="isEdit && !form.positionIds.length" class="ee-type-hint">未绑定岗位</div>
+            </el-form-item>
             <el-form-item label="图标" required :error="errors.avatar">
               <!-- 图标行（E2/C5，原型 L1331 decorateEditor 后的 `.icon-row.compact-icon-row`）：
                    预览块 + 并排【从图标库选择】【上传图标】两枚 plain 按钮，链路仍是 IconPickerPopover

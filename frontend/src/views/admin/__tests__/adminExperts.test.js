@@ -149,7 +149,7 @@ async function mount() {
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp(AdminExperts)
-  for (const t of ['el-pagination', 'el-icon', 'el-radio-group', 'el-radio-button']) {
+  for (const t of ['el-pagination', 'el-icon', 'el-tabs', 'el-tab-pane']) {
     app.component(t, passthrough(t))
   }
   app.component('el-input', elInput)

@@ -337,14 +337,13 @@ async function forceRevokeFromList(row) {
 
 <template>
   <div class="list-page">
-    <PageHeader title="专家" :subtitle="pageSubtitle">
-      <template #actions>
-        <el-radio-group v-model="view" data-testid="expert-view-switch">
-          <el-radio-button value="expert">专家</el-radio-button>
-          <el-radio-button value="team">专家团</el-radio-button>
-        </el-radio-group>
-      </template>
-    </PageHeader>
+    <PageHeader title="专家" :subtitle="pageSubtitle" />
+
+    <!-- 「专家 | 专家团」页签：样式同工具调用审计 / 访问审计（el-tabs，只当切换头，内容在下方 v-show） -->
+    <el-tabs v-model="view" class="expert-view-tabs" data-testid="expert-view-switch">
+      <el-tab-pane label="专家" name="expert" />
+      <el-tab-pane label="专家团" name="team" />
+    </el-tabs>
 
     <!-- display:contents：包一层只为挂 v-show，不改变 .list-page 的纵向 flex 间距 -->
     <div v-show="view === 'expert'" class="pane-contents">
@@ -560,6 +559,10 @@ async function forceRevokeFromList(row) {
 <style scoped>
 .pane-contents {
   display: contents;
+}
+/* 页签头与下方内容的间距：同工具调用审计 .tca-tabs；抵消 .list-page 的 flex gap，贴着页头下方 */
+.expert-view-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 /* 专家名列：图标 + 名称 + 状态标签同格（原型 expert-primary）。
    E1（2026-09-10）：窄屏时只让名字收缩省略，状态标签与头像 flex:none 不被截断 */

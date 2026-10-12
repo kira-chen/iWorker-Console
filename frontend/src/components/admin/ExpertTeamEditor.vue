@@ -28,7 +28,7 @@ import {
   listTeamMemberCandidates,
   trialTeam
 } from '@/api/expertTeam'
-import { useAiLiveGenerate, teamIntroText, teamLeaderDutyText, teamCollabText, teamQuestionSet } from '@/utils/aiLiveGenerate'
+import { useAiLiveGenerate, teamLeaderDutyText, teamCollabText, teamQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { EXPERT_TYPE, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
@@ -55,10 +55,6 @@ const TEAM_TYPE_OPTIONS = EXPERT_TYPE_OPTIONS.map((o) => ({
 
 const MEMBER_MAX = 20
 const MEMBER_MIN = 2
-const BACKGROUND_COLORS = ['#FAE9DF', '#DCECF7', '#DCF5E4', '#E7E4F7', '#F7E6F2', '#F7EFCD', '#DDF0EF']
-const BACKGROUND_FALLBACK = '#DCF5E4'
-const safeBackground = (v) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toUpperCase() : BACKGROUND_FALLBACK)
-
 const isEdit = computed(() => props.teamId != null)
 const loading = ref(false)
 const loadError = ref('')
@@ -72,7 +68,6 @@ const form = reactive({
   type: '',
   positionIds: [],
   avatar: '',
-  backgroundColor: BACKGROUND_FALLBACK,
   category: '',
   intro: '',
   members: [], // [{ expertId, duty }]，顺序即团内排位
@@ -82,7 +77,7 @@ const form = reactive({
   exampleQuestions: ['', '', '']
 })
 const errors = reactive({
-  name: '', type: '', avatar: '', backgroundColor: '', category: '', intro: '',
+  name: '', type: '', avatar: '', category: '', intro: '',
   members: '', leaderDuty: '', collab: '', examples: ''
 })
 /** 当前表单对应的配置是否试跑过（结构变了就清零，见下方 watch）。 */
@@ -97,7 +92,6 @@ function resetForm(d) {
   form.type = d?.type || ''
   form.positionIds = Array.isArray(d?.positionIds) ? [...d.positionIds] : []
   form.avatar = d?.avatar || ''
-  form.backgroundColor = safeBackground(d?.backgroundColor)
   form.category = d?.category || ''
   form.intro = d?.intro || ''
   form.members = (d?.members || []).map((m) => ({ expertId: m.expertId, duty: m.duty || '' }))
@@ -218,16 +212,7 @@ function toggleLeader(id) {
   if (!form.leaderDuty.trim()) form.leaderDuty = infoOf(id).leadGuide || ''
 }
 
-/** 团介绍首次自动填入：成员凑满 2 位且团介绍为空时填一版，之后不再自动覆盖。 */
 let hydrating = false
-watch(
-  () => form.members.length,
-  (n, old) => {
-    if (hydrating || disabled.value || n < MEMBER_MIN || old >= n || form.intro.trim()) return
-    form.intro = teamIntroText(aiCtx())
-    errors.intro = ''
-  }
-)
 
 /** 成员或团长、职责、协作关系变了 → 已试跑状态清零（md §三.9）。 */
 const structureKey = computed(() =>
@@ -237,12 +222,7 @@ watch(structureKey, () => {
   if (!hydrating) trialed.value = false
 })
 
-/* ==================== 背景色 / 图标 ==================== */
-function pickBackground(color) {
-  if (disabled.value) return
-  form.backgroundColor = safeBackground(color)
-  errors.backgroundColor = ''
-}
+/* ==================== 图标 ==================== */
 function onPickIcon({ icon }) {
   form.avatar = icon || ''
   if (form.avatar) errors.avatar = ''
@@ -258,11 +238,6 @@ const NEED_MEMBERS = '请先选择至少 2 位成员'
 const enoughMembers = () => (form.members.length >= MEMBER_MIN ? 'ok' : '')
 const aiOptsBase = { isReadonly: () => disabled.value, resetOn: () => [props.visible, props.teamId] }
 
-const aiIntro = useAiLiveGenerate({
-  ...aiOptsBase, getSourceText: enoughMembers, sourceLabel: '成员', emptyTitle: NEED_MEMBERS,
-  getSourceContext: aiCtx, generate: teamIntroText,
-  apply: (text) => { form.intro = text; errors.intro = '' }
-})
 const aiLeaderDuty = useAiLiveGenerate({
   ...aiOptsBase, getSourceText: () => (form.leaderId != null ? 'ok' : ''), sourceLabel: '团长', emptyTitle: '请先设置团长',
   getSourceContext: aiCtx, generate: teamLeaderDutyText,
@@ -367,9 +342,9 @@ function validate() {
   const fail = (k, msg) => { errors[k] = msg; ok = false }
   if (!form.name.trim()) fail('name', '请填写团名称')
   if (!form.type) fail('type', '请选择团类型')
-  if (!form.category) fail('category', '请选择专家分类')
+  // 分类只有市场专家团有
+  if (form.type === EXPERT_TYPE.PLATFORM && !form.category) fail('category', '请选择专家分类')
   if (!form.avatar.trim()) fail('avatar', '请选择图标')
-  if (!BACKGROUND_COLORS.includes(form.backgroundColor)) fail('backgroundColor', '请选择背景色')
   if (!form.intro.trim()) fail('intro', '请填写团介绍')
   if (!form.exampleQuestions.every((q) => q.trim())) fail('examples', '请填写 3 条"团队帮你做"示例问题')
   if (form.members.length < MEMBER_MIN) fail('members', '至少 2 位成员')
@@ -388,8 +363,7 @@ function buildPayload() {
     type: form.type,
     positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
     avatar: form.avatar,
-    backgroundColor: safeBackground(form.backgroundColor),
-    category: form.category,
+    category: form.type === EXPERT_TYPE.PLATFORM ? form.category : '',
     intro: form.intro,
     members: form.members.map((m) => ({ expertId: m.expertId, duty: m.duty.trim() })),
     leaderId: form.leaderId,
@@ -516,28 +490,29 @@ const metaItems = computed(() => {
       <section class="section-card">
         <h3 class="section-title">基本信息</h3>
         <el-form label-position="top" class="et-grid">
-          <el-form-item label="团名称" required :error="errors.name">
+          <!-- 团类型：分段选择（创建后置灰），放最前——它决定分类 / 所属岗位是否出现、以及成员候选范围 -->
+          <el-form-item label="团类型" required :error="errors.type" class="et-full">
+            <el-radio-group
+              v-model="form.type"
+              class="et-type-seg"
+              :disabled="disabled || isEdit"
+              data-testid="team-type-seg"
+              @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
+            >
+              <el-radio-button v-for="t in TEAM_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</el-radio-button>
+            </el-radio-group>
+            <div class="et-hint">团类型建成后不可更改，并决定下方成员的候选范围。</div>
+          </el-form-item>
+          <el-form-item label="团名称" required :error="errors.name" class="et-full">
             <el-input v-model="form.name" maxlength="64" show-word-limit :disabled="disabled" placeholder="如 合同会审团" />
           </el-form-item>
-          <el-form-item label="分类" required :error="errors.category">
+          <!-- 分类：只有市场专家团有（客户端「专家团 · 市场」的分类筛选用），其余团型不展示 -->
+          <el-form-item v-if="form.type === EXPERT_TYPE.PLATFORM" label="分类" required :error="errors.category" class="et-full">
             <el-select v-model="form.category" placeholder="请选择分类" :disabled="disabled" style="width: 100%" @change="errors.category = ''">
               <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
             </el-select>
-            <div class="et-hint">仅用于客户端「专家团 · 市场」的分类筛选，不在团卡片上展示</div>
           </el-form-item>
-          <el-form-item label="团类型" required :error="errors.type">
-            <el-select
-              v-model="form.type"
-              placeholder="请选择团类型"
-              :disabled="disabled || isEdit"
-              style="width: 100%"
-              @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
-            >
-              <el-option v-for="t in TEAM_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-            </el-select>
-            <div class="et-hint">团类型创建后不可更改，并决定下方成员的候选范围</div>
-          </el-form-item>
-          <el-form-item v-if="form.type === EXPERT_TYPE.POSITION" label="所属岗位">
+          <el-form-item v-if="form.type === EXPERT_TYPE.POSITION" label="所属岗位" class="et-full">
             <el-select
               v-model="form.positionIds"
               multiple
@@ -552,42 +527,10 @@ const metaItems = computed(() => {
             </el-select>
             <div v-if="isEdit && !form.positionIds.length" class="et-hint">未绑定岗位</div>
           </el-form-item>
-          <el-form-item label="图标" required :error="errors.avatar">
-            <span class="et-icon-wrap" :style="{ '--et-bg': form.backgroundColor }">
-              <IconField :icon="form.avatar" :name="form.name" :readonly="disabled" placeholder="—" @pick="onPickIcon" />
-            </span>
-          </el-form-item>
-          <el-form-item label="背景色" required :error="errors.backgroundColor">
-            <div class="et-bg-picker" role="radiogroup" aria-label="背景色">
-              <label v-for="(c, i) in BACKGROUND_COLORS" :key="c" class="et-bg-swatch" :title="c">
-                <input
-                  type="radio"
-                  name="teamBackgroundColor"
-                  :value="c"
-                  :checked="form.backgroundColor === c"
-                  :disabled="disabled"
-                  :aria-label="`背景色 ${i + 1}，${c}`"
-                  @change="pickBackground(c)"
-                />
-                <span class="et-bg-chip" :style="{ '--swatch': c }"></span>
-              </label>
-            </div>
+          <el-form-item label="图标" required :error="errors.avatar" class="et-full">
+            <IconField :icon="form.avatar" :name="form.name" :readonly="disabled" placeholder="—" @pick="onPickIcon" />
           </el-form-item>
           <el-form-item label="团介绍" required :error="errors.intro" class="et-full">
-            <template #label>
-              <span class="et-label-row">
-                <span><span class="et-req">*</span>团介绍</span>
-                <el-button
-                  v-if="!disabled"
-                  plain
-                  size="small"
-                  class="et-ai"
-                  :disabled="aiIntro.disabled.value"
-                  :title="aiIntro.title.value || undefined"
-                  @click="aiIntro.run"
-                >{{ aiIntro.label.value }}</el-button>
-              </span>
-            </template>
             <el-input
               v-model="form.intro"
               type="textarea"
@@ -932,58 +875,8 @@ const metaItems = computed(() => {
   font-size: var(--fs-sm);
 }
 
-/* 图标预览底色随背景色联动（同专家抽屉 --ee-bg 手法） */
-.et-icon-wrap :deep(.icon-preview) {
-  background: var(--et-bg);
-  color: #1f1f1f;
-}
-.et-bg-picker {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  min-height: 32px;
-}
-.et-bg-swatch {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  cursor: pointer;
-}
-.et-bg-swatch input {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.et-bg-chip {
-  width: 30px;
-  height: 30px;
-  display: block;
-  border: 1px solid var(--border-base);
-  border-radius: 7px;
-  background: var(--swatch);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
-}
-.et-bg-swatch input:checked + .et-bg-chip {
-  border-color: var(--c-primary, #409eff);
-  box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--c-primary, #409eff);
-}
-.et-bg-swatch input:checked + .et-bg-chip::after {
-  content: '\2713';
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #26342d;
-  font-size: 14px;
-  font-weight: 700;
-}
-.et-bg-swatch input:disabled + .et-bg-chip {
-  cursor: not-allowed;
-  opacity: 0.6;
+.et-type-seg {
+  flex-wrap: nowrap;
 }
 
 /* —— 成员候选 —— */

@@ -138,6 +138,22 @@ const elButton = {
   template: '<button class="el-button" :disabled="disabled" :data-type="type" @click="!disabled && $emit(\'click\')"><slot /></button>'
 }
 const elFormItem = { name: 'el-form-item', props: ['label', 'error'], template: '<div class="el-form-item"><label>{{ label }}</label><slot /><span class="fi-err">{{ error }}</span></div>' }
+// 分段单选（专家类型）：group 用 provide 把选中动作交给按钮；按钮 data-value / 组 data-value / data-disabled 供断言
+const elRadioGroup = {
+  name: 'el-radio-group',
+  props: { modelValue: { default: '' }, disabled: Boolean },
+  emits: ['update:modelValue', 'change'],
+  provide() {
+    return { radioSelect: (v) => { if (this.disabled) return; this.$emit('update:modelValue', v); this.$emit('change', v) } }
+  },
+  template: `<div class="el-radio-group" :data-value="modelValue" :data-disabled="disabled ? '1' : undefined"><slot /></div>`
+}
+const elRadioButton = {
+  name: 'el-radio-button',
+  props: ['value'],
+  inject: ['radioSelect'],
+  template: '<button type="button" class="el-radio-button" :data-value="value" @click="radioSelect(value)"><slot /></button>'
+}
 const elAlert = { name: 'el-alert', props: ['title', 'description', 'type'], template: '<div class="el-alert">{{ title }}{{ description }}</div>' }
 
 let app, container, visibleSpy, savedSpy, publishSpy, propsState
@@ -168,6 +184,8 @@ async function mount(props = {}) {
   app.component('el-form', passthrough('el-form'))
   app.component('el-form-item', elFormItem)
   app.component('el-alert', elAlert)
+  app.component('el-radio-group', elRadioGroup)
+  app.component('el-radio-button', elRadioButton)
   app.component('el-skeleton', passthrough('el-skeleton'))
   app.component('el-empty', passthrough('el-empty'))
   app.directive('loading', {})
@@ -197,10 +215,9 @@ async function selectCategory(value) {
   sel.dispatchEvent(new Event('change'))
   await flush(2)
 }
+// 专家类型是分段单选：点对应按钮
 async function selectType(value) {
-  const sel = container.querySelectorAll('select.el-select')[1]
-  sel.value = value
-  sel.dispatchEvent(new Event('change'))
+  container.querySelector(`.el-radio-button[data-value="${value}"]`).click()
   await flush(2)
 }
 async function checkSkill(index, on = true) {
@@ -213,8 +230,8 @@ async function checkSkill(index, on = true) {
 /** 填满全部必填项（专家名/分类/类型/图标/简介/职责描述/3 条示例问题/≥1 技能）。 */
 async function fillRequired(name = '新专家') {
   await type(inputs()[0], name) // 专家名
+  await selectType('PLATFORM') // 先选类型：分类只有市场专家才出现
   await selectCategory('通用')
-  await selectType('PLATFORM')
   container.querySelector('.icon-picker').click()
   await flush(2)
   await type(inputs()[1], '一句话简介') // 简介
@@ -301,13 +318,29 @@ describe('ExpertEditor — 新建', () => {
     expect(createExpert).not.toHaveBeenCalled()
     const errs = errTexts()
     expect(errs).toContain('请填写专家名')
-    expect(errs).toContain('请选择专家分类')
+    expect(errs).not.toContain('请选择专家分类') // 未选类型时没有分类字段，不校验
     expect(errs).toContain('请选择专家类型') // 2026-10-08 补：md §三.7「专家类型未选提示"请选择专家类型"」
     expect(errs).toContain('请选择图标')
     expect(errs).toContain('请填写简介')
     expect(errs).toContain('请填写职责描述')
     expect(errs).toContain('请填写 3 条"专家帮你做"示例问题')
     expect(errs).toContain('请至少添加 1 个技能')
+  })
+
+  it('分类只有市场专家展示并必选：选「市场专家」后出现分类，空着创建 → 就地报错；岗位私有 / 通用专家不出现分类', async () => {
+    await mount({ expertId: null })
+    const labels = () => [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
+    expect(labels()).not.toContain('分类')
+    await selectType('POSITION')
+    expect(labels()).not.toContain('分类')
+    await selectType('SYSTEM_DEFAULT')
+    expect(labels()).not.toContain('分类')
+    await selectType('PLATFORM')
+    expect(labels()).toContain('分类')
+    btn('创建专家').click()
+    await flush()
+    expect(errTexts()).toContain('请选择专家分类')
+    expect(createExpert).not.toHaveBeenCalled()
   })
 
   // 2026-09-12 T43 · md §三.7「其余未通过时对应区域标红并提示"请先补齐必填项"」——
@@ -376,8 +409,7 @@ describe('ExpertEditor — 新建', () => {
     createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
     await mount({ expertId: null })
     await type(inputs()[0], '新专家')
-    await selectCategory('通用')
-    await selectType('POSITION') // 不选「所属岗位」，留空
+    await selectType('POSITION') // 不选「所属岗位」，留空；岗位私有专家没有分类
     container.querySelector('.icon-picker').click()
     await flush(2)
     await type(inputs()[1], '一句话简介')
@@ -441,15 +473,15 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     ])
     expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(['#DCF5E4'])
     expect(container.textContent).toContain('用于专家图标和客户端卡片背景，固定提供 7 种颜色')
-    // 代码现状顺序（与 md §三.2 列举顺序不同，待裁决）：专家名 → 分类 → 专家类型 → 图标 → 背景色 → 简介 → 职责描述
+    // 字段顺序：专家类型（分段选择，最前）→ 专家名 →（市场专家才有）分类 → 图标 → 背景色 → 简介 → 职责描述；新建未选类型时无分类
     const labels = [...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)
-    expect(labels).toEqual(['专家名', '分类', '专家类型', '图标', '背景色', '简介', '职责描述', '带团分工说明'])
+    expect(labels).toEqual(['专家类型', '专家名', '图标', '背景色', '简介', '职责描述', '带团分工说明'])
   })
 
   /** 所属岗位下拉（第 3 个 select）；loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms
    *  setTimeout（非微任务），需要真实等待——轮询而非固定 sleep，机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。 */
   async function positionSelectReady() {
-    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    const positionSelect = container.querySelector('select.el-select[multiple]')
     expect(positionSelect).toBeTruthy()
     const deadline = Date.now() + 3000
     while (Date.now() < deadline && ![...positionSelect.querySelectorAll('option')].some((o) => o.textContent === '经营分析岗')) {
@@ -465,7 +497,6 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
 
   it('专家类型=岗位私有 → 「所属岗位」为多选下拉，展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
     await mount({ expertId: null })
-    await selectCategory('通用')
     await selectType('POSITION')
     const positionSelect = await positionSelectReady()
     expect(positionSelect.multiple).toBe(true)
@@ -504,9 +535,11 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
   it('编辑态：岗位私有专家回填已绑定的多个岗位；类型置灰不可改、所属岗位仍可增减；未绑定时提示「未绑定岗位」', async () => {
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
     await mount({ expertId: 201 })
-    const [, typeSelect, positionSelect] = container.querySelectorAll('select.el-select')
-    expect(typeSelect.disabled).toBe(true)
-    expect(container.textContent).toContain('专家类型创建后不可更改')
+    const positionSelect = container.querySelector('select.el-select[multiple]')
+    expect(container.querySelector('.el-radio-group').dataset.disabled).toBe('1')
+    expect(container.textContent).toContain('专家类型建成后不可更改')
+    // 岗位私有专家没有分类字段（只有市场专家展示分类）
+    expect([...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).not.toContain('分类')
     expect(positionSelect.disabled).toBe(false)
     expect(positionSelect.dataset.values).toBe('[401,402]')
     expect(container.textContent).not.toContain('未绑定岗位')
@@ -527,7 +560,7 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
   it('查看态（readonly）：所属岗位多选下拉置灰，仅展示已绑定岗位', async () => {
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
     await mount({ expertId: 201, readonly: true })
-    const positionSelect = container.querySelectorAll('select.el-select')[2]
+    const positionSelect = container.querySelector('select.el-select[multiple]')
     expect(positionSelect.disabled).toBe(true)
     expect(positionSelect.dataset.values).toBe('[401,402]')
   })

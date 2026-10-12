@@ -35,7 +35,7 @@ beforeEach(() => {
 const base = (over = {}) => ({
   name: '新测试团',
   type: 'PLATFORM',
-  category: '通用',
+  category: '投资',
   avatar: '◈',
   intro: '一段团介绍',
   members: [
@@ -63,7 +63,9 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
   it('筛选：keyword 覆盖团名 / 介绍 / 分类；type / category / status 三态精确', async () => {
     expect((await listTeams({ keyword: '制度' })).list.map((t) => t.name).sort()).toEqual(['岗位协同团', '知识问答团'])
     expect((await listTeams({ type: 'SYSTEM_DEFAULT' })).list.map((t) => t.name)).toEqual(['知识问答团'])
-    expect((await listTeams({ category: '通用' })).total).toBe(1)
+    // 分类只有市场专家团有：种子里只有 301（投资）
+    expect((await listTeams({ category: '投资' })).list.map((t) => t.name)).toEqual(['经营研究团'])
+    expect((await listTeams({ category: '通用' })).total).toBe(0)
     expect((await listTeams({ status: 'draft' })).list.map((t) => t.name)).toEqual(['岗位协同团'])
     expect((await listTeams({ status: 'published' })).total).toBe(2)
     expect((await listTeams({ status: 'review' })).total).toBe(0)
@@ -89,6 +91,18 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     await expect(createTeam(base({ type: 'POSITION', members: [{ expertId: 201, duty: 'a' }, { expertId: 203, duty: 'b' }] })))
       .resolves.toMatchObject({ status: 'draft' })
     await expect(createTeam(base({ name: '团长不在成员里', leaderId: 202 }))).rejects.toMatchObject({ field: 'leaderId' })
+  })
+
+  it('分类只有市场专家团有：非市场团创建时 category 被清空、检查不要求分类；市场团缺分类被拦；专家团没有背景色字段', async () => {
+    const sys = await createTeam(base({ name: '通用团甲', type: 'SYSTEM_DEFAULT', category: '投资' }))
+    expect(sys.category).toBe('')
+    expect(sys).not.toHaveProperty('backgroundColor')
+    expect(checkTeamPublishable(await getTeam(sys.id))).toBeNull()
+    const market = await getTeam(301)
+    expect(checkTeamPublishable({ ...market, category: '' })).toMatchObject({ field: 'category', message: '请选择专家分类' })
+    // 更新时非市场团传分类也忽略
+    expect((await updateTeam(sys.id, { category: '法律' })).category).toBe('')
+    expect((await updateTeam(301, { category: '法律' })).category).toBe('法律')
   })
 
   it('创建后初始为「未发布」，团类型创建后不可改；更新时团类型被忽略', async () => {
