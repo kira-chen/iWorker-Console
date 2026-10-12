@@ -24,8 +24,7 @@ import {
   deleteBizSystem,
   submitBizSystemPublish,
   withdrawBizSystem,
-  delistBizSystem,
-  forceRevokeBizSystem
+  delistBizSystem
 } from '@/api/admin'
 import { fmtTime } from '@/utils/docMeta'
 import { COL, opsWidth } from '@/utils/tableLayout'
@@ -33,7 +32,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -232,30 +231,35 @@ async function withdraw(row) {
   runAction(row, 'withdraw', () => withdrawBizSystem(row.id, 'USER_END'), '已撤回')
 }
 
-/** 停用（B6）：提交停用审核（审核通过前技能仍可执行，通过后变未发布）。 */
-async function deactivate(row) {
-  try {
-    await ElMessageBox.confirm(
-      `停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${row.name}」？`,
-      '停用业务系统',
-      { type: 'warning', confirmButtonText: '继续停用' }
-    )
-  } catch (e) {
-    return
-  }
-  runAction(row, 'deactivate', () => delistBizSystem(row.id, 'USER_END'), '已提交停用审核')
+/**
+ * 停用（B6）：点【停用】打开停用确认弹窗（DeactivateDialog），确认后提交停用审核（审核通过前技能仍可执行，通过后变未发布）。
+ * 弹窗内可勾选「强制回收」（prd-业务系统.md §3）：与普通停用同走审核、审核通过才生效；引用为软引用，不拦截。
+ */
+const stopTarget = ref(null) // 当前停用弹窗对应的行；null = 弹窗关闭
+const stopSubmitting = ref(false)
+const stopDialogVisible = computed({
+  get: () => stopTarget.value != null,
+  set: (v) => { if (!v) stopTarget.value = null }
+})
+
+function deactivate(row) {
+  stopTarget.value = row
 }
 
-/** 强制回收（prd-业务系统.md §3）：立即生效、不进审核；回收弹窗 + 二次确认由 askForceRevoke 承担。 */
-async function forceRevoke(row) {
-  const reason = await askForceRevoke({
-    typeLabel: '业务系统',
-    name: row.name,
-    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
-  })
-  if (reason == null) return
-  runAction(row, 'forceRevoke', () => forceRevokeBizSystem(row.id, reason), '已强制回收')
+async function confirmDeactivate({ forceRevoke, reason }) {
+  const row = stopTarget.value
+  if (!row || stopSubmitting.value) return
+  stopSubmitting.value = true
+  try {
+    await delistBizSystem(row.id, 'USER_END', { forceRevoke, reason })
+    ElMessage.success(forceRevoke ? '已提交强制回收审核' : '已提交停用审核')
+    stopTarget.value = null
+    await fetchList()
+  } catch (e) {
+    ElMessage.error(e?.message || '操作失败')
+  } finally {
+    stopSubmitting.value = false
+  }
 }
 
 /** 删除（B8/BQ2）：软引用——被技能引用也可删，确认影响后继续。 */
@@ -459,17 +463,6 @@ async function remove(row) {
               >
                 停用
               </el-button>
-              <!-- 强制回收：已发布行位于【停用】之后（prd-业务系统.md §3），危险红色 -->
-              <el-button
-                v-if="canDeactivate(row)"
-                link
-                type="danger"
-                :loading="busy[row.id] === 'forceRevoke'"
-                @click="forceRevoke(row)"
-              >
-                强制回收
-              </el-button>
-
               <!-- ③ 危险操作置末：仅未发布可删（软引用，被引用也可删） -->
               <el-button
                 v-if="canDelete(row)"
@@ -488,6 +481,19 @@ async function remove(row) {
     </div>
     <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
     <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="fetchList" />
+
+    <!-- 停用确认弹窗：含「强制回收」勾选项（prd-业务系统.md §3）；影响范围口径「已被 N 个岗位 / 技能引用」 -->
+    <DeactivateDialog
+      v-model="stopDialogVisible"
+      type-label="业务系统"
+      :name="stopTarget?.name || ''"
+      :plain-message="`停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${stopTarget?.name || ''}」？`"
+      confirm-text="继续停用"
+      :ref-count="stopTarget ? (stopTarget.referencedBySkillCount || 0) + (stopTarget.positionCount || 0) : 0"
+      ref-text="岗位 / 技能"
+      :submitting="stopSubmitting"
+      @confirm="confirmDeactivate"
+    />
 
     <BizSystemEditor
       v-model:visible="editorVisible"

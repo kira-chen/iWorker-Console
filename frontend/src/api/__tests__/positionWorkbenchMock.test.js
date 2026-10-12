@@ -14,14 +14,38 @@ import {
   publishPosition,
   __resetPositionMock
 } from '../positionMock'
-import { _getRaw, _reset, createSkill, removeSkill, forceRevokeSkill, listUnifiedSkills } from '../unifiedSkillMock'
-import { listMcpSync, listMcp, forceRevokeMcpService, __resetMcpMock } from '../mcpConnectorMock'
+import { _getRaw, _reset, createSkill, removeSkill, delistSkill, applySkillReviewResult, listUnifiedSkills } from '../unifiedSkillMock'
+import { listMcpSync, listMcp, delistMcpService, applyMcpReviewResult, __resetMcpMock } from '../mcpConnectorMock'
 import { revokedConnectorNames } from '../positionRevokedRefs'
-import { listApisSync, listApis, forceRevokeApi, __resetApiMock } from '../apiConnectorMock'
-import { listBizSystemsSync, listBizSystems, forceRevokeBizSystem, __resetBizSystemMock } from '../bizSystemMock'
+import { listApisSync, listApis, deactivateApi, applyApiReviewResult, __resetApiMock } from '../apiConnectorMock'
+import { listBizSystemsSync, listBizSystems, deactivateBizSystem, approveBizSystem, __resetBizSystemMock } from '../bizSystemMock'
 import { resetAccessAuditMock } from '../accessAuditMock'
 
 beforeEach(() => __resetPositionMock())
+
+// 业务系统强制回收 = 停用时勾选（走停用审核），审核通过才变「已回收」——这里一步走完提交 + 通过
+async function revokeBizSystem(id, reason) {
+  await deactivateBizSystem(id, { forceRevoke: true, reason })
+  await approveBizSystem(id)
+}
+
+/** 技能强制回收 = 停用时勾选强制回收 + 审核通过后才生效（prd.技能.md §3.5.1） */
+async function revokeSkill(id, reason) {
+  await delistSkill(id, { forceRevoke: true, reason })
+  applySkillReviewResult(id, 'DELIST', true)
+}
+
+/** MCP 强制回收 = 停用时勾选强制回收 + 审核通过后才生效（prd-连接器-MCP.md §3.6.1） */
+async function revokeMcp(id, reason) {
+  await delistMcpService(id, { forceRevoke: true, reason })
+  applyMcpReviewResult(id, undefined, true)
+}
+
+/** API 强制回收 = 停用时勾选强制回收 + 审核通过后才生效（prd-API.md §4） */
+async function revokeApi(id, reason) {
+  await deactivateApi(id, { forceRevoke: true, reason })
+  applyApiReviewResult(id, undefined, true)
+}
 
 describe('positionMock · 工作台详情树（2026-09-02 补 mock）', () => {
   it('getPosition 返回岗位树：身份卡字段齐全 + agents[].skills[] 本体从 unifiedSkillMock 同源取', async () => {
@@ -299,13 +323,13 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
 
   // 岗位 PRD §6.4 / §8「被强制回收」：引用保留 + 详情带回收标记 + 发布阻断；对象回收后自然退出「仅已发布」的候选
   describe('引用了被强制回收的技能 / 连接器', () => {
-    const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null })
+    const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null, pendingAction: null, pendingRevokeReason: '' })
     afterEach(() => { restoreSkill(); __resetMcpMock(); __resetApiMock(); __resetBizSystemMock(); resetAccessAuditMock() })
 
     it('技能被回收：岗位详情技能子行带 revoked，引用不自动解除，仍可【移除】（detachSkill）', async () => {
       const before = (await getPosition(401)).agents.flatMap((a) => a.skills)
       expect(before[0].revoked).toBeNull()
-      await forceRevokeSkill('sk_301', { reason: '存在安全风险' })
+      await revokeSkill('sk_301', '存在安全风险')
       const d = await getPosition(401)
       const sk = d.agents.flatMap((a) => a.skills)[0]
       expect(sk).toMatchObject({ skillId: 'sk_301', revoked: { reason: '存在安全风险' } })
@@ -316,7 +340,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     })
 
     it('技能被回收：发布前检查阻断，提示「引用的「XX」已被回收，请移除后再发布」；移除引用后放行', async () => {
-      await forceRevokeSkill('sk_301', { reason: '下线' })
+      await revokeSkill('sk_301', '下线')
       await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).rejects.toThrow('引用的「日报周报生成」已被回收，请移除后再发布')
       await detachSkill(501, 'sk_301')
       // 移除后回收阻断消失（此岗位只剩空 Agent，转而被「至少引用 1 个技能」拦）
@@ -327,7 +351,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     it('连接器被回收：详情带回 revokedConnectors，发布阻断；解除引用后放行', async () => {
       const name = listMcpSync().find((m) => m.id === 'expense_mcp').name
       expect((await getPosition(401)).revokedConnectors).toEqual([])
-      await forceRevokeMcpService('expense_mcp', '凭据泄露')
+      await revokeMcp('expense_mcp', '凭据泄露')
       expect((await getPosition(401)).revokedConnectors).toEqual([name])
       expect(revokedConnectorNames({ connectorMcpIds: ['expense_mcp'] })).toEqual([name])
       expect(revokedConnectorNames({ connectorMcpIds: ['mail_center'], connectorApiIds: ['不存在的id'] })).toEqual([]) // 未回收 / 悬空引用不算
@@ -340,7 +364,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     it('API 被回收：revokedConnectorNames 列出其名称；未回收的 API 不列入', async () => {
       const name = listApisSync().find((a) => a.id === 'api_1101').name
       expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([])
-      await forceRevokeApi('api_1101', '接口下线')
+      await revokeApi('api_1101', '接口下线')
       expect(revokedConnectorNames({ connectorApiIds: ['api_1101'] })).toEqual([name])
       expect(revokedConnectorNames({ connectorApiIds: ['api_1103'] })).toEqual([])
     })
@@ -348,7 +372,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     it('业务系统被回收：revokedConnectorNames 列出其名称；未回收的业务系统不列入', async () => {
       const name = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
       expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([])
-      await forceRevokeBizSystem('biz_2101', '系统停用')
+      await revokeBizSystem('biz_2101', '系统停用')
       expect(revokedConnectorNames({ businessSystemIds: ['biz_2101'] })).toEqual([name])
       expect(revokedConnectorNames({ businessSystemIds: ['biz_2102'] })).toEqual([])
     })
@@ -358,9 +382,9 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
       const apiName = listApisSync().find((a) => a.id === 'api_1101').name
       const bizName = listBizSystemsSync().find((b) => b.id === 'biz_2101').name
       // 故意按「业务系统 → API → MCP」的反序回收，证明顺序由类别决定而不是回收先后
-      await forceRevokeBizSystem('biz_2101', '系统停用')
-      await forceRevokeApi('api_1101', '接口下线')
-      await forceRevokeMcpService('expense_mcp', '凭据泄露')
+      await revokeBizSystem('biz_2101', '系统停用')
+      await revokeApi('api_1101', '接口下线')
+      await revokeMcp('expense_mcp', '凭据泄露')
       expect(revokedConnectorNames({
         connectorMcpIds: ['mail_center', 'expense_mcp', '不存在的mcp'], // 未回收 + 已回收 + 悬空
         connectorApiIds: ['不存在的api', 'api_1103', 'api_1101'],
@@ -371,7 +395,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
     it('选择弹窗候选口径：回收后的技能不再出现在「已发布」候选里（回未发布）', async () => {
       const ids = async () => (await listUnifiedSkills({ status: 'PUBLISHED', type: 'POSITION', size: 200 })).list.map((s) => s.id)
       expect(await ids()).toContain('sk_301')
-      await forceRevokeSkill('sk_301', { reason: '下线' })
+      await revokeSkill('sk_301', '下线')
       expect(await ids()).not.toContain('sk_301')
     })
   })

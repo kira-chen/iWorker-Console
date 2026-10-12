@@ -26,7 +26,6 @@ import {
   publishApi,
   withdrawApi,
   deactivateApi,
-  forceRevokeApi,
   listProviderSystems,
   deleteProviderSystem
 } from '@/api/apiConnector'
@@ -37,8 +36,8 @@ import { explainMcpError } from '@/utils/mcpVerify'
 import { writeClassMeta } from '@/utils/marketMeta'
 import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
-import { askForceRevoke } from '@/utils/forceRevoke'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
@@ -63,7 +62,7 @@ const collapsed = ref(new Set())
 
 const checkBusy = ref(null) // 立即检活中的 API id
 const psDelBusy = ref(null) // 删除中的服务提供系统 id
-// 行内动作 busy 态：{ [apiId]: 'publish' | 'withdraw' | 'deactivate' | 'forceRevoke' | 'delete' }
+// 行内动作 busy 态：{ [apiId]: 'publish' | 'withdraw' | 'deactivate' | 'delete' }
 const busy = ref({})
 
 // API 编辑器（查看/编辑共用，靠 readonly 区分）
@@ -413,30 +412,36 @@ async function withdraw(row) {
   runAction(row, 'withdraw', () => withdrawApi(row.id), '已撤回')
 }
 
-/** 停用：提交停用审核（审核通过前仍可用，通过后变未发布）。 */
-async function deactivate(row) {
-  try {
-    await ElMessageBox.confirm(
-      `停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${row.name}」？`,
-      '停用 API',
-      { type: 'warning', confirmButtonText: '继续停用' }
-    )
-  } catch (e) {
-    return
-  }
-  runAction(row, 'deactivate', () => deactivateApi(row.id), '已提交停用审核')
+/* 停用弹窗（含「强制回收」勾选，prd-API.md §4）：勾选后与普通停用同走停用审核，通过后才回收，无二次确认 */
+const deactivateTarget = ref(null) // 弹窗对应的行；null=弹窗关闭
+const deactivateVisible = computed({
+  get: () => !!deactivateTarget.value,
+  set: (v) => { if (!v) deactivateTarget.value = null }
+})
+const deactivateRefCount = computed(
+  () => (deactivateTarget.value?.referencedBySkillCount || 0) + (deactivateTarget.value?.positionCount || 0)
+)
+
+/** 停用：打开停用弹窗（审核通过前仍可用，通过后变未发布）。 */
+function deactivate(row) {
+  deactivateTarget.value = row
 }
 
-/** 强制回收（prd-API.md §4）：立即生效、不进审核；回收弹窗 + 二次确认由 askForceRevoke 承担。 */
-async function forceRevoke(row) {
-  const reason = await askForceRevoke({
-    typeLabel: 'API',
-    name: row.name,
-    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
-  })
-  if (reason == null) return
-  runAction(row, 'forceRevoke', () => forceRevokeApi(row.id, reason), '已强制回收')
+/** 弹窗确认：普通停用 / 强制回收走同一接口；成功才关弹窗，失败留在弹窗里让用户重试。 */
+async function confirmDeactivate({ forceRevoke, reason }) {
+  const row = deactivateTarget.value
+  if (!row) return
+  busy.value[row.id] = 'deactivate'
+  try {
+    await deactivateApi(row.id, { forceRevoke, reason })
+    ElMessage.success(forceRevoke ? '已提交强制回收审核' : '已提交停用审核')
+    deactivateTarget.value = null
+    await fetchAll()
+  } catch (e) {
+    ElMessage.error(e?.message || '操作失败')
+  } finally {
+    delete busy.value[row.id]
+  }
 }
 
 /** 删除：软引用——被技能引用也可删，确认影响后继续（PRD §二.4）。 */
@@ -740,17 +745,6 @@ async function removeApi(row) {
                     >
                       停用
                     </el-button>
-                    <!-- 强制回收：已发布行位于【停用】之后（prd-API.md §4），危险红色 -->
-                    <el-button
-                      v-if="canDeactivate(row)"
-                      link
-                      type="danger"
-                      :loading="busy[row.id] === 'forceRevoke'"
-                      @click="forceRevoke(row)"
-                    >
-                      强制回收
-                    </el-button>
-
                     <!-- ③ 危险操作置末：删除（软引用，被引用也可删） -->
                     <el-button
                       v-if="canDelete(row)"
@@ -778,6 +772,18 @@ async function removeApi(row) {
       v-model:page="psPage"
       v-model:page-size="psPageSize"
       unit="个"
+    />
+
+    <DeactivateDialog
+      v-model="deactivateVisible"
+      type-label="API"
+      :name="deactivateTarget?.name || ''"
+      :plain-message="`停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${deactivateTarget?.name || ''}」？`"
+      confirm-text="继续停用"
+      :ref-count="deactivateRefCount"
+      ref-text="岗位 / 技能"
+      :submitting="!!deactivateTarget && busy[deactivateTarget.id] === 'deactivate'"
+      @confirm="confirmDeactivate"
     />
 
     <ApiEditor

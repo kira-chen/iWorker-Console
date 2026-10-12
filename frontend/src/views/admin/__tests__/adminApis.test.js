@@ -20,8 +20,10 @@ import { createApp, h, nextTick, ref } from 'vue'
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新；
  *  - 深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）；vue-router 桩改为可配 query。
- * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，真弹窗交互另见
- *  utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-09 对齐 prd-API.md「强制回收」小节（/test-audit 补缺口 A4/A5）：未发布行「已回收」标签。
+ * 2026-10-12 强制回收并入停用（负责人拍板）：不再有独立【强制回收】按钮，改为【停用】弹窗（真 DeactivateDialog）里的
+ *  「强制回收」勾选项，勾选后与普通停用同走审核、无二次确认；本文件验页面接线（弹窗入参 / 提交载荷 / toast / 按钮集合），
+ *  弹窗自身的交互另见 components/admin/__tests__/deactivateDialog.test.js。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -36,7 +38,6 @@ const conn = {
   publishApi: vi.fn(),
   withdrawApi: vi.fn(),
   deactivateApi: vi.fn(),
-  forceRevokeApi: vi.fn(),
   listProviderSystems: vi.fn(),
   deleteProviderSystem: vi.fn()
 }
@@ -45,10 +46,6 @@ vi.mock('@/api/apiConnector', () => conn)
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
-
-// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
-const askForceRevoke = vi.hoisted(() => vi.fn())
-vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 每页个数钉 3（真实是按窗口高度算且最小 5，9 个系统分不出页）
 vi.mock('@/composables/useDynPageSize', () => ({ useDynPageSize: () => ref(3) }))
@@ -92,6 +89,12 @@ const stubs = {
   'el-dialog': {
     props: ['modelValue', 'title'],
     template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><slot name="footer" /></div>'
+  },
+  // 停用弹窗（真 DeactivateDialog）里的「强制回收」勾选框
+  'el-checkbox': {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<label class="el-checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>'
   },
   'el-button': {
     props: ['disabled', 'loading', 'type', 'link'],
@@ -216,6 +219,26 @@ const btn = (rowEl, text) =>
 const btnTexts = (rowEl) =>
   [...rowEl.querySelectorAll('.tbl-ops .el-button')].map((b) => b.textContent.trim())
 const tipsOf = (el) => [...el.querySelectorAll('[data-tip]')].map((e) => e.getAttribute('data-tip'))
+/** 点行内【停用】打开停用弹窗（真 DeactivateDialog，el-dialog 为桩）。 */
+async function openDeactivateDialog(name = '已上线接口') {
+  btn(rowByName(name), '停用').click()
+  await flush()
+}
+const dialogEl = () => container.querySelector('.el-dialog')
+const dialogConfirm = () => container.querySelector('[data-test="dd-confirm"]')
+/** 弹窗内勾选「强制回收」并填原因（el-input 桩为 <input>）。 */
+async function checkForceRevoke(reason) {
+  const cb = container.querySelector('[data-test="dd-force-check"] input')
+  cb.checked = true
+  cb.dispatchEvent(new Event('change'))
+  await flush()
+  if (reason != null) {
+    const input = dialogEl().querySelector('input:not([type="checkbox"])')
+    input.value = reason
+    input.dispatchEvent(new Event('input'))
+    await flush()
+  }
+}
 const groups = () => [...container.querySelectorAll('.aps-group')]
 const groupNames = () => groups().map((g) => g.querySelector('.aps-group-name').textContent.trim())
 const groupByName = (name) => groups().find((g) => g.querySelector('.aps-group-name').textContent.trim() === name)
@@ -237,7 +260,6 @@ beforeEach(() => {
   conn.publishApi.mockResolvedValue({})
   conn.withdrawApi.mockResolvedValue({})
   conn.deactivateApi.mockResolvedValue({})
-  conn.forceRevokeApi.mockResolvedValue({})
   conn.deleteApi.mockResolvedValue({})
   conn.deleteProviderSystem.mockResolvedValue({})
   msgBox.confirm.mockResolvedValue('confirm')
@@ -354,9 +376,9 @@ describe('AdminApis · 操作按钮按状态组合（md §二.2「各状态按�
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】【强制回收】', async () => {
+  it('已发布：【查看】【编辑】【停用】（强制回收并入停用弹窗，行内不再有独立按钮）', async () => {
     await mount()
-    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用', '强制回收'])
+    expect(btnTexts(rowByName('已上线接口'))).toEqual(['查看', '编辑', '停用'])
   })
 
   it('连通性验证未通过：【发布】置灰并提示「连通性验证通过后才可提交发布」（md §二.2 L50 / §二.3 L59）', async () => {
@@ -423,17 +445,19 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4）', () =>
     expect(conn.withdrawApi).toHaveBeenCalledWith('a_deact')
   })
 
-  it('停用：确认窗「停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？」/【继续停用】 → deactivateApi + 「已提交停用审核」（md §二.4 L69）', async () => {
+  it('停用：弹窗正文「停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？」/【继续停用】 → deactivateApi(id, 非强制) + 「已提交停用审核」 + 关弹窗（md §二.4 L69）', async () => {
     await mount()
-    btn(rowByName('已上线接口'), '停用').click()
-    await flush()
-    expect(msgBox.confirm).toHaveBeenCalledWith(
-      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？',
-      '停用 API',
-      expect.objectContaining({ confirmButtonText: '继续停用' })
+    await openDeactivateDialog()
+    expect(dialogEl().dataset.title).toBe('停用API')
+    expect(container.querySelector('[data-test="dd-plain"]').textContent).toBe(
+      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？'
     )
-    expect(conn.deactivateApi).toHaveBeenCalledWith('a_pub')
+    expect(dialogConfirm().textContent.trim()).toBe('继续停用')
+    dialogConfirm().click()
+    await flush()
+    expect(conn.deactivateApi).toHaveBeenCalledWith('a_pub', { forceRevoke: false, reason: '' })
     expect(msg.success).toHaveBeenCalledWith('已提交停用审核')
+    expect(dialogEl()).toBeNull()
   })
 
   it('删除：确认窗「删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「未发布接口」？」/【继续删除】 → deleteApi + 「已删除」（md §二.4 L72）', async () => {
@@ -469,7 +493,8 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4）', () =>
     await flush()
     expect(msg.error).toHaveBeenCalledWith('连通性验证通过后才可提交发布')
     conn.deactivateApi.mockRejectedValueOnce(new Error(''))
-    btn(rowByName('已上线接口'), '停用').click()
+    await openDeactivateDialog()
+    dialogConfirm().click()
     await flush()
     expect(msg.error).toHaveBeenLastCalledWith('操作失败')
   })
@@ -720,49 +745,57 @@ describe('AdminApis · 深链 ?keyword=（yuepu#22 防回归）', () => {
   })
 })
 
-describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立即生效、不进审核、原因必填、两步确认）', () => {
-  it('已发布行点【强制回收】、拿到原因 → forceRevokeApi(id, 原因) + 「已强制回收」+ 重新取数', async () => {
-    askForceRevoke.mockResolvedValue('接口泄露了客户手机号')
+describe('AdminApis · 强制回收（prd-API.md「强制回收（停用时勾选）」：与停用同走审核、原因必填、无二次确认）', () => {
+  it('弹窗里勾选「强制回收」、填原因、点【提交强制回收审核】 → deactivateApi(id, {forceRevoke:true, reason}) + 「已提交强制回收审核」 + 关弹窗 + 重新取数', async () => {
     await mount()
     const before = conn.listApis.mock.calls.length
-    btn(rowByName('已上线接口'), '强制回收').click()
+    await openDeactivateDialog()
+    await checkForceRevoke('接口泄露了客户手机号')
+    expect(dialogConfirm().textContent.trim()).toBe('提交强制回收审核')
+    dialogConfirm().click()
     await flush()
-    expect(conn.forceRevokeApi).toHaveBeenCalledWith('a_pub', '接口泄露了客户手机号')
-    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+    expect(conn.deactivateApi).toHaveBeenCalledWith('a_pub', { forceRevoke: true, reason: '接口泄露了客户手机号' })
+    expect(msg.success).toHaveBeenCalledWith('已提交强制回收审核')
+    expect(dialogEl()).toBeNull()
     expect(conn.listApis.mock.calls.length).toBe(before + 1)
+    expect(msgBox.confirm).not.toHaveBeenCalled() // 没有二次确认
   })
 
-  it('弹窗入参：类型「API」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  it('勾选后弹窗展示影响范围「已被 2 个岗位 / 技能引用」；原因留空点提交 → 就地提示「请输入回收原因」，不调接口', async () => {
     await mount()
-    btn(rowByName('已上线接口'), '强制回收').click()
+    await openDeactivateDialog()
+    await checkForceRevoke()
+    expect(dialogEl().textContent).toContain('已被 2 个岗位 / 技能引用')
+    dialogConfirm().click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'API', name: '已上线接口', refCount: 2, refText: '岗位 / 技能' })
+    expect(container.querySelector('[data-test="dd-error"]').textContent).toBe('请输入回收原因')
+    expect(conn.deactivateApi).not.toHaveBeenCalled()
   })
 
-  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  it('取消弹窗 → 不调接口、不弹成功提示、不重新取数', async () => {
     await mount()
     const before = conn.listApis.mock.calls.length
-    btn(rowByName('已上线接口'), '强制回收').click()
+    await openDeactivateDialog()
+    await checkForceRevoke('原因')
+    const cancel = [...dialogEl().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '取消')
+    cancel.click()
     await flush()
-    expect(conn.forceRevokeApi).not.toHaveBeenCalled()
+    expect(dialogEl()).toBeNull()
+    expect(conn.deactivateApi).not.toHaveBeenCalled()
     expect(msg.success).not.toHaveBeenCalled()
     expect(conn.listApis.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
-    askForceRevoke.mockResolvedValue('原因')
-    conn.forceRevokeApi.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+  it('接口失败 → 错误提示取 message 原文，弹窗保留可重试，不弹成功提示', async () => {
+    conn.deactivateApi.mockRejectedValueOnce({ message: '仅已发布状态可停用' })
     await mount()
-    btn(rowByName('已上线接口'), '强制回收').click()
+    await openDeactivateDialog()
+    await checkForceRevoke('原因')
+    dialogConfirm().click()
     await flush()
-    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
-    conn.forceRevokeApi.mockRejectedValueOnce(new Error(''))
-    btn(rowByName('已上线接口'), '强制回收').click()
-    await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenCalledWith('仅已发布状态可停用')
     expect(msg.success).not.toHaveBeenCalled()
+    expect(dialogEl()).not.toBeNull()
   })
 
   it('未发布且带回收信息的行：状态列「未发布」旁出现「已回收」标签，悬停写明原因 / 操作人 / 时间；已发布行没有', async () => {

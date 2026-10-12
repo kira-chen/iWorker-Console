@@ -15,11 +15,12 @@
  *   - 撤回（withdrawPublish）→ 清 pendingAction/pendingVersion/pendingReleaseNotes，
  *       按 version 空/非空恢复 未发布/已发布（对齐原型 skill-withdraw）。
  *   - 停用（delist）→ pendingAction='stop'：PUBLISHED + pendingAction=DELIST
- *       → PUBLISHED_DELISTING（审核中·停用审核）。被引用（refNames 非空）时拒绝。
+ *       → PUBLISHED_DELISTING（审核中·停用审核）。被引用（refNames 非空）时拒绝（勾选强制回收则不拦）。
  *   - 删除（remove）→ 被引用时拒绝（ApiError 携引用清单文案）。
- *   - 强制回收（forceRevokeSkill，2026-09-30，PRD 技能 §3.5.1）→ 已发布且无在审操作时立即生效、不进审核中心、
- *       不受引用拦截；复用 delisted 语义回「未发布」（保留版本快照与最近发布时间），并写 revoked={reason,at,operator}；
- *       重新走发布审核「通过」后清 revoked（驳回 / 撤回不清）。
+ *   - 强制回收（PRD 技能 §3.5.1，2026-10-12 改版）= 停用弹窗里的勾选项：delistSkill 传 { forceRevoke, reason }，
+ *       与普通停用走同一条审核链路（审核中、审核通过前仍已发布），**不受引用拦截**；原因暂存 pendingRevokeReason，
+ *       审核通过时才在 applySkillReviewResult 里写 revoked={reason,at,operator} 并落访问审计；
+ *       驳回 / 撤回只清 pendingRevokeReason，无回收后果。重新发布审核「通过」后清 revoked（驳回 / 撤回不清）。
  *
  * 【三类技能一体】岗位私有（POSITION）自本轮起接入同构发布/版本状态机（PRD 对齐清单 6/29：
  * 旧「发布/撤回草稿」本体开关废弃），三类行都携带 publications 与版本快照。
@@ -47,8 +48,8 @@ import { listBizSystemsSync } from './bizSystemMock'
 import { nowMinuteText as nowText } from '@/utils/datetime'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
-// 2026-09-30 强制回收：回收信息构造（共享底座）+ 落访问审计「管理端操作」
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+// 强制回收：原因校验 + 回收信息构造（共享底座）+ 审核通过时落访问审计「管理端操作」
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { appendOpsRecord } from './accessAuditMock'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 
@@ -670,6 +671,7 @@ export async function withdrawPublish(id) {
   s.pendingAction = null
   s.pendingVersion = ''
   s.pendingReleaseNotes = ''
+  s.pendingRevokeReason = '' // 撤回强制回收申请：无回收后果
   // 恢复提交前状态：有线上版本且未下架 → 已发布；否则未发布（含已下架再提交发布的撤回，09-18 R1）
   s.status = s.version && !s.delisted ? 'published' : 'draft'
   s.updatedAt = nowText()
@@ -679,22 +681,32 @@ export async function withdrawPublish(id) {
   return { skillId: s.id, publications: publicationsOf(s) }
 }
 
-/** 停用（提交停用审核）：状态守卫 + 被引用拦截；成功后进入「审核中」（PUBLISHED_DELISTING）。 */
-export async function delistSkill(id) {
+/**
+ * 停用（提交停用审核）：状态守卫 + 被引用拦截；成功后进入「审核中」（PUBLISHED_DELISTING）。
+ * 强制回收（PRD 技能 §3.5.1，停用弹窗勾选项）：传 { forceRevoke:true, reason }——跳过引用拦截、原因必填；
+ * 与普通停用同走审核，原因暂存 pendingRevokeReason，审核通过才生效（见 applySkillReviewResult）。
+ */
+export async function delistSkill(id, { forceRevoke = false, reason = '' } = {}) {
   await delay()
   const s = find(id)
+  const revokeReason = forceRevoke ? String(reason || '').trim() : ''
+  if (forceRevoke) {
+    const msg = validateRevokeReason(reason)
+    if (msg) throw new ApiError({ code: 40001, message: msg })
+  }
   // md §三.5「【停用】在"已发布"且无审核中操作时展示」——草稿态无守卫会造出 PUBLISHED+DELIST 假态
   if (s.status !== 'published' || s.delisted) {
     throw new ApiError({ code: 40908, message: '停用仅适用于已发布状态的技能' })
   }
-  if (s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
+  if (!forceRevoke && s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
     throw new ApiError({ code: 40901, message: refBlockMessage(s, '停用') })
   }
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
   s.pendingAction = 'stop'
+  s.pendingRevokeReason = revokeReason
   s.updatedAt = nowText()
   writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
-  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: '申请停止该技能对外提供' })
+  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: revokeReason ? `申请强制回收该技能：${revokeReason}` : '申请停止该技能对外提供', forceRevokeReason: revokeReason })
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -719,6 +731,11 @@ export function applySkillReviewResult(refId, requestAction, approved) {
       // 停用通过 → 未发布（md L97）；版本快照保留（md §六「停用通过不删除历史版本」）
       s.delisted = true
       s.status = 'draft'
+      if (s.pendingRevokeReason) {
+        // 强制回收审核通过才生效（PRD 技能 §3.5.1）：写「已回收」标记 + 落访问审计
+        s.revoked = makeRevokedInfo(s.pendingRevokeReason)
+        appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: s.pendingRevokeReason, version: s.version })
+      }
     } else {
       const label = s.pendingVersion || 'v1.0.0'
       // 新版本自动启用、原启用版本自动禁用（md L120 / L253）
@@ -751,34 +768,11 @@ export function applySkillReviewResult(refId, requestAction, approved) {
   s.pendingAction = null
   s.pendingVersion = ''
   s.pendingReleaseNotes = ''
+  s.pendingRevokeReason = ''
   s.updatedAt = nowText()
   delete reviewSnapshots[String(s.id)]
   persist()
   return true
-}
-
-/**
- * 强制回收（PRD 技能 §3.5.1）：与【停用】并列的紧急下线——立即生效、不进审核中心、被引用也可回收。
- * 仅「已发布且无审核中操作」可回收，否则抛「状态已变化」（含被他人先回收的重复提交）。
- * 状态复用 delisted 语义：status='draft' + delisted=true，版本号 / 版本快照 / 最近发布时间保留；
- * 引用关系（refNames）保持不动，由岗位 / 专家侧按 revoked 标失效。
- */
-export async function forceRevokeSkill(id, { reason } = {}) {
-  await delay()
-  const s = find(id)
-  if (s.status !== 'published' || s.delisted || s.pendingAction) {
-    throw new ApiError({ code: 40909, message: '技能状态已变化，请刷新后重试' })
-  }
-  const text = String(reason || '').trim()
-  if (!text) throw new ApiError({ code: 40001, message: '请输入回收原因' })
-  if (text.length > 500) throw new ApiError({ code: 40001, message: '回收原因最多 500 字' })
-  s.delisted = true
-  s.status = 'draft'
-  s.revoked = makeRevokedInfo(text)
-  s.updatedAt = nowText()
-  appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: text, version: s.version })
-  persist()
-  return { skillId: s.id, publications: publicationsOf(s), revoked: { ...s.revoked } }
 }
 
 /** 重新上架（demo 无入口，API 兼容保留）：清整体下架标记。 */

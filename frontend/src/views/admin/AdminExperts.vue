@@ -29,12 +29,11 @@ import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import {
   listExperts,
   deleteExpert,
   unpublishExpert,
-  forceRevokeExpert,
   publishExpert,
   withdrawExpert,
   getExpertNextVersionLabel,
@@ -268,45 +267,31 @@ async function onDelete(row) {
   }
 }
 
-/* ---------- 停用（强确认降级：普通二次确认；停用=提交停用审核） ---------- */
-async function stopExpert(row) {
+/* ---------- 停用（点【停用】开 DeactivateDialog；停用=提交停用审核） ---------- */
+// 强制回收（PRD 专家 §3.5.1）是弹窗里的勾选项，与普通停用同走审核、审核通过才回收；
+// 专家被岗位引用时两者都不拦截，勾选后弹窗也不列影响范围（refCount 传 0）。
+const stopTarget = ref(null) // 当前停用弹窗对应的行；null = 弹窗关闭
+const stopDialogVisible = computed({
+  get: () => stopTarget.value != null,
+  set: (v) => { if (!v) stopTarget.value = null }
+})
+
+function stopExpert(row) {
   if (busyId.value != null) return
-  try {
-    await ElMessageBox.confirm(
-      `停用「${row.name}」需提交审核。审核通过前客户端仍可使用。`,
-      '停用专家',
-      { type: 'warning', confirmButtonText: '提交停用审核', confirmButtonClass: 'el-button--warning' }
-    )
-  } catch {
-    return
-  }
-  busyId.value = row.id
-  try {
-    await unpublishExpert(row.id)
-    ElMessage.success('已提交停用审核')
-    fetchList()
-  } catch (e) {
-    ElMessage.error(e?.message || '提交停用失败')
-  } finally {
-    busyId.value = null
-  }
+  stopTarget.value = row
 }
 
-/**
- * 强制回收（PRD 专家 §3.5.1）：与【停用】并列的紧急下线——不走审核、立即生效。
- * 回收弹窗（必填原因）→ 二次确认 → 调接口；成功后刷新列表（回「未发布」并带「已回收」标记）。
- */
-async function forceRevokeFromList(row) {
-  if (busyId.value != null) return
-  const reason = await askForceRevoke({ typeLabel: '专家', name: row.name, refCount: 0 })
-  if (reason == null) return
+async function confirmStop({ forceRevoke, reason }) {
+  const row = stopTarget.value
+  if (!row || busyId.value != null) return
   busyId.value = row.id
   try {
-    await forceRevokeExpert(row.id, { reason })
-    ElMessage.success('已强制回收')
+    await unpublishExpert(row.id, { forceRevoke, reason })
+    ElMessage.success(forceRevoke ? '已提交强制回收审核' : '已提交停用审核')
+    stopTarget.value = null
     fetchList()
   } catch (e) {
-    ElMessage.error(e?.message || '强制回收失败')
+    ElMessage.error(e?.message || (forceRevoke ? '提交强制回收失败' : '提交停用失败'))
   } finally {
     busyId.value = null
   }
@@ -444,7 +429,7 @@ async function forceRevokeFromList(row) {
           </el-table-column>
           <!-- 操作列（照原型 expertActions）：查看 + 编辑（审核中置灰）恒显；
                审核中→撤回；未发布→发布+删除；已发布→停用+版本管理。 -->
-          <el-table-column label="操作" :width="opsWidth(5) + 32" fixed="right">
+          <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
             <template #default="{ row }">
               <div class="tbl-ops">
                 <el-button link type="primary" @click="openView(row)">查看</el-button>
@@ -485,13 +470,6 @@ async function forceRevokeFromList(row) {
                     :loading="busyId === row.id"
                     @click="stopExpert(row)"
                   >停用</el-button>
-                  <!-- 强制回收：与停用并列的紧急下线，无审核（PRD 专家 §3.5.1） -->
-                  <el-button
-                    link
-                    type="danger"
-                    :loading="busyId === row.id"
-                    @click="forceRevokeFromList(row)"
-                  >强制回收</el-button>
                   <el-button link type="primary" @click="openVersion(row)">版本管理</el-button>
                 </template>
               </div>
@@ -515,6 +493,18 @@ async function forceRevokeFromList(row) {
       :readonly="editorReadonly"
       @saved="onEditorSaved"
       @publish="onEditorPublish"
+    />
+
+    <!-- 停用确认弹窗：含「强制回收」勾选项（PRD 专家 §3.5.1），两种停用都走审核 -->
+    <DeactivateDialog
+      v-model="stopDialogVisible"
+      type-label="专家"
+      :name="stopTarget?.name || ''"
+      :plain-message="`停用「${stopTarget?.name || ''}」需提交审核。审核通过前客户端仍可使用。`"
+      confirm-text="提交停用审核"
+      :ref-count="0"
+      :submitting="busyId != null && busyId === stopTarget?.id"
+      @confirm="confirmStop"
     />
 
     <!-- 版本管理侧栏（统一 VersionDrawer，与技能/岗位同一组件）。 -->

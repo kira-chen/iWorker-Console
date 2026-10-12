@@ -20,7 +20,7 @@ import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { appendOpsRecord } from './accessAuditMock'
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { isBlankBizPage } from '@/utils/defValidate'
 
@@ -61,7 +61,9 @@ const mkBiz = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null,
-  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeBizSystem）
+  // 待审停用若勾选了「强制回收」，回收原因暂存于此；审核通过落地时才写 revoked，撤回 / 驳回 / 通过后清空
+  pendingRevokeReason: '',
+  // 强制回收信息 { reason, at, operator }；null=未被回收。停用审核通过时由 pendingRevokeReason 写入，重新发布审核通过才清空
   revoked: null,
   ...over
 })
@@ -139,8 +141,9 @@ const BIZ_ROWS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(bizRows))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 3：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// version 5（2026-10-12）：强制回收并入停用审核——行新增 `pendingRevokeReason`，旧快照缺该字段 → 丢弃重播种。
 const persist = attachPersist('bizSystem', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ bizSeq, skillSeq, bizRows }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.bizSeq) || !Number.isFinite(d.skillSeq) || !Array.isArray(d.bizRows)) {
@@ -314,42 +317,49 @@ export async function withdrawBizSystem(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
+  b.pendingRevokeReason = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('BIZ_SYSTEM', b.id)
   persist()
   return toRow(b)
 }
 
-export async function deactivateBizSystem(id) {
+/**
+ * 停用（prd-业务系统.md §3）：提交停用审核。可选勾选「强制回收」（opts.forceRevoke + 必填原因）——
+ * 强制回收与普通停用走同一条审核链路，提交后状态完全一致（审核中，审核通过前仍是已发布、仍可用）；
+ * 回收原因暂存 pendingRevokeReason，审核通过落地时才写 revoked 与审计（见 settleDeactivate）。
+ */
+export async function deactivateBizSystem(id, { forceRevoke = false, reason = '' } = {}) {
   await delay(250)
   const b = findBiz(id)
   if (!b) throw err('业务系统不存在')
   if (b.status !== 'PUBLISHED') throw err('仅已发布状态可停用')
+  const revokeReason = forceRevoke ? String(reason || '').trim() : ''
+  if (forceRevoke) {
+    const tip = validateRevokeReason(reason)
+    if (tip) throw err(tip, null, 40001)
+  }
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'DEACTIVATE'
+  b.pendingRevokeReason = revokeReason
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
-  enrollReview({ businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该业务系统对外提供' })
+  enrollReview({
+    businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: 'DELIST', version: '—',
+    versionNotes: revokeReason ? `申请强制回收该业务系统：${revokeReason}` : '申请停止该业务系统对外提供',
+    forceRevokeReason: revokeReason
+  })
   persist()
   return toRow(b)
 }
 
-/**
- * 强制回收（prd-业务系统.md §3）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
- * 仅「已发布且无审核中操作」可回收；状态回「未发布」（保留 publishedAt），写 revoked，
- * 引用清单原样保留；写访问审计「管理端操作」。
- */
-export async function forceRevokeBizSystem(id, reason) {
-  await delay(250)
-  const b = findBiz(id)
-  if (!b) throw err('业务系统不存在')
-  if (b.status !== 'PUBLISHED' || b.pendingAction) throw err('业务系统状态已变化，请刷新后重试')
+/** 停用审核通过的落地：变未发布；若待审时勾选了强制回收，同时写「已回收」信息与访问审计「管理端操作」。 */
+function settleDeactivate(b) {
   b.status = 'NOT_PUBLISHED'
-  b.revoked = makeRevokedInfo(reason)
-  b.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: reason })
-  persist()
-  return toRow(b)
+  if (b.pendingRevokeReason) {
+    b.revoked = makeRevokedInfo(b.pendingRevokeReason)
+    appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: b.pendingRevokeReason })
+  }
 }
 
 export async function approveBizSystem(id) {
@@ -358,13 +368,14 @@ export async function approveBizSystem(id) {
   if (!b) throw err('业务系统不存在')
   if (b.status !== 'PENDING_REVIEW') throw err('该业务系统没有待审事项')
   if (b.pendingAction === 'DEACTIVATE') {
-    b.status = 'NOT_PUBLISHED'
+    settleDeactivate(b)
   } else {
     b.status = 'PUBLISHED'
     b.publishedAt = nowIso()
     b.revoked = null // 重新发布审核通过 → 清「已回收」
   }
   b.pendingAction = null
+  b.pendingRevokeReason = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
@@ -378,6 +389,7 @@ export async function rejectBizSystem(id) {
   // 驳回与撤回同向：退回操作前原状（待审停用被拒 → 保持已发布）
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
+  b.pendingRevokeReason = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
@@ -396,7 +408,7 @@ export function applyBizSystemReviewResult(refId, requestAction, approved) {
   const isDelist = b.pendingAction === 'DEACTIVATE'
   if (approved) {
     if (isDelist) {
-      b.status = 'NOT_PUBLISHED'
+      settleDeactivate(b)
     } else {
       b.status = 'PUBLISHED'
       b.publishedAt = nowIso()
@@ -406,6 +418,7 @@ export function applyBizSystemReviewResult(refId, requestAction, approved) {
     b.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
   b.pendingAction = null
+  b.pendingRevokeReason = ''
   b.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true

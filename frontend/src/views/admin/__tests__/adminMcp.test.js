@@ -25,8 +25,10 @@ import { fmtTime } from '@/utils/docMeta'
  * - §一.2 搜索口径：深链 ?keyword= 同名参数重复不崩页（yuepu#22 防回归）；
  * - §三.8「登记成功后提示"已登记"，关闭抽屉，返回列表第 1 页并刷新列表」（编辑同）；§三.6「拉取成功后提示"已拉取 N 个工具"，
  *   并刷新当前抽屉中的连接信息和工具清单」→ 列表行工具数随之更新（编辑器桩 emit saved / probed）。
- * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-09 对齐 md §三.6.1「强制回收」小节（/test-audit 补缺口 A4/A5）：未发布行「已回收」标签。
+ * 2026-10-12 强制回收并入停用（负责人拍板）：不再有独立【强制回收】按钮，改为【停用】弹窗（真 DeactivateDialog）里的
+ *   「强制回收」勾选项，勾选后与普通停用同走审核、无二次确认；本文件验页面接线（弹窗入参 / 提交载荷 / toast / 按钮集合），
+ *   弹窗自身的交互另见 components/admin/__tests__/deactivateDialog.test.js。
  * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
@@ -48,14 +50,9 @@ const marketApi = {
   getMcpServicePublishStatus: vi.fn(),
   publishMcpService: vi.fn(),
   delistMcpService: vi.fn(),
-  withdrawMcpService: vi.fn(),
-  forceRevokeMcpService: vi.fn()
+  withdrawMcpService: vi.fn()
 }
 vi.mock('@/api/market', () => marketApi)
-
-// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
-const askForceRevoke = vi.hoisted(() => vi.fn())
-vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn() }
@@ -95,6 +92,12 @@ const stubs = {
   'el-dialog': {
     props: ['modelValue', 'title'],
     template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><slot name="footer" /></div>'
+  },
+  // 停用弹窗（真 DeactivateDialog）里的「强制回收」勾选框
+  'el-checkbox': {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<label class="el-checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>'
   },
   'el-button': {
     props: ['disabled', 'loading', 'type', 'link'],
@@ -166,6 +169,26 @@ function rowByName(name) {
 /** 操作列按钮（.tbl-ops 内；引用情况列的「N 个技能引用」也是 el-button，不算操作） */
 function btn(rowEl, text) {
   return [...rowEl.querySelectorAll('.tbl-ops .el-button')].find((b) => b.textContent.trim().startsWith(text))
+}
+/** 点行内【停用】打开停用弹窗（真 DeactivateDialog，el-dialog 为桩）。 */
+async function openDelistDialog(name = '已上线服务') {
+  btn(rowByName(name), '停用').click()
+  await flush()
+}
+const dialogEl = () => container.querySelector('.el-dialog')
+const dialogConfirm = () => container.querySelector('[data-test="dd-confirm"]')
+/** 弹窗内勾选「强制回收」并填原因（el-input 桩为 <input>）。 */
+async function checkForceRevoke(reason) {
+  const cb = container.querySelector('[data-test="dd-force-check"] input')
+  cb.checked = true
+  cb.dispatchEvent(new Event('change'))
+  await flush()
+  if (reason != null) {
+    const input = dialogEl().querySelector('input:not([type="checkbox"])')
+    input.value = reason
+    input.dispatchEvent(new Event('input'))
+    await flush()
+  }
 }
 function texts(rowEl) {
   return [...rowEl.querySelectorAll('.tbl-ops .el-button')].map((b) => b.textContent.trim())
@@ -247,9 +270,9 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     expect(texts(rowByName('未发布服务'))).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
-  it('操作区 · 已发布：【查看】【编辑】【停用】【强制回收】共 4 个，无【删除】（md §二.3.1 L86 / L81）', async () => {
+  it('操作区 · 已发布：【查看】【编辑】【停用】共 3 个，无【删除】、无独立【强制回收】（强制回收并入【停用】弹窗；md §二.3.1 L86 / L81）', async () => {
     await mount()
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
   })
 
   it('操作区 · 审核中：【查看】【编辑】【撤回】共 3 个，【编辑】置灰并提示「审核中不可编辑，如需修改请先撤回」（md §二.3.1 L85 / §二.3.3 L103）', async () => {
@@ -344,7 +367,8 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   it('撤回 · 待审停用：正文改说明「将保持已发布，继续对客户端提供服务」→ 撤回后状态回「已发布」，按钮换回【停用】（md §3.5 按待审类型恢复）', async () => {
     await mount()
     // 先把「已上线服务」提交停用，进入待审停用
-    btn(rowByName('已上线服务'), '停用').click()
+    await openDelistDialog()
+    dialogConfirm().click()
     await flush()
     expect(stateOf(rowByName('已上线服务'))).toBe('审核中')
     msgBox.confirm.mockClear()
@@ -357,21 +381,21 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect.objectContaining({ confirmButtonText: '撤回' })
     )
     expect(stateOf(rowByName('已上线服务'))).toBe('已发布')
-    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用', '强制回收'])
+    expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '停用'])
   })
 
   // ---- 停用（md §二.3.6 L131-135） ----
   it('停用：确认窗「停用 MCP 服务」/ 正文「停用后技能仍可执行，但运行效果可能受限或出现报错」/ 按钮【继续停用】→ toast「已提交停用审核」→ 状态「审核中」，【停用】替换为【撤回】', async () => {
     await mount()
-    btn(rowByName('已上线服务'), '停用').click()
+    await openDelistDialog()
+    expect(dialogEl().textContent).toContain('停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线服务」？')
+    expect(dialogConfirm().textContent.trim()).toBe('继续停用')
+    expect(marketApi.delistMcpService).not.toHaveBeenCalled() // 打开弹窗不提交
+    dialogConfirm().click()
     await flush()
-    expect(msgBox.confirm).toHaveBeenCalledWith(
-      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线服务」？',
-      '停用 MCP 服务',
-      expect.objectContaining({ confirmButtonText: '继续停用' })
-    )
     expect(marketApi.delistMcpService).toHaveBeenCalledWith('mc_pub', {})
     expect(msg.success).toHaveBeenCalledWith('已提交停用审核')
+    expect(dialogEl()).toBeNull() // 成功后弹窗关闭
     // md §二.3.1 L91「提交停用后，【停用】替换为【撤回】」
     expect(stateOf(rowByName('已上线服务'))).toBe('审核中')
     expect(texts(rowByName('已上线服务'))).toEqual(['查看', '编辑', '撤回'])
@@ -981,7 +1005,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
   })
 })
 
-describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核、原因必填、两步确认）', () => {
+describe('AdminMcp · 强制回收（md §三.6.1：停用弹窗里的勾选项，与普通停用同走审核、原因必填、无二次确认）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeState.query = {}
@@ -989,65 +1013,92 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
       Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG_SEED[id], pendingAction: null }] })
     )
-    marketApi.forceRevokeMcpService.mockResolvedValue({})
+    marketApi.delistMcpService.mockResolvedValue({})
   })
   afterEach(() => {
     app?.unmount()
     container?.remove()
   })
 
-  it('已发布行点【强制回收】、拿到原因 → forceRevokeMcpService(id, 原因) + 「已强制回收」+ 重新取列表', async () => {
-    askForceRevoke.mockResolvedValue('服务被入侵')
+  it('已发布行没有独立【强制回收】按钮；点【停用】打开弹窗，默认是普通停用（有勾选项、无原因输入）', async () => {
     await mount()
-    const before = adminApi.listMcp.mock.calls.length
-    btn(rowByName('已上线服务'), '强制回收').click()
-    await flush()
-    expect(marketApi.forceRevokeMcpService).toHaveBeenCalledWith('mc_pub', '服务被入侵')
-    expect(msg.success).toHaveBeenCalledWith('已强制回收')
-    // 回收信息在行上（row.revoked），必须重取列表行，「已回收」标签才会出现
-    expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(before)
+    expect(btn(rowByName('已上线服务'), '强制回收')).toBeUndefined()
+    await openDelistDialog()
+    expect(container.querySelector('[data-test="dd-force-check"]')).not.toBeNull()
+    expect(container.querySelector('[data-test="dd-danger"]')).toBeNull()
   })
 
-  it('弹窗入参：类型「MCP 服务」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  // PRD §3.6 普通停用标题为「停用 MCP 服务」（带空格），经共用弹窗的 plain-title 覆盖
+  it('停用弹窗标题为 PRD 的「停用 MCP 服务」（MCP 前带空格）', async () => {
     await mount()
-    btn(rowByName('已上线服务'), '强制回收').click()
+    await openDelistDialog()
+    expect(dialogEl().dataset.title).toBe('停用 MCP 服务')
+  })
+
+  it('勾选强制回收并填原因 → 点【提交强制回收审核】→ delistMcpService(id, { forceRevoke:true, reason }) + 「已提交强制回收审核」，弹窗关闭', async () => {
+    await mount()
+    await openDelistDialog()
+    await checkForceRevoke('服务被入侵')
+    expect(dialogEl().dataset.title).toBe('强制回收MCP 服务')
+    expect(dialogConfirm().textContent.trim()).toBe('提交强制回收审核')
+    dialogConfirm().click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: 'MCP 服务', name: '已上线服务', refCount: 2, refText: '岗位 / 技能' })
+    expect(marketApi.delistMcpService).toHaveBeenCalledWith('mc_pub', { forceRevoke: true, reason: '服务被入侵' })
+    expect(msg.success).toHaveBeenCalledWith('已提交强制回收审核')
+    expect(dialogEl()).toBeNull()
+  })
+
+  it('弹窗影响范围：被 2 个技能引用 → 「已被 2 个岗位 / 技能引用」', async () => {
+    await mount()
+    await openDelistDialog()
+    await checkForceRevoke(null)
+    expect(dialogEl().textContent).toContain('已被 2 个岗位 / 技能引用')
   })
 
   it('引用数 = 引用它的技能数 + 岗位数', async () => {
-    askForceRevoke.mockResolvedValue(null)
     adminApi.listMcp.mockImplementation(async () => ({
       list: LIST.map((r) => (r.id === 'mc_pub' ? { ...r, referencedBySkillCount: 2, positionCount: 3 } : { ...r })),
       total: LIST.length
     }))
     await mount()
-    btn(rowByName('已上线服务'), '强制回收').click()
-    await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith(expect.objectContaining({ refCount: 5 }))
+    await openDelistDialog()
+    await checkForceRevoke(null)
+    expect(dialogEl().textContent).toContain('已被 5 个岗位 / 技能引用')
   })
 
-  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  it('回收原因为空 → 就地提示「请输入回收原因」，不调接口、弹窗不关', async () => {
     await mount()
-    const before = adminApi.listMcp.mock.calls.length
-    btn(rowByName('已上线服务'), '强制回收').click()
+    await openDelistDialog()
+    await checkForceRevoke(null)
+    dialogConfirm().click()
     await flush()
-    expect(marketApi.forceRevokeMcpService).not.toHaveBeenCalled()
+    expect(dialogEl().textContent).toContain('请输入回收原因')
+    expect(marketApi.delistMcpService).not.toHaveBeenCalled()
     expect(msg.success).not.toHaveBeenCalled()
-    expect(adminApi.listMcp.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
-    askForceRevoke.mockResolvedValue('原因')
-    marketApi.forceRevokeMcpService.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+  it('取消（点【取消】）→ 不调接口、不弹成功提示', async () => {
     await mount()
-    btn(rowByName('已上线服务'), '强制回收').click()
+    await openDelistDialog()
+    await checkForceRevoke('原因')
+    ;[...dialogEl().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '取消').click()
     await flush()
-    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
-    marketApi.forceRevokeMcpService.mockRejectedValueOnce(new Error(''))
-    btn(rowByName('已上线服务'), '强制回收').click()
+    expect(dialogEl()).toBeNull()
+    expect(marketApi.delistMcpService).not.toHaveBeenCalled()
+    expect(msg.success).not.toHaveBeenCalled()
+  })
+
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示，弹窗保留便于重试', async () => {
+    marketApi.delistMcpService.mockRejectedValueOnce({ message: '仅已发布状态可提交停用' })
+    await mount()
+    await openDelistDialog()
+    await checkForceRevoke('原因')
+    dialogConfirm().click()
+    await flush()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布状态可提交停用')
+    expect(dialogEl()).not.toBeNull()
+    marketApi.delistMcpService.mockRejectedValueOnce(new Error(''))
+    dialogConfirm().click()
     await flush()
     expect(msg.error).toHaveBeenLastCalledWith('操作失败')
     expect(msg.success).not.toHaveBeenCalled()

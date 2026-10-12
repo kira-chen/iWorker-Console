@@ -26,8 +26,7 @@ import {
   getMcpServicePublishStatus,
   publishMcpService,
   delistMcpService,
-  withdrawMcpService,
-  forceRevokeMcpService
+  withdrawMcpService
 } from '@/api/market'
 import { resolveDisplayStatus } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
@@ -39,7 +38,7 @@ import { useAdminList } from '@/composables/useAdminList'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
@@ -76,7 +75,7 @@ const editingId = ref(null)
 const editorReadonly = ref(false)
 const checkBusy = ref(null) // 立即检活进行中的行 id
 
-// 行内动作 busy 态：{ [id]: 'publish' | 'delist' | 'withdraw' | 'forceRevoke' | 'delete' }
+// 行内动作 busy 态：{ [id]: 'publish' | 'delist' | 'withdraw' | 'delete' }
 const busy = ref({})
 
 // 服务级发布态：{ [mcpDefId]: aggregateStatus }。消费后端服务级聚合端点（单目标端 USER_END）。
@@ -212,10 +211,6 @@ function canWithdraw(row) {
 }
 function canDelist(row) {
   return aggOf(row) === 'PUBLISHED' || aggOf(row) === 'PARTIAL'
-}
-/** 强制回收入口：已发布且无审核中操作（聚合态 PUBLISHED 即无待审；md §3.6.1）。 */
-function canForceRevoke(row) {
-  return aggOf(row) === 'PUBLISHED'
 }
 /** 删除守卫：仅未发布可删（已发布/审核中的服务客户端在用或在途，后端亦有引用保护）。 */
 function canDelete(row) {
@@ -369,8 +364,10 @@ async function runAction(row, action, fn, successMsg) {
     await fn(row.id)
     if (successMsg) ElMessage.success(successMsg)
     await loadPubSummary()
+    return true
   } catch (e) {
     ElMessage.error(e?.message || '操作失败')
+    return false
   } finally {
     delete busy.value[row.id]
   }
@@ -427,43 +424,40 @@ async function withdraw(row) {
  *
  * <p>用「停用」而非「下架」：与模型页统一措辞，两页同一个动作不该有两个叫法。
  * 底层动作名（delist / delistMcpService）保持不变——那是既有接口语义，改名会牵动后端。</p>
+ *
+ * <p>强制回收（PRD §3.6.1）不再是独立按钮，而是停用弹窗（DeactivateDialog）里的勾选项：勾选后与普通停用
+ * 走同一条审核链路、审核通过才生效，没有二次确认；回收信息在行上（row.revoked），审核通过后列表重取才会出现「已回收」标签。</p>
  */
-async function delist(row) {
-  try {
-    // 软引用口径（PRD §二.3.6）：确认按钮【继续停用】
-    await ElMessageBox.confirm(
-      `停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${row.name}」？`,
-      '停用 MCP 服务',
-      { type: 'warning', confirmButtonText: '继续停用' }
-    )
-  } catch (e) {
-    return
+const delistTarget = ref(null) // 停用弹窗的目标行；null=弹窗关闭
+const delistDialogVisible = computed({
+  get: () => !!delistTarget.value,
+  set: (v) => {
+    if (!v) delistTarget.value = null
   }
-  runAction(row, 'delist', (id) => delistMcpService(id, {}), '已提交停用审核')
+})
+// 普通停用正文（软引用口径，PRD §3.6：不拦截，只提示运行效果可能受限）
+const delistPlainMessage = computed(
+  () => `停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「${delistTarget.value?.name}」？`
+)
+// 影响范围口径：岗位引用数 + 技能引用数
+const delistRefCount = computed(
+  () => (delistTarget.value?.referencedBySkillCount || 0) + (delistTarget.value?.positionCount || 0)
+)
+const delistSubmitting = computed(() => !!delistTarget.value && busy.value[delistTarget.value.id] === 'delist')
+function delist(row) {
+  delistTarget.value = row
 }
-
-/**
- * 强制回收（md §3.6.1）：与【停用】并列的紧急下线，立即生效、不进审核。
- * 回收弹窗（原因必填）→ 二次确认由 askForceRevoke 承担；回收信息在行上（row.revoked），
- * 故成功后除刷新发布态外还要重取列表行，「已回收」标签才会出现。
- */
-async function forceRevoke(row) {
-  const reason = await askForceRevoke({
-    typeLabel: 'MCP 服务',
-    name: row.name,
-    refCount: (row.referencedBySkillCount || 0) + (row.positionCount || 0),
-    refText: '岗位 / 技能'
-  })
-  if (reason == null) return
-  runAction(
+async function onDelistConfirm({ forceRevoke, reason }) {
+  const row = delistTarget.value
+  if (!row) return
+  const ok = await runAction(
     row,
-    'forceRevoke',
-    async (id) => {
-      await forceRevokeMcpService(id, reason)
-      await list.reload()
-    },
-    '已强制回收'
+    'delist',
+    (id) => delistMcpService(id, forceRevoke ? { forceRevoke, reason } : {}),
+    forceRevoke ? '已提交强制回收审核' : '已提交停用审核'
   )
+  // 成功关弹窗（runAction 已刷新发布态摘要）；失败保留弹窗便于重试（失败 toast 已由 runAction 弹出）
+  if (ok) delistTarget.value = null
 }
 
 async function remove(row) {
@@ -751,17 +745,6 @@ async function remove(row) {
               >
                 停用
               </el-button>
-              <!-- 强制回收：已发布行位于【停用】之后（md §3.6.1），危险红色 -->
-              <el-button
-                v-if="canForceRevoke(row)"
-                link
-                type="danger"
-                :loading="busy[row.id] === 'forceRevoke'"
-                @click="forceRevoke(row)"
-              >
-                强制回收
-              </el-button>
-
               <!-- ④ 危险操作置末：仅未发布可删 -->
               <el-button
                 v-if="canDelete(row)"
@@ -786,6 +769,20 @@ async function remove(row) {
       v-model:page-size="pageSize"
       :total="total"
       @change="fetchList"
+    />
+
+    <!-- 停用确认弹窗：普通停用 / 勾选「强制回收」同走审核（PRD §3.6 / §3.6.1） -->
+    <DeactivateDialog
+      v-model="delistDialogVisible"
+      type-label="MCP 服务"
+      plain-title="停用 MCP 服务"
+      :name="delistTarget?.name"
+      :plain-message="delistPlainMessage"
+      confirm-text="继续停用"
+      :ref-count="delistRefCount"
+      ref-text="岗位 / 技能"
+      :submitting="delistSubmitting"
+      @confirm="onDelistConfirm"
     />
 
     <McpEditor

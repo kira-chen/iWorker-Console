@@ -19,7 +19,7 @@
  */
 import { ApiError } from './request'
 import { appendOpsRecord } from './accessAuditMock'
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
@@ -93,7 +93,7 @@ const mkApi = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null,
-  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeApi）
+  // 强制回收信息 { reason, at, operator }；null=未被回收。强制回收的停用审核通过时写入（见 applyApiReviewResult），重新发布审核通过才清空
   revoked: null,
   ...over
 })
@@ -823,22 +823,35 @@ export async function withdrawApi(id) {
   // 按待审类型恢复：待审发布 → 未发布；待审停用 → 已发布
   a.status = a.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   a.pendingAction = null
+  a.pendingRevokeReason = '' // 撤回强制回收申请：不留任何回收后果
   a.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('API', a.id)
   persist()
   return toRow(a)
 }
 
-export async function deactivateApi(id) {
+/**
+ * 停用。`forceRevoke` 为真 = 停用弹窗里勾选了「强制回收」（prd-API.md §4）：仍走同一条停用审核，
+ * 审核通过才生效（不跳过审核）；回收原因暂存在 pendingRevokeReason，审核通过时由 applyApiReviewResult 落「已回收」。
+ */
+export async function deactivateApi(id, { forceRevoke = false, reason = '' } = {}) {
   await delay(250)
   const a = findApi(id)
   if (!a) throw err('API 不存在')
   if (a.status !== 'PUBLISHED') throw err('仅已发布状态可停用')
+  const revokeReason = forceRevoke ? String(reason || '').trim() : ''
+  if (forceRevoke) {
+    const tip = validateRevokeReason(reason)
+    if (tip) throw err(tip, 'reason', 40001)
+  }
+  a.pendingRevokeReason = revokeReason
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'DEACTIVATE'
   a.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
-  enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 API 对外提供' })
+  enrollReview({ businessType: 'API', refId: a.id, name: a.name, description: a.description || '', requestAction: 'DELIST', version: '—',
+    versionNotes: forceRevoke ? `申请强制回收该 API：${revokeReason}` : '申请停止该 API 对外提供',
+    forceRevokeReason: revokeReason })
   persist()
   return toRow(a)
 }
@@ -858,6 +871,11 @@ export function applyApiReviewResult(refId, requestAction, approved) {
   if (approved) {
     if (isDelist) {
       a.status = 'NOT_PUBLISHED'
+      if (a.pendingRevokeReason) {
+        // 勾选了强制回收的停用审核通过 → 才打「已回收」并落访问审计（PRD §4）
+        a.revoked = makeRevokedInfo(a.pendingRevokeReason)
+        appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: a.pendingRevokeReason })
+      }
     } else {
       a.status = 'PUBLISHED'
       a.publishedAt = nowIso()
@@ -868,27 +886,10 @@ export function applyApiReviewResult(refId, requestAction, approved) {
     a.status = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
   a.pendingAction = null
+  a.pendingRevokeReason = ''
   a.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true
-}
-
-/**
- * 强制回收（prd-API.md §4）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
- * 仅「已发布且无审核中操作」可回收；状态回「未发布」（保留 publishedAt），写 revoked，
- * 引用清单原样保留；写访问审计「管理端操作」。
- */
-export async function forceRevokeApi(id, reason) {
-  await delay(250)
-  const a = findApi(id)
-  if (!a) throw err('API 不存在')
-  if (a.status !== 'PUBLISHED' || a.pendingAction) throw err('API状态已变化，请刷新后重试')
-  a.status = 'NOT_PUBLISHED'
-  a.revoked = makeRevokedInfo(reason)
-  a.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: reason })
-  persist()
-  return toRow(a)
 }
 
 /* ================= 示例问题 AI 生成（demo 本地模板生成） ================= */

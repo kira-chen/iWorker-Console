@@ -198,6 +198,15 @@ describe('审核中心借用态（?govReview）· md 审核中心 §4.2 / §五 
     expect(barLabels()).toEqual(['关闭', '驳回', '通过'])
   })
 
+  it('停用申请勾选了强制回收 → 底栏左侧提示回收原因；普通申请不出提示（审核中心 §5.2 / 技能 §3.5.1）', async () => {
+    await mountGov({ review: REVIEW({ requestAction: 'DELIST', forceRevokeReason: '能力异常' }) })
+    expect(container.querySelector('[data-test="se-gov-revoke-hint"]').textContent.trim()).toBe('强制回收申请 · 回收原因：能力异常')
+    app.unmount()
+    container.remove()
+    await mountGov({ review: REVIEW({ requestAction: 'DELIST' }) })
+    expect(container.querySelector('[data-test="se-gov-revoke-hint"]')).toBeNull()
+  })
+
   it('有版本快照 → 详情展示提交审核时的快照内容，不是技能当前配置（§四：审核详情读取该快照）', async () => {
     await mountGov()
     expect(loadReviewSnapshot).toHaveBeenCalledWith('SKILL', 'sk_9')
