@@ -1048,11 +1048,27 @@ describe('AdminMcp · 强制回收（md §三.6.1：停用弹窗里的勾选项�
     expect(dialogEl()).toBeNull()
   })
 
-  it('弹窗影响范围：被 2 个技能引用 → 「已被 2 个岗位 / 技能引用」', async () => {
+  it('取消勾选后再提交 → 载荷不带强制回收与原因，走普通停用', async () => {
+    await mount()
+    await openDelistDialog()
+    await checkForceRevoke('先勾上又反悔')
+    const cb = container.querySelector('[data-test="dd-force-check"] input')
+    cb.checked = false
+    cb.dispatchEvent(new Event('change'))
+    await flush()
+    expect(dialogConfirm().textContent.trim()).not.toBe('提交强制回收审核')
+    dialogConfirm().click()
+    await flush()
+    expect(marketApi.delistMcpService).toHaveBeenCalledWith('mc_pub', {})
+    expect(msg.success).not.toHaveBeenCalledWith('已提交强制回收审核')
+  })
+
+  it('弹窗影响范围：被 2 个技能引用 → 「已被 2 个岗位 / 技能引用」；红色警示写明已绑定该连接器的员工将失去它', async () => {
     await mount()
     await openDelistDialog()
     await checkForceRevoke(null)
     expect(dialogEl().textContent).toContain('已被 2 个岗位 / 技能引用')
+    expect(container.querySelector('[data-test="dd-danger"]').textContent).toContain('已绑定该连接器的员工将失去它')
   })
 
   it('引用数 = 引用它的技能数 + 岗位数', async () => {

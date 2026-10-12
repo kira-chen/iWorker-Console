@@ -358,7 +358,7 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.ls-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
   })
 
-  it('操作列按状态：已发布=查看/编辑/停用/强制回收/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
+  it('操作列按状态：已发布=查看/编辑/停用/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
     await mount()
     const [pub, draft, review] = rowEls()
     expect([...pub.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
@@ -596,7 +596,7 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：停用弹窗勾选
     expect(rowBtn(rowOf('经营分析专家'), '强制回收')).toBeUndefined()
   })
 
-  it('点【停用】开弹窗：默认是普通停用（正文 + 【提交停用审核】），专家被引用也不拦截；确认 → unpublishExpert(id, 非强制) + 「已提交停用审核」', async () => {
+  it('点【停用】开弹窗：默认是普通停用（正文 + 【提交停用审核】）；确认 → unpublishExpert(id, 非强制) + 「已提交停用审核」', async () => {
     unpublishExpert.mockResolvedValueOnce({})
     await mount()
     await openStopDialog()
@@ -610,6 +610,38 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：停用弹窗勾选
     expect(dlg()).toBeNull() // 成功后关弹窗
   })
 
+  it('专家被岗位引用（positionCount>0）时停用不拦截：默认弹窗无拦截文案、【提交停用审核】可点；勾选强制回收后同样可提交', async () => {
+    const referenced = { ...EXPERTS[0], id: 303, name: '被引用专家', type: 'POSITION', positionCount: 3, status: 'published', pendingAction: null }
+    listExperts.mockResolvedValue({ list: [referenced], total: 1 })
+    unpublishExpert.mockResolvedValue({})
+    await mount()
+    await openStopDialog('被引用专家')
+    expect(dlg().querySelector('[data-test="dd-blocked"]')).toBeNull()
+    expect(confirmBtn().disabled).toBe(false)
+    confirmBtn().click()
+    await flush()
+    expect(unpublishExpert).toHaveBeenLastCalledWith(303, { forceRevoke: false, reason: '' })
+
+    await openStopDialog('被引用专家')
+    await tickForceRevoke('引用也要回收')
+    expect(dlg().querySelector('[data-test="dd-blocked"]')).toBeNull()
+    confirmBtn().click()
+    await flush()
+    expect(unpublishExpert).toHaveBeenLastCalledWith(303, { forceRevoke: true, reason: '引用也要回收' })
+  })
+
+  it('勾选强制回收后出现红色警示：写明审核通过后生效且不可撤销，并点明“已召唤该专家的员工将失去它”；未勾选时没有该警示', async () => {
+    await mount()
+    await openStopDialog()
+    expect(dlg().querySelector('[data-test="dd-danger"]')).toBeNull()
+    await tickForceRevoke()
+    const danger = dlg().querySelector('[data-test="dd-danger"]')
+    expect(danger.textContent).toContain('已召唤该专家的员工将失去它')
+    expect(danger.textContent).toContain('审核通过后生效')
+  })
+
+  // 待裁决（T5）：AdminExperts.vue 的 :ref-count 写死 0，专家弹窗永不列“已被 N 个岗位引用”；PRD 专家 §3.5.1 弹窗描述里也没有该影响范围句（技能 §3.5.1 有），
+  // 判为设计取舍而非缺陷，故不钉 it.fails；如产品要求专家也展示，再把 positionCount 接给 :ref-count 并补用例。
   it('勾选「强制回收」：标题变「强制回收专家」、确认钮变【提交强制回收审核】；专家无影响范围引用清单', async () => {
     await mount()
     await openStopDialog()

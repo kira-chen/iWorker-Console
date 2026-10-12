@@ -317,6 +317,22 @@ describe('GovObjectDetail · 分发与吸底操作栏（md 审核中心 §四 / 
     expect(bar()).toBeNull()
   })
 
+  it('强制回收停用申请（item.forceRevokeReason）→ 吸底栏左侧出现「强制回收申请 · 回收原因：X」；普通申请无此提示（审核中心 PRD §5.2）', async () => {
+    await mount()
+    await open({ kind: 'API', refId: 'api_1103', item: { name: '客户资料查询', requestAction: 'DELIST', forceRevokeReason: '接口存在安全风险' } })
+    const hint = document.querySelector('.god-bar [data-test="god-revoke-hint"]')
+    expect(hint.textContent.trim()).toBe('强制回收申请 · 回收原因：接口存在安全风险')
+    // 提示不挤掉操作按钮
+    expect(barLabels()).toEqual(['关闭', '驳回', '通过'])
+  })
+
+  it('普通停用 / 发布申请（无 forceRevokeReason）→ 吸底栏没有强制回收提示', async () => {
+    await mount()
+    await open({ kind: 'API', refId: 'api_1103', item: { name: '客户资料查询', requestAction: 'DELIST' } })
+    expect(bar()).toBeTruthy()
+    expect(document.querySelector('[data-test="god-revoke-hint"]')).toBeNull()
+  })
+
   it('visible=false → 不渲染吸底栏；编辑器上抛 update:visible=false 时宿主同步关闭', async () => {
     await mount()
     await open({ kind: 'API', refId: 'api_1103', item: { name: '客户资料查询' } })

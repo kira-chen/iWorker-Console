@@ -761,11 +761,27 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收（停用时勾�
     expect(msgBox.confirm).not.toHaveBeenCalled() // 没有二次确认
   })
 
-  it('勾选后弹窗展示影响范围「已被 2 个岗位 / 技能引用」；原因留空点提交 → 就地提示「请输入回收原因」，不调接口', async () => {
+  it('取消勾选后再提交 → 载荷不带强制回收与原因，走普通停用', async () => {
+    await mount()
+    await openDeactivateDialog()
+    await checkForceRevoke('先勾上又反悔')
+    const cb = container.querySelector('[data-test="dd-force-check"] input')
+    cb.checked = false
+    cb.dispatchEvent(new Event('change'))
+    await flush()
+    expect(dialogConfirm().textContent.trim()).not.toBe('提交强制回收审核')
+    dialogConfirm().click()
+    await flush()
+    expect(conn.deactivateApi).toHaveBeenCalledWith('a_pub', { forceRevoke: false, reason: '' })
+    expect(msg.success).not.toHaveBeenCalledWith('已提交强制回收审核')
+  })
+
+  it('勾选后弹窗展示影响范围「已被 2 个岗位 / 技能引用」、红色警示写明已绑定该连接器的员工将失去它；原因留空点提交 → 就地提示「请输入回收原因」，不调接口', async () => {
     await mount()
     await openDeactivateDialog()
     await checkForceRevoke()
     expect(dialogEl().textContent).toContain('已被 2 个岗位 / 技能引用')
+    expect(container.querySelector('[data-test="dd-danger"]').textContent).toContain('已绑定该连接器的员工将失去它')
     dialogConfirm().click()
     await flush()
     expect(container.querySelector('[data-test="dd-error"]').textContent).toBe('请输入回收原因')

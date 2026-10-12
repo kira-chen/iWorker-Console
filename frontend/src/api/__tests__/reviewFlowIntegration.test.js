@@ -257,4 +257,143 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
     expect((await ex.getExpert(201)).latestVersionLabel).toBe(fresh.version)
     expect((await t.app.getMyApplication(fresh.id)).result).toBe('APPROVED')
   })
+
+  /* ---------------- 强制回收并入停用（2026-10-12）：五类对象的提交 / 通过 / 驳回 / 撤回联动 ----------------
+   * 强制回收不是独立流程，而是停用弹窗里的勾选项（PRD 审核中心 §5.2、访问审计 §6.2 / §6.5.1、各模块「强制回收（停用时勾选）」）：
+   * 提交后对象仍已发布、审核中；只有审核**通过**才回收生效并写访问审计；驳回 / 撤回无任何回收后果。
+   * 注意：这里不断言审计的“操作人”（口径由另一处改动负责）。
+   */
+  describe('强制回收停用：对象 / 审核中心 / 我的申请 / 访问审计联动', () => {
+    const REASON = '存在严重安全风险'
+    // 每类对象：起点（种子里已发布且无在途）、停用入口、状态读取、撤回入口。state() 统一返回 { name, status, revoked }，status 为 PUBLISHED（已发布无在途）/ REVIEWING（审核中，提交停用后对象仍在对外提供）/ UNPUBLISHED
+    const KINDS = {
+      MCP: {
+        refId: 'calendar', auditModule: 'MCP',
+        setup: async () => { (await import('../mcpConnectorMock')).__resetMcpMock() },
+        delist: async (opts) => (await import('../mcpConnectorMock')).delistMcpService('calendar', opts),
+        withdraw: async () => (await import('../mcpConnectorMock')).withdrawMcpService('calendar'),
+        state: async () => {
+          const m = await import('../mcpConnectorMock')
+          const row = await m.getMcp('calendar')
+          const agg = (await m.getMcpServicePublishStatus('calendar')).targets[0].aggregateStatus
+          return { name: row.name, status: { PUBLISHED: 'PUBLISHED', PENDING_REVIEW: 'REVIEWING' }[agg] || 'UNPUBLISHED', revoked: row.revoked }
+        }
+      },
+      API: {
+        refId: 'api_1101', auditModule: 'API',
+        setup: async () => { (await import('../apiConnectorMock')).__resetApiMock() },
+        delist: async (opts) => (await import('../apiConnectorMock')).deactivateApi('api_1101', opts),
+        withdraw: async () => (await import('../apiConnectorMock')).withdrawApi('api_1101'),
+        state: async () => {
+          const row = await (await import('../apiConnectorMock')).getApi('api_1101')
+          return { name: row.name, status: { PUBLISHED: 'PUBLISHED', PENDING_REVIEW: 'REVIEWING' }[row.status] || 'UNPUBLISHED', revoked: row.revoked }
+        }
+      },
+      BIZ_SYSTEM: {
+        refId: 'biz_2101', auditModule: '业务系统',
+        setup: async () => { (await import('../bizSystemMock')).__resetBizSystemMock() },
+        delist: async (opts) => (await import('../bizSystemMock')).deactivateBizSystem('biz_2101', opts),
+        withdraw: async () => (await import('../bizSystemMock')).withdrawBizSystem('biz_2101'),
+        state: async () => {
+          const row = await (await import('../bizSystemMock')).getBizSystem('biz_2101')
+          return { name: row.name, status: { PUBLISHED: 'PUBLISHED', PENDING_REVIEW: 'REVIEWING' }[row.status] || 'UNPUBLISHED', revoked: row.revoked }
+        }
+      },
+      EXPERT: {
+        refId: 201, auditModule: '专家',
+        setup: async () => { (await import('../domainExpertMock')).__resetExpertMock() },
+        delist: async (opts) => (await import('../domainExpertMock')).unpublishExpert(201, opts),
+        withdraw: async () => (await import('../domainExpertMock')).withdrawExpert(201),
+        state: async () => {
+          const row = await (await import('../domainExpertMock')).getExpert(201)
+          return { name: row.name, status: row.status !== 'published' ? 'UNPUBLISHED' : row.pendingAction ? 'REVIEWING' : 'PUBLISHED', revoked: row.revoked }
+        }
+      },
+      SKILL: {
+        refId: 'sk_305', auditModule: '技能',
+        setup: async () => {
+          // 技能没有 reset 入口：把 sk_305 摆回「已发布、无在途、无回收标记」
+          ;(await import('../unifiedSkillMock'))._reset('sk_305', { status: 'published', delisted: false, pendingAction: null, pendingRevokeReason: '', pendingRevokeBy: '', revoked: null })
+        },
+        delist: async (opts) => (await import('../unifiedSkillMock')).delistSkill('sk_305', opts),
+        withdraw: async () => (await import('../unifiedSkillMock')).withdrawPublish('sk_305'),
+        state: async () => {
+          const raw = (await import('../unifiedSkillMock'))._getRaw('sk_305')
+          return { name: raw.name, status: raw.status !== 'published' || raw.delisted ? 'UNPUBLISHED' : raw.pendingAction ? 'REVIEWING' : 'PUBLISHED', revoked: raw.revoked }
+        }
+      }
+    }
+    const TYPES = Object.keys(KINDS)
+    const forceRevokeOps = async () => (await import('../accessAuditMock')).opsRecords.filter((r) => r.live && r.action === '强制回收')
+    const stopOps = async () => (await import('../accessAuditMock')).opsRecords.filter((r) => r.live && r.action === '停用')
+    /** 摆好起点并提交强制回收停用，返回提交后的两张表待审行 */
+    async function submitForced(type) {
+      const k = KINDS[type]
+      ;(await import('../accessAuditMock')).resetAccessAuditMock()
+      await k.setup()
+      expect((await k.state()).status).toBe('PUBLISHED') // 起点：已发布、无在途
+      await k.delist({ forceRevoke: true, reason: REASON })
+      return pendingRows(t, type, k.refId)
+    }
+
+    it.each(TYPES)('%s：提交强制回收停用 → 对象进入审核中（仍在对外提供）、无回收标记；审核中心与我的申请各有一行带回收原因；此时访问审计没有强制回收记录', async (type) => {
+      const { review, application } = await submitForced(type)
+      expect(review).toMatchObject({ requestAction: 'DELIST', forceRevokeReason: REASON })
+      expect(application).toMatchObject({ applicationType: 'DELIST', forceRevokeReason: REASON })
+      const st = await KINDS[type].state()
+      expect(st.status).toBe('REVIEWING') // 审核通过前对象仍在对外提供，只是锁在审核中
+      expect(st.revoked).toBeFalsy()
+      expect(await forceRevokeOps()).toHaveLength(0)
+    })
+
+    it.each(TYPES)('%s：审核通过 → 对象未发布且「已回收」带原因；两张表待审行消失、申请变已通过；访问审计恰有一条强制回收（无额外「停用」记录），客户端视图读到 forceRevoke', async (type) => {
+      const k = KINDS[type]
+      const { review, application } = await submitForced(type)
+      await t.gov.approveReview(review.id)
+
+      const st = await k.state()
+      expect(st.status).toBe('UNPUBLISHED')
+      expect(st.revoked).toMatchObject({ reason: REASON })
+      const after = await pendingRows(t, type, k.refId)
+      expect(after.review).toBeUndefined()
+      expect(after.application).toBeUndefined()
+      expect((await t.app.getMyApplication(application.id)).result).toBe('APPROVED')
+
+      const ops = await forceRevokeOps()
+      expect(ops).toHaveLength(1)
+      expect(ops[0]).toMatchObject({ module: k.auditModule, action: '强制回收', target: st.name, detail: REASON })
+      expect(await stopOps()).toHaveLength(0)
+      const view = (await import('../accessAuditMock')).listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
+      expect(view).toHaveLength(1)
+      expect(view[0]).toMatchObject({ kind: 'forceRevoke', objectType: k.auditModule, objectName: st.name, reason: REASON })
+    })
+
+    it.each(TYPES)('%s：审核驳回 → 对象仍已发布、无回收标记；申请变已驳回；访问审计没有强制回收记录', async (type) => {
+      const k = KINDS[type]
+      const { review, application } = await submitForced(type)
+      await t.gov.rejectReview(review.id, '暂不回收')
+
+      const st = await k.state()
+      expect(st.status).toBe('PUBLISHED')
+      expect(st.revoked).toBeFalsy()
+      expect((await pendingRows(t, type, k.refId)).review).toBeUndefined()
+      expect((await t.app.getMyApplication(application.id))).toMatchObject({ result: 'REJECTED', rejectReason: '暂不回收' })
+      expect(await forceRevokeOps()).toHaveLength(0)
+    })
+
+    it.each(TYPES)('%s：撤回 → 对象仍已发布、无回收标记；审核中心摘行、我的申请置已撤回；访问审计没有强制回收记录', async (type) => {
+      const k = KINDS[type]
+      const { application } = await submitForced(type)
+      await k.withdraw()
+
+      const st = await k.state()
+      expect(st.status).toBe('PUBLISHED')
+      expect(st.revoked).toBeFalsy()
+      const after = await pendingRows(t, type, k.refId)
+      expect(after.review).toBeUndefined()
+      expect(after.application).toBeUndefined()
+      expect((await t.app.getMyApplication(application.id)).result).toBe('WITHDRAWN')
+      expect(await forceRevokeOps()).toHaveLength(0)
+    })
+  })
 })

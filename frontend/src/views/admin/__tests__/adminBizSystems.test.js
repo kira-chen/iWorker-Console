@@ -588,6 +588,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     await tickRevoke(true)
     expect(dlg().dataset.title).toBe('强制回收业务系统')
     expect(dlg().textContent).toContain('已被 2 个岗位 / 技能引用')
+    expect(dlg().querySelector('[data-test="dd-danger"]').textContent).toContain('已绑定该连接器的员工将失去它')
     expect(confirmBtn().textContent.trim()).toBe('提交强制回收审核')
     await tickRevoke(false)
     expect(dlg().dataset.title).toBe('停用业务系统')

@@ -162,11 +162,11 @@ async function mountGov({ snapshot = SNAPSHOT(), review = REVIEW() } = {}) {
   await settle()
 }
 /** 我的申请借用态：只读路由（readonly=true）或「前往修改」后的编辑路由（readonly=false）+ ?myApp */
-async function mountMyApp(result, { readonly = true, snapshot = SNAPSHOT() } = {}) {
+async function mountMyApp(result, { readonly = true, snapshot = SNAPSHOT(), appOver = {} } = {}) {
   routeState.meta = readonly ? { skillSource: 'platform', readonly: true } : { skillSource: 'platform' }
   routeState.query = { myApp: '504' }
   loadReviewSnapshot.mockResolvedValue(snapshot)
-  getMyApplication.mockResolvedValue(APP(result))
+  getMyApplication.mockResolvedValue(APP(result, appOver))
   mount()
   await settle()
 }
@@ -276,6 +276,15 @@ describe('审核中心借用态（?govReview）· md 审核中心 §4.2 / §五 
 
 /* ====================================================================================== */
 describe('我的申请借用态（?myApp）· md 我的申请 §4.1–§4.4', () => {
+  it('停用申请勾选了强制回收 → 底栏左侧同样提示回收原因；普通申请不出提示（我的申请行也带 forceRevokeReason）', async () => {
+    await mountMyApp('PENDING', { appOver: { requestAction: 'DELIST', forceRevokeReason: '能力异常' } })
+    expect(container.querySelector('[data-test="se-gov-revoke-hint"]').textContent.trim()).toBe('强制回收申请 · 回收原因：能力异常')
+    app.unmount()
+    container.remove()
+    await mountMyApp('PENDING', { appOver: { requestAction: 'DELIST' } })
+    expect(container.querySelector('[data-test="se-gov-revoke-hint"]')).toBeNull()
+  })
+
   it('待审核 → 底部【关闭】【撤回申请】（§4.1）', async () => {
     await mountMyApp('PENDING')
     expect(barLabels()).toEqual(['关闭', '撤回申请'])
