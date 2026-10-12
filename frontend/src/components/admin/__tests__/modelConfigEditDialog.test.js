@@ -445,6 +445,34 @@ describe('ModelConfigEditDialog（V76/V77）', () => {
     expect(savedSpy).toHaveBeenCalledWith({ verifyId: 'md_pub' })
   })
 
+  it('编辑已下架（DELISTED）模型改连接字段：弹「连接信息变更」确认，文案是不含「客户端将无法获取」的短版（本就不在线）；取消不保存，确认才保存', async () => {
+    await mount({
+      id: 'md_off',
+      name: '已下架模型',
+      baseUrl: 'https://a/v1',
+      model: 'm',
+      authType: 'API_KEY',
+      apiKeyMasked: '******',
+      status: 'DELISTED'
+    })
+    setInput('baseUrl', 'https://changed.example/v1')
+    msgBox.confirm.mockRejectedValue('cancel')
+    saveBtn().click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledTimes(1)
+    const [text, title] = msgBox.confirm.mock.calls[0]
+    expect(title).toBe('连接信息变更')
+    expect(text).toBe('修改连接信息（地址/模型/鉴权/额外参数）后需重新验证连通性，验证通过后才可发布。确认修改？')
+    expect(text).not.toContain('客户端将无法再获取')
+    expect(api.updateModel).not.toHaveBeenCalled()
+
+    msgBox.confirm.mockResolvedValue()
+    api.updateModel.mockResolvedValue({ id: 'md_off' })
+    saveBtn().click()
+    await flush()
+    expect(api.updateModel).toHaveBeenCalledWith('md_off', expect.objectContaining({ baseUrl: 'https://changed.example/v1' }))
+  })
+
   it('编辑「当前是默认」模型改类别：先弹确认（会取消默认），取消则不保存', async () => {
     await mount({
       id: 'md_def',

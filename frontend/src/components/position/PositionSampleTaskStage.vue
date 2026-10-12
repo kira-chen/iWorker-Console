@@ -37,7 +37,9 @@ import ReActSteps from '@/components/ReActSteps.vue'
 
 const props = defineProps({
   positionId: { type: [Number, String], default: null },
-  positionName: { type: String, default: '岗位' }
+  positionName: { type: String, default: '岗位' },
+  // 只读态（岗位审核中 / 查看态，md §10）：仍可点选条目查看详情，但不可新增 / 删除 / 拖拽排序，右侧编辑器整体只读
+  readonly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['saved', 'update:sampleCount'])
 
@@ -233,6 +235,7 @@ const draggingIndex = ref(-1)
 const dragOverIndex = ref(-1)
 
 function onDragStart(e, index) {
+  if (props.readonly) { e.preventDefault(); return }
   draggingIndex.value = index
   e.dataTransfer.effectAllowed = 'move'
   // Firefox 需要 setData 才能触发拖拽
@@ -377,14 +380,14 @@ function retryTest() {
               'st-drag-over-below': dragOverIndex === idx && draggingIndex >= 0 && draggingIndex < idx,
               'st-dragging': draggingIndex === idx
             }"
-            draggable="true"
+            :draggable="!readonly"
             @click="selectItem(it)"
             @dragstart="onDragStart($event, idx)"
             @dragover="onDragOver($event, idx)"
             @drop="onDrop($event, idx)"
             @dragend="onDragEnd"
           >
-            <span class="st-drag" title="拖动排序">⠿</span>
+            <span v-if="!readonly" class="st-drag" title="拖动排序">⠿</span>
             <div class="st-main">
               <!-- 名称行（#17）：操作精简为「删除」，贴名称行右侧（margin-left:auto）；
                    「编辑」= 点行本身；启停按 md §7.2 保留，已移入右侧详情卡「基本信息」卡头。 -->
@@ -397,7 +400,7 @@ function retryTest() {
                 >
                   <span class="st-flag">缺指令</span>
                 </el-tooltip>
-                <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js） -->
+                <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js）；md 岗位 §7 未写试跑，本入口仅作代码说明（J18） -->
                 <el-button
                   v-if="EFFECT_TEST_ENABLED"
                   link
@@ -409,6 +412,7 @@ function retryTest() {
                   @click.stop="testItem(it)"
                 >测试</el-button>
                 <el-button
+                  v-if="!readonly"
                   link
                   type="danger"
                   size="small"
@@ -431,6 +435,7 @@ function retryTest() {
 
           <!-- ＋ 新增样例任务（虚线，软上限满额置灰） -->
           <div
+            v-if="!readonly"
             class="st-new"
             :class="{ disabled: atLimit || selectedId === NEW }"
             @click="startCreate"
@@ -458,6 +463,7 @@ function retryTest() {
           :key="selectedId"
           :position-id="positionId"
           :sample="selectedSample"
+          :readonly="readonly"
           :status-busy="selectedSample ? statusBusy === selectedSample.id : false"
           @dirty-change="onEditorDirty"
           @saved="onSaved"

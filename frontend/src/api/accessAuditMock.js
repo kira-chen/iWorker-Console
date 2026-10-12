@@ -6,33 +6,40 @@
 // 2026-09-30：强制回收 / 用户技能审核 / 岗位分配三类也接入（PRD §6.2 三条记录说明），并按 §6.5 给记录补
 // 页面不展示、数据层必须保存的字段（objectId / at / meta），供客户端通知增量拉取（见文末 listClientFacingOps）。
 // 其余模块的操作暂未接入，仍是静态种子。
+//
+// 2026-10-10（测试审计 J27）：种子里的 time / at 一律写成 daysAgo(n, 'HH:mm')（n 天前的几点几分），不再写死绝对日期——
+// 页面默认只看近 90 天，写死的日期过几个月整页会变空。n 取自原绝对日期距 2026-10-10 的天数，先后顺序与间隔不变。
+// 例外（仍是绝对日期）：版本管理 5 条（id 13–17）、存储空间 5 条（id 20–24）——它们的时间与 versionMock / storageSpaceMock 种子的
+// 发布 / 处理时间同源，由 versionMock.test.js / storageSpaceMock.test.js 的「审计种子与…种子一致」用例逐条核对；
+// 要相对化须连同那两个 mock 的种子（含 attachPersist version）一起改，不在本次范围。
 import { attachPersist } from './mockPersist'
 import { nowSecondText } from '@/utils/datetime'
+import { daysAgo } from '@/utils/seedDate'
 
 export const dlRecords = [
-  { id: 1, time: '2026-08-28 10:32', user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
-  { id: 2, time: '2026-08-28 10:18', user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 3, time: '2026-08-28 09:55', user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 4, time: '2026-08-27 22:06', user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', source: '知识库·我的资料', result: 'FAILED', failReason: '磁盘空间不足（CS端）' },
-  { id: 5, time: '2026-08-27 18:40', user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', source: '会话产物', result: 'FAILED', failReason: '无写入权限（CS端）' },
-  { id: 6, time: '2026-08-27 16:15', user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 7, time: '2026-08-27 14:50', user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', source: '知识库·我的资料', result: 'SUCCESS' },
-  { id: 8, time: '2026-08-27 11:23', user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
+  { id: 1, time: daysAgo(43, '10:32'), user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
+  { id: 2, time: daysAgo(43, '10:18'), user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 3, time: daysAgo(43, '09:55'), user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 4, time: daysAgo(44, '22:06'), user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', source: '知识库·我的资料', result: 'FAILED', failReason: '磁盘空间不足（CS端）' },
+  { id: 5, time: daysAgo(44, '18:40'), user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', source: '会话产物', result: 'FAILED', failReason: '无写入权限（CS端）' },
+  { id: 6, time: daysAgo(44, '16:15'), user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 7, time: daysAgo(44, '14:50'), user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', source: '知识库·我的资料', result: 'SUCCESS' },
+  { id: 8, time: daysAgo(44, '11:23'), user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
 ]
 
 export const opsRecords = [
-  { id: 1, time: '2026-08-28 10:05', operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
-  { id: 2, time: '2026-08-28 09:48', operator: 'wang.fang', module: '知识库', action: '停用', target: '竞品资料库', detail: '' },
-  { id: 3, time: '2026-08-27 18:22', operator: 'admin', module: 'MCP', action: '发布', target: 'ERP 连接器', detail: '' },
-  { id: 4, time: '2026-08-27 17:15', operator: 'admin', module: '审核中心', action: '审核通过', target: '生产计划专属规格申请', detail: '' },
-  { id: 5, time: '2026-08-27 16:08', operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 财税合规助手', detail: '岗位与技能权限范围不匹配', at: '2026-08-27 16:08:00', objectId: 'usr_hist_2', meta: { reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手' } },
-  { id: 6, time: '2026-08-27 14:40', operator: 'li.qiang', module: 'API', action: '停用', target: '报表批量导出接口', detail: '' },
-  { id: 7, time: '2026-08-27 11:20', operator: 'zhang.wei', module: '技能', action: '撤回', target: '经营分析技能', version: 'v1.3', detail: '' },
-  { id: 8, time: '2026-08-27 09:55', operator: 'wang.fang', module: '模型', action: '发布', target: '财税合规专属模型', detail: '' },
-  { id: 9, time: '2026-08-26 17:33', operator: 'admin', module: '专家', action: '停用', target: '税务筹划专家', version: 'v2.1', detail: '' },
-  { id: 10, time: '2026-08-26 15:10', operator: 'zhang.wei', module: '业务系统', action: '发布', target: 'Salesforce CRM 集成', detail: '' },
-  { id: 11, time: '2026-08-26 11:45', operator: 'li.qiang', module: '岗位', action: '撤回', target: '采购分析岗', version: 'v1.1', detail: '' },
-  { id: 12, time: '2026-08-25 16:20', operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '', at: '2026-08-25 16:20:00', objectId: 'usr_hist_1', meta: { reviewId: 'usr_hist_1', submitter: 'wang.fang', skillName: '合同管理助手' } },
+  { id: 1, time: daysAgo(43, '10:05'), operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
+  { id: 2, time: daysAgo(43, '09:48'), operator: 'wang.fang', module: '知识库', action: '停用', target: '竞品资料库', detail: '' },
+  { id: 3, time: daysAgo(44, '18:22'), operator: 'admin', module: 'MCP', action: '发布', target: 'ERP 连接器', detail: '' },
+  { id: 4, time: daysAgo(44, '17:15'), operator: 'admin', module: '审核中心', action: '审核通过', target: '生产计划专属规格申请', detail: '' },
+  { id: 5, time: daysAgo(44, '16:08'), operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 财税合规助手', detail: '岗位与技能权限范围不匹配', at: daysAgo(44, '16:08:00'), objectId: 'usr_hist_2', meta: { reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手' } },
+  { id: 6, time: daysAgo(44, '14:40'), operator: 'li.qiang', module: 'API', action: '停用', target: '报表批量导出接口', detail: '' },
+  { id: 7, time: daysAgo(44, '11:20'), operator: 'zhang.wei', module: '技能', action: '撤回', target: '经营分析技能', version: 'v1.3', detail: '' },
+  { id: 8, time: daysAgo(44, '09:55'), operator: 'wang.fang', module: '模型', action: '发布', target: '财税合规专属模型', detail: '' },
+  { id: 9, time: daysAgo(45, '17:33'), operator: 'admin', module: '专家', action: '停用', target: '税务筹划专家', version: 'v2.1', detail: '' },
+  { id: 10, time: daysAgo(45, '15:10'), operator: 'zhang.wei', module: '业务系统', action: '发布', target: 'Salesforce CRM 集成', detail: '' },
+  { id: 11, time: daysAgo(45, '11:45'), operator: 'li.qiang', module: '岗位', action: '撤回', target: '采购分析岗', version: 'v1.1', detail: '' },
+  { id: 12, time: daysAgo(46, '16:20'), operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '', at: daysAgo(46, '16:20:00'), objectId: 'usr_hist_1', meta: { reviewId: 'usr_hist_1', submitter: 'wang.fang', skillName: '合同管理助手' } },
   // 版本管理（客户端版本）：与 versionMock.js 种子里各版本的发布记录一一对应（时间 / 发布人 / 更新说明同源，
   // 由 versionMock.test.js 的「审计种子与版本种子一致」用例守着）。操作对象 =「终端 + 版本号」，不附灰色版本号小标签；
   // 变更内容 = 该版本的更新说明（发布 / 停用 / 撤回三种动作一律如此）。新版本生效时旧版本被自动顶替回到未发布，不单独记一条「停用」。
@@ -43,8 +50,8 @@ export const opsRecords = [
   { id: 17, time: '2026-08-20 10:32', operator: 'li.na', module: '版本管理', action: '发布', target: 'Mac v1.1.0', detail: '与 Windows 端同步：引用来源一键复制、任务完成桌面通知。' },
   // 岗位分配（§6.2 岗位分配记录）：target = 用户名，detail =「原岗位 → 新岗位」（分配时原岗位为「未绑定」），
   // objectId = 用户 id，meta 带用户与前后岗位的名称 + 标识（§6.5.3）。id/岗位取自 adminUserMock / positionMock 种子。
-  { id: 18, time: '2026-08-28 11:10', operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗', at: '2026-08-28 11:10:24', objectId: 203, meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 401, name: '经营分析岗' } } },
-  { id: 19, time: '2026-08-28 10:50', operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗', at: '2026-08-28 10:50:37', objectId: 202, meta: { userId: 202, username: 'li.na', fromPosition: { id: 402, name: '客户成功岗' }, toPosition: { id: 403, name: '财务审核岗' } } },
+  { id: 18, time: daysAgo(43, '11:10'), operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗', at: daysAgo(43, '11:10:24'), objectId: 203, meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 401, name: '经营分析岗' } } },
+  { id: 19, time: daysAgo(43, '10:50'), operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗', at: daysAgo(43, '10:50:37'), objectId: 202, meta: { userId: 202, username: 'li.na', fromPosition: { id: 402, name: '客户成功岗' }, toPosition: { id: 403, name: '财务审核岗' } } },
   // 存储空间（§6.2 存储空间记录 / §6.5.4）：调整容量、同意扩容、拒绝扩容三类都在审计页展示，也都是客户端通知的来源。
   // 与 storageSpaceMock 的种子一一对应：
   // 徐琳个人设置 8 GB、赵敏申请已同意（5→10）、何静 / 刘强 / 孙欣三条被拒绝申请（处理人 demo / zhangwei），
@@ -56,8 +63,8 @@ export const opsRecords = [
   { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。', at: '2026-09-20 14:05:19', objectId: 206, meta: { userId: 206, username: 'sun.xin', requestId: 'ER-0998' } },
   // 强制回收（§6.2 / §6.5.1）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
   // （objectId / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
-  { id: 25, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30:41', objectId: 'sk_306' },
-  { id: 26, time: '2026-08-29 10:12', operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12:08', objectId: 'api_1104' }
+  { id: 25, time: daysAgo(42, '09:30'), operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: daysAgo(42, '09:30:41'), objectId: 'sk_306' },
+  { id: 26, time: daysAgo(42, '10:12'), operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: daysAgo(42, '10:12:08'), objectId: 'api_1104' }
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */
@@ -101,25 +108,28 @@ export function appendOpsRecord({ operator, module, action, target, detail = '',
 }
 
 /* ---------------- 落给客户端的数据（PRD §6.5，只读查询） ---------------- */
-// 客户端登录时和之后每 5 分钟拉取，按「上次拉取时间之后」增量处理；不受页面 90 天窗口限制（这里不按日期截断），
+// 客户端登录时和之后每 5 分钟拉取，按「上次拉取之后新增」增量处理（以记录标识游标为准，见 listClientFacingOps 的 afterId）；不受页面 90 天窗口限制（这里不按日期截断），
 // 不含操作人。页面暂不消费，用于演示与测试「管理端落给客户端的数据」长什么样。
 const FORCE_REVOKE_MODULES = ['技能', '专家', 'MCP', 'API', '业务系统']
 const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时，按分钟补 :00
 
 /**
- * 取「客户端要读」的记录视图，按操作时间正序（同秒按记录 id）。
- * @param {{since?: string}} [opts] since = 上次拉取时间（YYYY-MM-DD HH:mm:ss），只返回 at 严格晚于它的记录；缺省 = 全量
+ * 取「客户端要读」的记录视图，按操作时间正序（同秒按记录 id；仅是返回顺序，增量游标用 recordId）。
+ * @param {{afterId?: number}} [opts] afterId = 记录标识游标（客户端上次拉到的最大 recordId），只返回 recordId 严格大于它的记录；缺省 = 全量。
+ *   增量以「记录标识 / 序号游标」为准、时间 at 仅作展示（PRD §6.5，2026-10-10 J48）：at 只到秒，同一秒内先后写入两条时，
+ *   若拿时间当游标取到那一秒，后写的会漏；recordId 是写入顺序的单调序号（appendOpsRecord 的 opsSeq++），不会漏也不会重。
+ *   2026-10-10 起明确替换原先的 since（按 at 过滤）参数，不再保留。
  * @returns {Array<object>} 每条带 kind 区分四类，公共字段 recordId（记录标识，去重用）/ at（操作时间，秒级）：
  *   forceRevoke   {kind, recordId, at, objectType(=模块), objectId, objectName, reason}                         §6.5.1
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
  *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
  */
-export function listClientFacingOps({ since } = {}) {
+export function listClientFacingOps({ afterId } = {}) {
   const out = []
   for (const r of opsRecords) {
     const at = atOf(r)
-    if (since && !(at > since)) continue
+    if (afterId != null && !(r.id > afterId)) continue
     if (r.action === '强制回收' && FORCE_REVOKE_MODULES.includes(r.module)) {
       out.push({ kind: 'forceRevoke', recordId: r.id, at, objectType: r.module, objectId: r.objectId ?? null, objectName: r.target, reason: r.detail || '' })
     } else if (r.module === '用户技能审核' && (r.action === '审核通过' || r.action === '审核驳回')) {

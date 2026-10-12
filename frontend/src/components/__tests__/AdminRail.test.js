@@ -5,6 +5,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import AdminRail from '@/components/admin/AdminRail.vue'
 import { useUserStore } from '@/stores/user'
+import { getPermissionTree } from '@/api/adminUserMock'
 
 /**
  * AdminRail 共享窄轨（六段分组带序号，2026-08-21 导航改版）渲染/高亮回归保护：
@@ -184,6 +185,18 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     expect(labelsOf(el)).not.toContain('登录明细') // 已改「访问审计」
     expect(labelsOf(el)).not.toContain('字段管理') // 已改「字段字典」
     expect(labelsOf(el)).not.toContain('角色') // 已改「角色与权限」
+  })
+
+  // J26 护栏：侧边栏每个 05 治理页面都得在角色权限树里，否则角色编辑授不出该页（工具调用审计曾因此漏掉）。
+  it('侧边栏 05 治理页面 ⊆ 角色权限树（页面名一致，角色编辑才授得出）', async () => {
+    const el = await mount({ name: 'AdminPositions' }, ['ADMIN'])
+    const governance = [...el.querySelectorAll('.rail-group')].find((g) => g.querySelector('.rail-group-no')?.textContent.trim() === '05')
+    const railPages = [...governance.querySelectorAll('.rail-label')].map((n) => n.textContent.trim())
+    expect(railPages.length).toBeGreaterThan(0)
+    expect(railPages).toContain('工具调用审计') // 点名钉住曾漏授的页面：渲染结构一变导致 railPages 退化成别的集合时，护栏不会静默失效
+    const tree = await getPermissionTree()
+    const treePages = tree.find((s) => s.scope === '管理端').groups.find((g) => g.name === '05 治理').pages
+    for (const page of railPages) expect(treePages).toContain(page)
   })
 
   // 注：纯 roles 口径（无 pages）下 FDE 看不到「技能」——该页属 03 能力段（canSysConfig）。

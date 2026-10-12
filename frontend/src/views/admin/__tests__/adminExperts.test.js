@@ -456,6 +456,31 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.version-dialog')).toBeNull()
   })
 
+  // 待决策 J40（浦月 2026-10-10 选 A）：技能 md §3.5.1 含已回收引用的专家发布前检查阻断
+  it('J40 未发布专家引用了已回收的技能，点「发布」→ 「引用的「技能名」已被回收，请移除后再发布」拦下，不开侧栏', async () => {
+    listExperts.mockResolvedValue({
+      list: EXPERTS.map((e) => (e.id === 203 ? { ...e, skillCount: 1, revokedSkillNames: ['合同风险检查'] } : e)),
+      total: 3
+    })
+    await mount()
+    rowBtn(rowEls()[1], '发布').click()
+    await nextTick()
+    expect(ElMessage.warning).toHaveBeenCalledWith('引用的「合同风险检查」已被回收，请移除后再发布')
+    expect(container.querySelector('.version-dialog')).toBeNull()
+  })
+
+  it('J40 已发布专家带 revokedSkillNames 时，【版本管理】仍能打开侧栏（发布前检查的阻断在提交时由数据层 / 抽屉兜底，页面不预判）', async () => {
+    listExperts.mockResolvedValue({
+      list: EXPERTS.map((e) => (e.id === 201 ? { ...e, revokedSkillNames: ['合同风险检查'] } : e)),
+      total: 3
+    })
+    await mount()
+    rowBtn(rowEls()[0], '版本管理').click()
+    await nextTick()
+    expect(container.querySelector('.version-dialog').textContent).toBe('201')
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+  })
+
   it('已发布点「版本管理」→ 开侧栏，适配器带专家词表（版本管理/禁用/专家名称）', async () => {
     await mount()
     rowBtn(rowEls()[0], '版本管理').click()
@@ -685,6 +710,15 @@ describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不
     expect(tag?.textContent).toBe('已回收')
     expect(tag.parentElement.getAttribute('data-tip')).toBe('回收原因：专家知识库被污染（admin · 2026-10-09 09:30）')
     expect(rowOf('经营分析专家').querySelector('.revoked-tag')).toBeNull()
+    expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  // 待决策 J46（浦月 2026-10-10 选 B）：标签只在「未发布」显示；回收后重新提交发布进「审核中」不显示
+  it('J46 带回收信息但已进「审核中」的行 → 不显示「已回收」标签', async () => {
+    const revoked = { reason: '专家知识库被污染', at: '2026-10-09 09:30', operator: 'admin' }
+    listExperts.mockResolvedValue({ list: EXPERTS.map((e) => (e.id === 204 ? { ...e, revoked } : e)), total: 3 })
+    await mount()
+    expect(rowOf('研究报告专家').querySelector('.status-tag').textContent).toBe('审核中')
     expect(rowOf('研究报告专家').querySelector('.revoked-tag')).toBeNull()
   })
 

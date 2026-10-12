@@ -223,7 +223,8 @@ const persist = attachPersist('domainExpert', {
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
-  version: 6,
+  // v7（2026-10-10 J40）：行出参新增 revokedSkillNames、详情 skills[] 新增 revoked（派生字段、不影响旧数据，但种子指纹守卫要求 bump，且 version 变化会让旧快照被丢弃、重新播种）。
+  version: 7,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
@@ -276,6 +277,17 @@ function assertSkillIdsInCandidates(skillIds, keep = []) {
 /** 所属岗位 id 列表归一：非数组当空、去掉空值、去重（多选下拉理论上不会重复，兜底防脏数据）。 */
 const normPositionIds = (ids) => (Array.isArray(ids) ? [...new Set(ids.filter((id) => id != null))] : [])
 
+/**
+ * 专家引用的、已被强制回收的市场技能名（技能 md §3.5.1「含已回收引用的专家再次发布时，发布前检查提示并阻断」，待决策 J40）。
+ * 实时读技能本体的 revoked 标记（单一真相，不另存）；技能重新发布审核通过后标记清除，自然不再命中。
+ */
+function revokedSkillNamesOf(e) {
+  return (e.skillIds || [])
+    .map((id) => getRawSkill(skillRawId(id)))
+    .filter((s) => s && s.revoked)
+    .map((s) => s.name)
+}
+
 /** 出参行（浅拷贝防组件误改内存种子） */
 function toRow(e) {
   return {
@@ -298,6 +310,7 @@ function toRow(e) {
     pendingVersion: e.pendingVersion || null,
     latestVersionLabel: e.latestVersionLabel || '',
     revoked: e.revoked ? { ...e.revoked } : null, // 强制回收标记（旧快照无此键 → null）
+    revokedSkillNames: revokedSkillNamesOf(e), // 引用的、已被强制回收的市场技能名（发布前检查用，J40）
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
     publishedAt: e.publishedAt || null
@@ -313,7 +326,7 @@ function toDetail(e) {
     skills: e.skillIds
       .map((id) => getRawSkill(skillRawId(id)))
       .filter(Boolean)
-      .map((s) => ({ skillId: skillNumId(s.id), name: s.name, description: s.description, category: s.category || '' }))
+      .map((s) => ({ skillId: skillNumId(s.id), name: s.name, description: s.description, category: s.category || '', revoked: s.revoked ? { ...s.revoked } : null }))
   }
 }
 
@@ -572,6 +585,9 @@ export async function publishExpert(id, payload = {}) {
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('该专家已有在途审核，请先撤回')
   if (!e.skillIds.length) throw err('至少引用 1 个市场技能才能发布')
+  // J40：引用了已被强制回收的市场技能 → 阻断，文案与岗位发布前检查 7.1 项一致
+  const revokedName = revokedSkillNamesOf(e)[0]
+  if (revokedName) throw err('引用的「' + revokedName + '」已被回收，请移除后再发布', 'skillIds')
   // md §二.3.1 L230「升级说明：必填」；此前只在 VersionDrawer.vue 前端拦，数据层不拦
   // （2026-09-18 待办 yuepu#13·专家 E4，口径同 unifiedSkillMock.publishSkill）
   if (!String(payload.releaseNotes || '').trim()) throw err('升级说明必填，简述本次更新项', 'releaseNotes')

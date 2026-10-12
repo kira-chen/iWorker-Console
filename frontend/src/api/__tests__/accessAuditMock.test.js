@@ -9,7 +9,7 @@ import { listApisSync } from '../apiConnectorMock'
  * 对齐 prd.访问审计.md §6.2（操作对象 / 变更内容）与 prd.版本管理.md §八「审计」。
  *
  * 2026-09-30 起新增（4125917）：§6.2 强制回收 / 用户技能审核 / 岗位分配三类记录；§6.5.1–6.5.3 落给客户端的数据层
- * （appendOpsRecord 的 at / objectId / meta / version 可选字段，listClientFacingOps 的 since 增量、排序、旧种子无 at 兜底）。
+ * （appendOpsRecord 的 at / objectId / meta / version 可选字段，listClientFacingOps 的 afterId 记录标识游标增量、排序、旧种子无 at 兜底）。
  *
  * 2026-10-09 起新增：存储空间记录（§6.2 存储空间记录块 / §6.5.4）——listClientFacingOps 的 storageQuota 视图（调整容量 / 同意扩容 / 拒绝扩容，字段键集固定、不含原总量与操作人）、
  * 5 条存储空间审计种子（与 storageSpaceMock 种子一一对应，由 storageSpaceMock.test.js 守）。
@@ -205,7 +205,7 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     const list = listClientFacingOps().filter((r) => r.kind === 'skillReview')
     const rejected = list.find((r) => r.result === '审核驳回')
     expect(rejected).toEqual({
-      kind: 'skillReview', recordId: expect.any(Number), at: '2026-08-27 16:08:00',
+      kind: 'skillReview', recordId: expect.any(Number), at: expect.stringMatching(/^[0-9]{4}-[0-9]{2}-[0-9]{2} 16:08:00$/), // 日期是相对今天生成的（J27），只钉时分秒
       result: '审核驳回', reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手', rejectReason: '岗位与技能权限范围不匹配'
     })
     expect(list.find((r) => r.result === '审核通过')).toMatchObject({ submitter: 'wang.fang', skillName: '合同管理助手', rejectReason: '' })
@@ -219,17 +219,44 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     })
   })
 
-  it('since 增量：只返回操作时间严格晚于 since 的记录；按时间正序；不受页面 90 天窗口限制', () => {
+  it('afterId 增量：只返回记录标识严格大于游标的记录；按时间正序；不受页面 90 天窗口限制', () => {
     const all = listClientFacingOps()
     for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
-    expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
-    const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
-    // 08-28 11:10:24 的岗位分配 + 08-29 的两条强制回收种子（待办 yuepu#83）+ 存储空间种子（调整容量 / 同意 / 拒绝扩容，页面展示、客户端也读）
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-08-29 09:30:41', '2026-08-29 10:12:08', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12'])
+    // 种子里大部分日期是相对今天生成的（J27），另有版本管理 / 存储空间种子是绝对日期，二者的先后会随日子推移变化——
+    // 所以不断言绝对时间戳，也不钉「第几条是什么」，只钉语义：用户技能审核里最早的一条是通过；游标之后 = 全量里 recordId 严格更大的那些。
+    expect(all.filter((r) => r.kind === 'skillReview')[0]).toMatchObject({ result: '审核通过', submitter: 'wang.fang' }) // 按 kind 过滤后取：不依赖绝对日期种子与相对种子的先后（11-05 起二者会换位）
+    // 固定游标的字面断言：游标 19 之后的客户端可见记录 = 存储空间 20–24 + 强制回收 25–26（只看记录标识，与日子无关）
+    expect(listClientFacingOps({ afterId: 19 }).map((r) => r.recordId).sort((x, y) => x - y)).toEqual([20, 21, 22, 23, 24, 25, 26])
+    const cursor = all.find((r) => r.kind === 'positionAssign' && r.type === '变更').recordId // 种子里的一条岗位变更
+    const cut = listClientFacingOps({ afterId: cursor })
+    expect(cut.map((r) => r.recordId)).toEqual(all.filter((r) => r.recordId > cursor).map((r) => r.recordId))
+    expect(cut.length).toBeGreaterThan(0)
+    expect(cut.length).toBeLessThan(all.length)
+    expect(cut.every((r) => r.recordId > cursor)).toBe(true) // 严格大于，不含游标本身
     const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
-    expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    const later = listClientFacingOps({ since: '2026-10-08 14:30:12' }) // 严格晚于最后一条存储空间种子
+    expect(listClientFacingOps({ afterId: 99999 })).toEqual([])
+    const later = listClientFacingOps({ afterId: Math.max(...all.map((r) => r.recordId)) }) // 游标 = 全量里最大的记录标识
     expect(later.map((r) => r.recordId)).toEqual([fresh.id])
+    // 不受页面 90 天窗口限制：再造一条远早于窗口的老记录，仍在全量视图里（种子最老也只有约一个半月，证明不了这点）
+    opsRecords.unshift({ id: 901, time: '2020-01-01 08:00', operator: 'a', module: '技能', action: '强制回收', target: 'OLD', detail: '', objectId: 'old-1', live: true })
+    expect(listClientFacingOps()[0]).toMatchObject({ objectName: 'OLD', at: '2020-01-01 08:00:00' })
+  })
+
+  it('同一秒内先后写入两条记录：以上一条的记录标识为游标，后写的那条不漏（J48，§6.5 增量以记录标识为准、时间仅作展示）', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0, 100))
+      const first = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'S1', objectId: 'api-s1' })
+      vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0, 900)) // 同一秒（09:00:00）内再写一条
+      const second = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'S2', objectId: 'api-s2' })
+      expect(second.at).toBe(first.at) // 前提：两条的 at 精确到秒、完全相同
+      expect(second.id).toBeGreaterThan(first.id)
+      // 客户端上次拉到 first：游标 = first.id，应当只拿到 second（按时间当游标的话 at > first.at 一条都拿不到）
+      expect(listClientFacingOps({ afterId: first.id }).map((r) => r.objectName)).toEqual(['S2'])
+      expect(listClientFacingOps({ afterId: second.id })).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('存储空间视图（§6.5.4）：种子里的调整容量 / 同意扩容 / 拒绝扩容都在，字段齐全且不含操作人', () => {

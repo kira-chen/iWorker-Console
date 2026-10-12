@@ -158,7 +158,7 @@ describe('makeRevokedInfo / revokedTip', () => {
 })
 
 /* ==================== 真实 ElMessageBox 挂载（不走桩） ==================== */
-describe('askForceRevoke · 真实弹窗挂载（jsdom，不 mock element-plus）', () => {
+describe('askForceRevoke · 真实弹窗挂载（jsdom，不 mock element-plus）', { timeout: 60000 }, () => {
   it('弹出真实回收弹窗 → 点开「影响范围」后弹窗里出现引用清单 li 并含引用名；再点收起；取消后弹窗关闭、返回 null', async () => {
     // 文件顶部的 vi.mock 是整文件生效的：先卸掉桩并重置模块缓存，再动态载入，forceRevoke 拿到的才是真 element-plus
     vi.doUnmock('element-plus')

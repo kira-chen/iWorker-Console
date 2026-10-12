@@ -253,6 +253,24 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
       expect(confirm).not.toHaveBeenCalled()
       expect(api.adjustStorageQuota).toHaveBeenCalledWith(208, null, { restoreDefault: true })
     })
+
+    it('恢复默认成功 → toast「<姓名> 已恢复默认容量 5 GB」并刷新列表', async () => {
+      await openAdjust(personal(3))
+      const listCallsBefore = api.listStorageMembers.mock.calls.length
+      btn(dialogBody(), '恢复默认').click()
+      await flushAll(8)
+      expect(successSpy).toHaveBeenCalledWith('赵敏 已恢复默认容量 5 GB')
+      expect(api.listStorageMembers.mock.calls.length).toBeGreaterThan(listCallsBefore)
+    })
+
+    it('恢复默认时二次确认被取消 → 不提示「已恢复默认容量」', async () => {
+      vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel')
+      await openAdjust(personal(7)) // 已用 7 GB > 默认 5 GB → 需确认
+      btn(dialogBody(), '恢复默认').click()
+      await flushAll(8)
+      expect(api.adjustStorageQuota).not.toHaveBeenCalled()
+      expect(successSpy).not.toHaveBeenCalled()
+    })
   })
 
   it('加载失败展示「加载失败」，点【重试】后重新取数并展示列表', async () => {

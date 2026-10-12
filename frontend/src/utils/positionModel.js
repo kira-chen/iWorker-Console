@@ -231,21 +231,6 @@ export function validateVersionLabel(label) {
   return null
 }
 
-// 语义化版本三段数值化（供比较）；非法返回 null。
-function semverTriple(label) {
-  const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(String(label || ''))
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
-}
-
-// 建议是否递增：填的号 ≤ 历史最大号 → 软提示（不阻断）。both 为 vX.Y.Z 字符串；缺失历史返回空串。
-export function versionIncrementHint(label, prevMaxLabel) {
-  const cur = semverTriple(label)
-  const prev = semverTriple(prevMaxLabel)
-  if (!cur || !prev) return ''
-  const cmp = cur[0] - prev[0] || cur[1] - prev[1] || cur[2] - prev[2]
-  return cmp <= 0 ? `建议版本号递增（历史最大 ${prevMaxLabel}），当前 ${label} 未递增` : ''
-}
-
 /* ============================ skill.md 工具引用解析（决议 6 / §5.4） ============================ */
 // 解析正文中的 :::tool{code=x} 与 @tool[x] 两种标记，去重返回 code 列表 + 每 code 引用次数。
 // 与后端 SkillMdToolParser 口径**严格对齐**（CR-P0/P1）：
@@ -582,13 +567,13 @@ export function computePublishCheck(detail) {
 
   const items = []
 
-  // 1. 岗位名称与描述（硬）
+  // 1. 岗位名称（硬；清单项 label 为「岗位名称」，岗位描述缺失时一并拦截，并在 detail 里点名「岗位描述」）
   items.push({
     key: 'name',
-    label: '岗位名称与描述',
+    label: '岗位名称',
     ok: nameOk && descOk,
     blocking: true,
-    detail: nameOk && descOk ? '必填内容已填写' : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
+    detail: nameOk && descOk ? `已填写"${String(d.name).trim()}"` : `请先填写：${[!nameOk && '岗位名称', !descOk && '岗位描述'].filter(Boolean).join('、')}`
   })
 
   // 2. 岗位图标（硬，2026-09-21 负责人拍板：必填）
@@ -597,7 +582,7 @@ export function computePublishCheck(detail) {
     label: '岗位图标',
     ok: iconOk,
     blocking: true,
-    detail: iconOk ? '岗位图标已选择' : '请先选择岗位图标'
+    detail: iconOk ? '已选择' : '请先选择岗位图标'
   })
 
   // 3. 领用页文案（硬，2026-09-21 负责人拍板：至少 1 条）
@@ -606,7 +591,7 @@ export function computePublishCheck(detail) {
     label: '领用页文案',
     ok: claimOk,
     blocking: true,
-    detail: claimOk ? '领用页文案已填写' : '请先填写领用页文案（至少 1 条）'
+    detail: claimOk ? '已填写' : '请先填写领用页文案（至少 1 条）'
   })
 
   // 4. 示例问题 3 条（硬）
@@ -615,7 +600,7 @@ export function computePublishCheck(detail) {
     label: '示例问题',
     ok: eqComplete,
     blocking: true,
-    detail: eqComplete ? '3 条示例问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
+    detail: eqComplete ? '3 个引导问题已填写' : '示例问题固定 3 条，需全部填写才能发布'
   })
 
   // 5. 岗位 SOP（硬）
@@ -633,7 +618,7 @@ export function computePublishCheck(detail) {
     label: '采集字段',
     ok: intakeOk,
     blocking: true,
-    detail: intakeOk ? `已配置 ${intakeCount} 个采集字段` : '至少配置 1 个采集字段'
+    detail: intakeOk ? `已配置 ${intakeCount} 个` : '至少配置 1 个采集字段'
   })
 
   // 7. Agent 与技能（硬，md §6.5 / §9.1 第 8 条）
@@ -648,7 +633,7 @@ export function computePublishCheck(detail) {
     actionable: hasUnhealthy,
     detail: agentsOk
       ? hasUnhealthy
-        ? `已配置 Agent 与技能；存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
+        ? `存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
         : '已配置 Agent 与技能'
       : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
   })

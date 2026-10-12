@@ -4,7 +4,7 @@
  * 卡片下方的【统计口径】说明入口（默认收起，PRD §二）。
  *
  * 只负责展示与上报点击；点某张卡片"筛选条件怎么变"由各页签自己决定（PRD 各页签统计卡片表）。
- * 卡片数不固定为 4——技能调用页签 2026-10-09 改版后只剩 3 张（去掉"进行中"），网格列数按
+ * 卡片数不固定为 4——会话调用页签 2026-10-09 改版后只剩 3 张（去掉"进行中"），网格列数按
  * metrics.length 动态给，不强行留一个空位。
  *
  * @prop {Array<{key:string,label:string,value:number,sub:string,danger?:boolean,warn?:boolean}>} metrics

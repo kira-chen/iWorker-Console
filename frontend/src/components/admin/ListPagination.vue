@@ -26,7 +26,7 @@ const props = defineProps({
   total: { type: Number, default: 0 },
   page: { type: Number, default: 1 },
   pageSize: { type: Number, default: 20 },
-  /** 条数单位（默认「条」；原型按组分页的场景可传「组」） */
+  /** 条数单位（默认「条」；按个计数的列表可传「个」，如 API 列表） */
   unit: { type: String, default: '条' }
 })
 const emit = defineEmits(['update:page', 'update:pageSize', 'change'])

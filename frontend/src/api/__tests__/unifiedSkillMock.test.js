@@ -239,6 +239,23 @@ describe('强制回收（PRD 技能 §3.5.1，2026-09-30）', () => {
     expect(pubState(await mock.getSkillDetail(id))).toBe('PUBLISHED')
   })
 
+  // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
+  it('J42 回收前后最近更新时间不变（技能）；对照：改一次基本信息则会变（updatedAt 机制本身有效）', async () => {
+    // 自建技能：种子 sk_301 回收后会留下 draft + revoked，污染同文件其它依赖它的用例（改用自建 + 把 updatedAt 压到过去，保证「会变」可观测）
+    const id = await mkPublished('J42 技能')
+    mock._reset(id, { updatedAt: '2026-01-01 00:00' })
+    // 正向对照：改基本信息 → updatedAt 变
+    await mock.updateSkill(id, { description: '改一次基本信息' })
+    const edited = (await mock.getSkillDetail(id)).updatedAt
+    expect(edited).not.toBe('2026-01-01 00:00')
+    // 回收：updatedAt 不变
+    mock._reset(id, { updatedAt: '2026-01-01 00:00' })
+    await mock.forceRevokeSkill(id, { reason: '风险' })
+    const after = await mock.getSkillDetail(id)
+    expect(after.revoked).toMatchObject({ reason: '风险' }) // 前提：确实回收了
+    expect(after.updatedAt).toBe('2026-01-01 00:00')
+  })
+
   it('回收后：立即回「未发布」（保留版本号与最近发布时间）、写 revoked 三字段、列表行与详情都带、不进审核中心', async () => {
     const id = await mkPublished('回收后状态技能')
     const before = await mock.getSkillDetail(id)

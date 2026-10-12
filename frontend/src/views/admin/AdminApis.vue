@@ -230,6 +230,7 @@ async function fetchAll() {
     providerSystems.value = psData?.list || []
     apis.value = apiData?.list || []
   } catch (e) {
+    // md 未要求展示失败原因，故不接入 loadErrorMessage（只显示「加载失败」+【重试】；测试审计 J63，2026-10-10 浦月选 A）
     loadError.value = true
   } finally {
     loading.value = false
@@ -371,14 +372,14 @@ async function checkNow(row) {
 }
 
 /* ---------------- 发布 / 撤回 / 停用 / 删除（PRD §二.4） ---------------- */
-async function runAction(row, action, fn, successMsg) {
+async function runAction(row, action, fn, successMsg, failMsg = '操作失败') {
   busy.value[row.id] = action
   try {
     await fn()
     if (successMsg) ElMessage.success(successMsg)
     await fetchAll()
   } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || failMsg)
   } finally {
     delete busy.value[row.id]
   }
@@ -437,7 +438,7 @@ async function forceRevoke(row) {
     refNames: connectorRefNames(row)
   })
   if (reason == null) return
-  runAction(row, 'forceRevoke', () => forceRevokeApi(row.id, reason), '已强制回收')
+  runAction(row, 'forceRevoke', () => forceRevokeApi(row.id, reason), '已强制回收', '强制回收失败')
 }
 
 /** 删除：软引用——被技能引用也可删，确认影响后继续（PRD §二.4）。 */

@@ -9,8 +9,9 @@ import vue from '@vitejs/plugin-vue'
  * 与 vitest.config.js（node/jsdom 单测）互斥分工：*.browser.test.js 在真 Chromium 里渲染，
  * 可断言真实计算样式/布局合成（jsdom 不渲染不合成，测不到固定列透底这类问题）。
  *
- * 浏览器二进制复用 @playwright/test 已缓存的 Chromium（~/Library/Caches/ms-playwright），
- * 零额外下载。运行：npm run test:browser。
+ * 浏览器二进制用 @playwright/test 管理的 Chromium：本机装过则复用 Playwright 缓存目录（macOS 为 ~/Library/Caches/ms-playwright），
+ * 否则需先 npx playwright install chromium；CI 里每次运行都会下载（见 .github/workflows/ci.yml 的 playwright install 步骤）。
+ * 运行：npm run test:browser。
  */
 export default defineConfig({
   plugins: [vue()],

@@ -292,12 +292,33 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(listReviews).toHaveBeenCalledTimes(1)
   })
 
-  it('【通过】接口失败 → toast 错误原因（md §七「记录已被其他审核人处理：操作失败，刷新后记录离开列表」）', async () => {
+  it('【通过】接口失败 → toast 错误原因并自动重拉列表（J24；md §七「记录已被其他审核人处理：操作失败，刷新后记录离开列表」）', async () => {
     approveReview.mockRejectedValueOnce(new Error('审核记录不存在'))
     await mount()
+    expect(rowById(1)).toBeTruthy() // 前提：重拉前该行在列表里
+    listReviews.mockResolvedValue({ list: ROWS.filter((r) => r.id !== 1), total: ROWS.length - 1 }) // 之后的重拉：记录已被他人处理，离开列表
     rowBtn(rowById(1), '通过').click()
     await flush()
     expect(ElMessage.error).toHaveBeenCalledWith('审核记录不存在')
+    // 记录已被他人处理时本地列表是旧的：失败后自动重拉，记录才会离开列表
+    expect(listReviews).toHaveBeenCalledTimes(2)
+    expect(rowById(1)).toBeUndefined() // 重拉回来的列表已不含该记录 → 行从 DOM 消失（不只是「调了两次」）
+    expect(rowEls()).toHaveLength(ROWS.length - 1)
+  })
+
+  it('【驳回】接口失败 → toast 错误原因并自动重拉列表（J24；md §七「记录已被其他审核人处理：操作失败，刷新后记录离开列表」）', async () => {
+    rejectReview.mockRejectedValueOnce(new Error('该记录已被处理，请刷新列表'))
+    await mount()
+    expect(rowById(1)).toBeTruthy() // 前提：重拉前该行在列表里
+    listReviews.mockResolvedValue({ list: ROWS.filter((r) => r.id !== 1), total: ROWS.length - 1 }) // 之后的重拉：记录已被他人处理，离开列表
+    rowBtn(rowById(1), '驳回').click()
+    await flush()
+    container.querySelector('.reject-confirm').click()
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('该记录已被处理，请刷新列表')
+    expect(listReviews).toHaveBeenCalledTimes(2)
+    expect(rowById(1)).toBeUndefined() // 重拉后行已离开列表
+    expect(rowEls()).toHaveLength(ROWS.length - 1)
   })
 
   it('【驳回】→ 开「驳回审核」弹窗 → 确认原因 → rejectReview(row, 原因) → toast「已驳回审核」→ 关弹窗并重拉（md §5.1「记录离开审核列表，并提示已驳回审核」）', async () => {

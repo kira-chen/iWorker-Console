@@ -10,7 +10,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  *
  * 真实挂载整页，断言五件事：页签结构与懒挂载、页签间筛选互不影响、
  * 岗位自动化任务页签（无人值守口径）、知识库检索页签（命中口径）、两页签各自的详情与导出。
- * 「技能调用」页签自身行为由 adminToolCallAudit.test.js 覆盖，这里不重复。
+ * 「会话调用」页签自身行为由 adminToolCallAudit.test.js 覆盖，这里不重复。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：「岗位自动化任务」一节整段重写——记录单元
  * 从「一次工具调用」改为「一次任务运行」，且全部操作免授权、不经确认，原「写操作预授权」
@@ -68,14 +68,14 @@ const bodyRows = (p) => [...p.querySelectorAll('.el-table__body .el-table__row')
 const buttonOf = (p, text) => [...p.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 describe('页签结构（PRD §一）', () => {
-  it('三个页签，默认进入「技能调用」；另两个页签首次点开才挂载', async () => {
+  it('三个页签，默认进入「会话调用」；另两个页签首次点开才挂载', async () => {
     mountReal()
     await flush()
     expect(errorSpy).not.toHaveBeenCalled()
 
     const labels = [...container.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())
-    expect(labels).toEqual(['技能调用', '岗位自动化任务', '知识库检索'])
-    expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('技能调用')
+    expect(labels).toEqual(['会话调用', '岗位自动化任务', '知识库检索'])
+    expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('会话调用')
 
     expect(pane('skill').textContent).toContain('涉及写操作的执行')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
@@ -87,7 +87,7 @@ describe('页签结构（PRD §一）', () => {
     expect(pane('knowledge')).toBeNull()
   })
 
-  it('各页签查询条件互不影响：技能调用筛到「执行失败」，切走再切回仍保持', async () => {
+  it('各页签查询条件互不影响：会话调用筛到「执行失败」，切走再切回仍保持', async () => {
     mountReal()
     await flush()
     cardOf(pane('skill'), '执行失败').click()
@@ -97,7 +97,7 @@ describe('页签结构（PRD §一）', () => {
     failedOnly.forEach((r) => expect(r.textContent).toContain('失败'))
 
     await openTab('task')
-    // 任务页签自己的筛选是空的，不受技能调用页签影响：列表里仍有成功的记录
+    // 任务页签自己的筛选是空的，不受会话调用页签影响：列表里仍有成功的记录
     expect(bodyRows(pane('task')).some((r) => r.textContent.includes('成功'))).toBe(true)
     await openTab('skill')
     bodyRows(pane('skill')).forEach((r) => expect(r.textContent).toContain('失败'))
@@ -357,5 +357,84 @@ describe('导出 CSV（PRD §三）', () => {
     } finally {
       success.mockRestore()
     }
+  })
+})
+
+describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范围；按 J23）', () => {
+  const TABS = [
+    { name: 'skill', total: '执行总数', ph: '搜索用户 / 岗位 / 技能 / 工具' },
+    { name: 'task', total: '运行总数', ph: '搜索用户 / 岗位 / 任务 / 工具' },
+    { name: 'knowledge', total: '检索请求总数', ph: '搜索用户 / 岗位 / 知识库 / 检索词' }
+  ]
+  for (const { name, total, ph } of TABS) {
+    it(`${name} 页签：搜索后点「${total}」→ 搜索框清空、列表恢复全量；点「执行失败」则保留搜索词`, async () => {
+      mountReal()
+      await flush()
+      if (name !== 'skill') await openTab(name)
+      const p = pane(name)
+      const input = () => p.querySelector(`input[placeholder="${ph}"]`)
+      const fullCount = Number(cardOf(p, total).querySelector('.metric-value').textContent)
+
+      input().value = '张'
+      input().dispatchEvent(new Event('input'))
+      input().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+      await flush()
+      // 统计卡片随筛选联动：搜索后总数小于全量，证明搜索词确实生效
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBeLessThan(fullCount)
+
+      cardOf(p, '执行失败').click()
+      await flush()
+      expect(input().value).toBe('张')
+
+      cardOf(p, total).click()
+      await flush()
+      expect(input().value).toBe('')
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBe(fullCount)
+    })
+  }
+
+  // 知识检索页签另有两类筛选态：先选「数据源类型」下拉 / 先点「无命中检索」卡，再点总数卡——也要全部清回全量（总数卡 = 仅保留时间范围）
+  it('knowledge 页签：先选数据源类型再点「检索请求总数」→ 下拉回到「全部数据源类型」、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const fullCount = Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)
+    const typeSelect = () => p.querySelectorAll('.lt-filter')[1]
+
+    typeSelect().querySelector('.el-select__wrapper').click()
+    await flush()
+    const mcp = [...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === 'MCP')
+    expect(mcp).toBeTruthy() // 前提：数据源类型下拉里有「MCP」
+    mcp.click()
+    await flush()
+    expect(typeSelect().textContent).toContain('MCP') // 前提：筛选已生效
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBeLessThan(fullCount) // 统计卡随筛选联动，证明下拉确实收窄了结果
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(typeSelect().querySelector('.el-select__placeholder').textContent.trim()).toBe('全部数据源类型')
+    expect(typeSelect().textContent).not.toContain('MCP')
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBe(fullCount)
+  })
+
+  it('knowledge 页签：先点「无命中检索」卡（高亮 + 列表只剩无命中）再点「检索请求总数」→ 高亮取消、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const rowTotal = () => Number(p.querySelector('.list-pager')?.textContent.match(/共s*(d+)s*条/)?.[1] ?? bodyRows(p).length)
+    const fullRows = rowTotal()
+
+    cardOf(p, '无命中检索').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(true)
+    expect(rowTotal()).toBe(Number(cardOf(p, '无命中检索').querySelector('.metric-value').textContent))
+    expect(rowTotal()).toBeLessThan(fullRows)
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(false)
+    expect(rowTotal()).toBe(fullRows)
   })
 })

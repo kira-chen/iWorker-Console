@@ -5,7 +5,7 @@ import ElementPlus, { ElMessage } from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 /**
- * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「技能调用」的行为，对齐
+ * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「会话调用」的行为，对齐
  * docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md §二 ~ §七。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）重写：记录单元从「一次工具调用」改为
@@ -13,8 +13,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
  * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 种子数据固定在 2026-09-20 ~ 2026-09-27（toolCallAuditMock.js），固定系统时间到
- * 2026-09-28，避免默认 90 天窗口随真实日期推移把种子数据挤出窗口、用例到期变红。
+ * 种子日期是「相对今天」生成的（toolCallAuditMock.js 的 dateDaysAgo，2026-10-10 测试审计 J27），永远落在默认 90 天窗口内，
+ * 因此不再固定系统时间（原先固定到 2026-09-28 就是为了防种子被窗口挤出；种子相对化后反而不能固定——种子按真实今天算）。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -33,11 +33,7 @@ const flush = async () => {
   }
 }
 
-const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
-
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(FIXED_NOW)
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -54,7 +50,6 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  vi.useRealTimers()
 })
 
 function mountReal() {
@@ -83,7 +78,7 @@ async function openDetailOf(skill) {
   await flush()
 }
 
-describe('AdminToolCallAudit · 技能调用页签 · 真实 Element Plus 挂载冒烟', () => {
+describe('AdminToolCallAudit · 会话调用页签 · 真实 Element Plus 挂载冒烟', () => {
   it('整页真挂载不抛、console.error 零调用；页头 / 统计卡片 / 列表字段齐全（PRD §一 / §二 / §四）', async () => {
     expect(() => mountReal()).not.toThrow()
     await flush()
@@ -146,7 +141,7 @@ describe('统计卡片（§二）', () => {
     helpBtn().click()
     await flush()
     const text = container.querySelector('.help-body').textContent
-    expect(text).toContain('同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计')
+    expect(text).toContain('一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里')
     helpBtn().click()
     await flush()
     expect(container.querySelector('.help-body')).toBeNull()
@@ -197,6 +192,13 @@ describe('列表（§四）', () => {
     expect(container.textContent).not.toContain('执行耗时')
   })
 
+  it('一次会话调用多个技能合并为一条记录，「调用的技能」列以顿号分隔（PRD 第五轮改版：记录单元＝会话）', () => {
+    const rows = bodyRows().filter((r) => r.textContent.includes('报价单生成'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('客户信息查询、报价单生成')
+    expect(container.textContent).toContain('调用的技能')
+  })
+
   it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', () => {
     const row = bodyRows().find((r) => r.textContent.includes('排产冲突检测'))
     expect(row.textContent).toContain('成功')
@@ -229,6 +231,19 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(text).toContain('涉及写操作')
     expect(text).not.toContain('待处理确认')
     expect(text).not.toContain('执行耗时')
+  })
+
+  it('工具调用明细每项标明调用来源：技能名；未经技能的为「会话直接调用」（PRD §5.2）', async () => {
+    await openDetailOf('报价单生成')
+    const items = document.body.querySelectorAll('.el-drawer__body .call-item')
+    expect(items[0].textContent).toContain('客户信息查询')
+    expect(items[1].textContent).toContain('报价单生成')
+    document.body.querySelector('.el-drawer__footer .el-button').click()
+    await flush()
+    await openDetailOf('方案要点生成')
+    const direct = document.body.querySelectorAll('.el-drawer__body .call-item')
+    expect(direct[0].textContent).toContain('会话直接调用')
+    expect(direct[1].textContent).toContain('方案要点生成')
   })
 
   it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
@@ -305,7 +320,7 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
   it('未调用任何外部工具时展示占位文案（当前种子均有调用，断言兜底文案字符串存在于组件逻辑——通过无 calls 的 detail 直接校验展示规则）', async () => {
     await openDetailOf('方案要点生成')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.querySelectorAll('.call-item').length).toBe(1)
+    expect(drawer.querySelectorAll('.call-item').length).toBe(2) // 方案要点生成：会话直接调用 1 次 + 技能内调用 1 次
   })
 })
 

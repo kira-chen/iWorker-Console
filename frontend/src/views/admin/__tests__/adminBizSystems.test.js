@@ -575,7 +575,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     expect(admin.listBizSystems.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     admin.forceRevokeBizSystem.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
     await mount()
@@ -585,7 +585,7 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     admin.forceRevokeBizSystem.mockRejectedValueOnce(new Error(''))
     btn(rowByName('客户管理系统'), '强制回收').click()
     await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(msg.success).not.toHaveBeenCalled()
   })
 
@@ -606,5 +606,14 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
   it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
     await mount()
     expect(rowByName('合同管理平台').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('标签只跟未发布态：审核中（人力资源系统）/ 已发布行即使数据里带 revoked 也不出「已回收」', async () => {
+    const revoked = { reason: '残留的回收信息', at: '2026-10-01 09:30', operator: 'admin' }
+    admin.listBizSystems.mockImplementation(async () => ({ list: LIST.map((b) => ({ ...b, revoked })), total: LIST.length }))
+    await mount()
+    expect(rowByName('合同管理平台').querySelector('.revoked-tag')).not.toBeNull() // 前提：回收信息确实下发了
+    expect(rowByName('人力资源系统').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('客户管理系统').querySelector('.revoked-tag')).toBeNull()
   })
 })

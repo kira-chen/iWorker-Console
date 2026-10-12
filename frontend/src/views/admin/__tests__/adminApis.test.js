@@ -766,7 +766,7 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     expect(conn.listApis.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
+  it('接口失败 → 错误提示取 message 原文；无 message → 「强制回收失败」（J43 五页统一兜底），不弹成功提示', async () => {
     askForceRevoke.mockResolvedValue('原因')
     conn.forceRevokeApi.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
     await mount()
@@ -776,7 +776,7 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
     conn.forceRevokeApi.mockRejectedValueOnce(new Error(''))
     btn(rowByName('已上线接口'), '强制回收').click()
     await flush()
-    expect(msg.error).toHaveBeenLastCalledWith('操作失败')
+    expect(msg.error).toHaveBeenLastCalledWith('强制回收失败')
     expect(msg.success).not.toHaveBeenCalled()
   })
 
@@ -796,5 +796,14 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收」小节：立�
   it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
     await mount()
     expect(rowByName('未发布接口').querySelector('.revoked-tag')).toBeNull()
+  })
+
+  it('标签只跟未发布态：审核中 / 已发布行即使数据里带 revoked 也不出「已回收」', async () => {
+    const revoked = { reason: '残留的回收信息', at: '2026-10-01 09:30', operator: 'admin' }
+    conn.listApis.mockImplementation(async () => ({ list: APIS.map((a) => ({ ...a, revoked })) }))
+    await mount()
+    expect(rowByName('未发布接口').querySelector('.revoked-tag')).not.toBeNull() // 前提：回收信息确实下发了
+    expect(rowByName('在审接口').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('已上线接口').querySelector('.revoked-tag')).toBeNull()
   })
 })

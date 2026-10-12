@@ -20,21 +20,24 @@ const routeState = vi.hoisted(() => ({ query: {} }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: routeState.query }) }))
 
 const listPositions = vi.fn()
+const getPosition = vi.fn()
+const getNextVersionLabel = vi.fn()
+const listSampleTasks = vi.fn()
 vi.mock('@/api/position', () => ({
   listPositions: (...a) => listPositions(...a),
   createPosition: vi.fn(),
   unpublishPosition: vi.fn(),
   deletePosition: vi.fn(),
   withdrawPosition: vi.fn(),
-  getPosition: vi.fn(),
+  getPosition: (...a) => getPosition(...a),
   publishPosition: vi.fn(),
-  getNextVersionLabel: vi.fn(),
+  getNextVersionLabel: (...a) => getNextVersionLabel(...a),
   listPositionPublications: vi.fn(),
   delistPositionPublication: vi.fn(),
   relistPositionPublication: vi.fn()
 }))
 vi.mock('@/api/dataTable', () => ({ listDataTables: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/api/sampleTask', () => ({ listSampleTasks: vi.fn().mockResolvedValue({ list: [] }) }))
+vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(...a) }))
 
 const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).default
 
@@ -62,6 +65,9 @@ beforeEach(() => {
   routeState.query = {}
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   listPositions.mockReset().mockResolvedValue({ list: ROWS, total: 23 })
+  getPosition.mockReset()
+  getNextVersionLabel.mockReset()
+  listSampleTasks.mockReset().mockResolvedValue({ list: [] })
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -146,5 +152,36 @@ describe('AdminPositions · 真实 Element Plus 挂载冒烟', () => {
     await flush()
     expect(container.querySelector('[data-testid="list-empty"]')?.textContent).toContain('没有符合条件的岗位')
     expect(container.querySelector('.list-pager')).toBeNull()
+  })
+})
+
+// 待决策 J36（md 岗位 §3.7）：建议版本号拉取失败 → 发布前检查弹窗提示「版本号获取失败」+【重试】，不支持手填；
+// 页面须把 useVersionPublish 的 loadFailed / loadNextVersionLabel 接到 PublishCheckDialog 的 :load-failed / @retry（删掉任一接线本组变红）。
+describe('AdminPositions · 发布弹窗版本号获取失败可重试（J36）', () => {
+  it('getNextVersionLabel 拒绝 → 弹窗显「版本号获取失败」；点【重试】再次取号并显示版本号', async () => {
+    getPosition.mockResolvedValue({
+      name: '市场研究岗', icon: '⌁', description: '描述', claimDescriptions: ['文案'], exampleQuestions: ['q1', 'q2', 'q3'],
+      positionSop: 'sop', intakeSchema: [{ label: '区域', key: 'region', type: 'text', required: true, options: [] }],
+      agents: [{ name: 'A1', skills: [{ skillId: 1 }] }]
+    })
+    listSampleTasks.mockResolvedValue({ list: [{ id: 1 }] })
+    getNextVersionLabel.mockRejectedValueOnce(new Error('网络错误')).mockResolvedValue('v1.0.0')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mountReal()
+    await flush()
+    const row = [...container.querySelectorAll('.el-table__row')].find((r) => r.textContent.includes('市场研究岗'))
+    ;[...row.querySelectorAll('button')].find((b) => b.textContent.trim() === '发布').click()
+    await flush()
+    expect(getNextVersionLabel).toHaveBeenCalledTimes(1)
+    const hint = () => document.body.querySelector('.load-failed')
+    expect(hint().textContent).toContain('版本号获取失败')
+    expect(document.body.textContent).not.toContain('v1.0.0')
+
+    ;[...hint().querySelectorAll('button')].find((b) => b.textContent.trim() === '重试').click()
+    await flush()
+    expect(getNextVersionLabel).toHaveBeenCalledTimes(2)
+    expect(hint()).toBeNull()
+    expect(document.body.textContent).toContain('v1.0.0')
+    warnSpy.mockRestore()
   })
 })

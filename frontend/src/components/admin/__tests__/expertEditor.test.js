@@ -168,6 +168,7 @@ async function mount(props = {}) {
   app.component('el-form', passthrough('el-form'))
   app.component('el-form-item', elFormItem)
   app.component('el-alert', elAlert)
+  app.component('el-tooltip', passthrough('el-tooltip', 'el-tooltip')) // RevokedTag 的悬停说明
   app.component('el-skeleton', passthrough('el-skeleton'))
   app.component('el-empty', passthrough('el-empty'))
   app.directive('loading', {})
@@ -799,6 +800,64 @@ describe('ExpertEditor — 编辑', () => {
     expect(ElMessage.success).not.toHaveBeenCalled() // 静默保存
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(publishSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 201 }))
+  })
+
+  // 待决策 J40（浦月 2026-10-10 选 A）：技能 md §3.5.1「专家对市场技能的引用保持不动，该行改为红色已回收标签；
+  // 含已回收引用的专家再次发布时，发布前检查提示并阻断」
+  describe('引用了已被强制回收的市场技能（J40）', () => {
+    const REVOKED = { reason: '技能内含违规内容', at: '2026-10-09 09:30', operator: 'admin' }
+    // 候选只含已发布技能：304 已被回收，不在候选里，只在详情的引用明细里
+    const setup = () => {
+      listExpertSkillCandidates.mockResolvedValue(CANDIDATES.filter((c) => c.id !== 304))
+      getExpert.mockResolvedValue({
+        ...DETAIL,
+        skills: DETAIL.skills.map((s) => (s.skillId === 304 ? { ...s, revoked: REVOKED } : s))
+      })
+    }
+
+    it('已引用的已回收技能仍显示在选择器里：置顶、已勾选、带红色「已回收」标签；正常技能无标签', async () => {
+      setup()
+      await mount({ expertId: 201 })
+      const rows = [...container.querySelectorAll('.ee-skill-check')]
+      expect(rows[0].textContent).toContain('合同风险检查')
+      expect(rows[0].querySelector('.revoked-tag')?.textContent).toBe('已回收')
+      expect(rows[0].querySelector('input').checked).toBe(true)
+      expect(rows[1].textContent).toContain('经营数据分析')
+      expect(rows[1].querySelector('.revoked-tag')).toBeNull()
+    })
+
+    it('可取消勾选已回收的引用（取消后保存带的 skillIds 不再含它）', async () => {
+      setup()
+      updateExpert.mockResolvedValueOnce({ ...DETAIL, skillIds: [302], skills: [DETAIL.skills[0]] })
+      await mount({ expertId: 201 })
+      await checkSkill(0, false)
+      expect(skillChecks()[0].checked).toBe(false)
+      btn('保存').click()
+      await flush()
+      expect(updateExpert).toHaveBeenCalledWith(201, expect.objectContaining({ skillIds: [302] }))
+    })
+
+    it('【发布】仍勾选着已回收技能 → 阻断并提示「引用的「技能名」已被回收，请移除后再发布」，不保存不转交', async () => {
+      setup()
+      await mount({ expertId: 201 })
+      btn('发布').click()
+      await flush()
+      expect(ElMessage.warning).toHaveBeenCalledWith('引用的「合同风险检查」已被回收，请移除后再发布')
+      expect(container.querySelector('.ee-field-err')?.textContent).toBe('引用的「合同风险检查」已被回收，请移除后再发布')
+      expect(updateExpert).not.toHaveBeenCalled()
+      expect(publishSpy).not.toHaveBeenCalled()
+    })
+
+    it('移除（取消勾选）已回收技能后可发布', async () => {
+      setup()
+      updateExpert.mockResolvedValueOnce({ ...DETAIL, skillIds: [302], skills: [DETAIL.skills[0]] })
+      await mount({ expertId: 201 })
+      await checkSkill(0, false)
+      btn('发布').click()
+      await flush()
+      expect(updateExpert).toHaveBeenCalledTimes(1)
+      expect(publishSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 201 }))
+    })
   })
 
   it('【发布】0 技能 → 「至少引用 1 个市场技能才能发布」拦下，不保存不转交', async () => {

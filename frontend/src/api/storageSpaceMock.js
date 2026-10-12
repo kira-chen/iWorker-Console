@@ -22,7 +22,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
+import { DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
@@ -228,16 +228,17 @@ const matchKeyword = (item, keyword) =>
   !keyword || [item.name, item.username].some((v) => String(v).toLowerCase().includes(keyword))
 
 /* ---------------- 校验 ---------------- */
-function checkQuota(value, min = QUOTA_MIN_GB) {
-  // 正整数、不小于 min（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则；文案与页面共用 quotaInputError
-  const message = quotaInputError(value, min)
+function checkQuota(value) {
+  // 正整数、不小于 QUOTA_MIN_GB（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则；文案与页面共用 quotaInputError
+  const message = quotaInputError(value)
   if (message) throw err(message, 40001, 'quotaGb')
   return Number(value)
 }
 
+/** 停用账号与已删除账号同口径：页面清单里看不到，数据层也按「员工不存在」拒绝（调整 / 批量 / 申请处理都经此） */
 function findMember(userId) {
   const m = members.find((row) => row.userId === Number(userId))
-  if (!m) throw err('员工不存在', 40400)
+  if (!m || !m.active) throw err('员工不存在', 40400)
   return m
 }
 
