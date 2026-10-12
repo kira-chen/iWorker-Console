@@ -692,8 +692,22 @@ describe('mcpConnectorMock · 持久化（mockPersist v10）', () => {
     const fresh = await import('../mcpConnectorMock')
     expect((await fresh.getMcpServicePublishStatus('knowledge_hub')).targets[0].aggregateStatus).toBe('NOT_PUBLISHED')
     const row = await fresh.getMcp('knowledge_hub')
-    expect(row.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: 'demo' })
     expect((await fresh.listMcp({ state: 'NOT_PUBLISHED' })).list.find((r) => r.code === 'knowledge_hub').revoked.reason).toBe('刷新后仍应标已回收')
+  })
+
+  it('持久化：待审强制回收刷新后仍在审核中，通过后照样落已回收（原因与提交人保留）', async () => {
+    const first = await import('../mcpConnectorMock')
+    await first.delistMcpService('knowledge_hub', { forceRevoke: true, reason: '待审时刷新' })
+    vi.resetModules()
+    const fresh = await import('../mcpConnectorMock')
+    const audit = await import('../accessAuditMock')
+    expect((await fresh.getMcpServicePublishStatus('knowledge_hub')).targets[0]).toMatchObject({ aggregateStatus: 'PENDING_REVIEW', pendingAction: 'DELIST' })
+    expect((await fresh.getMcp('knowledge_hub')).pendingRevokeReason).toBe('待审时刷新')
+    expect(fresh.applyMcpReviewResult('knowledge_hub', undefined, true)).toBe(true)
+    expect((await fresh.getMcpServicePublishStatus('knowledge_hub')).targets[0].aggregateStatus).toBe('NOT_PUBLISHED')
+    expect((await fresh.getMcp('knowledge_hub')).revoked).toMatchObject({ reason: '待审时刷新', operator: 'demo' })
+    expect(audit.opsRecords[0]).toMatchObject({ module: 'MCP', action: '强制回收', detail: '待审时刷新' })
   })
 
   it('旧版本快照（v=5）→ 丢弃并回种子 11 条（不带入旧行）', async () => {
@@ -747,6 +761,8 @@ describe('mcpConnectorMock · 强制回收（停用时勾选，同走审核）',
   })
 
   const statusOf = async (id) => (await m.getMcpServicePublishStatus(id)).targets[0]
+  // 切换演示身份：currentDemoUsername 读 globalThis.localStorage 里的 ai_assistant_user；用桩替换（afterEach 的 unstubAllGlobals 还原），不依赖 jsdom / Node 的真 Storage
+  const asUser = (username) => vi.stubGlobal('localStorage', { getItem: (k) => (k === 'ai_assistant_user' ? JSON.stringify({ username }) : null), setItem() {}, removeItem() {}, key: () => null, length: 0 })
   const reasonText = '接口下线，紧急回收'
   /** 勾选强制回收提交 → 审核通过（一步走完，回收才生效） */
   const revokeApproved = async (id, reason = reasonText) => {
@@ -771,11 +787,44 @@ describe('mcpConnectorMock · 强制回收（停用时勾选，同走审核）',
     await revokeApproved('knowledge_hub')
     expect((await statusOf('knowledge_hub')).aggregateStatus).toBe('NOT_PUBLISHED')
     const row = await m.getMcp('knowledge_hub')
-    expect(row.revoked).toEqual({ reason: reasonText, at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason: reasonText, at: expect.any(String), operator: 'demo' })
     expect(row.publishedAt).toBe(before.publishedAt)
     expect(row.pendingRevokeReason).toBe('')
     const listed = (await m.listMcp({ state: 'NOT_PUBLISHED' })).list.find((r) => r.code === 'knowledge_hub')
     expect(listed.revoked.reason).toBe(reasonText)
+  })
+
+  // PRD 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
+  it('操作人 = 提交强制回收的管理员：A 提交、切换演示身份为 B 通过 → revoked.operator 与审计 operator 都是 A', async () => {
+    asUser('admin_a')
+    await m.delistMcpService('knowledge_hub', { forceRevoke: true, reason: reasonText })
+    asUser('admin_b')
+    expect(m.applyMcpReviewResult('knowledge_hub', undefined, true)).toBe(true)
+    expect((await m.getMcp('knowledge_hub')).revoked.operator).toBe('admin_a')
+    expect(audit.opsRecords[0]).toMatchObject({ action: '强制回收', operator: 'admin_a' })
+  })
+
+  // market.js 直连口径（reviewMcpService）同样要落强制回收
+  it('market 直连 reviewMcpService：approve:true → 已回收 + 「强制回收」审计（操作人为提交人）', async () => {
+    asUser('admin_a')
+    await m.delistMcpService('knowledge_hub', { forceRevoke: true, reason: reasonText })
+    asUser('admin_b')
+    await m.reviewMcpService('knowledge_hub', { approve: true })
+    const row = await m.getMcp('knowledge_hub')
+    expect(row.revoked).toEqual({ reason: reasonText, at: expect.any(String), operator: 'admin_a' })
+    expect(row.pendingRevokeReason).toBe('')
+    expect(audit.opsRecords[0]).toMatchObject({ module: 'MCP', action: '强制回收', detail: reasonText, operator: 'admin_a' })
+  })
+
+  it('market 直连 reviewMcpService：approve:false → 回已发布，无 revoked、无审计，待审原因被清', async () => {
+    const n = audit.opsRecords.length
+    await m.delistMcpService('knowledge_hub', { forceRevoke: true, reason: reasonText })
+    await m.reviewMcpService('knowledge_hub', { approve: false })
+    expect((await statusOf('knowledge_hub')).aggregateStatus).toBe('PUBLISHED')
+    const row = await m.getMcp('knowledge_hub')
+    expect(row.revoked).toBeNull()
+    expect(row.pendingRevokeReason).toBe('')
+    expect(audit.opsRecords.length).toBe(n)
   })
 
   it('审核驳回 / 撤回：回到已发布，无 revoked、无审计、待审原因清空', async () => {
@@ -829,6 +878,7 @@ describe('mcpConnectorMock · 强制回收（停用时勾选，同走审核）',
     await revokeApproved('knowledge_hub')
     expect(audit.opsRecords.length).toBe(n + 1)
     expect(audit.opsRecords[0]).toMatchObject({ module: 'MCP', action: '强制回收', target: '企业知识库 MCP', detail: reasonText })
+    expect(audit.opsRecords[0].operator).toBe('demo')
   })
 
   it('前置条件同普通停用：未发布 / 审核中一律拒绝提交；不存在拒绝', async () => {

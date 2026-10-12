@@ -671,6 +671,7 @@ export async function withdrawMcpService(id) {
   pubAgg[id] = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   m.pendingAction = null
   m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('MCP', m.id)
   persist()
@@ -698,6 +699,7 @@ export async function delistMcpService(id, { forceRevoke = false, reason = '' } 
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'DELIST'
   m.pendingRevokeReason = revokeReason
+  m.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（PRD 访问审计 §6.2），不是审核人
   m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: revokeReason ? `申请强制回收该 MCP：${revokeReason}` : '申请停止该 MCP 对外提供', forceRevokeReason: revokeReason })
   persist()
@@ -711,10 +713,11 @@ export async function relistMcpService(id) {
  * 停用审核通过时落「强制回收」：停用提交时勾选了强制回收（pendingRevokeReason 非空）才写 revoked + 访问审计；
  * 普通停用 / 驳回 / 撤回都不走这里。调用方先取出原因、清掉 pendingAction 后再调。
  */
-function applyRevokeIfPending(m, reason) {
+function applyRevokeIfPending(m, reason, by) {
   if (!reason) return
-  m.revoked = makeRevokedInfo(reason)
-  appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
+  const operator = by || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
+  m.revoked = makeRevokedInfo(reason, operator)
+  appendOpsRecord({ operator, module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
 }
 
 /**
@@ -733,8 +736,10 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
   if (requestAction && !reviewActionMatches(requestAction, m.pendingAction)) return false // 2026-09-18 R1
   const isDelist = m.pendingAction === 'DELIST'
   const revokeReason = m.pendingRevokeReason
+  const revokeBy = m.pendingRevokeBy
   m.pendingAction = null
   m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   m.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   if (approved && !isDelist) {
     m.publishedAt = nowIso()
@@ -742,7 +747,7 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
     pubAgg[m.id] = 'PUBLISHED'
   } else if (approved) {
     pubAgg[m.id] = 'NOT_PUBLISHED'
-    applyRevokeIfPending(m, revokeReason) // 勾选了强制回收 → 通过后才标「已回收」并落审计
+    applyRevokeIfPending(m, revokeReason, revokeBy) // 勾选了强制回收 → 通过后才标「已回收」并落审计
   } else {
     pubAgg[m.id] = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
@@ -761,15 +766,17 @@ export async function reviewMcpService(id, payload = {}) {
   if (!m) throw err('MCP 不存在')
   const wasDelist = m.pendingAction === 'DELIST'
   const revokeReason = m.pendingRevokeReason
+  const revokeBy = m.pendingRevokeBy
   m.pendingAction = null
   m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   if (wasDelist && !payload.approve) {
     pubAgg[id] = 'PUBLISHED'
     m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45；其余分支走 setAgg）
     persist()
     return { affected: (m.tools || []).length, skipped: 0 }
   }
-  if (wasDelist && payload.approve) applyRevokeIfPending(m, revokeReason)
+  if (wasDelist && payload.approve) applyRevokeIfPending(m, revokeReason, revokeBy)
   return setAgg(id, payload.approve ? (wasDelist ? 'DELISTED' : 'PUBLISHED') : 'REJECTED')
 }
 

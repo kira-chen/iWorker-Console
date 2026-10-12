@@ -672,6 +672,7 @@ export async function withdrawPublish(id) {
   s.pendingVersion = ''
   s.pendingReleaseNotes = ''
   s.pendingRevokeReason = '' // 撤回强制回收申请：无回收后果
+  s.pendingRevokeBy = ''
   // 恢复提交前状态：有线上版本且未下架 → 已发布；否则未发布（含已下架再提交发布的撤回，09-18 R1）
   s.status = s.version && !s.delisted ? 'published' : 'draft'
   s.updatedAt = nowText()
@@ -704,6 +705,7 @@ export async function delistSkill(id, { forceRevoke = false, reason = '' } = {})
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
   s.pendingAction = 'stop'
   s.pendingRevokeReason = revokeReason
+  s.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（访问审计 §6.2），不是审核人
   s.updatedAt = nowText()
   writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: revokeReason ? `申请强制回收该技能：${revokeReason}` : '申请停止该技能对外提供', forceRevokeReason: revokeReason })
@@ -733,8 +735,9 @@ export function applySkillReviewResult(refId, requestAction, approved) {
       s.status = 'draft'
       if (s.pendingRevokeReason) {
         // 强制回收审核通过才生效（PRD 技能 §3.5.1）：写「已回收」标记 + 落访问审计
-        s.revoked = makeRevokedInfo(s.pendingRevokeReason)
-        appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: s.pendingRevokeReason, version: s.version })
+        const revokeBy = s.pendingRevokeBy || currentDemoUsername() // 旧快照缺该键时兜底当前用户
+        s.revoked = makeRevokedInfo(s.pendingRevokeReason, revokeBy)
+        appendOpsRecord({ operator: revokeBy, module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: s.pendingRevokeReason, version: s.version })
       }
     } else {
       const label = s.pendingVersion || 'v1.0.0'
@@ -769,6 +772,7 @@ export function applySkillReviewResult(refId, requestAction, approved) {
   s.pendingVersion = ''
   s.pendingReleaseNotes = ''
   s.pendingRevokeReason = ''
+  s.pendingRevokeBy = ''
   s.updatedAt = nowText()
   delete reviewSnapshots[String(s.id)]
   persist()

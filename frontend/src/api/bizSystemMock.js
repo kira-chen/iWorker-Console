@@ -318,6 +318,7 @@ export async function withdrawBizSystem(id) {
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
   b.pendingRevokeReason = ''
+  b.pendingRevokeBy = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('BIZ_SYSTEM', b.id)
   persist()
@@ -343,6 +344,7 @@ export async function deactivateBizSystem(id, { forceRevoke = false, reason = ''
   b.status = 'PENDING_REVIEW'
   b.pendingAction = 'DEACTIVATE'
   b.pendingRevokeReason = revokeReason
+  b.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（PRD 访问审计 §6.2），不是审核人
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   enrollReview({
     businessType: 'BIZ_SYSTEM', refId: b.id, name: b.name, description: b.description || '', requestAction: 'DELIST', version: '—',
@@ -357,8 +359,9 @@ export async function deactivateBizSystem(id, { forceRevoke = false, reason = ''
 function settleDeactivate(b) {
   b.status = 'NOT_PUBLISHED'
   if (b.pendingRevokeReason) {
-    b.revoked = makeRevokedInfo(b.pendingRevokeReason)
-    appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: b.pendingRevokeReason })
+    const operator = b.pendingRevokeBy || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
+    b.revoked = makeRevokedInfo(b.pendingRevokeReason, operator)
+    appendOpsRecord({ operator, module: '业务系统', action: '强制回收', objectId: b.id, target: b.name, detail: b.pendingRevokeReason })
   }
 }
 
@@ -376,6 +379,7 @@ export async function approveBizSystem(id) {
   }
   b.pendingAction = null
   b.pendingRevokeReason = ''
+  b.pendingRevokeBy = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
@@ -390,6 +394,7 @@ export async function rejectBizSystem(id) {
   b.status = b.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   b.pendingAction = null
   b.pendingRevokeReason = ''
+  b.pendingRevokeBy = ''
   b.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   persist()
   return toRow(b)
@@ -419,6 +424,7 @@ export function applyBizSystemReviewResult(refId, requestAction, approved) {
   }
   b.pendingAction = null
   b.pendingRevokeReason = ''
+  b.pendingRevokeBy = ''
   b.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true

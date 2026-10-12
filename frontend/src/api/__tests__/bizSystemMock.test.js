@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
  *   §一.1 搜索按名称或描述 / 状态筛选；§二.1 L30 按最近更新时间排序；
  *   §二.3 / §二.4 三态状态机（发布 / 停用均过审，撤回与驳回按待审类型恢复）；软引用删除；
  *   §三.2 / §三.7 保存校验（名称必填 ≤64 平台内不可重复、图标、描述、登录地址、示例问题 3 条）；
- *   §三.4 业务系统专属技能；+ 持久化（10 个写点 persist 一次、快照形状、bizSeq 延续）。
+ *   §三.4 业务系统专属技能；+ 持久化（11 个写点（含强制回收） persist 一次、快照形状、bizSeq 延续）。
  * mockPersist 走 vi.hoisted 桩（范式同 runtimeSpecMock.test.js）。
  */
 
@@ -312,7 +312,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
 })
 
 /**
- * 持久化（2026-09-12 测试审计 T58 / F11）：写点=新建/编辑/删除、发布/撤回/停用/审核通过/驳回、专属技能增删 共 10 处；
+ * 持久化（2026-09-12 测试审计 T58 / F11）：写点=新建/编辑/删除、发布/撤回/停用/审核通过/驳回、专属技能增删 共 11 处（含勾选强制回收的停用提交）；
  * restore 做最小形状校验；bizSeq/skillSeq 从快照延续（刷新后新建的 id 不与存量撞车）。
  * 每条用例 vi.resetModules() 拿全新模块实例（不影响上面顶层实例的用例）。
  */
@@ -433,14 +433,31 @@ describe('bizSystemMock —— 强制回收（停用时勾选，走停用审核�
     expect(row.status).toBe('NOT_PUBLISHED')
     expect(row.pendingAction).toBeNull()
     expect(row.pendingRevokeReason).toBe('')
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
     expect(row.publishedAt).toBe(before.publishedAt)
     expect(row.referencedBySkills).toEqual(before.referencedBySkills)
     expect(row.referencedByPositions).toEqual(before.referencedByPositions)
     expect(audit.opsRecords.length).toBe(n + 1)
     expect(audit.opsRecords[0]).toMatchObject({ module: '业务系统', action: '强制回收', target: '客户管理系统 CRM', detail: reason })
+    expect(audit.opsRecords[0].operator).toBe('demo')
     const listed = (await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101')
     expect(listed.revoked.reason).toBe(reason)
+  })
+
+  // PRD 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
+  it('操作人 = 提交强制回收的管理员：A 提交、切换演示身份为 B 通过 → revoked.operator 与审计 operator 都是 A', async () => {
+    const { m, audit, run } = await fresh()
+    const setUser = (username) => localStorage.setItem('ai_assistant_user', JSON.stringify({ username }))
+    try {
+      setUser('admin_a')
+      await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+      setUser('admin_b')
+      const row = await run(m.approveBizSystem('biz_2101'))
+      expect(row.revoked.operator).toBe('admin_a')
+      expect(audit.opsRecords[0]).toMatchObject({ action: '强制回收', operator: 'admin_a' })
+    } finally {
+      localStorage.removeItem('ai_assistant_user')
+    }
   })
 
   it('审核中心落地路径（applyBizSystemReviewResult）通过同样写 revoked 与审计', async () => {
@@ -549,7 +566,7 @@ describe('bizSystemMock —— 强制回收（停用时勾选，走停用审核�
     harness.options.restore(snap)
     const row = await run(m.getBizSystem('biz_2101'))
     expect(row.status).toBe('NOT_PUBLISHED')
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
     expect((await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101').revoked.reason).toBe(reason)
   })
 

@@ -219,7 +219,7 @@ describe('强制回收（PRD 技能 §3.5.1，2026-10-12 改版：停用弹窗�
     const detail = await mock.getSkillDetail(id)
     expect(detail.revoked).toMatchObject({ reason: '发现越权调用' })
     expect(detail.revoked.at).toBeTruthy()
-    expect(detail.revoked.operator).toBeTruthy()
+    expect(detail.revoked.operator).toBe('demo') // 无登录身份 → 内置演示管理员
     expect(detail.versionLabel).toBe('v1.0.0')
     expect(detail.lastPublishedAt).toBe(before.lastPublishedAt)
     expect(pubState(detail)).toBe('DELISTED') // 页面映射为「未发布」
@@ -280,6 +280,28 @@ describe('强制回收（PRD 技能 §3.5.1，2026-10-12 改版：停用弹窗�
     mock.applySkillReviewResult(id, 'DELIST', true)
     const rec = opsRecords.find((x) => x.action === '强制回收' && x.target === '审计技能')
     expect(rec).toMatchObject({ module: '技能', detail: '数据泄露风险', version: 'v1.0.0', live: true })
+  })
+
+  // 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）——A 提交、切到 B 审核通过，回收信息与审计都记 A
+  it('操作人 = 提交强制回收的管理员：A 提交、演示身份切成 B 后审核通过，revoked.operator 与审计操作人都是 A', async () => {
+    const id = await mkPublished('操作人技能')
+    const asUser = (username) =>
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: { getItem: (k) => (k === 'ai_assistant_user' ? JSON.stringify({ username }) : null), setItem() {}, removeItem() {}, key: () => null, length: 0 },
+        writable: true,
+        configurable: true
+      })
+    try {
+      asUser('admin_a')
+      await revokeSubmit(id, '越权调用')
+      asUser('reviewer_b')
+      expect(mock.applySkillReviewResult(id, 'DELIST', true)).toBe(true)
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    }
+    expect((await mock.getSkillDetail(id)).revoked.operator).toBe('admin_a')
+    expect(opsRecords.find((x) => x.action === '强制回收' && x.target === '操作人技能').operator).toBe('admin_a')
+    expect(mock._getRaw(id).pendingRevokeBy).toBeFalsy() // 落地后暂存操作人一并清掉
   })
 
   it('重新走发布审核：撤回 / 驳回不清 revoked，通过后清除并回到已发布', async () => {
@@ -636,8 +658,28 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v6，2026-09-23 待�
     const fresh = await import('@/api/unifiedSkillMock')
     const detail = await fresh.getSkillDetail(skillId)
     expect(pubState(detail)).toBe('DELISTED') // 复用下架语义，页面映射为「未发布」
-    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
+    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: 'demo' })
     const row = (await fresh.listUnifiedSkills({ keyword: '回收读回技能', size: 10 })).list.find((r) => r.id === skillId)
     expect(row.revoked.reason).toBe('刷新后仍应标已回收')
+  })
+
+  // 旧快照兼容：强制回收并入停用审核前落盘的快照，在审停用行没有 pendingRevokeReason / pendingRevokeBy
+  it('旧 v6 快照里在审停用（pendingAction:stop）且缺回收原因 → 审核通过按普通停用处理：未发布、无已回收、无强制回收审计', async () => {
+    const first = await import('@/api/unifiedSkillMock')
+    await first.createSkill({ name: '触发落盘', type: 'PLATFORM', categoryName: CAT })
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    const old = snap.data.skills.find((s) => s.id === 'sk_301')
+    Object.assign(old, { status: 'published', delisted: false, pendingAction: 'stop' })
+    delete old.pendingRevokeReason
+    delete old.pendingRevokeBy
+    globalThis.localStorage.setItem(KEY, JSON.stringify(snap))
+    vi.resetModules()
+    const fresh = await import('@/api/unifiedSkillMock')
+    const audit = await import('@/api/accessAuditMock')
+    expect(fresh.applySkillReviewResult('sk_301', 'DELIST', true)).toBe(true)
+    const detail = await fresh.getSkillDetail('sk_301')
+    expect(pubState(detail)).toBe('DELISTED')
+    expect(detail.revoked).toBeNull()
+    expect(audit.opsRecords.some((x) => x.action === '强制回收' && x.objectId === 'sk_301')).toBe(false)
   })
 })

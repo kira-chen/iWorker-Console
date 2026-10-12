@@ -323,7 +323,7 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
 
   // 岗位 PRD §6.4 / §8「被强制回收」：引用保留 + 详情带回收标记 + 发布阻断；对象回收后自然退出「仅已发布」的候选
   describe('引用了被强制回收的技能 / 连接器', () => {
-    const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null, pendingAction: null, pendingRevokeReason: '' })
+    const restoreSkill = () => _reset('sk_301', { status: 'published', delisted: false, revoked: null, pendingAction: null, pendingRevokeReason: '', pendingRevokeBy: '' })
     afterEach(() => { restoreSkill(); __resetMcpMock(); __resetApiMock(); __resetBizSystemMock(); resetAccessAuditMock() })
 
     it('技能被回收：岗位详情技能子行带 revoked，引用不自动解除，仍可【移除】（detachSkill）', async () => {
@@ -346,6 +346,26 @@ describe('positionMock · 新建岗位 → 工作台 / 发布链路', () => {
       // 移除后回收阻断消失（此岗位只剩空 Agent，转而被「至少引用 1 个技能」拦）
       const e = await publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' }).catch((x) => x)
       expect(e.message).not.toContain('已被回收')
+    })
+
+    // 强制回收经审核通过才生效（技能 §3.5.1）：已提交未通过 / 驳回，岗位侧一切照旧
+    it('技能强制回收已提交但审核未通过（及驳回后）：岗位技能子行 revoked 仍为 null，publishPosition 不报「已被回收」', async () => {
+      await delistSkill('sk_301', { forceRevoke: true, reason: '待审回收' })
+      let sk = (await getPosition(401)).agents.flatMap((a) => a.skills)[0]
+      expect(sk).toMatchObject({ skillId: 'sk_301', revoked: null })
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({})
+
+      applySkillReviewResult('sk_301', 'DELIST', false) // 审核驳回
+      sk = (await getPosition(401)).agents.flatMap((a) => a.skills)[0]
+      expect(sk).toMatchObject({ skillId: 'sk_301', revoked: null })
+      await __resetPositionMock() // 上一次发布把岗位置为审核中，复位后再验驳回后的发布
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({})
+    })
+
+    it('MCP 强制回收已提交但审核未通过：岗位 revokedConnectors 为空，publishPosition 不报「已被回收」', async () => {
+      await delistMcpService('expense_mcp', { forceRevoke: true, reason: '待审回收' })
+      expect((await getPosition(401)).revokedConnectors).toEqual([])
+      await expect(publishPosition(401, { bump: 'MINOR', releaseNotes: 'x' })).resolves.toEqual({})
     })
 
     it('连接器被回收：详情带回 revokedConnectors，发布阻断；解除引用后放行', async () => {

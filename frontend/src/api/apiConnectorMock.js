@@ -477,6 +477,7 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 //   旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种。
 // version 5：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
+// （2026-10-12 强制回收并入停用审核新增的 pendingRevokeReason / pendingRevokeBy 为可缺省字段，缺失按普通停用处理，故不 bump version）
 const persist = attachPersist('apiConnector', {
   version: 6,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
@@ -824,6 +825,7 @@ export async function withdrawApi(id) {
   a.status = a.pendingAction === 'DEACTIVATE' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   a.pendingAction = null
   a.pendingRevokeReason = '' // 撤回强制回收申请：不留任何回收后果
+  a.pendingRevokeBy = ''
   a.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('API', a.id)
   persist()
@@ -845,6 +847,7 @@ export async function deactivateApi(id, { forceRevoke = false, reason = '' } = {
     if (tip) throw err(tip, 'reason', 40001)
   }
   a.pendingRevokeReason = revokeReason
+  a.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（PRD 访问审计 §6.2），不是审核人
   // 停用走停用审核：状态转审核中，审核通过后变未发布（demo 停在审核中，可撤回恢复已发布）
   a.status = 'PENDING_REVIEW'
   a.pendingAction = 'DEACTIVATE'
@@ -873,8 +876,9 @@ export function applyApiReviewResult(refId, requestAction, approved) {
       a.status = 'NOT_PUBLISHED'
       if (a.pendingRevokeReason) {
         // 勾选了强制回收的停用审核通过 → 才打「已回收」并落访问审计（PRD §4）
-        a.revoked = makeRevokedInfo(a.pendingRevokeReason)
-        appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: a.pendingRevokeReason })
+        const operator = a.pendingRevokeBy || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
+        a.revoked = makeRevokedInfo(a.pendingRevokeReason, operator)
+        appendOpsRecord({ operator, module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: a.pendingRevokeReason })
       }
     } else {
       a.status = 'PUBLISHED'
@@ -887,6 +891,7 @@ export function applyApiReviewResult(refId, requestAction, approved) {
   }
   a.pendingAction = null
   a.pendingRevokeReason = ''
+  a.pendingRevokeBy = ''
   a.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   persist()
   return true

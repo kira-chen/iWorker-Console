@@ -582,6 +582,7 @@ export async function withdrawExpert(id) {
   if (!e.pendingAction) throw err('该专家没有在途审核')
   e.pendingAction = null
   delete e.pendingRevokeReason // 撤回强制回收申请：不留任何回收后果
+  delete e.pendingRevokeBy
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
@@ -608,7 +609,10 @@ export async function unpublishExpert(id, { forceRevoke = false, reason = '' } =
     revokeReason = String(reason).trim()
   }
   e.pendingAction = 'DELIST'
-  if (revokeReason) e.pendingRevokeReason = revokeReason
+  if (revokeReason) {
+    e.pendingRevokeReason = revokeReason
+    e.pendingRevokeBy = currentDemoUsername() // 操作人 = 提交申请的管理员（访问审计 §6.2），不是审核人
+  }
   // 2026-09-09 PRD-20260908 复核批次 0 · A20/Q199：**停用不刷新最近更新时间**。
   // md `prd.专家.md` §二.2 只列「保存配置、提交审核或撤回提交后」三种刷新场景，停用不在其内；
   // 与 `prd-模型.md` §二.2「停用时不改变最近更新时间」口径一致。原 e.updatedAt = nowIso() 已删。
@@ -643,8 +647,9 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
       e.status = 'draft' // 停用通过 → 未发布（md L102）；版本历史保留
       if (e.pendingRevokeReason) {
         // 强制回收（PRD 专家 §3.5.1）：审核通过才生效——打「已回收」标记并落访问审计
-        e.revoked = makeRevokedInfo(e.pendingRevokeReason)
-        appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: e.pendingRevokeReason, version: e.latestVersionLabel })
+        const revokeBy = e.pendingRevokeBy || currentDemoUsername() // 旧快照缺该键时兜底当前用户
+        e.revoked = makeRevokedInfo(e.pendingRevokeReason, revokeBy)
+        appendOpsRecord({ operator: revokeBy, module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: e.pendingRevokeReason, version: e.latestVersionLabel })
       }
     } else {
       const label = e.pendingVersion || 'v1.0.0'
@@ -676,6 +681,7 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
   }
   e.pendingAction = null
   delete e.pendingRevokeReason // 通过已落地 / 驳回丢弃：回收原因随在途事项一并清掉
+  delete e.pendingRevokeBy
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
