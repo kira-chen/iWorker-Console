@@ -110,7 +110,7 @@ describe('DeactivateDialog · 默认是普通停用', () => {
 })
 
 describe('DeactivateDialog · 勾选「强制回收」', () => {
-  it('弹窗换危险样式：标题「强制回收{类型}」、红色警示写明“审核通过后生效、不可撤销、审核通过前仍可用”、必填回收原因（占位 + 500 字上限）、红色【提交强制回收审核】', async () => {
+  it('弹窗换危险样式：标题「强制回收{类型}」、红色警示写明“审核通过后生效、不可撤销、审核通过前仍可用”、必填回收原因（占位，不截断）、红色【提交强制回收审核】', async () => {
     await mount({ refCount: 3, refText: '岗位 / 技能' })
     await check(true)
     expect(title()).toBe('强制回收MCP 服务')
@@ -122,7 +122,8 @@ describe('DeactivateDialog · 勾选「强制回收」', () => {
     expect(danger).toContain('不可撤销')
     expect(danger).toContain('审核通过前仍可正常使用')
     expect(textarea().placeholder).toBe('请输入回收原因，将展示给受影响的员工')
-    expect(textarea().getAttribute('maxlength')).toBe('500')
+    // PRD：超过 500 字时「提示」而不是截断，所以输入框不设 maxlength（超长提示见下方“超过 500 字”用例）
+    expect(textarea().getAttribute('maxlength')).toBeNull()
     expect(confirmBtn().textContent.trim()).toBe('提交强制回收审核')
     expect(confirmBtn().dataset.type).toBe('danger')
   })

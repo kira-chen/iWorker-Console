@@ -1279,7 +1279,7 @@ function onTestMaskClick(e) {
       <!-- 治理吸底操作栏（2026-09-01 PRD 对齐改造）：审核中心/我的申请借用本页作 SKILL 详情时渲染 -->
       <div v-if="govBarButtons.length" class="se-gov-bar">
         <!-- 强制回收申请：底栏左侧提示回收原因，审核人一眼区别于普通停用（审核中心 PRD §5.2） -->
-        <span v-if="govForceRevokeReason" class="se-gov-revoke-hint" data-test="se-gov-revoke-hint">
+        <span v-if="govForceRevokeReason" class="se-gov-revoke-hint" data-test="se-gov-revoke-hint" :title="govForceRevokeReason">
           强制回收申请 · 回收原因：{{ govForceRevokeReason }}
         </span>
         <el-button

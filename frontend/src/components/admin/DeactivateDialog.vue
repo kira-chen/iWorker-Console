@@ -12,7 +12,7 @@
  * 确认经 confirm 事件上抛 { forceRevoke, reason }（普通停用 reason 为空串）；请求成败由调用方处理，成功后调用方自行关闭。
  */
 import { ref, computed, watch } from 'vue'
-import { FORCE_REVOKE_REASON_MAX, validateRevokeReason } from '@/utils/forceRevoke'
+import { validateRevokeReason } from '@/utils/forceRevoke'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -109,8 +109,6 @@ function onConfirm() {
         v-model="reason"
         type="textarea"
         :rows="4"
-        :maxlength="FORCE_REVOKE_REASON_MAX"
-        show-word-limit
         placeholder="请输入回收原因，将展示给受影响的员工"
         @input="error = ''"
       />

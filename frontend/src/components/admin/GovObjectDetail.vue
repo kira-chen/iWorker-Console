@@ -250,7 +250,7 @@ defineExpose({ snapshot, snapshotMissing })
   <Teleport to="body">
     <div v-if="visible && kind && effectiveButtons.length" class="god-bar" :style="{ width: barWidth }">
       <!-- 强制回收申请：详情底栏左侧提示回收原因，审核人一眼区别于普通停用（审核中心 PRD §5.2） -->
-      <span v-if="item?.forceRevokeReason" class="god-revoke-hint" data-test="god-revoke-hint">
+      <span v-if="item?.forceRevokeReason" class="god-revoke-hint" data-test="god-revoke-hint" :title="item.forceRevokeReason">
         强制回收申请 · 回收原因：{{ item.forceRevokeReason }}
       </span>
       <el-button

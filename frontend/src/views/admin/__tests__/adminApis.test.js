@@ -448,7 +448,7 @@ describe('AdminApis · 发布 / 撤回 / 停用 / 删除（md §二.4）', () =>
   it('停用：弹窗正文「停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？」/【继续停用】 → deactivateApi(id, 非强制) + 「已提交停用审核」 + 关弹窗（md §二.4 L69）', async () => {
     await mount()
     await openDeactivateDialog()
-    expect(dialogEl().dataset.title).toBe('停用API')
+    expect(dialogEl().dataset.title).toBe('停用 API')
     expect(container.querySelector('[data-test="dd-plain"]').textContent).toBe(
       '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「已上线接口」？'
     )
