@@ -37,7 +37,7 @@ const FINGERPRINTS = {
   apiConnector: { version: 6, fp: 'a2767de2' },
   bizSystem: { version: 4, fp: 'c73c6be1' },
   dataTable: { version: 2, fp: '592831be' },
-  domainExpert: { version: 7, fp: 'fba1efca' },
+  domainExpert: { version: 8, fp: 'c7cb441c' },
   expertTeam: { version: 4, fp: '4d70e7c1' },
   fieldDict: { version: 4, fp: '40d8527d' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },

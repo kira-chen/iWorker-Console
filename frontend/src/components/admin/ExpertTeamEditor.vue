@@ -132,7 +132,7 @@ const candidates = ref([])
 const candidatesLoading = ref(false)
 const memberKeyword = ref('')
 const memberCategory = ref('')
-/** 专家 id → 展示信息（名称 / 图标 / 分类 / 带团说明 / 不可用原因）；候选与已存成员两处来源合并。 */
+/** 专家 id → 展示信息（名称 / 图标 / 分类 / 简介 / 不可用原因）；候选与已存成员两处来源合并。 */
 const memberInfo = reactive(new Map())
 
 let candSeq = 0
@@ -149,7 +149,7 @@ async function loadCandidates() {
     candidates.value = Array.isArray(list) ? list : []
     candidates.value.forEach((x) => {
       const old = memberInfo.get(String(x.id)) || {}
-      memberInfo.set(String(x.id), { ...old, expertId: x.id, name: x.name, intro: x.intro, avatar: x.avatar, backgroundColor: x.backgroundColor, category: x.category, leadGuide: x.leadGuide, unavailable: '' })
+      memberInfo.set(String(x.id), { ...old, expertId: x.id, name: x.name, intro: x.intro, avatar: x.avatar, backgroundColor: x.backgroundColor, category: x.category, unavailable: '' })
     })
   } catch {
     if (seq === candSeq) candidates.value = []
@@ -180,7 +180,7 @@ const dutyPlaceholder = (m) => {
   const intro = String(infoOf(m.expertId).intro || '').trim()
   return intro ? `选填，不填则使用该专家的简介：${intro.length > 40 ? intro.slice(0, 40) + '…' : intro}` : '选填，如：条款风险与合规口径；不填则使用该专家的简介'
 }
-const infoOf = (id) => memberInfo.get(String(id)) || { name: `专家 ${id}`, category: '', avatar: '', leadGuide: '', unavailable: '' }
+const infoOf = (id) => memberInfo.get(String(id)) || { name: `专家 ${id}`, category: '', avatar: '', unavailable: '' }
 
 function toggleMember(x) {
   if (disabled.value) return
@@ -206,7 +206,7 @@ function moveMember(i, delta) {
   form.members = arr
 }
 
-/** 设 / 取消团长；设上时若团长职责为空，自动回填该专家的「带团分工说明」（md §三.3.3）。 */
+/** 设 / 取消团长。 */
 function toggleLeader(id) {
   if (disabled.value) return
   if (String(form.leaderId) === String(id)) {
@@ -215,7 +215,6 @@ function toggleLeader(id) {
   }
   form.leaderId = id
   errors.leaderDuty = ''
-  if (!form.leaderDuty.trim()) form.leaderDuty = infoOf(id).leadGuide || ''
 }
 
 /** 团介绍首次自动填入：成员凑满 2 位且团介绍为空时填一版（客户端 PRD §7 第 3 条：默认按成员能力汇总生成），之后不再自动覆盖。 */
@@ -660,7 +659,6 @@ const metaItems = computed(() => {
                     </span>
                     <strong>{{ x.name }}</strong>
                     <span class="et-cand-cat">{{ x.category }}</span>
-                    <span v-if="x.leadGuide" class="et-lead-badge">可带团</span>
                   </span>
                   <small>{{ x.intro || '暂无简介' }}</small>
                 </span>
@@ -686,7 +684,6 @@ const metaItems = computed(() => {
                 <div class="et-row-name">
                   <strong>{{ infoOf(m.expertId).name }}</strong>
                   <span class="et-cand-cat">{{ infoOf(m.expertId).category }}</span>
-                  <span v-if="infoOf(m.expertId).leadGuide" class="et-lead-badge">可带团</span>
                   <span v-if="String(form.leaderId) === String(m.expertId)" class="et-leader-badge">团长</span>
                   <span v-if="infoOf(m.expertId).unavailable" class="et-warn-tag">{{ infoOf(m.expertId).unavailable }}</span>
                 </div>
@@ -1050,7 +1047,6 @@ const metaItems = computed(() => {
   height: 100%;
   object-fit: cover;
 }
-.et-lead-badge,
 .et-leader-badge,
 .et-warn-tag {
   flex: none;
@@ -1058,10 +1054,6 @@ const metaItems = computed(() => {
   border-radius: var(--radius-sm);
   font-size: var(--fs-xs);
   line-height: 18px;
-}
-.et-lead-badge {
-  background: var(--c-accent-soft, var(--bg-hover));
-  color: var(--c-accent, #409eff);
 }
 .et-leader-badge {
   background: var(--c-accent, #409eff);

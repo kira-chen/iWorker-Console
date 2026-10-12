@@ -225,7 +225,6 @@ function resolveMembers(t) {
       category: x?.category || '',
       expertType: x?.type || '',
       positionIds: x?.positionIds || [],
-      leadGuide: x?.leadGuide || '',
       unavailable: reason,
       revoked: x?.revoked ? { ...x.revoked } : null
     }
@@ -371,7 +370,6 @@ export async function getTeam(id) {
 
 /**
  * 成员候选（md §三.3.1）：已发布专家，按团类型限定范围。
- * 返回专家行（含 leadGuide，供选团长时优先展示「可带团」）。
  */
 export async function listTeamMemberCandidates({ type, keyword } = {}) {
   await delay(120)
@@ -382,7 +380,7 @@ export async function listTeamMemberCandidates({ type, keyword } = {}) {
     .filter((x) => !kw || [x.name, x.intro, x.category].some((v) => String(v || '').toLowerCase().includes(kw)))
     .map((x) => ({
       id: x.id, name: x.name, intro: x.intro, avatar: x.avatar, backgroundColor: x.backgroundColor,
-      category: x.category, type: x.type, positionIds: x.positionIds, leadGuide: x.leadGuide || ''
+      category: x.category, type: x.type, positionIds: x.positionIds
     }))
 }
 

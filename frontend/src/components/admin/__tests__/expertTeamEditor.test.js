@@ -5,7 +5,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
 /**
  * ExpertTeamEditor.vue 真实挂载用例（2026-10-12 专家团管理端）。
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md §三（编辑页）：
- *   §三.1 三态标题与底部按钮 / §三.2 团类型未选时成员区置灰 / §三.3 成员与团长（设团长回填带团分工说明）/
+ *   §三.1 三态标题与底部按钮 / §三.2 团类型未选时成员区置灰 / §三.3 成员与团长（设团长团分工说明）/
  *   §三.4 协作关系「没设团长必填、设了选填」/ §三.7 AI 生成置灰条件 / §三.8 保存校验。
  * 真 Element Plus + 真 DrawerEditor，只 mock api 层。
  */
@@ -23,9 +23,9 @@ vi.mock('@/api/position', () => ({ listPositions: vi.fn().mockResolvedValue({ li
 const ExpertTeamEditor = (await import('@/components/admin/ExpertTeamEditor.vue')).default
 
 const CANDIDATES = [
-  { id: 201, name: '经营分析专家', intro: '汇总经营数据', avatar: '▤', backgroundColor: '#DCF5E4', category: '投资', type: 'PLATFORM', leadGuide: '先识别经营异常，再分给研究类专家' },
-  { id: 202, name: '企业知识助手', intro: '检索制度', avatar: '⌕', backgroundColor: '#DCF5E4', category: '通用', type: 'SYSTEM_DEFAULT', leadGuide: '' },
-  { id: 204, name: '研究报告专家', intro: '行业研究', avatar: '◎', backgroundColor: '#DCF5E4', category: '投资', type: 'PLATFORM', leadGuide: '' }
+  { id: 201, name: '经营分析专家', intro: '汇总经营数据', avatar: '▤', backgroundColor: '#DCF5E4', category: '投资', type: 'PLATFORM' },
+  { id: 202, name: '企业知识助手', intro: '检索制度', avatar: '⌕', backgroundColor: '#DCF5E4', category: '通用', type: 'SYSTEM_DEFAULT' },
+  { id: 204, name: '研究报告专家', intro: '行业研究', avatar: '◎', backgroundColor: '#DCF5E4', category: '投资', type: 'PLATFORM' }
 ]
 const detail = (over = {}) => ({
   id: 302, name: '知识问答团', type: 'SYSTEM_DEFAULT', positionIds: [], avatar: '⌕', backgroundColor: '#DCF5E4', category: '通用',
@@ -33,8 +33,8 @@ const detail = (over = {}) => ({
   exampleQuestions: ['问一', '问二', '问三'], status: 'draft', pendingAction: null, latestVersionLabel: '',
   createdAt: '2026-09-06T09:20:00+08:00', updatedAt: '2026-09-09T11:00:00+08:00', publishedAt: null, revoked: null,
   members: [
-    { expertId: 202, duty: '检索依据', name: '企业知识助手', category: '通用', avatar: '⌕', leadGuide: '', unavailable: '' },
-    { expertId: 201, duty: '补充口径', name: '经营分析专家', category: '投资', avatar: '▤', leadGuide: '先识别经营异常，再分给研究类专家', unavailable: '' }
+    { expertId: 202, duty: '检索依据', name: '企业知识助手', category: '通用', avatar: '⌕', unavailable: '' },
+    { expertId: 201, duty: '补充口径', name: '经营分析专家', category: '投资', avatar: '▤', unavailable: '' }
   ],
   ...over
 })
@@ -185,7 +185,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(aiBtn.disabled).toBe(false)
   })
 
-  it('设为团长：团长职责区块出现并回填该专家的「带团分工说明」，协作关系改为选填；取消团长后区块消失（md §三.3.2 / §三.3.3 / §三.4）', async () => {
+  it('设为团长：团长职责区块出现（初始为空，等管理员写或点 AI 生成），协作关系改为选填；取消团长后区块消失；成员卡上没有「可带团」徽章（md §三.3.2 / §三.3.3 / §三.4）', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
@@ -197,7 +197,8 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     await flushAll(6)
     const duty = drawer.querySelector('[data-testid="team-leader-duty"]')
     expect(duty).toBeTruthy()
-    expect(duty.querySelector('textarea').value).toBe('先识别经营异常，再分给研究类专家')
+    expect(duty.querySelector('textarea').value).toBe('')
+    expect(drawer.textContent).not.toContain('可带团')
     expect(drawer.querySelector('[data-testid="team-member-201"] .et-leader-badge').textContent).toBe('团长')
     expect(drawer.querySelector('[data-testid="team-collab-card"]').textContent).toContain('选填')
     expect(leaderBtn(201).textContent.trim()).toBe('取消团长')
@@ -254,8 +255,8 @@ describe('ExpertTeamEditor · 真实挂载', () => {
       detail({
         status: 'published', latestVersionLabel: 'v1.0.0',
         members: [
-          { expertId: 202, duty: '检索依据', name: '企业知识助手', category: '通用', avatar: '⌕', leadGuide: '', unavailable: '' },
-          { expertId: 201, duty: '补充口径', name: '经营分析专家', category: '投资', avatar: '▤', leadGuide: '', unavailable: '已回收' }
+          { expertId: 202, duty: '检索依据', name: '企业知识助手', category: '通用', avatar: '⌕', unavailable: '' },
+          { expertId: 201, duty: '补充口径', name: '经营分析专家', category: '投资', avatar: '▤', unavailable: '已回收' }
         ]
       })
     )

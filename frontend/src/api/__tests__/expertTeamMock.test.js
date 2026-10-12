@@ -80,7 +80,6 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(await ids('SYSTEM_DEFAULT')).toEqual([201, 202, 204])
     expect(await ids('PLATFORM')).toEqual([201, 202, 204])
     expect(await ids('POSITION')).toEqual([201, 202, 204])
-    expect((await listTeamMemberCandidates({ type: 'PLATFORM' })).find((x) => x.id === 201).leadGuide).toContain('经营数据')
   })
 
   it('创建：团名重名拦截（字段 name）；岗位私有专家不能进市场 / 通用团；团长必须是成员', async () => {
