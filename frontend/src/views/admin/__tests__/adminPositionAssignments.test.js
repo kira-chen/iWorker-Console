@@ -59,7 +59,8 @@ vi.mock('@/components/admin/UserPositionEditDialog.vue', () => ({
 }))
 vi.mock('@/assets/connector.css', () => ({}))
 // 页面读 route.query.keyword（访问审计「查看」跳转注入），本测试无路由实例，给个空 query
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+const route = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => route }))
 
 const AdminPositionAssignments = (await import('@/views/admin/AdminPositionAssignments.vue')).default
 
@@ -249,6 +250,18 @@ describe('AdminPositionAssignments —— 单页面（2026-09-15 合并改版）
     await flush()
     const lastParams = listPositionAssignments.mock.calls.at(-1)[0]
     expect(lastParams.hasPendingRequest).toBeFalsy()
+  })
+
+  it('从驾驶舱【去分配】带 ?pending=1 进页：首次请求即下发 hasPendingRequest:true，筛选按钮为激活态', async () => {
+    route.query = { pending: '1' }
+    try {
+      await mount()
+      expect(listPositionAssignments.mock.calls[0][0]).toMatchObject({ hasPendingRequest: true })
+      const pendingBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('待分配申请'))
+      expect(pendingBtn.className).toMatch(/active/)
+    } finally {
+      route.query = {}
+    }
   })
 
   it('搜索停顿 220ms / 状态切换 → 刷新不重置页码；【查询】回第 1 页', async () => {
