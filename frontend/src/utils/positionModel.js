@@ -567,7 +567,7 @@ export function computePublishCheck(detail) {
 
   const items = []
 
-  // 1. 岗位名称与描述（硬）
+  // 1. 岗位名称（硬；清单项 label 为「岗位名称」，岗位描述缺失时一并拦截，并在 detail 里点名「岗位描述」）
   items.push({
     key: 'name',
     label: '岗位名称',

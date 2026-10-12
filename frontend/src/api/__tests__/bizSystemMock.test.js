@@ -454,8 +454,13 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
   // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
   it('J42 回收前后最近更新时间不变（业务系统）', async () => {
     const { m, run } = await fresh()
+    const cur = await run(m.getBizSystem('biz_2101'))
+    const seed = cur.updatedAt
+    await run(m.updateBizSystem('biz_2101', { ...VALID, name: cur.name, description: '改一次基本信息', type: cur.type }))
     const before = (await run(m.getBizSystem('biz_2101'))).updatedAt
+    expect(before).not.toBe(seed) // 正向对照：编辑会刷新
     const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    expect(row.revoked).toMatchObject({ reason: expect.any(String) }) // 前提：确实回收了
     expect(row.updatedAt).toBe(before)
     expect((await run(m.getBizSystem('biz_2101'))).updatedAt).toBe(before)
   })

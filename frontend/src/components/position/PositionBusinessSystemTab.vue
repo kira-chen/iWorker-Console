@@ -43,6 +43,7 @@ const mcpAll = ref([])
 const mcpBound = ref([])
 const mcpLoading = ref(false)
 const mcpError = ref(false)
+const mcpErrorMessage = ref('') // 失败原因（#74：列表失败态要给出原因，与 toast 同源）
 const mcpSort = ref('desc')
 
 const mcpSorted = computed(() => {
@@ -75,12 +76,14 @@ async function loadMcpBound() {
   if (!ids.length) { mcpBound.value = []; return }
   mcpLoading.value = true
   mcpError.value = false
+  mcpErrorMessage.value = ''
   try {
     const data = await listMcp({})
     const all = Array.isArray(data) ? data : data?.list || []
     mcpBound.value = all.filter(m => ids.includes(m.id))
   } catch (e) {
     mcpError.value = true
+    mcpErrorMessage.value = e?.message || ''
     ElMessage.error(e?.message || '加载 MCP 失败')
   } finally {
     mcpLoading.value = false
@@ -125,6 +128,7 @@ const apiAll = ref([])
 const apiBound = ref([])
 const apiLoading = ref(false)
 const apiError = ref(false)
+const apiErrorMessage = ref('')
 const apiSort = ref('desc')
 
 const apiSorted = computed(() => {
@@ -157,12 +161,14 @@ async function loadApiBound() {
   if (!ids.length) { apiBound.value = []; return }
   apiLoading.value = true
   apiError.value = false
+  apiErrorMessage.value = ''
   try {
     const data = await listApis({})
     const all = Array.isArray(data) ? data : data?.list || []
     apiBound.value = all.filter(a => ids.includes(a.id))
   } catch (e) {
     apiError.value = true
+    apiErrorMessage.value = e?.message || ''
     ElMessage.error(e?.message || '加载 API 失败')
   } finally {
     apiLoading.value = false
@@ -207,6 +213,7 @@ const bizAll = ref([])
 const bizBound = ref([])
 const bizLoading = ref(false)
 const bizError = ref(false)
+const bizErrorMessage = ref('')
 const bizSort = ref('desc')
 
 const bizSorted = computed(() => {
@@ -239,12 +246,14 @@ async function loadBizBound() {
   if (!ids.length) { bizBound.value = []; return }
   bizLoading.value = true
   bizError.value = false
+  bizErrorMessage.value = ''
   try {
     const data = await listBizSystems({})
     const all = Array.isArray(data) ? data : data?.list || []
     bizBound.value = all.filter(b => ids.includes(b.id))
   } catch (e) {
     bizError.value = true
+    bizErrorMessage.value = e?.message || ''
     ElMessage.error(e?.message || '加载业务系统失败')
   } finally {
     bizLoading.value = false
@@ -308,6 +317,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
         <ListStates
           :loading="mcpLoading"
           :error="mcpError"
+          :error-message="mcpErrorMessage"
           :empty="!mcpLoading && !mcpError && !mcpBound.length"
           empty-text="暂无绑定的私有 MCP"
           @retry="loadMcpBound"
@@ -376,6 +386,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
         <ListStates
           :loading="apiLoading"
           :error="apiError"
+          :error-message="apiErrorMessage"
           :empty="!apiLoading && !apiError && !apiBound.length"
           empty-text="暂无绑定的私有 API"
           @retry="loadApiBound"
@@ -443,6 +454,7 @@ watch(idsKey(() => store.basic?.businessSystemIds), loadBizBound, { immediate: t
         <ListStates
           :loading="bizLoading"
           :error="bizError"
+          :error-message="bizErrorMessage"
           :empty="!bizLoading && !bizError && !bizBound.length"
           empty-text="暂无绑定的业务系统"
           @retry="loadBizBound"

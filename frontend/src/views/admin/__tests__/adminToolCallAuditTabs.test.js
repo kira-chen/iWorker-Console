@@ -392,4 +392,49 @@ describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范
       expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBe(fullCount)
     })
   }
+
+  // 知识检索页签另有两类筛选态：先选「数据源类型」下拉 / 先点「无命中检索」卡，再点总数卡——也要全部清回全量（总数卡 = 仅保留时间范围）
+  it('knowledge 页签：先选数据源类型再点「检索请求总数」→ 下拉回到「全部数据源类型」、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const fullCount = Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)
+    const typeSelect = () => p.querySelectorAll('.lt-filter')[1]
+
+    typeSelect().querySelector('.el-select__wrapper').click()
+    await flush()
+    const mcp = [...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === 'MCP')
+    expect(mcp).toBeTruthy() // 前提：数据源类型下拉里有「MCP」
+    mcp.click()
+    await flush()
+    expect(typeSelect().textContent).toContain('MCP') // 前提：筛选已生效
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBeLessThan(fullCount) // 统计卡随筛选联动，证明下拉确实收窄了结果
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(typeSelect().querySelector('.el-select__placeholder').textContent.trim()).toBe('全部数据源类型')
+    expect(typeSelect().textContent).not.toContain('MCP')
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBe(fullCount)
+  })
+
+  it('knowledge 页签：先点「无命中检索」卡（高亮 + 列表只剩无命中）再点「检索请求总数」→ 高亮取消、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const rowTotal = () => Number(p.querySelector('.list-pager')?.textContent.match(/共s*(d+)s*条/)?.[1] ?? bodyRows(p).length)
+    const fullRows = rowTotal()
+
+    cardOf(p, '无命中检索').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(true)
+    expect(rowTotal()).toBe(Number(cardOf(p, '无命中检索').querySelector('.metric-value').textContent))
+    expect(rowTotal()).toBeLessThan(fullRows)
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(false)
+    expect(rowTotal()).toBe(fullRows)
+  })
 })

@@ -607,4 +607,13 @@ describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收�
     await mount()
     expect(rowByName('合同管理平台').querySelector('.revoked-tag')).toBeNull()
   })
+
+  it('标签只跟未发布态：审核中（人力资源系统）/ 已发布行即使数据里带 revoked 也不出「已回收」', async () => {
+    const revoked = { reason: '残留的回收信息', at: '2026-10-01 09:30', operator: 'admin' }
+    admin.listBizSystems.mockImplementation(async () => ({ list: LIST.map((b) => ({ ...b, revoked })), total: LIST.length }))
+    await mount()
+    expect(rowByName('合同管理平台').querySelector('.revoked-tag')).not.toBeNull() // 前提：回收信息确实下发了
+    expect(rowByName('人力资源系统').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('客户管理系统').querySelector('.revoked-tag')).toBeNull()
+  })
 })

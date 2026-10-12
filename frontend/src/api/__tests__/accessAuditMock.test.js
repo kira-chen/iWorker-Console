@@ -223,8 +223,10 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     const all = listClientFacingOps()
     for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
     // 种子里大部分日期是相对今天生成的（J27），另有版本管理 / 存储空间种子是绝对日期，二者的先后会随日子推移变化——
-    // 所以不断言绝对时间戳，也不钉「第几条是什么」，只钉语义：最早一条是用户技能审核（通过）；游标之后 = 全量里 recordId 严格更大的那些。
-    expect(all[0]).toMatchObject({ kind: 'skillReview', result: '审核通过', submitter: 'wang.fang' })
+    // 所以不断言绝对时间戳，也不钉「第几条是什么」，只钉语义：用户技能审核里最早的一条是通过；游标之后 = 全量里 recordId 严格更大的那些。
+    expect(all.filter((r) => r.kind === 'skillReview')[0]).toMatchObject({ result: '审核通过', submitter: 'wang.fang' }) // 按 kind 过滤后取：不依赖绝对日期种子与相对种子的先后（11-05 起二者会换位）
+    // 固定游标的字面断言：游标 19 之后的客户端可见记录 = 存储空间 20–24 + 强制回收 25–26（只看记录标识，与日子无关）
+    expect(listClientFacingOps({ afterId: 19 }).map((r) => r.recordId).sort((x, y) => x - y)).toEqual([20, 21, 22, 23, 24, 25, 26])
     const cursor = all.find((r) => r.kind === 'positionAssign' && r.type === '变更').recordId // 种子里的一条岗位变更
     const cut = listClientFacingOps({ afterId: cursor })
     expect(cut.map((r) => r.recordId)).toEqual(all.filter((r) => r.recordId > cursor).map((r) => r.recordId))

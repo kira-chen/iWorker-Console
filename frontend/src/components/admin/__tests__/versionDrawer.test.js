@@ -229,6 +229,21 @@ describe('VersionDrawer · 发布语义', () => {
     // 失败后按钮恢复可点（busy 复位），可重试
     expect(btn('提交发布').disabled).toBe(false)
   })
+
+  // J40：已发布专家带已回收引用时点「版本管理」仍能打开侧栏，提交发布被数据层拒绝后由抽屉的 catch 兜底弹出原因（页面层不预判）
+  it('J40 数据层以「引用的「技能名」已被回收，请移除后再发布」拒绝 → 原样 ElMessage.error，抽屉不关、不 emit done', async () => {
+    const msg = '引用的「合同风险检查」已被回收，请移除后再发布'
+    const done = vi.fn()
+    const a = makeAdapter({ publish: vi.fn().mockRejectedValue(new Error(msg)) })
+    mount(a, { onDone: done }); await flush()
+    container.querySelector('.el-input').value = 'x'
+    container.querySelector('.el-input').dispatchEvent(new Event('input'))
+    await flush(2)
+    btn('提交发布').click(); await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith(msg)
+    expect(done).not.toHaveBeenCalled()
+    expect(visibleRef.value).toBe(true)
+  })
 })
 
 describe('VersionDrawer · 实体前置门（技能分类必填）', () => {

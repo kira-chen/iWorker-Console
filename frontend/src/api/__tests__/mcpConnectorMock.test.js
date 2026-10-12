@@ -814,8 +814,12 @@ describe('mcpConnectorMock · 强制回收', () => {
 
   // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
   it('J42 回收前后最近更新时间不变（MCP）', async () => {
+    const seed = (await m.getMcp('knowledge_hub')).updatedAt
+    await m.updateMcp('knowledge_hub', { description: '改一次基本信息' })
     const before = (await m.getMcp('knowledge_hub')).updatedAt
+    expect(before).not.toBe(seed) // 正向对照：编辑会刷新
     const row = await m.forceRevokeMcpService('knowledge_hub', reasonText)
+    expect(row.revoked).toMatchObject({ reason: expect.any(String) }) // 前提：确实回收了
     expect(row.updatedAt).toBe(before)
     expect((await m.getMcp('knowledge_hub')).updatedAt).toBe(before)
   })

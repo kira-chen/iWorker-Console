@@ -223,7 +223,7 @@ const persist = attachPersist('domainExpert', {
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
-  // v7（2026-10-10 J40）：行出参新增 revokedSkillNames、详情 skills[] 新增 revoked（派生字段，旧快照无影响），按守卫规矩 bump。
+  // v7（2026-10-10 J40）：行出参新增 revokedSkillNames、详情 skills[] 新增 revoked（派生字段、不影响旧数据，但种子指纹守卫要求 bump，且 version 变化会让旧快照被丢弃、重新播种）。
   version: 7,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {

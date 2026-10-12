@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url'
  *    09-09 运行规格 / 用户技能审核就漏接过。取数用 useAdminList 的页面都有 loadErrorMessage，照接即可。
  *    实测存量 11 处命中（9 个文件），其中 AdminApis / FieldManagement / AdminInstances 三页是 J63 拍板「md 未要求展示原因，故不接入」，
  *    其余按归属补齐或登记豁免（见下方 LIST_STATES_ERROR_MESSAGE_EXEMPT，每项写明理由）。
+ *    同日补强：⑦b 反向守卫——豁免项必须仍真实有效（文件存在、确有漏接且数量与登记数一致），补接后忘删豁免 / 豁免文件新增漏接都会红。
  * 同轮把 v-for / debugger / 冲突标记三条规则抽成纯函数，自检改为调用规则本体（原自检抄了一份正则，规则写错照样绿）。
  */
 
@@ -155,12 +156,28 @@ describe('静态卫生守卫（零依赖，存量已全部达标）', () => {
       const src = fs.readFileSync(f, 'utf8')
       const { total: n, missing } = listStatesErrorMessageCheck(src)
       total += n
-      if (missing.length && !(rel(f).split(path.sep).join('/') in LIST_STATES_ERROR_MESSAGE_EXEMPT)) {
-        offenders.push(`${rel(f)}:${missing.join(',')}`)
-      }
+      const exempt = LIST_STATES_ERROR_MESSAGE_EXEMPT[rel(f).split(path.sep).join('/')]
+      // 豁免文件允许缺的数量以登记数为上限：同文件再新增一处漏接会超出登记数而报红（不会被整文件豁免吞掉）
+      if (missing.length > (exempt?.missing ?? 0)) offenders.push(`${rel(f)}:${missing.join(',')}`)
     }
     expect(total, '至少应扫到若干个带 :error 的 <ListStates>（解析失败会让规则空转）').toBeGreaterThan(20)
     expect(offenders, '<ListStates :error> 缺 :error-message').toEqual([])
+  })
+
+  // ⑦ 的反向守卫：豁免表只能收紧不能发霉——文件被删 / 改名、或已补接 :error-message 后，豁免必须同步删掉（否则豁免会替将来的新漏接兜底）。
+  it('⑦b 豁免表里每一项都真实有效：文件存在，且缺 :error-message 的 <ListStates :error> 数量与登记数一致', () => {
+    const problems = []
+    for (const [key, { missing: expected }] of Object.entries(LIST_STATES_ERROR_MESSAGE_EXEMPT)) {
+      const file = path.join(SRC, key)
+      if (!fs.existsSync(file)) {
+        problems.push(`${key}：文件不存在，请删除此豁免`)
+        continue
+      }
+      const { missing } = listStatesErrorMessageCheck(fs.readFileSync(file, 'utf8'))
+      if (missing.length === 0) problems.push(`${key}：已不存在缺 :error-message 的 <ListStates :error>，请删除此豁免`)
+      else if (missing.length !== expected) problems.push(`${key}：缺失处数 ${missing.length} ≠ 登记数 ${expected}，请核对后更新登记数（变多 = 新漏接，应补接而非加数）`)
+    }
+    expect(problems).toEqual([])
   })
 
   it('自检：规则本身能识别违规样例（防规则写错导致永远通过）', () => {
@@ -279,20 +296,24 @@ function listStatesErrorMessageCheck(src) {
 }
 
 /**
- * ⑦ 的豁免清单（相对 src 的路径 → 理由）。新增豁免须写明理由并经负责人同意；漏接的页面优先补 :error-message 而不是加豁免。
+ * ⑦ 的豁免清单（相对 src 的路径 → { missing: 允许缺 :error-message 的处数, reason }）。
+ * 新增豁免须写明理由并经负责人同意；漏接的页面优先补 :error-message 而不是加豁免。⑦b 会核对每项仍然有效。
  */
 const LIST_STATES_ERROR_MESSAGE_EXEMPT = {
-  // J63（2026-10-10 浦月选 A）：三页自己取数、不走 useAdminList，md 没有展示失败原因的条款（实例管理 md 只写「加载失败」+【重试】）。
-  'views/admin/AdminApis.vue': 'J63：md 未要求展示失败原因',
-  'views/admin/FieldManagement.vue': 'J63：md 未要求展示失败原因',
-  'views/admin/AdminInstances.vue': 'J63：md 未要求展示失败原因',
-  // 以下三组归属其它批次正在改的页面（存储空间 / 岗位 / 工具调用审计），本批不越界编辑；对应批次合入后应补 :error-message 并删掉这几行。
-  'components/admin/storage/StorageQuotaPane.vue': '存储空间批在改，合入后补 :error-message 并移除豁免',
-  'components/admin/storage/StorageRequestPane.vue': '存储空间批在改，合入后补 :error-message 并移除豁免',
-  'components/position/PositionBusinessSystemTab.vue': '岗位批在改；该页三处错误态是自管的 mcpError/apiError/bizError，需先确认是否有原因文案再接',
-  'views/admin/ToolCallAuditKnowledge.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免',
-  'views/admin/ToolCallAuditSkills.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免',
-  'views/admin/ToolCallAuditTasks.vue': '工具调用审计批（D1）在改，合入后补 :error-message 并移除豁免'
+  // J63（2026-10-10 浦月选 A）：三页自己取数、不走 useAdminList（没有现成的 loadErrorMessage），
+  // md 没有展示失败原因的条款（实例管理 md 只写「加载失败」+【重试】），故不接入。J63 三页各只登记 1 处，再多一处漏接就会报红。
+  'views/admin/AdminApis.vue': { missing: 1, reason: 'J63：md 未要求展示失败原因' },
+  'views/admin/FieldManagement.vue': { missing: 1, reason: 'J63：md 未要求展示失败原因' },
+  'views/admin/AdminInstances.vue': { missing: 1, reason: 'J63：md 未要求展示失败原因' },
+  // 工具调用审计三个页签走 useAuditList（读前端静态记录，fetcher 不会真失败），没有 loadErrorMessage 可接；
+  // :error 分支只是与其它列表页同构的防御性出口，没有「失败原因」可展示，故不适用 ⑦。
+  'views/admin/ToolCallAuditKnowledge.vue': { missing: 1, reason: 'useAuditList 读静态数据不会失败，无失败原因可接' },
+  'views/admin/ToolCallAuditSkills.vue': { missing: 1, reason: 'useAuditList 读静态数据不会失败，无失败原因可接' },
+  'views/admin/ToolCallAuditTasks.vue': { missing: 1, reason: 'useAuditList 读静态数据不会失败，无失败原因可接' },
+  // 存储空间两个面板由另一条并行批次维护（本批不越界编辑）；它们走 useAdminList，合入后直接补 :error-message="list.loadErrorMessage" 并删掉这两行。
+  'components/admin/storage/StorageQuotaPane.vue': { missing: 1, reason: '存储空间由并行批次维护，合入后补接并移除豁免' },
+  'components/admin/storage/StorageRequestPane.vue': { missing: 1, reason: '存储空间由并行批次维护，合入后补接并移除豁免' }
+  // 岗位「连接器」页签三处自管错误态（mcpError / apiError / bizError）已补接 :error-message，豁免已移除。
 }
 
 /* ================= J20 三条规则的实现（导出给自检用例，纯函数、不读磁盘） ================= */

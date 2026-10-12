@@ -501,8 +501,12 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
 
   // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
   it('J42 回收前后最近更新时间不变（API）', async () => {
+    const seed = (await run(m.getApi('api_1101'))).updatedAt
+    await run(m.updateApi('api_1101', { ...PAYLOAD_1101, description: '改一次基本信息' }))
     const before = (await run(m.getApi('api_1101'))).updatedAt
+    expect(before).not.toBe(seed) // 正向对照：编辑会刷新
     const row = await run(m.forceRevokeApi('api_1101', reason))
+    expect(row.revoked).toMatchObject({ reason: expect.any(String) }) // 前提：确实回收了
     expect(row.updatedAt).toBe(before)
     expect((await run(m.getApi('api_1101'))).updatedAt).toBe(before)
   })

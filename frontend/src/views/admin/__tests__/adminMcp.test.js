@@ -1081,6 +1081,15 @@ describe('AdminMcp · 强制回收（md §三.6.1：立即生效、不进审核�
     expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
   })
 
+  it('标签只跟未发布态：审核中 / 已发布行即使数据里带 revoked 也不出「已回收」', async () => {
+    const revoked = { reason: '残留的回收信息', at: '2026-10-01 09:30', operator: 'admin' }
+    adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r, revoked })), total: LIST.length }))
+    await mount()
+    expect(rowByName('未发布服务').querySelector('.revoked-tag')).not.toBeNull() // 前提：回收信息确实下发了
+    expect(rowByName('在审服务').querySelector('.revoked-tag')).toBeNull()
+    expect(rowByName('已上线服务').querySelector('.revoked-tag')).toBeNull()
+  })
+
   it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
     await mount()
     expect(rowByName('未发布服务').querySelector('.revoked-tag')).toBeNull()
