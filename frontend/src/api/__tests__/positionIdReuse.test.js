@@ -26,6 +26,13 @@ const makeStorage = () => {
   }
 }
 
+// 预热：每条用例都 vi.resetModules() 后动态 import，首次冷 transform（request.js → element-plus / router / pinia / 十几个 mock）
+// 若算在首条用例的超时里，全量并行负载下容易超时。先在 beforeAll 里把转换缓存热起来；各 describe 另放宽到 60 秒（同 reviewsMock.test.js）。
+beforeAll(async () => {
+  await import('../positionMock')
+  await import('../knowledgeBaseMock')
+}, 90000)
+
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', { value: makeStorage(), writable: true, configurable: true })
   vi.resetModules()
@@ -35,7 +42,7 @@ afterEach(() => {
   vi.resetModules()
 })
 
-describe('positionMock · 岗位 id 水位线（yuepu#52）', () => {
+describe('positionMock · 岗位 id 水位线（yuepu#52）', { timeout: 60000 }, () => {
   it('前提：全新环境首个新建岗位拿到 405', async () => {
     const m = await import('../positionMock')
     const p = await m.createPosition({ name: '水位线前提岗' })
@@ -75,7 +82,7 @@ describe('positionMock · 岗位 id 水位线（yuepu#52）', () => {
   })
 })
 
-describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#52）', () => {
+describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#52）', { timeout: 60000 }, () => {
   it('删岗后以它为可见范围的岗位知识库保留但 scopeRefId 置空；其它库的可见范围不动；同 id 新岗位不会继承', async () => {
     const pos = await import('../positionMock')
     const kb = await import('../knowledgeBaseMock')
@@ -109,7 +116,7 @@ describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#
   })
 })
 
-describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', () => {
+describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', { timeout: 60000 }, () => {
   it('清空后重新加载模块，岗位库 scopeRefId 仍为 null（不是只改了内存）', async () => {
     const kb = await import('../knowledgeBaseMock')
     expect(String((await kb.get('kb_4')).scopeRefId)).toBe('401')
@@ -133,7 +140,7 @@ describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', (
   })
 })
 
-describe('positionMock.createPosition · 带连接器 id 新建同样回写引用清单（yuepu#90①）', () => {
+describe('positionMock.createPosition · 带连接器 id 新建同样回写引用清单（yuepu#90①）', { timeout: 60000 }, () => {
   const NAME = '带连接器新建岗'
   const KINDS = [
     { kind: 'mcp', field: 'connectorMcpIds', id: 'mail_center', mod: '../mcpConnectorMock', getter: 'getMcp' },
@@ -166,7 +173,7 @@ describe('positionMock.createPosition · 带连接器 id 新建同样回写引�
   })
 })
 
-describe('positionMock.updatePosition · 连接器引用回写落盘读回（yuepu#51）', () => {
+describe('positionMock.updatePosition · 连接器引用回写落盘读回（yuepu#51）', { timeout: 60000 }, () => {
   // 种子：401（已发布）绑 expense_mcp / api_1101 / biz_2101；biz_2101 另被 402 引用
   it('解绑：401 清空三类连接器后，重新加载各连接器 mock，引用数与引用清单反映改后状态', async () => {
     const pos = await import('../positionMock')
