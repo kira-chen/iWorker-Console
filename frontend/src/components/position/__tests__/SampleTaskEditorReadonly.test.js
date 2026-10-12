@@ -6,6 +6,10 @@
  *
  * 本文件挂真 element-plus + 真 SampleTaskEditor / SchedulePicker（仅替换重型 MarkdownEditor 与 ToolPicker），
  * 断言落在用户可见结果：输入控件 disabled、保存按钮消失、列表无删除 / 新增 / 排序手柄但仍可点选查看。
+ *
+ * 刻意保留可用的控件：右栏「引用工具」「引用平台技能」两个搜索框（.tl-search / .sk-search）只做筛选、不改任务数据，
+ * 只读态下仍可用（便于查看时检索已引用项），所以 editorControls 把它们排除在「必须 disabled」之外，另有用例单独钉它们不被禁用。
+ * 调度选择器（SchedulePicker）四种模式（按周期 / 每间隔 / 单次 / 闲时）在只读下的 disabled 由末尾一组直挂用例钉住。
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
@@ -47,6 +51,7 @@ vi.mock('@/components/admin/ToolPicker.vue', () => ({ default: { name: 'ToolPick
 vi.mock('@/components/ReActSteps.vue', () => ({ default: { name: 'ReActSteps', setup: () => () => h('div') } }))
 
 import PositionSampleTaskStage from '../PositionSampleTaskStage.vue'
+import SchedulePicker from '@/components/task/SchedulePicker.vue'
 
 let app, container
 async function mountStage(readonly) {
@@ -60,6 +65,10 @@ async function mountStage(readonly) {
 }
 afterEach(() => { app?.unmount(); container?.remove(); document.body.innerHTML = '' })
 
+// 右栏控件数下限：名称输入、提示词、调度选择器（模式 4 钮 + 周期 / 星期 / 时间等）、状态开关、执行位置、测试运行等合计远多于此值；
+// 取 10 只为「确认抓到的是整块编辑器而不是漏选器抓到个位数」，不是精确个数（精确数会随编辑器加字段而变）。
+const CTRL_FLOOR = 10
+
 /** 右侧编辑器内全部可交互控件（排除只做筛选的两个搜索框）。 */
 const editorControls = (el) =>
   [...el.querySelectorAll('.st-col-edit input, .st-col-edit textarea, .st-col-edit button')].filter(
@@ -70,8 +79,8 @@ describe('自动化任务页 · 只读态（md §10 审核中全部页签只读�
   it('前提：可编辑态下右栏控件可用、有保存按钮 / 删除 / 新增 / 排序手柄', async () => {
     const el = await mountStage(false)
     const ctrls = editorControls(el)
-    expect(ctrls.length).toBeGreaterThan(10)
-    expect(ctrls.filter((c) => !c.disabled).length).toBeGreaterThan(10)
+    expect(ctrls.length).toBeGreaterThan(CTRL_FLOOR)
+    expect(ctrls.filter((c) => !c.disabled).length).toBeGreaterThan(CTRL_FLOOR)
     expect(el.querySelector('.meta-actions')).not.toBeNull()
     expect(el.querySelector('.st-op-del')).not.toBeNull()
     expect(el.querySelector('.st-new')).not.toBeNull()
@@ -81,7 +90,7 @@ describe('自动化任务页 · 只读态（md §10 审核中全部页签只读�
   it('只读态：右栏所有输入控件 / 按钮 disabled，键盘聚焦也改不了；无保存按钮；提示词编辑器收到 readonly', async () => {
     const el = await mountStage(true)
     const ctrls = editorControls(el)
-    expect(ctrls.length).toBeGreaterThan(10)
+    expect(ctrls.length).toBeGreaterThan(CTRL_FLOOR)
     expect(ctrls.filter((c) => !c.disabled).map((c) => c.outerHTML.slice(0, 80))).toEqual([])
     expect(el.querySelector('.meta-actions')).toBeNull()
     expect(el.querySelector('.stub-md').getAttribute('data-readonly')).toBe('true')
@@ -99,4 +108,42 @@ describe('自动化任务页 · 只读态（md §10 审核中全部页签只读�
     for (let i = 0; i < 8; i++) { await Promise.resolve(); await nextTick() }
     expect(el.querySelector('.st-col-edit .te-field input').value).toBe('月度复盘')
   })
+})
+
+describe('自动化任务页 · 只读态 · 刻意保留可用的搜索框', () => {
+  it('「引用工具」「引用平台技能」两个搜索框存在且不被禁用（只做筛选、不改任务数据）', async () => {
+    const el = await mountStage(true)
+    const searches = [...el.querySelectorAll('.st-col-edit .tl-search input, .st-col-edit .sk-search input')]
+    expect(searches.length).toBe(2)
+    expect(searches.every((i) => !i.disabled)).toBe(true)
+  })
+})
+
+describe('SchedulePicker · disabled 在四种模式下都禁用全部可交互控件（md §10 只读态）', () => {
+  const SCHEDULES = {
+    PERIODIC: { scheduleMode: 'PERIODIC', scheduleType: 'WEEKLY', daysOfWeek: [1], daysOfMonth: [], times: ['09:00', '14:00'] },
+    INTERVAL: { scheduleMode: 'INTERVAL', scheduleType: 'INTERVAL_DAY', intervalCount: 2, intervalUnit: 'DAY', times: ['09:00'] },
+    ONCE: { scheduleMode: 'ONCE', scheduleType: 'ONCE', onceAt: '2026-12-01 09:00' },
+    IDLE: { scheduleMode: 'IDLE', scheduleType: 'IDLE', idleCount: 1, idleCountUnit: 'DAY', idleWindow: 'NIGHT' }
+  }
+  const pickerControls = (el) => [...el.querySelectorAll('input, textarea, button')]
+
+  for (const [mode, schedule] of Object.entries(SCHEDULES)) {
+    it(`${mode} 模式：disabled=true 时没有一个可用控件；disabled=false 时有可用控件（对照）`, async () => {
+      for (const disabled of [true, false]) {
+        container = document.createElement('div')
+        document.body.appendChild(container)
+        app = createApp({ render: () => h(SchedulePicker, { schedule, disabled }) })
+        app.use(ElementPlus)
+        app.mount(container)
+        for (let i = 0; i < 4; i++) { await Promise.resolve(); await nextTick() }
+        const ctrls = pickerControls(container)
+        expect(ctrls.length).toBeGreaterThan(4) // 至少模式 4 钮 + 本模式的字段
+        const enabled = ctrls.filter((c) => !c.disabled)
+        if (disabled) expect(enabled.map((c) => c.outerHTML.slice(0, 80))).toEqual([])
+        else expect(enabled.length).toBeGreaterThan(0)
+        app.unmount(); container.remove()
+      }
+    })
+  }
 })

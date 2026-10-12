@@ -73,7 +73,7 @@ for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
   '@/components/position/PublishCheckDialog.vue',
   '@/components/position/PositionDataTableStage.vue',
-  '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/ClaimNotesEditor.vue',
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
@@ -83,6 +83,12 @@ for (const p of [
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))
 }
+
+// 自动化任务 Stage（J20）：桩出它收到的 readonly 入参——只读链条（isReadonly → :readonly → 编辑器控件 disabled）的顶层接线由本文件守，
+// 底层「readonly 真禁用控件」由 SampleTaskEditorReadonly.test.js 守。桩里放一个输入框，disabled 直接跟随 readonly。
+vi.doMock('@/components/position/PositionSampleTaskStage.vue', () => ({
+  default: { name: 'PositionSampleTaskStage', props: ['positionId', 'positionName', 'readonly'], setup: (p) => () => h('div', { class: 'stub-task-stage' }, [h('input', { class: 'stub-task-input', disabled: !!p.readonly })]) }
+}))
 
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
@@ -278,5 +284,30 @@ describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文�
     await nextTick()
     expect(store.load.mock.calls.length).toBe(before + 1)
     expect(store.load.mock.calls.at(-1)[0]).toBe('5')
+  })
+})
+
+
+describe('PositionDetailTabs · 自动化任务页签只读接线（J20，md §10 审核中全部页签只读）', () => {
+  const taskInputs = () => [...container.querySelectorAll('.stub-task-input')]
+
+  it('前提：可编辑岗位 → 自动化任务页签的输入控件可用', async () => {
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => !i.disabled)).toBe(true)
+  })
+
+  it('审核中岗位（detail.pendingAction 非空）→ 自动化任务页签的输入控件全部 disabled', async () => {
+    store.detail.pendingAction = 'PUBLISH'
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => i.disabled)).toBe(true)
+  })
+
+  it('查看态（query.view=1）→ 自动化任务页签的输入控件全部 disabled', async () => {
+    routeMock.query = { view: '1' }
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => i.disabled)).toBe(true)
   })
 })
