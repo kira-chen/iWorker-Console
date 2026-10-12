@@ -149,7 +149,7 @@ async function loadCandidates() {
     candidates.value = Array.isArray(list) ? list : []
     candidates.value.forEach((x) => {
       const old = memberInfo.get(String(x.id)) || {}
-      memberInfo.set(String(x.id), { ...old, expertId: x.id, name: x.name, avatar: x.avatar, backgroundColor: x.backgroundColor, category: x.category, leadGuide: x.leadGuide, unavailable: '' })
+      memberInfo.set(String(x.id), { ...old, expertId: x.id, name: x.name, intro: x.intro, avatar: x.avatar, backgroundColor: x.backgroundColor, category: x.category, leadGuide: x.leadGuide, unavailable: '' })
     })
   } catch {
     if (seq === candSeq) candidates.value = []
@@ -175,6 +175,11 @@ const shownCandidates = computed(() => {
 
 const selectedIds = computed(() => new Set(form.members.map((m) => String(m.expertId))))
 const isSelected = (id) => selectedIds.value.has(String(id))
+/** 「团内负责什么」选填；不填则使用该专家的简介（占位里直接写明会用什么） */
+const dutyPlaceholder = (m) => {
+  const intro = String(infoOf(m.expertId).intro || '').trim()
+  return intro ? `选填，不填则使用该专家的简介：${intro.length > 40 ? intro.slice(0, 40) + '…' : intro}` : '选填，如：条款风险与合规口径；不填则使用该专家的简介'
+}
 const infoOf = (id) => memberInfo.get(String(id)) || { name: `专家 ${id}`, category: '', avatar: '', leadGuide: '', unavailable: '' }
 
 function toggleMember(x) {
@@ -362,7 +367,6 @@ function validate() {
   if (!form.intro.trim()) fail('intro', '请填写团介绍')
   if (!form.exampleQuestions.every((q) => q.trim())) fail('examples', '请填写 3 条"团队帮你做"示例问题')
   if (form.members.length < MEMBER_MIN) fail('members', '至少 2 位成员')
-  else if (form.members.some((m) => !m.duty.trim())) fail('members', '请填写每位成员在团里负责什么')
   if (form.leaderId != null) {
     if (!form.leaderDuty.trim()) fail('leaderDuty', '请填写团长职责')
   } else if (!form.collab.trim()) {
@@ -690,7 +694,7 @@ const metaItems = computed(() => {
                   v-model="m.duty"
                   maxlength="200"
                   :disabled="disabled"
-                  placeholder="这位专家在团里负责什么，如：条款风险与合规口径"
+                  :placeholder="dutyPlaceholder(m)"
                   @input="errors.members = ''"
                 />
               </div>

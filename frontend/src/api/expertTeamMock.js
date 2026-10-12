@@ -196,7 +196,7 @@ const normMembers = (ms) => {
     const expertId = m?.expertId ?? m?.id
     if (expertId == null || seen.has(String(expertId))) continue
     seen.add(String(expertId))
-    out.push({ expertId: Number(expertId), duty: String(m?.duty || '') })
+    out.push({ expertId: Number(expertId), duty: String(m?.duty || '').trim() })
   }
   return out
 }
@@ -215,7 +215,10 @@ function resolveMembers(t) {
     const reason = unavailableReasonOf(x)
     return {
       expertId: m.expertId,
-      duty: m.duty,
+      duty: m.duty, // 管理员填的原始值（可空，编辑回显用）
+      // 生效内容：填了用填的，没填取该专家当前的简介（现取不复制，专家简介改了跟着变）
+      effectiveDuty: String(m.duty || '').trim() || x?.intro || '',
+      intro: x?.intro || '',
       name: x?.name || `（专家 ${m.expertId}）`,
       avatar: x?.avatar || '',
       backgroundColor: x?.backgroundColor || '',
@@ -283,7 +286,6 @@ export function checkTeamSavable(t) {
   if (!normQuestions(t.exampleQuestions).every((q) => q.trim())) return { field: 'examples', message: '请填写 3 条"团队帮你做"示例问题' }
   const members = t.members || []
   if (members.length < TEAM_MEMBER_MIN) return { field: 'members', message: '至少 2 位成员' }
-  if (members.some((m) => !String(m.duty || '').trim())) return { field: 'members', message: '请填写每位成员在团里负责什么' }
   if (t.leaderId != null) {
     if (!String(t.leaderDuty || '').trim()) return { field: 'leaderDuty', message: '请填写团长职责' }
   } else if (!String(t.collab || '').trim()) {
@@ -497,7 +499,9 @@ export async function trialTeam(payload = {}) {
     let order = '同时'
     if (i === 0) order = '先做'
     else if (sequential && i === members.length - 1) order = `等 ${nameOf(members[0])} 完成后`
-    return { expertId: m.expertId, name: nameOf(m), duty: m.duty || '按专业口径处理这一块', order }
+    // 没填「团内负责什么」时取该专家的简介（同详情页口径）
+    const duty = String(m.duty || '').trim() || map.get(String(m.expertId))?.intro || '按专业口径处理这一块'
+    return { expertId: m.expertId, name: nameOf(m), duty, order }
   })
   return {
     mode: leaderId != null ? 'leader' : 'system',

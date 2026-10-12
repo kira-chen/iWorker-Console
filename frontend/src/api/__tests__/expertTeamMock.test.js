@@ -118,7 +118,8 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(checkTeamPublishable({ ...full, leaderId: 202, leaderDuty: '' })).toMatchObject({ field: 'leaderDuty', message: '请填写团长职责' })
     // 设了团长时协作关系可以不填
     expect(checkTeamPublishable({ ...full, leaderId: 202, leaderDuty: '按知识口径', collab: '' })).toBeNull()
-    expect(checkTeamPublishable({ ...full, members: [full.members[0], { ...full.members[1], duty: ' ' }] })).toMatchObject({ field: 'members' })
+    // 团内负责什么选填：为空不拦（生效内容取专家简介）
+    expect(checkTeamPublishable({ ...full, members: [full.members[0], { ...full.members[1], duty: ' ' }] })).toBeNull()
     expect(checkTeamPublishable({ ...full, members: [full.members[0]] })).toMatchObject({ field: 'members', message: '至少 2 位成员' })
     expect(checkTeamPublishable({ ...full, exampleQuestions: ['a', '', 'c'] })).toMatchObject({ field: 'examples' })
   })
@@ -133,6 +134,15 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     const t = { ...withDraft, positionIds: [401, 999] }
     expect(checkTeamPublishable(t).message).toMatch(/成员「法务审阅专家」未绑定岗位「.*999.*」，该岗位员工将无法使用，请调整/)
     expect(checkTeamPublishable({ ...withDraft, positionIds: [401, 402] })).toBeNull()
+  })
+
+  it('团内负责什么选填：空则生效内容取该专家当前简介（现取不复制）；填了用填的；试跑里同口径（md §三.3.1）', async () => {
+    const t = await createTeam(base({ name: '简介兜底团', members: [{ expertId: 201, duty: '' }, { expertId: 204, duty: '  只看竞品  ' }] }))
+    const d = await getTeam(t.id)
+    expect(d.members.map((m) => [m.duty, m.effectiveDuty])).toEqual([['', '汇总经营数据，识别异常并形成管理建议'], ['只看竞品', '只看竞品']])
+    const trial = await trialTeam({ members: [{ expertId: 201, duty: '' }, { expertId: 204, duty: '只看竞品' }], collab: 'x', task: 't' })
+    expect(trial.plan.map((p) => p.duty)).toEqual(['汇总经营数据，识别异常并形成管理建议', '只看竞品'])
+    expect(checkTeamPublishable(d)).toBeNull()
   })
 
   it('提交发布 → 进入审核 + 审核中心落行 + 存快照；撤回清快照；通过后 v1.0.0 已发布、驳回回到未发布', async () => {

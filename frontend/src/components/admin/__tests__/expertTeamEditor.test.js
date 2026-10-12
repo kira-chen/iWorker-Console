@@ -88,6 +88,22 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(labels()).toEqual(['团类型', '团名称', '分类', '图标', '团介绍'])
   })
 
+  it('团内负责什么选填：占位写明「不填则使用该专家的简介」；全空也能通过校验（md §三.3.1）', async () => {
+    api.getTeam.mockResolvedValue(detail({ members: detail().members.map((m) => ({ ...m, duty: '', intro: '该专家的简介内容' })) }))
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    api.updateTeam.mockResolvedValue(detail())
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(14)
+    const input = drawerOf().querySelector('[data-testid="team-member-202"] input')
+    expect(input.value).toBe('')
+    expect(input.placeholder).toContain('不填则使用该专家的简介')
+    const save = [...drawerOf().querySelectorAll('.el-drawer__footer .el-button')].find((b) => b.textContent.trim() === '保存')
+    save.click()
+    await flushAll(8)
+    expect(api.updateTeam).toHaveBeenCalledWith(302, expect.objectContaining({ members: [expect.objectContaining({ expertId: 202, duty: '' }), expect.objectContaining({ expertId: 201, duty: '' })] }))
+    expect(drawerOf().textContent).not.toContain('请填写每位成员')
+  })
+
   it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与团长（卡内含团队协作关系）；团介绍在成员之前', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
