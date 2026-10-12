@@ -145,6 +145,7 @@ async function mount(props = {}) {
   app.component('el-table', elTable)
   app.component('el-table-column', elTableColumn)
   app.component('el-tag', elTag)
+  app.component('el-empty', { name: 'el-empty', props: ['description', 'imageSize'], template: '<div class="el-empty"><span>{{ description }}</span><slot /></div>' })
   app.component('el-tooltip', { name: 'el-tooltip', props: ['content'], template: '<span class="tip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
@@ -512,5 +513,23 @@ describe('连接器页签 · 最近更新时间列头排序（2026-10-08 对齐 
     await flush()
     expect(arrow()).toBe('↓')
     expect(sectionNames(section(title))).toEqual(descOrder)
+  })
+})
+
+describe('连接器页签 · 取数失败态给出失败原因（#74；静态卫生规则 ⑦ 要求 <ListStates :error> 带 :error-message）', () => {
+  it.each([
+    ['岗位私有 MCP', () => listMcp],
+    ['岗位私有 API', () => listApis],
+    ['岗位私有业务系统', () => listBizSystems]
+  ])('%s 区取数失败 → 显示「加载失败」+ 失败原因 + 【重试】；点重试成功后恢复列表', async (title, getFn) => {
+    getFn().mockRejectedValueOnce(new Error('服务暂时不可用'))
+    await mount()
+    const sec = section(title)
+    expect(sec.textContent).toContain('加载失败')
+    expect(sec.querySelector('[data-testid="list-error-reason"]').textContent).toBe('服务暂时不可用')
+    sectionBtn(sec, '重试').click()
+    await flush()
+    expect(sec.querySelector('[data-testid="list-error-reason"]')).toBeNull()
+    expect(sectionNames(sec).length).toBe(1)
   })
 })
