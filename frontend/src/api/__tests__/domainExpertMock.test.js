@@ -362,10 +362,15 @@ describe('forceRevokeExpert —— 强制回收', () => {
   })
 
   // 待决策 J42（浦月 2026-10-10 选 A）：强制回收与停用一致，不刷新最近更新时间
-  it('J42 回收前后最近更新时间不变（专家）', async () => {
+  it('J42 回收前后最近更新时间不变（专家）；对照：改一次基本信息则会变（updatedAt 机制本身有效）', async () => {
+    const seed = (await getExpert(201)).updatedAt
+    await updateExpert(201, { intro: '改一次基本信息' })
     const before = (await getExpert(201)).updatedAt
+    expect(before).not.toBe(seed) // 正向对照：编辑会刷新
     await forceRevokeExpert(201, { reason: '风险' })
-    expect((await getExpert(201)).updatedAt).toBe(before)
+    const after = await getExpert(201)
+    expect(after.revoked).toMatchObject({ reason: '风险' }) // 前提：确实回收了
+    expect(after.updatedAt).toBe(before)
   })
 
   it('回收后：立即回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked、不进审核中心', async () => {
