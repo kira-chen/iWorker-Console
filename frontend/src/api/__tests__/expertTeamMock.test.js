@@ -93,18 +93,14 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     await expect(createTeam(base({ name: '团长不在成员里', leaderId: 202 }))).rejects.toMatchObject({ field: 'leaderId' })
   })
 
-  it('分类所有团都有且必选；专家团没有背景色字段；用途选填（拆解依据）', async () => {
-    const sys = await createTeam(base({ name: '通用团甲', type: 'SYSTEM_DEFAULT', category: '投资', purpose: '  一句话用途 ' }))
+  it('分类所有团都有且必选；专家团没有背景色字段；没有「用途」字段（后台团用协作关系，客户端 §5.2）', async () => {
+    const sys = await createTeam(base({ name: '通用团甲', type: 'SYSTEM_DEFAULT', category: '投资' }))
     expect(sys.category).toBe('投资')
-    expect(sys.purpose).toBe('一句话用途')
+    expect(sys).not.toHaveProperty('purpose')
     expect(sys).not.toHaveProperty('backgroundColor')
     expect(checkTeamPublishable(await getTeam(sys.id))).toBeNull()
     const market = await getTeam(301)
     expect(checkTeamPublishable({ ...market, category: '' })).toMatchObject({ field: 'category', message: '请选择专家分类' })
-    // 用途选填：不填也能发布；改用途会清「已试跑」
-    expect(checkTeamPublishable({ ...market, purpose: '' })).toBeNull()
-    expect((await getTeam(302)).trialed).toBe(true)
-    expect((await updateTeam(302, { purpose: '换一句用途' })).trialed).toBe(false)
   })
 
   it('创建后初始为「未发布」，团类型创建后不可改；更新时团类型被忽略', async () => {

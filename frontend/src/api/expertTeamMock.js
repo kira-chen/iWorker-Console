@@ -66,7 +66,6 @@ function seedTeams() {
       positionIds: [],
       avatar: '◈',
       category: '投资',
-      purpose: '把经营数据分析和行业研究放在一起，给出可追溯的管理建议',
       intro: '把经营数据分析和行业研究放在一起看：先识别经营异常，再用公开资料做行业与竞品对照，给出可追溯的管理建议。',
       members: [
         { expertId: 201, duty: '经营数据分析口径与管理建议' },
@@ -91,7 +90,6 @@ function seedTeams() {
       positionIds: [],
       avatar: '⌕',
       category: '通用',
-      purpose: '解答制度、流程和业务知识类问题',
       intro: '解答制度、流程和业务知识类问题：由企业知识助手检索依据，经营分析专家补充数据口径，给出带出处的回答。',
       members: [
         { expertId: 202, duty: '检索制度与流程依据并标注出处' },
@@ -157,9 +155,10 @@ let reviewSnapshots = {}
 
 // v1（2026-10-12）：专家团模块首次接入持久化。
 // v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
-// v3（2026-10-12）：专家团新增选填「用途」purpose（客户端 PRD §2.1：拆解依据之一），301 / 302 种子带一句；分类仍是所有团都有。
+// v3（2026-10-12）：曾加选填「用途」purpose。
+// v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -204,7 +203,7 @@ const normMembers = (ms) => {
 
 /** 成员配置里会影响「试跑结果」的部分的签名；变了就要清掉「已试跑」（md §三.9）。 */
 const structureSig = (t) =>
-  JSON.stringify([t.members.map((m) => [m.expertId, m.duty]), t.leaderId ?? null, t.leaderDuty || '', t.collab || '', t.purpose || ''])
+  JSON.stringify([t.members.map((m) => [m.expertId, m.duty]), t.leaderId ?? null, t.leaderDuty || '', t.collab || ''])
 
 /* ---------------- 出参 ---------------- */
 
@@ -267,7 +266,6 @@ function toDetail(t) {
     ...toRow(t),
     members: resolveMembers(t),
     leaderDuty: t.leaderDuty || '',
-    purpose: t.purpose || '',
     collab: t.collab || '',
     exampleQuestions: normQuestions(t.exampleQuestions)
   }
@@ -409,7 +407,6 @@ export async function createTeam(payload = {}) {
     members,
     leaderId,
     leaderDuty: leaderId != null ? String(payload.leaderDuty || '') : '',
-    purpose: String(payload.purpose || '').trim(),
     collab: String(payload.collab || ''),
     exampleQuestions: normQuestions(payload.exampleQuestions),
     trialed: !!payload.trialed,
@@ -454,7 +451,6 @@ export async function updateTeam(id, payload = {}) {
   }
   if (payload.leaderDuty !== undefined) t.leaderDuty = String(payload.leaderDuty || '')
   if (payload.collab !== undefined) t.collab = String(payload.collab || '')
-  if (payload.purpose !== undefined) t.purpose = String(payload.purpose || '').trim()
   // 「已试跑」：结构被改过则清零，除非本次明确带了 trialed=true（编辑器在改动后重新试跑过）
   if (payload.trialed !== undefined) t.trialed = !!payload.trialed
   else if (structureSig(t) !== sigBefore) t.trialed = false

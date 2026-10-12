@@ -88,25 +88,18 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(labels()).toEqual(['团类型', '团名称', '分类', '图标', '团介绍'])
   })
 
-  it('团的用途：选填，在协作关系卡里；不填也不影响保存校验（客户端 PRD §2.1）', async () => {
-    api.getTeam.mockResolvedValue(detail({ purpose: '解答制度类问题' }))
-    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
-    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
-    await flushAll(14)
-    const input = drawerOf().querySelector('[data-testid="team-purpose"] input, input[data-testid="team-purpose"]')
-    expect(input.value).toBe('解答制度类问题')
-    expect(drawerOf().querySelector('[data-testid="team-collab-card"]').textContent).toContain('团的用途')
-    expect(drawerOf().querySelector('[data-testid="team-collab-card"]').textContent).toContain('选填')
-  })
-
-  it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与团长 → 团队协作关系；团介绍在成员之前', async () => {
+  it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与团长（卡内含团队协作关系）；团介绍在成员之前', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
     await flushAll(14)
     const drawer = drawerOf()
     const cards = [...drawer.querySelectorAll('.section-card')]
-    expect(cards.map((c) => c.dataset.testid || c.querySelector('.section-title').textContent.trim().slice(0, 4))).toEqual(['基本信息', 'team-members-card', 'team-collab-card'])
+    expect(cards.map((c) => c.dataset.testid || c.querySelector('.section-title').textContent.trim().slice(0, 4))).toEqual(['基本信息', 'team-members-card'])
+    // 团队协作关系并入成员卡，不再是独立卡；不再有「团的用途」
+    expect(cards[1].querySelector('[data-testid="team-collab-card"]')).toBeTruthy()
+    expect(drawer.querySelector('[data-testid="team-purpose"]')).toBeNull()
+    expect(drawer.textContent).not.toContain('团的用途')
     // 「团队帮你做」是基本信息卡内的子分区，不是独立卡；排在团介绍之后
     const basic = cards[0]
     expect(basic.querySelector('[data-testid="team-examples"]')).toBeTruthy()

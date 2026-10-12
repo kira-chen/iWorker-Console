@@ -74,7 +74,6 @@ const form = reactive({
   members: [], // [{ expertId, duty }]，顺序即团内排位
   leaderId: null,
   leaderDuty: '',
-  purpose: '',
   collab: '',
   exampleQuestions: ['', '', '']
 })
@@ -100,7 +99,6 @@ function resetForm(d) {
   form.leaderId = d?.leaderId ?? null
   form.leaderDuty = d?.leaderDuty || ''
   form.collab = d?.collab || ''
-  form.purpose = d?.purpose || ''
   form.exampleQuestions = [0, 1, 2].map((i) => String((d?.exampleQuestions || [])[i] || ''))
   trialed.value = !!d?.trialed
   memberInfo.clear()
@@ -228,7 +226,7 @@ watch(
 
 /** 成员或团长、职责、协作关系变了 → 已试跑状态清零（md §三.9）。 */
 const structureKey = computed(() =>
-  JSON.stringify([form.members.map((m) => [m.expertId, m.duty]), form.leaderId, form.leaderDuty, form.collab, form.purpose])
+  JSON.stringify([form.members.map((m) => [m.expertId, m.duty]), form.leaderId, form.leaderDuty, form.collab])
 )
 watch(structureKey, () => {
   if (!hydrating) trialed.value = false
@@ -384,7 +382,6 @@ function buildPayload() {
     members: form.members.map((m) => ({ expertId: m.expertId, duty: m.duty.trim() })),
     leaderId: form.leaderId,
     leaderDuty: form.leaderId != null ? form.leaderDuty : '',
-    purpose: form.purpose.trim(),
     collab: form.collab,
     exampleQuestions: form.exampleQuestions.map((q) => q.trim()),
     trialed: trialed.value
@@ -747,10 +744,9 @@ const metaItems = computed(() => {
             <div v-if="errors.leaderDuty" class="et-err">{{ errors.leaderDuty }}</div>
           </div>
         </template>
-      </section>
 
-      <!-- ③ 团队协作关系 -->
-      <section class="section-card" data-testid="team-collab-card">
+        <!-- 团队协作关系：并入本卡片，紧接成员与团长（同专家详情页「技能引用」之类的一张卡里放相关内容） -->
+        <div class="et-subsection" data-testid="team-collab-card">
         <div class="et-sec-headrow">
           <h3 class="section-title et-sub-title">
             <span v-if="form.leaderId == null" class="et-req">*</span>
@@ -781,10 +777,6 @@ const metaItems = computed(() => {
             >{{ aiCollab.label.value }}</el-button>
           </div>
         </div>
-        <div class="et-purpose">
-          <div class="et-label-row"><span>团的用途<span class="section-sub">选填，一句话说明这个团用来干什么；不填则按成员专业自动写一句，同样作为拆解依据</span></span></div>
-          <el-input v-model="form.purpose" maxlength="200" show-word-limit :disabled="disabled" placeholder="如：把一份合同从法律、税务、履约三个角度一起看一遍" data-testid="team-purpose" />
-        </div>
         <el-input
           v-model="form.collab"
           type="textarea"
@@ -800,9 +792,10 @@ const metaItems = computed(() => {
         <div v-if="isEdit && detail && !form.leaderId && !props.readonly" class="et-hint" data-testid="team-trial-state">
           {{ trialed ? '已试跑：当前成员与协作关系已试跑过拆解' : '未试跑：没设团长的团建议发布前试跑一次' }}
         </div>
+        </div>
       </section>
 
-      <!-- ④ 时间信息 -->
+      <!-- ③ 时间信息 -->
       <div v-if="isEdit && detail" class="et-meta">
         <span v-for="m in metaItems" :key="m">{{ m }}</span>
       </div>
@@ -1138,9 +1131,6 @@ const metaItems = computed(() => {
   margin-top: 26px;
   padding-top: 24px;
   border-top: 1px solid var(--border-soft);
-}
-.et-purpose {
-  margin-bottom: var(--space-3);
 }
 .et-leader-duty {
   margin-top: var(--space-3);
