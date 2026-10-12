@@ -195,6 +195,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
     const governance = [...el.querySelectorAll('.rail-group')].find((g) => g.querySelector('.rail-group-no')?.textContent.trim() === '05')
     const railPages = [...governance.querySelectorAll('.rail-label')].map((n) => n.textContent.trim())
     expect(railPages.length).toBeGreaterThan(0)
+    expect(railPages).toContain('工具调用审计') // 点名钉住曾漏授的页面：渲染结构一变导致 railPages 退化成别的集合时，护栏不会静默失效
     const tree = await getPermissionTree()
     const treePages = tree.find((s) => s.scope === '管理端').groups.find((g) => g.name === '05 治理').pages
     for (const page of railPages) expect(treePages).toContain(page)
