@@ -366,6 +366,13 @@ describe('AdminStorageSpace · 扩容申请页签（PRD §四）', () => {
     expect(again.status).toBe('PENDING')
   })
 
+  it('从驾驶舱【去处理】（?tab=request&status=PENDING）：直接落在扩容申请页签，状态筛选为「待处理」', async () => {
+    route.query = { tab: 'request', status: 'PENDING' }
+    await mountPage()
+    expect(api.listStorageMembers).not.toHaveBeenCalled()
+    expect(api.listExpansionRequests.mock.calls[0][0].status).toBe('PENDING')
+  })
+
   it('手动进入扩容申请页签，状态筛选默认「待处理」（md §四·1），没有搜索词', async () => {
     await openRequestTab()
     const params = api.listExpansionRequests.mock.calls.at(-1)[0]
