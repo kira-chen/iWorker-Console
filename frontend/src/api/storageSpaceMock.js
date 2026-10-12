@@ -227,7 +227,7 @@ const matchKeyword = (item, keyword) =>
 
 /* ---------------- 校验 ---------------- */
 function checkQuota(value, min = QUOTA_MIN_GB) {
-  // 正整数、不小于 min（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则；文案与页面共用 quotaInputError
+  // 正整数、1 GB ≤ 容量 ≤ 20 GB；文案与页面共用 quotaInputError
   const message = quotaInputError(value, min)
   if (message) throw err(message, 40001, 'quotaGb')
   return Number(value)

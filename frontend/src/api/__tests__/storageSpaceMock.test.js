@@ -63,7 +63,7 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
     await adjustStorageQuota(202, 20) // 李娜 4.7/20 = 23.5%，变成正常；张伟 2.7/5 = 54%
     const normals = async () => (await listStorageMembers({ state: 'NORMAL', size: 50 })).list.map((m) => m.username)
     expect(await normals()).toEqual(['zhangwei', 'li.na'])
-    await adjustStorageQuota(201, 100) // 张伟 2.7/100 = 2.7%，掉到李娜后面
+    await adjustStorageQuota(201, 20) // 张伟 2.7/20 = 13.5%，掉到李娜后面
     expect(await normals()).toEqual(['li.na', 'zhangwei'])
   })
 
@@ -121,9 +121,10 @@ describe('storageSpaceMock —— 调整容量', () => {
     await expect(adjustStorageQuota(208, 0)).rejects.toThrow('容量不能小于 1 GB')
   })
 
-  it('调整容量不设上限', async () => {
-    await adjustStorageQuota(208, 50000)
-    expect((await memberOf('zhaomin')).totalGb).toBe(50000)
+  it('调整容量上限 20 GB：20 可以，21 报「容量不能大于 20 GB」', async () => {
+    await adjustStorageQuota(208, 20)
+    expect((await memberOf('zhaomin')).totalGb).toBe(20)
+    await expect(adjustStorageQuota(208, 21)).rejects.toThrow('容量不能大于 20 GB')
   })
 
   it('恢复默认：清除个人设置值，总量回到默认容量', async () => {

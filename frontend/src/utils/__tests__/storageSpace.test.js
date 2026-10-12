@@ -29,10 +29,15 @@ describe('quotaInputError —— 容量输入校验文案', () => {
     expect(quotaInputError(3, 5)).toBe('容量不能小于 5 GB')
   })
 
-  it('合法返回空串；不设上限；数字字符串也认', () => {
+  it('合法返回空串；1 与 20 都在范围内；数字字符串也认', () => {
     expect(quotaInputError(1)).toBe('')
     expect(quotaInputError('8')).toBe('')
-    expect(quotaInputError(100000)).toBe('')
+    expect(quotaInputError(20)).toBe('')
+  })
+
+  it('超过 20 GB 提示「容量不能大于 20 GB」', () => {
+    expect(quotaInputError(21)).toBe('容量不能大于 20 GB')
+    expect(quotaInputError(100000)).toBe('容量不能大于 20 GB')
   })
 })
 

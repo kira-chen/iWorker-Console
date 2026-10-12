@@ -26,6 +26,9 @@ export const REJECT_REASON_MAX = 500
 
 /** 调整容量、批量设置、同意扩容的输入框最小值（GB），减号减到它就不能再减 */
 export const QUOTA_MIN_GB = 1
+/** 单个员工容量上限（GB）：调整容量、批量设置、同意扩容都不能超过，输入框加到它就不能再加 */
+export const QUOTA_MAX_GB = 20
+
 /** 容量数值展示：整数不带小数点，其余保留 1 位；空值显示「—」。 */
 export function fmtGb(value) {
   if (value == null) return '—'
@@ -37,10 +40,11 @@ export function fmtGb(value) {
  * 输入框不设 precision（小数原样保留），所以「只能填整数」由这里提示；小于下限时输入框会先把值拉回下限，
  * 「不能小于」主要给绕过页面的调用兜底。
  */
-export function quotaInputError(value, min = QUOTA_MIN_GB) {
+export function quotaInputError(value, min = QUOTA_MIN_GB, max = QUOTA_MAX_GB) {
   if (value == null || value === '' || Number.isNaN(Number(value))) return '请输入正整数'
   const n = Number(value)
   if (!Number.isInteger(n)) return '容量只能填整数'
   if (n < min) return `容量不能小于 ${min} GB`
+  if (n > max) return `容量不能大于 ${max} GB`
   return ''
 }

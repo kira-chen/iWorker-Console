@@ -20,7 +20,7 @@ import {
   adjustStorageQuota,
   batchAdjustStorageQuota
 } from '@/api/storageSpace'
-import { STORAGE_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
+import { STORAGE_STATE, QUOTA_MIN_GB, QUOTA_MAX_GB, DEFAULT_QUOTA_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 const props = defineProps({
   /** 访问审计「查看」跳转带入的员工用户名，作为初始搜索词 */
@@ -91,7 +91,7 @@ const overusedTargets = computed(() => {
   if (dialog.kind === 'batch') return selected.value.filter((r) => r.usedGb != null && dialog.value <= r.usedGb)
   return []
 })
-/** 调整容量 / 批量设置最小 1 GB，可任意调大调小，不受当前容量限制 */
+/** 调整容量 / 批量设置1–20 GB，可任意调大调小，不受当前容量限制 */
 const minGb = QUOTA_MIN_GB
 
 // 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
@@ -272,8 +272,8 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
       </div>
 
       <div class="sq-field-label"><b class="sq-required">*</b> 新总量（GB）</div>
-      <el-input-number v-model="dialog.value" :min="minGb" :step="1" class="sq-number" />
-      <div class="sq-sub">正整数，不小于 {{ minGb }} GB</div>
+      <el-input-number v-model="dialog.value" :min="minGb" :max="QUOTA_MAX_GB" :step="1" class="sq-number" />
+      <div class="sq-sub">正整数，{{ minGb }}–{{ QUOTA_MAX_GB }} GB</div>
       <div v-if="dialog.error" class="sq-error">{{ dialog.error }}</div>
 
       <template #footer>
