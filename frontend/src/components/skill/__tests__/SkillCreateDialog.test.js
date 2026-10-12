@@ -3,14 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, ref, nextTick } from 'vue'
 
 /**
- * SkillCreateDialog（技能页 / 岗位白板共用新建对话框）行为测试。
+ * SkillCreateDialog（技能页新建对话框）行为测试。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/技能/prd.技能.md §三.2 新建技能弹窗：
  * 技能类型必选单选（§三.2「技能类型：必选单选」）、每包独立选分类（§三.2「每个包必须独立选择分类」）、未选类型/分类/内容不可提交（§三.2「未选择类型、分类或未填写创建内容时不可提交」）、
  * 每次打开弹窗清空上次选择（§三.2「每次打开弹窗清空上次选择」）、zip 导入返回列表 / 手动创建进编辑页（§三.2「导入完成后统一返回技能列表，不自动进入编辑页」/「点击【创建】后直接跳转至编辑页」）。
- * 原 AdminSkills #4 对话框断言（zip 主 + 手动次入口、F5c 就地回显）随本体迁到这里，
- * 并补两侧差异点：agentId/source 透传 importSkillZip、手动创建走 createFn。
+ * 原 AdminSkills #4 对话框断言（zip 主 + 手动次入口、F5c 就地回显）随本体迁到这里。
  * 2026-09-12 审计 T33：原 components/__tests__/skillCreateDialog.test.js（类型选择两窗合一，9 条）并入本文件末尾 describe。
- * 2026-10-10 J10：组件退役「不传 typeOptions」旧分支（岗位白板旧调用方已无），本文件删去守旧分支的 6 条用例
+ * 2026-10-10 J10：组件退役「不传 typeOptions」旧分支（旧调用形态已无调用方），本文件删去守旧分支的 6 条用例
  * （agentId/source 透传、createFn(name) 旧签名、旧空名 warning、platform 未选分类、fde 不拉分类、不传 typeOptions 旧形态），
  * 其余用例统一经 typeOptions + 选定类型 + 每包选分类的新口径运行。
  */
@@ -260,9 +259,9 @@ describe('SkillCreateDialog · 多包批量上传（2026-08-17）', () => {
  * 类型选择两窗合一（2026-08-24；自 components/__tests__/skillCreateDialog.test.js 并入，审计 T33）。
  * 背景：原交互是「点新建 → 选类型窗 → 下一步 → 二次确认『建后不可更改』→ 上传窗」；
  * 现改为类型单选内置于上传窗顶部，一步到位。锁住合一后的关键不变式：
- *   1) 传 typeOptions 才启用内置类型选择；不传时行为与改造前一致（岗位白板调用方不受影响）。
+ *   1) 类型选择由 typeOptions 驱动（J10 起必传）。
  *   2) 类型不预选，未选前提交被兜底拦截（类型建后不可改，绝不能落空；md §三.2「技能类型建成后不可更改」）。
- *   3) source / createFn / hint 全部随所选类型切换。
+ *   3) source / createFn 随所选类型切换。
  *   4) 分类选择器三类均出现、选项来自 fieldDict 固定 11 类（md §三.2「技能分类：必选 11 个固定分类」）。
  *   5) created-batch 回传 skillType，父级据此刷新列表。
  */
@@ -272,9 +271,9 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 技能类�
   const positionCreate = vi.fn(async () => ({ skillId: 'sk_position' }))
   // 词表照 md §一.1 技能类型筛选、§三.2 技能类型单选：岗位私有 / 市场技能 / 通用技能
   const TYPE_OPTIONS = [
-    { value: 'SYSTEM_DEFAULT', label: '通用技能', source: 'system', createFn: systemCreate, hint: '通用技能提示' },
-    { value: 'POSITION', label: '岗位私有', source: 'fde', createFn: positionCreate, hint: '岗位私有提示' },
-    { value: 'PLATFORM', label: '市场技能', source: 'platform', createFn: platformCreate, hint: '市场技能提示' }
+    { value: 'SYSTEM_DEFAULT', label: '通用技能', source: 'system', createFn: systemCreate },
+    { value: 'POSITION', label: '岗位私有', source: 'fde', createFn: positionCreate },
+    { value: 'PLATFORM', label: '市场技能', source: 'platform', createFn: platformCreate }
   ]
   /** 一个待导入 zip 项（结构对齐组件内部 zipItems 元素）。 */
   const zipItem = (over = {}) => ({ key: 1, name: 'a.zip', raw: {}, categoryId: null, status: 'pending', error: '', skillId: null, ...over })
@@ -317,6 +316,29 @@ describe('SkillCreateDialog · 技能类型内置单选（md §三.2 技能类�
     expect(positionCreate).not.toHaveBeenCalled()
     expect(platformCreate).not.toHaveBeenCalled()
     expect(systemCreate).not.toHaveBeenCalled()
+    expect(ss.manualError).toBe('请选择技能类型、技能分类并填写创建内容')
+  })
+
+  it('类型已选、zip 包缺分类 → zipError 为 md 统一守卫文案，importSkillZip 未调用（md §三.2「每个包必须独立选择分类」）', async () => {
+    const { importSkillZip } = await import('@/api/skillFiles')
+    const ss = mountTyped()
+    ss.pickedType = 'PLATFORM'
+    await nextTick()
+    ss.zipItems = [zipItem({ categoryId: null })]
+    await ss.confirmImportZip()
+    expect(importSkillZip).not.toHaveBeenCalled()
+    expect(ss.zipError).toBe('请选择技能类型、技能分类并填写创建内容')
+  })
+
+  it('类型已选、手动创建缺分类 → manualError 为守卫文案，createFn 未调用', async () => {
+    const ss = mountTyped()
+    ss.pickedType = 'PLATFORM'
+    await nextTick()
+    ss.createMode = 'manual'
+    ss.createName = '技能X'
+    ss.createCategory = ''
+    await ss.confirmCreate()
+    expect(platformCreate).not.toHaveBeenCalled()
     expect(ss.manualError).toBe('请选择技能类型、技能分类并填写创建内容')
   })
 

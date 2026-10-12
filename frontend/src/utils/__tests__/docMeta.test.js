@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
 
+/**
+ * utils/docMeta.js 单测：该模块现已缩成 fmtSize（文件大小）/ fmtTime（分钟级时间，转自 datetime.fmtMinute）/
+ * fmtRelative（相对时间）三个格式化函数，下面三个 describe 各守一个。
+ */
 const { fmtSize, fmtTime, fmtRelative } = await import('@/utils/docMeta')
 
 /**

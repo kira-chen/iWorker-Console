@@ -22,7 +22,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
+import { DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })

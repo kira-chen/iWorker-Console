@@ -31,7 +31,7 @@
  *   `.reference-section`，时间行走 `.page-time`；
  * - S3 图标行换 IconField（预览块 + 并排【从图标库选择】【上传图标】）；
  * - A3 基本信息卡照原型最终态：名称 ｜ 所属服务提供系统 同行 → 描述通栏 → 操作性质单格；
- *   删原型/md 均无的「状态」启用/停用 radio。图标与示例问题按 md 保留（Q101/Q102 负责人已确认
+ *   「状态」启用/停用 radio 原按「原型/md 均无」删除，现已按 md §三.2 基本信息 L136 恢复（见 form.enabled 注释）。图标与示例问题按 md 保留（Q101/Q102 负责人已确认
  *   以 md 为准——原型最终层的删除属原型缺陷，不搬）；
  * - A4 鉴权配置卡内细节照原型 authMasterContent L3645：「客户端填写参数由客户端收集，平台不存值」
  *   常显（不再随勾选出现）、参数值密码态、Bearer placeholder「粘贴Bearer Token（不含Bearer前缀）」、
@@ -84,7 +84,7 @@ const form = reactive({
   providerSystemId: null,
   url: '',
   method: 'GET',
-  // 启用/停用：md §三.4 L152「必填，默认启用；停用后技能不再可引用该 API」。
+  // 启用/停用：md §三.2 L136「必填，默认启用；停用后技能不再可引用该 API」。
   // 2026-09-09 PRD 复核轮 · A16/Q338 恢复录入控件（曾于批次 3A · A3 按「md 亦无」删除，本版 md 已列出）。
   enabled: true,
   // 读/写：write → 客户端实际执行前必须经用户确认；read 直接执行（PRD §三.2）
@@ -546,7 +546,7 @@ async function save() {
             </el-form-item>
           </div>
           <!-- 启用 / 停用状态（2026-09-09 PRD 复核轮 · G4/A16 · Q338）：
-               md prd-API.md §三.4 L152「启用 / 停用状态：必填，默认启用；停用后技能不再可引用该 API」，
+               md prd-API.md §三.2 基本信息 L136「启用 / 停用状态：必填，默认启用；停用后技能不再可引用该 API」，
                《各模块必填选填字段一览表》亦已补录该字段。此控件曾按「原型最终态删了、md 亦无」一并删除，
                本版 md 已明确列出 → 恢复录入。字段与 payload 链路一直完整（form.enabled / buildPayload），
                本次只是把 UI 补回来。 -->
