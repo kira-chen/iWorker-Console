@@ -19,6 +19,7 @@ import {
   listTeamPublications,
   delistTeamPublication,
   listTeamsReferencingExpert,
+  listTeamsForAutomation,
   checkTeamPublishable,
   __resetTeamMock
 } from '../expertTeamMock'
@@ -142,6 +143,26 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     const trial = await trialTeam({ members: [{ expertId: 201, duty: '' }, { expertId: 204, duty: '只看竞品' }], collab: 'x', task: 't' })
     expect(trial.plan.map((p) => p.duty)).toEqual(['汇总经营数据，识别异常并形成管理建议', '只看竞品'])
     expect(checkTeamPublishable(d)).toBeNull()
+  })
+
+  it('岗位自动化任务可委派的团：已发布的「绑定本岗位的岗位团 + 通用团」，市场团与未发布的不进候选；删团时清掉任务里的委派对象（prd.岗位.md §7.6）', async () => {
+    // 种子：301 市场团（已发布）、302 通用团（已发布）、303 岗位团绑 401（未发布）
+    expect((await listTeamsForAutomation(401)).map((t) => t.id)).toEqual([302])
+    // 303 发布后对 401 可用，对其他岗位不可用
+    await publishTeam(303, { releaseNotes: '首发' })
+    applyTeamReviewResult(303, 'FIRST_PUBLISH', true)
+    expect((await listTeamsForAutomation(401)).map((t) => t.id).sort()).toEqual([302, 303])
+    expect((await listTeamsForAutomation(402)).map((t) => t.id)).toEqual([302])
+    const row = (await listTeamsForAutomation(401)).find((t) => t.id === 302)
+    expect(row).toMatchObject({ name: '知识问答团', leaderId: null })
+    // 级联：任务委派给草稿团，删团后委派对象被清空
+    const sampleMock = await import('../sampleTaskMock')
+    sampleMock.__resetSampleTaskMock()
+    const draft = await createTeam(base({ name: '待删团' }))
+    const task = await sampleMock.createSampleTask(401, { name: '委派任务', execType: 'TEAM', execTeamId: draft.id, sopDoc: '执行步骤' })
+    expect(task.execTeamId).toBe(draft.id)
+    await deleteTeam(draft.id)
+    expect((await sampleMock.getSampleTask(401, task.id)).execTeamId).toBeNull()
   })
 
   it('提交发布 → 进入审核 + 审核中心落行 + 存快照；撤回清快照；通过后 v1.0.0 已发布、驳回回到未发布', async () => {

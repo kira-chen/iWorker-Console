@@ -69,6 +69,12 @@ export async function listTeamsReferencingExpert(expertId) {
   return request.get(`/fde/experts/${expertId}/teams`)
 }
 
+// 岗位自动化任务「执行动作 = 专家团」的候选团（已发布的岗位团 + 通用团）。返回 [{ id, name, type, leaderId, leaderName }]
+export function listTeamsForAutomation(positionId) {
+  if (USE_MOCK) return mock.listTeamsForAutomation(positionId)
+  return request.get(`/fde/positions/${positionId}/automation-teams`)
+}
+
 /* ---------- 发布 / 版本 ---------- */
 
 export function publishTeam(teamId, payload) {

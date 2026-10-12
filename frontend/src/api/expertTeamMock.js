@@ -466,6 +466,9 @@ export async function deleteTeam(id) {
   if (t.pendingAction) throw err('审核中的专家团不可删除，请先撤回或等待审核完成', null, 409)
   if (t.status !== 'draft') throw err('已发布的专家团不可删除，需先完成停用审核', null, 409)
   const removed = t.members.length
+  // 委派给本团的岗位自动化任务清空委派对象（动态 import 避免与 sampleTaskMock 成环）
+  const { clearExecTeamRef } = await import('./sampleTaskMock')
+  clearExecTeamRef(t.id)
   teams = teams.filter((x) => x !== t)
   delete publications[t.id]
   delete reviewSnapshots[String(t.id)]
@@ -515,6 +518,25 @@ export function listTeamsReferencingExpert(expertId) {
   return teams
     .filter((t) => t.members.some((m) => String(m.expertId) === String(expertId)))
     .map((t) => ({ id: t.id, name: t.name, status: t.status }))
+}
+
+/**
+ * 岗位自动化任务「执行动作 = 专家团」的候选（prd.岗位.md §7.6）：已发布，且员工在该岗位下一定拿得到——
+ * 绑定了本岗位的岗位团 + 通用团（市场团要员工自己召唤，岗位下发的任务不能保证他有，不放进候选）。
+ */
+export async function listTeamsForAutomation(positionId) {
+  await delay(120)
+  return teams
+    .filter(
+      (t) =>
+        t.status === 'published' &&
+        (t.type === EXPERT_TYPE.SYSTEM_DEFAULT ||
+          (t.type === EXPERT_TYPE.POSITION && normPositionIds(t.positionIds).some((id) => String(id) === String(positionId))))
+    )
+    .map((t) => {
+      const r = toRow(t)
+      return { id: r.id, name: r.name, type: r.type, leaderId: r.leaderId, leaderName: r.leaderName }
+    })
 }
 
 /** 岗位被删后把它从岗位私有团的 positionIds 摘掉（口径同 removePositionFromExperts）。 */
