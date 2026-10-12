@@ -977,6 +977,27 @@ describe('编辑态已配置访问凭证（md §三.4.1 L277「保持原鉴权�
   })
 })
 
+describe('编辑态已配置访问凭证的掩码提示（md MCP §三.4：长度 > 8 露前 3 后 3、≤ 8 露前 2 后 2、≤ 4 全遮）', () => {
+  // 掩码串由 mock 层经 maskSecret 生成（authInfo.valueMasked），编辑器原样展示，故用真实 maskSecret 造入参，期望值逐字写死
+  it.each([
+    ['sk-abcdefghij', 'sk-*******hij'], // 13 位 > 8：露前 3 后 3
+    ['abcdefgh', 'ab****gh'], // 8 位：露前 2 后 2
+    ['abcd', '****'] // ≤ 4 全遮
+  ])('Bearer 凭证明文长度对应的掩码 %s → 提示「当前：%s（留空保留原值，重填覆盖）」', async (secret, masked) => {
+    const { maskSecret } = await import('@/utils/secretMask')
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, authInfo: { type: 'bearer', valueMasked: maskSecret(secret) } })
+    await mount({ mcpId: 'mcp_1' })
+    const tip = item('Token').querySelector('.md-auth-masked')
+    expect(tip.textContent.replace(/\s+/g, '')).toBe(`当前：${masked}（留空保留原值，重填覆盖）`)
+  })
+
+  it('未配置凭证（新登记选 Bearer）不展示「当前：」掩码提示', async () => {
+    await mount()
+    await setSelect(selectOf('鉴权方式'), 'bearer')
+    expect(item('Token').querySelector('.md-auth-masked')).toBeNull()
+  })
+})
+
 describe('重新进入后工具清单与入参恢复默认折叠（md §三.6 L315 / §三.6.2 L345）', () => {
   /** 展开工具清单 + 展开第 1 个工具的入参，并确认确实展开了 */
   async function expandAll() {

@@ -233,6 +233,21 @@ describe('示例问题【AI 生成】接线（md 技能 §三.3 L195；yuepu#13�
     expect(updateSkillSpy.mock.calls[0][0]).toMatchObject({ skillId: 'sk_a', exampleQuestion: '请帮我使用这个技能完成"客户回访"' })
   })
 
+  it('技能描述为空 → 【AI 生成】置灰并提示「请先填写技能描述」，点击不触发生成；填了描述后恢复可点', async () => {
+    mountAdmin({ skill: { skillId: 'sk_a', name: '客户回访', description: '', exampleQuestion: '', triggers: [], skillMd: '# md', referencedTools: [], category: null } })
+    expect(aiBtn().disabled).toBe(true)
+    expect(aiBtn().getAttribute('title')).toBe('请先填写技能描述')
+    aiBtn().click()
+    await nextTick()
+    expect(aiBtn().textContent.trim()).toBe('AI 生成') // 未进入「生成中…」
+    expect(updateSkillSpy).not.toHaveBeenCalled()
+
+    propsState.skill = { ...propsState.skill, description: '回访客户并记录要点' }
+    await nextTick()
+    expect(aiBtn().disabled).toBe(false)
+    expect(aiBtn().getAttribute('title')).toBeFalsy()
+  })
+
   it('生成中途换成另一个技能（skillId 变）→ 到点不回填（不 emit update:skill）', async () => {
     vi.useFakeTimers()
     mountAdmin()
