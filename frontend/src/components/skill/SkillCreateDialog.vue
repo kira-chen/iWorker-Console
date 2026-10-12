@@ -1,6 +1,6 @@
 <script setup>
 /**
- * SkillCreateDialog —— 新建技能对话框（技能页 / 岗位白板共用一套）。
+ * SkillCreateDialog —— 新建技能对话框（技能页使用）。
  *
  * 【2026-09-01 PRD 对齐改造（对齐交互原型 v2 最终覆写态 openSkillCreate/saveSkillCreate）】
  * 内置类型选择（typeOptions 必传）：
@@ -14,7 +14,7 @@
  *   成功 emit('created') 由父级 toast「技能已创建，已进入编辑页」并同标签进编辑页。
  * - createFn 契约升级：typeOptions[].createFn({ name, categoryName })（技能页走 createSkillOfType）。
  *
- * 【2026-10-10 J7/J10 退役「不传 typeOptions」旧分支】岗位白板的旧调用方已不存在（唯一调用方 AdminSkillsUnified
+ * 【2026-10-10 J10 退役「不传 typeOptions」旧分支】旧的无类型选择调用形态已无调用方（唯一调用方 AdminSkillsUnified
  * 总传 typeOptions），原“无类型区/无分类列、单包成功直达编辑器、createFn(name) 旧签名”分支与 source / createFn /
  * hint 三个仅服务旧分支的 props 一并删除。
  *
@@ -39,7 +39,7 @@ import { listFieldDict } from '@/api/fieldDict'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '新建技能' },
-  /** 可选：zip 导入直接挂到该 Agent 下（岗位白板场景）；不传则建游离/平台技能 */
+  /** 可选：zip 导入直接挂到该 Agent 下；不传则建游离/平台技能 */
   agentId: { type: [String, Number], default: null },
   /**
    * 技能类型内置选择（必传）：在本弹窗顶部渲染类型单选。
