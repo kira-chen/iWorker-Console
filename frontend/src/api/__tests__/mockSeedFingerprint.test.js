@@ -38,6 +38,7 @@ const FINGERPRINTS = {
   bizSystem: { version: 5, fp: 'ceed8d44' },
   dataTable: { version: 2, fp: '592831be' },
   domainExpert: { version: 7, fp: 'c7cb441c' },
+  expertTeam: { version: 5, fp: '4d70e7c1' },
   fieldDict: { version: 4, fp: '40d8527d' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
   knowledgeBase: { version: 9, fp: '04ba3a72' },
@@ -48,9 +49,9 @@ const FINGERPRINTS = {
   positionAssignment: { version: 2, fp: 'a3b870be' },
   reviews: { version: 8, fp: 'ffc05ceb' },
   runtimeSpec: { version: 3, fp: 'ee9c4c1c' },
-  sampleTask: { version: 6, fp: '01a9bf8e' },
+  sampleTask: { version: 7, fp: '01a9bf8e' },
   skillReview: { version: 3, fp: 'aa231c01' },
-  storageSpace: { version: 5, fp: '3301ae52' },
+  storageSpace: { version: 6, fp: 'b082a090' },
   unifiedSkill: { version: 6, fp: '8c59fbb1' },
   version: { version: 5, fp: '45a0afc5' }
 }

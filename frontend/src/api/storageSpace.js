@@ -48,3 +48,13 @@ export function rejectExpansionRequest(id, reason) {
   if (USE_MOCK) return mock.rejectExpansionRequest(id, reason)
   return request.post(`/fde/storage-space/expansion-requests/${encodeURIComponent(id)}/reject`, { reason }, W)
 }
+
+export function setDefaultQuota(quotaGb) {
+  if (USE_MOCK) return mock.setDefaultQuota(quotaGb)
+  return request.put('/fde/storage-space/default-quota', { quotaGb }, W)
+}
+
+export function setDiskTotal(totalGb) {
+  if (USE_MOCK) return mock.setDiskTotal(totalGb)
+  return request.put('/fde/storage-space/disk-total', { totalGb }, W)
+}

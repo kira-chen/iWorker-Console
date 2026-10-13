@@ -182,7 +182,7 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(container.querySelector('.el-input').placeholder).toBe('搜索名称 / 用户名')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型'])
-    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
+    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
     expect([...selects[1].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['首次发布', '新版本发布', '停用', '强制回收'])
     expect(toolbarBtn('查询')).toBeTruthy()
   })

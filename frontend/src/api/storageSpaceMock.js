@@ -2,7 +2,7 @@
  * 存储空间开发期 mock（04运行 › 存储空间，对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md）。
  *
  * 两块数据：
- *  - members   员工的存储用量与容量（容量 = 个人设置值，没有则取固定的默认容量 DEFAULT_QUOTA_GB）；
+ *  - members   员工的存储用量与容量（容量 = 个人设置值，没有则取可调的默认容量，出厂 DEFAULT_QUOTA_GB）；磁盘总量 / 余量见 getStorageOverview；
  *  - requests  员工端提交的扩容申请（待处理 / 已同意 / 已拒绝）。
  * 员工清单与用户模块、岗位分配**真联动**：每次读写前 reconcile()——在职用户都在清单里（新增用户 = 未统计），
  * 显示名 / 岗位取用户模块与岗位分配的当前值，用户被删除则其容量记录与申请一并移除，停用账号不进清单。
@@ -22,7 +22,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
+import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
@@ -35,16 +35,17 @@ const WARN_RATIO = 0.9
 
 // 用量与容量种子，按用户模块的 userId 对应（id / 用户名 / 显示名 / 岗位不存这里，reconcile() 每次从用户模块与岗位分配取当前值）。
 // 杨帆、马超从未登录过，员工端没统计过用量 → 「未统计」；停用账号（周明、吴杰）不进清单。
+// 存量员工（张伟 / 李娜 / 陈宇 / 王芳 / 孙欣 / 刘强 / 何静）此前按 5 GB 默认容量使用，默认容量改为 1 GB 后固化成个人设置 5 GB，保持各演示状态不变；杨帆、马超（未统计）仍随默认容量。
 // 覆盖演示各种状态：正常 / 预警 / 已满、默认与个人设置、个人设置且已满（徐琳）、预警但仍有待处理申请（孙欣，申请后自行清了空间）。
 const seedMembers = () => [
-  { userId: 201, finalGb: 2.1, cacheGb: 0.6, quotaGb: null, statAt: '2026-10-09 09:12' },
-  { userId: 202, finalGb: 4.1, cacheGb: 0.6, quotaGb: null, statAt: '2026-10-09 08:46' },
-  { userId: 203, finalGb: 5.0, cacheGb: 0, quotaGb: null, statAt: '2026-10-09 10:02' },
-  { userId: 204, finalGb: 5.0, cacheGb: 0, quotaGb: null, statAt: '2026-10-09 09:38' },
-  { userId: 206, finalGb: 4.6, cacheGb: 0, quotaGb: null, statAt: '2026-10-09 09:20' },
-  { userId: 207, finalGb: 5.0, cacheGb: 0, quotaGb: null, statAt: '2026-10-08 16:36' },
+  { userId: 201, finalGb: 2.1, cacheGb: 0.6, quotaGb: 5, statAt: '2026-10-09 09:12' },
+  { userId: 202, finalGb: 4.1, cacheGb: 0.6, quotaGb: 5, statAt: '2026-10-09 08:46' },
+  { userId: 203, finalGb: 5.0, cacheGb: 0, quotaGb: 5, statAt: '2026-10-09 10:02' },
+  { userId: 204, finalGb: 5.0, cacheGb: 0, quotaGb: 5, statAt: '2026-10-09 09:38' },
+  { userId: 206, finalGb: 4.6, cacheGb: 0, quotaGb: 5, statAt: '2026-10-09 09:20' },
+  { userId: 207, finalGb: 5.0, cacheGb: 0, quotaGb: 5, statAt: '2026-10-08 16:36' },
   { userId: 208, finalGb: 9.2, cacheGb: 0.5, quotaGb: 10, statAt: '2026-10-09 09:30' },
-  { userId: 210, finalGb: 5.0, cacheGb: 0, quotaGb: null, statAt: '2026-10-05 15:02' },
+  { userId: 210, finalGb: 5.0, cacheGb: 0, quotaGb: 5, statAt: '2026-10-05 15:02' },
   { userId: 212, finalGb: 7.6, cacheGb: 0.4, quotaGb: 8, statAt: '2026-10-09 08:30' },
   { userId: 209, finalGb: null, cacheGb: null, quotaGb: null, statAt: null },
   { userId: 213, finalGb: null, cacheGb: null, quotaGb: null, statAt: null }
@@ -117,6 +118,9 @@ const seedRequests = () => [
 
 let members = seedMembers()
 let requests = seedRequests()
+// 默认容量与磁盘总量：管理员可改，改动随存档保留
+let defaultQuotaGb = DEFAULT_QUOTA_GB
+let diskTotalGb = DISK_TOTAL_GB
 
 /**
  * 与用户模块、岗位分配对齐（每次读写前调用）：
@@ -160,12 +164,15 @@ const visibleRequests = () => requests.filter((r) => r.active)
 // v3（2026-10-09）：去掉「修改默认容量」，默认容量固定 5 GB，快照不再含 defaultQuotaGb，旧快照弃用回种子。
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
 // v5（2026-10-09）：扩容申请只展示当前用量，申请记录不再带申请时的 usedGb / totalGb，种子随之变，旧快照弃用回种子。
+// v6（2026-10-12）：默认容量改为可调（出厂 1 GB）、新增磁盘总量（出厂 1000 GB）；原按 5 GB 默认的存量员工改成个人设置 5 GB，演示状态不变，旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
-  version: 5,
+  version: 6,
   // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
   snapshot: () => ({
     members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
-    requests
+    requests,
+    defaultQuotaGb,
+    diskTotalGb
   }),
   restore: (data) => {
     if (!data || !Array.isArray(data.members) || !Array.isArray(data.requests)) {
@@ -173,11 +180,15 @@ const persist = attachPersist('storageSpace', {
     }
     members = data.members
     requests = data.requests
+    defaultQuotaGb = data.defaultQuotaGb ?? DEFAULT_QUOTA_GB
+    diskTotalGb = data.diskTotalGb ?? DISK_TOTAL_GB
   }
 })
 
 /* ---------------- 派生 ---------------- */
-const totalOf = (m) => m.quotaGb ?? DEFAULT_QUOTA_GB
+const totalOf = (m) => m.quotaGb ?? defaultQuotaGb
+/** 已分配 = 清单内在职员工的容量总和；磁盘余量 = 磁盘总量 − 已分配 */
+const allocatedGb = () => roster().reduce((sum, m) => sum + totalOf(m), 0)
 const usedOf = (m) => (m.finalGb == null ? null : round1(m.finalGb + (m.cacheGb || 0)))
 
 /** 状态：未统计 / 已满 / 预警 / 正常（PRD 一·4）。 */
@@ -227,10 +238,18 @@ const matchKeyword = (item, keyword) =>
 
 /* ---------------- 校验 ---------------- */
 function checkQuota(value, min = QUOTA_MIN_GB) {
-  // 正整数、不小于 min（1 GB），不设上限：真实可分配上限取决于部署侧存储，不是产品规则；文案与页面共用 quotaInputError
+  // 正整数、1 GB ≤ 容量 ≤ 20 GB；文案与页面共用 quotaInputError
   const message = quotaInputError(value, min)
   if (message) throw err(message, 40001, 'quotaGb')
   return Number(value)
+}
+
+/** 不超分：分配后各员工容量之和不得超过磁盘总量。delta = 本次操作使已分配增加的量（调小为负，永远放行）。 */
+function assertDiskEnough(delta) {
+  const remaining = diskTotalGb - allocatedGb()
+  if (delta > remaining) {
+    throw err(`磁盘余量不足：当前余量 ${remaining} GB，本次需要增加 ${delta} GB（磁盘总量 ${diskTotalGb} GB）`, 40002, 'quotaGb')
+  }
 }
 
 function findMember(userId) {
@@ -257,7 +276,10 @@ export async function getStorageOverview() {
   await delay(60)
   reconcile()
   return {
-    defaultQuotaGb: DEFAULT_QUOTA_GB,
+    defaultQuotaGb,
+    diskTotalGb,
+    allocatedGb: allocatedGb(),
+    remainingGb: diskTotalGb - allocatedGb(),
     defaultMemberCount: roster().filter((m) => m.quotaGb == null).length,
     pendingCount: visibleRequests().filter((r) => r.status === 'PENDING').length
   }
@@ -308,7 +330,8 @@ export async function adjustStorageQuota(userId, quotaGb, { restoreDefault = fal
   reconcile()
   const m = findMember(userId)
   assertNoPending(m)
-  const next = restoreDefault ? DEFAULT_QUOTA_GB : checkQuota(quotaGb)
+  const next = restoreDefault ? defaultQuotaGb : checkQuota(quotaGb)
+  assertDiskEnough(next - totalOf(m))
   applyQuota(m, next, { restoreDefault })
   persist()
   return toMemberRow(m)
@@ -323,6 +346,7 @@ export async function batchAdjustStorageQuota(userIds, quotaGb) {
   const all = ids.map(findMember)
   // 只调整没有待处理申请的员工；有待处理申请的跳过并计数（页面上这些行的勾选框本来就是置灰的）
   const targets = all.filter((m) => !pendingOf(m.userId))
+  assertDiskEnough(targets.reduce((sum, m) => sum + (next - totalOf(m)), 0))
   let changed = 0
   for (const m of targets) {
     if (applyQuota(m, next)) changed += 1
@@ -378,6 +402,7 @@ export async function approveExpansionRequest(id, newTotalGb) {
   const m = findMember(r.userId)
   const next = checkQuota(newTotalGb)
   if (next <= totalOf(m)) throw err(`新总量须大于当前总量 ${totalOf(m)} GB`, 40001, 'quotaGb')
+  assertDiskEnough(next - totalOf(m))
   const prevTotal = totalOf(m) // 先取同意那一刻的当前总量，再写入新总量
   m.quotaGb = next
   closePending(r, next, prevTotal)
@@ -404,5 +429,37 @@ export async function rejectExpansionRequest(id, reason) {
 export function __resetStorageSpaceMock() {
   members = seedMembers()
   requests = seedRequests()
+  defaultQuotaGb = DEFAULT_QUOTA_GB
+  diskTotalGb = DISK_TOTAL_GB
   persist()
+}
+
+/* ---------------- 默认容量 / 磁盘总量 ---------------- */
+/** 修改默认容量：对所有未单独设置的员工生效（含有待处理申请的），总量变了的逐人写「调整容量」审计。 */
+export async function setDefaultQuota(quotaGb) {
+  await delay()
+  reconcile()
+  const next = checkQuota(quotaGb)
+  const followers = roster().filter((m) => m.quotaGb == null)
+  assertDiskEnough(followers.length * (next - defaultQuotaGb))
+  const prev = defaultQuotaGb
+  defaultQuotaGb = next
+  if (prev !== next) {
+    for (const m of followers) audit('调整容量', m, `${prev} GB → ${next} GB`, { fromGb: prev, newTotalGb: next })
+  }
+  persist()
+  return { defaultQuotaGb, count: prev === next ? 0 : followers.length }
+}
+
+/** 修改磁盘总量：正整数，且不得低于当前已分配（否则等于超分）。 */
+export async function setDiskTotal(totalGb) {
+  await delay()
+  reconcile()
+  const message = quotaInputError(totalGb, 1, Infinity)
+  if (message) throw err(message.replace('容量', '磁盘总量'), 40001, 'diskTotalGb')
+  const next = Number(totalGb)
+  if (next < allocatedGb()) throw err(`磁盘总量不能低于已分配的 ${allocatedGb()} GB`, 40002, 'diskTotalGb')
+  diskTotalGb = next
+  persist()
+  return { diskTotalGb, remainingGb: diskTotalGb - allocatedGb() }
 }

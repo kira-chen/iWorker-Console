@@ -22,9 +22,9 @@ import {
  */
 describe('reviewMeta · 审核中心新口径', () => {
   // 2026-09-09 PRD 复核·G3G6 · A6：md `prd.审核中心.md` §二.2 / §3.1 业务类型八项，含「知识库」；2026-09-20 起第九项「版本管理」（发布走审核）
-  it('业务类型筛选九项词表（md §二.2 顺序与文案，含知识库、版本管理）', () => {
+  it('业务类型筛选十项词表（md §二.2 顺序与文案，含专家团、知识库、版本管理）', () => {
     expect(REVIEW_BIZ_TYPE_OPTIONS.map((o) => o.label)).toEqual([
-      '岗位', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'
+      '岗位', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'
     ])
     expect(reviewTypeMatch({ type: 'VERSION' }, 'VERSION')).toBe(true)
     expect(reviewTypeMatch({ type: 'SKILL' }, 'VERSION')).toBe(false)
@@ -74,9 +74,9 @@ describe('reviewMeta · 审核中心新口径', () => {
 
 describe('reviewMeta · 我的申请口径', () => {
   // 2026-09-09 PRD 复核·G3G6 · A6：md `prd.我的申请.md` §二.2 / §3.1 业务类型八项，含「知识库」
-  it('业务类型下拉九项（md §二.2 顺序，含知识库、版本管理）；不含「其他」（2026-09-08 决议第 8 项）', () => {
+  it('业务类型下拉十项（md §二.2 顺序，含专家团、知识库、版本管理）；不含「其他」（2026-09-08 决议第 8 项）', () => {
     expect(MYAPP_BIZ_TYPE_OPTIONS.map((o) => o.label)).toEqual([
-      '专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'
+      '专家', '专家团', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'
     ])
     expect(myAppBizTypeLabel('VERSION')).toBe('版本管理')
     expect(MYAPP_BIZ_TYPE_OPTIONS.map((o) => o.value)).not.toContain('OTHER')

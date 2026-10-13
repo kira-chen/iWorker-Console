@@ -37,7 +37,9 @@ const unpublishPosition = vi.fn()
 const deletePosition = vi.fn()
 const withdrawPosition = vi.fn()
 const getPosition = vi.fn()
+const getPositionBindings = vi.fn()
 vi.mock('@/api/position', () => ({
+  getPositionBindings: (...a) => getPositionBindings(...a),
   listPositions: (...a) => listPositions(...a),
   createPosition: (...a) => createPosition(...a),
   unpublishPosition: (...a) => unpublishPosition(...a),
@@ -151,6 +153,7 @@ beforeEach(() => {
   listSampleTasks.mockReset().mockResolvedValue({ list: [{ id: 1 }] })
   unpublishPosition.mockReset().mockResolvedValue({})
   deletePosition.mockReset().mockResolvedValue({})
+  getPositionBindings.mockReset().mockResolvedValue({ teams: [], experts: [] })
   withdrawPosition.mockReset().mockResolvedValue({})
   ElMessageBox.prompt.mockReset()
   ElMessageBox.confirm.mockReset().mockResolvedValue()
@@ -286,7 +289,8 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
   it('④b 删除流程（2026-09-04 PRD-20260903 对齐）：确认文案照新 md → deletePosition → 重拉', async () => {
     await mount()
     btn(rowByName('可发布草稿岗'), '删除').click()
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await nextTick()
+    for (let i = 0; i < 6; i++) await Promise.resolve()
+    await nextTick()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
       '删除后「可发布草稿岗」将不可用，确认删除？',
       '删除岗位',
@@ -295,6 +299,16 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
     expect(deletePosition).toHaveBeenCalledWith('ps_draft_ok', '可发布草稿岗')
     expect(ElMessage.success).toHaveBeenCalledWith('岗位已删除')
     expect(listPositions).toHaveBeenCalledTimes(2) // 初次 + 删后重拉
+  })
+
+  it('④b2 删除确认追加绑定提示（prd.岗位.md §3.6）：岗位绑定了专家团 / 岗位专家时写明数量，团和专家本身不删', async () => {
+    getPositionBindings.mockResolvedValue({ teams: [{ id: 303, name: '岗位协同团', status: 'draft' }], experts: [{ id: 203, name: '法务审阅专家' }, { id: 209, name: '另一位' }] })
+    await mount()
+    btn(rowByName('可发布草稿岗'), '删除').click()
+    for (let i = 0; i < 6; i++) await Promise.resolve()
+    await nextTick()
+    expect(ElMessageBox.confirm.mock.calls[0][0]).toBe('删除后「可发布草稿岗」将不可用，确认删除？\n该岗位绑定了 1 个专家团、2 位岗位专家，删除后这些绑定解除，团和专家本身不会被删除。')
+    expect(deletePosition).toHaveBeenCalledWith('ps_draft_ok', '可发布草稿岗')
   })
 
   it('④c 删除领用护栏（2026-09-04 新 md）：被领用的未发布岗 → 提示先解除领用，不执行删除', async () => {
