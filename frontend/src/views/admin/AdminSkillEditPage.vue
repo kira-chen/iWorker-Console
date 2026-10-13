@@ -1029,7 +1029,7 @@ async function onGovBarAction(key) {
       try {
         const { approveReview } = await import('@/api/reviews')
         await approveReview(review)
-        ElMessage.success(review.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
+        ElMessage.success(review.requestAction === 'FORCE_REVOKE' ? '已通过强制回收申请' : review.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
         router.push({ name: 'UnifiedReview' })
       } catch (e) {
         ElMessage.error(e?.message || '审核失败')

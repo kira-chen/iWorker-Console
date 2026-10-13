@@ -33,7 +33,7 @@ function reviewTypeOf(businessType) {
  * @param {string|number} p.refId  业务实体 id
  * @param {string} p.name
  * @param {string} [p.description]
- * @param {'FIRST_PUBLISH'|'VERSION_PUBLISH'|'DELIST'} p.requestAction
+ * @param {'FIRST_PUBLISH'|'VERSION_PUBLISH'|'DELIST'} p.requestAction  停用申请若带 forceRevokeReason，本函数把它记成 'FORCE_REVOKE'（申请类型「强制回收」，与「停用」分开）
  * @param {string} [p.version]      申请版本，无版本概念的模块传 '—'
  * @param {string} [p.versionNotes] 升级说明 / 申请说明（我的申请详情展示）
  * @param {string} [p.forceRevokeReason] 停用申请勾选了「强制回收」时的回收原因（非空即带强制回收标记；审核中心 / 我的申请
@@ -44,13 +44,15 @@ function reviewTypeOf(businessType) {
  */
 export function enrollReview(p) {
   const { type, subType } = reviewTypeOf(p.businessType)
+  // 申请类型：勾选了强制回收的停用申请单独成「强制回收」类型（审核中心 / 我的申请据此区分展示与筛选），其余照传
+  const requestAction = p.requestAction === 'DELIST' && p.forceRevokeReason ? 'FORCE_REVOKE' : p.requestAction
   submitReviewRow({
     type,
     ...(subType ? { subType } : {}),
     refId: p.refId,
     name: p.name,
     description: p.description || '',
-    requestAction: p.requestAction,
+    requestAction,
     version: p.version || '—',
     ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
     ...(p.submitter ? { submitterName: p.submitter } : {}),
@@ -61,7 +63,7 @@ export function enrollReview(p) {
     refId: p.refId,
     objectName: p.name,
     description: p.description || '',
-    applicationType: p.requestAction,
+    applicationType: requestAction,
     version: p.version || '—',
     versionNotes: p.versionNotes || '',
     ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
@@ -85,10 +87,10 @@ export function publishActionOf(hasPublishedBefore) {
   return hasPublishedBefore ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH'
 }
 
-/** 把各模块五花八门的 pendingAction 归一为「是不是停用」：PUBLISH/publish → false，DELIST/DEACTIVATE/stop → true。 */
+/** 把各模块五花八门的 pendingAction / 申请类型归一为「是不是停用」：PUBLISH/publish → false，DELIST/DEACTIVATE/stop/FORCE_REVOKE（强制回收也是一种停用）→ true。 */
 export function isDelistAction(action) {
   const a = String(action || '').toUpperCase()
-  return a === 'DELIST' || a === 'DEACTIVATE' || a === 'STOP'
+  return a === 'DELIST' || a === 'DEACTIVATE' || a === 'STOP' || a === 'FORCE_REVOKE'
 }
 
 /**

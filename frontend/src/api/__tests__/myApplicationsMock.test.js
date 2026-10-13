@@ -135,7 +135,7 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
       await sk.delistSkill('sk_305', opts)
       const review = (await gov.listReviews({ type: 'SKILL', size: 50 })).list.find((r) => r.refId === 'sk_305')
       await gov.rejectReview(review.id, '再评估')
-      return (await app.listMyApplications({ businessType: 'SKILL', result: 'REJECTED', size: 50 })).list.find((r) => r.refId === 'sk_305' && r.applicationType === 'DELIST')
+      return (await app.listMyApplications({ businessType: 'SKILL', result: 'REJECTED', size: 50 })).list.find((r) => r.refId === 'sk_305' && (r.applicationType === 'DELIST' || r.applicationType === 'FORCE_REVOKE'))
     }
 
     it('强制回收停用被驳回 → 重新提交：新申请行与审核中心行仍带回收原因，技能再次待审且保留回收原因', async () => {
@@ -146,9 +146,9 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
       expect(sk._getRaw('sk_305').pendingRevokeReason).toBe('') // 驳回：回收后果清空
 
       const fresh = await app.resubmitMyApplication(rejected.id)
-      expect(fresh).toMatchObject({ applicationType: 'DELIST', result: 'PENDING', forceRevokeReason: '涉及违规内容' })
+      expect(fresh).toMatchObject({ applicationType: 'FORCE_REVOKE', result: 'PENDING', forceRevokeReason: '涉及违规内容' })
       const review = (await gov.listReviews({ type: 'SKILL', size: 50 })).list.find((r) => r.refId === 'sk_305')
-      expect(review).toMatchObject({ requestAction: 'DELIST', forceRevokeReason: '涉及违规内容' })
+      expect(review).toMatchObject({ requestAction: 'FORCE_REVOKE', forceRevokeReason: '涉及违规内容' })
       expect(sk._getRaw('sk_305')).toMatchObject({ pendingAction: 'stop', pendingRevokeReason: '涉及违规内容' })
     })
 

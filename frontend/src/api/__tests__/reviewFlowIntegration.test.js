@@ -345,8 +345,8 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
 
     it.each(TYPES)('%s：提交强制回收停用 → 对象进入审核中（仍在对外提供）、无回收标记；审核中心与我的申请各有一行带回收原因；此时访问审计没有强制回收记录', async (type) => {
       const { review, application } = await submitForced(type)
-      expect(review).toMatchObject({ requestAction: 'DELIST', forceRevokeReason: REASON })
-      expect(application).toMatchObject({ applicationType: 'DELIST', forceRevokeReason: REASON })
+      expect(review).toMatchObject({ requestAction: 'FORCE_REVOKE', forceRevokeReason: REASON }) // 申请类型单独是「强制回收」，不再是「停用」
+      expect(application).toMatchObject({ applicationType: 'FORCE_REVOKE', forceRevokeReason: REASON })
       const st = await KINDS[type].state()
       expect(st.status).toBe('REVIEWING') // 审核通过前对象仍在对外提供，只是锁在审核中
       expect(st.revoked).toBeFalsy()

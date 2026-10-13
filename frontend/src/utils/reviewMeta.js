@@ -105,16 +105,18 @@ export function reviewBizTypeTagType(type) {
   return 'info'
 }
 
-// 申请类型（requestAction）三项 + 文案 + 色（DELIST 橙 / 其余绿）
+// 申请类型（requestAction）四项 + 文案 + 色（FORCE_REVOKE 红 / DELIST 橙 / 其余绿）
 export const REQUEST_ACTION_OPTIONS = [
   { value: 'FIRST_PUBLISH', label: '首次发布' },
   { value: 'VERSION_PUBLISH', label: '新版本发布' },
-  { value: 'DELIST', label: '停用' }
+  { value: 'DELIST', label: '停用' },
+  { value: 'FORCE_REVOKE', label: '强制回收' }
 ]
 export function requestActionLabel(action) {
-  return { FIRST_PUBLISH: '首次发布', VERSION_PUBLISH: '新版本发布', DELIST: '停用' }[action] || action
+  return { FIRST_PUBLISH: '首次发布', VERSION_PUBLISH: '新版本发布', DELIST: '停用', FORCE_REVOKE: '强制回收' }[action] || action
 }
 export function requestActionTagType(action) {
+  if (action === 'FORCE_REVOKE') return 'danger'
   return action === 'DELIST' ? 'warning' : 'success'
 }
 

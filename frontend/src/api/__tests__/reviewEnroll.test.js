@@ -33,8 +33,8 @@ describe('reviewEnroll.enrollReview · 强制回收原因透传两张表', { tim
   it('带 forceRevokeReason → 审核中心行与我的申请行都带该字段', async () => {
     t.enroll.enrollReview({ ...base, forceRevokeReason: '内容违规' })
     const { review, application } = await rowsOf()
-    expect(review).toMatchObject({ requestAction: 'DELIST', forceRevokeReason: '内容违规' })
-    expect(application).toMatchObject({ applicationType: 'DELIST', forceRevokeReason: '内容违规' })
+    expect(review).toMatchObject({ requestAction: 'FORCE_REVOKE', forceRevokeReason: '内容违规' }) // 带回收原因的停用申请记成「强制回收」类型
+    expect(application).toMatchObject({ applicationType: 'FORCE_REVOKE', forceRevokeReason: '内容违规' })
   })
 
   it('空串 → 两张表的行都没有 forceRevokeReason 键', async () => {
