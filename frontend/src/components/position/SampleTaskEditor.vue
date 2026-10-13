@@ -108,35 +108,9 @@ const form = reactive({
   // 执行动作：触发时由谁来办（AGENT=整个交给某个 Agent；SKILL=按引用技能执行）
   execType: EXEC_TYPE_DEFAULT,
   execAgentId: null, // execType === 'AGENT' 时指定的 Agent（引用该岗位下 Agent 的 agentId）
-  execTeamId: null, // execType === 'TEAM' 时委派的专家团（已发布的岗位团 / 通用团）
   // 执行模型：空字符串 = 跟随平台默认模型
   execModel: ''
 })
-
-/* 执行动作 = 专家团：候选团（已发布的岗位团 + 通用团），选到「专家团」才拉取；动态 import 避免 api/expertTeam 链条进入未用到它的单测模块图 */
-const teamOptions = ref([])
-const teamsLoaded = ref(false)
-async function loadTeamOptions() {
-  try {
-    const { listTeamsForAutomation } = await import('@/api/expertTeam')
-    const list = await listTeamsForAutomation(props.positionId)
-    teamOptions.value = Array.isArray(list) ? list : []
-  } catch {
-    teamOptions.value = []
-  } finally {
-    teamsLoaded.value = true
-  }
-}
-watch(
-  () => [form.execType, props.positionId],
-  ([type]) => {
-    if (type === 'TEAM') loadTeamOptions()
-  },
-  { immediate: false }
-)
-const selectedTeam = computed(() => teamOptions.value.find((t) => String(t.id) === String(form.execTeamId)) || null)
-/** 已选的团不在候选里（已停用 / 被回收 / 不再属于本岗位）：任务触发时会被挂起 */
-const teamUnavailable = computed(() => form.execType === 'TEAM' && teamsLoaded.value && form.execTeamId != null && !selectedTeam.value)
 
 // 任务名称上限：一览表「名称类统一规则 64」（2026-09-12 负责人决策 1）。计数器与 maxlength 共用它。
 const NAME_MAX = 64
@@ -561,7 +535,6 @@ async function save() {
     skillRefs: buildSkillRefs(),
     execType: form.execType || EXEC_TYPE_DEFAULT,
     execAgentId: form.execType === 'AGENT' ? (form.execAgentId ?? undefined) : undefined,
-    execTeamId: form.execType === 'TEAM' ? (form.execTeamId ?? undefined) : undefined,
     execModel: form.execModel || undefined
     // 无 enable / status：样例默认启用（后端缺省 ENABLED），列表不呈现运行态。
   }
@@ -615,7 +588,6 @@ function fillFrom(sample) {
     form.skillRefs = []
     form.execType = EXEC_TYPE_DEFAULT
     form.execAgentId = null
-    form.execTeamId = null
     form.execModel = ''
   } else {
     form.name = sample.name || ''
@@ -654,7 +626,6 @@ function fillFrom(sample) {
       .filter((s) => s.platformSkillId != null)
     form.execType = sample.execType || EXEC_TYPE_DEFAULT
     form.execAgentId = sample.execAgentId ?? null
-    form.execTeamId = sample.execTeamId ?? null
     form.execModel = sample.execModel || ''
   }
   clearDirty()
@@ -834,12 +805,11 @@ onMounted(async () => {
         </div>
         <div class="te-card-body">
           <p class="te-card-guide">
-            触发时由谁来办：整个交给某个 <b>Agent</b>、委派给一个<b>专家团</b>，或按下面指定的<b>技能</b>执行。
+            触发时由谁来办：整个交给某个 <b>Agent</b>，或按下面指定的<b>技能</b>执行。
           </p>
           <el-radio-group v-model="form.execType" class="te-exec-type-group" @change="markDirty">
             <el-radio value="SKILL">技能</el-radio>
             <el-radio value="AGENT">Agent</el-radio>
-            <el-radio value="TEAM">专家团</el-radio>
           </el-radio-group>
           <div v-if="form.execType === 'AGENT'" class="te-field te-exec-agent">
             <el-select
@@ -857,25 +827,6 @@ onMounted(async () => {
               />
             </el-select>
             <p class="te-card-guide te-exec-agent-hint">下发时会自动带上该 Agent 名下的已发布技能。</p>
-          </div>
-          <!-- 专家团：候选 = 已发布的、本岗位员工一定拿得到的团（绑定本岗位的岗位团 + 通用团） -->
-          <div v-if="form.execType === 'TEAM'" class="te-field te-exec-agent" data-testid="exec-team">
-            <el-select
-              v-model="form.execTeamId"
-              placeholder="选择要委派的专家团"
-              clearable
-              class="te-exec-agent-select"
-              @change="markDirty"
-            >
-              <el-option v-for="t in teamOptions" :key="t.id" :label="t.name" :value="t.id" />
-            </el-select>
-            <p class="te-card-guide te-exec-agent-hint">委派给团：触发时由团长（没设团长则由系统）把任务拆给团内成员执行。</p>
-            <p v-if="teamUnavailable" class="te-card-guide te-exec-agent-hint te-exec-team-warn" data-testid="exec-team-unavailable">
-              所选专家团已停用、被回收或不再适用于本岗位，任务触发时会被挂起，请重新选择。
-            </p>
-            <p v-else-if="selectedTeam && !selectedTeam.leaderId" class="te-card-guide te-exec-agent-hint te-exec-team-warn" data-testid="exec-team-no-leader">
-              该团没设团长：触发后会停在「等待确认安排」，需要员工确认安排后才开始执行。
-            </p>
           </div>
         </div>
       </section>
