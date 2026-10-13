@@ -15,7 +15,6 @@ import {
   publishExpert,
   withdrawExpert,
   unpublishExpert,
-  forceRevokeExpert,
   applyExpertReviewResult,
   getExpertNextVersionLabel,
   listExpertPublications,
@@ -274,55 +273,122 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
   })
 })
 
-// 强制回收（PRD 专家 §3.5.1，2026-09-30）：201 经营分析专家 = 已发布 v2.3.0；204 研究报告专家 = 已发布 + 新版在审；203 法务审阅专家 = 未发布
-describe('forceRevokeExpert —— 强制回收', () => {
+// 强制回收（PRD 专家 §3.5.1，2026-10-12 改版）：不再是独立动作，而是 unpublishExpert 的 { forceRevoke, reason } 勾选项，
+// 与普通停用走同一条审核链路，审核通过才回收。201 经营分析专家 = 已发布 v2.3.0；204 研究报告专家 = 已发布 + 新版在审；203 法务审阅专家 = 未发布
+describe('unpublishExpert({ forceRevoke }) —— 强制回收（停用勾选项，审核通过才生效）', () => {
   beforeEach(() => resetAccessAuditMock())
   const reviewTotal = async () => (await listReviews({ size: 1000 })).total
+  const revoke = (id, reason) => unpublishExpert(id, { forceRevoke: true, reason })
 
-  it('前置条件：仅「已发布且无在途审核」可回收——未发布 / 在审 / 重复回收均抛「状态已变化」', async () => {
-    await expect(forceRevokeExpert(203, { reason: '风险' })).rejects.toThrow('专家状态已变化，请刷新后重试')
-    await expect(forceRevokeExpert(204, { reason: '风险' })).rejects.toThrow('专家状态已变化，请刷新后重试')
-    await forceRevokeExpert(201, { reason: '风险' })
-    await expect(forceRevokeExpert(201, { reason: '再来一次' })).rejects.toThrow('专家状态已变化，请刷新后重试')
+  it('前置条件：与普通停用同口径——未发布 / 已有在途审核的专家不能提交', async () => {
+    await expect(revoke(203, '风险')).rejects.toThrow('仅已发布专家可停用')
+    await expect(revoke(204, '风险')).rejects.toThrow('该专家已有在途审核')
+    await revoke(201, '风险')
+    await expect(revoke(201, '再来一次')).rejects.toThrow('该专家已有在途审核')
   })
 
-  it('原因必填且 ≤500 字；校验不通过时状态不变', async () => {
-    await expect(forceRevokeExpert(201, { reason: ' ' })).rejects.toThrow('请输入回收原因')
-    await expect(forceRevokeExpert(201, { reason: 'x'.repeat(501) })).rejects.toThrow('最多 500 字')
-    expect((await getExpert(201)).status).toBe('published')
-  })
-
-  it('回收后：立即回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked、不进审核中心', async () => {
-    const before = await getExpert(201)
+  it('原因必填且 ≤500 字；校验不通过时不提交、不进审核中心', async () => {
     const reviewsBefore = await reviewTotal()
-    const r = await forceRevokeExpert(201, { reason: ' 专家输出异常 ' })
-    expect(r.revoked).toMatchObject({ reason: '专家输出异常' })
-    expect(r.revoked.at).toBeTruthy()
-    expect(r.revoked.operator).toBeTruthy()
+    await expect(revoke(201, ' ')).rejects.toMatchObject({ message: '请输入回收原因', code: 40001 })
+    await expect(revoke(201, 'x'.repeat(501))).rejects.toThrow('最多 500 字')
+    expect(await getExpert(201)).toMatchObject({ status: 'published', pendingAction: null })
+    expect(await reviewTotal()).toBe(reviewsBefore)
+  })
+
+  it('提交后与普通停用状态一致：审核中、仍是已发布、未标已回收、不写审计；审核中心有一条带强制回收标记的待审停用申请', async () => {
+    await revoke(201, ' 专家输出异常 ')
+    expect(await getExpert(201)).toMatchObject({ status: 'published', pendingAction: 'DELIST', latestVersionLabel: 'v2.3.0', revoked: null })
+    expect(opsRecords.some((x) => x.action === '强制回收')).toBe(false)
+    const row = (await listReviews({ size: 1000 })).list.find((r) => r.refId === 201 && r.type === 'EXPERT')
+    expect(row).toMatchObject({ requestAction: 'DELIST', status: 'PENDING_REVIEW', forceRevokeReason: '专家输出异常' })
+  })
+
+  it('审核通过后才生效：回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked，并写一条访问审计', async () => {
+    const before = await getExpert(201)
+    await revoke(201, ' 召唤链路异常 ')
+    expect(applyExpertReviewResult(201, 'DELIST', true)).toBe(true)
 
     const detail = await getExpert(201)
     expect(detail).toMatchObject({ status: 'draft', pendingAction: null, latestVersionLabel: 'v2.3.0', publishedAt: before.publishedAt })
-    expect(detail.revoked).toEqual(r.revoked)
+    expect(detail.revoked).toMatchObject({ reason: '召唤链路异常', at: expect.any(String), operator: 'demo' }) // 无登录身份 → 内置演示管理员
     const { list } = await listExperts({ status: 'draft' })
-    expect(list.find((e) => e.id === 201).revoked).toEqual(r.revoked)
+    expect(list.find((e) => e.id === 201).revoked).toEqual(detail.revoked)
     expect((await listExpertPublications(201)).length).toBe(2)
-    expect(await reviewTotal()).toBe(reviewsBefore) // 立即生效，不 enrollReview
     expect((await getExpert(202)).revoked).toBeNull() // 未回收的行 revoked 为 null
-  })
+    expect((await getExpert(201)).skillIds).toEqual([302, 304]) // 专家自身对市场技能的引用不受影响
 
-  it('专家自身对市场技能的引用不受影响', async () => {
-    await forceRevokeExpert(201, { reason: '风险' })
-    expect((await getExpert(201)).skillIds).toEqual([302, 304])
-  })
-
-  it('写一条访问审计：模块=专家、动作=强制回收、变更内容=原因、带回收时的版本号', async () => {
-    await forceRevokeExpert(201, { reason: '召唤链路异常' })
     const rec = opsRecords.find((x) => x.action === '强制回收' && x.target === '经营分析专家')
     expect(rec).toMatchObject({ module: '专家', detail: '召唤链路异常', version: 'v2.3.0', live: true })
   })
 
+  // 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
+  it('操作人 = 提交强制回收的管理员：A 提交、演示身份切成 B 后审核通过，revoked.operator 与审计操作人都是 A', async () => {
+    const asUser = (username) =>
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: { getItem: (k) => (k === 'ai_assistant_user' ? JSON.stringify({ username }) : null), setItem() {}, removeItem() {}, key: () => null, length: 0 },
+        writable: true,
+        configurable: true
+      })
+    try {
+      asUser('admin_a')
+      await revoke(201, '输出异常')
+      asUser('reviewer_b')
+      expect(applyExpertReviewResult(201, 'DELIST', true)).toBe(true)
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: undefined, writable: true, configurable: true })
+    }
+    expect((await getExpert(201)).revoked.operator).toBe('admin_a')
+    expect(opsRecords.find((x) => x.action === '强制回收' && x.target === '经营分析专家').operator).toBe('admin_a')
+  })
+
+  // 专家被岗位引用时停用不拦截（PRD 专家 §3.5：停用 / 强制回收均不受岗位引用拦截；岗位侧随后按“引用已回收对象”处理）
+  describe('被岗位引用（positionIds 非空）的专家停用不拦截', () => {
+    /** 203 法务审阅专家 = 岗位私有、绑定 401+402，种子为未发布：走发布审核通过后得到「已发布 + 被两个岗位引用」。 */
+    async function mkPublishedPositionExpert() {
+      await publishExpert(203, { bump: 'NONE', releaseNotes: '首发' })
+      expect(applyExpertReviewResult(203, 'FIRST_PUBLISH', true)).toBe(true)
+      expect(await getExpert(203)).toMatchObject({ status: 'published', positionIds: [401, 402], positionCount: 2 })
+    }
+
+    it('普通停用：成功入审（审核中、仍已发布）', async () => {
+      await mkPublishedPositionExpert()
+      await expect(unpublishExpert(203)).resolves.toBeDefined()
+      expect(await getExpert(203)).toMatchObject({ status: 'published', pendingAction: 'DELIST', positionIds: [401, 402] })
+    })
+
+    it('强制回收：成功入审，审核通过后已回收且岗位绑定关系保持不动', async () => {
+      await mkPublishedPositionExpert()
+      await expect(revoke(203, '引用岗位也要回收')).resolves.toBeDefined()
+      expect(applyExpertReviewResult(203, 'DELIST', true)).toBe(true)
+      expect(await getExpert(203)).toMatchObject({ status: 'draft', positionIds: [401, 402], revoked: { reason: '引用岗位也要回收' } })
+    })
+  })
+
+  it('审核驳回 / 撤回：专家仍是已发布、无已回收标记、不落审计，且回收原因不残留到下一次普通停用', async () => {
+    await revoke(201, '风险')
+    applyExpertReviewResult(201, 'DELIST', false) // 驳回
+    expect(await getExpert(201)).toMatchObject({ status: 'published', pendingAction: null, revoked: null })
+
+    await revoke(201, '风险')
+    await withdrawExpert(201) // 撤回
+    expect(await getExpert(201)).toMatchObject({ status: 'published', pendingAction: null, revoked: null })
+
+    await unpublishExpert(201) // 普通停用通过：不得沿用上次被丢弃的回收原因
+    applyExpertReviewResult(201, 'DELIST', true)
+    expect(await getExpert(201)).toMatchObject({ status: 'draft', revoked: null })
+    expect(opsRecords.some((x) => x.action === '强制回收')).toBe(false)
+  })
+
+  it('普通停用审核通过：只回「未发布」，不标已回收、不落强制回收审计', async () => {
+    await unpublishExpert(201)
+    applyExpertReviewResult(201, 'DELIST', true)
+    expect(await getExpert(201)).toMatchObject({ status: 'draft', revoked: null })
+    expect(opsRecords.some((x) => x.action === '强制回收')).toBe(false)
+  })
+
   it('重新发布：撤回 / 驳回不清 revoked，审核通过后清除并回到已发布', async () => {
-    await forceRevokeExpert(201, { reason: '异常' })
+    await revoke(201, '异常')
+    applyExpertReviewResult(201, 'DELIST', true)
     await publishExpert(201, { bump: 'NONE', releaseNotes: '修复后重发' })
     await withdrawExpert(201) // 撤回不清
     expect((await getExpert(201)).revoked).toBeTruthy()
@@ -343,7 +409,7 @@ describe('forceRevokeExpert —— 强制回收', () => {
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.7（创建专家后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
  * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
  * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
-describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-demo-mock:domainExpert）', () => {
+describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-demo-mock:domainExpert）', () => {
   const KEY = 'iworker-demo-mock:domainExpert'
   const makeStorage = () => {
     const map = new Map()
@@ -365,10 +431,10 @@ describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-dem
     vi.resetModules()
   })
 
-  it('createExpert 落盘（v=6）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
+  it('createExpert 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
     const first = await import('@/api/domainExpertMock')
     const created = await first.createExpert({ name: '读回验证专家', type: 'PLATFORM', category: '通用', avatar: '☆', intro: '读回', roleDesc: '你是读回专家', exampleQuestions: ['一', '二', '三'] })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(6)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
     vi.resetModules()
     const fresh = await import('@/api/domainExpertMock')
     const { list } = await fresh.listExperts({ keyword: '读回验证专家' })
@@ -388,16 +454,45 @@ describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-dem
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 
-  // 2026-10-09 /test-audit 补缺口 C1（PRD 专家 §3.5.1）：强制回收是写点，刷新后「已回收」必须还在
-  it('强制回收后刷新页面 → 专家仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+  // 2026-10-09 /test-audit 补缺口 C1（PRD 专家 §3.5.1）：强制回收通过是写点，刷新后「已回收」必须还在；10-12 改为提交 → 审核通过两步
+  it('强制回收审核通过后刷新页面 → 专家仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
     const first = await import('@/api/domainExpertMock')
-    const r = await first.forceRevokeExpert(201, { reason: '刷新后仍应标已回收' })
+    await first.unpublishExpert(201, { forceRevoke: true, reason: '刷新后仍应标已回收' })
+    first.applyExpertReviewResult(201, 'DELIST', true)
     vi.resetModules()
     const fresh = await import('@/api/domainExpertMock')
     const detail = await fresh.getExpert(201)
     expect(detail.status).toBe('draft')
-    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: expect.any(String) })
-    expect(detail.revoked).toEqual(r.revoked)
+    expect(detail.revoked).toEqual({ reason: '刷新后仍应标已回收', at: expect.any(String), operator: 'demo' })
     expect((await fresh.listExperts({ status: 'draft' })).list.find((e) => e.id === 201).revoked.reason).toBe('刷新后仍应标已回收')
+  })
+
+  // 旧快照兼容：强制回收并入停用审核前落盘的快照，在审停用行没有 pendingRevokeReason / pendingRevokeBy
+  it('旧 v7 快照里在审停用（pendingAction:DELIST）且缺回收原因 → 审核通过按普通停用处理：未发布、无已回收、无强制回收审计', async () => {
+    const first = await import('@/api/domainExpertMock')
+    await first.createExpert({ name: '触发落盘', type: 'PLATFORM' })
+    const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
+    const old = snap.data.experts.find((e) => e.id === 201)
+    old.pendingAction = 'DELIST'
+    delete old.pendingRevokeReason
+    delete old.pendingRevokeBy
+    globalThis.localStorage.setItem(KEY, JSON.stringify(snap))
+    vi.resetModules()
+    const fresh = await import('@/api/domainExpertMock')
+    const audit = await import('@/api/accessAuditMock')
+    expect(fresh.applyExpertReviewResult(201, 'DELIST', true)).toBe(true)
+    expect(await fresh.getExpert(201)).toMatchObject({ status: 'draft', revoked: null })
+    expect(audit.opsRecords.some((x) => x.action === '强制回收' && x.objectId === 201)).toBe(false)
+  })
+
+  // 审核中的强制回收申请刷新后不丢：pendingRevokeReason 在快照里，通过时才能照样落「已回收」
+  it('强制回收提交后刷新页面（审核未完成）→ 专家仍是已发布 + 审核中；之后审核通过仍标已回收', async () => {
+    const first = await import('@/api/domainExpertMock')
+    await first.unpublishExpert(201, { forceRevoke: true, reason: '审核中刷新' })
+    vi.resetModules()
+    const fresh = await import('@/api/domainExpertMock')
+    expect(await fresh.getExpert(201)).toMatchObject({ status: 'published', pendingAction: 'DELIST', revoked: null })
+    fresh.applyExpertReviewResult(201, 'DELIST', true)
+    expect((await fresh.getExpert(201)).revoked).toMatchObject({ reason: '审核中刷新' })
   })
 })

@@ -19,7 +19,7 @@
  */
 
 /** 需要版本快照的三类业务对象（md §四 L48）。其余类型读业务模块当前配置。 */
-export const SNAPSHOT_KINDS = Object.freeze(['POSITION', 'EXPERT', 'SKILL'])
+export const SNAPSHOT_KINDS = Object.freeze(['POSITION', 'EXPERT', 'EXPERT_TEAM', 'SKILL'])
 
 /** 该业务类型是否由提交模块生成版本快照。 */
 export function needsSnapshot(kind) {
@@ -45,6 +45,10 @@ export async function loadReviewSnapshot(kind, refId) {
     if (kind === 'EXPERT') {
       const { getExpertReviewSnapshot } = await import('@/api/domainExpertMock')
       return getExpertReviewSnapshot(refId)
+    }
+    if (kind === 'EXPERT_TEAM') {
+      const { getTeamReviewSnapshot } = await import('@/api/expertTeamMock')
+      return getTeamReviewSnapshot(refId)
     }
     const { getSkillReviewSnapshot } = await import('@/api/unifiedSkillMock')
     return getSkillReviewSnapshot(refId)

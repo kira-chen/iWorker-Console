@@ -26,7 +26,7 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
 
 import { ElMessage } from 'element-plus'
 import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
-import { forceRevokeMcpService, __resetMcpMock } from '@/api/mcpConnectorMock'
+import { delistMcpService, applyMcpReviewResult, __resetMcpMock } from '@/api/mcpConnectorMock'
 import { resetAccessAuditMock } from '@/api/accessAuditMock'
 
 const basicFull = () => ({
@@ -398,6 +398,12 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）
   })
 })
 
+// MCP 强制回收 = 停用时勾选强制回收 + 审核通过后才生效（prd-连接器-MCP.md §3.6.1）
+async function revokeMcp(id, reason) {
+  await delistMcpService(id, { forceRevoke: true, reason })
+  applyMcpReviewResult(id, undefined, true)
+}
+
 describe('E3 · 发布前检查：引用了已被强制回收的对象 → 阻断行（岗位 PRD §8 / §9.1）', () => {
   afterEach(() => { __resetMcpMock(); resetAccessAuditMock() })
   const probeRows = () => [...container.querySelectorAll('.publish-check-dialog .probe-item')]
@@ -405,7 +411,7 @@ describe('E3 · 发布前检查：引用了已被强制回收的对象 → 阻�
 
   it('岗位引用的 MCP 已被强制回收 → 点【发布岗位】弹出的检查清单里出「引用的「X」已被回收，请移除后再发布」且为未通过', async () => {
     store.basic = { ...basicFull(), connectorMcpIds: ['expense_mcp'] }
-    await forceRevokeMcpService('expense_mcp', '凭据泄露')
+    await revokeMcp('expense_mcp', '凭据泄露')
     await mount()
     await clickTop('发布岗位')
     expect(container.querySelector('.publish-check-dialog')).toBeTruthy()

@@ -33,8 +33,8 @@ import { EXPERT_TYPE } from './expertTypes'
 // 不再是与技能模块脱钩的静态 SKILL_CANDIDATES；引用变化回写技能 refNames（口径同
 // positionMock.addSkillRefName/removeSkillRefNameIfUnused）。listSkillsSync 用同步导出——
 // 本文件 toDetail 会被 seedReviewSnapshots 在模块初始化阶段同步调用，用不了 async。
-// 2026-09-30 强制回收：回收信息构造（共享底座）+ 落访问审计「管理端操作」
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+// 2026-09-30 强制回收：回收原因校验 / 回收信息构造（共享底座）+ 落访问审计「管理端操作」
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { appendOpsRecord } from './accessAuditMock'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { listSkillsSync, _getRaw as getRawSkill, _reset as resetSkillRaw } from './unifiedSkillMock'
@@ -222,7 +222,8 @@ const persist = attachPersist('domainExpert', {
   // v4（2026-09-20 待办 yuepu#6②）：行新增 type / positionId，bump 丢弃旧快照重播种子；读路径 toRow 仍兜底
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
-  version: 6,
+  // v7（2026-10-12）：行新增 pendingRevokeReason（停用时勾选强制回收的在审原因），旧快照丢弃重播种子。
+  version: 7,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
@@ -283,6 +284,11 @@ function toRow(e) {
     updatedAt: e.updatedAt,
     publishedAt: e.publishedAt || null
   }
+}
+
+/** 同步取全量专家行：供专家团模块解析成员，不走 delay、不暴露内存引用。 */
+export function listExpertsSync() {
+  return experts.map((e) => toRow(e))
 }
 
 /** 详情出参：行 + 职责描述 + 示例问题 + 已引用技能明细（实时按候选表解析——引用非复制） */
@@ -434,6 +440,10 @@ export async function deleteExpert(id) {
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('审核中的专家不可删除，请先撤回或等待审核完成', null, 409)
   if (e.status !== 'draft') throw err('已发布的专家不可删除，需先完成停用审核', null, 409)
+  // 被专家团引用时拦截（prd.专家团.md §四）；动态 import 避免与 expertTeamMock 成环
+  const { listTeamsReferencingExpert } = await import('./expertTeamMock')
+  const refTeams = listTeamsReferencingExpert(e.id)
+  if (refTeams.length) throw err(`该专家被 ${refTeams.length} 个专家团引用（${refTeams.map((t) => t.name).join('、')}），需先从团中移除后再删除`, null, 409)
   const removed = e.skillIds.length
   // 删专家级联：把本专家名从所引用技能的 refNames 摘掉，避免删专家后 sk_304 之类的引用清单
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）
@@ -580,6 +590,8 @@ export async function withdrawExpert(id) {
   if (!e) throw err('专家不存在', null, 404)
   if (!e.pendingAction) throw err('该专家没有在途审核')
   e.pendingAction = null
+  delete e.pendingRevokeReason // 撤回强制回收申请：不留任何回收后果
+  delete e.pendingRevokeBy
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
@@ -590,42 +602,38 @@ export async function withdrawExpert(id) {
 }
 
 // 停用（整专家下架）→ 提交停用审核（pendingAction=DELIST）。审核通过前客户端仍可使用。
-export async function unpublishExpert(id) {
+// 强制回收（PRD 专家 §3.5.1）是停用弹窗里的勾选项：入参 { forceRevoke, reason }，与普通停用走同一条审核链路，
+// 提交后对象状态完全一致（审核中、仍已发布、仍对客户端可用）；仅多记一个 pendingRevokeReason，
+// 审核通过才由 applyExpertReviewResult 写 revoked 并落审计，驳回 / 撤回无任何回收后果。
+export async function unpublishExpert(id, { forceRevoke = false, reason = '' } = {}) {
   await delay()
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
   if (e.status !== 'published') throw err('仅已发布专家可停用')
   if (e.pendingAction) throw err('该专家已有在途审核，请先撤回')
+  let revokeReason = ''
+  if (forceRevoke) {
+    const msg = validateRevokeReason(reason)
+    if (msg) throw err(msg, 'reason', 40001)
+    revokeReason = String(reason).trim()
+  }
   e.pendingAction = 'DELIST'
+  if (revokeReason) {
+    e.pendingRevokeReason = revokeReason
+    e.pendingRevokeBy = currentDemoUsername() // 操作人 = 提交申请的管理员（访问审计 §6.2），不是审核人
+  }
   // 2026-09-09 PRD-20260908 复核批次 0 · A20/Q199：**停用不刷新最近更新时间**。
   // md `prd.专家.md` §二.2 只列「保存配置、提交审核或撤回提交后」三种刷新场景，停用不在其内；
   // 与 `prd-模型.md` §二.2「停用时不改变最近更新时间」口径一致。原 e.updatedAt = nowIso() 已删。
   writeReviewSnapshot(e, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
-  enrollReview({ businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '', requestAction: 'DELIST', version: e.latestVersionLabel || '—', versionNotes: '申请停止该专家对外提供' })
+  enrollReview({
+    businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '',
+    requestAction: 'DELIST', version: e.latestVersionLabel || '—',
+    versionNotes: revokeReason ? `申请强制回收该专家：${revokeReason}` : '申请停止该专家对外提供',
+    ...(revokeReason ? { forceRevokeReason: revokeReason } : {})
+  })
   persist()
   return {}
-}
-
-/**
- * 强制回收（PRD 专家 §3.5.1）：与【停用】并列的紧急下线——立即生效、不进审核中心（不 enrollReview）。
- * 仅「已发布且无在途审核」可回收，否则抛「状态已变化」（含被他人先回收的重复提交）。
- * 回到「未发布」，版本历史 / 最新版本号 / 最近发布时间保留；写 revoked={reason,at,operator} 并落访问审计。
- * 重新发布审核通过后清 revoked（见 applyExpertReviewResult）。
- */
-export async function forceRevokeExpert(id, { reason } = {}) {
-  await delay()
-  const e = findExpert(id)
-  if (!e) throw err('专家不存在', null, 404)
-  if (e.status !== 'published' || e.pendingAction) throw err('专家状态已变化，请刷新后重试', null, 409)
-  const text = String(reason || '').trim()
-  if (!text) throw err('请输入回收原因', 'reason')
-  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
-  e.status = 'draft'
-  e.revoked = makeRevokedInfo(text)
-  // 与停用一致：不刷新最近更新时间（md §二.2 只列保存配置 / 提交审核 / 撤回三种刷新场景）
-  appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: text, version: e.latestVersionLabel })
-  persist()
-  return { revoked: { ...e.revoked } }
 }
 
 /* ==================== 审核结果落地（2026-09-12 负责人决策 5（审计 J12）） ====================
@@ -646,6 +654,12 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
   if (approved) {
     if (isDelist) {
       e.status = 'draft' // 停用通过 → 未发布（md L102）；版本历史保留
+      if (e.pendingRevokeReason) {
+        // 强制回收（PRD 专家 §3.5.1）：审核通过才生效——打「已回收」标记并落访问审计
+        const revokeBy = e.pendingRevokeBy || currentDemoUsername() // 旧快照缺该键时兜底当前用户
+        e.revoked = makeRevokedInfo(e.pendingRevokeReason, revokeBy)
+        appendOpsRecord({ operator: revokeBy, module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: e.pendingRevokeReason, version: e.latestVersionLabel })
+      }
     } else {
       const label = e.pendingVersion || 'v1.0.0'
       const rows = publications[e.id] || (publications[e.id] = [])
@@ -675,6 +689,8 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
     // 这里不改——原 `isDelist ? 'published' : 'draft'` 会把已发布专家的迭代驳回打成未发布（09-18 审查 E2）。
   }
   e.pendingAction = null
+  delete e.pendingRevokeReason // 通过已落地 / 驳回丢弃：回收原因随在途事项一并清掉
+  delete e.pendingRevokeBy
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
@@ -730,6 +746,13 @@ export async function relistExpertPublication(expertId, publicationId) {
   // （2026-09-18 待办 yuepu#13·专家 E2：此前启用旧版会把 latestVersionLabel 覆写成该旧版本号）。
   persist()
   return { ...row }
+}
+
+/** 绑定了某岗位的岗位私有专家（岗位删除确认文案用）。 */
+export function listExpertsBoundToPosition(positionId) {
+  return experts
+    .filter((e) => e.type === EXPERT_TYPE.POSITION && Array.isArray(e.positionIds) && e.positionIds.some((id) => String(id) === String(positionId)))
+    .map((e) => ({ id: e.id, name: e.name }))
 }
 
 /**

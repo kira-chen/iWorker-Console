@@ -113,15 +113,10 @@ export function getExpertNextVersionLabel(expertId) {
 }
 
 // 停用（整专家下架）→ 提交停用审核。历史版本记录不动。
-export function unpublishExpert(expertId) {
-  if (USE_MOCK) return mock.unpublishExpert(expertId)
-  return request.post(`/fde/experts/${expertId}/unpublish`, {}, W)
-}
-
-// 强制回收（PRD 专家 §3.5.1）：不走审核、立即生效；body: { reason }（必填 ≤500 字）。
-export function forceRevokeExpert(expertId, payload) {
-  if (USE_MOCK) return mock.forceRevokeExpert(expertId, payload)
-  return request.post(`/fde/experts/${expertId}/force-revoke`, payload, W)
+// payload: { forceRevoke, reason }——强制回收是停用时的勾选项（PRD 专家 §3.5.1），同走审核、通过才回收。
+export function unpublishExpert(expertId, payload = {}) {
+  if (USE_MOCK) return mock.unpublishExpert(expertId, payload)
+  return request.post(`/fde/experts/${expertId}/unpublish`, payload, W)
 }
 
 // V104 审核（ADMIN）/ 撤回（提交人）。approve/reject 无页面调用方（审核在审核中心），不走 mock 分流。

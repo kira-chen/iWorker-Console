@@ -36,6 +36,8 @@ function reviewTypeOf(businessType) {
  * @param {'FIRST_PUBLISH'|'VERSION_PUBLISH'|'DELIST'} p.requestAction
  * @param {string} [p.version]      申请版本，无版本概念的模块传 '—'
  * @param {string} [p.versionNotes] 升级说明 / 申请说明（我的申请详情展示）
+ * @param {string} [p.forceRevokeReason] 停用申请勾选了「强制回收」时的回收原因（非空即带强制回收标记；审核中心 / 我的申请
+ *                                  据此在详情里展示红色「强制回收」标记与原因，审核通过后由业务 mock 落「已回收」）
  * @param {string} [p.submittedAt]  不传取当前分钟
  * @param {string} [p.submitter]    提交人登录用户名；不传沿用两张表各自的默认提交人（2026-09-20 版本管理新增，
  *                                  其它模块不传、行为不变）
@@ -50,6 +52,7 @@ export function enrollReview(p) {
     description: p.description || '',
     requestAction: p.requestAction,
     version: p.version || '—',
+    ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
     ...(p.submitter ? { submitterName: p.submitter } : {}),
     ...(p.submittedAt ? { submittedAt: p.submittedAt } : {})
   })
@@ -61,6 +64,7 @@ export function enrollReview(p) {
     applicationType: p.requestAction,
     version: p.version || '—',
     versionNotes: p.versionNotes || '',
+    ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
     ...(p.submitter ? { submitter: p.submitter } : {}),
     ...(p.submittedAt ? { submittedAt: p.submittedAt } : {})
   })

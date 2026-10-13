@@ -5,6 +5,7 @@
  * 按业务类型把「查看 / 前往修改」分发到各业务模块自己的编辑器（只读或编辑态打开，
  * 编辑器组件本身零改动）：
  *   EXPERT      → ExpertEditor（readonly）
+ *   EXPERT_TEAM → ExpertTeamEditor（readonly；2026-10-12 专家团纳入审核，同专家走审核版本快照）
  *   MCP         → McpEditor（readonly）
  *   API         → ApiEditor（readonly）
  *   BIZ_SYSTEM  → BizSystemEditor（readonly）
@@ -37,6 +38,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import ExpertEditor from '@/components/admin/ExpertEditor.vue'
+import ExpertTeamEditor from '@/components/admin/ExpertTeamEditor.vue'
 import McpEditor from '@/components/admin/McpEditor.vue'
 import ApiEditor from '@/components/admin/ApiEditor.vue'
 import BizSystemEditor from '@/components/admin/BizSystemEditor.vue'
@@ -186,6 +188,14 @@ defineExpose({ snapshot, snapshotMissing })
     :snapshot-detail="readonly ? snapshot?.detail || null : null"
     @update:visible="vis = $event"
   />
+  <ExpertTeamEditor
+    v-else-if="kind === 'EXPERT_TEAM'"
+    :visible="visible"
+    :team-id="refId"
+    :readonly="readonly"
+    :snapshot-detail="readonly ? snapshot?.detail || null : null"
+    @update:visible="vis = $event"
+  />
   <McpEditor
     v-else-if="kind === 'MCP'"
     :visible="visible"
@@ -249,6 +259,10 @@ defineExpose({ snapshot, snapshotMissing })
   <!-- 吸底操作栏：覆盖在抽屉底部动作区上（见头注释），按钮组由调用方定义 -->
   <Teleport to="body">
     <div v-if="visible && kind && effectiveButtons.length" class="god-bar" :style="{ width: barWidth }">
+      <!-- 强制回收申请：详情底栏左侧提示回收原因，审核人一眼区别于普通停用（审核中心 PRD §5.2） -->
+      <span v-if="item?.forceRevokeReason" class="god-revoke-hint" data-test="god-revoke-hint" :title="item.forceRevokeReason">
+        强制回收申请 · 回收原因：{{ item.forceRevokeReason }}
+      </span>
       <el-button
         v-for="b in effectiveButtons"
         :key="b.key"
@@ -281,6 +295,15 @@ defineExpose({ snapshot, snapshotMissing })
   background: var(--bg-elevated);
   border-top: 1px solid var(--border-base);
   box-sizing: border-box;
+}
+.god-revoke-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
 }
 .god-bar .el-button + .el-button {
   margin-left: 0;

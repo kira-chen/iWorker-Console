@@ -208,6 +208,7 @@ export async function getMyApplication(id) {
 const MODULES = {
   POSITION: () => import('./positionMock').then((m) => ({ withdraw: m.withdrawPosition, publish: (id, notes) => m.publishPosition(id, { releaseNotes: notes }), delist: m.unpublishPosition })),
   EXPERT: () => import('./domainExpertMock').then((m) => ({ withdraw: m.withdrawExpert, publish: (id, notes) => m.publishExpert(id, { releaseNotes: notes }), delist: m.unpublishExpert })),
+  EXPERT_TEAM: () => import('./expertTeamMock').then((m) => ({ withdraw: m.withdrawTeam, publish: (id, notes) => m.publishTeam(id, { releaseNotes: notes }), delist: m.unpublishTeam })),
   SKILL: () => import('./unifiedSkillMock').then((m) => ({ withdraw: m.withdrawPublish, publish: (id, notes) => m.publishSkill(id, { releaseNotes: notes }), delist: m.delistSkill })),
   KNOWLEDGE_BASE: () => import('./knowledgeBaseMock').then((m) => ({ withdraw: (id) => m.transition(id, "withdraw"), publish: (id) => m.transition(id, "publish"), delist: (id) => m.transition(id, "delist") })),
   MCP: () => import('./mcpConnectorMock').then((m) => ({ withdraw: m.withdrawMcpService, publish: m.publishMcpService, delist: m.delistMcpService })),
@@ -269,8 +270,11 @@ export async function resubmitMyApplication(id) {
   const mod = await MODULES[row.businessType]?.()
   if (!mod) throw conflict('该业务类型暂不支持重新提交')
   try {
-    if (row.applicationType === 'DELIST') await mod.delist(row.refId)
-    else await mod.publish(row.refId, row.versionNotes || '重新提交审核')
+    if (row.applicationType === 'DELIST') {
+      // 强制回收停用申请重提必须仍是强制回收（否则静默降级成普通停用）：各模块停用函数第二参数统一 { forceRevoke, reason }
+      if (row.forceRevokeReason) await mod.delist(row.refId, { forceRevoke: true, reason: row.forceRevokeReason })
+      else await mod.delist(row.refId)
+    } else await mod.publish(row.refId, row.versionNotes || '重新提交审核')
   } catch (e) {
     throw conflict(e?.message || '重新提交失败，请检查该对象当前状态')
   }

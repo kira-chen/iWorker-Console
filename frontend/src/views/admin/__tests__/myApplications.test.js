@@ -159,7 +159,7 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型', '全部审核结果'])
     const opts = (i) => [...selects[i].querySelectorAll('.el-option')].map((o) => o.textContent)
-    expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
+    expect(opts(0)).toEqual(['专家', '专家团', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
     expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用'])
     expect(opts(2)).toEqual(['待审核', '已通过', '已驳回', '已撤回'])
     expect(toolbarBtn('查询')).toBeTruthy()
@@ -201,6 +201,19 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(r501.querySelector('[data-label="申请版本"]').textContent.trim()).toBe('—')
     expect(rowById(503).querySelector('[data-label="申请版本"]').textContent.trim()).toBe('v2.2.0')
     expect(r501.textContent).toContain('2026-08-28 10:30')
+  })
+
+  it('停用申请勾选了强制回收 → 申请类型旁追加红色「强制回收」标记并悬停展示回收原因；普通停用与发布申请不带标记（md 各模块强制回收小节）', async () => {
+    const forced = { ...byId(510), id: 531, objectName: '合同审阅专员', applicationType: 'DELIST', result: 'REJECTED', objectDeleted: false, forceRevokeReason: '涉及违规内容' }
+    listMyApplications.mockResolvedValue({ list: [forced, byId(510), byId(501)], total: 3 })
+    await mount()
+    const tags = (row) => [...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    const forcedRow = rowEls().find((el) => el.textContent.includes('合同审阅专员'))
+    expect(tags(forcedRow)).toEqual(['专家', '停用', '强制回收', '已驳回'])
+    const mark = [...forcedRow.querySelectorAll('.el-tooltip')].find((t) => t.textContent.includes('强制回收'))
+    expect(mark.dataset.tip).toBe('回收原因：涉及违规内容')
+    expect(tags(rowEls().find((el) => el.textContent.includes('法务审阅专家')))).toEqual(['专家', '停用', '已撤回'])
+    expect(tags(rowById(501))).toEqual(['API', '首次发布', '待审核'])
   })
 
   it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1「已驳回的标签悬停展示驳回原因」）', async () => {

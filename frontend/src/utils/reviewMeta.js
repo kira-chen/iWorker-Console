@@ -58,6 +58,7 @@ export function typeTagType(type) {
 export const REVIEW_BIZ_TYPE_OPTIONS = [
   { value: 'POSITION', label: '岗位' },
   { value: 'EXPERT', label: '专家' },
+  { value: 'EXPERT_TEAM', label: '专家团' },
   { value: 'SKILL', label: '技能' },
   { value: 'KNOWLEDGE_BASE', label: '知识库' },
   { value: 'CONNECTOR_MCP', label: 'MCP' },
@@ -88,7 +89,7 @@ export function reviewBizTypeLabel(row) {
   if (row.type === 'MODEL') return '模型'
   if (row.type === 'KNOWLEDGE_BASE') return '知识库'
   if (row.type === 'VERSION') return '版本管理'
-  return { POSITION: '岗位', EXPERT: '专家' }[row.type] || row.type
+  return { POSITION: '岗位', EXPERT: '专家', EXPERT_TEAM: '专家团' }[row.type] || row.type
 }
 
 // 业务类型 → StatusTag 色（原型 typeKind：blue→accent / green→success / orange→warning /
@@ -98,7 +99,7 @@ export function reviewBizTypeTagType(type) {
   if (type === 'SKILL') return 'success'
   if (type === 'MODEL') return 'warning'
   if (type === 'POSITION') return 'purple'
-  if (type === 'EXPERT') return 'info'
+  if (type === 'EXPERT' || type === 'EXPERT_TEAM') return 'info'
   // 知识库（2026-09-09 A6 新增）：StatusTag 只有六色且已被七类占满，按「同属内容资产」与技能共用绿系
   if (type === 'KNOWLEDGE_BASE') return 'success'
   return 'info'
@@ -123,6 +124,7 @@ export function requestActionTagType(action) {
 // 2026-09-09 PRD 复核 A6：补「知识库」）
 export const MYAPP_BIZ_TYPE_OPTIONS = [
   { value: 'EXPERT', label: '专家' },
+  { value: 'EXPERT_TEAM', label: '专家团' },
   { value: 'POSITION', label: '岗位' },
   { value: 'SKILL', label: '技能' },
   { value: 'KNOWLEDGE_BASE', label: '知识库' },
@@ -139,6 +141,7 @@ export function myAppBizTypeLabel(t) {
   return (
     {
       EXPERT: '专家',
+      EXPERT_TEAM: '专家团',
       POSITION: '岗位',
       SKILL: '技能',
       KNOWLEDGE_BASE: '知识库',

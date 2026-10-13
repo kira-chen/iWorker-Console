@@ -22,6 +22,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import GovObjectDetail from '@/components/admin/GovObjectDetail.vue'
+import ForceRevokeMark from '@/components/admin/ForceRevokeMark.vue'
 import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
 import { fmtTime } from '@/utils/docMeta'
 import {
@@ -242,6 +243,7 @@ async function submitReject(reason) {
               <StatusTag :type="requestActionTagType(row.requestAction)">
                 {{ requestActionLabel(row.requestAction) }}
               </StatusTag>
+              <ForceRevokeMark :reason="row.forceRevokeReason" />
             </template>
           </el-table-column>
           <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
