@@ -46,7 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   route.query = {}
-  api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 1, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945 })
+  api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 1, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945, defaultFloorGb: 1 })
   api.listStorageMembers.mockResolvedValue({ list: MEMBERS, total: MEMBERS.length })
   api.listExpansionRequests.mockResolvedValue({ list: [REQUEST], total: 1 })
   api.getExpansionRequest.mockResolvedValue({ ...REQUEST, current: MEMBERS[0] })
@@ -104,7 +104,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     const c = await mountPage()
     expect(textOf(c.querySelector('h2'))).toBe('存储空间')
     expect(textOf(c)).toContain('分配员工产物存储容量，处理扩容申请；仅统计本地产物（最终产物 + 缓存），不含知识库资料')
-    expect(textOf(c.querySelector('.sq-default'))).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整修改')
+    expect(textOf(c.querySelectorAll('.sq-default')[1])).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整修改')
     expect(textOf(c.querySelector('.ss-badge'))).toBe('1')
   })
 
@@ -155,10 +155,12 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
 
   it('新总量不高于已用时先二次确认（全文见 md §三·4）；取消则不提交，点「继续」才提交', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('ok')
+    // 已用恰为整数 3 GB 的员工：新总量 = 已用（下限）允许，但会立刻已满，所以仍要二次确认
+    api.listStorageMembers.mockResolvedValue({ list: [{ ...MEMBERS[1], usedGb: 3, finalGb: 3, cacheGb: 0, ratio: 0.6 }], total: 1 })
     const c = await mountPage()
-    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
+    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[0], '调整容量').click()
     await flushAll(6)
-    await typeNumber(2) // 张敏已用 2.7 GB，新总量 2 不高于已用
+    await typeNumber(3) // 新总量 3 = 已用 3，不高于已用
     btn(dialogBody(), '确定').click()
     await flushAll(6)
     expect(confirm).toHaveBeenCalledTimes(1)
@@ -167,7 +169,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     btn(dialogBody(), '确定').click()
     await flushAll(8)
     expect(confirm).toHaveBeenCalledTimes(2)
-    expect(api.adjustStorageQuota).toHaveBeenCalledWith(201, 2)
+    expect(api.adjustStorageQuota).toHaveBeenCalledWith(201, 3)
   })
 
   it('切换页签不保留搜索 / 筛选：在容量分配页选了状态再切走切回，请求参数回到默认（md §二）', async () => {
@@ -186,8 +188,10 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
   })
 
   it('调整容量输入框带上下加减键（点加减按钮数字 ±1），减到 1 不能再减', async () => {
+    // 未统计的员工没有已用，下限是 1
+    api.listStorageMembers.mockResolvedValue({ list: [{ ...MEMBERS[1], usedGb: null, finalGb: null, cacheGb: null, ratio: null, state: 'UNKNOWN' }], total: 1 })
     const c = await mountPage()
-    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
+    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[0], '调整容量').click()
     await flushAll(6)
     const input = dialogBody().querySelector('.el-input-number input')
     expect(input.value).toBe('5')
@@ -203,13 +207,13 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
   it('默认容量可调：容量条带【修改】，磁盘总量条展示总量 / 已分配 / 余量', async () => {
     const c = await mountPage()
     const bars = [...c.querySelectorAll('.sq-default')].map(textOf)
-    expect(bars[0]).toContain('默认容量：5 GB')
-    expect(bars[1]).toContain('磁盘总量：1000 GB，已分配 55 GB，余量 945 GB')
+    expect(bars[0]).toContain('磁盘总量：1000 GB，已分配 55 GB，余量 945 GB') // 先磁盘总量
+    expect(bars[1]).toContain('默认容量：5 GB') // 再默认容量
   })
 
   it('点默认容量条的【修改】：弹窗预填当前默认容量，确定后调用 setDefaultQuota 并提示', async () => {
     const c = await mountPage()
-    btn(c.querySelectorAll('.sq-default')[0], '修改').click()
+    btn(c.querySelectorAll('.sq-default')[1], '修改').click()
     await flushAll(6)
     expect(textOf(dialogBody())).toContain('修改默认容量')
     await typeNumber(3)
@@ -222,7 +226,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
   it('点磁盘总量条的【修改】：不受 20 GB 限制，确定后调用 setDiskTotal；后端拒绝时就地展示原因', async () => {
     api.setDiskTotal.mockRejectedValueOnce(new Error('磁盘总量不能低于已分配的 55 GB'))
     const c = await mountPage()
-    btn(c.querySelectorAll('.sq-default')[1], '修改').click()
+    btn(c.querySelectorAll('.sq-default')[0], '修改').click()
     await flushAll(6)
     await typeNumber(30)
     btn(dialogBody(), '确定').click()
@@ -337,12 +341,22 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     expect(textOf(row)).toContain('0.6 GB')
   })
 
-  it('新总量高于已用时直接提交并提示；输入小于 1 的数被拉回 1、小数就地报错不提交', async () => {
+  it('调小下限 = 员工已用向上取整：张敏已用 2.7，减号只能减到 3，并提示「调小不得低于已用」；批量取所选员工中最大的已用', async () => {
     const c = await mountPage()
     btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
     await flushAll(6)
-    await typeNumber(0) // 小于下限 1：输入框直接拉回 1，不会带着非法值提交
-    expect(dialogBody().querySelector('.el-input-number input').value).toBe('1')
+    expect(textOf(dialogBody())).toContain('正整数，3–20 GB（调小不得低于已用）')
+    for (let i = 0; i < 4; i++) await pressStep('.el-input-number__decrease')
+    expect(dialogBody().querySelector('.el-input-number input').value).toBe('3')
+    expect(dialogBody().querySelector('.el-input-number__decrease').classList.contains('is-disabled')).toBe(true)
+  })
+
+  it('新总量高于已用时直接提交并提示；输入低于下限（已用 2.7 → 3）的数被拉回 3、小数就地报错不提交', async () => {
+    const c = await mountPage()
+    btn(c.querySelectorAll('.el-table__body tr.el-table__row')[1], '调整容量').click()
+    await flushAll(6)
+    await typeNumber(0) // 小于下限：输入框直接拉回下限 3，不会带着非法值提交
+    expect(dialogBody().querySelector('.el-input-number input').value).toBe('3')
     await typeNumber(8.5) // 小数不能被输入框悄悄取整，要提示
     expect(dialogBody().querySelector('.el-input-number input').value).toBe('8.5')
     btn(dialogBody(), '确定').click()

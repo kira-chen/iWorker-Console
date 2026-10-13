@@ -22,7 +22,7 @@ import {
   setDefaultQuota,
   setDiskTotal
 } from '@/api/storageSpace'
-import { STORAGE_STATE, QUOTA_MIN_GB, QUOTA_MAX_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
+import { STORAGE_STATE, QUOTA_MIN_GB, QUOTA_MAX_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, quotaFloorGb, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 const props = defineProps({
   /** 访问审计「查看」跳转带入的员工用户名，作为初始搜索词 */
@@ -54,7 +54,7 @@ function clearFilters() {
 }
 
 /* ---------- 默认容量条 ---------- */
-const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0, diskTotalGb: DISK_TOTAL_GB, allocatedGb: 0, remainingGb: DISK_TOTAL_GB })
+const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0, diskTotalGb: DISK_TOTAL_GB, allocatedGb: 0, remainingGb: DISK_TOTAL_GB, defaultFloorGb: QUOTA_MIN_GB })
 async function loadOverview() {
   try {
     overview.value = await getStorageOverview()
@@ -95,13 +95,21 @@ const overusedTargets = computed(() => {
   if (dialog.kind === 'batch') return selected.value.filter((r) => r.usedGb != null && dialog.value <= r.usedGb)
   return []
 })
-/** 调整容量 / 批量设置1–20 GB，可任意调大调小，不受当前容量限制 */
-const minGb = QUOTA_MIN_GB
+/**
+ * 输入框下限：可任意调大，调小不得低于员工当前已用（整数 GB 向上取整）。
+ * 批量取所选员工中最大的已用，修改默认容量取所有默认员工中最大的已用；磁盘总量的下限是已分配，由 mock 校验。
+ */
+const minGb = computed(() => {
+  if (dialog.kind === 'single') return quotaFloorGb(dialog.target?.usedGb)
+  if (dialog.kind === 'batch') return Math.max(QUOTA_MIN_GB, ...selected.value.map((r) => quotaFloorGb(r.usedGb)))
+  if (dialog.kind === 'default') return overview.value.defaultFloorGb
+  return QUOTA_MIN_GB
+})
 /** 弹窗输入上限：员工容量与默认容量 ≤ 20 GB；磁盘总量没有 20 GB 限制，只要求不低于已分配 */
 const maxGb = computed(() => (dialog.kind === 'disk' ? 1000000 : QUOTA_MAX_GB))
 
 // 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
-const validate = () => quotaInputError(dialog.value, minGb, maxGb.value)
+const validate = () => quotaInputError(dialog.value, minGb.value, maxGb.value)
 
 /** 调整后总量不高于已用 → 员工会立刻变成已满，提交前二次确认（调整容量、批量设置、恢复默认共用一句话）。 */
 async function confirmFull(who) {
@@ -209,14 +217,14 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
 <template>
   <div class="sq-pane">
     <div class="sq-default">
-      <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
-      <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
-      <el-button link type="primary" @click="openDialog('default')">修改</el-button>
-    </div>
-    <div class="sq-default">
       <span class="sq-default-label">磁盘总量：<b>{{ overview.diskTotalGb }} GB</b>，</span>
       <span class="sq-default-hint">已分配 {{ overview.allocatedGb }} GB，余量 <b :class="{ 'sq-danger': overview.remainingGb <= 0 }">{{ overview.remainingGb }} GB</b>；按物理总量分配、不超分，余量不足时无法再调大员工容量</span>
       <el-button link type="primary" @click="openDialog('disk')">修改</el-button>
+    </div>
+    <div class="sq-default">
+      <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
+      <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
+      <el-button link type="primary" @click="openDialog('default')">修改</el-button>
     </div>
 
     <ListToolbar>
@@ -311,7 +319,7 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
 
       <div class="sq-field-label"><b class="sq-required">*</b> {{ dialog.kind === 'disk' ? '磁盘总量' : dialog.kind === 'default' ? '默认容量' : '新总量' }}（GB）</div>
       <el-input-number v-model="dialog.value" :min="minGb" :max="maxGb" :step="dialog.kind === 'disk' ? 100 : 1" class="sq-number" />
-      <div class="sq-sub">{{ dialog.kind === 'disk' ? '正整数，不低于已分配' : `正整数，${minGb}–${QUOTA_MAX_GB} GB` }}</div>
+      <div class="sq-sub">{{ dialog.kind === 'disk' ? '正整数，不低于已分配' : `正整数，${minGb}–${QUOTA_MAX_GB} GB${minGb > QUOTA_MIN_GB ? '（调小不得低于已用）' : ''}` }}</div>
       <div v-if="dialog.error" class="sq-error">{{ dialog.error }}</div>
 
       <template #footer>

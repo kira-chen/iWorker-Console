@@ -182,17 +182,19 @@ describe('StorageQuotaPane · 批量设置（md §三·5）', () => {
 
   it('提交时有 2 名员工新总量不高于已用 → 先二次确认（「其中 N 名员工」）；取消不提交，继续后提交并提示实际人数', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('ok')
+    // 调小下限 = 已用：两名已用 5 GB 的员工，新总量只能 ≥ 5，恰为 5 时两人都恰好已满
+    api.listStorageMembers.mockResolvedValue({ list: [FULL, { ...FULL, userId: 6, username: 'full2', name: '已满员工二' }], total: 2 })
     const c = await mountPane()
-    await openBatch(c, ['已满员工', '预警员工']) // 已用 5 GB 与 4.6 GB，新总量 3 都不高于已用
-    await typeNumber(3)
+    await openBatch(c, ['已满员工', '已满员工二'])
+    await typeNumber(5)
     btn(dialogBody(), '确定').click()
     await flushAll(6)
     expect(String(confirm.mock.calls[0][0])).toBe('调整后其中 2 名员工的总量不高于已用，将处于已满状态，任务会被拦截，是否继续？')
     expect(api.batchAdjustStorageQuota).not.toHaveBeenCalled()
     btn(dialogBody(), '确定').click()
     await flushAll(10)
-    expect(api.batchAdjustStorageQuota).toHaveBeenCalledWith([3, 2], 3)
-    expect(successSpy).toHaveBeenCalledWith('已将 2 名员工的容量设置为 3 GB')
+    expect(api.batchAdjustStorageQuota).toHaveBeenCalledWith([3, 6], 5)
+    expect(successSpy).toHaveBeenCalledWith('已将 2 名员工的容量设置为 5 GB')
   })
 
   // 前提单独成条：it.fails 遇任何异常都算通过，前提若写在里面会「为错误的原因通过」
