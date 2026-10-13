@@ -153,7 +153,12 @@ async function remove(row) {
     ElMessage.success('规格已删除')
     refresh()
   } catch (e) {
-    ElMessage.error(e?.message || '删除失败，请稍后重试')
+    if (e?.code === 40400 || e?.status === 404 || e?.message === '规格不存在') {
+      ElMessage.error('规格不存在或已被删除')
+      refresh()
+    } else {
+      ElMessage.error(e?.message || '删除失败，请稍后重试')
+    }
   } finally {
     busyId.value = null
   }

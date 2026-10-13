@@ -447,6 +447,12 @@ describe('bizSystemMock —— 强制回收（停用时勾选，走停用审核�
   // PRD 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
   it('操作人 = 提交强制回收的管理员：A 提交、切换演示身份为 B 通过 → revoked.operator 与审计 operator 都是 A', async () => {
     const { m, audit, run } = await fresh()
+    let identity = null
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => key === 'ai_assistant_user' ? identity : null,
+      setItem: (key, value) => { if (key === 'ai_assistant_user') identity = String(value) },
+      removeItem: (key) => { if (key === 'ai_assistant_user') identity = null }
+    })
     const setUser = (username) => localStorage.setItem('ai_assistant_user', JSON.stringify({ username }))
     try {
       setUser('admin_a')
@@ -456,7 +462,7 @@ describe('bizSystemMock —— 强制回收（停用时勾选，走停用审核�
       expect(row.revoked.operator).toBe('admin_a')
       expect(audit.opsRecords[0]).toMatchObject({ action: '强制回收', operator: 'admin_a' })
     } finally {
-      localStorage.removeItem('ai_assistant_user')
+      vi.unstubAllGlobals()
     }
   })
 

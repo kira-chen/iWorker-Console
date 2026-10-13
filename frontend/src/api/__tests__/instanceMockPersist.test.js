@@ -32,6 +32,17 @@ afterEach(() => {
 })
 
 describe('instanceMock · 持久化', () => {
+  it('本地存着 v1 旧快照时作废并回到当前 5 条种子', async () => {
+    globalThis.localStorage.setItem('iworker-demo-mock:instanceManagement', JSON.stringify({
+      v: 1,
+      data: { instances: [{ id: 'old-instance', name: '旧实例' }] }
+    }))
+    const m = await import('../instanceMock')
+    const result = await m.listInstances({ size: 200 })
+    expect(result.total).toBe(5)
+    expect(result.list.some((item) => item.id === 'old-instance')).toBe(false)
+  })
+
   it('对赵敏实例按最新规格重建后刷新页面：先恢复启动中快照，再推进为空闲并更新实际规格', async () => {
     const first = await import('../instanceMock')
     await first.operateInstance('ins-240904', 'rebuild')

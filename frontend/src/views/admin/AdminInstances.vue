@@ -23,6 +23,7 @@ const loadError = ref(false)
 const updatedAt = ref('—')
 
 const statusMeta = { RUNNING:['运行中','success'], IDLE:['空闲','info'], ERROR:['异常','danger'], STARTING:['启动中','warning'], RECYCLING:['回收中','warning'] }
+const statusPriority = { ERROR: 0, STARTING: 1, RUNNING: 2, IDLE: 3, RECYCLING: 4 }
 const positions = computed(() => [...new Set(instances.value.map(x => x.position))])
 const specs = computed(() => [...new Set(instances.value.map(x => x.effectiveSpec))])
 const filteredInstances = computed(() => instances.value.filter(x => {
@@ -32,7 +33,11 @@ const filteredInstances = computed(() => instances.value.filter(x => {
     && (!query.position || x.position === query.position)
     && (!query.spec || x.effectiveSpec === query.spec)
     && (!query.pending || x.actualSpec !== x.effectiveSpec)
-}).sort((a, b) => activeSort.value === 'ascending' ? String(a.active).localeCompare(String(b.active)) : String(b.active).localeCompare(String(a.active))))
+}).sort((a, b) => {
+  if (activeSort.value === 'ascending') return String(a.active).localeCompare(String(b.active))
+  const priority = (statusPriority[a.status] ?? 99) - (statusPriority[b.status] ?? 99)
+  return priority || String(b.active).localeCompare(String(a.active))
+}))
 const pagedInstances = computed(() => filteredInstances.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 const hasFilter = computed(() => !!(query.keyword.trim() || query.status || query.position || query.spec || query.pending))
 const emptyText = computed(() => hasFilter.value ? '没有符合当前条件的实例' : '当前没有运行实例')

@@ -48,7 +48,7 @@ const FINGERPRINTS = {
   positionApplications: { version: 4, fp: 'bf5160f2' },
   positionAssignment: { version: 2, fp: 'a3b870be' },
   reviews: { version: 8, fp: 'ffc05ceb' },
-  runtimeSpec: { version: 3, fp: 'ee9c4c1c' },
+  runtimeSpec: { version: 4, fp: '032a2fd8' },
   sampleTask: { version: 8, fp: '01a9bf8e' },
   skillReview: { version: 3, fp: 'aa231c01' },
   storageSpace: { version: 6, fp: 'b082a090' },

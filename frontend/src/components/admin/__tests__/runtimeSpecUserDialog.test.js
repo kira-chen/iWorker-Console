@@ -30,7 +30,7 @@ const USERS = [
   user({ userId: 201, username: 'zhangwei', displayName: '张伟', currentSpecId: 3, currentSpecName: '重', source: 'POSITION', positionName: '财务审核岗', isCurrent: true, isEffective: true }),
   user({ userId: 208, username: 'zhaomin', displayName: '赵敏', currentSpecId: 3, currentSpecName: '重', source: 'USER', isCurrent: true, isEffective: true }),
   user({ userId: 210, username: 'hejing', displayName: '何静', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT', approval: 'PENDING', pendingSpecName: '重', isCurrent: true, isPending: true }),
-  user({ userId: 203, username: 'chenyu', displayName: '陈宇', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT' }),
+  user({ userId: 203, username: 'chenyu', displayName: '陈宇', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT', positionName: '财务审核岗' }),
   user({ userId: 207, username: 'liuqiang', displayName: '刘强', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT' }),
   user({ userId: 211, username: 'wujie', displayName: '吴杰', status: 'disabled', currentSpecId: 2, currentSpecName: '标准', source: 'DEFAULT' })
 ]
@@ -39,12 +39,13 @@ const APPLICATIONS = [
   { id: 'a2', username: 'liuqiang', displayName: '刘强', approval: 'WITHDRAWN', submittedAt: '2026-08-27 09:40', updatedAt: '2026-08-27 11:15', reason: '用户主动撤回' }
 ]
 
-let mounted, savedSpy, confirmSpy, successSpy, errorSpy
+let mounted, savedSpy, confirmSpy, alertSpy, successSpy, errorSpy
 beforeEach(() => {
   vi.clearAllMocks()
   api.listRuntimeSpecUsers.mockResolvedValue({ list: USERS.map((u) => ({ ...u })), total: USERS.length, applications: APPLICATIONS })
   savedSpy = vi.fn()
   confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+  alertSpy = vi.spyOn(ElMessageBox, 'alert').mockResolvedValue()
   successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }))
   errorSpy = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }))
 })
@@ -109,6 +110,15 @@ describe('RuntimeSpecUserDialog · 配置范围（md §三.3.4 / §三.3.5）', 
     expect(dlg.querySelector('.rsu-history').textContent).toContain('已撤回')
     expect(dlg.querySelector('.rsu-history').textContent).toContain('查看申请')
 
+    const historyRow = [...dlg.querySelectorAll('.rsu-history .el-table__body tr.el-table__row')][0]
+    ;[...historyRow.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看申请').click()
+    await flushAll(4)
+    expect(alertSpy).toHaveBeenCalledWith(
+      '申请编号：a1\n发起人：孙欣（sun.xin）\n发起时间：2026-08-28 10:20\n当前结果：已驳回\n最近更新：2026-08-28 14:05\n处理说明：资源申请不符合当前任务',
+      '申请详情 · 孙欣',
+      { confirmButtonText: '关闭' }
+    )
+
     // 第一页签底部只有【关闭】
     expect([...dlg.querySelectorAll('.el-dialog__footer .el-button')].map((b) => b.textContent.trim())).toEqual(['关闭'])
     expect(consoleErr).not.toHaveBeenCalled()
@@ -157,6 +167,17 @@ describe('RuntimeSpecUserDialog · 配置范围（md §三.3.4 / §三.3.5）', 
     expect(errorSpy).toHaveBeenCalledWith('用户 陈宇 已停用，不能配置规格')
     expect(savedSpy).not.toHaveBeenCalled()
     expect(dlg.querySelector('.rsu-selection').textContent.trim()).toBe('已选择 1 个用户')
+  })
+
+  it('添加个人例外按岗位名搜索，可命中该岗位用户', async () => {
+    const dlg = await open()
+    await switchToAddTab(dlg)
+    const input = dlg.querySelector('input[placeholder="搜索用户名、显示名、岗位或当前规格"]')
+    input.value = '财务审核岗'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushAll(4)
+    const names = [...dlg.querySelectorAll('.rsu-table .el-table__body tr.el-table__row')].map((r) => r.querySelector('.rsu-user-name').textContent.trim())
+    expect(names).toEqual(['陈宇'])
   })
 
   it('待审批行点【撤回】→ 确认窗「撤回规格申请」→ unassignRuntimeSpecUser(3, hejing) →「申请已撤回」+ emit saved（md §三.3.4 L199）', async () => {

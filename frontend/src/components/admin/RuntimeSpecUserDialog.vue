@@ -89,7 +89,7 @@ async function load() {
 
 function showApplication(row) {
   ElMessageBox.alert(
-    `提交时间：${row.submittedAt}\n最近更新：${row.updatedAt}\n处理说明：${row.reason || '—'}`,
+    `申请编号：${row.id}\n发起人：${row.displayName}（${row.username}）\n发起时间：${row.submittedAt}\n当前结果：${approvalText(row.approval)}\n最近更新：${row.updatedAt}\n处理说明：${row.reason || '—'}`,
     `申请详情 · ${row.displayName}`,
     { confirmButtonText: '关闭' }
   ).catch(() => {})
