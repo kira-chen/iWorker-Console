@@ -28,8 +28,8 @@ const alerts = [
   { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
   { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
   { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
-  { count: 5,  level: 'medium', label: '待分配',   text: '岗位管理有 5 条待分配申请',    meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments' },
-  { count: 4,  level: 'medium', label: '待扩容',   text: '存储空间有 4 条扩容申请待处理', meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace' },
+  { count: 5,  level: 'medium', label: '待分配',   text: '岗位管理有 5 条待分配申请',    meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments', query: { pending: '1' } },
+  { count: 4,  level: 'medium', label: '待扩容',   text: '存储空间有 4 条扩容申请待处理', meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace', query: { tab: 'request', status: 'PENDING' } },
 ]
 const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 
@@ -87,6 +87,7 @@ async function loadVerOverview() {
 onMounted(loadVerOverview)
 
 // 点踩统计（2026-09-17 裁决：模块收窄为点踩，不再展示点赞数据；按岗位分布及其筛选项一并删去）
+// 点踩率 = 点踩数 ÷ （点踩数 + 点赞数）：1031 ÷ （1031 + 7420）≈ 12.2%（点赞数只参与计算，不展示）
 const fbTotal = { dislikes: 1031, dislikeRate: 12.2, trend: -3.1 }
 
 /* ---------- 点踩明细 / 对话明细（原型 openDlModal / openConvModal 复刻） ---------- */
@@ -112,6 +113,7 @@ const DL_TIMES = [
   '2026-08-21 19:03', '2026-08-21 13:29'
 ]
 // 样例记录（原型口径：52 条抽样明细，代表统计卡片里的 1,031 次点踩总量，非逐条落库）
+// 点踩数据按用户维度采集，不区分云端 / 客户端本地；每条记录只含被点踩的单轮（用户提问 + 被点踩回复）
 const allDlRecords = DL_TIMES.map((t, i) => ({
   id: 'D-' + (1031 - i),
   time: t,
@@ -121,7 +123,9 @@ const allDlRecords = DL_TIMES.map((t, i) => ({
 }))
 
 const dlVisible = ref(false)
-const dlFilterDate = ref('30') // 原型口径：时间范围仅展示，不参与实际过滤
+// 原型口径：时间范围仅展示，不参与实际过滤。
+// 真实系统：点踩明细全量留存，管理端只查询近 90 天（下拉最大 90 天）；样例记录均在 90 天内，故无需过滤
+const dlFilterDate = ref('30')
 const dlPage = ref(1)
 const DL_PAGE_SIZE = 10
 
@@ -140,14 +144,6 @@ function exportDlCsv() {
   ElMessage({ message: '已生成点踩明细 CSV，正在下载…', plain: true })
 }
 
-const PRIOR_Q = ['你好，请帮我了解一下相关背景信息', '能先给我一些基本情况的介绍吗', '这方面有哪些关键注意事项']
-function priorAFor(position) {
-  return [
-    `您好！我是${position}，很高兴为您服务。以下是相关背景信息的简要说明，供您参考……`,
-    '当然，关于这方面有以下几个核心要点值得了解，我来逐一说明……',
-    '好的，以下是我整理的关键注意事项，请您参阅……'
-  ]
-}
 const ASST_REPLIES = [
   '根据您的需求，我进行了初步分析，主要发现如下：① 核心指标同比有所变化，建议重点关注转化率和客单价；② 当前数据缺少部分维度，建议补充采集后再做深度分析。',
   '已为您生成所需模板，包含标准章节结构和填写说明。请注意第三部分的格式要求，并根据实际情况修改后使用。',
@@ -164,27 +160,20 @@ const ASST_REPLIES = [
 function pad2(n) {
   return String(n).padStart(2, '0')
 }
-// 由点踩记录反推一段前情对话（原型 buildConvTurns：同一条记录每次打开生成内容恒定，靠 id 做种子）
+// 由点踩记录还原被点踩的单轮对话（用户提问 + 被点踩回复）；同一条记录每次打开内容恒定，靠 id 做种子
 function buildConvTurns(rec) {
   const seed = parseInt(rec.id.replace('D-', ''), 10) || 0
   const date = rec.time.slice(0, 11)
   const hh = parseInt(rec.time.slice(11, 13), 10)
   const mm = parseInt(rec.time.slice(14, 16), 10)
-  function mkts(dh, dm) {
-    let h = hh + dh
-    let m = mm + dm
-    while (m < 0) { m += 60; h-- }
-    while (m >= 60) { m -= 60; h++ }
-    return date + pad2(Math.max(0, Math.min(23, h))) + ':' + pad2(m)
-  }
-  const priorA = priorAFor(rec.position)
+  // 回复时间 = 提问时间 + 1 分钟
+  let h = hh
+  let m = mm + 1
+  if (m >= 60) { m -= 60; h++ }
+  const replyTs = date + pad2(Math.min(23, h)) + ':' + pad2(m)
   return [
-    { role: 'user', ts: mkts(0, -8), text: PRIOR_Q[seed % PRIOR_Q.length] },
-    { role: 'asst', ts: mkts(0, -6), text: priorA[seed % priorA.length] },
-    { role: 'user', ts: mkts(0, -4), text: PRIOR_Q[(seed + 1) % PRIOR_Q.length] },
-    { role: 'asst', ts: mkts(0, -2), text: priorA[(seed + 1) % priorA.length] },
     { role: 'user', ts: rec.time.slice(0, 16), text: rec.snippet },
-    { role: 'asst', ts: mkts(0, 1), text: ASST_REPLIES[seed % ASST_REPLIES.length], disliked: true }
+    { role: 'asst', ts: replyTs, text: ASST_REPLIES[seed % ASST_REPLIES.length], disliked: true }
   ]
 }
 
@@ -211,13 +200,9 @@ function doRefresh() {
   }, 650)
 }
 
-function tip(text) {
-  ElMessage({ message: `正式系统中将进入「${text}」`, plain: true })
-}
-
 // 异常与待办卡片的行动按钮：真实跳转对应模块页面处理（2026-09-17 裁决：由 toast 占位改为路由跳转）
 function openAlertAction(item) {
-  router.push({ name: item.to })
+  router.push({ name: item.to, query: item.query })
 }
 </script>
 
@@ -360,7 +345,6 @@ function openAlertAction(item) {
         <span class="dash-panel-count">每轮对话均可反馈</span>
         <span class="spacer"></span>
         <button class="mini-btn" @click="openDislikeModal()">查看点踩明细</button>
-        <button class="mini-btn" @click="tip('反馈报表')">导出报表</button>
       </div>
 
       <!-- 总览 2 格：点踩总量 + 趋势 -->
@@ -432,7 +416,7 @@ function openAlertAction(item) {
       </template>
     </el-dialog>
 
-    <!-- 对话明细弹窗（原型 cvOverlay）：由点踩明细表格【查看】打开，展示点踩前后几轮对话 -->
+    <!-- 对话明细弹窗（原型 cvOverlay）：由点踩明细表格【查看】打开，展示被点踩的单轮对话 -->
     <el-dialog v-model="cvVisible" class="admin-dialog" width="640px">
       <template #header>
         <div class="cv-dialog-head">

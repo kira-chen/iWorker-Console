@@ -23,7 +23,8 @@ const pendingCount = ref(0)
 // 容量分配页点「待处理」时带过去的员工用户名；两个页签用 v-if 懒挂载，切过去时扩容申请页读它作初始搜索词
 const focusKeyword = ref(fromAuditRequest ? queryString(route.query.keyword) : '')
 // 扩容申请页签的初始状态筛选：容量分配页点「待处理」过来是待处理，审计页过来是全部状态（''）
-const focusStatus = ref(fromAuditRequest ? '' : 'PENDING')
+// 驾驶舱待办卡片【去处理】带 ?tab=request&status=PENDING：进扩容申请页签并只看待处理
+const focusStatus = ref(fromAuditRequest && route.query.status !== 'PENDING' ? '' : 'PENDING')
 // 审计页跳过来的员工用户名，只在首次进入容量分配页签时生效
 const quotaKeyword = ref(fromAuditRequest ? '' : queryString(route.query.keyword))
 

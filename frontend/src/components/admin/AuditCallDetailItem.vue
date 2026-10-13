@@ -1,7 +1,7 @@
 <script setup>
 /**
  * AuditCallDetailItem —— 工具调用审计详情里「工具调用明细」时间线的单项（2026-10-09 记录单元
- * 改版新增）。一次技能执行 / 任务运行可能调用多个工具，每一项各自有读写性质、确认状态（可选，
+ * 改版新增）。一次会话 / 任务运行可能调用多个工具，每一项各自有读写性质、确认状态（可选，
  * 任务运行没有）、执行结果；点击【查看请求参数 / 响应结果】就地展开，不影响时间线上其他项——
  * 各自维护自己的展开状态，互不影响（PRD §5.2）。
  *
@@ -16,6 +16,7 @@
  * showParams 传入，本组件不重复判断业务规则。
  *
  * @prop {string} tool 工具标识（连接器类型·连接器名称）
+ * @prop {string} source 调用来源（会话调用页签：该工具在哪个技能名下调用，未经技能为「会话直接调用」；任务运行不传）
  * @prop {{label:string,type:string}} nature 操作性质
  * @prop {{label:string,type:string}|null} confirm 用户确认（不需要确认 / 已确认两态；确认被拒绝
  *        或任务运行没有确认概念时传 null，不展示这一项——由执行结果 + 原因文案表达）
@@ -31,6 +32,7 @@ import StatusTag from '@/components/StatusTag.vue'
 
 defineProps({
   tool: { type: String, required: true },
+  source: { type: String, default: '' },
   nature: { type: Object, required: true },
   confirm: { type: Object, default: null },
   result: { type: Object, required: true },
@@ -54,6 +56,7 @@ function toggle() {
   <div class="call-item">
     <div class="call-item-head">
       <span class="call-item-tool">{{ tool }}</span>
+      <StatusTag v-if="source" type="info">{{ source }}</StatusTag>
       <StatusTag :type="nature.type">{{ nature.label }}</StatusTag>
       <StatusTag v-if="confirm" :type="confirm.type">{{ confirm.label }}</StatusTag>
       <StatusTag :type="result.type">{{ result.label }}</StatusTag>
