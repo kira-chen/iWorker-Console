@@ -81,7 +81,7 @@ describe('AdminExperts · 真实挂载冒烟（真 Element Plus，只 mock api�
 
     // md §二.3.1 三态按钮组合（真 el-button；审核中「编辑」置灰）
     const ops = (r) => [...r.querySelectorAll('.tbl-ops .el-button')]
-    expect(ops(rows[0]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
+    expect(ops(rows[0]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '停用', '版本管理'])
     expect(ops(rows[1]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '发布', '删除'])
     expect(ops(rows[2]).map((b) => b.textContent.trim())).toEqual(['查看', '编辑', '撤回'])
     expect(ops(rows[2])[1].disabled).toBe(true)
@@ -95,6 +95,22 @@ describe('AdminExperts · 真实挂载冒烟（真 Element Plus，只 mock api�
 
     expect(errSpy).not.toHaveBeenCalled()
     expect(warnSpy.mock.calls.map((c) => String(c[0]))).toEqual([])
+  })
+
+  it('已发布行点【停用】→ 真 el-dialog 打开，标题「停用专家」，含「强制回收」勾选项与【提交停用审核】（prd.专家.md §二.3.5 / §3.5.1），console.error 零调用', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    api.listExperts.mockResolvedValue({ list: EXPERTS, total: EXPERTS.length })
+    mounted = mountReal(AdminExperts, {}, { plugins: [router] })
+    await flushAll(10)
+    const row = [...mounted.container.querySelectorAll('.el-table__body tr.el-table__row')].find((r) => r.textContent.includes('经营分析专家'))
+    ;[...row.querySelectorAll('.tbl-ops .el-button')].find((b) => b.textContent.trim() === '停用').click()
+    await flushAll(10)
+    const dialog = document.body.querySelector('.el-dialog')
+    expect(dialog).toBeTruthy()
+    expect(dialog.querySelector('.el-dialog__title').textContent.trim()).toBe('停用专家')
+    expect(dialog.textContent).toContain('强制回收')
+    expect(dialog.querySelector('[data-test="dd-confirm"]').textContent.trim()).toBe('提交停用审核')
+    expect(errSpy).not.toHaveBeenCalled()
   })
 
   it('加载失败 → 真 ListStates 出「加载失败」+【重试】；点重试恢复出行（md §一.3），console.error 零调用', async () => {

@@ -83,6 +83,26 @@ describe('AdminSkillsUnified · 真实挂载冒烟（真 Element Plus，数据�
     expect(warnSpy.mock.calls.map((c) => String(c[0]))).toEqual([])
   })
 
+  it('已发布行（会议纪要整理）点【停用】→ 真 el-dialog 打开，标题「停用技能」，含「强制回收」勾选项与【提交停用审核】（prd.技能.md §二.3.5 / §3.5.1），console.error 零调用', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mounted = mountReal(AdminSkillsUnified)
+    await flushAll(12)
+    await new Promise((r) => setTimeout(r, 200))
+    await flushAll(6)
+    const row = [...mounted.container.querySelectorAll('.el-table__body tr.el-table__row')].find((r) => r.textContent.includes('会议纪要整理'))
+    expect(row).toBeTruthy()
+    const stop = [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '停用')
+    expect(stop).toBeTruthy()
+    stop.click()
+    await flushAll(10)
+    const dialog = document.body.querySelector('.el-dialog')
+    expect(dialog).toBeTruthy()
+    expect(dialog.querySelector('.el-dialog__title').textContent.trim()).toBe('停用技能')
+    expect(dialog.textContent).toContain('强制回收')
+    expect(dialog.querySelector('[data-test="dd-confirm"]').textContent.trim()).toBe('提交停用审核')
+    expect(errSpy).not.toHaveBeenCalled()
+  })
+
   it('点【新建技能】→ 真 el-dialog 打开「新建技能」弹窗，技能类型三选项 + 「建成后不可更改」提示在（md §三.2 L151-152），console.error 零调用', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mounted = mountReal(AdminSkillsUnified)

@@ -17,8 +17,9 @@ import { createApp, h, nextTick, ref } from 'vue'
  *  - §一.2「点击【查询】后按当前条件刷新；清空搜索框内容时列表自动刷新」「切换连接器类型或状态后列表立即刷新」：
  *    切类型或状态下拉不点查询即刷新、清空搜索框即刷新。
  *  el-select 桩改为同时 emit change（页面靠 @change 即刷新）。
- * 2026-10-09 对齐 prd-业务系统.md「强制回收」小节（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *  真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-12 对齐 prd-业务系统.md「强制回收（停用时勾选）」：不再有独立【强制回收】按钮，改为【停用】弹窗（真 DeactivateDialog）
+ *  里的「强制回收」勾选项，勾选后原因必填、与普通停用同走审核（delistBizSystem 带 { forceRevoke, reason }）；
+ *  未发布行「已回收」标签保留（审核通过后才出现，由数据层落 revoked）。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -27,18 +28,13 @@ const admin = {
   deleteBizSystem: vi.fn(),
   submitBizSystemPublish: vi.fn(),
   withdrawBizSystem: vi.fn(),
-  delistBizSystem: vi.fn(),
-  forceRevokeBizSystem: vi.fn()
+  delistBizSystem: vi.fn()
 }
 vi.mock('@/api/admin', () => admin)
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 const msgBox = { confirm: vi.fn(), prompt: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: msgBox }))
-
-// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
-const askForceRevoke = vi.hoisted(() => vi.fn())
-vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 // 路由 query 由各用例改写（深链 ?view=<id>）
 const routeState = vi.hoisted(() => ({ query: {} }))
@@ -75,6 +71,12 @@ const stubs = {
     template: '<select class="el-select" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value); $emit(\'change\', $event.target.value)"><slot /></select>'
   },
   'el-option': { props: ['label', 'value'], template: '<option :value="value">{{ label }}</option>' },
+  // 停用弹窗里的「强制回收」勾选项
+  'el-checkbox': {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<label class="el-checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>'
+  },
   'el-tag': { template: '<span class="el-tag"><slot /></span>' },
   'el-tooltip': { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' },
   'el-dialog': {
@@ -184,6 +186,9 @@ const rowByName = (name) => rows().find((el) => el.textContent.includes(name))
 const btn = (rowEl, text) => [...rowEl.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 const btnTexts = (rowEl) => [...rowEl.querySelectorAll('.tbl-ops .el-button')].map((b) => b.textContent.trim())
 const tipsOf = (el) => [...el.querySelectorAll('[data-tip]')].map((e) => e.getAttribute('data-tip'))
+// 停用弹窗（真 DeactivateDialog + el-dialog 桩）：打开时 .el-dialog 存在，关闭后为 null
+const dlg = () => container.querySelector('.el-dialog')
+const confirmBtn = () => container.querySelector('[data-test="dd-confirm"]')
 const pager = () => container.querySelector('.list-pager')
 const toolbarBtn = (text) =>
   [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
@@ -203,7 +208,6 @@ beforeEach(() => {
   admin.withdrawBizSystem.mockResolvedValue({})
   admin.delistBizSystem.mockResolvedValue({})
   admin.deleteBizSystem.mockResolvedValue({})
-  admin.forceRevokeBizSystem.mockResolvedValue({})
   msgBox.confirm.mockResolvedValue('confirm')
 })
 afterEach(() => {
@@ -321,9 +325,9 @@ describe('AdminBizSystems · 操作按钮按状态组合（md §二.2「各状�
     expect(tipsOf(row)).toContain('审核中不可编辑，如需修改请先撤回')
   })
 
-  it('已发布：【查看】【编辑】【停用】【强制回收】共 4 个', async () => {
+  it('已发布：【查看】【编辑】【停用】共 3 个（强制回收并入停用弹窗，不再有独立按钮）', async () => {
     await mount()
-    expect(btnTexts(rowByName('客户管理系统'))).toEqual(['查看', '编辑', '停用', '强制回收'])
+    expect(btnTexts(rowByName('客户管理系统'))).toEqual(['查看', '编辑', '停用'])
   })
 
   it('【查看】只读打开抽屉；【编辑】可写打开；【新建业务系统】无 id 可写打开（md §三.1）', async () => {
@@ -408,17 +412,33 @@ describe('AdminBizSystems · 发布 / 撤回 / 停用 / 删除（md §二.3）',
     expect(admin.withdrawBizSystem).toHaveBeenCalledWith('biz_4', 'USER_END')
   })
 
-  it('停用：确认窗「停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「客户管理系统」？」/【继续停用】 → delistBizSystem + 「已提交停用审核」（md §二.3 L49）', async () => {
+  it('停用：点【停用】打开弹窗，正文「停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「客户管理系统」？」/【继续停用】 → delistBizSystem(id, 目标, 无强制回收) + 「已提交停用审核」并关窗（md §二.3 L49）', async () => {
     await mount()
     btn(rowByName('客户管理系统'), '停用').click()
     await flush()
-    expect(msgBox.confirm).toHaveBeenCalledWith(
-      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「客户管理系统」？',
-      '停用业务系统',
-      expect.objectContaining({ confirmButtonText: '继续停用' })
+    expect(dlg().dataset.title).toBe('停用业务系统')
+    expect(dlg().querySelector('[data-test="dd-plain"]').textContent).toBe(
+      '停用后技能仍可执行，但运行效果可能受限或出现报错。确认继续停用「客户管理系统」？'
     )
-    expect(admin.delistBizSystem).toHaveBeenCalledWith('biz_1', 'USER_END')
+    expect(confirmBtn().textContent.trim()).toBe('继续停用')
+    expect(admin.delistBizSystem).not.toHaveBeenCalled()
+    confirmBtn().click()
+    await flush()
+    expect(admin.delistBizSystem).toHaveBeenCalledWith('biz_1', 'USER_END', { forceRevoke: false, reason: '' })
     expect(msg.success).toHaveBeenCalledWith('已提交停用审核')
+    expect(dlg()).toBeNull()
+  })
+
+  it('停用弹窗点【取消】 → 不调接口、不重新取数', async () => {
+    await mount()
+    const before = admin.listBizSystems.mock.calls.length
+    btn(rowByName('客户管理系统'), '停用').click()
+    await flush()
+    btn(dlg(), '取消').click()
+    await flush()
+    expect(dlg()).toBeNull()
+    expect(admin.delistBizSystem).not.toHaveBeenCalled()
+    expect(admin.listBizSystems.mock.calls.length).toBe(before)
   })
 
   it('删除：确认窗「删除后技能仍可执行，但运行效果可能受限或出现报错。确认删除「合同管理平台」？」/【继续删除】 → deleteBizSystem + 「已删除」（md §二.3 L52）', async () => {
@@ -544,46 +564,72 @@ describe('AdminBizSystems · 切筛选与清空即刷新（md §一.2「点击�
   })
 })
 
-describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收」小节：立即生效、不进审核、原因必填、两步确认）', () => {
-  it('已发布行点【强制回收】、拿到原因 → forceRevokeBizSystem(id, 原因) + 「已强制回收」+ 重新取数', async () => {
-    askForceRevoke.mockResolvedValue('系统凭据已泄露')
+describe('AdminBizSystems · 强制回收（prd-业务系统.md「强制回收（停用时勾选）」：停用弹窗勾选、原因必填、与普通停用同走审核、无二次确认）', () => {
+  const openStopDialog = async () => {
     await mount()
-    const before = admin.listBizSystems.mock.calls.length
-    btn(rowByName('客户管理系统'), '强制回收').click()
+    btn(rowByName('客户管理系统'), '停用').click()
     await flush()
-    expect(admin.forceRevokeBizSystem).toHaveBeenCalledWith('biz_1', '系统凭据已泄露')
-    expect(msg.success).toHaveBeenCalledWith('已强制回收')
+  }
+  const tickRevoke = async (on) => {
+    const box = dlg().querySelector('[data-test="dd-force-check"] input')
+    box.checked = on
+    box.dispatchEvent(new Event('change'))
+    await flush()
+  }
+  const typeReason = async (v) => {
+    const ta = dlg().querySelector('input:not([type=checkbox])')
+    ta.value = v
+    ta.dispatchEvent(new Event('input'))
+    await flush()
+  }
+
+  it('勾选「强制回收」→ 标题「强制回收业务系统」、影响范围「已被 2 个岗位 / 技能引用」、确认钮变【提交强制回收审核】；取消勾选恢复普通停用', async () => {
+    await openStopDialog()
+    await tickRevoke(true)
+    expect(dlg().dataset.title).toBe('强制回收业务系统')
+    expect(dlg().textContent).toContain('已被 2 个岗位 / 技能引用')
+    expect(dlg().querySelector('[data-test="dd-danger"]').textContent).toContain('已绑定该连接器的员工将失去它')
+    expect(confirmBtn().textContent.trim()).toBe('提交强制回收审核')
+    await tickRevoke(false)
+    expect(dlg().dataset.title).toBe('停用业务系统')
+    expect(confirmBtn().textContent.trim()).toBe('继续停用')
+  })
+
+  it('勾选 + 填原因 → 【提交强制回收审核】 → delistBizSystem(id, 目标, { forceRevoke: true, reason }) + 「已提交强制回收审核」+ 关窗 + 重新取数（不弹二次确认）', async () => {
+    await openStopDialog()
+    const before = admin.listBizSystems.mock.calls.length
+    await tickRevoke(true)
+    await typeReason('系统凭据已泄露')
+    confirmBtn().click()
+    await flush()
+    expect(admin.delistBizSystem).toHaveBeenCalledWith('biz_1', 'USER_END', { forceRevoke: true, reason: '系统凭据已泄露' })
+    expect(msg.success).toHaveBeenCalledWith('已提交强制回收审核')
+    expect(msgBox.confirm).not.toHaveBeenCalled()
+    expect(dlg()).toBeNull()
     expect(admin.listBizSystems.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「业务系统」、对象名、引用数（被 2 个技能引用）、引用方描述「岗位 / 技能」', async () => {
-    askForceRevoke.mockResolvedValue(null)
-    await mount()
-    btn(rowByName('客户管理系统'), '强制回收').click()
+  it('勾选但回收原因为空 → 就地提示「请输入回收原因」，不调接口、弹窗不关', async () => {
+    await openStopDialog()
+    await tickRevoke(true)
+    confirmBtn().click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '业务系统', name: '客户管理系统', refCount: 2, refText: '岗位 / 技能' })
+    expect(dlg().querySelector('[data-test="dd-error"]').textContent).toBe('请输入回收原因')
+    expect(admin.delistBizSystem).not.toHaveBeenCalled()
+    expect(dlg()).not.toBeNull()
   })
 
-  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取数', async () => {
-    askForceRevoke.mockResolvedValue(null)
-    await mount()
-    const before = admin.listBizSystems.mock.calls.length
-    btn(rowByName('客户管理系统'), '强制回收').click()
+  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示，弹窗保留可重试', async () => {
+    await openStopDialog()
+    admin.delistBizSystem.mockRejectedValueOnce({ message: '仅已发布状态可停用' })
+    await tickRevoke(true)
+    await typeReason('原因')
+    confirmBtn().click()
     await flush()
-    expect(admin.forceRevokeBizSystem).not.toHaveBeenCalled()
-    expect(msg.success).not.toHaveBeenCalled()
-    expect(admin.listBizSystems.mock.calls.length).toBe(before)
-  })
-
-  it('接口失败 → 错误提示取 message 原文；无 message → 「操作失败」，不弹成功提示', async () => {
-    askForceRevoke.mockResolvedValue('原因')
-    admin.forceRevokeBizSystem.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
-    await mount()
-    btn(rowByName('客户管理系统'), '强制回收').click()
-    await flush()
-    expect(msg.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
-    admin.forceRevokeBizSystem.mockRejectedValueOnce(new Error(''))
-    btn(rowByName('客户管理系统'), '强制回收').click()
+    expect(msg.error).toHaveBeenCalledWith('仅已发布状态可停用')
+    expect(dlg()).not.toBeNull()
+    admin.delistBizSystem.mockRejectedValueOnce(new Error(''))
+    confirmBtn().click()
     await flush()
     expect(msg.error).toHaveBeenLastCalledWith('操作失败')
     expect(msg.success).not.toHaveBeenCalled()

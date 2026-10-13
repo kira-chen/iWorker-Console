@@ -249,6 +249,10 @@ defineExpose({ snapshot, snapshotMissing })
   <!-- 吸底操作栏：覆盖在抽屉底部动作区上（见头注释），按钮组由调用方定义 -->
   <Teleport to="body">
     <div v-if="visible && kind && effectiveButtons.length" class="god-bar" :style="{ width: barWidth }">
+      <!-- 强制回收申请：详情底栏左侧提示回收原因，审核人一眼区别于普通停用（审核中心 PRD §5.2） -->
+      <span v-if="item?.forceRevokeReason" class="god-revoke-hint" data-test="god-revoke-hint" :title="item.forceRevokeReason">
+        强制回收申请 · 回收原因：{{ item.forceRevokeReason }}
+      </span>
       <el-button
         v-for="b in effectiveButtons"
         :key="b.key"
@@ -281,6 +285,15 @@ defineExpose({ snapshot, snapshotMissing })
   background: var(--bg-elevated);
   border-top: 1px solid var(--border-base);
   box-sizing: border-box;
+}
+.god-revoke-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
 }
 .god-bar .el-button + .el-button {
   margin-left: 0;

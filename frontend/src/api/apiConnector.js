@@ -73,15 +73,10 @@ export function withdrawApi(id) {
   if (USE_MOCK) return mock.withdrawApi(id)
   return request.post(`${API}/${id}/withdraw`, {}, W)
 }
-export function deactivateApi(id) {
-  if (USE_MOCK) return mock.deactivateApi(id)
-  return request.post(`${API}/${id}/deactivate`, {}, W)
-}
-
-// 强制回收：立即生效、不进审核中心（PRD §4「强制回收」）
-export function forceRevokeApi(id, reason) {
-  if (USE_MOCK) return mock.forceRevokeApi(id, reason)
-  return request.post(`${API}/${id}/force-revoke`, { reason }, W)
+// 停用；opts.forceRevoke=true 为停用弹窗里勾选「强制回收」（同走停用审核，通过后才回收；PRD §4）
+export function deactivateApi(id, opts = {}) {
+  if (USE_MOCK) return mock.deactivateApi(id, opts)
+  return request.post(`${API}/${id}/deactivate`, opts, W)
 }
 
 /* ================= 示例问题 AI 生成 ================= */
