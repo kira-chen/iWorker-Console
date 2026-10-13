@@ -9,7 +9,7 @@ import {
   deleteTeam,
   listTeamMemberCandidates,
   candidateTypesOf,
-  trialTeam,
+  TEAM_MEMBER_MAX,
   publishTeam,
   withdrawTeam,
   unpublishTeam,
@@ -139,8 +139,6 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     const t = await createTeam(base({ name: '简介兜底团', members: [{ expertId: 201, duty: '' }, { expertId: 204, duty: '  只看竞品  ' }] }))
     const d = await getTeam(t.id)
     expect(d.members.map((m) => [m.duty, m.effectiveDuty])).toEqual([['', '汇总经营数据，识别异常并形成管理建议'], ['只看竞品', '只看竞品']])
-    const trial = await trialTeam({ members: [{ expertId: 201, duty: '' }, { expertId: 204, duty: '只看竞品' }], collab: 'x', task: 't' })
-    expect(trial.plan.map((p) => p.duty)).toEqual(['汇总经营数据，识别异常并形成管理建议', '只看竞品'])
     expect(checkTeamPublishable(d)).toBeNull()
   })
 
@@ -170,6 +168,21 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(b.teams).toEqual([{ id: 303, name: '岗位协同团', status: 'draft' }])
     expect(b.experts.map((e) => e.name)).toEqual(['法务审阅专家']) // 种子 203 绑了 401 / 402
     expect(await getPositionBindings(999)).toEqual({ teams: [], experts: [] })
+  })
+
+  it('成员上限 6 位（md §三.3.1，负责人 2026-10-12 由 20 调为 6）：6 位可创建，第 7 位被拦；更新同样受限', async () => {
+    const extra = []
+    for (let i = 0; i < 4; i++) {
+      const x = await createExpert({ name: '上限测试专家' + i, type: 'PLATFORM', category: '通用', avatar: 'T', intro: 'i', roleDesc: 'r', exampleQuestions: ['a', 'b', 'c'], skillIds: [302] })
+      extra.push(x.id)
+    }
+    const six = [201, 202, 204, extra[0], extra[1], extra[2]].map((id) => ({ expertId: id, duty: '' }))
+    const seven = [...six, { expertId: extra[3], duty: '' }]
+    const t = await createTeam(base({ name: '六人团', members: six }))
+    expect(t.memberCount).toBe(6)
+    await expect(createTeam(base({ name: '七人团', members: seven }))).rejects.toMatchObject({ field: 'members', message: '成员最多 6 位' })
+    await expect(updateTeam(t.id, { members: seven })).rejects.toMatchObject({ field: 'members' })
+    expect(TEAM_MEMBER_MAX).toBe(6)
   })
 
   it('提交发布 → 进入审核 + 审核中心落行 + 存快照；撤回清快照；通过后 v1.0.0 已发布、驳回回到未发布', async () => {
@@ -272,23 +285,6 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect((await listTeams()).list.find((r) => r.name === '经营研究团')).toMatchObject({ missingCount: 1, missing: [{ expertId: 201, name: '经营分析专家', reason: '已停用' }] })
   })
 
-  it('试跑拆解：有团长标「由团长按职责拆解」，没团长标「由系统」；首位先做；成员少于 2 位 / 任务为空报错', async () => {
-    const members = [{ expertId: 201, duty: '经营口径' }, { expertId: 204, duty: '行业研究' }, { expertId: 202, duty: '制度依据' }]
-    const sys = await trialTeam({ members, leaderId: null, collab: '先看经营，最后核对制度依据', task: '看一下' })
-    expect(sys.mode).toBe('system')
-    expect(sys.plan.map((p) => p.order)).toEqual(['先做', '同时', '等 经营分析专家 完成后'])
-    const lead = await trialTeam({ members, leaderId: 201, collab: '', task: '看一下' })
-    expect(lead).toMatchObject({ mode: 'leader', leaderName: '经营分析专家' })
-    await expect(trialTeam({ members: [members[0]], task: 'x' })).rejects.toMatchObject({ message: '请先选择至少 2 位成员' })
-    await expect(trialTeam({ members, task: ' ' })).rejects.toMatchObject({ field: 'task' })
-  })
-
-  it('「已试跑」状态：改动成员 / 协作关系后清零；编辑器重新试跑后随保存带上 trialed=true 才保留', async () => {
-    expect((await getTeam(302)).trialed).toBe(true)
-    expect((await updateTeam(302, { intro: '只改介绍' })).trialed).toBe(true)
-    expect((await updateTeam(302, { collab: '换一套分工' })).trialed).toBe(false)
-    expect((await updateTeam(302, { collab: '再换一套', trialed: true })).trialed).toBe(true)
-  })
 })
 
 /* 小工具 */

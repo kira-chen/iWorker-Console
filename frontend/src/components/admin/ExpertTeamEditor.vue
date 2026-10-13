@@ -5,14 +5,14 @@
  *
  * 五个区块自上而下：基本信息 → 团队成员与团长 → 团队协作关系 → 团队帮你做（示例问题）→ 时间信息。
  * 抽屉外壳、四态、图标行、AI 实况生成、发布态派生全部复用专家编辑器同一批公共件，
- * 本文件只写团自己的东西：成员候选 / 已选列表 / 团长 / 试跑拆解。
+ * 本文件只写团自己的东西：成员候选 / 已选列表 / 团长。（试跑拆解本期不做，见 prd.专家团.md §三.9）
  *
  * 【成员候选范围】由团类型决定（md §三.3.1）：三类团都可放通用专家和市场专家，岗位私有专家只能进岗位私有团。
  * 团类型未选时成员区块置灰；候选实时读专家模块（已发布才算），已选成员即使后来被停用 / 回收也仍显示在已选列表里，
  * 带红色原因标签——这是「缺员」在编辑器里的样子。
  *
  * 【发布】编辑态底部【发布】= 先校验并静默保存，再收抽屉，交给列表页做发布前检查并打开版本管理侧栏（emit publish）。
- * 发布前检查（成员均已发布、岗位匹配、没团长时的试跑提醒）在列表页统一处理，列表【发布】与本处走同一条路。
+ * 发布前检查（成员均已发布、岗位匹配）在列表页统一处理，列表【发布】与本处走同一条路。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -25,8 +25,7 @@ import {
   getTeam,
   createTeam,
   updateTeam,
-  listTeamMemberCandidates,
-  trialTeam
+  listTeamMemberCandidates
 } from '@/api/expertTeam'
 import { useAiLiveGenerate, teamIntroText, teamLeaderDutyText, teamCollabText, teamQuestionSet } from '@/utils/aiLiveGenerate'
 import { getFieldOptionNames } from '@/api/fieldDictMock'
@@ -42,8 +41,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
   /** 审核版本快照的 detail：有值即以它渲染，不向 getTeam 取实时数据（审核中心只读查看用）。 */
   snapshotDetail: { type: Object, default: null },
-  /** 打开后自动弹出试跑窗口（发布前提醒里点【去试跑】进来）。 */
-  autoTrial: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'saved', 'publish'])
 
@@ -54,7 +51,7 @@ const TEAM_TYPE_OPTIONS = EXPERT_TYPE_OPTIONS.map((o) => ({
   label: { [EXPERT_TYPE.POSITION]: '岗位团', [EXPERT_TYPE.PLATFORM]: '市场团', [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用团' }[o.value]
 }))
 
-const MEMBER_MAX = 20
+const MEMBER_MAX = 6 // 成员上限（负责人 2026-10-12 由 20 调为 6）
 const MEMBER_MIN = 2
 const isEdit = computed(() => props.teamId != null)
 const loading = ref(false)
@@ -81,8 +78,6 @@ const errors = reactive({
   name: '', type: '', avatar: '', category: '', intro: '',
   members: '', leaderDuty: '', collab: '', examples: ''
 })
-/** 当前表单对应的配置是否试跑过（结构变了就清零，见下方 watch）。 */
-const trialed = ref(false)
 
 function clearErrors() {
   for (const k of Object.keys(errors)) errors[k] = ''
@@ -100,7 +95,6 @@ function resetForm(d) {
   form.leaderDuty = d?.leaderDuty || ''
   form.collab = d?.collab || ''
   form.exampleQuestions = [0, 1, 2].map((i) => String((d?.exampleQuestions || [])[i] || ''))
-  trialed.value = !!d?.trialed
   memberInfo.clear()
   ;(d?.members || []).forEach((m) => memberInfo.set(String(m.expertId), { ...m }))
   clearErrors()
@@ -228,14 +222,6 @@ watch(
   }
 )
 
-/** 成员或团长、职责、协作关系变了 → 已试跑状态清零（md §三.9）。 */
-const structureKey = computed(() =>
-  JSON.stringify([form.members.map((m) => [m.expertId, m.duty]), form.leaderId, form.leaderDuty, form.collab])
-)
-watch(structureKey, () => {
-  if (!hydrating) trialed.value = false
-})
-
 /* ==================== 图标 ==================== */
 function onPickIcon({ icon }) {
   form.avatar = icon || ''
@@ -273,45 +259,6 @@ const aiQuestions = useAiLiveGenerate({
   apply: (qs) => { form.exampleQuestions = [...qs]; errors.examples = '' }
 })
 
-/* ==================== 试跑拆解（md §三.9） ==================== */
-const trialVisible = ref(false)
-const trialTask = ref('')
-const trialRunning = ref(false)
-const trialError = ref('')
-const trialResult = ref(null)
-
-const trialDisabledReason = computed(() => {
-  if (form.members.length < MEMBER_MIN) return NEED_MEMBERS
-  if (form.leaderId == null && !form.collab.trim()) return '请先填写团队协作关系'
-  return ''
-})
-function openTrial() {
-  if (trialDisabledReason.value) return
-  trialTask.value = trialTask.value || form.exampleQuestions[0] || ''
-  trialResult.value = null
-  trialError.value = ''
-  trialVisible.value = true
-}
-async function runTrial() {
-  if (!trialTask.value.trim()) {
-    trialError.value = '请输入试跑任务描述'
-    return
-  }
-  trialRunning.value = true
-  trialError.value = ''
-  try {
-    trialResult.value = await trialTeam({
-      members: form.members, leaderId: form.leaderId, leaderDuty: form.leaderDuty, collab: form.collab, task: trialTask.value.trim()
-    })
-    trialed.value = true
-  } catch (e) {
-    trialResult.value = null
-    trialError.value = e?.message || '试跑失败，请稍后重试'
-  } finally {
-    trialRunning.value = false
-  }
-}
-
 /* ==================== 加载 ==================== */
 let loadSeq = 0
 async function load() {
@@ -341,7 +288,6 @@ async function load() {
       detail.value = d
       resetForm(d)
       await loadCandidates()
-      if (props.autoTrial && !props.readonly) openTrial()
     } catch (e) {
       if (seq !== loadSeq) return
       loadError.value = e?.message || '加载失败'
@@ -349,7 +295,7 @@ async function load() {
       if (seq === loadSeq) loading.value = false
     }
   } finally {
-    // 等 reactive 回调（structureKey / members.length）跑完再放开，避免回填被当作用户改动
+    // 等 reactive 回调（members.length）跑完再放开，避免回填被当作用户改动
     Promise.resolve().then(() => { hydrating = false })
   }
 }
@@ -386,8 +332,7 @@ function buildPayload() {
     leaderId: form.leaderId,
     leaderDuty: form.leaderId != null ? form.leaderDuty : '',
     collab: form.collab,
-    exampleQuestions: form.exampleQuestions.map((q) => q.trim()),
-    trialed: trialed.value
+    exampleQuestions: form.exampleQuestions.map((q) => q.trim())
   }
 }
 
@@ -459,7 +404,6 @@ watch(
     else {
       memberKeyword.value = ''
       memberCategory.value = ''
-      trialVisible.value = false
     }
   },
   { immediate: true }
@@ -761,17 +705,6 @@ const metaItems = computed(() => {
             <span class="section-sub">{{ form.leaderId == null ? '没设团长时必填' : '选填' }}，拆解依据，员工端不展示</span>
           </h3>
           <div class="et-head-ops">
-            <span v-if="!props.readonly && trialDisabledReason" class="et-ai-hint" data-testid="team-trial-hint">{{ trialDisabledReason }}</span>
-            <el-button
-              v-if="!props.readonly"
-              plain
-              size="small"
-              class="et-ai"
-              :disabled="!!trialDisabledReason || locked"
-              :title="trialDisabledReason || undefined"
-              data-testid="team-trial-btn"
-              @click="openTrial"
-            >试跑拆解</el-button>
             <span v-if="!disabled && aiCollab.disabled.value && aiCollab.title.value" class="et-ai-hint">{{ aiCollab.title.value }}</span>
             <el-button
               v-if="!disabled"
@@ -796,9 +729,6 @@ const metaItems = computed(() => {
           @input="errors.collab = ''"
         />
         <div v-if="errors.collab" class="et-err">{{ errors.collab }}</div>
-        <div v-if="isEdit && detail && !form.leaderId && !props.readonly" class="et-hint" data-testid="team-trial-state">
-          {{ trialed ? '已试跑：当前成员与协作关系已试跑过拆解' : '未试跑：没设团长的团建议发布前试跑一次' }}
-        </div>
         </div>
       </section>
 
@@ -816,33 +746,6 @@ const metaItems = computed(() => {
       </template>
     </template>
 
-    <!-- 试跑弹窗挂 #extra（抽屉子树内），层级压在抽屉之上 -->
-    <template #extra>
-      <el-dialog v-model="trialVisible" title="试跑拆解" width="560px" append-to-body data-testid="team-trial-dialog">
-        <el-form label-position="top">
-          <el-form-item label="试跑任务描述" :error="trialError">
-            <el-input v-model="trialTask" maxlength="300" show-word-limit placeholder="输入一句员工会对这个团说的话" />
-          </el-form-item>
-        </el-form>
-        <div v-loading="trialRunning" class="et-trial-result">
-          <template v-if="trialResult">
-            <div class="et-trial-mode">
-              {{ trialResult.mode === 'leader' ? `由团长 ${trialResult.leaderName} 按其职责拆解` : '由系统按团队协作关系拆解' }}
-            </div>
-            <div v-for="p in trialResult.plan" :key="p.expertId" class="et-trial-row">
-              <strong>{{ p.name }}</strong>
-              <span class="et-trial-duty">{{ p.duty }}</span>
-              <span class="et-trial-order">{{ p.order }}</span>
-            </div>
-          </template>
-        </div>
-        <div class="et-hint">仅为拆解预览，不会真正执行，不产生任务记录。</div>
-        <template #footer>
-          <el-button @click="trialVisible = false">关闭</el-button>
-          <el-button type="primary" :loading="trialRunning" data-testid="team-trial-run" @click="runTrial">开始试跑</el-button>
-        </template>
-      </el-dialog>
-    </template>
   </DrawerEditor>
 </template>
 
@@ -908,7 +811,7 @@ const metaItems = computed(() => {
   color: var(--c-text-faint);
   white-space: nowrap;
 }
-/* 【AI 生成】/【试跑拆解】：常规字重（一览表附录「AI 生成按钮样式」） */
+/* 【AI 生成】：常规字重（一览表附录「AI 生成按钮样式」） */
 .et-ai {
   font-weight: var(--fw-regular, 400);
   white-space: nowrap;
@@ -1153,32 +1056,6 @@ const metaItems = computed(() => {
   grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-}
-
-/* —— 试跑弹窗 —— */
-.et-trial-result {
-  min-height: 60px;
-  margin-bottom: var(--space-2);
-}
-.et-trial-mode {
-  margin-bottom: var(--space-2);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-}
-.et-trial-row {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: var(--fs-sm);
-}
-.et-trial-duty {
-  color: var(--c-text-muted);
-}
-.et-trial-order {
-  color: var(--c-accent, #409eff);
-  white-space: nowrap;
 }
 
 .et-meta {
