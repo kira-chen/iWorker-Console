@@ -25,7 +25,7 @@ const ElMessage = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning:
 const ElMessageBox = vi.hoisted(() => ({ confirm: vi.fn() }))
 vi.mock('element-plus', async (orig) => ({ ...(await orig()), ElMessage, ElMessageBox }))
 vi.mock('@/components/admin/ExpertTeamEditor.vue', () => ({
-  default: { name: 'ExpertTeamEditor', props: ['visible', 'teamId', 'readonly', 'autoTrial'], template: '<i class="editor-stub" :data-visible="visible" :data-team="teamId" :data-auto-trial="autoTrial" />' }
+  default: { name: 'ExpertTeamEditor', props: ['visible', 'teamId', 'readonly'], template: '<i class="editor-stub" :data-visible="visible" :data-team="teamId" />' }
 }))
 vi.mock('@/components/admin/VersionDrawer.vue', () => ({
   default: { name: 'VersionDrawer', props: ['modelValue', 'adapter'], template: '<i class="version-stub" :data-open="modelValue" :data-entity="adapter && adapter.entityLabel" />' }
@@ -37,13 +37,13 @@ const ROWS = [
   {
     id: 301, name: '经营研究团', type: 'PLATFORM', avatar: '◈', backgroundColor: '#DCECF7', category: '投资', intro: '经营与研究',
     memberCount: 2,
-    memberNames: ['经营分析专家', '研究报告专家'], leaderId: 201, leaderName: '经营分析专家', trialed: false,
+    memberNames: ['经营分析专家', '研究报告专家'], leaderId: 201, leaderName: '经营分析专家',
     missingCount: 1, missing: [{ expertId: 204, name: '研究报告专家', reason: '已回收' }],
     positionIds: [], positionCount: 0, status: 'published', pendingAction: null, latestVersionLabel: 'v1.0.0', revoked: null, updatedAt: '2026-09-08T15:30:00+08:00'
   },
   {
     id: 303, name: '岗位协同团', type: 'POSITION', avatar: '◎', backgroundColor: '#E7E4F7', category: '投资', intro: '服务经营分析岗',
-    memberCount: 2, memberNames: ['研究报告专家', '企业知识助手'], leaderId: null, leaderName: '', trialed: false,
+    memberCount: 2, memberNames: ['研究报告专家', '企业知识助手'], leaderId: null, leaderName: '',
     missingCount: 0, missing: [], positionIds: [401], positionCount: 1, status: 'draft', pendingAction: null, latestVersionLabel: '', revoked: null, updatedAt: '2026-09-10T14:00:00+08:00'
   }
 ]
@@ -112,36 +112,14 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(c.querySelector('.version-stub').dataset.open).toBe('false')
   })
 
-  it('没设团长且未试跑：弹提醒；点【直接发布】才开版本侧栏（词表「专家团」）；点【去试跑】带 auto-trial 回编辑器、不开侧栏（md §三.8 检查 4）', async () => {
+  it('没设团长的团发布前不再弹试跑提醒（试跑拆解本期不做）：通过发布前检查后直接开版本侧栏', async () => {
     api.getTeam.mockResolvedValue(DETAIL_303)
-    const c = await mountPanel()
-    // 直接发布
-    ElMessageBox.confirm.mockResolvedValueOnce()
-    btn(rowOf(c, '岗位协同团'), '发布').click()
-    await flushAll(10)
-    expect(ElMessageBox.confirm.mock.calls[0][0]).toBe('「岗位协同团」没设团长，拆解质量完全取决于「团队协作关系」。建议先试跑一次。')
-    expect(ElMessageBox.confirm.mock.calls[0][2]).toMatchObject({ confirmButtonText: '直接发布', cancelButtonText: '去试跑', distinguishCancelAndClose: true })
-    expect(c.querySelector('.version-stub').dataset.open).toBe('true')
-    expect(c.querySelector('.version-stub').dataset.entity).toBe('专家团')
-
-    // 去试跑：重新挂一份，避免侧栏状态串扰
-    mounted.unmount()
-    ElMessageBox.confirm.mockRejectedValueOnce('cancel')
-    const c2 = await mountPanel()
-    btn(rowOf(c2, '岗位协同团'), '发布').click()
-    await flushAll(10)
-    expect(c2.querySelector('.version-stub').dataset.open).toBe('false')
-    expect(c2.querySelector('.editor-stub').dataset.autoTrial).toBe('true')
-    expect(c2.querySelector('.editor-stub').dataset.team).toBe('303')
-  })
-
-  it('设了团长的团（或已试跑）直接开版本侧栏，不弹试跑提醒', async () => {
-    api.getTeam.mockResolvedValue({ ...DETAIL_303, leaderId: 204 })
     const c = await mountPanel()
     btn(rowOf(c, '岗位协同团'), '发布').click()
     await flushAll(10)
     expect(ElMessageBox.confirm).not.toHaveBeenCalled()
     expect(c.querySelector('.version-stub').dataset.open).toBe('true')
+    expect(c.querySelector('.version-stub').dataset.entity).toBe('专家团')
   })
 
   it('删除确认文案带成员数；停用文案同专家（md §二.3.5 / §二.3.8）', async () => {
