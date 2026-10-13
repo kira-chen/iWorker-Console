@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  quotaInputError, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX
+  quotaInputError, quotaFloorGb, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX
 } from '../storageSpace'
 
 /**
@@ -71,5 +71,14 @@ describe('状态文案与常量', () => {
     expect(DEFAULT_QUOTA_GB).toBe(1)
     expect(DISK_TOTAL_GB).toBe(1000)
     expect(REJECT_REASON_MAX).toBe(500)
+  })
+})
+
+describe('quotaFloorGb —— 调小下限不低于已用', () => {
+  it('已用向上取整为整数 GB；未统计（null）只受最小值 1 约束；已用不足 1 GB 取 1', () => {
+    expect(quotaFloorGb(2.7)).toBe(3)
+    expect(quotaFloorGb(5)).toBe(5)
+    expect(quotaFloorGb(0.3)).toBe(1)
+    expect(quotaFloorGb(null)).toBe(1)
   })
 })

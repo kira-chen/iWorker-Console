@@ -32,6 +32,14 @@ export const QUOTA_MIN_GB = 1
 /** 单个员工容量上限（GB）：调整容量、批量设置、同意扩容都不能超过，输入框加到它就不能再加 */
 export const QUOTA_MAX_GB = 20
 
+/**
+ * 调小容量的下限：不得低于员工当前已用（容量是整数 GB，已用 2.7 GB 时下限为 3 GB）；没有统计结果（已用为空）时只受最小值约束。
+ * 页面输入框的 min 与 mock 校验共用这一份。
+ */
+export function quotaFloorGb(usedGb) {
+  return usedGb == null ? QUOTA_MIN_GB : Math.max(QUOTA_MIN_GB, Math.ceil(usedGb))
+}
+
 /** 容量数值展示：整数不带小数点，其余保留 1 位；空值显示「—」。 */
 export function fmtGb(value) {
   if (value == null) return '—'
