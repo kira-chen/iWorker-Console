@@ -227,13 +227,13 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     await flush()
   })
 
-  it('操作摘要展示用户 / 岗位、技能、涉及写操作；不展示待处理确认、执行耗时（都随改版去掉）', async () => {
+  it('操作摘要展示用户 / 岗位、涉及写操作；不列「调用的技能」（按技能时间线已有）、待处理确认、执行耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
     const text = drawer.textContent
     expect(text).toContain('陈杰')
     expect(text).toContain('销售顾问')
-    expect(text).toContain('报价单生成')
+    expect(drawer.querySelector('.el-descriptions').textContent).not.toContain('调用的技能')
     expect(text).toContain('涉及写操作')
     expect(text).not.toContain('待处理确认')
     expect(text).not.toContain('执行耗时')
