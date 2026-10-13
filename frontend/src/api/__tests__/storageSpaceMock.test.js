@@ -83,7 +83,7 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
   it('概览给出默认容量、按默认值计算的人数与待处理申请数', async () => {
     // 在职 11 人，只有杨帆、马超（未统计）用默认 1 GB；已分配 = 7×5 + 10 + 8 + 2×1 = 55，磁盘总量 1000，余量 945；待处理 4 条
     expect(await getStorageOverview()).toEqual({
-      defaultQuotaGb: 1, defaultMemberCount: 2, pendingCount: 4, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945
+      defaultQuotaGb: 1, defaultMemberCount: 2, pendingCount: 4, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945, defaultFloorGb: 1
     })
   })
 })
@@ -114,15 +114,27 @@ describe('storageSpaceMock —— 调整容量', () => {
     expect((await getStorageOverview()).defaultMemberCount).toBe(2)
   })
 
-  it('调整容量可任意调小，不受当前容量限制：10 GB 的员工直接调到 3 GB，已用不高于新总量时随即处于已满状态', async () => {
-    await adjustStorageQuota(208, 3) // 赵敏原为 10 GB，已用 9.7
-    expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 3, state: 'FULL' })
+  it('调整容量可调小，但不得低于员工当前已用：张伟（已用 2.7）5 → 3 可以，2 报错；赵敏（已用 9.7）下限 10', async () => {
+    await adjustStorageQuota(201, 3)
+    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 3 })
+    await expect(adjustStorageQuota(201, 2)).rejects.toThrow('张伟当前已用 2.7 GB，容量不能小于已用，至少 3 GB')
+    await expect(adjustStorageQuota(208, 9)).rejects.toThrow('至少 10 GB')
+    expect((await memberOf('zhaomin')).totalGb).toBe(10)
   })
 
-  it('调整容量最小 1 GB：1 可以，0 报「容量不能小于 1 GB」', async () => {
-    await adjustStorageQuota(208, 1)
-    expect((await memberOf('zhaomin')).totalGb).toBe(1)
-    await expect(adjustStorageQuota(208, 0)).rejects.toThrow('容量不能小于 1 GB')
+  it('新总量恰为已用向上取整时允许；未统计的员工不受下限约束', async () => {
+    await adjustStorageQuota(202, 5) // 已用 4.7，向上取整 5
+    expect(await memberOf('li.na')).toMatchObject({ totalGb: 5 })
+    await adjustStorageQuota(209, 3)
+    await adjustStorageQuota(209, 1) // 杨帆未统计，可降到 1
+    expect((await memberOf('yangfan')).totalGb).toBe(1)
+  })
+
+  it('调整容量最小 1 GB：未统计的员工 1 可以，0 报「容量不能小于 1 GB」', async () => {
+    await adjustStorageQuota(209, 3)
+    await adjustStorageQuota(209, 1)
+    expect((await memberOf('yangfan')).totalGb).toBe(1)
+    await expect(adjustStorageQuota(209, 0)).rejects.toThrow('容量不能小于 1 GB')
   })
 
   it('调整容量上限 20 GB：20 可以，21 报「容量不能大于 20 GB」', async () => {
@@ -131,15 +143,20 @@ describe('storageSpaceMock —— 调整容量', () => {
     await expect(adjustStorageQuota(208, 21)).rejects.toThrow('容量不能大于 20 GB')
   })
 
-  it('恢复默认：清除个人设置值，总量回到默认容量', async () => {
-    await adjustStorageQuota(208, null, { restoreDefault: true })
-    expect(await memberOf('zhaomin')).toMatchObject({ totalGb: 1, quotaSource: 'DEFAULT' })
-    expect(liveOps()[0]).toMatchObject({ action: '调整容量', detail: '10 GB → 1 GB' })
+  it('恢复默认：清除个人设置值，总量回到默认容量；默认容量低于员工已用时不允许恢复', async () => {
+    await expect(adjustStorageQuota(208, null, { restoreDefault: true })).rejects.toThrow('容量不能小于已用') // 默认 1 < 已用 9.7
+    await setDefaultQuota(3)
+    await adjustStorageQuota(201, 8)
+    await adjustStorageQuota(201, null, { restoreDefault: true })
+    expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 3, quotaSource: 'DEFAULT' })
+    expect(liveOps()[0]).toMatchObject({ action: '调整容量', detail: '8 GB → 3 GB' })
   })
 
-  it('批量设置最小 1 GB', async () => {
-    await batchAdjustStorageQuota([201, 202], 1)
-    expect((await memberOf('zhangwei')).totalGb).toBe(1)
+  it('批量设置最小 1 GB；任一所选员工的已用高于新总量则整批拒绝、一个都不改', async () => {
+    await batchAdjustStorageQuota([209, 213], 1)
+    expect((await memberOf('yangfan')).totalGb).toBe(1)
+    await expect(batchAdjustStorageQuota([201, 202], 4)).rejects.toThrow('李娜当前已用 4.7 GB，容量不能小于已用，至少 5 GB')
+    expect((await memberOf('zhangwei')).totalGb).toBe(5)
     await expect(batchAdjustStorageQuota([201], 0)).rejects.toThrow('容量不能小于 1 GB')
   })
 
@@ -191,8 +208,8 @@ describe('storageSpaceMock —— 有待处理申请的员工不能在容量分�
 
   it('申请处理后恢复可调整：拒绝之后可以直接调整容量，审计各记一条', async () => {
     await rejectExpansionRequest('ER-1006', '先清理历史产物')
-    await adjustStorageQuota(203, 3)
-    expect(await memberOf('chenyu')).toMatchObject({ totalGb: 3, pendingRequestId: null })
+    await adjustStorageQuota(203, 6)
+    expect(await memberOf('chenyu')).toMatchObject({ totalGb: 6, pendingRequestId: null })
     expect(liveOps().map((r) => r.action)).toEqual(['调整容量', '拒绝扩容'])
   })
 
@@ -426,6 +443,22 @@ describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', 
     expect(await getStorageOverview()).toMatchObject({ defaultQuotaGb: 3, allocatedGb: 59, remainingGb: 941 })
   })
 
+  it('修改默认容量不得低于任一默认员工的已用（概览给出下限）', async () => {
+    expect((await getStorageOverview()).defaultFloorGb).toBe(1) // 默认员工都未统计
+    await adjustStorageQuota(209, null, { restoreDefault: true })
+    expect(await memberOf('yangfan')).toMatchObject({ quotaSource: 'DEFAULT' })
+  })
+
+  it('修改默认容量不得低于任一默认员工的已用（概览给出下限）', async () => {
+    expect((await getStorageOverview()).defaultFloorGb).toBe(1) // 默认员工杨帆、马超都未统计
+    await setDefaultQuota(3)
+    await adjustStorageQuota(201, 8)
+    await adjustStorageQuota(201, null, { restoreDefault: true }) // 张伟（已用 2.7）也成了默认员工
+    expect((await getStorageOverview()).defaultFloorGb).toBe(3)
+    await expect(setDefaultQuota(2)).rejects.toThrow('张伟当前已用 2.7 GB，容量不能小于已用，至少 3 GB')
+    expect((await getStorageOverview()).defaultQuotaGb).toBe(3)
+  })
+
   it('默认容量同样限定 1–20 GB；填原值不写审计', async () => {
     await expect(setDefaultQuota(21)).rejects.toThrow('容量不能大于 20 GB')
     await expect(setDefaultQuota(0)).rejects.toThrow('容量不能小于 1 GB')
@@ -446,7 +479,7 @@ describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', 
     await expect(setDefaultQuota(3)).rejects.toThrow('磁盘余量不足') // 2 名默认员工各增 2，共 4 > 余量 2
     await expect(batchAdjustStorageQuota([209, 213], 2)).resolves.toMatchObject({ count: 2 }) // 各增 1，共 2，刚好
     await expect(approveExpansionRequest('ER-1006', 6)).rejects.toThrow('磁盘余量不足')
-    await adjustStorageQuota(201, 1) // 调小永远放行
-    expect((await getStorageOverview()).remainingGb).toBe(4)
+    await adjustStorageQuota(201, 3) // 调小永远放行（不低于已用 2.7）
+    expect((await getStorageOverview()).remainingGb).toBe(2)
   })
 })

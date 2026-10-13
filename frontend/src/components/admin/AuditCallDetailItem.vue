@@ -5,6 +5,8 @@
  * 任务运行没有）、执行结果；点击【查看请求参数 / 响应结果】就地展开，不影响时间线上其他项——
  * 各自维护自己的展开状态，互不影响（PRD §5.2）。
  *
+ * 2026-10-13 废止「调用来源」（source）：平台分不清工具由谁发起，工具与技能分两条互不关联的时间线。
+ *
  * 2026-10-09 不展示耗时与具体执行时刻：系统本来就不采集单次工具调用的过程时间数据，之前的
  * mock 把它编出来是错的（不是数值算错，是这类字段本身不该存在），这里不留 duration 相关展示；
  * 连带执行结果只剩 成功 / 失败 两态（原「执行前拦截」「用户取消」并入「失败」，原因文案保留）。
@@ -16,7 +18,6 @@
  * showParams 传入，本组件不重复判断业务规则。
  *
  * @prop {string} tool 工具标识（连接器类型·连接器名称）
- * @prop {string} source 调用来源（会话调用页签：该工具在哪个技能名下调用，未经技能为「会话直接调用」；任务运行不传）
  * @prop {{label:string,type:string}} nature 操作性质
  * @prop {{label:string,type:string}|null} confirm 用户确认（不需要确认 / 已确认两态；确认被拒绝
  *        或任务运行没有确认概念时传 null，不展示这一项——由执行结果 + 原因文案表达）
@@ -32,7 +33,6 @@ import StatusTag from '@/components/StatusTag.vue'
 
 defineProps({
   tool: { type: String, required: true },
-  source: { type: String, default: '' },
   nature: { type: Object, required: true },
   confirm: { type: Object, default: null },
   result: { type: Object, required: true },
@@ -56,7 +56,6 @@ function toggle() {
   <div class="call-item">
     <div class="call-item-head">
       <span class="call-item-tool">{{ tool }}</span>
-      <StatusTag v-if="source" type="info">{{ source }}</StatusTag>
       <StatusTag :type="nature.type">{{ nature.label }}</StatusTag>
       <StatusTag v-if="confirm" :type="confirm.type">{{ confirm.label }}</StatusTag>
       <StatusTag :type="result.type">{{ result.label }}</StatusTag>

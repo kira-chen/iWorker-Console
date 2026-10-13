@@ -22,7 +22,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX, quotaInputError } from '@/utils/storageSpace'
+import { QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX, quotaInputError, quotaFloorGb } from '@/utils/storageSpace'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
@@ -244,6 +244,14 @@ function checkQuota(value, min = QUOTA_MIN_GB) {
   return Number(value)
 }
 
+/** 调小下限：新容量不得低于员工当前已用（等于已用允许，员工随即已满）；无统计结果的员工不受限。 */
+function assertNotBelowUsed(m, next) {
+  const used = usedOf(m)
+  if (used != null && next < quotaFloorGb(used)) {
+    throw err(`${m.name}当前已用 ${used} GB，容量不能小于已用，至少 ${quotaFloorGb(used)} GB`, 40001, 'quotaGb')
+  }
+}
+
 /** 不超分：分配后各员工容量之和不得超过磁盘总量。delta = 本次操作使已分配增加的量（调小为负，永远放行）。 */
 function assertDiskEnough(delta) {
   const remaining = diskTotalGb - allocatedGb()
@@ -281,6 +289,8 @@ export async function getStorageOverview() {
     allocatedGb: allocatedGb(),
     remainingGb: diskTotalGb - allocatedGb(),
     defaultMemberCount: roster().filter((m) => m.quotaGb == null).length,
+    // 修改默认容量的下限：不得低于任一默认员工的已用
+    defaultFloorGb: Math.max(QUOTA_MIN_GB, ...roster().filter((m) => m.quotaGb == null).map((m) => quotaFloorGb(usedOf(m)))),
     pendingCount: visibleRequests().filter((r) => r.status === 'PENDING').length
   }
 }
@@ -331,6 +341,7 @@ export async function adjustStorageQuota(userId, quotaGb, { restoreDefault = fal
   const m = findMember(userId)
   assertNoPending(m)
   const next = restoreDefault ? defaultQuotaGb : checkQuota(quotaGb)
+  assertNotBelowUsed(m, next)
   assertDiskEnough(next - totalOf(m))
   applyQuota(m, next, { restoreDefault })
   persist()
@@ -346,6 +357,7 @@ export async function batchAdjustStorageQuota(userIds, quotaGb) {
   const all = ids.map(findMember)
   // 只调整没有待处理申请的员工；有待处理申请的跳过并计数（页面上这些行的勾选框本来就是置灰的）
   const targets = all.filter((m) => !pendingOf(m.userId))
+  targets.forEach((m) => assertNotBelowUsed(m, next))
   assertDiskEnough(targets.reduce((sum, m) => sum + (next - totalOf(m)), 0))
   let changed = 0
   for (const m of targets) {
@@ -441,6 +453,7 @@ export async function setDefaultQuota(quotaGb) {
   reconcile()
   const next = checkQuota(quotaGb)
   const followers = roster().filter((m) => m.quotaGb == null)
+  followers.forEach((m) => assertNotBelowUsed(m, next))
   assertDiskEnough(followers.length * (next - defaultQuotaGb))
   const prev = defaultQuotaGb
   defaultQuotaGb = next

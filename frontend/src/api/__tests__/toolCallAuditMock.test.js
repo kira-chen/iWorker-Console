@@ -21,6 +21,8 @@ import {
  *
  * 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」，字段 skill → skills 数组（会话内可调用多个技能），
  * 每个工具调用带 skill（在哪个技能名下调用，null＝会话直接调用，PRD §5.2「调用来源」）。
+ * 2026-10-13 第六轮改版：「调用来源」废止，工具调用不再带 skill；技能单列为 skillCalls（调用的技能 + 成败），
+ * 与 calls 互不关联，skills 由 skillCalls 推导。
  *
  * 2026-10-09 同日第二轮改版：单次工具调用不记录耗时与具体执行时刻，系统本来就不采集；
  * 会话调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
@@ -97,16 +99,19 @@ describe('会话调用 toolCallRecords（记录单元＝一次会话，2026-10-1
     expect(retried).toBeTruthy()
   })
 
-  it('每条记录有 skills 数组；每个工具调用的 skill 为 null（会话直接调用）或本会话 skills 之一（PRD §5.2「调用来源」）', () => {
+  it('每条记录有 skillCalls（技能 + 成功/失败两态）；skills 由它推导；工具调用不再带 skill 归属（PRD §5.2，2026-10-13）', () => {
     for (const r of toolCallRecords) {
-      expect(Array.isArray(r.skills) && r.skills.length > 0).toBe(true)
-      for (const c of r.calls) expect(c.skill === null || r.skills.includes(c.skill)).toBe(true)
+      expect(Array.isArray(r.skillCalls)).toBe(true)
+      expect(r.skills).toEqual(r.skillCalls.map((c) => c.skill))
+      for (const c of r.skillCalls) expect(['SUCCESS', 'FAILED']).toContain(c.result)
+      for (const c of r.calls) expect(c).not.toHaveProperty('skill')
     }
   })
 
-  it('样例覆盖：一次会话调用多个技能；存在未经技能、会话直接调用的工具', () => {
-    expect(toolCallRecords.some((r) => r.skills.length > 1)).toBe(true)
-    expect(toolCallRecords.some((r) => r.calls.some((c) => c.skill === null))).toBe(true)
+  it('样例覆盖：一次会话调用多个技能；存在没调用任何技能的会话；存在失败的技能', () => {
+    expect(toolCallRecords.some((r) => r.skillCalls.length > 1)).toBe(true)
+    expect(toolCallRecords.some((r) => r.skillCalls.length === 0)).toBe(true)
+    expect(toolCallRecords.some((r) => r.skillCalls.some((c) => c.result === 'FAILED'))).toBe(true)
   })
 
   it('失败的记录都有原因概要', () => {
