@@ -279,6 +279,10 @@ async function save() {
   // 的真实配置整体覆盖成默认值并解绑全部岗位，不可逆；确认框里的「变更前」也因 baseline 为空显示 NaN
   // （2026-09-23 待办 yuepu#28，askDiscard 早已判了 loadError，这里漏了）
   if (props.readonly || saving.value || loading.value || loadError.value) return
+  if (resourceLimitError.value) {
+    ElMessage.error('平台资源上限获取失败，请重试')
+    return
+  }
   if (!validate()) return
   if (!checkPendingBeforeCloseApply()) return
   if (!(await confirmPositionSwitch())) return
@@ -453,7 +457,7 @@ async function save() {
         </span>
       </div>
       <div v-if="meta.effectiveUsers.length > 10" class="rs-pending">共 {{ meta.effectiveUsers.length }} 个生效用户，当前展示前 10 个</div>
-      <div v-else class="rs-used-empty">暂无用户生效</div>
+      <div v-else-if="!meta.effectiveUsers.length" class="rs-used-empty">暂无用户生效</div>
       <div v-if="meta.pendingUsers.length" class="rs-pending">另有 {{ meta.pendingUsers.length }} 个个人申请待审批</div>
     </section>
   </DrawerEditor>
