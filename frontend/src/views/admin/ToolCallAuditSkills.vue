@@ -144,7 +144,6 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: EXEC_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '调用的技能', value: d.skills.join('、') },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
@@ -159,7 +158,8 @@ const detail = computed(() => {
       params: paramsOf(c),
       output: outputOf(c)
     })),
-    // 调用的技能：与上面的工具是两条互不关联的时间线（PRD §5.2，2026-10-13）
+    // 操作摘要不再列「调用的技能」（2026-10-13：调用明细「按技能」时间线已有，列表页保留该列）；
+    // 技能与工具是两条互不关联的时间线（PRD §5.2，2026-10-13）
     skillCalls: d.skillCalls.map((c) => ({
       skill: c.skill,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
