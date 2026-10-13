@@ -4,6 +4,10 @@
 //   2. taskCallRecords    岗位自动化任务  定时触发、无人值守的一次任务运行，运行中调连接器
 //   3. knowledgeCallRecords 知识库检索  岗位 / 专家引用的知识库，经 API / MCP 数据源检索第三方知识服务
 //
+// 2026-10-13 第六轮改版：平台分不清工具由谁发起（多技能还可能同时调起），废止工具调用的 skill「调用来源」字段；
+// 会话调用记录新增 skillCalls（调用的技能 + 各自成败），与 calls（调用的工具）是两条互不关联的时间线，详情分「按工具/按技能」查看；
+// skills（列表「调用的技能」列）由 skillCalls 推导。
+//
 // 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」（会话内可调用多个技能，字段 skill → skills 数组），
 // 工具调用明细不局限于技能引用的工具；岗位自动化任务同理，工具不局限于任务引用的工具。
 //
@@ -79,7 +83,8 @@ function deriveExec(calls) {
 }
 
 /* ══════════════ 会话调用 ══════════════
- * 记录单元＝一次会话：calls 是这次会话里实际调用的（不限于技能引用的）按发生顺序调用的工具明细（§五.2）。不展示「执行中」
+ * 记录单元＝一次会话：calls 是这次会话里实际调用的（不限于技能引用的）按发生顺序调用的工具明细，skillCalls 是调用的技能
+ * （同一技能多次调用合并为一项），两者互不关联（§五.2）。不展示「执行中」
  * 的记录——没有「待确认」这个中间态可展示，一次执行只在确认 / 执行都有结果后才入账，故这里没有
  * 类似「排产计划调整·待确认中」的记录。同一次对话里技能被循环调用多次，每次各自算一条独立执行，
  * 不合并——下面 9 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
@@ -87,68 +92,76 @@ function deriveExec(calls) {
  * 失败盖掉整体结果）。 */
 export const toolCallRecords = [
   {
-    id: 'C-1001', date: '2026-09-20', time: '09:10:15', user: '周敏', position: '生产计划员', skills: ['排产计划调整'],
+    id: 'C-1001', date: '2026-09-20', time: '09:10:15', user: '周敏', position: '生产计划员',
     reason: '业务系统·SAP ERP 连接超时',
+    skillCalls: [{ skill: '排产计划调整', result: 'FAILED', reason: '连接超时' }],
     calls: [
-      { skill: '排产计划调整', tool: '业务系统·SAP ERP', action: '修改排产计划', nature: 'WRITE', confirm: 'CONFIRMED', result: 'FAILED', reason: '连接超时' }
+      { tool: '业务系统·SAP ERP', action: '修改排产计划', nature: 'WRITE', confirm: 'CONFIRMED', result: 'FAILED', reason: '连接超时' }
     ]
   },
   {
-    id: 'C-1002', date: '2026-09-26', time: '12:01:10', user: '李强', position: '财务助手', skills: ['报销查询'],
+    id: 'C-1002', date: '2026-09-26', time: '12:01:10', user: '李强', position: '财务助手',
     reason: '',
+    skillCalls: [{ skill: '报销查询', result: 'SUCCESS', reason: '' }],
     calls: [
-      { skill: '报销查询', tool: 'API·费控系统', action: '查询报销进度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { tool: 'API·费控系统', action: '查询报销进度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'C-1003', date: '2026-09-26', time: '16:20:08', user: '陈杰', position: '销售顾问', skills: ['客户记录更新'],
+    id: 'C-1003', date: '2026-09-26', time: '16:20:08', user: '陈杰', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '客户记录更新', result: 'SUCCESS', reason: '' }],
     calls: [
-      { skill: '客户记录更新', tool: '业务系统·Salesforce CRM', action: '添加客户跟进记录', nature: 'WRITE', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { tool: '业务系统·Salesforce CRM', action: '添加客户跟进记录', nature: 'WRITE', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
     // 原「执行前拦截」并入「失败」，原因文案保留——仍能看出是白名单 / 权限这类检查没通过。
-    id: 'C-1004', date: '2026-09-27', time: '14:41:08', user: '刘敏', position: '销售顾问', skills: ['客户信息查询'],
+    id: 'C-1004', date: '2026-09-27', time: '14:41:08', user: '刘敏', position: '销售顾问',
     reason: '业务系统·Salesforce CRM 权限不足',
+    skillCalls: [{ skill: '客户信息查询', result: 'FAILED', reason: '权限不足' }],
     calls: [
-      { skill: '客户信息查询', tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
+      { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
     ]
   },
   {
-    id: 'C-1005', date: '2026-09-27', time: '14:45:12', user: '张浩', position: '生产计划员', skills: ['生产数据查询'],
+    id: 'C-1005', date: '2026-09-27', time: '14:45:12', user: '张浩', position: '生产计划员',
     reason: '业务系统·SAP ERP 不在工具白名单',
+    skillCalls: [{ skill: '生产数据查询', result: 'FAILED', reason: '不在工具白名单' }],
     calls: [
-      { skill: '生产数据查询', tool: '业务系统·SAP ERP', action: '删除生产订单', nature: 'WRITE', confirm: 'NONE', result: 'FAILED', reason: '不在工具白名单' }
+      { tool: '业务系统·SAP ERP', action: '删除生产订单', nature: 'WRITE', confirm: 'NONE', result: 'FAILED', reason: '不在工具白名单' }
     ]
   },
   {
     // 原「用户取消」并入「失败」：确认环节被拒绝，没有单独的确认状态可标——confirm 留空（null），
     // 由执行结果=失败 + 原因文案表达"这是一次被用户拒绝的写操作"，不是系统自身执行失败。
-    id: 'C-1006', date: '2026-09-27', time: '14:52:05', user: '李强', position: '财务助手', skills: ['报销单提交'],
+    id: 'C-1006', date: '2026-09-27', time: '14:52:05', user: '李强', position: '财务助手',
     reason: '用户取消本次操作',
+    skillCalls: [{ skill: '报销单提交', result: 'FAILED', reason: '用户取消本次操作' }],
     calls: [
-      { skill: '报销单提交', tool: '业务系统·用友财务', action: '提交报销单', nature: 'WRITE', confirm: null, result: 'FAILED', reason: '用户取消本次操作' }
+      { tool: '业务系统·用友财务', action: '提交报销单', nature: 'WRITE', confirm: null, result: 'FAILED', reason: '用户取消本次操作' }
     ]
   },
   {
     // 先失败（连接超时）后重试成功：列表层仍记「成功」，失败细节只在详情里看到——与梅竹讨论的
     // G3 场景对应：工具本身失败、兜底 / 重试后整体仍完成，不应让单次失败盖掉整体结果。
-    id: 'C-1007', date: '2026-09-27', time: '15:00:52', user: '张浩', position: '生产计划员', skills: ['排产冲突检测'],
+    id: 'C-1007', date: '2026-09-27', time: '15:00:52', user: '张浩', position: '生产计划员',
     reason: '',
+    skillCalls: [{ skill: '排产冲突检测', result: 'SUCCESS', reason: '' }],
     calls: [
-      { skill: '排产冲突检测', tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
-      { skill: '排产冲突检测', tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
+      { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
     // 先查客户信息（读）再创建报价单（写，需确认）：一次执行里既有读也有写，"涉及写操作"记是。
-    id: 'C-1008', date: '2026-09-27', time: '15:01:25', user: '陈杰', position: '销售顾问', skills: ['客户信息查询', '报价单生成'],
+    id: 'C-1008', date: '2026-09-27', time: '15:01:25', user: '陈杰', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '客户信息查询', result: 'SUCCESS', reason: '' }, { skill: '报价单生成', result: 'SUCCESS', reason: '' }],
     calls: [
-      { skill: '客户信息查询', tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
+      { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
       {
-        skill: '报价单生成', tool: '业务系统·Salesforce CRM', action: '创建报价单', nature: 'WRITE', confirm: 'CONFIRMED',
+        tool: '业务系统·Salesforce CRM', action: '创建报价单', nature: 'WRITE', confirm: 'CONFIRMED',
         result: 'SUCCESS', reason: '',
         params: [
           ['客户编号', 'customer_id', 'C-20240612-0083'],
@@ -163,17 +176,25 @@ export const toolCallRecords = [
     ]
   },
   {
-    id: 'C-1009', date: '2026-09-27', time: '15:02:11', user: '刘敏', position: '销售顾问', skills: ['方案要点生成'],
+    id: 'C-1009', date: '2026-09-27', time: '15:02:11', user: '刘敏', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '方案要点生成', result: 'SUCCESS', reason: '' }],
     calls: [
       // 成功的只读调用不保留请求参数 / 响应（2026-10-09 收窄展示范围，§5.2），不内嵌 params/output
-      // skill 缺省（null）＝没经过任何技能，模型在会话里直接调用的工具；也可能是超出技能引用范围的调用，
-      // 审计不再区分，只标是哪个技能名下发生的（2026-10-12）
-      { skill: null, tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
-      { skill: '方案要点生成', tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
+      { tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+    ]
+  },
+  {
+    // 未调用任何技能、只有工具调用：技能时间线为空（列表「调用的技能」展示「—」）
+    id: 'C-1010', date: '2026-09-28', time: '09:20:41', user: '李强', position: '财务助手',
+    reason: '',
+    skillCalls: [],
+    calls: [
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   }
-].map((r) => ({ ...r, ...deriveExec(r.calls) }))
+].map((r) => ({ ...r, skills: r.skillCalls.map((c) => c.skill), ...deriveExec(r.calls) }))
 
 /** 详情抽屉「实际请求参数」页签数据：[参数名, 技术标识, 本次请求值][]——call 自带则用，否则占位。 */
 export function paramsOf(call) {
