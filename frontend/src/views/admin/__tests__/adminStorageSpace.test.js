@@ -21,7 +21,9 @@ const api = {
   listExpansionRequests: vi.fn(),
   getExpansionRequest: vi.fn(),
   approveExpansionRequest: vi.fn(),
-  rejectExpansionRequest: vi.fn()
+  rejectExpansionRequest: vi.fn(),
+  setDefaultQuota: vi.fn(),
+  setDiskTotal: vi.fn()
 }
 vi.mock('@/api/storageSpace', () => api)
 const route = { query: {} }
@@ -44,13 +46,15 @@ beforeEach(() => {
   vi.clearAllMocks()
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   route.query = {}
-  api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 1 })
+  api.getStorageOverview.mockResolvedValue({ defaultQuotaGb: 5, defaultMemberCount: 2, pendingCount: 1, diskTotalGb: 1000, allocatedGb: 55, remainingGb: 945 })
   api.listStorageMembers.mockResolvedValue({ list: MEMBERS, total: MEMBERS.length })
   api.listExpansionRequests.mockResolvedValue({ list: [REQUEST], total: 1 })
   api.getExpansionRequest.mockResolvedValue({ ...REQUEST, current: MEMBERS[0] })
   api.adjustStorageQuota.mockResolvedValue({})
   api.approveExpansionRequest.mockResolvedValue({})
   api.rejectExpansionRequest.mockResolvedValue({})
+  api.setDefaultQuota.mockResolvedValue({})
+  api.setDiskTotal.mockResolvedValue({})
   successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }))
   warnSpy = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close() {} }))
 })
@@ -100,7 +104,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     const c = await mountPage()
     expect(textOf(c.querySelector('h2'))).toBe('存储空间')
     expect(textOf(c)).toContain('分配员工产物存储容量，处理扩容申请；仅统计本地产物（最终产物 + 缓存），不含知识库资料')
-    expect(textOf(c.querySelector('.sq-default'))).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整')
+    expect(textOf(c.querySelector('.sq-default'))).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整修改')
     expect(textOf(c.querySelector('.ss-badge'))).toBe('1')
   })
 
@@ -196,9 +200,39 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
     expect(dialogBody().querySelector('.el-input-number__decrease').classList.contains('is-disabled')).toBe(true)
   })
 
-  it('默认容量固定 5 GB：容量条只展示，没有「修改默认容量」按钮', async () => {
+  it('默认容量可调：容量条带【修改】，磁盘总量条展示总量 / 已分配 / 余量', async () => {
     const c = await mountPage()
-    expect(btn(c, '修改默认容量')).toBeUndefined()
+    const bars = [...c.querySelectorAll('.sq-default')].map(textOf)
+    expect(bars[0]).toContain('默认容量：5 GB')
+    expect(bars[1]).toContain('磁盘总量：1000 GB，已分配 55 GB，余量 945 GB')
+  })
+
+  it('点默认容量条的【修改】：弹窗预填当前默认容量，确定后调用 setDefaultQuota 并提示', async () => {
+    const c = await mountPage()
+    btn(c.querySelectorAll('.sq-default')[0], '修改').click()
+    await flushAll(6)
+    expect(textOf(dialogBody())).toContain('修改默认容量')
+    await typeNumber(3)
+    btn(dialogBody(), '确定').click()
+    await flushAll(8)
+    expect(api.setDefaultQuota).toHaveBeenCalledWith(3)
+    expect(successSpy).toHaveBeenCalledWith('默认容量已改为 3 GB')
+  })
+
+  it('点磁盘总量条的【修改】：不受 20 GB 限制，确定后调用 setDiskTotal；后端拒绝时就地展示原因', async () => {
+    api.setDiskTotal.mockRejectedValueOnce(new Error('磁盘总量不能低于已分配的 55 GB'))
+    const c = await mountPage()
+    btn(c.querySelectorAll('.sq-default')[1], '修改').click()
+    await flushAll(6)
+    await typeNumber(30)
+    btn(dialogBody(), '确定').click()
+    await flushAll(8)
+    expect(textOf(dialogBody())).toContain('磁盘总量不能低于已分配的 55 GB')
+    await typeNumber(2000)
+    btn(dialogBody(), '确定').click()
+    await flushAll(8)
+    expect(api.setDiskTotal).toHaveBeenLastCalledWith(2000)
+    expect(successSpy).toHaveBeenCalledWith('磁盘总量已改为 2000 GB')
   })
 
   it('容量分配列表不展示统计时间列，也不提供时间排序（排序由 mock 守，见 storageSpaceMock.test.js）', async () => {

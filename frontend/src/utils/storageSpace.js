@@ -18,14 +18,20 @@ export const REQUEST_STATE = {
   REJECTED: { label: '已拒绝', tag: 'danger' }
 }
 
-/** 默认容量固定 5 GB（员工端 PRD：默认 5 GB，管理员按员工调整），不提供全局修改入口 */
-export const DEFAULT_QUOTA_GB = 5
+/** 默认容量的出厂值（2026-10-12 起暂定 1 GB，管理员可在容量分配页修改，范围同单员工 1–20 GB） */
+export const DEFAULT_QUOTA_GB = 1
+
+/** 磁盘总量的出厂值（GB）：当前版本按物理总量分配、不超分，各员工容量之和不得超过它；管理员可修改 */
+export const DISK_TOTAL_GB = 1000
 
 /** 拒绝原因最多字数（与驳回原因、回收原因同口径）；输入框限长，超出无法继续输入 */
 export const REJECT_REASON_MAX = 500
 
 /** 调整容量、批量设置、同意扩容的输入框最小值（GB），减号减到它就不能再减 */
 export const QUOTA_MIN_GB = 1
+/** 单个员工容量上限（GB）：调整容量、批量设置、同意扩容都不能超过，输入框加到它就不能再加 */
+export const QUOTA_MAX_GB = 20
+
 /** 容量数值展示：整数不带小数点，其余保留 1 位；空值显示「—」。 */
 export function fmtGb(value) {
   if (value == null) return '—'
@@ -37,10 +43,11 @@ export function fmtGb(value) {
  * 输入框不设 precision（小数原样保留），所以「只能填整数」由这里提示；小于下限时输入框会先把值拉回下限，
  * 「不能小于」主要给绕过页面的调用兜底。
  */
-export function quotaInputError(value, min = QUOTA_MIN_GB) {
+export function quotaInputError(value, min = QUOTA_MIN_GB, max = QUOTA_MAX_GB) {
   if (value == null || value === '' || Number.isNaN(Number(value))) return '请输入正整数'
   const n = Number(value)
   if (!Number.isInteger(n)) return '容量只能填整数'
   if (n < min) return `容量不能小于 ${min} GB`
+  if (n > max) return `容量不能大于 ${max} GB`
   return ''
 }
