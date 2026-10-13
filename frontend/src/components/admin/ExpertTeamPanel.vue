@@ -19,13 +19,12 @@ import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
 import ExpertTeamEditor from '@/components/admin/ExpertTeamEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import {
   listTeams,
   getTeam,
   deleteTeam,
   unpublishTeam,
-  forceRevokeTeam,
   publishTeam,
   withdrawTeam,
   getTeamNextVersionLabel,
@@ -199,7 +198,7 @@ async function onVersionDone() {
   if (id) versionRow.value = rows.value.find((r) => r.id === id) || versionRow.value
 }
 
-/* ---------- 撤回 / 删除 / 停用 / 强制回收 ---------- */
+/* ---------- 撤回 / 删除 / 停用（含强制回收勾选） ---------- */
 const busyId = ref(null)
 
 async function withdrawFromList(row) {
@@ -247,40 +246,27 @@ async function onDelete(row) {
   }
 }
 
-async function stopTeam(row) {
+/* ---------- 停用（点【停用】开 DeactivateDialog；强制回收是弹窗里的勾选项，同走审核，PRD §二.3.5 / §二.3.6） ---------- */
+const stopTarget = ref(null) // 当前停用弹窗对应的行；null = 弹窗关闭
+const stopDialogVisible = computed({
+  get: () => stopTarget.value != null,
+  set: (v) => { if (!v) stopTarget.value = null }
+})
+function stopTeam(row) {
   if (busyId.value != null) return
-  try {
-    await ElMessageBox.confirm(`停用「${row.name}」需提交审核。审核通过前客户端仍可使用。`, '停用专家团', {
-      type: 'warning',
-      confirmButtonText: '提交停用审核',
-      confirmButtonClass: 'el-button--warning'
-    })
-  } catch {
-    return
-  }
-  busyId.value = row.id
-  try {
-    await unpublishTeam(row.id)
-    ElMessage.success('已提交停用审核')
-    fetchList()
-  } catch (e) {
-    ElMessage.error(e?.message || '提交停用失败')
-  } finally {
-    busyId.value = null
-  }
+  stopTarget.value = row
 }
-
-async function forceRevokeFromList(row) {
-  if (busyId.value != null) return
-  const reason = await askForceRevoke({ typeLabel: '专家团', name: row.name, refCount: 0 })
-  if (reason == null) return
+async function confirmStop({ forceRevoke, reason }) {
+  const row = stopTarget.value
+  if (!row || busyId.value != null) return
   busyId.value = row.id
   try {
-    await forceRevokeTeam(row.id, { reason })
-    ElMessage.success('已强制回收')
+    await unpublishTeam(row.id, { forceRevoke, reason })
+    ElMessage.success(forceRevoke ? '已提交强制回收审核' : '已提交停用审核')
+    stopTarget.value = null
     fetchList()
   } catch (e) {
-    ElMessage.error(e?.message || '强制回收失败')
+    ElMessage.error(e?.message || (forceRevoke ? '提交强制回收失败' : '提交停用失败'))
   } finally {
     busyId.value = null
   }
@@ -390,7 +376,7 @@ async function forceRevokeFromList(row) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" :width="opsWidth(5) + 32" fixed="right">
+          <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
             <template #default="{ row }">
               <div class="tbl-ops">
                 <el-button link type="primary" @click="openView(row)">查看</el-button>
@@ -411,7 +397,6 @@ async function forceRevokeFromList(row) {
 
                 <template v-else>
                   <el-button link type="warning" :loading="busyId === row.id" @click="stopTeam(row)">停用</el-button>
-                  <el-button link type="danger" :loading="busyId === row.id" @click="forceRevokeFromList(row)">强制回收</el-button>
                   <el-button link type="primary" @click="onPublishClick(row)">版本管理</el-button>
                 </template>
               </div>
@@ -430,6 +415,19 @@ async function forceRevokeFromList(row) {
       :auto-trial="editorAutoTrial"
       @saved="onEditorSaved"
       @publish="onEditorPublish"
+    />
+
+    <!-- 停用确认弹窗：含「强制回收」勾选项，两种停用都走审核（PRD §二.3.5 / §二.3.6） -->
+    <DeactivateDialog
+      v-model="stopDialogVisible"
+      type-label="专家团"
+      holder-text="已召唤该专家团的员工"
+      :name="stopTarget?.name || ''"
+      :plain-message="`停用「${stopTarget?.name || ''}」需提交审核。审核通过前客户端仍可使用。`"
+      confirm-text="提交停用审核"
+      :ref-count="0"
+      :submitting="busyId != null && busyId === stopTarget?.id"
+      @confirm="confirmStop"
     />
 
     <VersionDrawer v-model="versionDlgVisible" :adapter="versionAdapter" @done="onVersionDone" />

@@ -28,6 +28,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import GovObjectDetail from '@/components/admin/GovObjectDetail.vue'
+import ForceRevokeMark from '@/components/admin/ForceRevokeMark.vue'
 import { fmtTime } from '@/utils/docMeta'
 import {
   MYAPP_BIZ_TYPE_OPTIONS,
@@ -262,6 +263,7 @@ async function resubmit(row, key = 'resubmit') {
               <StatusTag :type="requestActionTagType(row.applicationType)">
                 {{ requestActionLabel(row.applicationType) }}
               </StatusTag>
+              <ForceRevokeMark :reason="row.forceRevokeReason" />
             </template>
           </el-table-column>
           <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">

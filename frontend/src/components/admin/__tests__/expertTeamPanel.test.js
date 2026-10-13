@@ -12,7 +12,6 @@ const api = {
   getTeam: vi.fn(),
   deleteTeam: vi.fn(),
   unpublishTeam: vi.fn(),
-  forceRevokeTeam: vi.fn(),
   publishTeam: vi.fn(),
   withdrawTeam: vi.fn(),
   getTeamNextVersionLabel: vi.fn(),
@@ -87,9 +86,9 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(r3.textContent).not.toContain('未设团长')
     expect(r3.textContent).toContain('1个岗位引用')
     expect(r3.querySelector('[data-testid="team-missing-tag"]')).toBeNull()
-    // 操作按钮三态：已发布 = 查看 编辑 停用 强制回收 版本管理；未发布 = 查看 编辑 发布 删除
+    // 操作按钮三态：已发布 = 查看 编辑 停用 版本管理（强制回收并入停用弹窗，无独立按钮）；未发布 = 查看 编辑 发布 删除
     const names = (r) => [...r.querySelectorAll('.tbl-ops .el-button')].map((b) => b.textContent.trim())
-    expect(names(r1)).toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
+    expect(names(r1)).toEqual(['查看', '编辑', '停用', '版本管理'])
     expect(names(r3)).toEqual(['查看', '编辑', '发布', '删除'])
   })
 
@@ -155,11 +154,42 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(api.deleteTeam).toHaveBeenCalledWith(303)
     expect(ElMessage.success).toHaveBeenCalledWith('专家团已删除')
 
-    ElMessageBox.confirm.mockResolvedValueOnce()
-    api.unpublishTeam.mockResolvedValueOnce({})
+    // 停用：弹 DeactivateDialog（普通停用样式），确认 → unpublishTeam(id, 非强制)
+    api.unpublishTeam.mockResolvedValue({})
     btn(rowOf(c, '经营研究团'), '停用').click()
     await flushAll(8)
-    expect(ElMessageBox.confirm.mock.calls[1][0]).toBe('停用「经营研究团」需提交审核。审核通过前客户端仍可使用。')
-    expect(api.unpublishTeam).toHaveBeenCalledWith(301)
+    const dlg = () => document.querySelector('.el-dialog')
+    expect(dlg().querySelector('[data-test="dd-plain"]').textContent).toBe('停用「经营研究团」需提交审核。审核通过前客户端仍可使用。')
+    dlg().querySelector('[data-test="dd-confirm"]').click()
+    await flushAll(8)
+    expect(api.unpublishTeam).toHaveBeenLastCalledWith(301, { forceRevoke: false, reason: '' })
+    expect(ElMessage.success).toHaveBeenLastCalledWith('已提交停用审核')
+  })
+
+  it('强制回收并入停用弹窗（PRD §二.3.6）：勾选 → 标题「强制回收专家团」、原因必填；填原因提交 → unpublishTeam(id, { forceRevoke: true, reason })；不弹二次确认', async () => {
+    const c = await mountPanel()
+    api.unpublishTeam.mockResolvedValue({})
+    btn(rowOf(c, '经营研究团'), '停用').click()
+    await flushAll(8)
+    const dlg = () => document.querySelector('.el-dialog')
+    const cb = dlg().querySelector('input[type="checkbox"]')
+    cb.click()
+    await flushAll(6)
+    expect(dlg().textContent).toContain('强制回收专家团')
+    expect(dlg().querySelector('[data-test="dd-danger"]').textContent).toContain('已召唤该专家团的员工将失去它')
+    // 原因为空：就地提示，不调接口
+    dlg().querySelector('[data-test="dd-confirm"]').click()
+    await flushAll(6)
+    expect(dlg().querySelector('[data-test="dd-error"]').textContent).toBe('请输入回收原因')
+    expect(api.unpublishTeam).not.toHaveBeenCalled()
+    const ta = dlg().querySelector('textarea')
+    ta.value = '团配置异常'
+    ta.dispatchEvent(new Event('input'))
+    await flushAll(4)
+    dlg().querySelector('[data-test="dd-confirm"]').click()
+    await flushAll(8)
+    expect(api.unpublishTeam).toHaveBeenCalledWith(301, { forceRevoke: true, reason: '团配置异常' })
+    expect(ElMessage.success).toHaveBeenLastCalledWith('已提交强制回收审核')
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
   })
 })

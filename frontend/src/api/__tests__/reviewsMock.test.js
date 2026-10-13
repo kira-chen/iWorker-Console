@@ -545,4 +545,17 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     expect(list.some((r) => r.id === 13)).toBe(false)
     expect((await reloaded.getReview(13)).status).toBe('PUBLISHED')
   })
+
+  // 2026-10-12 /test-audit：强制回收并入停用（审核中心 PRD §5.2）——回收原因随审核行落盘，刷新后详情标记不丢。
+  it('强制回收停用申请提交后刷新 → 审核行仍带 forceRevokeReason；普通停用申请没有该键', async () => {
+    const m = await import('../reviewsMock')
+    m.submitReviewRow({ type: 'EXPERT', refId: 901, name: '强制回收专家', requestAction: 'DELIST', forceRevokeReason: '内容违规', submittedAt: '2026-10-12 09:00' })
+    m.submitReviewRow({ type: 'EXPERT', refId: 902, name: '普通停用专家', requestAction: 'DELIST', submittedAt: '2026-10-12 09:01' })
+
+    vi.resetModules()
+    const reloaded = await import('../reviewsMock')
+    const { list } = await reloaded.listReviews({ size: 50 })
+    expect(list.find((r) => r.refId === 901).forceRevokeReason).toBe('内容违规')
+    expect('forceRevokeReason' in list.find((r) => r.refId === 902)).toBe(false)
+  })
 })

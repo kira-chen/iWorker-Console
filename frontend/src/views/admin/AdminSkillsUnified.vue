@@ -42,7 +42,7 @@ import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
 import { listFieldDict } from '@/api/fieldDict'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
-import { askForceRevoke } from '@/utils/forceRevoke'
+import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import SkillCreateDialog from '@/components/skill/SkillCreateDialog.vue'
@@ -193,7 +193,7 @@ function openView(row) {
   if (name) router.push({ name, params: { id: row.id }, query: { view: '1' } })
 }
 
-/** 引用拦截弹窗（停用/删除共用）：正文携引用清单，仅【知道了】。 */
+/** 引用拦截弹窗（删除用；停用的拦截在停用弹窗内）：正文携引用清单，仅【知道了】。 */
 function alertRefBlocked(row, action, title) {
   const names = refNamesOf(row)
   const listText = names.length ? `（${names.join('、')}）` : ''
@@ -204,52 +204,37 @@ function alertRefBlocked(row, action, title) {
   ).catch(() => {})
 }
 
-/** 停用（V100 双门审核）：被引用拦截；无引用 → 提交停用审核（审核通过前客户端仍可使用）。 */
-async function stopSkill(row) {
+/**
+ * 停用（V100 双门审核）：点【停用】打开停用确认弹窗（DeactivateDialog），确认后提交停用审核（审核通过前客户端仍可使用）。
+ * 被引用时普通停用被拦截（弹窗内展示拦截文案并禁用确认）；勾选「强制回收」（PRD 技能 §3.5.1）则不受引用拦截，
+ * 仍与普通停用同走审核、审核通过才生效。
+ */
+const stopTarget = ref(null) // 当前停用弹窗对应的行；null = 弹窗关闭
+const stopDialogVisible = computed({
+  get: () => stopTarget.value != null,
+  set: (v) => { if (!v) stopTarget.value = null }
+})
+const stopBlockedMessage = computed(() => {
+  const row = stopTarget.value
+  if (!row || refCountOf(row) <= 0) return ''
+  const names = refNamesOf(row)
+  const listText = names.length ? `（${names.join('、')}）` : ''
+  return `该技能被 ${refCountOf(row)} 个${refSubject(row)}引用${listText}，需先解除引用后再停用。`
+})
+
+function stopSkill(row) {
   if (actionBusy.value != null) return
-  if (refCountOf(row) > 0) {
-    alertRefBlocked(row, '停用', '停用技能')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      `停用「${row.name}」需提交停用审核。审核通过前客户端仍可使用。`,
-      '停用技能',
-      { type: 'warning', confirmButtonText: '提交停用审核' }
-    )
-  } catch {
-    return
-  }
-  actionBusy.value = row.id
-  try {
-    await apiFor(row).delist(row.id)
-    ElMessage.success('已提交停用审核')
-    fetchList()
-  } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
-  } finally {
-    actionBusy.value = null
-  }
+  stopTarget.value = row
 }
 
-/**
- * 强制回收（PRD 技能 §3.5.1）：与【停用】并列的紧急下线——不走审核、立即生效、**不受引用拦截**。
- * 回收弹窗（含影响范围「已被 N 个岗位 / 专家引用」+ 必填原因）→ 二次确认 → 调接口；
- * 引用关系保留，成功后刷新列表（状态回「未发布」并带「已回收」标记）。
- */
-async function forceRevoke(row) {
-  if (actionBusy.value != null) return
-  const reason = await askForceRevoke({
-    typeLabel: '技能',
-    name: row.name,
-    refCount: refCountOf(row),
-    refText: refSubject(row)
-  })
-  if (reason == null) return
+async function confirmStop({ forceRevoke, reason }) {
+  const row = stopTarget.value
+  if (!row || actionBusy.value != null) return
   actionBusy.value = row.id
   try {
-    await apiFor(row).forceRevoke(row.id, { reason })
-    ElMessage.success('已强制回收')
+    await apiFor(row).delist(row.id, { forceRevoke, reason })
+    ElMessage.success(forceRevoke ? '已提交强制回收审核' : '已提交停用审核')
+    stopTarget.value = null
     fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '操作失败')
@@ -714,15 +699,6 @@ onBeforeUnmount(() => {
                 >
                   停用
                 </el-button>
-                <!-- 强制回收：与停用并列的紧急下线，无审核、不受引用拦截（PRD 技能 §3.5.1） -->
-                <el-button
-                  link
-                  type="danger"
-                  :loading="actionBusy === row.id"
-                  @click="forceRevoke(row)"
-                >
-                  强制回收
-                </el-button>
                 <el-button link type="primary" @click="openVersionManage(row)">版本管理</el-button>
               </template>
             </template>
@@ -761,6 +737,21 @@ onBeforeUnmount(() => {
         @close="closeTest"
       />
     </div>
+
+    <!-- 停用确认弹窗：含「强制回收」勾选项（PRD 技能 §3.5.1），被引用时普通停用拦截、勾选后放行 -->
+    <DeactivateDialog
+      v-model="stopDialogVisible"
+      type-label="技能"
+      holder-text="已获得该技能的员工"
+      :name="stopTarget?.name || ''"
+      :plain-message="`停用「${stopTarget?.name || ''}」需提交停用审核。审核通过前客户端仍可使用。`"
+      confirm-text="提交停用审核"
+      :ref-count="stopTarget ? refCountOf(stopTarget) : 0"
+      :ref-text="stopTarget ? refSubject(stopTarget) : '专家'"
+      :blocked-message="stopBlockedMessage"
+      :submitting="actionBusy != null && actionBusy === stopTarget?.id"
+      @confirm="confirmStop"
+    />
 
     <!-- 版本管理抽屉（统一 VersionDrawer；三类技能同构，apiFor 分流） -->
     <VersionDrawer v-model="verMgrVisible" :adapter="versionAdapter" @done="onVersionDone" />

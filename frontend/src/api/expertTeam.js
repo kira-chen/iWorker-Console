@@ -87,15 +87,10 @@ export function getTeamNextVersionLabel(teamId) {
   return request.get(`/fde/expert-teams/${teamId}/next-version-label`)
 }
 
-export function unpublishTeam(teamId) {
-  if (USE_MOCK) return mock.unpublishTeam(teamId)
-  return request.post(`/fde/expert-teams/${teamId}/unpublish`, {}, W)
-}
-
-// 强制回收：不走审核、立即生效；body: { reason }（必填 ≤500 字）
-export function forceRevokeTeam(teamId, payload) {
-  if (USE_MOCK) return mock.forceRevokeTeam(teamId, payload)
-  return request.post(`/fde/expert-teams/${teamId}/force-revoke`, payload, W)
+// 停用 → 提交停用审核；payload { forceRevoke, reason }：勾选强制回收时与普通停用走同一条审核，通过后才回收（PRD §二.3.6）
+export function unpublishTeam(teamId, payload = {}) {
+  if (USE_MOCK) return mock.unpublishTeam(teamId, payload)
+  return request.post(`/fde/expert-teams/${teamId}/unpublish`, payload, W)
 }
 
 export function withdrawTeam(teamId) {

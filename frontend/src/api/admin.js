@@ -128,14 +128,10 @@ export function withdrawBizSystem(id, target) {
 }
 // 停用（2026-09-01 PRD 对齐改停用审核流：已发布 → 审核中 pendingAction=DEACTIVATE，
 // 审核通过 → 未发布，被拒/撤回 → 已发布）。
-export function delistBizSystem(id, target) {
-  if (BIZ_MOCK) return bizMock.deactivateBizSystem(id)
-  return request.post(`/fde/connectors/biz-systems/${id}/delist`, { target }, W)
-}
-// 强制回收（prd-业务系统.md §3）：立即生效、不进审核中心。
-export function forceRevokeBizSystem(id, reason) {
-  if (BIZ_MOCK) return bizMock.forceRevokeBizSystem(id, reason)
-  return request.post(`/fde/connectors/biz-systems/${id}/force-revoke`, { reason }, W)
+// 可选 opts={ forceRevoke, reason }：停用弹窗里勾选「强制回收」时带上，与普通停用同走审核（prd-业务系统.md §3）。
+export function delistBizSystem(id, target, opts) {
+  if (BIZ_MOCK) return bizMock.deactivateBizSystem(id, opts)
+  return request.post(`/fde/connectors/biz-systems/${id}/delist`, { target, ...opts }, W)
 }
 // 重新上架（FDE，某目标 DELISTED→PUBLISHED）。
 export function relistBizSystem(id, target) {

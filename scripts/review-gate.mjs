@@ -23,7 +23,8 @@ const range = process.argv[2]
 if (!range) { console.error('用法：node scripts/review-gate.mjs <git 范围>'); process.exit(2) }
 
 const sh = (c) => execSync(c, { encoding: 'utf8' }).trim()
-const files = sh(`git diff --name-only ${range}`).split('\n').filter(Boolean)
+// core.quotepath=false：否则中文路径（docs/PRD/ 下全是中文目录）会被加引号输出，startsWith('docs/PRD/') 永远匹配不上
+const files = sh(`git -c core.quotepath=false diff --name-only ${range}`).split('\n').filter(Boolean)
 const msgs = sh(`git log --format=%B ${range}`)
 
 const RULES = [

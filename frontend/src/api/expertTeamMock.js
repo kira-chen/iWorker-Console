@@ -20,7 +20,7 @@ import { attachPersist } from './mockPersist'
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 import { EXPERT_TYPE } from './expertTypes'
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { appendOpsRecord } from './accessAuditMock'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { listExpertsSync } from './domainExpertMock'
@@ -156,9 +156,10 @@ let reviewSnapshots = {}
 // v1（2026-10-12）：专家团模块首次接入持久化。
 // v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
 // v3（2026-10-12）：曾加选填「用途」purpose。
+// v5（2026-10-12）：行新增 pendingRevokeReason / pendingRevokeBy（停用时勾选强制回收的在审原因，同专家 v7），旧快照丢弃重播种子。
 // v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 4,
+  version: 5,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -619,6 +620,8 @@ export async function withdrawTeam(id) {
   if (!t) throw err('专家团不存在', null, 404)
   if (!t.pendingAction) throw err('该专家团没有在途审核')
   t.pendingAction = null
+  delete t.pendingRevokeReason // 撤回强制回收申请：不留任何回收后果
+  delete t.pendingRevokeBy
   delete t.pendingVersion
   delete t.pendingReleaseNotes
   t.updatedAt = nowIso()
@@ -629,33 +632,34 @@ export async function withdrawTeam(id) {
 }
 
 // 停用 → 提交停用审核。同专家：不刷新最近更新时间、不受引用拦截、不影响成员专家。
-export async function unpublishTeam(id) {
+// 强制回收（prd.专家团.md §二.3.6）是停用弹窗里的勾选项：入参 { forceRevoke, reason }，与普通停用走同一条审核链路，
+// 提交后对象状态完全一致（审核中、仍已发布、仍可用）；只多记 pendingRevokeReason，审核通过才写 revoked 并落审计。
+export async function unpublishTeam(id, { forceRevoke = false, reason = '' } = {}) {
   await delay()
   const t = findTeam(id)
   if (!t) throw err('专家团不存在', null, 404)
   if (t.status !== 'published') throw err('仅已发布专家团可停用')
   if (t.pendingAction) throw err('该专家团已有在途审核，请先撤回')
+  let revokeReason = ''
+  if (forceRevoke) {
+    const msg = validateRevokeReason(reason)
+    if (msg) throw err(msg, 'reason', 40001)
+    revokeReason = String(reason).trim()
+  }
   t.pendingAction = 'DELIST'
+  if (revokeReason) {
+    t.pendingRevokeReason = revokeReason
+    t.pendingRevokeBy = currentDemoUsername() // 操作人 = 提交申请的管理员，不是审核人
+  }
   writeReviewSnapshot(t, 'DELIST')
-  enrollReview({ businessType: 'EXPERT_TEAM', refId: t.id, name: t.name, description: t.intro, requestAction: 'DELIST', version: t.latestVersionLabel || '—', versionNotes: '申请停止该专家团对外提供' })
+  enrollReview({
+    businessType: 'EXPERT_TEAM', refId: t.id, name: t.name, description: t.intro,
+    requestAction: 'DELIST', version: t.latestVersionLabel || '—',
+    versionNotes: revokeReason ? '申请强制回收该专家团：' + revokeReason : '申请停止该专家团对外提供',
+    ...(revokeReason ? { forceRevokeReason: revokeReason } : {})
+  })
   persist()
   return {}
-}
-
-// 强制回收（md §二.3.6）：不走审核、立即生效；成员专家不受影响。
-export async function forceRevokeTeam(id, { reason } = {}) {
-  await delay()
-  const t = findTeam(id)
-  if (!t) throw err('专家团不存在', null, 404)
-  if (t.status !== 'published' || t.pendingAction) throw err('专家团状态已变化，请刷新后重试', null, 409)
-  const text = String(reason || '').trim()
-  if (!text) throw err('请输入回收原因', 'reason')
-  if (text.length > 500) throw err('回收原因最多 500 字', 'reason')
-  t.status = 'draft'
-  t.revoked = makeRevokedInfo(text)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '强制回收', objectId: t.id, target: t.name, detail: text, version: t.latestVersionLabel })
-  persist()
-  return { revoked: { ...t.revoked } }
 }
 
 // 审核结果落地（reviewsMock 经动态 import 分发到此），规则同 applyExpertReviewResult。
@@ -667,6 +671,12 @@ export function applyTeamReviewResult(refId, requestAction, approved) {
   if (approved) {
     if (isDelist) {
       t.status = 'draft'
+      if (t.pendingRevokeReason) {
+        // 强制回收：审核通过才生效——打「已回收」标记并落访问审计
+        const revokeBy = t.pendingRevokeBy || currentDemoUsername()
+        t.revoked = makeRevokedInfo(t.pendingRevokeReason, revokeBy)
+        appendOpsRecord({ operator: revokeBy, module: '专家团', action: '强制回收', objectId: t.id, target: t.name, detail: t.pendingRevokeReason, version: t.latestVersionLabel })
+      }
     } else {
       const label = t.pendingVersion || 'v1.0.0'
       const rows = publications[t.id] || (publications[t.id] = [])
@@ -694,6 +704,8 @@ export function applyTeamReviewResult(refId, requestAction, approved) {
     }
   }
   t.pendingAction = null
+  delete t.pendingRevokeReason // 通过已落地 / 驳回丢弃：回收原因随在途事项一并清掉
+  delete t.pendingRevokeBy
   delete t.pendingVersion
   delete t.pendingReleaseNotes
   t.updatedAt = nowIso()

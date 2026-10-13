@@ -9,6 +9,9 @@ import { opsRecords, appendOpsRecord, resetAccessAuditMock, listClientFacingOps 
  * 2026-09-30 起新增（4125917）：§6.2 强制回收 / 用户技能审核 / 岗位分配三类记录；§6.5.1–6.5.3 落给客户端的数据层
  * （appendOpsRecord 的 at / objectId / meta / version 可选字段，listClientFacingOps 的 since 增量、排序、旧种子无 at 兜底）。
  *
+ * 2026-10-12 口径：强制回收记录由各业务 mock 在“停用审核通过、回收生效”时才 appendOpsRecord（PRD 访问审计 §6.2），
+ * 本文件只验记录本身与 §6.5.1 视图的形状；“提交时不写 / 驳回撤回不写 / 通过时只写强制回收不写停用”的联动见 reviewFlowIntegration.test.js。
+ *
  * 2026-10-09 起新增：存储空间记录（§6.2 存储空间记录块 / §6.5.4）——listClientFacingOps 的 storageQuota 视图（调整容量 / 同意扩容 / 拒绝扩容，字段键集固定、不含原总量与操作人）、
  * 5 条存储空间审计种子（与 storageSpaceMock 种子一一对应，由 storageSpaceMock.test.js 守）。
  */

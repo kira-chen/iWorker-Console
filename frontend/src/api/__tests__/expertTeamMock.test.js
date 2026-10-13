@@ -13,7 +13,6 @@ import {
   publishTeam,
   withdrawTeam,
   unpublishTeam,
-  forceRevokeTeam,
   applyTeamReviewResult,
   getTeamReviewSnapshot,
   listTeamPublications,
@@ -23,7 +22,7 @@ import {
   checkTeamPublishable,
   __resetTeamMock
 } from '../expertTeamMock'
-import { __resetExpertMock, createExpert, deleteExpert, forceRevokeExpert, unpublishExpert, applyExpertReviewResult } from '../domainExpertMock'
+import { __resetExpertMock, createExpert, deleteExpert, unpublishExpert, applyExpertReviewResult } from '../domainExpertMock'
 import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
 import { listReviews } from '../reviewsMock'
 
@@ -208,26 +207,51 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     await expect(delistTeamPublication(302, pubs[0].id)).rejects.toMatchObject({ message: expectStr('最后一个启用版本') })
   })
 
-  it('强制回收：立即生效不进审核、写访问审计（模块=专家团）并被客户端读取；成员专家不受影响', async () => {
-    await expect(forceRevokeTeam(301, { reason: ' ' })).rejects.toMatchObject({ message: '请输入回收原因' })
-    await expect(forceRevokeTeam(301, { reason: 'x'.repeat(501) })).rejects.toMatchObject({ message: '回收原因最多 500 字' })
-    await forceRevokeTeam(301, { reason: '团配置异常' })
+  it('强制回收并入停用（PRD §二.3.6）：勾选后与停用同走审核，提交后仍已发布；审核通过才回收并写访问审计（模块=专家团）；驳回 / 撤回无任何回收后果', async () => {
+    await expect(unpublishTeam(301, { forceRevoke: true, reason: ' ' })).rejects.toMatchObject({ message: '请输入回收原因' })
+    await expect(unpublishTeam(301, { forceRevoke: true, reason: 'x'.repeat(501) })).rejects.toMatchObject({ message: '回收原因最多 500 字' })
+    await unpublishTeam(301, { forceRevoke: true, reason: '团配置异常' })
+    // 提交后：审核中、仍已发布、没有回收标记、没有审计记录；审核中心行带强制回收标记
+    expect(await getTeam(301)).toMatchObject({ status: 'published', pendingAction: 'DELIST', revoked: null })
+    expect(opsRecords.some((r) => r.module === '专家团' && r.action === '强制回收')).toBe(false)
+    const row = (await listReviews({ size: 100 })).list.find((r) => r.type === 'EXPERT_TEAM' && r.refId === 301)
+    expect(row.forceRevokeReason).toBe('团配置异常')
+    // 驳回：没有回收后果
+    expect(applyTeamReviewResult(301, 'DELIST', false)).toBe(true)
+    expect(await getTeam(301)).toMatchObject({ status: 'published', pendingAction: null, revoked: null })
+    // 撤回：同样没有回收后果，回收原因被清理
+    await unpublishTeam(301, { forceRevoke: true, reason: '再来一次' })
+    await withdrawTeam(301)
+    expect(await getTeam(301)).toMatchObject({ status: 'published', pendingAction: null, revoked: null })
+    expect(opsRecords.some((r) => r.module === '专家团' && r.action === '强制回收')).toBe(false)
+    // 通过：才回收并落审计，客户端可读
+    await unpublishTeam(301, { forceRevoke: true, reason: '团配置异常' })
+    expect(applyTeamReviewResult(301, 'DELIST', true)).toBe(true)
     const t = await getTeam(301)
     expect(t).toMatchObject({ status: 'draft', latestVersionLabel: 'v1.0.0' })
     expect(t.revoked.reason).toBe('团配置异常')
     expect(opsRecords.some((r) => r.module === '专家团' && r.action === '强制回收' && r.detail === '团配置异常')).toBe(true)
     expect(listClientFacingOps().find((r) => r.kind === 'forceRevoke' && r.objectType === '专家团')).toMatchObject({ objectName: '经营研究团', reason: '团配置异常' })
-    await expect(forceRevokeTeam(301, { reason: '再来一次' })).rejects.toMatchObject({ message: '专家团状态已变化，请刷新后重试' })
-    expect((await getTeam(301)).members.every((m) => !m.unavailable)).toBe(true)
+    expect((await getTeam(301)).members.every((m) => !m.unavailable)).toBe(true) // 成员专家不受影响
     // 重新发布审核通过后「已回收」标记清除
     await publishTeam(301, { releaseNotes: '恢复' })
     applyTeamReviewResult(301, 'VERSION_PUBLISH', true)
     expect((await getTeam(301)).revoked).toBeNull()
   })
 
+  it('普通停用（不勾选）审核通过后不产生回收标记与审计', async () => {
+    await unpublishTeam(302)
+    expect((await listReviews({ size: 100 })).list.find((r) => r.type === 'EXPERT_TEAM' && r.refId === 302).forceRevokeReason).toBeUndefined()
+    applyTeamReviewResult(302, 'DELIST', true)
+    expect(await getTeam(302)).toMatchObject({ status: 'draft', revoked: null })
+    expect(opsRecords.some((r) => r.module === '专家团')).toBe(false)
+  })
+
   it('缺员（md §四）：成员专家被强制回收 / 删除后团在列表显示缺员 N 与原因；发布前检查被阻断', async () => {
     expect((await listTeams()).list.every((t) => t.missingCount === 0)).toBe(true)
-    await forceRevokeExpert(202, { reason: '专家异常' })
+    // 专家 202 经「停用 + 勾选强制回收」审核通过 → 已回收
+    await unpublishExpert(202, { forceRevoke: true, reason: '专家异常' })
+    applyExpertReviewResult(202, 'DELIST', true)
     const { list } = await listTeams()
     const t = list.find((x) => x.name === '岗位协同团')
     expect(t).toMatchObject({ missingCount: 1 })

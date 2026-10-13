@@ -21,7 +21,7 @@ import { attachPersist } from './mockPersist'
 // 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { appendOpsRecord } from './accessAuditMock'
-import { makeRevokedInfo } from '@/utils/forceRevoke'
+import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
@@ -146,8 +146,10 @@ const mkMcp = (over) => ({
   createdAt: null,
   updatedAt: null,
   publishedAt: null, // 最近发布审核通过时间（PRD §三.9；从未发布为 null）
-  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 forceRevokeMcpService）
+  // 强制回收信息 { reason, at, operator }；null=未被回收。回收后重新发布审核通过才清空（见 applyRevokeIfPending）
   revoked: null,
+  // 待审的强制回收原因：停用时勾选「强制回收」提交后存此，审核通过才落 revoked；普通停用 / 撤回 / 驳回后为空
+  pendingRevokeReason: '',
   ...over
 })
 
@@ -299,7 +301,8 @@ const persist = attachPersist('mcpConnector', {
   //    旧快照没有该字段会让列表「连接器类型」列与筛选恒空 → 丢弃重播种
   // v8：岗位私有连接器不再绑定所属岗位——行去掉 `positionId`，改为 `referencedByPositions`（岗位侧反向引用清单），
   //    旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种
-  version: 9,
+  // v10（2026-10-12 强制回收并入停用）：行新增 `pendingRevokeReason`（待审强制回收原因），旧快照缺该字段 → 丢弃重播种
+  version: 10,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -667,6 +670,8 @@ export async function withdrawMcpService(id) {
   if (pubAgg[id] !== 'PENDING_REVIEW') throw err('仅审核中状态可撤回')
   pubAgg[id] = m.pendingAction === 'DELIST' ? 'PUBLISHED' : 'NOT_PUBLISHED'
   m.pendingAction = null
+  m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
   unenrollReview('MCP', m.id)
   persist()
@@ -677,16 +682,26 @@ export async function withdrawMcpService(id) {
  * 仅已发布可提交；聚合态进 PENDING_REVIEW + pendingAction='DELIST'（审核期间客户端仍可用），
  * 同时向审核中心写一行 DELIST 申请（接法同 knowledgeBaseMock.enrollReview，只接提交端）。
  * 原实现直落 DELISTED（列表显「未发布」）与 AdminMcp 的 toast「已提交停用审核」自相矛盾。
+ *
+ * 强制回收（PRD §3.6.1）= 停用弹窗里的勾选项：传 { forceRevoke:true, reason } 时与普通停用走**同一条审核链路**，
+ * 提交后同样是「审核中」（审核通过前仍已发布、仍可用）；原因存 pendingRevokeReason，审核通过才落 revoked + 审计。
  */
-export async function delistMcpService(id) {
+export async function delistMcpService(id, { forceRevoke = false, reason = '' } = {}) {
   await delay(250)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
   if (pubAgg[id] !== 'PUBLISHED' && pubAgg[id] !== 'PARTIAL') throw err('仅已发布状态可提交停用')
+  const revokeReason = forceRevoke ? String(reason || '').trim() : ''
+  if (forceRevoke) {
+    const msg = validateRevokeReason(reason)
+    if (msg) throw err(msg, 'reason', 40001)
+  }
   pubAgg[id] = 'PENDING_REVIEW'
   m.pendingAction = 'DELIST'
+  m.pendingRevokeReason = revokeReason
+  m.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（PRD 访问审计 §6.2），不是审核人
   m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45）
-  enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: '申请停止该 MCP 对外提供' })
+  enrollReview({ businessType: 'MCP', refId: m.id, name: m.name, description: m.description || '', requestAction: 'DELIST', version: '—', versionNotes: revokeReason ? `申请强制回收该 MCP：${revokeReason}` : '申请停止该 MCP 对外提供', forceRevokeReason: revokeReason })
   persist()
   return { affected: (m.tools || []).length, skipped: 0 }
 }
@@ -694,6 +709,17 @@ export async function relistMcpService(id) {
   await delay(250)
   return setAgg(id, 'PUBLISHED')
 }
+/**
+ * 停用审核通过时落「强制回收」：停用提交时勾选了强制回收（pendingRevokeReason 非空）才写 revoked + 访问审计；
+ * 普通停用 / 驳回 / 撤回都不走这里。调用方先取出原因、清掉 pendingAction 后再调。
+ */
+function applyRevokeIfPending(m, reason, by) {
+  if (!reason) return
+  const operator = by || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
+  m.revoked = makeRevokedInfo(reason, operator)
+  appendOpsRecord({ operator, module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
+}
+
 /**
  * 审核结果落地（2026-09-12 负责人决策 5（审计 J12））：由 reviewsMock.applyReviewResult 分发到此。
  * 复用下方 reviewMcpService 的状态机，只把 delay 与「按 market.js 契约」的出参剥掉，并在
@@ -709,7 +735,11 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
   if (!m || pubAgg[m.id] !== 'PENDING_REVIEW') return false
   if (requestAction && !reviewActionMatches(requestAction, m.pendingAction)) return false // 2026-09-18 R1
   const isDelist = m.pendingAction === 'DELIST'
+  const revokeReason = m.pendingRevokeReason
+  const revokeBy = m.pendingRevokeBy
   m.pendingAction = null
+  m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   m.updatedAt = nowIso() // 审核落地 = 状态变更，刷新最近更新时间（待办 yuepu#45）
   if (approved && !isDelist) {
     m.publishedAt = nowIso()
@@ -717,6 +747,7 @@ export function applyMcpReviewResult(refId, requestAction, approved) {
     pubAgg[m.id] = 'PUBLISHED'
   } else if (approved) {
     pubAgg[m.id] = 'NOT_PUBLISHED'
+    applyRevokeIfPending(m, revokeReason, revokeBy) // 勾选了强制回收 → 通过后才标「已回收」并落审计
   } else {
     pubAgg[m.id] = isDelist ? 'PUBLISHED' : 'NOT_PUBLISHED'
   }
@@ -734,34 +765,19 @@ export async function reviewMcpService(id, payload = {}) {
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')
   const wasDelist = m.pendingAction === 'DELIST'
+  const revokeReason = m.pendingRevokeReason
+  const revokeBy = m.pendingRevokeBy
   m.pendingAction = null
+  m.pendingRevokeReason = ''
+  m.pendingRevokeBy = ''
   if (wasDelist && !payload.approve) {
     pubAgg[id] = 'PUBLISHED'
     m.updatedAt = nowIso() // 状态变更刷新最近更新时间（待办 yuepu#45；其余分支走 setAgg）
     persist()
     return { affected: (m.tools || []).length, skipped: 0 }
   }
+  if (wasDelist && payload.approve) applyRevokeIfPending(m, revokeReason, revokeBy)
   return setAgg(id, payload.approve ? (wasDelist ? 'DELISTED' : 'PUBLISHED') : 'REJECTED')
-}
-
-/**
- * 强制回收（md §3.6.1）：与【停用】并列的紧急下线，立即生效、不进审核中心（不 enrollReview）。
- * 仅「已发布且无审核中操作」可回收；聚合态回到 NOT_PUBLISHED（保留 publishedAt），写 revoked，
- * 引用清单（referencedByPositions / referencedBySkills）原样保留；写访问审计「管理端操作」。
- * @param {string} id
- * @param {string} reason 回收原因（必填，由 askForceRevoke 收集）
- */
-export async function forceRevokeMcpService(id, reason) {
-  await delay(250)
-  const m = findMcp(id)
-  if (!m) throw err('MCP 不存在')
-  if (pubAgg[m.id] !== 'PUBLISHED' || m.pendingAction) throw err('MCP状态已变化，请刷新后重试')
-  pubAgg[m.id] = 'NOT_PUBLISHED'
-  m.revoked = makeRevokedInfo(reason)
-  m.updatedAt = nowIso()
-  appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
-  persist()
-  return toRow(m)
 }
 
 /**

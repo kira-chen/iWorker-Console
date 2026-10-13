@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
  *   §一.1 搜索按名称或描述 / 状态筛选；§二.1 L30 按最近更新时间排序；
  *   §二.3 / §二.4 三态状态机（发布 / 停用均过审，撤回与驳回按待审类型恢复）；软引用删除；
  *   §三.2 / §三.7 保存校验（名称必填 ≤64 平台内不可重复、图标、描述、登录地址、示例问题 3 条）；
- *   §三.4 业务系统专属技能；+ 持久化（10 个写点 persist 一次、快照形状、bizSeq 延续）。
+ *   §三.4 业务系统专属技能；+ 持久化（11 个写点（含强制回收） persist 一次、快照形状、bizSeq 延续）。
  * mockPersist 走 vi.hoisted 桩（范式同 runtimeSpecMock.test.js）。
  */
 
@@ -312,7 +312,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
 })
 
 /**
- * 持久化（2026-09-12 测试审计 T58 / F11）：写点=新建/编辑/删除、发布/撤回/停用/审核通过/驳回、专属技能增删 共 10 处；
+ * 持久化（2026-09-12 测试审计 T58 / F11）：写点=新建/编辑/删除、发布/撤回/停用/审核通过/驳回、专属技能增删 共 11 处（含勾选强制回收的停用提交）；
  * restore 做最小形状校验；bizSeq/skillSeq 从快照延续（刷新后新建的 id 不与存量撞车）。
  * 每条用例 vi.resetModules() 拿全新模块实例（不影响上面顶层实例的用例）。
  */
@@ -333,7 +333,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=4 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=5 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -348,8 +348,9 @@ describe('bizSystemMock —— 持久化', () => {
       () => m.rejectBizSystem(row.id),
       () => m.publishBizSystem(row.id),
       () => m.approveBizSystem(row.id),
-      // 2026-10-09 补缺口 C2：强制回收（prd-业务系统.md §3）也是写点；回收后回未发布，重新走一轮发布审核再接着停用
-      () => m.forceRevokeBizSystem(row.id, '持久化回收'),
+      // 强制回收（prd-业务系统.md §3）= 勾选式停用提交 + 审核通过，各是一个写点；回收后回未发布，重新走一轮发布审核再接着停用
+      () => m.deactivateBizSystem(row.id, { forceRevoke: true, reason: '持久化回收' }),
+      () => m.approveBizSystem(row.id),
       () => m.publishBizSystem(row.id),
       () => m.approveBizSystem(row.id),
       () => m.deactivateBizSystem(row.id),
@@ -365,7 +366,7 @@ describe('bizSystemMock —— 持久化', () => {
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 2)
     }
-    expect(harness.options.version).toBe(4)
+    expect(harness.options.version).toBe(5)
     const snap = harness.options.snapshot()
     expect(Number.isFinite(snap.bizSeq)).toBe(true)
     expect(Number.isFinite(snap.skillSeq)).toBe(true)
@@ -391,8 +392,9 @@ describe('bizSystemMock —— 持久化', () => {
   })
 })
 
-describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () => {
+describe('bizSystemMock —— 强制回收（停用时勾选，走停用审核；prd-业务系统.md §3）', () => {
   const reason = '系统停用，紧急回收'
+  const revokeOpts = { forceRevoke: true, reason }
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
   // 每例冷 import 拿全新种子；audit 与 mock 同一模块注册表
@@ -409,43 +411,128 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     return { m, audit, harness, run }
   }
 
-  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；不进审核（无待审类型）；引用清单保留', async () => {
-    const { m, harness, run } = await fresh()
+  it('提交强制回收：状态与普通停用完全一致（审核中 + 待审停用），审核通过前仍是已发布态数据、不带 revoked、不落审计', async () => {
+    const { m, audit, run } = await fresh()
     const before = await run(m.getBizSystem('biz_2101'))
-    expect(before.revoked).toBeNull()
-    harness.persist.mockClear()
-    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    const n = audit.opsRecords.length
+    const row = await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    expect(row.status).toBe('PENDING_REVIEW')
+    expect(row.pendingAction).toBe('DEACTIVATE')
+    expect(row.pendingRevokeReason).toBe(reason)
+    expect(row.revoked).toBeNull()
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect(audit.opsRecords.length).toBe(n)
+  })
+
+  it('审核通过才生效：回未发布、写 revoked（原因 / 时间 / 操作人）、保留 publishedAt 与引用清单，并写访问审计「业务系统 · 强制回收 · 原因」', async () => {
+    const { m, audit, run } = await fresh()
+    const before = await run(m.getBizSystem('biz_2101'))
+    const n = audit.opsRecords.length
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    const row = await run(m.approveBizSystem('biz_2101'))
     expect(row.status).toBe('NOT_PUBLISHED')
     expect(row.pendingAction).toBeNull()
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.pendingRevokeReason).toBe('')
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
     expect(row.publishedAt).toBe(before.publishedAt)
     expect(row.referencedBySkills).toEqual(before.referencedBySkills)
     expect(row.referencedByPositions).toEqual(before.referencedByPositions)
-    expect(harness.persist).toHaveBeenCalledTimes(1)
+    expect(audit.opsRecords.length).toBe(n + 1)
+    expect(audit.opsRecords[0]).toMatchObject({ module: '业务系统', action: '强制回收', target: '客户管理系统 CRM', detail: reason })
+    expect(audit.opsRecords[0].operator).toBe('demo')
     const listed = (await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101')
     expect(listed.revoked.reason).toBe(reason)
   })
 
-  it('写访问审计：模块 业务系统 · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+  // PRD 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
+  it('操作人 = 提交强制回收的管理员：A 提交、切换演示身份为 B 通过 → revoked.operator 与审计 operator 都是 A', async () => {
     const { m, audit, run } = await fresh()
-    const n = audit.opsRecords.length
-    await run(m.forceRevokeBizSystem('biz_2101', reason))
-    expect(audit.opsRecords.length).toBe(n + 1)
-    expect(audit.opsRecords[0]).toMatchObject({ module: '业务系统', action: '强制回收', target: '客户管理系统 CRM', detail: reason })
+    const setUser = (username) => localStorage.setItem('ai_assistant_user', JSON.stringify({ username }))
+    try {
+      setUser('admin_a')
+      await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+      setUser('admin_b')
+      const row = await run(m.approveBizSystem('biz_2101'))
+      expect(row.revoked.operator).toBe('admin_a')
+      expect(audit.opsRecords[0]).toMatchObject({ action: '强制回收', operator: 'admin_a' })
+    } finally {
+      localStorage.removeItem('ai_assistant_user')
+    }
   })
 
-  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
+  it('审核中心落地路径（applyBizSystemReviewResult）通过同样写 revoked 与审计', async () => {
+    const { m, audit, run } = await fresh()
+    const n = audit.opsRecords.length
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    expect(m.applyBizSystemReviewResult('biz_2101', 'DELIST', true)).toBe(true)
+    const row = await run(m.getBizSystem('biz_2101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked.reason).toBe(reason)
+    expect(audit.opsRecords.length).toBe(n + 1)
+  })
+
+  it('普通停用审核通过：只变未发布，不写 revoked、不落「强制回收」审计', async () => {
+    const { m, audit, run } = await fresh()
+    const n = audit.opsRecords.length
+    const submitted = await run(m.deactivateBizSystem('biz_2101'))
+    expect(submitted.pendingRevokeReason).toBe('')
+    const row = await run(m.approveBizSystem('biz_2101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toBeNull()
+    expect(audit.opsRecords.length).toBe(n)
+  })
+
+  it('撤回 / 驳回（含审核中心驳回）：回已发布，不写 revoked、不落审计、待回收原因被清掉', async () => {
+    const { m, audit, run } = await fresh()
+    const n = audit.opsRecords.length
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    let row = await run(m.withdrawBizSystem('biz_2101'))
+    expect(row).toMatchObject({ status: 'PUBLISHED', pendingAction: null, pendingRevokeReason: '', revoked: null })
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    row = await run(m.rejectBizSystem('biz_2101'))
+    expect(row).toMatchObject({ status: 'PUBLISHED', pendingAction: null, pendingRevokeReason: '', revoked: null })
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    expect(m.applyBizSystemReviewResult('biz_2101', 'DELIST', false)).toBe(true)
+    row = await run(m.getBizSystem('biz_2101'))
+    expect(row).toMatchObject({ status: 'PUBLISHED', pendingAction: null, pendingRevokeReason: '', revoked: null })
+    expect(audit.opsRecords.length).toBe(n)
+  })
+
+  it('撤回后再提交普通停用并通过：不会沿用上一次的回收原因', async () => {
     const { m, run } = await fresh()
-    await expect(run(m.forceRevokeBizSystem('biz_2103', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 未发布
-    await expect(run(m.forceRevokeBizSystem('biz_2102', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试') // 待审发布
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    await run(m.withdrawBizSystem('biz_2101'))
+    await run(m.deactivateBizSystem('biz_2101'))
+    const row = await run(m.approveBizSystem('biz_2101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.revoked).toBeNull()
+  })
+
+  it('回收原因必填且 ≤500 字（trim 后校验）：不合法抛 40001，对象状态不变', async () => {
+    const { m, run } = await fresh()
+    await expect(run(m.deactivateBizSystem('biz_2101', { forceRevoke: true, reason: '   ' }))).rejects.toMatchObject({ code: 40001, message: '请输入回收原因' })
+    await expect(run(m.deactivateBizSystem('biz_2101', { forceRevoke: true, reason: 'x'.repeat(501) }))).rejects.toMatchObject({ code: 40001, message: '回收原因最多 500 字' })
+    expect((await run(m.getBizSystem('biz_2101'))).status).toBe('PUBLISHED')
+    const row = await run(m.deactivateBizSystem('biz_2101', { forceRevoke: true, reason: `  ${reason}  ` }))
+    expect(row.pendingRevokeReason).toBe(reason) // trim 后保存
+  })
+
+  it('前置条件：仅已发布可停用 / 强制回收，未发布 / 审核中 / 不存在一律拒绝', async () => {
+    const { m, run } = await fresh()
+    await expect(run(m.deactivateBizSystem('biz_2103', revokeOpts))).rejects.toThrow('仅已发布状态可停用') // 未发布
+    await expect(run(m.deactivateBizSystem('biz_2102', revokeOpts))).rejects.toThrow('仅已发布状态可停用') // 待审发布
     await run(m.deactivateBizSystem('biz_2101')) // 已发布 → 待审停用
-    await expect(run(m.forceRevokeBizSystem('biz_2101', reason))).rejects.toThrow('业务系统状态已变化，请刷新后重试')
-    await expect(run(m.forceRevokeBizSystem('nope', reason))).rejects.toThrow('业务系统不存在')
+    await expect(run(m.deactivateBizSystem('biz_2101', revokeOpts))).rejects.toThrow('仅已发布状态可停用')
+    await expect(run(m.deactivateBizSystem('nope', revokeOpts))).rejects.toThrow('业务系统不存在')
   })
 
   it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清（approveBizSystem 与审核中心落地两条路径）', async () => {
     const { m, run } = await fresh()
-    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    const revoke = async () => {
+      await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+      await run(m.approveBizSystem('biz_2101'))
+    }
+    await revoke()
     await run(m.publishBizSystem('biz_2101'))
     expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
     await run(m.withdrawBizSystem('biz_2101'))
@@ -459,7 +546,7 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     expect(done.status).toBe('PUBLISHED')
     expect(done.revoked).toBeNull()
     // 审核中心落地路径
-    await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await revoke()
     await run(m.publishBizSystem('biz_2101'))
     expect(m.applyBizSystemReviewResult('biz_2101', undefined, false)).toBe(true)
     expect((await run(m.getBizSystem('biz_2101'))).revoked).not.toBeNull()
@@ -469,17 +556,29 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     expect(done.revoked).toBeNull()
   })
 
-  // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
-  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+  // 回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
+  it('持久化往返：审核通过后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
     const first = await fresh()
-    await first.run(first.m.forceRevokeBizSystem('biz_2101', reason))
+    await first.run(first.m.deactivateBizSystem('biz_2101', revokeOpts))
+    await first.run(first.m.approveBizSystem('biz_2101'))
     const snap = JSON.parse(JSON.stringify(first.harness.options.snapshot()))
     const { m, harness, run } = await fresh()
     harness.options.restore(snap)
     const row = await run(m.getBizSystem('biz_2101'))
     expect(row.status).toBe('NOT_PUBLISHED')
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
     expect((await run(m.listBizSystems({ state: 'NOT_PUBLISHED' }))).list.find((b) => b.id === 'biz_2101').revoked.reason).toBe(reason)
+  })
+
+  it('持久化往返：待审强制回收时刷新 → 仍在审核中，审核通过后照样落「已回收」', async () => {
+    const first = await fresh()
+    await first.run(first.m.deactivateBizSystem('biz_2101', revokeOpts))
+    const snap = JSON.parse(JSON.stringify(first.harness.options.snapshot()))
+    const { m, harness, run } = await fresh()
+    harness.options.restore(snap)
+    expect((await run(m.getBizSystem('biz_2101'))).status).toBe('PENDING_REVIEW')
+    const row = await run(m.approveBizSystem('biz_2101'))
+    expect(row.revoked.reason).toBe(reason)
   })
 
   it('持久化：restore 兼容缺 revoked 的旧快照行', async () => {
@@ -487,9 +586,10 @@ describe('bizSystemMock —— 强制回收（prd-业务系统.md §3）', () =>
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     snap.bizRows.forEach((b) => delete b.revoked)
     harness.options.restore(snap)
-    // 2026-10-09 补缺口 C3：不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
+    // 不用 ?? null 掩盖——现状 restore 不给缺键行补 null，出参是 undefined（见审计报告）
     expect((await run(m.getBizSystem('biz_2101'))).revoked).toBeUndefined()
-    const row = await run(m.forceRevokeBizSystem('biz_2101', reason))
+    await run(m.deactivateBizSystem('biz_2101', revokeOpts))
+    const row = await run(m.approveBizSystem('biz_2101'))
     expect(row.revoked.reason).toBe(reason)
   })
 })

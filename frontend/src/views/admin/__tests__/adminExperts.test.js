@@ -14,11 +14,12 @@ import { makeListProbes } from './helpers/listPageStubs'
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：二态状态列 / 「版本发布」单入口 /
  * 查影响面+回填名强确认删除 / 「平台技能」措辞），本文件按新契约重写：
  * - 三态展示映射（未发布/审核中/已发布）；分类列 / 最新版本「—」占位；
- * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/强制回收/版本管理；
- * - 删除/停用降级普通二次确认（N 取行 skillCount，不再调 delete-impact）；
+ * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理（强制回收并入停用弹窗）；
+ * - 删除降级普通二次确认、停用走 DeactivateDialog 弹窗（N 取行 skillCount，不再调 delete-impact）；
  * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
- * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：【强制回收】点击流程（askForceRevoke 桩，
- *   真弹窗交互另见 utils/__tests__/forceRevoke.test.js）与未发布行「已回收」标签。
+ * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：未发布行「已回收」标签。
+ * 2026-10-12 强制回收改为【停用】弹窗里的勾选项（DeactivateDialog 用真组件，el-dialog/checkbox/input 用桩；
+ *   弹窗自身交互另见 components/admin/__tests__/deactivateDialog.test.js），本页只验接线：开弹窗 → 勾选 → 提交 → 提示 / 关窗 / 刷新。
  * 注：状态标签 2026-09-11（38c3567）已拆独立列；2026-09-12 审计 J1 闭环——拍板覆盖 md，md §二.1 由文档组回写为
  * 「状态作为独立列紧跟名称列之后展示」，本文件补列序用例（写法照 adminMcp.test.js「列结构」）。
  */
@@ -37,13 +38,11 @@ const listExperts = vi.fn()
 const deleteExpert = vi.fn()
 const unpublishExpert = vi.fn()
 const withdrawExpert = vi.fn()
-const forceRevokeExpert = vi.fn()
 vi.mock('@/api/domainExpert', () => ({
   listExperts: (...a) => listExperts(...a),
   deleteExpert: (...a) => deleteExpert(...a),
   unpublishExpert: (...a) => unpublishExpert(...a),
   withdrawExpert: (...a) => withdrawExpert(...a),
-  forceRevokeExpert: (...a) => forceRevokeExpert(...a),
   // 版本抽屉适配器所需（本页只组装 adapter，不直接调用）
   publishExpert: vi.fn(),
   getExpertNextVersionLabel: vi.fn(),
@@ -96,10 +95,6 @@ vi.mock('@/components/admin/VersionDrawer.vue', () => ({
     }
   }
 }))
-
-// 强制回收的两步确认弹窗交给 forceRevoke.test.js；本页只验「拿到原因后」的流程。其余导出（revokedTip 等）保持真实
-const askForceRevoke = vi.hoisted(() => vi.fn())
-vi.mock('@/utils/forceRevoke', async (importOriginal) => ({ ...(await importOriginal()), askForceRevoke }))
 
 const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 const ElMessageBox = { confirm: vi.fn(), alert: vi.fn(), prompt: vi.fn() }
@@ -160,6 +155,18 @@ async function mount() {
   app.component('el-empty', elEmpty)
   app.component('el-button', elButton)
   // 悬停说明：已回收标签的 el-tooltip，桩内把 content 落到 data-tip 供断言
+  // 停用弹窗（真 DeactivateDialog）用到的 el-dialog / el-checkbox：桩成最简 DOM，el-input 沿用上面的输入框桩（弹窗里的回收原因输入框也取它）
+  app.component('el-dialog', {
+    props: ['modelValue', 'title'],
+    emits: ['update:modelValue'],
+    template: '<div v-if="modelValue" class="el-dialog" :data-title="title"><slot /><div class="dlg-footer"><slot name="footer" /></div></div>'
+  })
+  app.component('el-checkbox', {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template:
+      '<label class="el-checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>'
+  })
   app.component('el-tooltip', { props: ['content'], template: '<span class="el-tooltip" :data-tip="content"><slot /></span>' })
   app.directive('loading', {})
   app.mount(container)
@@ -193,9 +200,7 @@ beforeEach(() => {
   deleteExpert.mockReset()
   unpublishExpert.mockReset()
   withdrawExpert.mockReset()
-  forceRevokeExpert.mockReset().mockResolvedValue({})
   listTeamsReferencingExpert.mockReset().mockResolvedValue([])
-  askForceRevoke.mockReset()
   ElMessageBox.confirm.mockReset()
   ElMessageBox.alert.mockReset()
   ElMessage.success.mockReset()
@@ -359,11 +364,11 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.ls-empty').textContent).toContain('还没有专家，点击「新建专家」创建第一个')
   })
 
-  it('操作列按状态：已发布=查看/编辑/停用/强制回收/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
+  it('操作列按状态：已发布=查看/编辑/停用/版本管理；未发布=查看/编辑/发布/删除；审核中=查看/编辑(置灰)/撤回', async () => {
     await mount()
     const [pub, draft, review] = rowEls()
     expect([...pub.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
-      .toEqual(['查看', '编辑', '停用', '强制回收', '版本管理'])
+      .toEqual(['查看', '编辑', '停用', '版本管理'])
     expect([...draft.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
       .toEqual(['查看', '编辑', '发布', '删除'])
     expect([...review.querySelectorAll('.el-button')].map((b) => b.textContent.trim()))
@@ -455,32 +460,6 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(deleteExpert).toHaveBeenCalledWith(203)
     expect(ElMessage.success).toHaveBeenCalledWith('专家已删除')
     expect(listExperts).toHaveBeenCalledTimes(2)
-  })
-
-  it('停用：普通二次确认【提交停用审核】→ unpublishExpert → 「已提交停用审核」', async () => {
-    ElMessageBox.confirm.mockResolvedValueOnce()
-    unpublishExpert.mockResolvedValueOnce({})
-    await mount()
-    rowBtn(rowEls()[0], '停用').click()
-    await flush()
-    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '停用「经营分析专家」需提交审核。审核通过前客户端仍可使用。',
-      '停用专家',
-      expect.objectContaining({ confirmButtonText: '提交停用审核' })
-    )
-    expect(unpublishExpert).toHaveBeenCalledWith(201)
-    expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
-  })
-
-  it('停用被专家团引用：只在确认文案里追加缺员提示，不拦截仍可提交停用审核（prd.专家团.md 四）', async () => {
-    listTeamsReferencingExpert.mockResolvedValue([{ id: 301, name: '经营研究团', status: 'published' }])
-    ElMessageBox.confirm.mockResolvedValueOnce()
-    unpublishExpert.mockResolvedValueOnce({})
-    await mount()
-    rowBtn(rowEls()[0], '停用').click()
-    await flush()
-    expect(ElMessageBox.confirm.mock.calls[0][0]).toBe('停用「经营分析专家」需提交审核。审核通过前客户端仍可使用。\n该专家被 1 个专家团引用（经营研究团），停用后这些团在客户端将标「缺员」。')
-    expect(unpublishExpert).toHaveBeenCalledWith(201)
   })
 
   it('「专家 | 专家团」视图切换：默认专家视图；?view=team 直达专家团并换页面说明（prd.专家团.md 一）', async () => {
@@ -609,60 +588,149 @@ describe('AdminExperts 补缺口（2026-10-08）', () => {
   })
 })
 
-describe('AdminExperts 强制回收（prd.专家.md §3.5.1：立即生效、不进审核、原因必填、两步确认）', () => {
+describe('AdminExperts 强制回收（prd.专家.md §3.5.1：停用弹窗勾选项，与普通停用同走审核、原因必填、无二次确认）', () => {
   const rowOf = (name) => rowEls().find((el) => el.textContent.includes(name))
+  const dlg = () => container.querySelector('.el-dialog')
+  const confirmBtn = () => dlg().querySelector('[data-test="dd-confirm"]')
+  async function openStopDialog(name = '经营分析专家') {
+    rowBtn(rowOf(name), '停用').click()
+    await flush()
+  }
+  async function tickForceRevoke(reason) {
+    const cb = dlg().querySelector('input[type="checkbox"]')
+    cb.checked = true
+    cb.dispatchEvent(new Event('change'))
+    await flush()
+    if (reason != null) {
+      const ta = dlg().querySelector('input.el-input__inner')
+      ta.value = reason
+      ta.dispatchEvent(new Event('input'))
+      await flush()
+    }
+  }
 
-  it('已发布行点【强制回收】、拿到原因 → forceRevokeExpert(id, { reason }) + 「已强制回收」+ 重新取列表', async () => {
-    askForceRevoke.mockResolvedValue('专家知识库被污染')
+  it('被专家团引用：普通停用正文追加缺员提示（不拦截）；勾选强制回收后影响范围写「已被 N 个专家团引用」（prd.专家团.md 四）', async () => {
+    listTeamsReferencingExpert.mockResolvedValue([{ id: 301, name: '经营研究团', status: 'published' }, { id: 302, name: '知识问答团', status: 'published' }])
+    unpublishExpert.mockResolvedValue({})
+    await mount()
+    await openStopDialog()
+    expect(listTeamsReferencingExpert).toHaveBeenCalledWith(201)
+    expect(dlg().querySelector('[data-test="dd-plain"]').textContent).toBe('停用「经营分析专家」需提交审核。审核通过前客户端仍可使用。\n该专家被 2 个专家团引用（经营研究团、知识问答团），停用后这些团在客户端将标「缺员」。')
+    expect(confirmBtn().disabled).toBe(false)
+    await tickForceRevoke()
+    expect(dlg().textContent).toContain('当前已被 2 个专家团引用（引用关系保留，标记为「已回收」）')
+  })
+
+  it('已发布行不再有独立的【强制回收】按钮（入口并入【停用】弹窗）', async () => {
+    await mount()
+    expect(rowBtn(rowOf('经营分析专家'), '强制回收')).toBeUndefined()
+  })
+
+  it('点【停用】开弹窗：默认是普通停用（正文 + 【提交停用审核】）；确认 → unpublishExpert(id, 非强制) + 「已提交停用审核」', async () => {
+    unpublishExpert.mockResolvedValueOnce({})
+    await mount()
+    await openStopDialog()
+    expect(dlg().getAttribute('data-title')).toBe('停用专家')
+    expect(dlg().querySelector('[data-test="dd-plain"]').textContent).toBe('停用「经营分析专家」需提交审核。审核通过前客户端仍可使用。')
+    expect(confirmBtn().textContent.trim()).toBe('提交停用审核')
+    confirmBtn().click()
+    await flush()
+    expect(unpublishExpert).toHaveBeenCalledWith(201, { forceRevoke: false, reason: '' })
+    expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
+    expect(dlg()).toBeNull() // 成功后关弹窗
+  })
+
+  it('专家被岗位引用（positionCount>0）时停用不拦截：默认弹窗无拦截文案、【提交停用审核】可点；勾选强制回收后同样可提交', async () => {
+    const referenced = { ...EXPERTS[0], id: 303, name: '被引用专家', type: 'POSITION', positionCount: 3, status: 'published', pendingAction: null }
+    listExperts.mockResolvedValue({ list: [referenced], total: 1 })
+    unpublishExpert.mockResolvedValue({})
+    await mount()
+    await openStopDialog('被引用专家')
+    expect(dlg().querySelector('[data-test="dd-blocked"]')).toBeNull()
+    expect(confirmBtn().disabled).toBe(false)
+    confirmBtn().click()
+    await flush()
+    expect(unpublishExpert).toHaveBeenLastCalledWith(303, { forceRevoke: false, reason: '' })
+
+    await openStopDialog('被引用专家')
+    await tickForceRevoke('引用也要回收')
+    expect(dlg().querySelector('[data-test="dd-blocked"]')).toBeNull()
+    confirmBtn().click()
+    await flush()
+    expect(unpublishExpert).toHaveBeenLastCalledWith(303, { forceRevoke: true, reason: '引用也要回收' })
+  })
+
+  it('勾选强制回收后出现红色警示：写明审核通过后生效且不可撤销，并点明“已召唤该专家的员工将失去它”；未勾选时没有该警示', async () => {
+    await mount()
+    await openStopDialog()
+    expect(dlg().querySelector('[data-test="dd-danger"]')).toBeNull()
+    await tickForceRevoke()
+    const danger = dlg().querySelector('[data-test="dd-danger"]')
+    expect(danger.textContent).toContain('已召唤该专家的员工将失去它')
+    expect(danger.textContent).toContain('审核通过后生效')
+  })
+
+  // 待裁决（T5）：AdminExperts.vue 的 :ref-count 写死 0，专家弹窗永不列“已被 N 个岗位引用”；PRD 专家 §3.5.1 弹窗描述里也没有该影响范围句（技能 §3.5.1 有），
+  // 判为设计取舍而非缺陷，故不钉 it.fails；如产品要求专家也展示，再把 positionCount 接给 :ref-count 并补用例。
+  it('勾选「强制回收」：标题变「强制回收专家」、确认钮变【提交强制回收审核】；专家无影响范围引用清单', async () => {
+    await mount()
+    await openStopDialog()
+    await tickForceRevoke()
+    expect(dlg().getAttribute('data-title')).toBe('强制回收专家')
+    expect(confirmBtn().textContent.trim()).toBe('提交强制回收审核')
+    expect(dlg().textContent).not.toMatch(/当前已被 \d+ 个/) // 无「当前已被 N 个岗位引用」影响范围句
+  })
+
+  it('填原因提交 → unpublishExpert(id, { forceRevoke: true, reason }) + 「已提交强制回收审核」+ 关弹窗 + 重新取列表；不弹二次确认', async () => {
+    unpublishExpert.mockResolvedValueOnce({})
     await mount()
     const before = listExperts.mock.calls.length
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await openStopDialog()
+    await tickForceRevoke('专家知识库被污染')
+    confirmBtn().click()
     await flush()
-    expect(forceRevokeExpert).toHaveBeenCalledWith(201, { reason: '专家知识库被污染' })
-    expect(ElMessage.success).toHaveBeenCalledWith('已强制回收')
+    expect(unpublishExpert).toHaveBeenCalledWith(201, { forceRevoke: true, reason: '专家知识库被污染' })
+    expect(ElMessage.success).toHaveBeenCalledWith('已提交强制回收审核')
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(dlg()).toBeNull()
     expect(listExperts.mock.calls.length).toBe(before + 1)
   })
 
-  it('弹窗入参：类型「专家」、对象名、引用数 0（专家无引用方统计）', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  it('勾选后原因为空 → 弹窗内就地提示「请输入回收原因」，不调接口、弹窗不关', async () => {
     await mount()
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await openStopDialog()
+    await tickForceRevoke()
+    confirmBtn().click()
     await flush()
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 0, refText: '专家团' })
+    expect(dlg().querySelector('[data-test="dd-error"]').textContent).toBe('请输入回收原因')
+    expect(unpublishExpert).not.toHaveBeenCalled()
   })
 
-  it('被专家团引用：回收弹窗入参带团数与引用方文案「专家团」（prd.专家团.md 四：回收不拦截、引用保留）', async () => {
-    listTeamsReferencingExpert.mockResolvedValue([{ id: 301, name: '经营研究团', status: 'published' }, { id: 302, name: '知识问答团', status: 'published' }])
-    askForceRevoke.mockResolvedValue(null)
-    await mount()
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
-    await flush()
-    expect(listTeamsReferencingExpert).toHaveBeenCalledWith(201)
-    expect(askForceRevoke).toHaveBeenCalledWith({ typeLabel: '专家', name: '经营分析专家', refCount: 2, refText: '专家团' })
-  })
-
-  it('取消（askForceRevoke 返回 null）→ 不调接口、不弹成功提示、不重新取列表', async () => {
-    askForceRevoke.mockResolvedValue(null)
+  it('取消 → 不调接口、不弹成功提示、不重新取列表', async () => {
     await mount()
     const before = listExperts.mock.calls.length
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await openStopDialog()
+    await tickForceRevoke('原因')
+    ;[...dlg().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '取消').click()
     await flush()
-    expect(forceRevokeExpert).not.toHaveBeenCalled()
+    expect(unpublishExpert).not.toHaveBeenCalled()
     expect(ElMessage.success).not.toHaveBeenCalled()
     expect(listExperts.mock.calls.length).toBe(before)
   })
 
-  it('接口失败 → 错误提示取 message 原文；无 message → 兜底「强制回收失败」，不弹成功提示', async () => {
-    askForceRevoke.mockResolvedValue('原因')
-    forceRevokeExpert.mockRejectedValueOnce({ message: '仅已发布且无在审操作可强制回收' })
+  it('接口失败 → 错误提示取 message 原文，弹窗保持打开便于重试；无 message → 兜底「提交强制回收失败」', async () => {
+    unpublishExpert.mockRejectedValueOnce({ message: '该专家已有在途审核，请先撤回' })
     await mount()
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    await openStopDialog()
+    await tickForceRevoke('原因')
+    confirmBtn().click()
     await flush()
-    expect(ElMessage.error).toHaveBeenCalledWith('仅已发布且无在审操作可强制回收')
-    forceRevokeExpert.mockRejectedValueOnce(new Error(''))
-    rowBtn(rowOf('经营分析专家'), '强制回收').click()
+    expect(ElMessage.error).toHaveBeenCalledWith('该专家已有在途审核，请先撤回')
+    expect(dlg()).not.toBeNull()
+    unpublishExpert.mockRejectedValueOnce(new Error(''))
+    confirmBtn().click()
     await flush()
-    expect(ElMessage.error).toHaveBeenLastCalledWith('强制回收失败')
+    expect(ElMessage.error).toHaveBeenLastCalledWith('提交强制回收失败')
     expect(ElMessage.success).not.toHaveBeenCalled()
   })
 
