@@ -202,6 +202,7 @@ const MOD_CLS = {
   岗位: 'tag-green',
   岗位分配: 'tag-green',
   专家: 'tag-blue',
+  专家团: 'tag-blue',
   技能: 'tag-blue',
   知识库: 'tag-orange',
   MCP: 'tag-purple',
@@ -231,12 +232,13 @@ const ACT_CLS = {
 }
 
 // 模块 → 路由映射（点「查看操作」跳转对应模块页并注入搜索条件）
-const VERSION_MODULES = new Set(['岗位', '专家', '技能'])
+const VERSION_MODULES = new Set(['岗位', '专家', '专家团', '技能'])
 
 const MODULE_ROUTE = {
   岗位:       { name: 'AdminPositions' },
   岗位分配:   { name: 'AdminPositionAssignments' },
   专家:       { name: 'AdminExperts' },
+  专家团:     { name: 'AdminExperts', extraQuery: { view: 'team' } },
   技能:       { name: 'AdminSkillsUnified' },
   知识库:     { name: 'AdminKnowledgeBase' },
   MCP:        { name: 'AdminConnector', extraQuery: { tab: 'mcp' } },
@@ -464,7 +466,7 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','岗位分配','专家','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','岗位分配','专家','专家团','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">

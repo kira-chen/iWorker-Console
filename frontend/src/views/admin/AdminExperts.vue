@@ -20,7 +20,7 @@
  *   每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 起全站统一，由 useAdminList 注入
  *   useDynPageSize；原「Z1 不实施动态分页」注释已过期，2026-09-09 PRD 复核·G5 清理）。
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -52,6 +52,8 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import { KIND, derivePublishView, deriveTriView, isLocked } from '@/utils/publishState'
 import { fmtTime } from '@/utils/docMeta'
 import ExpertEditor from '@/components/admin/ExpertEditor.vue'
+import ExpertTeamPanel from '@/components/admin/ExpertTeamPanel.vue'
+import { listTeamsReferencingExpert } from '@/api/expertTeam'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
@@ -75,6 +77,19 @@ const fetchList = list.reload
 const reload = list.search
 
 const route = useRoute()
+
+/* ---------- 「专家 | 专家团」视图切换（prd.专家团.md 一）----------
+ * 同一页两个视图，不新增侧栏入口、共用专家页权限。专家团面板首次切入才挂载，之后用 v-show 保留各自的
+ * 搜索 / 筛选 / 分页状态，来回切换不互相清空。可由 ?view=team 直达。 */
+const view = ref(queryString(route.query.view) === 'team' ? 'team' : 'expert')
+const teamMounted = ref(view.value === 'team')
+watch(view, (v) => {
+  if (v === 'team') teamMounted.value = true
+})
+const pageSubtitle = computed(() =>
+  view.value === 'team' ? '平台全部专家团 —— 通用团 / 岗位团 / 市场团 统一管理' : '平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理'
+)
+
 onMounted(() => {
   // 同名参数重复时 route.query.keyword 是数组，须归一成字符串（待办 yuepu#22，下同）
   const kw = queryString(route.query.keyword)
@@ -276,8 +291,18 @@ const stopDialogVisible = computed({
   set: (v) => { if (!v) stopTarget.value = null }
 })
 
-function stopExpert(row) {
+// 被专家团引用只提示不拦截（prd.专家团.md 四）：普通停用的正文追加缺员提示，勾选强制回收后影响范围写「已被 N 个专家团引用」
+const stopRefTeams = ref([])
+const stopPlainMessage = computed(() => {
+  const name = stopTarget.value?.name || ''
+  const refs = stopRefTeams.value
+  const tip = refs.length ? '\n该专家被 ' + refs.length + ' 个专家团引用（' + refs.map((t) => t.name).join('、') + '），停用后这些团在客户端将标「缺员」。' : ''
+  return '停用「' + name + '」需提交审核。审核通过前客户端仍可使用。' + tip
+})
+
+async function stopExpert(row) {
   if (busyId.value != null) return
+  stopRefTeams.value = await listTeamsReferencingExpert(row.id)
   stopTarget.value = row
 }
 
@@ -300,11 +325,16 @@ async function confirmStop({ forceRevoke, reason }) {
 
 <template>
   <div class="list-page">
-    <PageHeader
-      title="专家"
-      subtitle="平台全部专家 —— 通用专家 / 岗位私有 / 市场专家 统一管理"
-    />
+    <PageHeader title="专家" :subtitle="pageSubtitle" />
 
+    <!-- 「专家 | 专家团」页签：样式同工具调用审计 / 访问审计（el-tabs，只当切换头，内容在下方 v-show） -->
+    <el-tabs v-model="view" class="expert-view-tabs" data-testid="expert-view-switch">
+      <el-tab-pane label="专家" name="expert" />
+      <el-tab-pane label="专家团" name="team" />
+    </el-tabs>
+
+    <!-- display:contents：包一层只为挂 v-show，不改变 .list-page 的纵向 flex 间距 -->
+    <div v-show="view === 'expert'" class="pane-contents">
     <ListToolbar>
       <el-input
         v-model="query.keyword"
@@ -501,9 +531,10 @@ async function confirmStop({ forceRevoke, reason }) {
       type-label="专家"
       holder-text="已召唤该专家的员工"
       :name="stopTarget?.name || ''"
-      :plain-message="`停用「${stopTarget?.name || ''}」需提交审核。审核通过前客户端仍可使用。`"
+      :plain-message="stopPlainMessage"
       confirm-text="提交停用审核"
-      :ref-count="0"
+      :ref-count="stopRefTeams.length"
+      ref-text="专家团"
       :submitting="busyId != null && busyId === stopTarget?.id"
       @confirm="confirmStop"
     />
@@ -514,10 +545,20 @@ async function confirmStop({ forceRevoke, reason }) {
       :adapter="versionAdapter"
       @done="onVersionDone"
     />
+    </div>
+
+    <ExpertTeamPanel v-if="teamMounted" v-show="view === 'team'" />
   </div>
 </template>
 
 <style scoped>
+.pane-contents {
+  display: contents;
+}
+/* 页签头与下方内容的间距：同工具调用审计 .tca-tabs；抵消 .list-page 的 flex gap，贴着页头下方 */
+.expert-view-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
 /* 专家名列：图标 + 名称 + 状态标签同格（原型 expert-primary）。
    E1（2026-09-10）：窄屏时只让名字收缩省略，状态标签与头像 flex:none 不被截断 */
 .ex-primary {

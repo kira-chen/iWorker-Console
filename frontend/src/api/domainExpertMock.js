@@ -286,6 +286,11 @@ function toRow(e) {
   }
 }
 
+/** 同步取全量专家行：供专家团模块解析成员，不走 delay、不暴露内存引用。 */
+export function listExpertsSync() {
+  return experts.map((e) => toRow(e))
+}
+
 /** 详情出参：行 + 职责描述 + 示例问题 + 已引用技能明细（实时按候选表解析——引用非复制） */
 function toDetail(e) {
   return {
@@ -435,6 +440,10 @@ export async function deleteExpert(id) {
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('审核中的专家不可删除，请先撤回或等待审核完成', null, 409)
   if (e.status !== 'draft') throw err('已发布的专家不可删除，需先完成停用审核', null, 409)
+  // 被专家团引用时拦截（prd.专家团.md §四）；动态 import 避免与 expertTeamMock 成环
+  const { listTeamsReferencingExpert } = await import('./expertTeamMock')
+  const refTeams = listTeamsReferencingExpert(e.id)
+  if (refTeams.length) throw err(`该专家被 ${refTeams.length} 个专家团引用（${refTeams.map((t) => t.name).join('、')}），需先从团中移除后再删除`, null, 409)
   const removed = e.skillIds.length
   // 删专家级联：把本专家名从所引用技能的 refNames 摘掉，避免删专家后 sk_304 之类的引用清单
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）
@@ -737,6 +746,13 @@ export async function relistExpertPublication(expertId, publicationId) {
   // （2026-09-18 待办 yuepu#13·专家 E2：此前启用旧版会把 latestVersionLabel 覆写成该旧版本号）。
   persist()
   return { ...row }
+}
+
+/** 绑定了某岗位的岗位私有专家（岗位删除确认文案用）。 */
+export function listExpertsBoundToPosition(positionId) {
+  return experts
+    .filter((e) => e.type === EXPERT_TYPE.POSITION && Array.isArray(e.positionIds) && e.positionIds.some((id) => String(id) === String(positionId)))
+    .map((e) => ({ id: e.id, name: e.name }))
 }
 
 /**

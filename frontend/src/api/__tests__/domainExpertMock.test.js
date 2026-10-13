@@ -409,7 +409,7 @@ describe('unpublishExpert({ forceRevoke }) —— 强制回收（停用勾选项
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.7（创建专家后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
  * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
  * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
-describe('domainExpertMock · 持久化读回（mockPersist v6；key iworker-demo-mock:domainExpert）', () => {
+describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-demo-mock:domainExpert）', () => {
   const KEY = 'iworker-demo-mock:domainExpert'
   const makeStorage = () => {
     const map = new Map()

@@ -296,7 +296,8 @@ const persist = attachPersist('sampleTask', {
   // 把「404 无任务」的旧值带回来，岗位又变回不可发布）
   // v5（2026-09-12 审计 K1）：preKick 缺省由 false 改 true（md §7.3 L398「默认开启」），VO 形状变更 bump
   // v6（2026-09-23 负责人拍板）：删除 preKick 字段、执行频率新增「闲时」模式，VO 形状变更 bump
-  version: 6,
+  // v7（2026-10-12）：执行动作新增「专家团」（execType=TEAM + execTeamId），VO 形状变更 bump
+  version: 7,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {
@@ -327,6 +328,7 @@ function toVO(s, warnings) {
     scheduleSummary: summarizeSchedule(s.schedule),
     execType: s.execType || 'SKILL',
     execAgentId: s.execAgentId ?? null,
+    execTeamId: s.execTeamId ?? null,
     execModel: s.execModel || ''
   }
   if (warnings && warnings.length) vo.warnings = warnings
@@ -360,6 +362,7 @@ function normalizeUpsert(payload = {}) {
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' })),
     execType: payload.execType || 'SKILL',
     execAgentId: payload.execType === 'AGENT' ? (payload.execAgentId ?? null) : null,
+    execTeamId: payload.execType === 'TEAM' ? (payload.execTeamId ?? null) : null,
     execModel: payload.execModel || ''
   }
 }
@@ -531,6 +534,23 @@ export function countSampleTasks(positionId) {
 export function deleteAllForPosition(positionId) {
   delete samplesByPosition[String(positionId)]
   persist()
+}
+
+/**
+ * 删专家团级联：把委派给该团的自动化任务的 execTeamId 清空（expertTeamMock.deleteTeam 调用），
+ * 原因同删 Agent：不清会让编辑页下拉找不到匹配项、显示裸 id。
+ */
+export function clearExecTeamRef(teamId) {
+  let changed = false
+  Object.values(samplesByPosition).forEach((list) =>
+    (list || []).forEach((s) => {
+      if (s.execTeamId != null && String(s.execTeamId) === String(teamId)) {
+        s.execTeamId = null
+        changed = true
+      }
+    })
+  )
+  if (changed) persist()
 }
 
 /**

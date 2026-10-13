@@ -191,6 +191,7 @@ export async function getReview(id) {
 const LOADERS = {
   POSITION: () => import('./positionMock').then((m) => m.applyPositionReviewResult),
   EXPERT: () => import('./domainExpertMock').then((m) => m.applyExpertReviewResult),
+  EXPERT_TEAM: () => import('./expertTeamMock').then((m) => m.applyTeamReviewResult),
   SKILL: () => import('./unifiedSkillMock').then((m) => m.applySkillReviewResult),
   KNOWLEDGE_BASE: () => import('./knowledgeBaseMock').then((m) => m.applyKnowledgeBaseReviewResult),
   MODEL: () => import('./adminModelMock').then((m) => m.applyModelReviewResult),
