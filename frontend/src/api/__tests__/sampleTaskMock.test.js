@@ -180,7 +180,7 @@ describe('sampleTaskMock · 自动化任务（2026-09-02 岗位工作台补 mock
   })
 })
 
-describe('sampleTaskMock · 持久化读回（mockPersist v7；2026-09-23 删 preKick + 新增闲时模式后 bump）', () => {
+describe('sampleTaskMock · 持久化读回（mockPersist v8；2026-09-23 删 preKick + 新增闲时模式后 bump）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 mockPersist.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:sampleTask'
@@ -204,10 +204,10 @@ describe('sampleTaskMock · 持久化读回（mockPersist v7；2026-09-23 删 pr
     vi.resetModules()
   })
 
-  it('createSampleTask 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 404 列表含新建任务', async () => {
+  it('createSampleTask 落盘（v=8）→ 重新 import 模块（模拟刷新）→ 404 列表含新建任务', async () => {
     const first = await import('../sampleTaskMock')
     await first.createSampleTask(404, validPayload({ name: '读回验证任务' }))
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(8)
     vi.resetModules()
     const fresh = await import('../sampleTaskMock')
     const { list, total } = await fresh.listSampleTasks(404)
