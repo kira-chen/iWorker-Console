@@ -300,7 +300,7 @@ describe('unpublishExpert({ forceRevoke }) —— 强制回收（停用勾选项
     expect(await getExpert(201)).toMatchObject({ status: 'published', pendingAction: 'DELIST', latestVersionLabel: 'v2.3.0', revoked: null })
     expect(opsRecords.some((x) => x.action === '强制回收')).toBe(false)
     const row = (await listReviews({ size: 1000 })).list.find((r) => r.refId === 201 && r.type === 'EXPERT')
-    expect(row).toMatchObject({ requestAction: 'DELIST', status: 'PENDING_REVIEW', forceRevokeReason: '专家输出异常' })
+    expect(row).toMatchObject({ requestAction: 'FORCE_REVOKE', status: 'PENDING_REVIEW', forceRevokeReason: '专家输出异常' })
   })
 
   it('审核通过后才生效：回「未发布」（版本历史 / 最新版本号 / 最近发布时间保留）、行与详情带 revoked，并写一条访问审计', async () => {

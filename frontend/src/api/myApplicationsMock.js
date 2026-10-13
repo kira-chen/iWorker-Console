@@ -269,7 +269,7 @@ export async function resubmitMyApplication(id) {
   const mod = await MODULES[row.businessType]?.()
   if (!mod) throw conflict('该业务类型暂不支持重新提交')
   try {
-    if (row.applicationType === 'DELIST') {
+    if (row.applicationType === 'DELIST' || row.applicationType === 'FORCE_REVOKE') {
       // 强制回收停用申请重提必须仍是强制回收（否则静默降级成普通停用）：各模块停用函数第二参数统一 { forceRevoke, reason }
       if (row.forceRevokeReason) await mod.delist(row.refId, { forceRevoke: true, reason: row.forceRevokeReason })
       else await mod.delist(row.refId)

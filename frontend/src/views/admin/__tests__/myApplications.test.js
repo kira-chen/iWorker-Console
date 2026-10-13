@@ -153,14 +153,14 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
   })
 
-  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型九项（含版本管理）、申请类型三项、审核结果四项、【查询】', async () => {
+  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型九项（含版本管理）、申请类型四项（含强制回收）、审核结果四项、【查询】', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索申请对象名称 / 描述')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型', '全部审核结果'])
     const opts = (i) => [...selects[i].querySelectorAll('.el-option')].map((o) => o.textContent)
     expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
-    expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用'])
+    expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用', '强制回收'])
     expect(opts(2)).toEqual(['待审核', '已通过', '已驳回', '已撤回'])
     expect(toolbarBtn('查询')).toBeTruthy()
   })
@@ -203,15 +203,15 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(r501.textContent).toContain('2026-08-28 10:30')
   })
 
-  it('停用申请勾选了强制回收 → 申请类型旁追加红色「强制回收」标记并悬停展示回收原因；普通停用与发布申请不带标记（md 各模块强制回收小节）', async () => {
-    const forced = { ...byId(510), id: 531, objectName: '合同审阅专员', applicationType: 'DELIST', result: 'REJECTED', objectDeleted: false, forceRevokeReason: '涉及违规内容' }
+  it('强制回收申请 → 申请类型是红色「强制回收」（与「停用」分开）并悬停展示回收原因；普通停用仍是「停用」、发布申请不受影响（md 各模块强制回收小节）', async () => {
+    const forced = { ...byId(510), id: 531, objectName: '合同审阅专员', applicationType: 'FORCE_REVOKE', result: 'REJECTED', objectDeleted: false, forceRevokeReason: '涉及违规内容' }
     listMyApplications.mockResolvedValue({ list: [forced, byId(510), byId(501)], total: 3 })
     await mount()
     const tags = (row) => [...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
     const forcedRow = rowEls().find((el) => el.textContent.includes('合同审阅专员'))
-    expect(tags(forcedRow)).toEqual(['专家', '停用', '强制回收', '已驳回'])
-    const mark = [...forcedRow.querySelectorAll('.el-tooltip')].find((t) => t.textContent.includes('强制回收'))
-    expect(mark.dataset.tip).toBe('回收原因：涉及违规内容')
+    expect(tags(forcedRow)).toEqual(['专家', '强制回收', '已驳回'])
+    expect(forcedRow.querySelector('.status-tag.st--danger').textContent.trim()).toBe('强制回收')
+    expect(forcedRow.querySelector('span[title]').getAttribute('title')).toBe('回收原因：涉及违规内容')
     expect(tags(rowEls().find((el) => el.textContent.includes('法务审阅专家')))).toEqual(['专家', '停用', '已撤回'])
     expect(tags(rowById(501))).toEqual(['API', '首次发布', '待审核'])
   })

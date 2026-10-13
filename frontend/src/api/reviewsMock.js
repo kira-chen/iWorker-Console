@@ -251,7 +251,7 @@ export async function approveReview(id) {
   const row = findOr404(id)
   assertPending(row)
   await applyToBusinessObject(row, true) // 先落业务对象，落不上就整体失败，审核行不动
-  row.status = row.requestAction === 'DELIST' ? 'DELISTED' : 'PUBLISHED'
+  row.status = row.requestAction === 'DELIST' || row.requestAction === 'FORCE_REVOKE' ? 'DELISTED' : 'PUBLISHED'
   row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()

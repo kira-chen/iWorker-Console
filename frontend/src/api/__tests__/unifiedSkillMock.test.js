@@ -206,7 +206,7 @@ describe('强制回收（PRD 技能 §3.5.1，2026-10-12 改版：停用弹窗�
     expect(mock._getRaw(id)).toMatchObject({ status: 'published', delisted: false, pendingAction: 'stop', pendingRevokeReason: '发现越权调用' })
     // 同走审核：审核中心有这条技能的停用申请行，带强制回收原因（下面断言）
     const row = (await listReviews({ keyword: '提交后状态技能', size: 10 })).list.find((r) => r.refId === id)
-    expect(row).toMatchObject({ requestAction: 'DELIST', forceRevokeReason: '发现越权调用' })
+    expect(row).toMatchObject({ requestAction: 'FORCE_REVOKE', forceRevokeReason: '发现越权调用' }) // 勾选强制回收的停用申请，申请类型单独记为「强制回收」
     expect(opsRecords.some((x) => x.action === '强制回收' && x.target === '提交后状态技能')).toBe(false)
   })
 

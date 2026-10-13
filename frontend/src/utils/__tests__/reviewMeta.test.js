@@ -62,9 +62,11 @@ describe('reviewMeta · 审核中心新口径', () => {
     expect(reviewBizTypeTagType('EXPERT')).toBe('info')
   })
 
-  it('申请类型：三项词表；停用橙、发布绿', () => {
-    expect(REQUEST_ACTION_OPTIONS.map((o) => o.label)).toEqual(['首次发布', '新版本发布', '停用'])
+  it('申请类型：四项词表；强制回收红、停用橙、发布绿', () => {
+    expect(REQUEST_ACTION_OPTIONS.map((o) => o.label)).toEqual(['首次发布', '新版本发布', '停用', '强制回收'])
     expect(requestActionLabel('VERSION_PUBLISH')).toBe('新版本发布')
+    expect(requestActionLabel('FORCE_REVOKE')).toBe('强制回收')
+    expect(requestActionTagType('FORCE_REVOKE')).toBe('danger')
     expect(requestActionTagType('DELIST')).toBe('warning')
     expect(requestActionTagType('FIRST_PUBLISH')).toBe('success')
   })

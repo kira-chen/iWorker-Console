@@ -22,7 +22,6 @@ import StatusTag from '@/components/StatusTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import GovObjectDetail from '@/components/admin/GovObjectDetail.vue'
-import ForceRevokeMark from '@/components/admin/ForceRevokeMark.vue'
 import ReviewRejectDialog from '@/components/admin/ReviewRejectDialog.vue'
 import { fmtTime } from '@/utils/docMeta'
 import {
@@ -155,7 +154,7 @@ async function approve(row) {
   busyAction.value = 'approve'
   try {
     await approveReview(row)
-    ElMessage.success(row.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
+    ElMessage.success(row.requestAction === 'FORCE_REVOKE' ? '已通过强制回收申请' : row.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
     detailVisible.value = false
     fetchList()
   } catch (e) {
@@ -240,10 +239,12 @@ async function submitReject(reason) {
           </el-table-column>
           <el-table-column label="申请类型" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
-              <StatusTag :type="requestActionTagType(row.requestAction)">
-                {{ requestActionLabel(row.requestAction) }}
-              </StatusTag>
-              <ForceRevokeMark :reason="row.forceRevokeReason" />
+              <!-- 强制回收申请：悬停申请类型标签看回收原因（详情底栏另有红字提示） -->
+              <span :title="row.forceRevokeReason ? `回收原因：${row.forceRevokeReason}` : undefined">
+                <StatusTag :type="requestActionTagType(row.requestAction)">
+                  {{ requestActionLabel(row.requestAction) }}
+                </StatusTag>
+              </span>
             </template>
           </el-table-column>
           <el-table-column label="申请版本" :width="COL.TAG" class-name="col-nowrap" label-class-name="col-nowrap">
