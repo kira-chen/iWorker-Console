@@ -3,6 +3,8 @@
  * 工具调用审计 · 「会话调用」页签——用户的一次会话（会话内调用技能），会话中调用连接器工具（不局限于技能引用的工具）
  * （MCP / API / 业务系统）的事后审计记录，只读。对应 PRD §二 ~ §七（prd.工具调用审计.md）。
  *
+ * 2026-10-13 第六轮改版：详情的调用明细分「按工具 / 按技能」两条互不关联的时间线（不再标工具的调用来源）。
+ *
  * 2026-10-12 第五轮改版：记录单元改为「一次会话」，一条记录可含多个技能（skills 数组），工具明细不限于技能引用的工具。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次技能执行」——
@@ -118,7 +120,7 @@ function exportCsv() {
     '工具调用审计-会话调用-筛选结果.csv',
     ['请求编号', '日期', '时间', '用户', '岗位', '调用的技能', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
-      r.id, r.date, r.time, r.user, r.position, r.skills.join('、'),
+      r.id, r.date, r.time, r.user, r.position, r.skills.join('、') || '—',
       YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
@@ -142,13 +144,10 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: EXEC_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '调用的技能', value: d.skills.join('、') },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
       tool: c.tool,
-      // 调用来源：该工具在哪个技能名下调用；未经技能的为会话直接调用（PRD §5.2）
-      source: c.skill || '会话直接调用',
       nature: { label: NATURE_LABEL[c.nature], type: c.nature === 'WRITE' ? 'accent' : 'info' },
       confirm: c.confirm ? { label: CONFIRM_LABEL[c.confirm], type: CALL_CONFIRM_TAG[c.confirm] } : null,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
@@ -159,13 +158,20 @@ const detail = computed(() => {
       params: paramsOf(c),
       output: outputOf(c)
     })),
+    // 操作摘要不再列「调用的技能」（2026-10-13：调用明细「按技能」时间线已有，列表页保留该列）；
+    // 技能与工具是两条互不关联的时间线（PRD §5.2，2026-10-13）
+    skillCalls: d.skillCalls.map((c) => ({
+      skill: c.skill,
+      result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
+      reason: c.reason
+    })),
     explain: resultExplain(d)
   }
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
-  return '本次执行已完成，可在工具调用明细中查看具体过程。'
+  if (d.result === 'FAILED') return '建议对照下方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  return '本次执行已完成，可在调用明细中查看具体过程。'
 }
 </script>
 
@@ -233,7 +239,7 @@ function resultExplain(d) {
             </template>
           </el-table-column>
           <el-table-column label="调用的技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.skills.join('、') }}</template>
+            <template #default="{ row }">{{ row.skills.join('、') || '—' }}</template>
           </el-table-column>
           <el-table-column label="涉及写操作" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #default="{ row }">
@@ -262,7 +268,11 @@ function resultExplain(d) {
       @change="list.reload"
     />
 
-    <AuditCallDrawer v-model:visible="detailVisible" v-bind="detail || {}" />
+    <AuditCallDrawer
+      v-model:visible="detailVisible"
+      v-bind="detail || {}"
+      empty-calls-text="本次会话未调用外部工具"
+    />
   </div>
 </template>
 

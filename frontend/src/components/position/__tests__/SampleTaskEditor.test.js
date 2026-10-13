@@ -71,9 +71,6 @@ vi.mock('@/api/position', () => ({
   listPlatformSkillCandidates: vi.fn(() => Promise.resolve([{ id: 9, name: '经营分析技能', description: '' }]))
 }))
 vi.mock('@/api/request', () => ({ ApiError: class ApiError extends Error {} }))
-// 执行动作 · 专家团候选（已发布的岗位团 + 通用团，选到「专家团」才拉取）
-const teamCandidates = vi.hoisted(() => ({ list: [] }))
-vi.mock('@/api/expertTeam', () => ({ listTeamsForAutomation: vi.fn(() => Promise.resolve(teamCandidates.list)) }))
 // 执行动作 · 选 Agent 下拉候选源（该岗位下已有 Agent 列表）
 vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ agents: [] }) }))
 vi.mock('element-plus', () => ({
@@ -348,50 +345,20 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     const boldOf = (title) => [...guideOf(title).querySelectorAll('b')].map((b) => b.textContent)
 
     expect(guideOf('执行动作').textContent.replace(/\s+/g, ' ').trim()).toBe(
-      '触发时由谁来办：整个交给某个 Agent、委派给一个专家团，或按下面指定的技能执行。'
+      '触发时由谁来办：整个交给某个 Agent，或按下面指定的技能执行。'
     )
-    expect(boldOf('执行动作')).toEqual(['Agent', '专家团', '技能'])
+    expect(boldOf('执行动作')).toEqual(['Agent', '技能'])
     expect(guideOf('执行模型').textContent.replace(/\s+/g, ' ').trim()).toBe(
       '这条任务用哪个模型跑。不选 = 跟随平台默认模型；领用者后续可自行调整，不影响下次下发。'
     )
     expect(boldOf('执行模型')).toEqual(['不选 = 跟随平台默认模型'])
 
     const group = card('执行动作').querySelector('.te-exec-type-group')
-    expect([...group.querySelectorAll('.stub-radio')].map((r) => r.textContent.trim())).toEqual(['技能', 'Agent', '专家团'])
+    expect([...group.querySelectorAll('.stub-radio')].map((r) => r.textContent.trim())).toEqual(['技能', 'Agent'])
     expect(group.getAttribute('data-value')).toBe('SKILL')
     // 技能态：只有引导文案一段，不出 Agent 下拉，也没有「将使用下方…」之类的追加提示
     expect(card('执行动作').querySelectorAll('.te-card-guide').length).toBe(1)
     expect(card('执行动作').querySelector('.te-exec-agent')).toBeNull()
-  })
-
-  it('执行动作 = 专家团：已选团在候选里 → 选择框 + 委派说明；没设团长的团提示「停在等待确认安排」；保存 payload 带 execTeamId（prd.岗位.md §7.6）', async () => {
-    teamCandidates.list = [{ id: 302, name: '知识问答团', type: 'SYSTEM_DEFAULT', leaderId: null, leaderName: '' }]
-    mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, execType: 'TEAM', execTeamId: 302 } })
-    await flush(14)
-    const card = [...container.querySelectorAll('.te-card')].find((c) => c.querySelector('.te-card-title').textContent.includes('执行动作'))
-    expect(card.querySelector('.te-exec-type-group').getAttribute('data-value')).toBe('TEAM')
-    const team = card.querySelector('[data-testid="exec-team"]')
-    expect(team).toBeTruthy()
-    expect(team.textContent).toContain('委派给团：触发时由团长（没设团长则由系统）把任务拆给团内成员执行。')
-    expect(team.querySelector('[data-testid="exec-team-no-leader"]').textContent).toContain('停在「等待确认安排」')
-    expect(team.querySelector('[data-testid="exec-team-unavailable"]')).toBeNull()
-    expect(card.querySelector('.te-exec-agent:not([data-testid="exec-team"])')).toBeNull() // 不出 Agent 下拉
-    ;[...container.querySelectorAll('.meta-actions button')].pop().click()
-    await flush()
-    const { updateSampleTask } = await import('@/api/sampleTask')
-    const payload = updateSampleTask.mock.calls[0][2]
-    expect(payload.execType).toBe('TEAM')
-    expect(payload.execTeamId).toBe(302)
-    expect(payload.execAgentId).toBeUndefined()
-  })
-
-  it('执行动作 = 专家团：已选的团不在候选里（已停用 / 被回收 / 不再属于本岗位）→ 提示任务会被挂起', async () => {
-    teamCandidates.list = [{ id: 302, name: '知识问答团', type: 'SYSTEM_DEFAULT', leaderId: 202, leaderName: '企业知识助手' }]
-    mountComp(SampleTaskEditor, { positionId: 1, sample: { ...SAMPLE, execType: 'TEAM', execTeamId: 999 } })
-    await flush(14)
-    const team = container.querySelector('[data-testid="exec-team"]')
-    expect(team.querySelector('[data-testid="exec-team-unavailable"]').textContent).toContain('任务触发时会被挂起')
-    expect(team.querySelector('[data-testid="exec-team-no-leader"]')).toBeNull()
   })
 
   it('执行动作默认「技能」：新建保存 payload.execType = SKILL 且不带 execAgentId；存量样例无该字段也回填「技能」', async () => {

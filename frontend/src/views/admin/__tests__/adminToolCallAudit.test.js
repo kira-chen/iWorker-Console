@@ -76,9 +76,10 @@ async function search(kw) {
   await flush()
 }
 
-async function openDetailOf(skill) {
+async function openDetailOf(skill, byId = false) {
   await search(skill)
-  const row = bodyRows().find((r) => r.textContent.includes(skill))
+  // 没调用任何技能的会话列表里只有「—」，没有技能名可认，按搜索结果的首行取（搜索词＝请求编号）
+  const row = byId ? bodyRows()[0] : bodyRows().find((r) => r.textContent.includes(skill))
   ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
   await flush()
 }
@@ -226,35 +227,59 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     await flush()
   })
 
-  it('操作摘要展示用户 / 岗位、技能、涉及写操作；不展示待处理确认、执行耗时（都随改版去掉）', async () => {
+  it('操作摘要展示用户 / 岗位、涉及写操作；不列「调用的技能」（按技能时间线已有）、待处理确认、执行耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
     const text = drawer.textContent
     expect(text).toContain('陈杰')
     expect(text).toContain('销售顾问')
-    expect(text).toContain('报价单生成')
+    expect(drawer.querySelector('.el-descriptions').textContent).not.toContain('调用的技能')
     expect(text).toContain('涉及写操作')
     expect(text).not.toContain('待处理确认')
     expect(text).not.toContain('执行耗时')
   })
 
-  it('工具调用明细每项标明调用来源：技能名；未经技能的为「会话直接调用」（PRD §5.2）', async () => {
+  it('调用明细分「按工具 / 按技能」两条互不关联的时间线：默认按工具，不标调用来源；切到按技能只列技能及成败（PRD §5.2，2026-10-13）', async () => {
     await openDetailOf('报价单生成')
-    const items = document.body.querySelectorAll('.el-drawer__body .call-item')
-    expect(items[0].textContent).toContain('客户信息查询')
-    expect(items[1].textContent).toContain('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const dimBtns = drawer.querySelectorAll('.tca-dims .el-button')
+    expect(dimBtns[0].textContent).toContain('按工具 2')
+    expect(dimBtns[1].textContent).toContain('按技能 2')
+    // 默认按工具：两个工具项，不出现技能名 / 「会话直接调用」
+    expect(drawer.querySelectorAll('.call-item').length).toBe(2)
+    expect(drawer.textContent).not.toContain('会话直接调用')
+    dimBtns[1].click()
+    await flush()
+    expect(drawer.querySelectorAll('.call-item').length).toBe(0)
+    const skills = drawer.querySelectorAll('.tca-skill-head')
+    expect(skills.length).toBe(2)
+    expect(skills[0].textContent).toContain('客户信息查询')
+    expect(skills[0].textContent).toContain('成功')
+    expect(skills[1].textContent).toContain('报价单生成')
+  })
+
+  it('技能失败时按技能时间线展示失败标签与原因；没调用技能的会话展示技能维度空文案', async () => {
+    await openDetailOf('排产计划调整')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    drawer.querySelectorAll('.tca-dims .el-button')[1].click()
+    await flush()
+    expect(drawer.querySelector('.tca-skill-head').textContent).toContain('失败')
+    expect(drawer.textContent).toContain('连接超时')
     document.body.querySelector('.el-drawer__footer .el-button').click()
     await flush()
-    await openDetailOf('方案要点生成')
-    const direct = document.body.querySelectorAll('.el-drawer__body .call-item')
-    expect(direct[0].textContent).toContain('会话直接调用')
-    expect(direct[1].textContent).toContain('方案要点生成')
+    await openDetailOf('C-1010', true)
+    const d2 = document.body.querySelector('.el-drawer__body')
+    const btns = d2.querySelectorAll('.tca-dims .el-button')
+    expect(btns[1].textContent).toContain('按技能 0')
+    btns[1].click()
+    await flush()
+    expect(d2.textContent).toContain('本次会话未调用技能')
   })
 
   it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.textContent).toContain('工具调用明细')
+    expect(drawer.textContent).toContain('调用明细')
     const items = drawer.querySelectorAll('.call-item')
     expect(items.length).toBe(2)
     // 页面只展示工具标识 / 读写性质 / 确认 / 结果（PRD §5.2 没有写具体操作描述、耗时这两项）：
@@ -325,7 +350,7 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
   it('未调用任何外部工具时展示占位文案（当前种子均有调用，断言兜底文案字符串存在于组件逻辑——通过无 calls 的 detail 直接校验展示规则）', async () => {
     await openDetailOf('方案要点生成')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.querySelectorAll('.call-item').length).toBe(2) // 方案要点生成：会话直接调用 1 次 + 技能内调用 1 次
+    expect(drawer.querySelectorAll('.call-item').length).toBe(2) // 方案要点生成：按工具维度 2 次工具调用（不区分由谁发起）
   })
 })
 
