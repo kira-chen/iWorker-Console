@@ -15,7 +15,6 @@ const api = {
   createTeam: vi.fn(),
   updateTeam: vi.fn(),
   listTeamMemberCandidates: vi.fn(),
-  trialTeam: vi.fn()
 }
 vi.mock('@/api/expertTeam', () => api)
 vi.mock('@/api/position', () => ({ listPositions: vi.fn().mockResolvedValue({ list: [] }) }))
@@ -29,7 +28,7 @@ const CANDIDATES = [
 ]
 const detail = (over = {}) => ({
   id: 302, name: '知识问答团', type: 'SYSTEM_DEFAULT', positionIds: [], avatar: '⌕', backgroundColor: '#DCF5E4', category: '通用',
-  intro: '解答制度类问题', leaderId: null, leaderDuty: '', collab: '先检索再补充', trialed: false,
+  intro: '解答制度类问题', leaderId: null, leaderDuty: '', collab: '先检索再补充',
   exampleQuestions: ['问一', '问二', '问三'], status: 'draft', pendingAction: null, latestVersionLabel: '',
   createdAt: '2026-09-06T09:20:00+08:00', updatedAt: '2026-09-09T11:00:00+08:00', publishedAt: null, revoked: null,
   members: [
@@ -123,7 +122,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(cards.slice(1).some((c) => c.querySelector('.et-q-row'))).toBe(false)
   })
 
-  it('AI 生成置灰时，原因直接显示在按钮旁（不靠悬停）：成员不足 2 位 → 团介绍 / 协作关系 / 试跑拆解都写明；补够后提示消失', async () => {
+  it('AI 生成置灰时，原因直接显示在按钮旁（不靠悬停）：成员不足 2 位 → 团介绍 / 协作关系都写明；补够后提示消失', async () => {
     api.getTeam.mockResolvedValue(detail({ members: [detail().members[0]] }))
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
@@ -131,15 +130,13 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     const drawer = drawerOf()
     const introHint = () => drawer.querySelector('[data-testid="team-intro-ai-hint"]')
     expect(introHint().textContent).toBe('请先选择至少 2 位成员')
-    expect(drawer.querySelector('[data-testid="team-trial-hint"]').textContent).toBe('请先选择至少 2 位成员')
-    expect([...drawer.querySelectorAll('.et-ai-hint')].map((h) => h.textContent)).toEqual(['请先选择至少 2 位成员', '请先选择至少 2 位成员', '请先选择至少 2 位成员'])
+    expect([...drawer.querySelectorAll('.et-ai-hint')].map((h) => h.textContent)).toEqual(['请先选择至少 2 位成员', '请先选择至少 2 位成员'])
     const introBtn = [...drawer.querySelectorAll('.et-grid .et-ai')][0]
     expect(introBtn.disabled).toBe(true)
     drawer.querySelector('[data-testid="team-cand-201"] input').click()
     await flushAll(6)
     expect(introHint()).toBeNull()
     expect([...drawer.querySelectorAll('.et-grid .et-ai')][0].disabled).toBe(false)
-    expect(drawer.querySelector('[data-testid="team-trial-hint"]')).toBeNull()
   })
 
   it('新建态直接点【创建专家团】：必填项标红、不调用创建接口（md §三.8 保存校验）', async () => {
@@ -229,7 +226,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(row(201).querySelector('[data-testid="team-leader-row-note"]')).toBeNull()
   })
 
-  it('移除团长本人 → 团长清空；成员少于 2 位时试跑拆解置灰并提示原因（md §三.3.2 / §三.9）', async () => {
+  it('移除团长本人 → 团长清空（md §三.3.2）', async () => {
     api.getTeam.mockResolvedValue(detail({ leaderId: 201, leaderDuty: '按经营口径' }))
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
@@ -241,33 +238,33 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     await flushAll(6)
     expect(drawer.querySelector('[data-testid="team-member-201"]')).toBeNull()
     expect(drawer.querySelector('[data-testid="team-leader-duty"]')).toBeNull()
-    const trial = drawer.querySelector('[data-testid="team-trial-btn"]')
-    expect(trial.disabled).toBe(true)
-    expect(trial.title).toBe('请先选择至少 2 位成员')
   })
 
-  it('试跑拆解：弹窗预填第 1 条示例问题，点【开始试跑】展示安排预览与「不会真正执行」说明（md §三.9）', async () => {
+  it('试跑拆解本期不做：编辑器里没有试跑按钮、弹窗和「已试跑」提示（prd.专家团.md §三.9）', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
-    api.trialTeam.mockResolvedValue({
-      mode: 'system', leaderName: '', task: '问一',
-      plan: [{ expertId: 202, name: '企业知识助手', duty: '检索依据', order: '先做' }, { expertId: 201, name: '经营分析专家', duty: '补充口径', order: '同时' }]
-    })
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
     await flushAll(14)
-    drawerOf().querySelector('[data-testid="team-trial-btn"]').click()
-    await flushAll(8)
-    const dlg = document.querySelector('[data-testid="team-trial-dialog"]')
-    expect(dlg).toBeTruthy()
-    expect(dlg.querySelector('input').value).toBe('问一')
-    expect(dlg.textContent).toContain('仅为拆解预览，不会真正执行，不产生任务记录')
-    dlg.querySelector('[data-testid="team-trial-run"]').click()
-    await flushAll(10)
-    expect(api.trialTeam).toHaveBeenCalledWith(expect.objectContaining({ task: '问一', leaderId: null }))
-    expect(dlg.textContent).toContain('由系统按团队协作关系拆解')
-    expect([...dlg.querySelectorAll('.et-trial-row')].map((r) => r.querySelector('.et-trial-order').textContent)).toEqual(['先做', '同时'])
-    // 试跑成功 → 编辑页提示变为「已试跑」
-    expect(drawerOf().querySelector('[data-testid="team-trial-state"]').textContent).toContain('已试跑')
+    const drawer = drawerOf()
+    expect(drawer.querySelector('[data-testid="team-trial-btn"]')).toBeNull()
+    expect(drawer.querySelector('[data-testid="team-trial-state"]')).toBeNull()
+    expect(drawer.textContent).not.toContain('试跑')
+  })
+
+  it('成员上限 6 位（负责人 2026-10-12 由 20 调为 6）：区块说明与计数写 6；已选满后再勾选弹提示、不再增加', async () => {
+    const ids = [11, 12, 13, 14, 15, 16]
+    api.getTeam.mockResolvedValue(detail({ members: ids.map((id) => ({ expertId: id, duty: '', name: '专家' + id, category: '通用', avatar: '', unavailable: '' })) }))
+    api.listTeamMemberCandidates.mockResolvedValue([...ids, 17].map((id) => ({ id, name: '专家' + id, intro: '', avatar: '', backgroundColor: '#DCF5E4', category: '通用', type: 'PLATFORM' })))
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(14)
+    const drawer = drawerOf()
+    const card = drawer.querySelector('[data-testid="team-members-card"]')
+    expect(card.textContent).toContain('最多 6 位')
+    expect(card.querySelector('.et-count').textContent).toBe('已选 6/6')
+    drawer.querySelector('[data-testid="team-cand-17"] input').click()
+    await flushAll(6)
+    expect(drawer.querySelectorAll('[data-testid="team-selected"] .et-row').length).toBe(6)
+    expect(document.body.textContent).toContain('成员最多 6 位')
   })
 
   it('只读态：标题「查看专家团」、底部仅【关闭】、无候选区与 AI 按钮；不可用成员带红色原因标签（缺员，md §四）', async () => {

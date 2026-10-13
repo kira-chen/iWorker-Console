@@ -49,18 +49,12 @@ export function deleteTeam(teamId) {
   return request.delete(`/fde/expert-teams/${teamId}`, W)
 }
 
-/* ---------- 成员候选 / 试跑 / 与专家联动 ---------- */
+/* ---------- 成员候选 / 与专家联动 ---------- */
 
 // 成员候选：已发布专家，按团类型限定范围。params: { type, keyword? }
 export function listTeamMemberCandidates(params) {
   if (USE_MOCK) return mock.listTeamMemberCandidates(params)
   return request.get('/fde/expert-teams/member-candidates', { params })
-}
-
-// 试跑拆解：只出安排预览，不执行、不产生任务记录。body: { members, leaderId, collab, task }
-export function trialTeam(payload) {
-  if (USE_MOCK) return mock.trialTeam(payload)
-  return request.post('/fde/expert-teams/trial', payload, W)
 }
 
 // 引用某专家的团清单（专家停用 / 强制回收提示、删除拦截用）。返回 [{ id, name, status }]

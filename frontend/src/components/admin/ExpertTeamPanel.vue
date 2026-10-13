@@ -7,7 +7,7 @@
  * - 列：团类型、成员（头像叠放）、团长（未设显示「未设团长」）、引用情况只对岗位私有团有值；
  * - 状态列在「已发布」旁追加红色「缺员 N」（成员专家被停用 / 回收 / 删除，实时算，md §四）；
  * - 【发布】点击后先做发布前检查（md §三.8）：必填 / 成员均已发布 / 岗位匹配不通过就阻断提示；
- *   通过后若是「没设团长且未试跑」只提醒不阻断（去试跑 / 直接发布）。列表【发布】与编辑抽屉【发布】走同一条路。
+ *   （试跑提醒本期不做，见 prd.专家团.md §三.9）列表【发布】与编辑抽屉【发布】走同一条路。
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -80,25 +80,21 @@ const isReviewing = (row) => isLocked(KIND.DOMAIN_EXPERT, row)
 const editorVisible = ref(false)
 const editingId = ref(null)
 const editorReadonly = ref(false)
-const editorAutoTrial = ref(false)
 
 function openCreate() {
   editingId.value = null
   editorReadonly.value = false
-  editorAutoTrial.value = false
   editorVisible.value = true
 }
-function openEdit(row, autoTrial = false) {
+function openEdit(row) {
   if (isReviewing(row)) return
   editingId.value = row.id
   editorReadonly.value = false
-  editorAutoTrial.value = autoTrial
   editorVisible.value = true
 }
 function openView(row) {
   editingId.value = row.id
   editorReadonly.value = true
-  editorAutoTrial.value = false
   editorVisible.value = true
 }
 function onEditorSaved(created) {
@@ -106,7 +102,7 @@ function onEditorSaved(created) {
   fetchList()
 }
 
-/* ---------- 发布：发布前检查 → 试跑提醒 → 版本管理侧栏 ---------- */
+/* ---------- 发布：发布前检查 → 版本管理侧栏 ---------- */
 const versionDlgVisible = ref(false)
 const versionRow = ref(null)
 
@@ -125,21 +121,6 @@ async function startPublish(rowOrDetail) {
   if (blocked) {
     ElMessage.warning(blocked.message)
     return
-  }
-  // 检查 4：没设团长且自上次修改后未试跑过 → 只提醒，不阻断
-  if (team.leaderId == null && !team.trialed) {
-    let go = false
-    try {
-      await ElMessageBox.confirm(
-        `「${team.name}」没设团长，拆解质量完全取决于「团队协作关系」。建议先试跑一次。`,
-        '建议先试跑',
-        { type: 'warning', confirmButtonText: '直接发布', cancelButtonText: '去试跑', distinguishCancelAndClose: true }
-      )
-      go = true
-    } catch (action) {
-      if (action === 'cancel') openEdit(team, true)
-    }
-    if (!go) return
   }
   openVersionDrawer(rows.value.find((r) => r.id === team.id) || team)
 }
@@ -412,7 +393,6 @@ async function confirmStop({ forceRevoke, reason }) {
       v-model:visible="editorVisible"
       :team-id="editingId"
       :readonly="editorReadonly"
-      :auto-trial="editorAutoTrial"
       @saved="onEditorSaved"
       @publish="onEditorPublish"
     />

@@ -31,9 +31,9 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 
 let teamSeq = 305
 
-/** 成员数量上下限（md §三.3.1：至少 2 位、上限 20 位）。 */
+/** 成员数量上下限（md §三.3.1：至少 2 位、上限 6 位；2026-10-12 负责人由 20 调为 6）。 */
 export const TEAM_MEMBER_MIN = 2
-export const TEAM_MEMBER_MAX = 20
+export const TEAM_MEMBER_MAX = 6
 
 /* ---------------- 候选范围（md §三.3.1 表） ----------------
  * 三类团都可放通用专家和市场专家；岗位私有专家只能进岗位私有团（2026-10-12 负责人拍板）。 */
@@ -75,7 +75,6 @@ function seedTeams() {
       leaderDuty: '按经营分析的口径拆解：先由团长判断经营数据里需要核对的异常，再把行业对照与竞品研究分给研究报告专家，最后由团长汇总成管理建议。',
       collab: '',
       exampleQuestions: ['把这份经营月报交给团队看一遍', '让研究报告专家先对比三家竞品', '这个结论两位专家有分歧吗'],
-      trialed: false,
       status: 'published',
       pendingAction: null,
       latestVersionLabel: 'v1.0.0',
@@ -99,7 +98,6 @@ function seedTeams() {
       leaderDuty: '',
       collab: '先由企业知识助手检索制度依据；涉及数据口径的部分同时交给经营分析专家补充；两边都出结论后合并成一份带出处的回答。',
       exampleQuestions: ['帮我查一下差旅报销制度并解释口径', '让企业知识助手先把依据找出来', '两位专家的说法不一致时列出来'],
-      trialed: true,
       status: 'published',
       pendingAction: null,
       latestVersionLabel: 'v1.0.0',
@@ -123,7 +121,6 @@ function seedTeams() {
       leaderDuty: '',
       collab: '外部公开资料和内部制度依据同时展开，两边都出结论后合并成一份分析底稿，内外部依据冲突的地方单独列出。',
       exampleQuestions: ['把这个课题交给团队', '让研究报告专家先看外部资料', '内外部依据冲突的地方单独列出'],
-      trialed: false,
       // 本条是团种子里唯一的「未发布 + 无版本 + 无在途」样本，用例依赖它验证草稿分支，勿改状态。
       status: 'draft',
       pendingAction: null,
@@ -156,10 +153,11 @@ let reviewSnapshots = {}
 // v1（2026-10-12）：专家团模块首次接入持久化。
 // v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
 // v3（2026-10-12）：曾加选填「用途」purpose。
+// v6（2026-10-12）：试跑拆解本期不做，去掉「已试跑」trialed 字段；成员上限 20→6，旧快照丢弃重播种子。
 // v5（2026-10-12）：行新增 pendingRevokeReason / pendingRevokeBy（停用时勾选强制回收的在审原因，同专家 v7），旧快照丢弃重播种子。
 // v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 5,
+  version: 6,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -201,10 +199,6 @@ const normMembers = (ms) => {
   }
   return out
 }
-
-/** 成员配置里会影响「试跑结果」的部分的签名；变了就要清掉「已试跑」（md §三.9）。 */
-const structureSig = (t) =>
-  JSON.stringify([t.members.map((m) => [m.expertId, m.duty]), t.leaderId ?? null, t.leaderDuty || '', t.collab || ''])
 
 /* ---------------- 出参 ---------------- */
 
@@ -249,7 +243,6 @@ function toRow(t) {
     memberNames: members.map((m) => m.name),
     leaderId: t.leaderId ?? null,
     leaderName: leader?.name || '',
-    trialed: !!t.trialed,
     missingCount: missing.length,
     missing: missing.map((m) => ({ expertId: m.expertId, name: m.name, reason: m.unavailable })),
     status: t.status,
@@ -294,7 +287,7 @@ export function checkTeamSavable(t) {
 }
 
 /**
- * 发布前检查（md §三.8 表，检查 1–3；检查 4「试跑提醒」不阻断，由页面处理）。
+ * 发布前检查（md §三.8 表，检查 1–3；试跑提醒本期不做）。
  * 返回 { field?, message } 或 null。
  */
 export function checkTeamPublishable(t) {
@@ -409,7 +402,6 @@ export async function createTeam(payload = {}) {
     leaderDuty: leaderId != null ? String(payload.leaderDuty || '') : '',
     collab: String(payload.collab || ''),
     exampleQuestions: normQuestions(payload.exampleQuestions),
-    trialed: !!payload.trialed,
     status: 'draft',
     pendingAction: null,
     latestVersionLabel: '',
@@ -429,7 +421,6 @@ export async function updateTeam(id, payload = {}) {
   const t = findTeam(id)
   if (!t) throw err('专家团不存在', null, 404)
   if (t.pendingAction) throw err('审核中，专家团已锁定不可修改', null, 409)
-  const sigBefore = structureSig(t)
   if (payload.name !== undefined) {
     const name = String(payload.name || '').trim()
     if (!name) throw err('请填写团名称', 'name')
@@ -451,9 +442,6 @@ export async function updateTeam(id, payload = {}) {
   }
   if (payload.leaderDuty !== undefined) t.leaderDuty = String(payload.leaderDuty || '')
   if (payload.collab !== undefined) t.collab = String(payload.collab || '')
-  // 「已试跑」：结构被改过则清零，除非本次明确带了 trialed=true（编辑器在改动后重新试跑过）
-  if (payload.trialed !== undefined) t.trialed = !!payload.trialed
-  else if (structureSig(t) !== sigBefore) t.trialed = false
   t.updatedAt = nowIso()
   persist()
   return toDetail(t)
@@ -475,41 +463,6 @@ export async function deleteTeam(id) {
   delete reviewSnapshots[String(t.id)]
   persist()
   return removed
-}
-
-/* ============================ 试跑拆解（md §三.9） ============================ */
-
-/**
- * 试跑拆解：只给出「安排预览」，不执行、不产生任务记录。入参取编辑器当前表单（未保存也能试），
- * { members:[{expertId,duty}], leaderId, leaderDuty, collab, task }。
- * demo 不接模型：先后按成员排位 + 协作关系里的关键词做确定性推演——
- * 第一位「先做」；协作关系含「再 / 之后 / 最后 / 核对」时，最后一位「等 X 完成后」；其余「同时」。
- */
-export async function trialTeam(payload = {}) {
-  await delay(500)
-  const members = normMembers(payload.members)
-  if (members.length < TEAM_MEMBER_MIN) throw err('请先选择至少 2 位成员')
-  const task = String(payload.task || '').trim()
-  if (!task) throw err('请输入试跑任务描述', 'task')
-  const leaderId = payload.leaderId != null && payload.leaderId !== '' ? Number(payload.leaderId) : null
-  const collab = String(payload.collab || '')
-  const map = expertMap()
-  const nameOf = (m) => map.get(String(m.expertId))?.name || String(m.expertId)
-  const sequential = /再|之后|最后|核对|接力/.test(collab)
-  const plan = members.map((m, i) => {
-    let order = '同时'
-    if (i === 0) order = '先做'
-    else if (sequential && i === members.length - 1) order = `等 ${nameOf(members[0])} 完成后`
-    // 没填「团内负责什么」时取该专家的简介（同详情页口径）
-    const duty = String(m.duty || '').trim() || map.get(String(m.expertId))?.intro || '按专业口径处理这一块'
-    return { expertId: m.expertId, name: nameOf(m), duty, order }
-  })
-  return {
-    mode: leaderId != null ? 'leader' : 'system',
-    leaderName: leaderId != null ? nameOf({ expertId: leaderId }) : '',
-    task,
-    plan
-  }
 }
 
 /* ============================ 与专家的联动（md §四） ============================ */
