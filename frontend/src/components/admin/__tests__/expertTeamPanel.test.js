@@ -4,7 +4,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
 
 /**
  * ExpertTeamPanel.vue 真实挂载用例（2026-10-12 专家团管理端）。
- * 对齐 prd.专家团.md §二（列表列、操作按钮三态）/ §二.3.3 与 §三.8（发布前检查：阻断项 + 没团长未试跑的提醒）/ §四（缺员标签）。
+ * 对齐 prd.专家团.md §二（列表列、操作按钮三态）/ §二.3.3 与 §三.8（发布前检查：阻断项 + 没主理人未试跑的提醒）/ §四（缺员标签）。
  * 真 Element Plus，只 mock api 层、版本侧栏与编辑抽屉（它们另有用例）。
  */
 const api = {
@@ -66,15 +66,15 @@ const rowOf = (c, name) => [...c.querySelectorAll('.el-table__body tr')].find((r
 const btn = (row, text) => [...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === text)
 
 describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
-  it('列：团类型文案 / 专家数（没有成员、团长两列）/ 引用情况（仅岗位私有有值）/ 已发布缺员标签（md §二.1 / §四）', async () => {
+  it('列：团类型文案 / 专家数（没有成员、主理人两列）/ 引用情况（仅岗位私有有值）/ 已发布缺员标签（md §二.1 / §四）', async () => {
     const c = await mountPanel()
     const r1 = rowOf(c, '经营研究团')
     const r3 = rowOf(c, '岗位协同团')
     expect(r1.textContent).toContain('市场团')
     const headers = [...c.querySelectorAll('.el-table__header th')].map((h) => h.textContent.trim())
-    // 列表不展示成员与团长（只留专家数）
+    // 列表不展示成员与主理人（只留专家数）
     expect(headers).not.toContain('成员')
-    expect(headers).not.toContain('团长')
+    expect(headers).not.toContain('主理人')
     expect(headers).toContain('专家数')
     expect(r1.textContent).not.toContain('经营分析专家')
     const countCell = (r) => r.querySelectorAll('td')[headers.indexOf('专家数')].textContent.trim()
@@ -83,7 +83,7 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(r1.querySelector('[data-testid="team-missing-tag"]').textContent).toBe('缺员 1')
     expect(r1.textContent).toContain('v1.0.0')
     expect(r3.textContent).toContain('岗位团')
-    expect(r3.textContent).not.toContain('未设团长')
+    expect(r3.textContent).not.toContain('未设主理人')
     expect(r3.textContent).toContain('1个岗位引用')
     expect(r3.querySelector('[data-testid="team-missing-tag"]')).toBeNull()
     // 操作按钮三态：已发布 = 查看 编辑 停用 版本管理（强制回收并入停用弹窗，无独立按钮）；未发布 = 查看 编辑 发布 删除
@@ -112,7 +112,7 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(c.querySelector('.version-stub').dataset.open).toBe('false')
   })
 
-  it('没设团长的团发布前不再弹试跑提醒（试跑拆解本期不做）：通过发布前检查后直接开版本侧栏', async () => {
+  it('没设主理人的团发布前不再弹试跑提醒（试跑拆解本期不做）：通过发布前检查后直接开版本侧栏', async () => {
     api.getTeam.mockResolvedValue(DETAIL_303)
     const c = await mountPanel()
     btn(rowOf(c, '岗位协同团'), '发布').click()

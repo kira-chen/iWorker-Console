@@ -38,7 +38,7 @@ const FINGERPRINTS = {
   bizSystem: { version: 5, fp: 'ceed8d44' },
   dataTable: { version: 2, fp: '592831be' },
   domainExpert: { version: 7, fp: 'c7cb441c' },
-  expertTeam: { version: 6, fp: 'a80b2f22' },
+  expertTeam: { version: 7, fp: '54b007ea' },
   fieldDict: { version: 4, fp: '40d8527d' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
   knowledgeBase: { version: 9, fp: '04ba3a72' },

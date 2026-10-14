@@ -5,8 +5,8 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
 /**
  * ExpertTeamEditor.vue 真实挂载用例（2026-10-12 专家团管理端）。
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md §三（编辑页）：
- *   §三.1 三态标题与底部按钮 / §三.2 团类型未选时成员区置灰 / §三.3 成员与团长（设团长团分工说明）/
- *   §三.4 协作关系「没设团长必填、设了选填」/ §三.7 AI 生成置灰条件 / §三.8 保存校验。
+ *   §三.1 三态标题与底部按钮 / §三.2 团类型未选时成员区置灰 / §三.3 成员与主理人（设主理人团分工说明）/
+ *   §三.4 协作关系「没设主理人必填、设了选填」/ §三.7 AI 生成置灰条件 / §三.8 保存校验。
  * 真 Element Plus + 真 DrawerEditor，只 mock api 层。
  */
 
@@ -103,7 +103,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(drawerOf().textContent).not.toContain('请填写每位成员')
   })
 
-  it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与团长（卡内含团队协作关系）；团介绍在成员之前', async () => {
+  it('字段顺序对齐专家详情页：基本信息卡（类型 / 名称 / 分类 / 图标 / 团介绍 + 末尾「团队帮你做」子分区）→ 团队成员与主理人（卡内含团队协作关系）；团介绍在成员之前', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
@@ -156,7 +156,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(api.createTeam).not.toHaveBeenCalled()
   })
 
-  it('编辑态：已选成员按排位列出并带「团内负责什么」；没设团长时协作关系标必填，AI 生成按钮在成员足够时可点（md §三.3 / §三.4 / §三.7）', async () => {
+  it('编辑态：已选成员按排位列出并带「团内负责什么」；没设主理人时协作关系标必填，AI 生成按钮在成员足够时可点（md §三.3 / §三.4 / §三.7）', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
@@ -171,24 +171,24 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     // 候选 3 张卡，已选的打勾
     expect(drawer.querySelectorAll('.et-cand').length).toBe(3)
     expect(drawer.querySelectorAll('.et-cand.checked').length).toBe(2)
-    // 没设团长：协作关系必填
+    // 没设主理人：协作关系必填
     const collab = drawer.querySelector('[data-testid="team-collab-card"]')
-    expect(collab.textContent).toContain('没设团长时必填')
+    expect(collab.textContent).toContain('没设主理人时必填')
     expect(collab.querySelector('.et-req')).toBeTruthy()
-    // 未设团长 → 不出现团长职责区块
+    // 未设主理人 → 不出现主理人职责区块
     expect(drawer.querySelector('[data-testid="team-leader-duty"]')).toBeNull()
     // 成员足够 → 团介绍的 AI 生成可点
     const aiBtn = [...drawer.querySelectorAll('.et-ai')].find((b) => b.textContent.includes('AI 生成'))
     expect(aiBtn.disabled).toBe(false)
   })
 
-  it('设为团长：团长职责区块出现（初始为空，等管理员写或点 AI 生成），协作关系改为选填；取消团长后区块消失；成员卡上没有「可带团」徽章（md §三.3.2 / §三.3.3 / §三.4）', async () => {
+  it('设为主理人：主理人职责区块出现（初始为空，等管理员写或点 AI 生成），协作关系改为选填；取消主理人后区块消失；成员卡上没有「可带团」徽章（md §三.3.2 / §三.3.3 / §三.4）', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
     await flushAll(14)
     const drawer = drawerOf()
-    const leaderBtn = (id) => [...drawer.querySelectorAll(`[data-testid="team-member-${id}"] .et-row-ops .el-button`)].find((b) => /团长/.test(b.textContent))
+    const leaderBtn = (id) => [...drawer.querySelectorAll(`[data-testid="team-member-${id}"] .et-row-ops .el-button`)].find((b) => /主理人/.test(b.textContent))
 
     leaderBtn(201).click()
     await flushAll(6)
@@ -196,29 +196,29 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(duty).toBeTruthy()
     expect(duty.querySelector('textarea').value).toBe('')
     expect(drawer.textContent).not.toContain('可带团')
-    expect(drawer.querySelector('[data-testid="team-member-201"] .et-leader-badge').textContent).toBe('团长')
+    expect(drawer.querySelector('[data-testid="team-member-201"] .et-leader-badge').textContent).toBe('主理人')
     expect(drawer.querySelector('[data-testid="team-collab-card"]').textContent).toContain('选填')
-    expect(leaderBtn(201).textContent.trim()).toBe('取消团长')
+    expect(leaderBtn(201).textContent.trim()).toBe('取消主理人')
 
     leaderBtn(201).click()
     await flushAll(6)
     expect(drawer.querySelector('[data-testid="team-leader-duty"]')).toBeNull()
-    expect(drawer.querySelector('[data-testid="team-collab-card"]').textContent).toContain('没设团长时必填')
+    expect(drawer.querySelector('[data-testid="team-collab-card"]').textContent).toContain('没设主理人时必填')
   })
 
-  it('团长那一行不再有「团内负责什么」输入框（与团长职责重复），只提示见团长职责；取消团长后恢复且已填值保留（md §三.3.1）', async () => {
+  it('主理人那一行不再有「团内负责什么」输入框（与主理人职责重复），只提示见主理人职责；取消主理人后恢复且已填值保留（md §三.3.1）', async () => {
     api.getTeam.mockResolvedValue(detail())
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
     await flushAll(14)
     const drawer = drawerOf()
     const row = (id) => drawer.querySelector(`[data-testid="team-member-${id}"]`)
-    const leaderBtn = (id) => [...row(id).querySelectorAll('.et-row-ops .el-button')].find((b) => /团长/.test(b.textContent))
+    const leaderBtn = (id) => [...row(id).querySelectorAll('.et-row-ops .el-button')].find((b) => /主理人/.test(b.textContent))
     expect(row(201).querySelector('input')).toBeTruthy()
     leaderBtn(201).click()
     await flushAll(6)
     expect(row(201).querySelector('input')).toBeNull()
-    expect(row(201).querySelector('[data-testid="team-leader-row-note"]').textContent).toContain('团长职责')
+    expect(row(201).querySelector('[data-testid="team-leader-row-note"]').textContent).toContain('主理人职责')
     expect(row(202).querySelector('input')).toBeTruthy() // 其他成员不受影响
     leaderBtn(201).click()
     await flushAll(6)
@@ -226,7 +226,7 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(row(201).querySelector('[data-testid="team-leader-row-note"]')).toBeNull()
   })
 
-  it('移除团长本人 → 团长清空（md §三.3.2）', async () => {
+  it('移除主理人本人 → 主理人清空（md §三.3.2）', async () => {
     api.getTeam.mockResolvedValue(detail({ leaderId: 201, leaderDuty: '按经营口径' }))
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
     mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
