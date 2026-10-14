@@ -12,6 +12,7 @@
  */
 import { reviewTypeMatch } from '@/utils/reviewMeta'
 import { attachPersist } from './mockPersist'
+import { appendOpsRecord } from './accessAuditMock'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相
 import { nowMinuteText as now } from '@/utils/datetime'
 // 2026-09-12 负责人决策 5（审计 J12）：审核人取 demo 当前身份，不硬编码人名
@@ -256,8 +257,36 @@ export async function approveReview(id) {
   row.reviewer = currentDemoUserName()
   row.reviewedAt = now()
   persist()
+  writeDelistAudit(row)
   await applyToMyApplication(row, true, row.reviewer, row.reviewedAt, '')
   return clone(row)
+}
+
+/**
+ * 停用申请审核通过 → 写一条访问审计「管理端操作」·「停用」（prd.访问审计.md §6.2「停用记录」）。
+ * 只在审核通过、对象真的变成未发布时记（驳回 / 撤回不记），操作人是提交申请的管理员而非审核人；变更内容为空。
+ * 版本管理（VERSION）的停用由 versionMock 自己记（对象是「终端 + 版本号」），这里跳过避免重复。
+ * 版本号小标签仅岗位 / 专家 / 专家团 / 技能附（审核行的 version，PRD §6.2 操作对象规则）。
+ */
+const DELIST_AUDIT_MODULE = {
+  POSITION: '岗位',
+  EXPERT: '专家',
+  EXPERT_TEAM: '专家团',
+  SKILL: '技能',
+  KNOWLEDGE_BASE: '知识库',
+  MODEL: '模型',
+  BIZ_SYSTEM: '业务系统',
+  'TOOL:MCP': 'MCP',
+  'TOOL:API': 'API'
+}
+const VERSIONED_AUDIT_TYPES = ['POSITION', 'EXPERT', 'EXPERT_TEAM', 'SKILL']
+function writeDelistAudit(row) {
+  if (row.requestAction !== 'DELIST') return
+  const module = DELIST_AUDIT_MODULE[row.type === 'TOOL' ? `TOOL:${row.subType}` : row.type]
+  if (!module) return
+  const rec = { operator: row.submitterName, module, action: '停用', objectId: row.refId, target: row.name }
+  if (VERSIONED_AUDIT_TYPES.includes(row.type) && row.version && row.version !== '—') rec.version = row.version
+  appendOpsRecord(rec)
 }
 
 /**
