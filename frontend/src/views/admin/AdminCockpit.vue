@@ -189,6 +189,11 @@ function openConvModal(rec) {
   cvVisible.value = true
 }
 
+// 对话明细关闭（【关闭】/ 右上角 × / Esc / 点遮罩）：回到点踩明细弹窗；不走 openDislikeModal，故保留原页码
+function backToDislikeModal() {
+  dlVisible.value = true
+}
+
 function doRefresh() {
   refreshing.value = true
   loadVerOverview()
@@ -417,7 +422,7 @@ function openAlertAction(item) {
     </el-dialog>
 
     <!-- 对话明细弹窗（原型 cvOverlay）：由点踩明细表格【查看】打开，展示被点踩的单轮对话 -->
-    <el-dialog v-model="cvVisible" class="admin-dialog" width="640px">
+    <el-dialog v-model="cvVisible" class="admin-dialog" width="640px" @closed="backToDislikeModal">
       <template #header>
         <div class="cv-dialog-head">
           <span class="cv-dialog-title">对话明细</span>
