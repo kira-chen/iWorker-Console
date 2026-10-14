@@ -131,11 +131,11 @@ export function teamIntroText(ctx) {
   return limitLen(`${c.name ? `${c.name}适合` : '这个团适合'}需要多位专家共同判断的事项。成员包括${who}。${parts}。`, 2000)
 }
 
-/** 团长职责：按团长专长写分工口径。ctx: { leader: {name,category}, members: [{name,category}] } */
+/** 主理人职责：按主理人专长写分工口径。ctx: { leader: {name,category}, members: [{name,category}] } */
 export function teamLeaderDutyText(ctx) {
   const c = ctx || {}
   const others = (c.members || []).filter((m) => m.name !== c.leader?.name)
-  const lead = c.leader?.name || '团长'
+  const lead = c.leader?.name || '主理人'
   const spec = c.leader?.category || '专业'
   return limitLen(
     `按${lead}的${spec}口径拆解：先由${lead}判断任务里需要把关的关键点，再把其余部分分给${others.map((m) => m.name).join('、') || '其他成员'}，各自交出结论后由${lead}汇总，意见不一致的地方单独列出。`,

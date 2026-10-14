@@ -48,7 +48,7 @@ const base = (over = {}) => ({
 
 // 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md（md）
 describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
-  it('种子 3 条：默认按最近更新时间降序；303 是唯一「未发布无版本」样本；301 设了团长、302 没设', async () => {
+  it('种子 3 条：默认按最近更新时间降序；303 是唯一「未发布无版本」样本；301 设了主理人、302 没设', async () => {
     const { list, total } = await listTeams()
     expect(total).toBe(3)
     expect(list.map((t) => t.name)).toEqual(['岗位协同团', '知识问答团', '经营研究团'])
@@ -81,14 +81,14 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(await ids('POSITION')).toEqual([201, 202, 204])
   })
 
-  it('创建：团名重名拦截（字段 name）；岗位私有专家不能进市场 / 通用团；团长必须是成员', async () => {
+  it('创建：团名重名拦截（字段 name）；岗位私有专家不能进市场 / 通用团；主理人必须是成员', async () => {
     await expect(createTeam(base({ name: '经营研究团' }))).rejects.toMatchObject({ field: 'name', message: '团名称已存在' })
     // 203 是岗位私有专家
     await expect(createTeam(base({ members: [{ expertId: 201, duty: 'a' }, { expertId: 203, duty: 'b' }] })))
       .rejects.toMatchObject({ field: 'members' })
     await expect(createTeam(base({ type: 'POSITION', members: [{ expertId: 201, duty: 'a' }, { expertId: 203, duty: 'b' }] })))
       .resolves.toMatchObject({ status: 'draft' })
-    await expect(createTeam(base({ name: '团长不在成员里', leaderId: 202 }))).rejects.toMatchObject({ field: 'leaderId' })
+    await expect(createTeam(base({ name: '主理人不在成员里', leaderId: 202 }))).rejects.toMatchObject({ field: 'leaderId' })
   })
 
   it('分类所有团都有且必选；专家团没有背景色字段；没有「用途」字段（后台团用协作关系，客户端 §5.2）', async () => {
@@ -109,12 +109,12 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(u.intro).toBe('改了')
   })
 
-  it('保存校验（md §三.8）：没设团长缺协作关系 / 设了团长缺团长职责 / 成员团内负责什么为空 各有各的字段提示', async () => {
+  it('保存校验（md §三.8）：没设主理人缺协作关系 / 设了主理人缺主理人职责 / 成员团内负责什么为空 各有各的字段提示', async () => {
     const full = await getTeam(303)
     expect(checkTeamPublishable(full)).toBeNull()
     expect(checkTeamPublishable({ ...full, collab: '' })).toMatchObject({ field: 'collab', message: '请填写团队协作关系' })
-    expect(checkTeamPublishable({ ...full, leaderId: 202, leaderDuty: '' })).toMatchObject({ field: 'leaderDuty', message: '请填写团长职责' })
-    // 设了团长时协作关系可以不填
+    expect(checkTeamPublishable({ ...full, leaderId: 202, leaderDuty: '' })).toMatchObject({ field: 'leaderDuty', message: '请填写主理人职责' })
+    // 设了主理人时协作关系可以不填
     expect(checkTeamPublishable({ ...full, leaderId: 202, leaderDuty: '按知识口径', collab: '' })).toBeNull()
     // 团内负责什么选填：为空不拦（生效内容取专家简介）
     expect(checkTeamPublishable({ ...full, members: [full.members[0], { ...full.members[1], duty: ' ' }] })).toBeNull()

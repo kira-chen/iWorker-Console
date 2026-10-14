@@ -4,7 +4,7 @@ import * as mock from './expertTeamMock'
 /**
  * 「专家团」模块 API 层（管理端「专家 › 专家团」视图；规则见 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md）。
  *
- * 专家团 = 一组已发布的专家 + 可选团长。发布 / 审核 / 版本 / 停用 / 强制回收的状态机与专家同构
+ * 专家团 = 一组已发布的专家 + 可选主理人。发布 / 审核 / 版本 / 停用 / 强制回收的状态机与专家同构
  * （api/domainExpert.js），区别是团引用专家 id 而非技能，且团类型决定成员候选范围。
  *
  * 【demo mock】项目为纯前端 demo，数据默认走内存 mock（expertTeamMock.js），与专家共用开关
@@ -24,7 +24,7 @@ export function listTeams(params) {
   return request.get('/fde/expert-teams', { params })
 }
 
-// 详情（含成员明细 members[]、团长职责、协作关系、示例问题 exampleQuestions[3]）
+// 详情（含成员明细 members[]、主理人职责、协作关系、示例问题 exampleQuestions[3]）
 export function getTeam(teamId) {
   if (USE_MOCK) return mock.getTeam(teamId)
   return request.get(`/fde/expert-teams/${teamId}`)

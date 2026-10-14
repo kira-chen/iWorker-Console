@@ -11,9 +11,9 @@
  * 反向（专家删除前要查团引用）由 domainExpertMock 在 async 函数里动态 import 本文件，避免 ESM 成环。
  *
  * 【团的种子】3 条，成员全部取自专家种子里「已发布」的 201 / 202 / 204：
- *   301 经营研究团  市场专家团  已发布 v1.0.0  设了团长（201）
- *   302 知识问答团  通用专家团  已发布 v1.0.0  未设团长（演示「员工确认安排」那条路）
- *   303 岗位协同团  岗位私有    未发布无版本    未设团长，绑定岗位 401
+ *   301 经营研究团  市场专家团  已发布 v1.0.0  设了主理人（201）
+ *   302 知识问答团  通用专家团  已发布 v1.0.0  未设主理人（演示「员工确认安排」那条路）
+ *   303 岗位协同团  岗位私有    未发布无版本    未设主理人，绑定岗位 401
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
@@ -72,7 +72,7 @@ function seedTeams() {
         { expertId: 204, duty: '行业与竞品公开资料研究' }
       ],
       leaderId: 201,
-      leaderDuty: '按经营分析的口径拆解：先由团长判断经营数据里需要核对的异常，再把行业对照与竞品研究分给研究报告专家，最后由团长汇总成管理建议。',
+      leaderDuty: '按经营分析的口径拆解：先由主理人判断经营数据里需要核对的异常，再把行业对照与竞品研究分给研究报告专家，最后由主理人汇总成管理建议。',
       collab: '',
       exampleQuestions: ['把这份经营月报交给团队看一遍', '让研究报告专家先对比三家竞品', '这个结论两位专家有分歧吗'],
       status: 'published',
@@ -154,10 +154,11 @@ let reviewSnapshots = {}
 // v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
 // v3（2026-10-12）：曾加选填「用途」purpose。
 // v6（2026-10-12）：试跑拆解本期不做，去掉「已试跑」trialed 字段；成员上限 20→6，旧快照丢弃重播种子。
+// v7（2026-10-14）：「团长」更名「主理人」，种子协作关系文案随改，旧快照丢弃重播种子。
 // v5（2026-10-12）：行新增 pendingRevokeReason / pendingRevokeBy（停用时勾选强制回收的在审原因，同专家 v7），旧快照丢弃重播种子。
 // v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 6,
+  version: 7,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -279,7 +280,7 @@ export function checkTeamSavable(t) {
   const members = t.members || []
   if (members.length < TEAM_MEMBER_MIN) return { field: 'members', message: '至少 2 位成员' }
   if (t.leaderId != null) {
-    if (!String(t.leaderDuty || '').trim()) return { field: 'leaderDuty', message: '请填写团长职责' }
+    if (!String(t.leaderDuty || '').trim()) return { field: 'leaderDuty', message: '请填写主理人职责' }
   } else if (!String(t.collab || '').trim()) {
     return { field: 'collab', message: '请填写团队协作关系' }
   }
@@ -313,7 +314,7 @@ export function checkTeamPublishable(t) {
   return null
 }
 
-/** 成员合法性（候选范围 + 团长必须是成员），创建 / 更新时数据层兜底。 */
+/** 成员合法性（候选范围 + 主理人必须是成员），创建 / 更新时数据层兜底。 */
 function assertMembersLegal(type, members, leaderId) {
   if (members.length > TEAM_MEMBER_MAX) throw err(`成员最多 ${TEAM_MEMBER_MAX} 位`, 'members')
   const allowed = new Set(candidateTypesOf(type))
@@ -324,7 +325,7 @@ function assertMembersLegal(type, members, leaderId) {
     if (!allowed.has(x.type)) throw err(`「${x.name}」不能加入该类型的团`, 'members')
   }
   if (leaderId != null && !members.some((m) => String(m.expertId) === String(leaderId))) {
-    throw err('团长必须是已选成员', 'leaderId')
+    throw err('主理人必须是已选成员', 'leaderId')
   }
 }
 

@@ -3,9 +3,9 @@
  * 专家团编辑器（抽屉式；新建 / 编辑 / 只读查看三态共用）。
  * 规则依据：docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md §三（以下简称 md）。
  *
- * 五个区块自上而下：基本信息 → 团队成员与团长 → 团队协作关系 → 团队帮你做（示例问题）→ 时间信息。
+ * 五个区块自上而下：基本信息 → 团队成员与主理人 → 团队协作关系 → 团队帮你做（示例问题）→ 时间信息。
  * 抽屉外壳、四态、图标行、AI 实况生成、发布态派生全部复用专家编辑器同一批公共件，
- * 本文件只写团自己的东西：成员候选 / 已选列表 / 团长。（试跑拆解本期不做，见 prd.专家团.md §三.9）
+ * 本文件只写团自己的东西：成员候选 / 已选列表 / 主理人。（试跑拆解本期不做，见 prd.专家团.md §三.9）
  *
  * 【成员候选范围】由团类型决定（md §三.3.1）：三类团都可放通用专家和市场专家，岗位私有专家只能进岗位私有团。
  * 团类型未选时成员区块置灰；候选实时读专家模块（已发布才算），已选成员即使后来被停用 / 回收也仍显示在已选列表里，
@@ -189,7 +189,7 @@ function toggleMember(x) {
 function removeMember(id) {
   if (disabled.value) return
   form.members = form.members.filter((m) => String(m.expertId) !== String(id))
-  // 团长被移除 → 团长清空；已填的职责文本留在草稿里，重新设团长时回填（md §三.3.2）
+  // 主理人被移除 → 主理人清空；已填的职责文本留在草稿里，重新设主理人时回填（md §三.3.2）
   if (String(form.leaderId) === String(id)) form.leaderId = null
 }
 function moveMember(i, delta) {
@@ -200,7 +200,7 @@ function moveMember(i, delta) {
   form.members = arr
 }
 
-/** 设 / 取消团长。 */
+/** 设 / 取消主理人。 */
 function toggleLeader(id) {
   if (disabled.value) return
   if (String(form.leaderId) === String(id)) {
@@ -244,7 +244,7 @@ const aiIntro = useAiLiveGenerate({
   apply: (text) => { form.intro = text; errors.intro = '' }
 })
 const aiLeaderDuty = useAiLiveGenerate({
-  ...aiOptsBase, getSourceText: () => (form.leaderId != null ? 'ok' : ''), sourceLabel: '团长', emptyTitle: '请先设置团长',
+  ...aiOptsBase, getSourceText: () => (form.leaderId != null ? 'ok' : ''), sourceLabel: '主理人', emptyTitle: '请先设置主理人',
   getSourceContext: aiCtx, generate: teamLeaderDutyText,
   apply: (text) => { form.leaderDuty = text; errors.leaderDuty = '' }
 })
@@ -313,7 +313,7 @@ function validate() {
   if (!form.exampleQuestions.every((q) => q.trim())) fail('examples', '请填写 3 条"团队帮你做"示例问题')
   if (form.members.length < MEMBER_MIN) fail('members', '至少 2 位成员')
   if (form.leaderId != null) {
-    if (!form.leaderDuty.trim()) fail('leaderDuty', '请填写团长职责')
+    if (!form.leaderDuty.trim()) fail('leaderDuty', '请填写主理人职责')
   } else if (!form.collab.trim()) {
     fail('collab', '请填写团队协作关系')
   }
@@ -560,10 +560,10 @@ const metaItems = computed(() => {
         </div>
       </section>
 
-      <!-- ② 团队成员与团长 -->
+      <!-- ② 团队成员与主理人 -->
       <section class="section-card" data-testid="team-members-card">
         <h3 class="section-title">
-          团队成员与团长
+          团队成员与主理人
           <span class="section-sub">至少 2 位，最多 {{ MEMBER_MAX }} 位已发布的专家</span>
         </h3>
 
@@ -613,7 +613,7 @@ const metaItems = computed(() => {
             </div>
           </div>
 
-          <!-- 已选列表：排位 / 团内负责什么 / 团长 / 上下移 / 移除 -->
+          <!-- 已选列表：排位 / 团内负责什么 / 主理人 / 上下移 / 移除 -->
           <div class="et-selected" data-testid="team-selected">
             <div v-if="!form.members.length" class="et-empty">还没有选择成员</div>
             <div
@@ -628,13 +628,13 @@ const metaItems = computed(() => {
                 <div class="et-row-name">
                   <strong>{{ infoOf(m.expertId).name }}</strong>
                   <span class="et-cand-cat">{{ infoOf(m.expertId).category }}</span>
-                  <span v-if="String(form.leaderId) === String(m.expertId)" class="et-leader-badge">团长</span>
+                  <span v-if="String(form.leaderId) === String(m.expertId)" class="et-leader-badge">主理人</span>
                   <span v-if="infoOf(m.expertId).unavailable" class="et-warn-tag">{{ infoOf(m.expertId).unavailable }}</span>
                 </div>
-                <!-- 团长这一行不填「团内负责什么」：团长的分工就是下面的「团长职责」，两处会重复；
-                     取消团长后输入框恢复，之前填过的值保留 -->
+                <!-- 主理人这一行不填「团内负责什么」：主理人的分工就是下面的「主理人职责」，两处会重复；
+                     取消主理人后输入框恢复，之前填过的值保留 -->
                 <div v-if="String(form.leaderId) === String(m.expertId)" class="et-row-leader-note" data-testid="team-leader-row-note">
-                  团长的分工见下方「团长职责」
+                  主理人的分工见下方「主理人职责」
                 </div>
                 <el-input
                   v-else
@@ -651,7 +651,7 @@ const metaItems = computed(() => {
                   :type="String(form.leaderId) === String(m.expertId) ? 'primary' : ''"
                   :plain="String(form.leaderId) !== String(m.expertId)"
                   @click="toggleLeader(m.expertId)"
-                >{{ String(form.leaderId) === String(m.expertId) ? '取消团长' : '设为团长' }}</el-button>
+                >{{ String(form.leaderId) === String(m.expertId) ? '取消主理人' : '设为主理人' }}</el-button>
                 <el-button size="small" link :disabled="i === 0" @click="moveMember(i, -1)">上移</el-button>
                 <el-button size="small" link :disabled="i === form.members.length - 1" @click="moveMember(i, 1)">下移</el-button>
                 <el-button size="small" link type="danger" @click="removeMember(m.expertId)">移除</el-button>
@@ -661,13 +661,13 @@ const metaItems = computed(() => {
           <div v-if="errors.members" class="et-err">{{ errors.members }}</div>
 
           <div class="et-leader-tip">
-            设了团长，由团长按其专业口径拆解、分发、把关、汇总，员工无需确认安排；不设团长，由系统按「团队协作关系」拆解，员工确认安排后开始。
+            设了主理人，由主理人按其专业口径拆解、分发、把关、汇总，员工无需确认安排；不设主理人，由系统按「团队协作关系」拆解，员工确认安排后开始。
           </div>
 
-          <!-- 团长职责：设了团长才出现 -->
+          <!-- 主理人职责：设了主理人才出现 -->
           <div v-if="form.leaderId != null" class="et-leader-duty" data-testid="team-leader-duty">
             <div class="et-label-row">
-              <span><span class="et-req">*</span>团长职责</span>
+              <span><span class="et-req">*</span>主理人职责</span>
               <span v-if="!disabled" class="et-head-ops">
               <span v-if="aiLeaderDuty.disabled.value && aiLeaderDuty.title.value" class="et-ai-hint">{{ aiLeaderDuty.title.value }}</span>
               <el-button
@@ -688,7 +688,7 @@ const metaItems = computed(() => {
               maxlength="2000"
               show-word-limit
               :disabled="disabled"
-              placeholder="描述这个团按团长的口径怎么拆、怎么分，谁先谁后"
+              placeholder="描述这个团按主理人的口径怎么拆、怎么分，谁先谁后"
               :class="{ 'et-invalid': errors.leaderDuty }"
               @input="errors.leaderDuty = ''"
             />
@@ -696,13 +696,13 @@ const metaItems = computed(() => {
           </div>
         </template>
 
-        <!-- 团队协作关系：并入本卡片，紧接成员与团长（同专家详情页「技能引用」之类的一张卡里放相关内容） -->
+        <!-- 团队协作关系：并入本卡片，紧接成员与主理人（同专家详情页「技能引用」之类的一张卡里放相关内容） -->
         <div class="et-subsection" data-testid="team-collab-card">
         <div class="et-sec-headrow">
           <h3 class="section-title et-sub-title">
             <span v-if="form.leaderId == null" class="et-req">*</span>
             团队协作关系
-            <span class="section-sub">{{ form.leaderId == null ? '没设团长时必填' : '选填' }}，拆解依据，员工端不展示</span>
+            <span class="section-sub">{{ form.leaderId == null ? '没设主理人时必填' : '选填' }}，拆解依据，员工端不展示</span>
           </h3>
           <div class="et-head-ops">
             <span v-if="!disabled && aiCollab.disabled.value && aiCollab.title.value" class="et-ai-hint">{{ aiCollab.title.value }}</span>
