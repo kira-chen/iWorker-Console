@@ -324,6 +324,21 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
     expect(cvBody().querySelector('.cv-dialog-id').textContent.trim()).toBe('D-1031')
   })
 
+  it('对话明细【关闭】→ 回到点踩明细弹窗并停在原页码（PRD §七.3，2026-10-14 裁决），对话明细收起', async () => {
+    await openDl()
+    footBtn('下一页').click()
+    await flushAll(4)
+    expect(dlBody().querySelector('.dl-foot').textContent).toContain('第 2 / 6 页')
+    dlBody().querySelector('tbody tr button').click()
+    await flushAll(8)
+    await vi.waitFor(() => expect(shown(dlBody())).toBe(false))
+    ;[...cvBody().querySelectorAll('button')].find((b) => b.textContent.trim() === '关闭').click()
+    await flushAll(8)
+    await vi.waitFor(() => expect(shown(cvBody())).toBe(false))
+    expect(shown(dlBody())).toBe(true)
+    expect(dlBody().querySelector('.dl-foot').textContent).toContain('第 2 / 6 页')
+  })
+
   it('对话明细只展示被点踩的单轮（2 条：用户提问 + 被点踩回复），提问即表格里的摘要，无前情展开开关（PRD §七.2）', async () => {
     await openDl()
     const row = dlBody().querySelector('tbody tr')
