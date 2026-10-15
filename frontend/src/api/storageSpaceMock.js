@@ -279,6 +279,11 @@ function audit(action, m, detail, extra = {}) {
   })
 }
 
+/** 全局设置（默认容量 / 磁盘总量）的审计：对象是设置项而非员工，不带用户标识，客户端通知不读取（访问审计 §6.5.4 只认调整容量 / 同意 / 拒绝扩容）。 */
+function auditGlobal(action, target, detail) {
+  appendOpsRecord({ operator: currentDemoUsername(), module: '存储空间', action, target, detail })
+}
+
 /* ---------------- 容量分配 ---------------- */
 export async function getStorageOverview() {
   await delay(60)
@@ -459,6 +464,7 @@ export async function setDefaultQuota(quotaGb) {
   defaultQuotaGb = next
   if (prev !== next) {
     for (const m of followers) audit('调整容量', m, `${prev} GB → ${next} GB`, { fromGb: prev, newTotalGb: next })
+    auditGlobal('修改默认容量', '默认容量', `${prev} GB → ${next} GB`)
   }
   persist()
   return { defaultQuotaGb, count: prev === next ? 0 : followers.length }
@@ -472,7 +478,9 @@ export async function setDiskTotal(totalGb) {
   if (message) throw err(message.replace('容量', '磁盘总量'), 40001, 'diskTotalGb')
   const next = Number(totalGb)
   if (next < allocatedGb()) throw err(`磁盘总量不能低于已分配的 ${allocatedGb()} GB`, 40002, 'diskTotalGb')
+  const prev = diskTotalGb
   diskTotalGb = next
+  if (prev !== next) auditGlobal('修改磁盘总量', '磁盘总量', `${prev} GB → ${next} GB`)
   persist()
   return { diskTotalGb, remainingGb: diskTotalGb - allocatedGb() }
 }
