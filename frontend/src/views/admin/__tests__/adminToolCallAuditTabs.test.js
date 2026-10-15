@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
  * 工具调用审计 · 三页签（2026-09-28 加「岗位自动化任务」「知识库检索」页签，
@@ -16,6 +17,11 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 从「一次工具调用」改为「一次任务运行」，且全部操作免授权、不经确认，原「写操作预授权」
  * （已预授权 / 未授权）整套断言随之移除；「任务运行编号」字段废弃，记录本身已是运行级。
  * 「知识库检索」一节不受本次改版影响，原样保留。
+ *
+ * 固定系统时间到 2026-09-28（helpers/fixedAuditClock.js，与 adminToolCallAudit.test.js 共用）：种子在
+ * 2026-09-19 ~ 09-28，列表默认窗口是「今天往前 90 天」，不固定则真实日期推移后用例到期变红。
+ * 「文案逐字对 md」一节借请求编号（C-/T-/K-）搜索定位目标行——靠搜索框的编号匹配，随产品裁决
+ * （搜索框是否收口为不搜编号）调整定位方式。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -35,6 +41,7 @@ const flush = async () => {
 }
 
 beforeEach(() => {
+  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   createObjectURL = vi.fn(() => 'blob:mock/1')
@@ -49,6 +56,7 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
+  restoreAuditClock()
 })
 
 function mountReal() {
@@ -339,8 +347,48 @@ describe('文案与颜色逐字对 md（#92 ②⑦⑧⑨④）', () => {
     const drawer = await openDetail(pane('task'), 'T-2002')
     const t = drawer.textContent
     expect(t).not.toContain('自动化任务')
-    expect(drawer.querySelector('.el-descriptions').textContent).toContain('任务')
+    // 「自动化任务」含子串「任务」，不能用 toContain 判断：逐个 label 要求文本恰好等于「任务」
+    const labels = [...drawer.querySelectorAll('.el-descriptions__label')].map((l) => l.textContent.trim())
+    expect(labels).toContain('任务')
     expect(t).toContain('建议对照工具调用明细，核对出问题的具体连接器状态或权限')
+  })
+
+  it('零工具调用的任务运行（T-2012）：列表行结果「成功」、涉及写操作「否」；详情展示空态「本次运行未调用外部工具」（§8.5）', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    const drawer = await openDetail(p, 'T-2012')
+    // 抽屉已打开，列表行仍在背后：取列表行的标签
+    const tags = [...bodyRows(p)[0].querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    expect(tags).toContain('成功')
+    expect(tags).toContain('否')
+    expect(tags).not.toContain('失败')
+    expect(drawer.textContent).toContain('本次运行未调用外部工具')
+    expect(drawer.querySelectorAll('.call-item').length).toBe(0)
+  })
+
+  it('任务先失败后重试成功（T-2011）：列表行结果「成功」且不展示失败原因，失败细节只在详情里（§一「记录单元」）', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    const drawer = await openDetail(p, 'T-2011')
+    const row = bodyRows(p)[0]
+    expect(row.textContent).toContain('成功')
+    expect(row.textContent).not.toContain('失败')
+    expect(row.textContent).not.toContain('连接超时')
+    const items = [...drawer.querySelectorAll('.call-item')]
+    expect(items.length).toBe(2)
+    expect(items[0].textContent).toContain('连接超时')
+  })
+
+  it('知识库详情：失败但请求已发出（耗时有值，K-3006）拼「检索耗时 X / 原因」（§9.5）', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const drawer = await openDetail(pane('knowledge'), 'K-3006')
+    expect(drawer.textContent).toContain('检索耗时 8 秒 / 连接超时（8000 ms）')
   })
 
   it('知识库详情：第二步标题为「执行结果」；未发出请求（无访问权限）只展示原因，不拼「检索耗时 未执行」（§9.5）', async () => {

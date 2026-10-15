@@ -30,6 +30,11 @@ import { fmtMinute } from '@/utils/datetime'
  * - 访问审计写记录（发布 / 停用审核通过时、撤回时），变更内容一律为版本的更新说明。
  * 种子：Windows v1.2.0 / Mac v1.1.0 已发布；Windows v1.0.0 / v1.1.0、Mac v1.0.0 是被顶替回到未发布的旧版本（发布过）；
  * Windows v1.3.0（id 4）从未发布；Mac v1.2.0（id 7）发布审核中（审核中心 id 13、我的申请 id 518 同一笔）。
+ *
+ * 2026-10-15（#93 ⑤）：updateVersion 两条编辑拦截文案逐字对 md §3.3【编辑】置灰悬停提示。页面悬停提示取自
+ * AdminVersions.vue 的 editDisabledReason（独立字面量，与 mock 不是同一常量），页面层断言在
+ * views/admin/__tests__/adminVersions.test.js（tipOf(...,'编辑')）；本文件只守 mock 层文案，两处各自对 md 逐字，
+ * 任一处改动另一处的用例会报红提醒同步。
  */
 
 const pkg = { fileName: 'iWorker-Setup-1.4.0.exe', fileSize: 1024, sha256: 'a'.repeat(64) }
