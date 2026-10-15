@@ -279,9 +279,9 @@ function audit(action, m, detail, extra = {}) {
   })
 }
 
-/** 全局设置（默认容量 / 磁盘总量）的审计：对象是设置项而非员工，不带用户标识，客户端通知不读取（访问审计 §6.5.4 只认调整容量 / 同意 / 拒绝扩容）。 */
-function auditGlobal(action, target, detail) {
-  appendOpsRecord({ operator: currentDemoUsername(), module: '存储空间', action, target, detail })
+/** 全局设置（默认容量 / 磁盘总量）的审计：对象是设置项而非员工，不带用户标识；「修改默认容量」带新默认值，客户端据此处理所有跟随默认的员工（访问审计 §6.5.4），「修改磁盘总量」客户端不读取。 */
+function auditGlobal(action, target, detail, meta) {
+  appendOpsRecord({ operator: currentDemoUsername(), module: '存储空间', action, target, detail, ...(meta ? { meta } : {}) })
 }
 
 /* ---------------- 容量分配 ---------------- */
@@ -452,7 +452,7 @@ export function __resetStorageSpaceMock() {
 }
 
 /* ---------------- 默认容量 / 磁盘总量 ---------------- */
-/** 修改默认容量：对所有未单独设置的员工生效（含有待处理申请的），总量变了的逐人写「调整容量」审计。 */
+/** 修改默认容量：对所有未单独设置的员工生效（含有待处理申请的）；只写一条「修改默认容量」审计，不再逐人写「调整容量」（2026-10-15）。 */
 export async function setDefaultQuota(quotaGb) {
   await delay()
   reconcile()
@@ -463,8 +463,7 @@ export async function setDefaultQuota(quotaGb) {
   const prev = defaultQuotaGb
   defaultQuotaGb = next
   if (prev !== next) {
-    for (const m of followers) audit('调整容量', m, `${prev} GB → ${next} GB`, { fromGb: prev, newTotalGb: next })
-    auditGlobal('修改默认容量', '默认容量', `${prev} GB → ${next} GB`)
+    auditGlobal('修改默认容量', '默认容量', `${prev} GB → ${next} GB`, { fromGb: prev, newTotalGb: next })
   }
   persist()
   return { defaultQuotaGb, count: prev === next ? 0 : followers.length }

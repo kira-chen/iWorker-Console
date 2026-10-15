@@ -434,19 +434,21 @@ describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md
 })
 
 describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', () => {
-  it('修改默认容量：只影响未单独设置的员工，逐人写「调整容量」审计，概览同步', async () => {
+  it('修改默认容量：只影响未单独设置的员工，只写一条「修改默认容量」审计（不逐人写「调整容量」），概览同步', async () => {
     const res = await setDefaultQuota(3)
     expect(res).toEqual({ defaultQuotaGb: 3, count: 2 })
     expect(await memberOf('yangfan')).toMatchObject({ totalGb: 3, quotaSource: 'DEFAULT' })
     expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'PERSONAL' })
-    // 2 条逐人「调整容量」（客户端通知来源）+ 1 条「修改默认容量」（全局设置，对象「默认容量」，不带用户标识）
-    expect(liveOps().filter((r) => r.action === '调整容量')).toHaveLength(2)
+    // 只写 1 条全局记录「修改默认容量」（对象「默认容量」，不带用户标识、不逐人写「调整容量」）
+    expect(liveOps().filter((r) => r.action === '调整容量')).toHaveLength(0)
     const global = liveOps().filter((r) => r.action === '修改默认容量')
     expect(global).toHaveLength(1)
     expect(global[0]).toMatchObject({ target: '默认容量', detail: '1 GB → 3 GB', operator: 'demo' })
     expect(global[0].objectId).toBeUndefined()
-    // 全局设置记录客户端不读取：客户端视图里本次新增的存储空间记录只有那 2 条逐人调整
-    expect(listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)).toHaveLength(2)
+    // 客户端要读这条：type「修改默认容量」、无用户、newTotalGb = 新默认值
+    const fromClient = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.type === '修改默认容量')
+    expect(fromClient).toHaveLength(1)
+    expect(fromClient[0]).toMatchObject({ username: null, userId: null, newTotalGb: 3, requestId: null })
     expect(await getStorageOverview()).toMatchObject({ defaultQuotaGb: 3, allocatedGb: 59, remainingGb: 941 })
   })
 

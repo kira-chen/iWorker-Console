@@ -112,7 +112,7 @@ const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时
  *   forceRevoke   {kind, recordId, at, objectType(=模块), objectId, objectName, reason}                         §6.5.1
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
- *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
+ *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'|'修改默认容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
  */
 export function listClientFacingOps({ since } = {}) {
   const out = []
@@ -140,12 +140,13 @@ export function listClientFacingOps({ since } = {}) {
         fromPosition: m.fromPosition ? { ...m.fromPosition } : null,
         toPosition: m.toPosition ? { ...m.toPosition } : null
       })
-    } else if (r.module === '存储空间' && ['同意扩容', '拒绝扩容', '调整容量'].includes(r.action)) {
+    } else if (r.module === '存储空间' && ['同意扩容', '拒绝扩容', '调整容量', '修改默认容量'].includes(r.action)) {
+      // 修改默认容量是全局设置：没有用户（username / userId 为 null），newTotalGb = 新默认值，客户端对「跟随默认」的员工生效
       const m = r.meta || {}
       out.push({
         kind: 'storageQuota', recordId: r.id, at, type: r.action,
-        username: m.username ?? r.target,
-        userId: m.userId ?? r.objectId ?? null,
+        username: r.action === '修改默认容量' ? null : m.username ?? r.target,
+        userId: r.action === '修改默认容量' ? null : m.userId ?? r.objectId ?? null,
         requestId: m.requestId ?? null,
         newTotalGb: m.newTotalGb ?? null,
         rejectReason: r.action === '拒绝扩容' ? r.detail || '' : ''
