@@ -112,12 +112,14 @@ const HELP = [
   '命中 0 条的检索属于"成功"，单独统计为"无命中检索"，只能通过该统计卡片筛选，没有单独的筛选下拉。执行耗时为数据源实际响应时间。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 没有定义 CSV 列（只写导出当前筛选结果）；列 = 列表列 + 详情里的请求参数 / 数据源 / 原因，属 demo 自定默认。
+ * 结果列名与另两页签统一叫「执行结果」。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-知识库检索-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '执行结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
       r.result === 'SUCCESS' ? r.hitCount : '', EXEC_RESULT_LABEL[r.result], r.reason, r.duration
