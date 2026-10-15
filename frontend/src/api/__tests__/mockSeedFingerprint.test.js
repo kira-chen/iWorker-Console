@@ -33,7 +33,7 @@ vi.mock('@/api/mockPersist', async (importOriginal) => ({
 const FINGERPRINTS = {
   accessAuditOps: { version: 2, fp: 'ebadc885' },
   adminModel: { version: 2, fp: '2887e06b' },
-  adminUser: { version: 5, fp: '0e60d0d7' },
+  adminUser: { version: 6, fp: '160798e0' },
   apiConnector: { version: 7, fp: 'aca4ffcf' },
   bizSystem: { version: 5, fp: 'ceed8d44' },
   dataTable: { version: 2, fp: '592831be' },
@@ -53,6 +53,7 @@ const FINGERPRINTS = {
   skillReview: { version: 3, fp: 'aa231c01' },
   storageSpace: { version: 7, fp: '20a5548d' },
   unifiedSkill: { version: 7, fp: '625171be' },
+  userAccess: { version: 2, fp: 'b5fcbf84' },
   version: { version: 5, fp: '45a0afc5' }
 }
 

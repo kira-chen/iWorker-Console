@@ -55,7 +55,8 @@ async function mount() {
       { path: '/admin/connector', name: 'AdminConnector', component: { template: '<div />' } },
       { path: '/admin/user-skill-reviews', name: 'SysConfigUserSkillReviews', component: { template: '<div />' } },
       { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
-      { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } }
+      { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } },
+      { path: '/admin/user-access', name: 'AdminUserAccess', component: { template: '<div />' } }
     ]
   })
   await router.push('/')
@@ -229,10 +230,19 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     expect(router.currentRoute.value.query).toMatchObject({ tab: 'request', status: 'PENDING' })
   })
 
-  it('区块头「共 N 项」= 五张卡片数量之和', async () => {
+  it('「用户访问权限」卡【去处理】→ 进授权名单并只看有待处理申请的员工（?pending=1）', async () => {
+    await mount()
+    const btn = todoCard('用户访问权限').querySelector('button')
+    expect(btn.textContent.trim()).toBe('去处理')
+    btn.click()
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminUserAccess'))
+    expect(router.currentRoute.value.query).toMatchObject({ pending: '1' })
+  })
+
+  it('区块头「共 N 项」= 六张卡片数量之和', async () => {
     await mount()
     const panel = [...mounted.container.querySelectorAll('.dash-panel')].find((p) => p.querySelector('.dash-panel-title')?.textContent.trim() === '异常与待办')
-    expect(panel.querySelector('.dash-panel-count').textContent).toContain('共 25 项')
+    expect(panel.querySelector('.dash-panel-count').textContent).toContain('共 27 项')
   })
 
   it('点卡片本身（非行动按钮）→ 不跳转、也不弹提示', async () => {

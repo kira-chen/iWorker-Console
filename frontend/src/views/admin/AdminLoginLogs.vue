@@ -211,6 +211,7 @@ const MOD_CLS = {
   模型: 'tag-orange',
   运行规格: 'tag-gray',
   存储空间: 'tag-gray',
+  用户访问权限: 'tag-purple',
   审核中心: 'tag-green',
   用户技能审核: 'tag-orange',
   版本管理: 'tag-gray',
@@ -225,6 +226,10 @@ const ACT_CLS = {
   调整容量: 'tag-green',
   修改默认容量: 'tag-green',
   修改磁盘总量: 'tag-green',
+  授权: 'tag-green',
+  收回: 'tag-orange',
+  通过申请: 'tag-green',
+  驳回申请: 'tag-red',
   停用: 'tag-orange',
   强制回收: 'tag-red',
   删除: 'tag-red',
@@ -248,6 +253,7 @@ const MODULE_ROUTE = {
   模型:       { name: 'AdminModels' },
   运行规格:   { name: 'AdminRuntimeSpecs' },
   存储空间:   { name: 'AdminStorageSpace' },
+  用户访问权限: { name: 'AdminUserAccess' },
   审核中心:   { name: 'UnifiedReview' },
   用户技能审核: { name: 'SysConfigUserSkillReviews' },
   版本管理:   { name: 'AdminVersions' },
@@ -260,6 +266,7 @@ function opsGoto(row) {
     return
   }
   // 存储空间：调整容量、修改默认容量 / 磁盘总量落在容量分配页签（默认页签），同意 / 拒绝扩容落在扩容申请页签（访问审计 §6.3）；
+  // 用户访问权限：授权 / 收回 / 通过申请 / 驳回申请四类记录都落在授权名单（权限申请已并入授权名单，无单独页签），走默认跳转。
   // 修改默认容量 / 磁盘总量的对象是全局设置而非员工，不注入关键词（否则员工列表会被滤空）
   const extra = row.module === '存储空间' && ['同意扩容', '拒绝扩容'].includes(row.action) ? { tab: 'request' } : def.extraQuery
   const globalSetting = row.module === '存储空间' && ['修改默认容量', '修改磁盘总量'].includes(row.action)
@@ -473,11 +480,11 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','岗位分配','专家','专家团','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','岗位分配','专家','专家团','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','用户访问权限','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量','修改默认容量','修改磁盘总量']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量','修改默认容量','修改磁盘总量','授权','收回','通过申请','驳回申请']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button @click="opsList.search">查询</el-button>

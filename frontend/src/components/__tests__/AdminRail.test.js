@@ -63,6 +63,8 @@ function makeRouter() {
       // 06 组织
       { path: '/admin/users', name: 'AdminUsers', component: blank },
       { path: '/admin/roles', name: 'AdminRoles', component: blank },
+      // 2026-10-13 新增「用户访问权限」（列于角色与权限之后）
+      { path: '/admin/user-access', name: 'AdminUserAccess', component: blank },
       // 沉浸页（activeMenu 归并）
       {
         path: '/admin/platform-skills/:id/edit',
@@ -172,7 +174,7 @@ describe('AdminRail 六段分组窄轨（带序号）', () => {
       // 2026-09-01 PRD 对齐改造取代旧口径：治理组新增「我的申请」，列于「审核中心」之前
       // 2026-09-28 PRD 首次落地：「工具调用审计」新增，列于「访问审计」之后
       '我的申请', '审核中心', '用户技能审核', '访问审计', '工具调用审计', '用户反馈', '字段字典', '版本管理',
-      '用户', '角色与权限'
+      '用户', '角色与权限', '用户访问权限'
     ])
     // 改版后旧文案 / 已移除项不应再出现
     expect(labelsOf(el)).not.toContain('报表')
