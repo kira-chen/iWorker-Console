@@ -77,8 +77,9 @@ export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
  */
 function deriveExec(calls) {
   const hasWrite = calls.some((c) => c.nature === 'WRITE')
+  // 零调用（calls 为空）：没有失败的调用，整体记成功（§一「可能调用零到多个外部工具」，详情展示空态文案）
   const last = calls[calls.length - 1]
-  const result = last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
+  const result = !last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
   return { hasWrite, result }
 }
 
@@ -87,7 +88,7 @@ function deriveExec(calls) {
  * （同一技能多次调用合并为一项），两者互不关联（§五.2）。不展示「执行中」
  * 的记录——没有「待确认」这个中间态可展示，一次执行只在确认 / 执行都有结果后才入账，故这里没有
  * 类似「排产计划调整·待确认中」的记录。同一次对话里技能被循环调用多次，每次各自算一条独立执行，
- * 不合并——下面 9 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
+ * 不合并——下面 12 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
  * 演示"一次执行多步"与"工具先失败、重试后整体仍成功"（后者对应与梅竹讨论的 G3：失败不应让单次
  * 失败盖掉整体结果）。 */
 export const toolCallRecords = [
@@ -193,6 +194,25 @@ export const toolCallRecords = [
     calls: [
       { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
+  },
+  {
+    // 零工具调用：调用了技能但全程没有触发任何外部工具（§一「可能调用零到多个外部工具」），
+    // 详情「按工具」维度展示空态文案「本次会话未调用外部工具」，不视为异常（§七）。
+    id: 'C-1011', date: '2026-09-28', time: '10:05:30', user: '陈杰', position: '销售顾问',
+    reason: '',
+    skillCalls: [{ skill: '话术润色', result: 'SUCCESS', reason: '' }],
+    calls: []
+  },
+  {
+    // 多次调用失败：同一次会话里两个工具调用都失败、没有后续成功收口，整体记失败；
+    // 原因概要按 §四「不止一次调用出问题」展示「N 次调用失败，详见详情」（单次失败才写「工具标识 原因」）。
+    id: 'C-1012', date: '2026-09-19', time: '11:12:47', user: '张浩', position: '生产计划员',
+    reason: '2 次调用失败，详见详情',
+    skillCalls: [],
+    calls: [
+      { tool: '业务系统·SAP ERP', action: '查询库存', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
+    ]
   }
 ].map((r) => ({ ...r, skills: r.skillCalls.map((c) => c.skill), ...deriveExec(r.calls) }))
 
@@ -231,7 +251,7 @@ export const taskCallRecords = [
   },
   {
     id: 'T-2002', date: '2026-09-24', time: '08:00:04', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
-    reason: '客户档案已锁定，写入被拒绝',
+    reason: 'API·客户数据 API 客户档案已锁定，写入被拒绝',
     calls: [
       { tool: 'API·客户数据 API', action: '写入拜访提纲', nature: 'WRITE', result: 'FAILED', reason: '客户档案已锁定，写入被拒绝' }
     ]
@@ -301,6 +321,22 @@ export const taskCallRecords = [
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'FAILED', reason: '不在工具白名单' }
     ]
+  },
+  {
+    // 失败后重试成功：先失败（连接超时）后重试成功，列表层仍记「成功」，失败细节只在详情里看到（同会话调用 C-1007，G3 场景）。
+    id: 'T-2011', date: '2026-09-27', time: '08:30:05', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
+    reason: '',
+    calls: [
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'SUCCESS', reason: '' }
+    ]
+  },
+  {
+    // 零工具调用：任务运行全程没触发外部工具（§8.5），详情展示空态文案「本次运行未调用外部工具」，
+    // 整体记成功、不涉及写操作。日期放在较早位置（09-22），不挤占既有用例依赖的首页行。
+    id: 'T-2012', date: '2026-09-22', time: '08:00:02', user: '刘敏', position: '经营分析岗', task: '客户满意度周报', trigger: '定时·每周一 08:00',
+    reason: '',
+    calls: []
   }
 ].map((r) => ({ ...r, ...deriveExec(r.calls) }))
 

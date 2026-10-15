@@ -25,11 +25,11 @@ const refreshing = ref(false)
 
 // 异常与待办：行动按钮真实跳转对应模块页面（原型是 toast 占位，这里改为路由跳转）
 const alerts = [
-  { count: 11, level: 'medium', label: '待审核', text: '审核中心有 11 条申请待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
-  { count: 3,  level: 'high',   label: '连接失败', text: '连接器有 3 个连接失败',        meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
-  { count: 2,  level: 'high',   label: '高风险',   text: '用户上传技能有 2 个高风险',    meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
-  { count: 5,  level: 'medium', label: '待分配',   text: '岗位管理有 5 条待分配申请',    meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments', query: { pending: '1' } },
-  { count: 4,  level: 'medium', label: '待扩容',   text: '存储空间有 4 条扩容申请待处理', meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace', query: { tab: 'request', status: 'PENDING' } },
+  { count: 11, level: 'medium', label: '待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
+  { count: 3,  level: 'high',   label: '连接失败', meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
+  { count: 2,  level: 'high',   label: '高风险',   meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
+  { count: 5,  level: 'medium', label: '待分配',   meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments', query: { pending: '1' } },
+  { count: 4,  level: 'medium', label: '待扩容',   meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace', query: { tab: 'request', status: 'PENDING' } },
 ]
 const alertTotal = alerts.reduce((s, x) => s + x.count, 0)
 

@@ -48,7 +48,8 @@ const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success' }
 const YES_NO = { true: '是', false: '否' }
-const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
+// §六 列表层：是（涉及写操作）绿、否灰
+const YES_NO_TAG = (v) => (v ? 'success' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
 const query = reactive({ result: '', hasWrite: '' })
@@ -62,6 +63,8 @@ const {
   fetcher: listToolCallAudits,
   records: toolCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
+  // 搜索范围：md §三 第 4 条 只写用户 / 岗位 / 技能 / 工具标识，未写请求编号（仅知识库页签 §9.3 写了）；
+  // 这里多带 r.id 是有意保留——演示里按编号（C-xxxx / T-xxxx）直达某条记录最省事，也是用例的定位手段。待产品确认是否收口。
   keywordOf: (r) => [r.user, r.position, ...r.skills, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
@@ -88,6 +91,7 @@ const metrics = computed(() => {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
+      // 副标题「按整体结果判定」md 未写（§二 卡片说明列只有「整体判定为失败的记录数」），由说明列改写而来，意思一致故保留
       sub: '按整体结果判定',
       danger: true
     }
@@ -113,7 +117,9 @@ const HELP = [
   '一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 只写「导出当前筛选结果，展示『已导出 N 条筛选结果』」，没有定义 CSV 列。这里的列 = 列表列 + 「请求编号」「原因」
+ * （编号便于与详情 / 反馈对账），属于 demo 自定的合理默认，不是 md 口径；产品若要定列，以 md 为准回头调整。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
@@ -170,7 +176,7 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  if (d.result === 'FAILED') return '建议对照上方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
   return '本次执行已完成，可在调用明细中查看具体过程。'
 }
 </script>

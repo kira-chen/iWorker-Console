@@ -304,9 +304,9 @@ export async function updateVersion(id, payload) {
   await delay()
   const row = find(id)
   if (!row) throw err('版本不存在或已被删除')
-  if (row.status === PENDING_REVIEW) throw err('审核中，已锁定不可修改。可先撤回申请后继续编辑')
+  if (row.status === PENDING_REVIEW) throw err('审核中，已锁定不可编辑；如需修改请先撤回申请')
   if (row.status !== UNPUBLISHED || everPublished(row)) {
-    throw err('曾发布过的版本不可编辑，如需更正请新建更高版本号的版本')
+    throw err('已发布过的版本不可编辑；如需更正请新建更高版本号的版本')
   }
   const key = checkPayload({ ...payload, terminal: row.terminal }, row.id)
   applyFields(row, payload, key)

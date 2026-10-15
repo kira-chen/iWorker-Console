@@ -21,7 +21,7 @@ const activeTab = ref('skill')
 
 <template>
   <div class="list-page">
-    <PageHeader title="工具调用审计" subtitle="追溯每次工具调用的发起人、确认过程与执行结果" />
+    <PageHeader title="工具调用审计" subtitle="追溯每次会话 / 任务运行的发起人、确认过程与执行结果" />
 
     <el-tabs v-model="activeTab" class="tca-tabs">
       <el-tab-pane label="会话调用" name="skill" lazy>

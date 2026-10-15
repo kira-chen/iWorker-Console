@@ -112,12 +112,14 @@ const HELP = [
   '命中 0 条的检索属于"成功"，单独统计为"无命中检索"，只能通过该统计卡片筛选，没有单独的筛选下拉。执行耗时为数据源实际响应时间。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 没有定义 CSV 列（只写导出当前筛选结果）；列 = 列表列 + 详情里的请求参数 / 数据源 / 原因，属 demo 自定默认。
+ * 结果列名与另两页签统一叫「执行结果」。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-知识库检索-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '执行结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
       r.result === 'SUCCESS' ? r.hitCount : '', EXEC_RESULT_LABEL[r.result], r.reason, r.duration
@@ -163,6 +165,13 @@ function resultExplain(d) {
   return '本次检索已完成，可查看命中的内容来源。'
 }
 
+/** 第二步描述（§9.5 ②「成功展示命中条数，失败附原因」）：失败的检索若请求已发出，补一段数据源实际响应耗时；
+ *  未发出请求（耗时展示「未执行」，如无该知识库访问权限）没有响应耗时可言，只展示原因。 */
+function resultDesc(d) {
+  if (d.result === 'SUCCESS') return `检索耗时 ${d.duration}，命中 ${d.hitCount} 条`
+  return d.duration === '未执行' ? d.reason : `检索耗时 ${d.duration} / ${d.reason}`
+}
+
 /** 执行过程时间线：只有发起、结果两步——结果只有成功 / 失败两态，不再区分"检查未通过"
  *  与"执行失败"两个阶段（2026-10-09 改版，PRD §九.5）。 */
 function timelineSteps(d) {
@@ -170,8 +179,8 @@ function timelineSteps(d) {
     { time: d.time, title: '发起检索', desc: `${d.user} 通过「${d.position}」提问，引用的知识库「${d.kb}」向数据源「${d.source}」发起检索。`, type: 'primary' },
     {
       time: '',
-      title: EXEC_RESULT_LABEL[d.result],
-      desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
+      title: '执行结果',
+      desc: resultDesc(d),
       type: d.result === 'FAILED' ? 'danger' : 'success'
     }
   ]

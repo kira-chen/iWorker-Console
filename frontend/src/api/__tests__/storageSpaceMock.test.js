@@ -369,6 +369,25 @@ describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconci
     expect((await getStorageOverview()).pendingCount).toBe(4)
     expect((await getExpansionRequest('ER-1005')).status).toBe('PENDING')
   })
+
+  it('停用账号的申请种子（周明 205 待处理 ER-1007 / 吴杰 211 已拒绝 ER-0997）：默认不展示、角标不计；重新启用后才出现', async () => {
+    // 前提：两个账号在种子里确实是停用的，且申请确实存在于种子——否则下面「不含」断言空转
+    expect(listUsersSync().find((u) => u.id === 205).status).not.toBe('active')
+    expect(listUsersSync().find((u) => u.id === 211).status).not.toBe('active')
+    const idsOf = async (status) => (await listExpansionRequests({ size: 50, status })).list.map((r) => r.id)
+
+    expect(await idsOf()).not.toContain('ER-1007')
+    expect(await idsOf()).not.toContain('ER-0997')
+    expect((await getStorageOverview()).pendingCount).toBe(4) // 只有刘强 / 孙欣 / 王芳 / 陈宇，不计周明 205
+
+    await updateUser(205, { status: 'active' })
+    expect(await idsOf('PENDING')).toContain('ER-1007')
+    expect((await getStorageOverview()).pendingCount).toBe(5)
+
+    await updateUser(211, { status: 'active' })
+    expect(await idsOf('REJECTED')).toContain('ER-0997')
+    expect((await getStorageOverview()).pendingCount).toBe(5) // 已拒绝不影响待处理角标
+  })
 })
 
 describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审计种子对齐）', () => {
