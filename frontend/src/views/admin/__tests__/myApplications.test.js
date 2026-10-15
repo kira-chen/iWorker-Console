@@ -153,14 +153,14 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(listMyApplications).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'desc', page: 1 }))
   })
 
-  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型九项（含版本管理）、申请类型三项、审核结果四项、【查询】', async () => {
+  it('查询区（md §二）：占位「搜索申请对象名称 / 描述」、业务类型九项（含版本管理）、申请类型四项（含强制回收）、审核结果四项、【查询】', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索申请对象名称 / 描述')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型', '全部审核结果'])
     const opts = (i) => [...selects[i].querySelectorAll('.el-option')].map((o) => o.textContent)
-    expect(opts(0)).toEqual(['专家', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
-    expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用'])
+    expect(opts(0)).toEqual(['专家', '专家团', '岗位', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
+    expect(opts(1)).toEqual(['首次发布', '新版本发布', '停用', '强制回收'])
     expect(opts(2)).toEqual(['待审核', '已通过', '已驳回', '已撤回'])
     expect(toolbarBtn('查询')).toBeTruthy()
   })
@@ -201,6 +201,19 @@ describe('MyApplications · 我的申请（md prd.我的申请.md）', () => {
     expect(r501.querySelector('[data-label="申请版本"]').textContent.trim()).toBe('—')
     expect(rowById(503).querySelector('[data-label="申请版本"]').textContent.trim()).toBe('v2.2.0')
     expect(r501.textContent).toContain('2026-08-28 10:30')
+  })
+
+  it('强制回收申请 → 申请类型是红色「强制回收」（与「停用」分开）并悬停展示回收原因；普通停用仍是「停用」、发布申请不受影响（md 各模块强制回收小节）', async () => {
+    const forced = { ...byId(510), id: 531, objectName: '合同审阅专员', applicationType: 'FORCE_REVOKE', result: 'REJECTED', objectDeleted: false, forceRevokeReason: '涉及违规内容' }
+    listMyApplications.mockResolvedValue({ list: [forced, byId(510), byId(501)], total: 3 })
+    await mount()
+    const tags = (row) => [...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    const forcedRow = rowEls().find((el) => el.textContent.includes('合同审阅专员'))
+    expect(tags(forcedRow)).toEqual(['专家', '强制回收', '已驳回'])
+    expect(forcedRow.querySelector('.status-tag.st--danger').textContent.trim()).toBe('强制回收')
+    expect(forcedRow.querySelector('span[title]').getAttribute('title')).toBe('回收原因：涉及违规内容')
+    expect(tags(rowEls().find((el) => el.textContent.includes('法务审阅专家')))).toEqual(['专家', '停用', '已撤回'])
+    expect(tags(rowById(501))).toEqual(['API', '首次发布', '待审核'])
   })
 
   it('已驳回行的审核结果标签悬停展示驳回原因（tooltip content=rejectReason）；其余状态无气泡（md §3.1「已驳回的标签悬停展示驳回原因」）', async () => {

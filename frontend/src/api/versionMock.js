@@ -25,7 +25,7 @@
  * - 发布人（publishedBy）= 提交发布申请的人的登录用户名（如 xiaomei），发布时间 = 最近一次审核通过生效的时间；
  *   从未发布过的显示「—」（PRD §3.3）。
  * - 往访问审计「管理端操作」写记录（PRD §八）：发布 / 停用**审核通过生效时**各写一条（操作人 = 申请人），
- *   撤回审核中的申请写「撤回」；操作对象 =「终端 + 版本号」，**变更内容一律 = 该版本的更新说明**（2026-09-20 负责人拍板）。
+ *   撤回审核中的申请不记；操作对象 =「终端 + 版本号」，**变更内容一律 = 该版本的更新说明**（2026-09-20 负责人拍板）。
  *   提交审核本身、审核驳回、新版本生效引起的旧版本自动回到未发布不单独记；规则报错（校验不通过）时不写。
  * - 供其它模块调用的接口：applyVersionReviewResult（审核中心通过 / 驳回落地）、withdrawVersion（撤回，
  *   我的申请也走它）、getVersion（审核 / 申请详情按 refId 取当前配置）。
@@ -304,9 +304,9 @@ export async function updateVersion(id, payload) {
   await delay()
   const row = find(id)
   if (!row) throw err('版本不存在或已被删除')
-  if (row.status === PENDING_REVIEW) throw err('审核中，已锁定不可修改。可先撤回申请后继续编辑')
+  if (row.status === PENDING_REVIEW) throw err('审核中，已锁定不可编辑；如需修改请先撤回申请')
   if (row.status !== UNPUBLISHED || everPublished(row)) {
-    throw err('曾发布过的版本不可编辑，如需更正请新建更高版本号的版本')
+    throw err('已发布过的版本不可编辑；如需更正请新建更高版本号的版本')
   }
   const key = checkPayload({ ...payload, terminal: row.terminal }, row.id)
   applyFields(row, payload, key)
@@ -316,7 +316,7 @@ export async function updateVersion(id, payload) {
 
 /* ---------------- 发布 / 停用（提交审核）与撤回 ---------------- */
 
-/** 往访问审计「管理端操作」写一条版本管理记录：变更内容一律取该版本的更新说明（发布 / 停用 / 撤回同）。 */
+/** 往访问审计「管理端操作」写一条版本管理记录：变更内容一律取该版本的更新说明（发布 / 停用同；撤回不记）。 */
 function auditVersionOp(row, action, operator = currentDemoUsername()) {
   appendOpsRecord({ operator, module: '版本管理', action, target: objectName(row), detail: row.releaseNotes })
 }
@@ -413,7 +413,7 @@ export async function stopVersion(id) {
 
 /**
  * 撤回审核中的申请（发布申请或停用申请）：版本回到提交前的状态（未发布 / 已发布），
- * 审核中心行摘掉、我的申请行置「已撤回」，访问审计记一条「撤回」。我的申请页的【撤回】也走这里。
+ * 审核中心行摘掉、我的申请行置「已撤回」，撤回不写访问审计。我的申请页的【撤回】也走这里。
  */
 export async function withdrawVersion(id) {
   await delay()
@@ -424,7 +424,6 @@ export async function withdrawVersion(id) {
   row.updatedAt = nowIsoLocal()
   persist()
   unenrollReview('VERSION', row.id)
-  auditVersionOp(row, '撤回')
   return clone(row)
 }
 

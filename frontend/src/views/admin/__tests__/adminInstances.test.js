@@ -8,12 +8,12 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * AdminInstances.vue（实例管理）真实挂载单测。
  * 2026-10-08 对齐 04运行/实例管理/prd.实例管理.md §五 / §七 / §九：三种查看方式（按规格 / 按岗位 / 实例明细）、
  * 四张指标卡、实例明细列与实例详情；本页只管实例，不含任务 / 排队 / 会话。
- * 状态机缺边（启动中→运行中/空闲、回收中→移除）见待办 clcao#2，此处不覆盖。
+ * 状态机（启动中→空闲、回收中→移除）已由 clcao#2 闭环；本文件守页面交互。
  * 只 mock @/api/instance；指标卡用例改喂 instanceMock 真种子以核对真实计数。
  *
  * 2026-10-08 补主流程（对齐同一 md §五.2 指标卡下钻与再次点击取消 / §六.3 汇总按筛选计算、【查看实例】带可见筛选 /
  * §八.4 不可操作展示原因 / §九 重建确认展示原规格与目标规格、提交成功 / 失败提示）。
- * 已登记缺陷不在此写成正常断言：「规格待生效」卡不能取消（clcao#2）、重建置灰不展示原因 / 切回汇总仍带下钻筛选（clcao#6）。
+ * clcao#2 / #6 已闭环；相关交互在本文件及数据层用例持续守护。
  */
 
 // instanceMock 带 localStorage 持久化，jsdom 下置空（同 instanceMock.test.js）
@@ -27,7 +27,7 @@ const AdminInstances = (await import('@/views/admin/AdminInstances.vue')).defaul
 
 const rows = [
   { id: 'ins-1', name: '张敏', username: 'zhangmin', position: '经营分析岗', status: 'RUNNING', actualSpec: '重', effectiveSpec: '重', cpu: '4 核 / 16 Gi', usage: '2.8 核 / 9.6 Gi', startedAt: '2026-09-16 09:12', active: '2026-09-16 15:28', updatedAt: '2026-09-16 15:30', error: '—', operable: false, operationHint: '实例当前繁忙', records: [] },
-  { id: 'ins-2', name: '李琳', username: 'lilin', position: '客户成功岗', status: 'IDLE', actualSpec: '标准', effectiveSpec: '重', cpu: '2 核 / 4 Gi', usage: '0.2 核 / 0.8 Gi', startedAt: '2026-09-16 08:40', active: '2026-09-16 14:56', updatedAt: '2026-09-16 15:30', error: '—', operable: true, operationHint: '', records: [] }
+  { id: 'ins-2', name: '李琳', username: 'lilin', position: '客户成功岗', status: 'IDLE', actualSpec: '标准', effectiveSpec: '重', specSource: '个人配置', cpu: '2 核 / 4 Gi', usage: '0.2 核 / 0.8 Gi', startedAt: '2026-09-16 08:40', active: '2026-09-16 14:56', updatedAt: '2026-09-16 15:30', error: '—', operable: true, operationHint: '', records: [{ type: '重启', operator: '管理员', time: '2026-09-16 14:00', result: '成功' }] }
 ]
 
 let mounted
@@ -119,6 +119,13 @@ const drawer = () => document.body.querySelector('.el-drawer')
 const drawerBtn = (text) => [...drawer().querySelectorAll('.detail-actions .el-button')].find((b) => b.textContent.trim() === text)
 
 describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / §六.3）', () => {
+  it('实例明细默认按异常→启动中→运行中→空闲，同状态再按最近活跃倒序（md §七）', async () => {
+    const c = await mountWithSeed()
+    c.querySelectorAll('.view-switch .el-radio-button')[2].querySelector('input').click()
+    await flushAll(8)
+    expect(detailUsers(c)).toEqual(['周明', '陈宇', '张伟', '李娜', '赵敏'])
+  })
+
   it('点「异常」指标卡 → 切到实例明细、状态筛选显示「异常」、只剩周明一行；再点一次 → 取消状态筛选，5 个实例全回来', async () => {
     const c = await mountWithSeed()
     expect(activeView(c)).toBe('按规格')
@@ -132,6 +139,38 @@ describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / 
     expect(activeView(c)).toBe('实例明细')
     expect(selectShown(c, 0)).toBe('全部状态')
     expect(detailUsers(c)).toHaveLength(5)
+  })
+
+  it('点「规格待生效」两次可取消；【清空筛选】清掉条件；【查询】重新调用实例接口', async () => {
+    const c = await mountWithSeed()
+    metricCard(c, '规格待生效').click()
+    await flushAll(4)
+    expect(detailUsers(c)).toEqual(['赵敏'])
+    metricCard(c, '规格待生效').click()
+    await flushAll(4)
+    expect(detailUsers(c)).toHaveLength(5)
+    const input = c.querySelector('input[placeholder="搜索规格、岗位、用户或实例标识"]')
+    input.value = '周明'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushAll(3)
+    const clear = [...c.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '清空筛选')
+    clear.click()
+    await flushAll(3)
+    expect(input.value).toBe('')
+    const before = api.listInstances.mock.calls.length
+    ;[...c.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询').click()
+    await flushAll(8)
+    expect(api.listInstances.mock.calls.length).toBe(before + 1)
+  })
+
+  it('实例明细展示停用标签，最近活跃可切换升序', async () => {
+    const c = await mountWithSeed()
+    c.querySelectorAll('.view-switch .el-radio-button')[2].querySelector('input').click()
+    await flushAll(5)
+    expect(bodyRows(c).find((r) => r.textContent.includes('周明')).textContent).toContain('已停用')
+    c.querySelector('.active-sort').click()
+    await flushAll(4)
+    expect(detailUsers(c)).toEqual(['赵敏', '周明', '李娜', '张伟', '陈宇'])
   })
 
   it('按规格汇总点「重」的【查看实例】→ 切到实例明细，运行规格筛选显示「重」，只列生效规格为「重」的张伟、赵敏', async () => {
@@ -157,6 +196,13 @@ describe('AdminInstances · 指标卡、汇总下钻与关键词（md §五.2 / 
 })
 
 describe('AdminInstances · 运行操作（md §八.4 / §九）', () => {
+  it('详情展示规格来源与真实操作记录', async () => {
+    await openDetailAt(1)
+    expect(drawer().textContent).toContain('规格来源')
+    expect(drawer().textContent).toContain('个人配置')
+    expect(drawer().textContent).toContain('重启 · 管理员 · 成功')
+  })
+
   it('不可操作的实例（张敏，繁忙）→ 详情里三个运行操作按钮全部置灰，并展示服务端给的原因「实例当前繁忙」', async () => {
     await openDetailAt(0)
     expect(document.body.querySelectorAll('.el-drawer')).toHaveLength(1)

@@ -41,12 +41,14 @@ import { computePublishCheck, LIMITS, DESCRIPTION_MAX_LEN, CLAIM_NOTE_MAX, CLAIM
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
-import { removePositionFromExperts } from './domainExpertMock'
+import { removePositionFromExperts, listExpertsBoundToPosition } from './domainExpertMock'
 import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs, syncPositionRefs as syncMcpPositionRefs } from './mcpConnectorMock'
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs, syncPositionRefs as syncApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs, syncPositionRefs as syncBizPositionRefs } from './bizSystemMock'
 import { revokedConnectorNames } from './positionRevokedRefs'
 import { clearPositionScope as clearKnowledgeBaseScope } from './knowledgeBaseMock'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -403,6 +405,7 @@ export async function deletePosition(id) {
   wb.agents = []
   ids.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
   positions = positions.filter((x) => x !== p)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '岗位', action: '删除', objectId: p.positionId, target: p.name, version: p.latestVersion })
   delete publications[p.positionId]
   delete workbench[String(p.positionId)]
   delete workbench[p.positionId]
@@ -413,12 +416,24 @@ export async function deletePosition(id) {
   unassignPositionFromAllSpecs(p.positionId)
   // 专家 positionIds / 连接器「被岗位引用」清单同样只清本岗位这一条（待办 yuepu#23⑤⑥）
   removePositionFromExperts(p.positionId)
+  // 岗位私有专家团同理（prd.专家团.md §四）；动态 import 避免 positionMock ⇄ expertTeamMock 成环
+  const { removePositionFromTeams } = await import('./expertTeamMock')
+  removePositionFromTeams(p.positionId)
   removeMcpPositionRefs(p.positionId)
   removeApiPositionRefs(p.positionId)
   removeBizPositionRefs(p.positionId)
   clearKnowledgeBaseScope(p.positionId) // 岗位知识库可见范围置空（待办 yuepu#52：此前 scopeRefId 悬空，id 复用时还会挂到新岗位上）
   persist()
   return {}
+}
+
+/**
+ * 岗位绑定的专家团 / 岗位专家（删除确认文案用，prd.岗位.md §3.6）。团走动态 import：
+ * expertTeamMock 静态依赖本文件，反向静态引会成环。
+ */
+export async function getPositionBindings(id) {
+  const { listTeamsBoundToPosition } = await import('./expertTeamMock')
+  return { teams: listTeamsBoundToPosition(id), experts: listExpertsBoundToPosition(id) }
 }
 
 export async function getDeleteImpact(id) {

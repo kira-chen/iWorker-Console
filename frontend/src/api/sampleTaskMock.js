@@ -298,7 +298,9 @@ const persist = attachPersist('sampleTask', {
   // v6（2026-09-23 负责人拍板）：删除 preKick 字段、执行频率新增「闲时」模式，VO 形状变更 bump
   // 注：execType（执行动作）缺省值 a1a1888 起由 AGENT 改为 SKILL，读取时回落（toVO / 保存归一），不 bump 版本——
   // 存量快照里未显式带 execType 的任务会随之显示为 SKILL
-  version: 6,
+  // v7（2026-10-12）：执行动作新增「专家团」（execType=TEAM + execTeamId），VO 形状变更 bump
+  // v8（2026-10-13）：撤销「专家团」执行动作（自动化暂不委派专家团），VO 形状回退 bump，清掉 v7 快照里的 execTeamId
+  version: 8,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {

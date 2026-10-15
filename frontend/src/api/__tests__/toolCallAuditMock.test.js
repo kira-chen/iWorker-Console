@@ -19,8 +19,17 @@ import {
  * （工具调用明细）与由 calls 推导出的 hasWrite / result 汇总字段；taskCallRecords
  * 的「预授权」（auth 字段）与「任务运行编号」（runId 字段）随改版废弃。
  *
+ * 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」，字段 skill → skills 数组（会话内可调用多个技能），
+ * 每个工具调用带 skill（在哪个技能名下调用，null＝会话直接调用，PRD §5.2「调用来源」）。
+ * 2026-10-13 第六轮改版：「调用来源」废止，工具调用不再带 skill；技能单列为 skillCalls（调用的技能 + 成败），
+ * 与 calls 互不关联，skills 由 skillCalls 推导。
+ *
+ * 2026-10-15（#92 ⑰ 补演示样例覆盖，对应文末 describe「演示样例覆盖」）：新增会话调用「多次调用失败」C-1012、
+ * 零调用会话 C-1011 / 零调用任务运行 T-2012、任务「失败后重试成功」T-2011；依据 PRD §四「不止一次调用出问题」
+ * 原因概要、§七 / §8.5 零调用空态。原因文案属页面展示，断言在页面层（adminToolCallAudit*.test.js），这里只守结构。
+ *
  * 2026-10-09 同日第二轮改版：单次工具调用不记录耗时与具体执行时刻，系统本来就不采集；
- * 技能调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
+ * 会话调用的结果收窄为 成功 / 失败，不展示"执行中"，原「待确认」的 PENDING 状态没有可展示
  * 的记录，C- 系列不再有示例；「用户确认」收窄为不需要确认 / 已确认两态，确认被拒绝时
  * confirm 为 null。
  *
@@ -32,7 +41,7 @@ import {
  * 统一为「失败」，三组现在直接共用同一份 EXEC_RESULT_LABEL，不再有 KNOWLEDGE_RESULT_LABEL。
  */
 describe('三组记录', () => {
-  it('编号在三组之间不重复，前缀区分来源：C- 技能调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
+  it('编号在三组之间不重复，前缀区分来源：C- 会话调用 / T- 岗位自动化任务 / K- 知识库检索', () => {
     const ids = [...toolCallRecords, ...taskCallRecords, ...knowledgeCallRecords].map((r) => r.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(toolCallRecords.every((r) => r.id.startsWith('C-'))).toBe(true)
@@ -52,7 +61,7 @@ describe('三组记录', () => {
     }
   })
 
-  it('技能调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {
+  it('会话调用的整体结果只会是 成功 / 失败（不展示"执行中"）', () => {
     expect(EXEC_RESULT_LABEL).toEqual({ SUCCESS: '成功', FAILED: '失败' })
     for (const r of toolCallRecords) {
       expect(['SUCCESS', 'FAILED']).toContain(r.result)
@@ -70,10 +79,16 @@ describe('三组记录', () => {
   })
 })
 
-describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', () => {
-  it('每条记录至少有一次工具调用；calls 的工具标识均为「连接器类型·名称」', () => {
+describe('会话调用 toolCallRecords（记录单元＝一次会话，2026-10-12 第五轮改版）', () => {
+  it('calls 的工具标识均为「连接器类型·名称」；一次会话可以零工具调用，deriveExec 不崩（#92 ①，§一「可能调用零到多个外部工具」）', () => {
+    // 前提：种子里确实有零调用样例，否则下面的遍历证明不了什么
+    expect(toolCallRecords.some((r) => r.calls.length === 0)).toBe(true)
+    // C-1011：零调用的会话，整体成功、不涉及写操作（显式字面量，不与实现同形）
+    const zero = toolCallRecords.find((r) => r.id === 'C-1011')
+    expect(zero.calls).toEqual([])
+    expect(zero.result).toBe('SUCCESS')
+    expect(zero.hasWrite).toBe(false)
     for (const r of toolCallRecords) {
-      expect(r.calls.length).toBeGreaterThan(0)
       for (const c of r.calls) expect(c.tool).toMatch(/^(MCP|API|业务系统)·.+/)
     }
   })
@@ -82,7 +97,8 @@ describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', 
     for (const r of toolCallRecords) {
       expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
       const last = r.calls[r.calls.length - 1]
-      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
+      // 零调用没有失败的调用，整体记成功
+      expect(r.result).toBe(!last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
     }
   })
 
@@ -92,6 +108,21 @@ describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', 
     expect(multi.length).toBeGreaterThan(0)
     const retried = multi.find((r) => r.calls.some((c) => c.result === 'FAILED') && r.result === 'SUCCESS')
     expect(retried).toBeTruthy()
+  })
+
+  it('每条记录有 skillCalls（技能 + 成功/失败两态）；skills 由它推导；工具调用不再带 skill 归属（PRD §5.2，2026-10-13）', () => {
+    for (const r of toolCallRecords) {
+      expect(Array.isArray(r.skillCalls)).toBe(true)
+      expect(r.skills).toEqual(r.skillCalls.map((c) => c.skill))
+      for (const c of r.skillCalls) expect(['SUCCESS', 'FAILED']).toContain(c.result)
+      for (const c of r.calls) expect(c).not.toHaveProperty('skill')
+    }
+  })
+
+  it('样例覆盖：一次会话调用多个技能；存在没调用任何技能的会话；存在失败的技能', () => {
+    expect(toolCallRecords.some((r) => r.skillCalls.length > 1)).toBe(true)
+    expect(toolCallRecords.some((r) => r.skillCalls.length === 0)).toBe(true)
+    expect(toolCallRecords.some((r) => r.skillCalls.some((c) => c.result === 'FAILED'))).toBe(true)
   })
 
   it('失败的记录都有原因概要', () => {
@@ -126,9 +157,8 @@ describe('技能调用 toolCallRecords（记录单元＝一次技能执行）', 
 })
 
 describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运行）', () => {
-  it('每条记录至少有一次工具调用，字段里没有 confirm / auth / runId（预授权与运行编号已废弃）', () => {
+  it('字段里没有 confirm / auth / runId（预授权与运行编号已废弃）', () => {
     for (const r of taskCallRecords) {
-      expect(r.calls.length).toBeGreaterThan(0)
       expect(r.runId).toBeUndefined()
       for (const c of r.calls) {
         expect(c.tool).toMatch(/^(MCP|API|业务系统)·.+/)
@@ -138,11 +168,12 @@ describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运
     }
   })
 
-  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与技能调用共用同一套规则（deriveExec）', () => {
+  it('hasWrite / result 由 calls 推导：看最后一次调用是否成功，与会话调用共用同一套规则（deriveExec）', () => {
     for (const r of taskCallRecords) {
       expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
       const last = r.calls[r.calls.length - 1]
-      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
+      // 零调用没有失败的调用，整体记成功（与会话调用同规则）
+      expect(r.result).toBe(!last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
     }
   })
 
@@ -160,7 +191,7 @@ describe('岗位自动化任务 taskCallRecords（记录单元＝一次任务运
     }
   })
 
-  it('请求参数 / 响应结果：有覆盖的 call 用覆盖值，其余走兜底（与技能调用共用同一套 paramsOf / outputOf）', () => {
+  it('请求参数 / 响应结果：有覆盖的 call 用覆盖值，其余走兜底（与会话调用共用同一套 paramsOf / outputOf）', () => {
     const withParams = taskCallRecords.flatMap((r) => r.calls).find((c) => c.params)
     expect(withParams).toBeTruthy()
     expect(paramsOf(withParams).some((p) => p[1] === 'customer_id')).toBe(true)
@@ -213,5 +244,37 @@ describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记�
     const noAccess = knowledgeCallRecords.find((r) => r.reason.includes('访问权限'))
     expect(knowledgeOutputOf(noAccess).text).toBe(noAccess.reason)
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'FAILED')).note).toContain('【待补充】')
+  })
+})
+
+describe('演示样例覆盖（#92 ⑰）', () => {
+  it('会话调用有「多次调用失败」的执行：不止一次工具调用失败且整体失败，原因概要写「N 次调用失败，详见详情」（§四）', () => {
+    const multiFail = toolCallRecords.find((r) => r.calls.filter((c) => c.result === 'FAILED').length > 1)
+    expect(multiFail).toBeTruthy()
+    expect(multiFail.result).toBe('FAILED')
+    // 原因概要的具体文案是页面展示口径，断言在 adminToolCallAudit.test.js（C-1012）；这里只守结构：每次调用都失败
+    expect(multiFail.calls.every((c) => c.result === 'FAILED')).toBe(true)
+    expect(multiFail.reason).toBeTruthy()
+  })
+
+  it('岗位自动化任务有「失败后重试成功」的运行：中途有失败的调用，整体仍记成功（§一「记录单元」）', () => {
+    const retried = taskCallRecords.find((r) => r.calls.some((c) => c.result === 'FAILED') && r.result === 'SUCCESS')
+    expect(retried).toBeTruthy()
+  })
+
+  it('岗位自动化任务有「零工具调用」的运行（T-2012）：整体成功、不涉及写操作（§8.5）', () => {
+    const zero = taskCallRecords.find((r) => r.id === 'T-2012')
+    expect(zero.calls).toEqual([])
+    expect(zero.result).toBe('SUCCESS')
+    expect(zero.hasWrite).toBe(false)
+  })
+
+  it('任务运行只有一次失败调用时，原因概要以工具标识开头（§8.4「业务系统·SAP ERP 连接超时」格式）', () => {
+    const singleFail = taskCallRecords.filter((r) => r.result === 'FAILED' && r.calls.filter((c) => c.result === 'FAILED').length === 1)
+    expect(singleFail.length).toBeGreaterThan(0)
+    for (const r of singleFail) {
+      const failed = r.calls.find((c) => c.result === 'FAILED')
+      expect(r.reason.startsWith(failed.tool)).toBe(true)
+    }
   })
 })

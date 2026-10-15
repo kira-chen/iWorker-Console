@@ -217,6 +217,8 @@ const route = useRoute()
 onMounted(() => {
   const kw = queryString(route.query.keyword)
   if (kw) query.keyword = kw
+  // 驾驶舱待办卡片【去分配】带 ?pending=1：进页即只看有待分配申请的用户
+  if (route.query.pending === '1') query.hasPendingRequest = true
   list.reload()
   loadPositions()
   refreshPendingCount()

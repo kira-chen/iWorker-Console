@@ -118,6 +118,57 @@ export function skillExampleQuestion(ctx) {
   return limitLen(`请帮我使用这个技能完成"${subject}"`, AI_LIVE_QUESTION_MAX)
 }
 
+/* ==================== 专家团（prd.专家团.md §三.7；Prompt 见《AI生成按钮Prompt规范》§8–11） ==================== */
+
+/** 成员行 → 「名（分类）」展示串；members: [{ name, category, duty? }] */
+const memberLabel = (m) => `${m.name}${m.category ? `（${m.category}）` : ''}`
+
+/** 团介绍：成员 + 能力，讲清适合什么事、各负责哪块（不讲协作机制）。ctx: { name?, members: [{name,category,duty?}] } */
+export function teamIntroText(ctx) {
+  const c = ctx || {}
+  const ms = c.members || []
+  const who = ms.map(memberLabel).join('、')
+  const parts = ms.map((m) => `${m.name}负责${m.duty ? shortText(m.duty, 16) : `${m.category || '专业'}视角的判断`}`).join('，')
+  return limitLen(`${c.name ? `${c.name}适合` : '这个团适合'}需要多位专家共同判断的事项。成员包括${who}。${parts}。`, 2000)
+}
+
+/** 主理人职责：按主理人专长写分工口径。ctx: { leader: {name,category}, members: [{name,category}] } */
+export function teamLeaderDutyText(ctx) {
+  const c = ctx || {}
+  const others = (c.members || []).filter((m) => m.name !== c.leader?.name)
+  const lead = c.leader?.name || '主理人'
+  const spec = c.leader?.category || '专业'
+  return limitLen(
+    `按${lead}的${spec}口径拆解：先由${lead}判断任务里需要把关的关键点，再把其余部分分给${others.map((m) => m.name).join('、') || '其他成员'}，各自交出结论后由${lead}汇总，意见不一致的地方单独列出。`,
+    2000
+  )
+}
+
+/** 团队协作关系：谁先谁后、谁要看谁的结果。ctx: { leader?: {name}, members: [{name,category,duty?}] } */
+export function teamCollabText(ctx) {
+  const c = ctx || {}
+  const ms = c.members || []
+  if (!ms.length) return ''
+  const first = ms[0]
+  const rest = ms.slice(1)
+  const lines = [`先由${first.name}${first.duty ? `看${shortText(first.duty, 16)}` : '给出初步判断'}。`]
+  if (rest.length) lines.push(`${rest.map((m) => m.name).join('、')}同时各自从${rest.map((m) => m.category || '专业').join('、')}角度处理自己负责的部分。`)
+  lines.push(c.leader?.name ? `全部交出后由${c.leader.name}核对并汇总。` : '全部交出后系统汇总，意见不一致的地方单独列出。')
+  return limitLen(lines.join('\n'), 2000)
+}
+
+/** 团队帮你做 3 条：整体交给团 / 让某位先看 / 要分歧。ctx: { name?, intro?, memberNames: string[] } */
+export function teamQuestionSet(ctx) {
+  const c = ctx || {}
+  const subject = pickSubject([c.name, c.intro], 12)
+  const first = (c.memberNames || [])[0] || '第一位专家'
+  return [
+    limitLen(`把这件事交给${subject || '团队'}看一遍`, AI_LIVE_QUESTION_MAX),
+    limitLen(`让${first}先看，再请团队补充`, AI_LIVE_QUESTION_MAX),
+    limitLen('看法不一致的地方请单独列出来', AI_LIVE_QUESTION_MAX)
+  ]
+}
+
 /**
  * AI 实况生成 composable（Vue 组件内调用；驱动一个「AI 生成」按钮）。
  *
@@ -137,6 +188,7 @@ export function skillExampleQuestion(ctx) {
  * @param {() => boolean} [options.isReadonly] 只读/锁定态（真 → 按钮禁用、不给「请先填写」title）
  * @param {number} [options.delayMs] 「生成中…」时长，默认 AI_LIVE_DELAY_MS（测试可传 0）
  * @param {string} [options.idleLabel] 空闲态按钮文案，默认「AI 生成」
+ * @param {string} [options.emptyTitle] 源为空时的完整 title（默认「请先填写<sourceLabel>」；专家团的「请先选择至少 2 位成员」这类非「填写」语义用）
  * @param {() => any} [options.getEntityId] 取当前编辑对象 id（每次求值）；组件按路由参数切换对象而不
  *   重新挂载时（如 SkillFocusEditor 随 route.params.id 复用实例），定时器触发时用它核对对象是否还是
  *   点击那一刻的对象，变了就丢弃结果、不回填（2026-09-18 待办 yuepu#13·技能 S1）。不传则不做该项校验。
@@ -157,6 +209,7 @@ export function useAiLiveGenerate({
   isReadonly = () => false,
   delayMs = AI_LIVE_DELAY_MS,
   idleLabel = 'AI 生成',
+  emptyTitle = '',
   getEntityId = null,
   resetOn = null,
   doneToast = AI_LIVE_DONE_TOAST
@@ -165,7 +218,7 @@ export function useAiLiveGenerate({
   const sourceEmpty = computed(() => !String(getSourceText() || '').trim())
   const disabled = computed(() => busy.value || sourceEmpty.value || !!isReadonly())
   // 原型 syncButton：仅「空且非只读」给引导 title，其余还原按钮原 title（此处即空串）
-  const title = computed(() => (sourceEmpty.value && !isReadonly() ? `请先填写${sourceLabel}` : ''))
+  const title = computed(() => (sourceEmpty.value && !isReadonly() ? emptyTitle || `请先填写${sourceLabel}` : ''))
   const label = computed(() => (busy.value ? AI_LIVE_BUSY_LABEL : idleLabel))
 
   let timer = null

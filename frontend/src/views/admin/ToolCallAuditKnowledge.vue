@@ -11,7 +11,7 @@
  *   - 命中 0 条属于「成功」，用「命中条数」区分，统计卡片单列「无命中检索」——同轮改版去掉了独立的
  *     「命中情况」筛选下拉，无命中的筛选改为只能通过「无命中检索」统计卡片触发；
  *   - 筛选项与另两页签对齐为「执行结果 + 一个页签专属筛选」的两项结构：这里专属筛选是「数据源类型」
- *     （技能调用 / 岗位自动化任务是「涉及写操作」，知识库检索没有这个概念，换成它本来就有的筛选）；
+ *     （会话调用 / 岗位自动化任务是「涉及写操作」，知识库检索没有这个概念，换成它本来就有的筛选）；
  *   - 审计关心的是「检索词发给了谁、命中了哪些内容」，所以列表看检索词与命中条数，没有操作性质 / 确认；
  *   - 检索词的记录与脱敏口径产品尚未定义，页面按原文展示并标【待补充】（docs/04-待补需求定义/）。
  */
@@ -112,12 +112,14 @@ const HELP = [
   '命中 0 条的检索属于"成功"，单独统计为"无命中检索"，只能通过该统计卡片筛选，没有单独的筛选下拉。执行耗时为数据源实际响应时间。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 没有定义 CSV 列（只写导出当前筛选结果）；列 = 列表列 + 详情里的请求参数 / 数据源 / 原因，属 demo 自定默认。
+ * 结果列名与另两页签统一叫「执行结果」。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
     '工具调用审计-知识库检索-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '结果', '原因', '执行耗时'],
+    ['请求编号', '日期', '时间', '用户', '岗位', '知识库', '数据源', '检索工具', '检索词', '返回条数上限', '命中条数', '执行结果', '原因', '执行耗时'],
     rowsToExport.map((r) => [
       r.id, r.date, r.time, r.user, r.position, r.kb, r.source, r.tool, r.query, r.topK,
       r.result === 'SUCCESS' ? r.hitCount : '', EXEC_RESULT_LABEL[r.result], r.reason, r.duration
@@ -163,6 +165,13 @@ function resultExplain(d) {
   return '本次检索已完成，可查看命中的内容来源。'
 }
 
+/** 第二步描述（§9.5 ②「成功展示命中条数，失败附原因」）：失败的检索若请求已发出，补一段数据源实际响应耗时；
+ *  未发出请求（耗时展示「未执行」，如无该知识库访问权限）没有响应耗时可言，只展示原因。 */
+function resultDesc(d) {
+  if (d.result === 'SUCCESS') return `检索耗时 ${d.duration}，命中 ${d.hitCount} 条`
+  return d.duration === '未执行' ? d.reason : `检索耗时 ${d.duration} / ${d.reason}`
+}
+
 /** 执行过程时间线：只有发起、结果两步——结果只有成功 / 失败两态，不再区分"检查未通过"
  *  与"执行失败"两个阶段（2026-10-09 改版，PRD §九.5）。 */
 function timelineSteps(d) {
@@ -170,8 +179,8 @@ function timelineSteps(d) {
     { time: d.time, title: '发起检索', desc: `${d.user} 通过「${d.position}」提问，引用的知识库「${d.kb}」向数据源「${d.source}」发起检索。`, type: 'primary' },
     {
       time: '',
-      title: EXEC_RESULT_LABEL[d.result],
-      desc: d.result === 'SUCCESS' ? `检索耗时 ${d.duration}，命中 ${d.hitCount} 条` : `检索耗时 ${d.duration} / ${d.reason}`,
+      title: '执行结果',
+      desc: resultDesc(d),
       type: d.result === 'FAILED' ? 'danger' : 'success'
     }
   ]

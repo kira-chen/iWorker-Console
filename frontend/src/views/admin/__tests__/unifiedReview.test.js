@@ -110,6 +110,7 @@ async function mount() {
   app.component('el-select', elSelect)
   app.component('el-option', elOption)
   app.component('el-icon', passthrough('el-icon'))
+  app.component('el-tooltip', passthrough('el-tooltip'))
   app.component('Search', { template: '<i class="icon-search" />' })
   app.component('el-table', tableStub)
   app.component('el-table-column', tableColStub)
@@ -176,13 +177,13 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(container.querySelector('.el-input').value).toBe('经营分析岗')
   })
 
-  it('查询区（md §二）：占位「搜索名称 / 用户名」、业务类型九项（含版本管理）、申请类型三项、【查询】按钮', async () => {
+  it('查询区（md §二）：占位「搜索名称 / 用户名」、业务类型九项（含版本管理）、申请类型四项（含强制回收）、【查询】按钮', async () => {
     await mount()
     expect(container.querySelector('.el-input').placeholder).toBe('搜索名称 / 用户名')
     const selects = [...container.querySelectorAll('.el-select')]
     expect(selects.map((s) => s.dataset.placeholder)).toEqual(['全部业务类型', '全部申请类型'])
-    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
-    expect([...selects[1].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['首次发布', '新版本发布', '停用'])
+    expect([...selects[0].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['岗位', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '版本管理'])
+    expect([...selects[1].querySelectorAll('.el-option')].map((o) => o.textContent)).toEqual(['首次发布', '新版本发布', '停用', '强制回收'])
     expect(toolbarBtn('查询')).toBeTruthy()
   })
 
@@ -229,6 +230,20 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     expect(rowById(2).querySelector('[data-label="申请版本"]').textContent.trim()).toBe('v1.2.0')
     expect(r1.querySelector('.rev-submitter').textContent).toBe('config.admin')
     expect(r1.textContent).toContain('2026-08-28 09:42')
+  })
+
+  it('强制回收申请 → 申请类型是红色「强制回收」（与「停用」分开）并悬停展示回收原因；普通停用仍是「停用」、发布申请不受影响（md §5.2 / 各模块强制回收小节）', async () => {
+    const forced = { ...byId(3), id: 31, name: '财务共享系统', requestAction: 'FORCE_REVOKE', forceRevokeReason: '接口下线' }
+    listReviews.mockResolvedValue({ list: [forced, byId(3), byId(1)], total: 3 })
+    await mount()
+    const tags = (row) => [...row.querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    const forcedRow = rowEls().find((el) => el.textContent.includes('财务共享系统'))
+    expect(tags(forcedRow)).toEqual(['业务系统', '强制回收'])
+    expect(forcedRow.querySelector('.status-tag.st--danger').textContent.trim()).toBe('强制回收')
+    expect(forcedRow.querySelector('span[title]').getAttribute('title')).toBe('回收原因：接口下线')
+    expect(rowById(3).querySelector('span[title]')).toBeNull()
+    expect(tags(rowById(3))).toEqual(['业务系统', '停用'])
+    expect(tags(rowById(1))).toEqual(['API', '首次发布'])
   })
 
   it('操作列按顺序【查看】【驳回】【通过】，驳回为红色文字链（md §3.1「操作：按顺序展示【查看】【驳回】【通过】」）', async () => {
@@ -280,6 +295,16 @@ describe('UnifiedReview · 审核中心（md prd.审核中心.md）', () => {
     await flush()
     expect(approveReview).toHaveBeenCalledWith(byId(3))
     expect(ElMessage.success).toHaveBeenCalledWith('已通过停用申请')
+  })
+
+  it('【通过】强制回收申请（FORCE_REVOKE）→ toast「已通过强制回收申请」（与停用申请的提示分开）', async () => {
+    const forced = { ...byId(3), id: 32, name: '财务共享系统', requestAction: 'FORCE_REVOKE', forceRevokeReason: '接口下线' }
+    listReviews.mockResolvedValue({ list: [forced], total: 1 })
+    await mount()
+    rowBtn(rowEls()[0], '通过').click()
+    await flush()
+    expect(approveReview).toHaveBeenCalledWith(forced)
+    expect(ElMessage.success).toHaveBeenCalledWith('已通过强制回收申请')
   })
 
   it('【通过】确认弹窗取消 → 不调接口、不 toast、不重拉', async () => {

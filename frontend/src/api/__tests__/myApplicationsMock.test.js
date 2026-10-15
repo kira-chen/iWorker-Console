@@ -122,6 +122,46 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     expect((await app.getMyApplication(fresh.id))).toMatchObject({ result: 'APPROVED', reviewer: '演示管理员' })
   })
 
+  // 2026-10-12：强制回收并入停用——驳回 / 撤回后重提必须仍是强制回收，不能静默降级成普通停用（resubmitMyApplication 把原因带回各模块停用函数）
+  describe('重新提交被驳回的停用申请 · 强制回收标记不丢', () => {
+    const resetSkill = async (refNames = []) => {
+      const sk = await import('../unifiedSkillMock')
+      sk._reset('sk_305', { status: 'published', delisted: false, pendingAction: null, pendingRevokeReason: '', revoked: null, refNames })
+      return sk
+    }
+    /** 停用 sk_305 → 审核中心驳回 → 返回我的申请里这笔已驳回的行 */
+    const delistThenReject = async (sk, opts) => {
+      const gov = await import('../reviewsMock')
+      await sk.delistSkill('sk_305', opts)
+      const review = (await gov.listReviews({ type: 'SKILL', size: 50 })).list.find((r) => r.refId === 'sk_305')
+      await gov.rejectReview(review.id, '再评估')
+      return (await app.listMyApplications({ businessType: 'SKILL', result: 'REJECTED', size: 50 })).list.find((r) => r.refId === 'sk_305' && (r.applicationType === 'DELIST' || r.applicationType === 'FORCE_REVOKE'))
+    }
+
+    it('强制回收停用被驳回 → 重新提交：新申请行与审核中心行仍带回收原因，技能再次待审且保留回收原因', async () => {
+      const gov = await import('../reviewsMock')
+      const sk = await resetSkill(['岗位A'])
+      const rejected = await delistThenReject(sk, { forceRevoke: true, reason: '涉及违规内容' })
+      expect(rejected.forceRevokeReason).toBe('涉及违规内容')
+      expect(sk._getRaw('sk_305').pendingRevokeReason).toBe('') // 驳回：回收后果清空
+
+      const fresh = await app.resubmitMyApplication(rejected.id)
+      expect(fresh).toMatchObject({ applicationType: 'FORCE_REVOKE', result: 'PENDING', forceRevokeReason: '涉及违规内容' })
+      const review = (await gov.listReviews({ type: 'SKILL', size: 50 })).list.find((r) => r.refId === 'sk_305')
+      expect(review).toMatchObject({ requestAction: 'FORCE_REVOKE', forceRevokeReason: '涉及违规内容' })
+      expect(sk._getRaw('sk_305')).toMatchObject({ pendingAction: 'stop', pendingRevokeReason: '涉及违规内容' })
+    })
+
+    it('普通停用被驳回 → 重新提交：新申请行不带 forceRevokeReason，技能无待审回收原因', async () => {
+      const sk = await resetSkill([])
+      const rejected = await delistThenReject(sk, {})
+      const fresh = await app.resubmitMyApplication(rejected.id)
+      expect(fresh).toMatchObject({ applicationType: 'DELIST', result: 'PENDING' })
+      expect('forceRevokeReason' in fresh).toBe(false)
+      expect(sk._getRaw('sk_305')).toMatchObject({ pendingAction: 'stop', pendingRevokeReason: '' })
+    })
+  })
+
   it('重新提交待审核（501）/ 已通过（502）行 → 409「仅已驳回或已撤回的申请可重新提交」（md §五 L80-81）', async () => {
     for (const [id, result] of [[501, 'PENDING'], [502, 'APPROVED']]) {
       await expect(app.resubmitMyApplication(id)).rejects.toMatchObject({ code: 409, message: '仅已驳回或已撤回的申请可重新提交' })
@@ -222,5 +262,18 @@ describe('myApplicationsMock · 持久化 restore 形状守卫', () => {
     vi.resetModules()
     const reloaded = await import('../myApplicationsMock')
     expect((await reloaded.getMyApplication(518)).result).toBe('WITHDRAWN')
+  })
+
+  // 2026-10-12 /test-audit：强制回收并入停用（我的申请详情据此展示红色标记）——回收原因随申请行落盘。
+  it('强制回收停用申请提交后刷新 → 申请行仍带 forceRevokeReason；普通停用申请没有该键', async () => {
+    const m = await import('../myApplicationsMock')
+    m.submitApplicationRow({ businessType: 'EXPERT', refId: 901, objectName: '强制回收专家', applicationType: 'DELIST', forceRevokeReason: '内容违规', submittedAt: '2026-10-12 09:00' })
+    m.submitApplicationRow({ businessType: 'EXPERT', refId: 902, objectName: '普通停用专家', applicationType: 'DELIST', submittedAt: '2026-10-12 09:01' })
+
+    vi.resetModules()
+    const reloaded = await import('../myApplicationsMock')
+    const { list } = await reloaded.listMyApplications({ size: 50 })
+    expect(list.find((r) => r.refId === 901).forceRevokeReason).toBe('内容违规')
+    expect('forceRevokeReason' in list.find((r) => r.refId === 902)).toBe(false)
   })
 })

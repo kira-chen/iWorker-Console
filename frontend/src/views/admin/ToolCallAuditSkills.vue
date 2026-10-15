@@ -1,7 +1,11 @@
 <script setup>
 /**
- * 工具调用审计 · 「技能调用」页签——用户在对话中触发的一次技能执行，执行中调用连接器工具
+ * 工具调用审计 · 「会话调用」页签——用户的一次会话（会话内调用技能），会话中调用连接器工具（不局限于技能引用的工具）
  * （MCP / API / 业务系统）的事后审计记录，只读。对应 PRD §二 ~ §七（prd.工具调用审计.md）。
+ *
+ * 2026-10-13 第六轮改版：详情的调用明细分「按工具 / 按技能」两条互不关联的时间线（不再标工具的调用来源）。
+ *
+ * 2026-10-12 第五轮改版：记录单元改为「一次会话」，一条记录可含多个技能（skills 数组），工具明细不限于技能引用的工具。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次技能执行」——
  * 单次对话可能多次调用工具，按单条工具调用上报数据量大，且单个工具失败、整体兜底成功时单纯记
@@ -44,7 +48,8 @@ const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success' }
 const YES_NO = { true: '是', false: '否' }
-const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
+// §六 列表层：是（涉及写操作）绿、否灰
+const YES_NO_TAG = (v) => (v ? 'success' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
 const query = reactive({ result: '', hasWrite: '' })
@@ -58,7 +63,9 @@ const {
   fetcher: listToolCallAudits,
   records: toolCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
-  keywordOf: (r) => [r.user, r.position, r.skill, r.id, ...r.calls.map((c) => c.tool)]
+  // 搜索范围：md §三 第 4 条 只写用户 / 岗位 / 技能 / 工具标识，未写请求编号（仅知识库页签 §9.3 写了）；
+  // 这里多带 r.id 是有意保留——演示里按编号（C-xxxx / T-xxxx）直达某条记录最省事，也是用例的定位手段。待产品确认是否收口。
+  keywordOf: (r) => [r.user, r.position, ...r.skills, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
@@ -84,6 +91,7 @@ const metrics = computed(() => {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
+      // 副标题「按整体结果判定」md 未写（§二 卡片说明列只有「整体判定为失败的记录数」），由说明列改写而来，意思一致故保留
       sub: '按整体结果判定',
       danger: true
     }
@@ -105,18 +113,20 @@ function chooseMetric(key) {
 }
 
 const HELP = [
-  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：一次技能执行只在确认与执行都有结果后才入账。',
-  '同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
+  '执行结果只有成功、失败两类，按是否完成预期产出判定——哪怕中途有工具调用失败，只要后续被兜底/重试成功，整体仍记"成功"。不展示"执行中"的记录：会话内确认与执行都有结果后才入账。',
+  '一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里。单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 只写「导出当前筛选结果，展示『已导出 N 条筛选结果』」，没有定义 CSV 列。这里的列 = 列表列 + 「请求编号」「原因」
+ * （编号便于与详情 / 反馈对账），属于 demo 自定的合理默认，不是 md 口径；产品若要定列，以 md 为准回头调整。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
-    '工具调用审计-技能调用-筛选结果.csv',
-    ['请求编号', '日期', '时间', '用户', '岗位', '技能', '涉及写操作', '执行结果', '原因'],
+    '工具调用审计-会话调用-筛选结果.csv',
+    ['请求编号', '日期', '时间', '用户', '岗位', '调用的技能', '涉及写操作', '执行结果', '原因'],
     rowsToExport.map((r) => [
-      r.id, r.date, r.time, r.user, r.position, r.skill,
+      r.id, r.date, r.time, r.user, r.position, r.skills.join('、') || '—',
       YES_NO[r.hasWrite], EXEC_RESULT_LABEL[r.result], r.reason
     ])
   )
@@ -140,7 +150,6 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: EXEC_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '技能', value: d.skill },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
     calls: d.calls.map((c) => ({
@@ -155,13 +164,20 @@ const detail = computed(() => {
       params: paramsOf(c),
       output: outputOf(c)
     })),
+    // 操作摘要不再列「调用的技能」（2026-10-13：调用明细「按技能」时间线已有，列表页保留该列）；
+    // 技能与工具是两条互不关联的时间线（PRD §5.2，2026-10-13）
+    skillCalls: d.skillCalls.map((c) => ({
+      skill: c.skill,
+      result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
+      reason: c.reason
+    })),
     explain: resultExplain(d)
   }
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
-  return '本次执行已完成，可在工具调用明细中查看具体过程。'
+  if (d.result === 'FAILED') return '建议对照上方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  return '本次执行已完成，可在调用明细中查看具体过程。'
 }
 </script>
 
@@ -228,8 +244,8 @@ function resultExplain(d) {
               {{ row.user }}<span class="tca-secondary">{{ row.position }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.skill }}</template>
+          <el-table-column label="调用的技能" :min-width="COL.NAME_MIN" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.skills.join('、') || '—' }}</template>
           </el-table-column>
           <el-table-column label="涉及写操作" :width="COL.TAG" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #default="{ row }">
@@ -258,7 +274,11 @@ function resultExplain(d) {
       @change="list.reload"
     />
 
-    <AuditCallDrawer v-model:visible="detailVisible" v-bind="detail || {}" />
+    <AuditCallDrawer
+      v-model:visible="detailVisible"
+      v-bind="detail || {}"
+      empty-calls-text="本次会话未调用外部工具"
+    />
   </div>
 </template>
 

@@ -25,7 +25,7 @@ const applicationHistory = [
 
 const seedSpecs = () => [
   { id: 1, name: '轻', boundaryDesc: '轻量问答与日常处理，可处理 20MB 以内文件', cpu: 1, memoryGi: 2, diskGi: 5, readinessTimeoutMin: 5, idleRecycleMin: 10, maxLifetimeHours: 0, isDefault: false, positionIds: [402], allowUserApply: true, requireApproval: true, directUsers: [], createdAt: '2026-08-15 10:20', updatedAt: '2026-08-28 09:40' },
-  { id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置，可处理 100MB 以内文件', cpu: 2, memoryGi: 4, diskGi: 20, readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0, isDefault: true, positionIds: [], allowUserApply: false, requireApproval: false, directUsers: [], createdAt: '2026-08-15 10:22', updatedAt: '2026-08-30 14:12' },
+  { id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置，可处理 100MB 以内文件', cpu: 2, memoryGi: 4, diskGi: 20, readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0, isDefault: true, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [], createdAt: '2026-08-15 10:22', updatedAt: '2026-08-30 14:12' },
   { id: 3, name: '重', boundaryDesc: '文档处理、数据分析、报告生成，可处理 500MB 以内文件', cpu: 4, memoryGi: 16, diskGi: 100, readinessTimeoutMin: 15, idleRecycleMin: 30, maxLifetimeHours: 24, isDefault: false, positionIds: [401], allowUserApply: true, requireApproval: true, directUsers: [relation(208, 'zhaomin', '赵敏', 'APPROVED'), relation(210, 'hejing', '何静', 'PENDING')], createdAt: '2026-08-16 09:05', updatedAt: '2026-08-29 16:55' },
   { id: 4, name: '高敏', boundaryDesc: '处理敏感数据的隔离运行环境', cpu: 2, memoryGi: 8, diskGi: 50, readinessTimeoutMin: 10, idleRecycleMin: 15, maxLifetimeHours: 8, isDefault: false, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [], createdAt: '2026-08-18 11:30', updatedAt: '2026-08-18 11:30' },
   { id: 5, name: '专属 · 生产计划员', boundaryDesc: '排产表体积大，可处理 800MB 以内文件', cpu: 8, memoryGi: 32, diskGi: 200, readinessTimeoutMin: 20, idleRecycleMin: 30, maxLifetimeHours: 12, isDefault: false, positionIds: [], allowUserApply: true, requireApproval: true, directUsers: [relation(205, 'zhouming', '周明', 'APPROVED')], createdAt: '2026-08-20 15:48', updatedAt: '2026-08-26 10:08' }
@@ -33,9 +33,9 @@ const seedSpecs = () => [
 
 let specs = seedSpecs()
 
-// v3 将个人配置的关联主键改为 userId；旧版运行规格缓存自动失效。
+// v4（2026-10-13）：默认规格申请开关固定开启；旧版运行规格缓存自动失效。
 const persist = attachPersist('runtimeSpec', {
-  version: 3,
+  version: 4,
   snapshot: () => ({ seq, specs }),
   restore: (data) => {
     if (!data || !Number.isFinite(data.seq) || !Array.isArray(data.specs)) {
@@ -118,7 +118,7 @@ async function enrichedRows() {
 function payloadOf(s, p) {
   const data = { ...p, id: s?.id }
   validatePayload(data)
-  const allowUserApply = !!p.allowUserApply
+  const allowUserApply = s?.isDefault ? true : !!p.allowUserApply
   return {
     name: String(p.name).trim(), boundaryDesc: String(p.boundaryDesc).trim(),
     cpu: Number(p.cpu), memoryGi: Number(p.memoryGi), diskGi: Number(p.diskGi), readinessTimeoutMin: Number(p.readinessTimeoutMin), idleRecycleMin: Number(p.idleRecycleMin), maxLifetimeHours: Number(p.maxLifetimeHours),
@@ -289,6 +289,7 @@ export async function deleteRuntimeSpec(id) {
   const liveDirectCount = s.directUsers.filter((u) => liveUserIds.has(Number(u.userId))).length
   if (liveDirectCount) throw err(`该规格存在 ${liveDirectCount} 个个人配置或待审批申请，请先处理后再删除`, 40004)
   specs.splice(specs.indexOf(s), 1)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '运行规格', action: '删除', objectId: s.id, target: s.name })
   persist()
   return true
 }

@@ -27,10 +27,11 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     resetAccessAuditMock()
   })
 
-  it('始终有且仅有一个默认规格，全部用户都有生效规格', async () => {
+  it('始终有且仅有一个默认规格，默认规格固定开放申请，停用用户不计入生效汇总', async () => {
     const { list, summary } = await listRuntimeSpecs()
     expect(list.filter((s) => s.isDefault)).toHaveLength(1)
     expect(list.find((s) => s.isDefault).name).toBe('标准')
+    expect(list.find((s) => s.isDefault).allowUserApply).toBe(true)
     expect(summary.specCount).toBe(5)
     expect(summary.userCount).toBe(11)
     expect(list.find((s) => s.id === 5).usedCount).toBe(0)
@@ -174,7 +175,7 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     await expect(updateRuntimeSpec(3, { ...heavy, maxLifetimeHours: 6 })).resolves.toMatchObject({ maxLifetimeHours: 6, allowUserApply: true })
   })
 
-  it('规格写操作调用共享持久化层并生成v3快照', async () => {
+  it('规格写操作调用共享持久化层并生成v4快照', async () => {
     const runtimePersist = persistHarness.modules.get('runtimeSpec')
     runtimePersist.persist.mockClear()
     await createRuntimeSpec({
@@ -182,7 +183,7 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
       readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0,
       positionIds: [], allowUserApply: false
     })
-    expect(runtimePersist.options.version).toBe(3)
+    expect(runtimePersist.options.version).toBe(4)
     expect(runtimePersist.persist).toHaveBeenCalledTimes(1)
     expect(runtimePersist.options.snapshot().specs.some((spec) => spec.name === '持久化测试档')).toBe(true)
   })
@@ -241,9 +242,10 @@ describe('runtimeSpecMock —— 默认兜底、岗位继承与个人例外', ()
     expect((await getRuntimeSpec(3)).directUsers.some((u) => u.userId === 208)).toBe(false)
   })
 
-  it('关闭申请入口的规格（标准，allowUserApply=false）：用户申请 rejects「该规格当前不开放用户申请」（md §四.3）', async () => {
-    await expect(applyRuntimeSpecForUser(2, 'chenyu')).rejects.toThrow('该规格当前不开放用户申请')
-    const rows = await listRuntimeSpecUsers(2)
+  it('关闭申请入口的非默认规格：用户申请 rejects「该规格当前不开放用户申请」（md §四.3）', async () => {
+    const closed = await createRuntimeSpec({ ...BASE, name: '关闭申请档', allowUserApply: false })
+    await expect(applyRuntimeSpecForUser(closed.id, 'chenyu')).rejects.toThrow('该规格当前不开放用户申请')
+    const rows = await listRuntimeSpecUsers(closed.id)
     expect(rows.list.find((u) => u.username === 'chenyu').isPending).toBe(false)
   })
 
@@ -287,7 +289,7 @@ describe('写访问审计「管理端操作」（prd.访问审计.md §6「运�
     })
   })
 
-  it('新建、编辑、删除、用户自主申请、撤回/解除均不写管理端操作记录', async () => {
+  it('新建、编辑、用户自主申请、撤回/解除均不写管理端操作记录；删除写一条「删除」（2026-10-15）', async () => {
     const created = await createRuntimeSpec({
       name: '不入审计档', boundaryDesc: '验证范围外动作', cpu: 1, memoryGi: 2, diskGi: 5,
       readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0, positionIds: [], allowUserApply: true
@@ -295,7 +297,9 @@ describe('写访问审计「管理端操作」（prd.访问审计.md §6「运�
     await updateRuntimeSpec(created.id, { ...created, maxLifetimeHours: 6 })
     await applyRuntimeSpecForUser(created.id, 'chenyu')
     await unassignRuntimeSpecUser(created.id, 'chenyu')
-    await deleteRuntimeSpec(created.id)
     expect(liveOps()).toHaveLength(0)
+    await deleteRuntimeSpec(created.id)
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({ module: '运行规格', action: '删除', target: '不入审计档', operator: 'demo', detail: '' })
   })
 })

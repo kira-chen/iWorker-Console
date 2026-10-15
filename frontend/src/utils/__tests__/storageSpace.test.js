@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  quotaInputError, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, REJECT_REASON_MAX
+  quotaInputError, quotaFloorGb, fmtGb, STORAGE_STATE, REQUEST_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, REJECT_REASON_MAX
 } from '../storageSpace'
 
 /**
@@ -29,10 +29,15 @@ describe('quotaInputError —— 容量输入校验文案', () => {
     expect(quotaInputError(3, 5)).toBe('容量不能小于 5 GB')
   })
 
-  it('合法返回空串；不设上限；数字字符串也认', () => {
+  it('合法返回空串；1 与 20 都在范围内；数字字符串也认', () => {
     expect(quotaInputError(1)).toBe('')
     expect(quotaInputError('8')).toBe('')
-    expect(quotaInputError(100000)).toBe('')
+    expect(quotaInputError(20)).toBe('')
+  })
+
+  it('超过 20 GB 提示「容量不能大于 20 GB」', () => {
+    expect(quotaInputError(21)).toBe('容量不能大于 20 GB')
+    expect(quotaInputError(100000)).toBe('容量不能大于 20 GB')
   })
 })
 
@@ -61,9 +66,19 @@ describe('状态文案与常量', () => {
     })
   })
 
-  it('下限 1 GB、默认容量固定 5 GB、拒绝原因限长 500', () => {
+  it('下限 1 GB、默认容量出厂 1 GB、磁盘总量出厂 1000 GB、拒绝原因限长 500', () => {
     expect(QUOTA_MIN_GB).toBe(1)
-    expect(DEFAULT_QUOTA_GB).toBe(5)
+    expect(DEFAULT_QUOTA_GB).toBe(1)
+    expect(DISK_TOTAL_GB).toBe(1000)
     expect(REJECT_REASON_MAX).toBe(500)
+  })
+})
+
+describe('quotaFloorGb —— 调小下限不低于已用', () => {
+  it('已用向上取整为整数 GB；未统计（null）只受最小值 1 约束；已用不足 1 GB 取 1', () => {
+    expect(quotaFloorGb(2.7)).toBe(3)
+    expect(quotaFloorGb(5)).toBe(5)
+    expect(quotaFloorGb(0.3)).toBe(1)
+    expect(quotaFloorGb(null)).toBe(1)
   })
 })

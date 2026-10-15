@@ -14,7 +14,7 @@ import ListPagination from '@/components/admin/ListPagination.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { useAdminList } from '@/composables/useAdminList'
 import { listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest } from '@/api/storageSpace'
-import { REQUEST_STATE, REJECT_REASON_MAX as REJECT_MAX, quotaInputError, fmtGb } from '@/utils/storageSpace'
+import { REQUEST_STATE, REJECT_REASON_MAX as REJECT_MAX, QUOTA_MIN_GB, QUOTA_MAX_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 
 const props = defineProps({
@@ -74,7 +74,7 @@ async function openApprove(row) {
     approve.request = detail
     approve.current = detail.current
     // 默认预填「当前总量 + 5」，管理员按需改（PRD 四·3）
-    approve.value = detail.current.totalGb + 5
+    approve.value = Math.min(detail.current.totalGb + 5, QUOTA_MAX_GB)
     approve.visible = true
   } catch (e) {
     ElMessage.error(e?.message || '加载申请失败，请稍后重试')
@@ -236,8 +236,8 @@ function openView(row) {
         </div>
         <div class="sq-quote">{{ approve.request.reason }}</div>
         <div class="sq-field-label"><b class="sq-required">*</b> 新总量（GB）</div>
-        <el-input-number v-model="approve.value" :min="QUOTA_MIN_GB" :step="1" class="sq-number" />
-        <div class="sq-sub">正整数，不小于 {{ QUOTA_MIN_GB }} GB，须大于当前总量 {{ fmtGb(approve.current.totalGb) }}</div>
+        <el-input-number v-model="approve.value" :min="QUOTA_MIN_GB" :max="QUOTA_MAX_GB" :step="1" class="sq-number" />
+        <div class="sq-sub">正整数，{{ QUOTA_MIN_GB }}–{{ QUOTA_MAX_GB }} GB，须大于当前总量 {{ fmtGb(approve.current.totalGb) }}</div>
         <div v-if="approve.error" class="sq-error">{{ approve.error }}</div>
       </template>
       <template #footer>

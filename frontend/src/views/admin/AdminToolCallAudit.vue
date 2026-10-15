@@ -3,7 +3,7 @@
  * 工具调用审计（治理，ADMIN 专属）——数字员工调用外部工具 / 第三方知识服务的事后审计记录，只读。
  *
  * 容器页：页头 + 三个页签，每个页签是一个独立子页（自己的统计卡片、筛选、列表、详情）：
- *   技能调用       用户在对话中触发，技能调连接器          → ToolCallAuditSkills   （PRD §二~§七）
+ *   会话调用       用户在对话中触发，技能调连接器          → ToolCallAuditSkills   （PRD §二~§七）
  *   岗位自动化任务  定时触发、无人值守，任务调连接器        → ToolCallAuditTasks    （PRD §八）
  *   知识库检索     岗位 / 专家引用的知识库检索第三方知识服务 → ToolCallAuditKnowledge（PRD §九）
  *
@@ -21,10 +21,10 @@ const activeTab = ref('skill')
 
 <template>
   <div class="list-page">
-    <PageHeader title="工具调用审计" subtitle="追溯每次工具调用的发起人、确认过程与执行结果" />
+    <PageHeader title="工具调用审计" subtitle="追溯每次会话 / 任务运行的发起人、确认过程与执行结果" />
 
     <el-tabs v-model="activeTab" class="tca-tabs">
-      <el-tab-pane label="技能调用" name="skill" lazy>
+      <el-tab-pane label="会话调用" name="skill" lazy>
         <ToolCallAuditSkills />
       </el-tab-pane>
       <el-tab-pane label="岗位自动化任务" name="task" lazy>

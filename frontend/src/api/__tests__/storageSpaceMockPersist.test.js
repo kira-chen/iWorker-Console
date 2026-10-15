@@ -83,8 +83,8 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
     const m = await import('../storageSpaceMock')
     await m.adjustStorageQuota(201, 8)
     const { v, data } = readSnapshot()
-    expect(v).toBe(5)
-    expect(Object.keys(data).sort()).toEqual(['members', 'requests'])
+    expect(v).toBe(7)
+    expect(Object.keys(data).sort()).toEqual(['defaultQuotaGb', 'diskTotalGb', 'members', 'requests'])
     for (const member of data.members) {
       expect(Object.keys(member).sort()).toEqual(['cacheGb', 'finalGb', 'quotaGb', 'statAt', 'userId'])
     }
@@ -102,9 +102,9 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
     expect(row.position).toBeTruthy() // 张伟绑定了岗位分配里的岗位，列表上显示岗位名而不是「—」
   })
 
-  it('本地存着 v4 旧版快照（紧邻的上一版，申请里还带申请时用量）→ 丢弃旧数据，回到种子（陈宇仍有待处理申请、容量来自种子）', async () => {
+  it('本地存着 v5 旧版快照（紧邻的上一版，默认容量固定 5 GB）→ 丢弃旧数据，回到种子（陈宇仍有待处理申请、容量来自种子）', async () => {
     globalThis.localStorage.setItem(KEY, JSON.stringify({
-      v: 4,
+      v: 5,
       data: { members: [{ userId: 201, username: 'zhangwei', finalGb: 1, cacheGb: 0, quotaGb: 77, statAt: null }], requests: [] }
     }))
     const m = await import('../storageSpaceMock')
@@ -114,7 +114,7 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
 
   it('本地快照版本对但形状不合法（members 不是数组）→ 兜底回种子，页面不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 5, data: { members: 'oops', requests: [] } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { members: 'oops', requests: [] } }))
     const m = await import('../storageSpaceMock')
     expect((await m.getStorageOverview()).pendingCount).toBe(4)
     expect(warn).toHaveBeenCalled()

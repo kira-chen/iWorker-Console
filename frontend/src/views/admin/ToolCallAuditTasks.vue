@@ -4,17 +4,17 @@
  * 运行中通过任务「引用工具」或所引用的技能 / Agent 调用连接器工具的事后审计记录，只读。对应 PRD §八。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）：记录单元从「一次工具调用」改为「一次任务运行」，
- * 与「技能调用」页签同一套模型，工具调用明细挪进详情（§8.5）。同轮讨论拍板：自动化任务全部
+ * 与「会话调用」页签同一套模型，工具调用明细挪进详情（§8.5）。同轮讨论拍板：自动化任务全部
  * 操作免授权、不经确认，读写一致处理——原「写操作预授权」（已预授权 / 未授权）整套字段废弃；
  * 原「任务运行编号」字段随之废弃，记录本身已是运行级，不必再用字段串联。
  *
- * 和「技能调用」页签的差别都来自「没有用户在场」：user / position 是任务所属用户（领用该岗位
+ * 和「会话调用」页签的差别都来自「没有用户在场」：user / position 是任务所属用户（领用该岗位
  * 的用户）及其岗位，不是发起人，触发的是调度计划；没有用户确认、没有授权环节，读写操作展示
  * 规则一致；不展示「进行中」——免授权不会运行到一半停下等人处理。
  *
  * 2026-10-09 同日改版：不展示耗时与具体执行时刻——系统本来就不采集单次工具调用的过程时间
  * 数据。执行结果收窄为**成功 / 失败**两态（原「执行前拦截」并入「失败」，原因文案保留）——
- * 与技能调用完全同构，判定规则与标签都直接复用（deriveExec / EXEC_RESULT_LABEL）。
+ * 与会话调用完全同构，判定规则与标签都直接复用（deriveExec / EXEC_RESULT_LABEL）。
  *
  * 2026-10-09 第四轮改版（同日）：筛选项占位文案与另两页签统一——执行结果筛选统一叫
  * 「全部执行结果」，写操作筛选从裸的"全部"改叫「涉及写操作」，意思更明确。
@@ -44,7 +44,8 @@ import {
 const RUN_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const YES_NO = { true: '是', false: '否' }
-const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
+// §六 列表层（§8.6 同）：是（涉及写操作）绿、否灰
+const YES_NO_TAG = (v) => (v ? 'success' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
 const query = reactive({ result: '', hasWrite: '' })
@@ -58,6 +59,8 @@ const {
   fetcher: listTaskCallAudits,
   records: taskCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
+  // 搜索范围：md §8.3 只写用户 / 岗位 / 任务（及触发方式） / 工具标识，未写请求编号（仅知识库页签 §9.3 写了）；
+  // 这里多带 r.id 是有意保留——演示里按编号（C-xxxx / T-xxxx）直达某条记录最省事，也是用例的定位手段。待产品确认是否收口。
   keywordOf: (r) => [r.user, r.position, r.task, r.trigger, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
@@ -84,6 +87,7 @@ const metrics = computed(() => {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
+      // 副标题「按整体结果判定」md 未写（§8.2 卡片说明列只有「整体判定为失败的记录数」），由说明列改写而来，意思一致故保留
       sub: '按整体结果判定',
       danger: true
     }
@@ -105,11 +109,13 @@ function chooseMetric(key) {
 }
 
 const HELP = [
-  '执行结果只有成功、失败两类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
+  '执行结果只有成功、失败两类，任务无人值守，不存在进行中、用户取消和待确认；全部操作免授权，不区分读写处理。',
   '单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
-/* ── 导出 CSV ── */
+/* ── 导出 CSV ──
+ * md 只写「导出当前筛选结果，展示『已导出 N 条筛选结果』」，没有定义 CSV 列。这里的列 = 列表列 + 「请求编号」「原因」
+ * （编号便于与详情 / 反馈对账），属于 demo 自定的合理默认，不是 md 口径；产品若要定列，以 md 为准回头调整。 */
 function exportCsv() {
   const rowsToExport = statsAll.value
   downloadCsv(
@@ -140,7 +146,7 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: RUN_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '自动化任务', value: d.task },
+      { label: '任务', value: d.task },
       { label: '触发方式', value: d.trigger },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
@@ -150,7 +156,7 @@ const detail = computed(() => {
       confirm: null,
       result: { label: RESULT_LABEL[c.result], type: CALL_RESULT_TAG[c.result] },
       reason: c.reason,
-      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，规则同技能调用页签（§8.5）。
+      // 2026-10-09 收窄展示范围：成功的只读调用不展示参数/响应，规则同会话调用页签（§8.5）。
       showParams: c.nature === 'WRITE' || c.result !== 'SUCCESS',
       params: paramsOf(c),
       output: outputOf(c)
@@ -161,7 +167,7 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  if (d.result === 'FAILED') return '建议对照工具调用明细，核对出问题的具体连接器状态或权限，并确认是否已有后续重试记录。'
   return '本次运行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>

@@ -29,7 +29,7 @@ const Editor = (await import('@/components/admin/RuntimeSpecEditor.vue')).defaul
 const LIMITS = { cpu: 32, memoryGi: 128, diskGi: 500 }
 const DEFAULT_SPEC = {
   id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置，可处理 100MB 以内文件', cpu: 2, memoryGi: 4, diskGi: 20,
-  readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0, isDefault: true, positionIds: [], allowUserApply: false,
+  readinessTimeoutMin: 10, idleRecycleMin: 20, maxLifetimeHours: 0, isDefault: true, positionIds: [], allowUserApply: true,
   effectiveUsers: [{ username: 'chenyu', name: '陈宇', source: 'DEFAULT', positionName: '' }], pendingUsers: [],
   createdAt: '2026-08-15 10:22', updatedAt: '2026-08-30 14:12'
 }
@@ -200,6 +200,17 @@ describe('RuntimeSpecEditor · 新建（md §四.1 / §四.4 / §四.5 / §四.7
     expect(d.querySelector('input[placeholder="如：标准、高性能"]')).toBeTruthy()
     expect(api.getRuntimeSpecLimits).toHaveBeenCalledTimes(2)
   })
+
+  it('平台上限读取失败时即使字段完整也阻止创建，提示先重试上限', async () => {
+    api.getRuntimeSpecLimits.mockRejectedValue(new Error('limits down'))
+    const d = await open({ specId: null })
+    await typeInput(d.querySelector('input[placeholder="如：标准、高性能"]'), '分析档')
+    await typeInput(d.querySelector('textarea[placeholder="如：适合常规文档处理，可处理 100MB 以内文件"]'), '适合数据分析')
+    footBtn(d, '创建').click()
+    await flushAll(6)
+    expect(api.createRuntimeSpec).not.toHaveBeenCalled()
+    expect(errorSpy).toHaveBeenCalledWith('平台资源上限获取失败，请重试')
+  })
 })
 
 describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 / §四.7 / §四.9）', () => {
@@ -235,6 +246,7 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     expect(used).toContain('赵敏')
     expect(used).toContain('个人配置')
     expect(d.querySelector('.rs-pending').textContent).toContain('另有 1 个个人申请待审批')
+    expect(d.querySelector('.rs-used-empty')).toBeNull()
     expect(d.querySelector('.rs-default-alert')).toBeNull() // 非默认不出默认提示条
     expect(footBtns(d)).toEqual(['取消', '保存'])
   })
@@ -268,12 +280,13 @@ describe('RuntimeSpecEditor · 编辑 / 查看（md §四.1 / §四.3 / §四.6 
     expect(footBtns(d)).toEqual(['关闭'])
   })
 
-  it('编辑默认规格：可改名称，但「允许用户申请」开关禁用（默认规格不开放申请为代码现状，md 未写，待裁决）', async () => {
+  it('编辑默认规格：可改名称，但「允许用户申请」固定开启且开关禁用（md §四.3）', async () => {
     api.getRuntimeSpec.mockResolvedValue({ ...DEFAULT_SPEC })
     const d = await open({ specId: 2 })
     expect(title(d)).toBe('编辑规格')
     expect(d.querySelector('input[placeholder="如：标准、高性能"]').disabled).toBe(false)
     expect(d.querySelector('.el-switch').classList.contains('is-disabled')).toBe(true)
+    expect(d.querySelector('.el-switch').classList.contains('is-checked')).toBe(true)
     expect(footBtns(d)).toEqual(['取消', '保存'])
   })
 

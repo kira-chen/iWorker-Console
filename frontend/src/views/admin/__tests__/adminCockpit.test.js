@@ -13,7 +13,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * 驾驶舱其余区块是静态 mock，这里只留「页面仍在」的探针，不逐个断言。
  *
  * 2026-10-08 /test-audit 补缺口（同对齐 prd.驾驶舱.md；静态示例数值不测，只测交互规则）：
- * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews（memory router 断 currentRoute.name）；
+ * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews / AdminPositionAssignments（带 pending=1）/ AdminStorageSpace（带 tab=request、status=PENDING）（memory router 断 currentRoute.name 与 query）；
  * - §四.2 岗位领用 Top 5 只列已发布岗位；
  * - §六.2 点踩明细每页 10 条、首 / 末页按钮置灰；§七.1 点踩明细与对话明细两个弹窗互斥；
  * - §一.1 页头「更新于 HH:MM」，刷新后为当前时刻。
@@ -216,6 +216,7 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     expect(btn.textContent.trim()).toBe('去分配')
     btn.click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminPositionAssignments'))
+    expect(router.currentRoute.value.query.pending).toBe('1') // 进页自动筛待分配（PRD §三.2）
   })
 
   it('「存储空间」卡【去处理】→ 跳到存储空间页面', async () => {
@@ -224,6 +225,8 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     expect(btn.textContent.trim()).toBe('去处理')
     btn.click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminStorageSpace'))
+    // 直接进扩容申请页签 + 待处理状态（PRD §三.2）
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'request', status: 'PENDING' })
   })
 
   it('区块头「共 N 项」= 五张卡片数量之和', async () => {
@@ -319,6 +322,48 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
     await vi.waitFor(() => expect(shown(dlBody())).toBe(false))
     expect(shown(cvBody())).toBe(true)
     expect(cvBody().querySelector('.cv-dialog-id').textContent.trim()).toBe('D-1031')
+  })
+
+  it('对话明细【关闭】→ 回到点踩明细弹窗并停在原页码（PRD §七.3，2026-10-14 裁决），对话明细收起', async () => {
+    await openDl()
+    footBtn('下一页').click()
+    await flushAll(4)
+    expect(dlBody().querySelector('.dl-foot').textContent).toContain('第 2 / 6 页')
+    dlBody().querySelector('tbody tr button').click()
+    await flushAll(8)
+    await vi.waitFor(() => expect(shown(dlBody())).toBe(false))
+    ;[...cvBody().querySelectorAll('button')].find((b) => b.textContent.trim() === '关闭').click()
+    await flushAll(8)
+    await vi.waitFor(() => expect(shown(cvBody())).toBe(false))
+    expect(shown(dlBody())).toBe(true)
+    expect(dlBody().querySelector('.dl-foot').textContent).toContain('第 2 / 6 页')
+  })
+
+  it('对话明细只展示被点踩的单轮（2 条：用户提问 + 被点踩回复），提问即表格里的摘要，无前情展开开关（PRD §七.2）', async () => {
+    await openDl()
+    const row = dlBody().querySelector('tbody tr')
+    const snippet = row.querySelector('.dl-snippet').textContent.trim()
+    row.querySelector('button').click()
+    await vi.waitFor(() => expect(shown(cvBody())).toBe(true))
+    const msgs = [...cvBody().querySelectorAll('.cv-msg')]
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].classList.contains('user')).toBe(true)
+    expect(msgs[0].querySelector('.cv-bubble').textContent.trim()).toBe(snippet)
+    expect(msgs[1].classList.contains('asst')).toBe(true)
+    expect(msgs[1].querySelector('.cv-disliked-tag')).not.toBeNull()
+    expect(cvBody().querySelector('.cv-ctx-toggle')).toBeNull()
+  })
+
+  it('点踩明细筛选行只有「时间范围」，没有用户筛选（按用户维度采集仅是数据口径，PRD §六.3）', async () => {
+    await openDl()
+    const labels = [...dlBody().querySelectorAll('.dl-filters .dl-filter-label')].map((l) => l.textContent.trim())
+    expect(labels).toEqual(['时间范围'])
+  })
+
+  it('点踩统计区块头只剩【查看点踩明细】，没有【导出报表】（2026-10-12 裁决）', async () => {
+    await mount()
+    const labels = [...mounted.container.querySelectorAll('.fb-panel .dash-panel-head button')].map((b) => b.textContent.trim())
+    expect(labels).toEqual(['查看点踩明细'])
   })
 })
 

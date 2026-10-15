@@ -1,10 +1,17 @@
 // 工具调用审计 —— 数字员工调用外部工具 / 第三方知识服务的事后审计记录，只读 mock 数据。
 // 三组数据对应页面的三个页签（口径见 PRD 正本 §一 页签结构）：
-//   1. toolCallRecords    技能调用    用户在对话中触发的一次技能执行，执行中调连接器（MCP / API / 业务系统）
+//   1. toolCallRecords    会话调用    用户的一次会话（会话内调用技能），会话中执行中调连接器（MCP / API / 业务系统）
 //   2. taskCallRecords    岗位自动化任务  定时触发、无人值守的一次任务运行，运行中调连接器
 //   3. knowledgeCallRecords 知识库检索  岗位 / 专家引用的知识库，经 API / MCP 数据源检索第三方知识服务
 //
-// 2026-10-09 与研发（梅竹）讨论后改版：技能调用 / 岗位自动化任务两组的记录单元从「一次工具调用」
+// 2026-10-13 第六轮改版：平台分不清工具由谁发起（多技能还可能同时调起），废止工具调用的 skill「调用来源」字段；
+// 会话调用记录新增 skillCalls（调用的技能 + 各自成败），与 calls（调用的工具）是两条互不关联的时间线，详情分「按工具/按技能」查看；
+// skills（列表「调用的技能」列）由 skillCalls 推导。
+//
+// 2026-10-12 第五轮改版：会话调用页签记录单元改为「一次会话」（会话内可调用多个技能，字段 skill → skills 数组），
+// 工具调用明细不局限于技能引用的工具；岗位自动化任务同理，工具不局限于任务引用的工具。
+//
+// 2026-10-09 与研发（梅竹）讨论后改版：会话调用 / 岗位自动化任务两组的记录单元从「一次工具调用」
 // 改为「一次技能执行 / 一次任务运行」（§一「记录单元」）——单次对话可能多次调用工具，按单条工具调用
 // 上报数据量大，且单个工具失败、整体兜底成功时单纯记工具失败意义有限。改版后：
 //   - 列表层是执行 / 运行记录，带「是否涉及写操作」「整体执行结果」；
@@ -18,26 +25,26 @@
 // 是错的，不是「数值算错了要修」，是这类字段压根不该存在。连带调整：
 //   - 单次工具调用的执行结果只有 成功 / 失败 两态；原来的「执行前拦截」「用户取消」收作「失败」的
 //     具体原因文案，不再是独立状态。
-//   - 技能调用不展示「执行中」的记录——没有「待确认」这个可展示的中间态，一次执行只在确认 / 执行
+//   - 会话调用不展示「执行中」的记录——没有「待确认」这个可展示的中间态，一次执行只在确认 / 执行
 //     都有了结果后才出现在审计记录里；连带技能执行层面的整体结果也只剩 成功 / 失败（§一「记录单元」）。
 //   - 「用户确认」字段收窄为 不需要确认 / 已确认 两态；确认环节本身被拒绝（原「用户取消」）不再单独
 //     标确认状态，由执行结果=失败 + 原因文案"用户取消本次操作"表达。
 //   - 岗位自动化任务同样不记录耗时与具体执行时刻。
 //
 // 2026-10-09 第三轮改版（同日）：岗位自动化任务、知识库检索也收窄为只有 成功 / 失败 两态——
-// 原「执行前拦截」并入「失败」，原因文案保留。岗位自动化任务的结果判定规则与技能调用完全一致
+// 原「执行前拦截」并入「失败」，原因文案保留。岗位自动化任务的结果判定规则与会话调用完全一致
 // （看最后一次工具调用是否成功），两处合并成同一个 deriveExec 函数，不再分别定义；岗位自动化
-// 任务的列表层标签直接复用 EXEC_RESULT_LABEL（文案与技能调用一致，都是"失败"）。
+// 任务的列表层标签直接复用 EXEC_RESULT_LABEL（文案与会话调用一致，都是"失败"）。
 //
 // 2026-10-09 第四轮改版（同日）：知识库检索的「失败」文案与另两个页签统一，去掉原来单独的
 // 「执行失败」写法——原 KNOWLEDGE_RESULT_LABEL 删除，三个页签直接共用同一份 EXEC_RESULT_LABEL。
-// 连带三个页签的筛选项占位文案统一：执行结果筛选统一叫「全部执行结果」，技能调用 / 岗位自动化
+// 连带三个页签的筛选项占位文案统一：执行结果筛选统一叫「全部执行结果」，会话调用 / 岗位自动化
 // 任务的写操作筛选统一叫「涉及写操作」（原来占位是裸的"全部"，含义不明确）；知识库检索没有
 // 「涉及写操作」概念（只读），换成它本来就有的「全部数据源类型」。知识库检索原本还有一个独立的
 // 「命中情况」筛选下拉，一并去掉——命中 0 条的筛选改为只能通过「无命中检索」统计卡片触发，
 // 不再占一个筛选位（§九.2 的卡片本来就能做到同样的事）。
 //
-// 技能调用的示例数据参考已退场的旧交互原型（数字员工管理端交互原型.html · 05治理/工具调用审计，
+// 会话调用的示例数据参考已退场的旧交互原型（数字员工管理端交互原型.html · 05治理/工具调用审计，
 // 原型本身已于 2026-09-09/10 退场不作依据），本次改版重新分组为执行单元，场景未变、组合方式变了。
 // 岗位自动化任务、知识库检索两组是 2026-09-28 按 PRD 新增页签补的，任务名 / 知识库名 / 数据源名
 // 取自 sampleTaskMock / knowledgeBaseMock 的种子，不另造名字。
@@ -45,10 +52,10 @@
 // 原型字段 role（如"销售顾问"）在本次改造中更名为 position（岗位），避免与 06组织/角色 的
 // 权限角色概念混淆。
 
-/** 工具调用（详情层，技能调用 / 岗位自动化任务两页签共用）的执行结果，只有成功 / 失败两态。 */
+/** 工具调用（详情层，会话调用 / 岗位自动化任务两页签共用）的执行结果，只有成功 / 失败两态。 */
 export const RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
 
-/** 工具调用（详情层，仅技能调用页签——岗位自动化任务免授权、不出现确认环节）的用户确认状态。
+/** 工具调用（详情层，仅会话调用页签——岗位自动化任务免授权、不出现确认环节）的用户确认状态。
  *  只有「不需要确认 / 已确认」两态：确认环节被拒绝的调用不单独标确认状态，由执行结果=失败 +
  *  原因文案表达（见 C-1006），confirm 字段留空（null）。 */
 export const CONFIRM_LABEL = { NONE: '不需要确认', CONFIRMED: '已确认' }
@@ -61,7 +68,7 @@ export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
 
 /**
  * 从一次技能执行 / 任务运行的工具调用明细，推导列表层需要的汇总字段（§一「记录单元」判定规则，
- * 技能调用与岗位自动化任务共用同一套判定——两者现在都只有 成功 / 失败 两态）：
+ * 会话调用与岗位自动化任务共用同一套判定——两者现在都只有 成功 / 失败 两态）：
  *   hasWrite  明细里有没有写操作
  *   result    看明细里最后一次调用是否成功——这是 mock 对「是否完成预期产出」的简化模拟
  *             （真实判定由后端 / Agent 决定，这里只演示规则形态：哪怕中途有调用失败，只要
@@ -70,51 +77,58 @@ export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
  */
 function deriveExec(calls) {
   const hasWrite = calls.some((c) => c.nature === 'WRITE')
+  // 零调用（calls 为空）：没有失败的调用，整体记成功（§一「可能调用零到多个外部工具」，详情展示空态文案）
   const last = calls[calls.length - 1]
-  const result = last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
+  const result = !last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
   return { hasWrite, result }
 }
 
-/* ══════════════ 技能调用 ══════════════
- * 记录单元＝一次技能执行：calls 是这次执行里按发生顺序调用的工具明细（§五.2）。不展示「执行中」
+/* ══════════════ 会话调用 ══════════════
+ * 记录单元＝一次会话：calls 是这次会话里实际调用的（不限于技能引用的）按发生顺序调用的工具明细，skillCalls 是调用的技能
+ * （同一技能多次调用合并为一项），两者互不关联（§五.2）。不展示「执行中」
  * 的记录——没有「待确认」这个中间态可展示，一次执行只在确认 / 执行都有结果后才入账，故这里没有
  * 类似「排产计划调整·待确认中」的记录。同一次对话里技能被循环调用多次，每次各自算一条独立执行，
- * 不合并——下面 9 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
+ * 不合并——下面 12 条执行记录里大多数只调了一次工具；「报价单生成」「排产冲突检测」两条各调了两次，
  * 演示"一次执行多步"与"工具先失败、重试后整体仍成功"（后者对应与梅竹讨论的 G3：失败不应让单次
  * 失败盖掉整体结果）。 */
 export const toolCallRecords = [
   {
-    id: 'C-1001', date: '2026-09-20', time: '09:10:15', user: '周敏', position: '生产计划员', skill: '排产计划调整',
+    id: 'C-1001', date: '2026-09-20', time: '09:10:15', user: '周敏', position: '生产计划员',
     reason: '业务系统·SAP ERP 连接超时',
+    skillCalls: [{ skill: '排产计划调整', result: 'FAILED', reason: '连接超时' }],
     calls: [
       { tool: '业务系统·SAP ERP', action: '修改排产计划', nature: 'WRITE', confirm: 'CONFIRMED', result: 'FAILED', reason: '连接超时' }
     ]
   },
   {
-    id: 'C-1002', date: '2026-09-26', time: '12:01:10', user: '李强', position: '财务助手', skill: '报销查询',
+    id: 'C-1002', date: '2026-09-26', time: '12:01:10', user: '李强', position: '财务助手',
     reason: '',
+    skillCalls: [{ skill: '报销查询', result: 'SUCCESS', reason: '' }],
     calls: [
       { tool: 'API·费控系统', action: '查询报销进度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
-    id: 'C-1003', date: '2026-09-26', time: '16:20:08', user: '陈杰', position: '销售顾问', skill: '客户记录更新',
+    id: 'C-1003', date: '2026-09-26', time: '16:20:08', user: '陈杰', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '客户记录更新', result: 'SUCCESS', reason: '' }],
     calls: [
       { tool: '业务系统·Salesforce CRM', action: '添加客户跟进记录', nature: 'WRITE', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
   },
   {
     // 原「执行前拦截」并入「失败」，原因文案保留——仍能看出是白名单 / 权限这类检查没通过。
-    id: 'C-1004', date: '2026-09-27', time: '14:41:08', user: '刘敏', position: '销售顾问', skill: '客户信息查询',
+    id: 'C-1004', date: '2026-09-27', time: '14:41:08', user: '刘敏', position: '销售顾问',
     reason: '业务系统·Salesforce CRM 权限不足',
+    skillCalls: [{ skill: '客户信息查询', result: 'FAILED', reason: '权限不足' }],
     calls: [
       { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
     ]
   },
   {
-    id: 'C-1005', date: '2026-09-27', time: '14:45:12', user: '张浩', position: '生产计划员', skill: '生产数据查询',
+    id: 'C-1005', date: '2026-09-27', time: '14:45:12', user: '张浩', position: '生产计划员',
     reason: '业务系统·SAP ERP 不在工具白名单',
+    skillCalls: [{ skill: '生产数据查询', result: 'FAILED', reason: '不在工具白名单' }],
     calls: [
       { tool: '业务系统·SAP ERP', action: '删除生产订单', nature: 'WRITE', confirm: 'NONE', result: 'FAILED', reason: '不在工具白名单' }
     ]
@@ -122,8 +136,9 @@ export const toolCallRecords = [
   {
     // 原「用户取消」并入「失败」：确认环节被拒绝，没有单独的确认状态可标——confirm 留空（null），
     // 由执行结果=失败 + 原因文案表达"这是一次被用户拒绝的写操作"，不是系统自身执行失败。
-    id: 'C-1006', date: '2026-09-27', time: '14:52:05', user: '李强', position: '财务助手', skill: '报销单提交',
+    id: 'C-1006', date: '2026-09-27', time: '14:52:05', user: '李强', position: '财务助手',
     reason: '用户取消本次操作',
+    skillCalls: [{ skill: '报销单提交', result: 'FAILED', reason: '用户取消本次操作' }],
     calls: [
       { tool: '业务系统·用友财务', action: '提交报销单', nature: 'WRITE', confirm: null, result: 'FAILED', reason: '用户取消本次操作' }
     ]
@@ -131,8 +146,9 @@ export const toolCallRecords = [
   {
     // 先失败（连接超时）后重试成功：列表层仍记「成功」，失败细节只在详情里看到——与梅竹讨论的
     // G3 场景对应：工具本身失败、兜底 / 重试后整体仍完成，不应让单次失败盖掉整体结果。
-    id: 'C-1007', date: '2026-09-27', time: '15:00:52', user: '张浩', position: '生产计划员', skill: '排产冲突检测',
+    id: 'C-1007', date: '2026-09-27', time: '15:00:52', user: '张浩', position: '生产计划员',
     reason: '',
+    skillCalls: [{ skill: '排产冲突检测', result: 'SUCCESS', reason: '' }],
     calls: [
       { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
       { tool: '业务系统·SAP ERP', action: '查询排产计划', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
@@ -140,8 +156,9 @@ export const toolCallRecords = [
   },
   {
     // 先查客户信息（读）再创建报价单（写，需确认）：一次执行里既有读也有写，"涉及写操作"记是。
-    id: 'C-1008', date: '2026-09-27', time: '15:01:25', user: '陈杰', position: '销售顾问', skill: '报价单生成',
+    id: 'C-1008', date: '2026-09-27', time: '15:01:25', user: '陈杰', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '客户信息查询', result: 'SUCCESS', reason: '' }, { skill: '报价单生成', result: 'SUCCESS', reason: '' }],
     calls: [
       { tool: '业务系统·Salesforce CRM', action: '查询客户信息', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
       {
@@ -160,14 +177,44 @@ export const toolCallRecords = [
     ]
   },
   {
-    id: 'C-1009', date: '2026-09-27', time: '15:02:11', user: '刘敏', position: '销售顾问', skill: '方案要点生成',
+    id: 'C-1009', date: '2026-09-27', time: '15:02:11', user: '刘敏', position: '销售顾问',
     reason: '',
+    skillCalls: [{ skill: '方案要点生成', result: 'SUCCESS', reason: '' }],
     calls: [
       // 成功的只读调用不保留请求参数 / 响应（2026-10-09 收窄展示范围，§5.2），不内嵌 params/output
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' },
       { tool: 'MCP·文档生成服务', action: '生成方案摘要文档', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
+  },
+  {
+    // 未调用任何技能、只有工具调用：技能时间线为空（列表「调用的技能」展示「—」）
+    id: 'C-1010', date: '2026-09-28', time: '09:20:41', user: '李强', position: '财务助手',
+    reason: '',
+    skillCalls: [],
+    calls: [
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
+    ]
+  },
+  {
+    // 零工具调用：调用了技能但全程没有触发任何外部工具（§一「可能调用零到多个外部工具」），
+    // 详情「按工具」维度展示空态文案「本次会话未调用外部工具」，不视为异常（§七）。
+    id: 'C-1011', date: '2026-09-28', time: '10:05:30', user: '陈杰', position: '销售顾问',
+    reason: '',
+    skillCalls: [{ skill: '话术润色', result: 'SUCCESS', reason: '' }],
+    calls: []
+  },
+  {
+    // 多次调用失败：同一次会话里两个工具调用都失败、没有后续成功收口，整体记失败；
+    // 原因概要按 §四「不止一次调用出问题」展示「N 次调用失败，详见详情」（单次失败才写「工具标识 原因」）。
+    id: 'C-1012', date: '2026-09-19', time: '11:12:47', user: '张浩', position: '生产计划员',
+    reason: '2 次调用失败，详见详情',
+    skillCalls: [],
+    calls: [
+      { tool: '业务系统·SAP ERP', action: '查询库存', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
+    ]
   }
-].map((r) => ({ ...r, ...deriveExec(r.calls) }))
+].map((r) => ({ ...r, skills: r.skillCalls.map((c) => c.skill), ...deriveExec(r.calls) }))
 
 /** 详情抽屉「实际请求参数」页签数据：[参数名, 技术标识, 本次请求值][]——call 自带则用，否则占位。 */
 export function paramsOf(call) {
@@ -189,9 +236,9 @@ export async function listToolCallAudits() {
 }
 
 /* ══════════════ 岗位自动化任务 ══════════════
- * 记录单元＝一次任务运行：calls 是这次运行里按发生顺序调用的工具明细，结构同技能调用，
+ * 记录单元＝一次任务运行：calls 是这次运行里按发生顺序调用的工具明细，结构同会话调用，
  * 只是没有 confirm 字段——任务无人值守，全部操作免授权、不经确认（2026-10-09 与研发讨论拍板）。
- * 同样不记录耗时与具体执行时刻；整体结果与技能调用共用同一套判定（deriveExec）与标签
+ * 同样不记录耗时与具体执行时刻；整体结果与会话调用共用同一套判定（deriveExec）与标签
  * （EXEC_RESULT_LABEL），只有 成功 / 失败 两态，原「执行前拦截」并入「失败」。
  * user / position 是任务所属用户（领用该岗位的用户），不是发起人；发起方是调度，见 trigger。 */
 export const taskCallRecords = [
@@ -204,7 +251,7 @@ export const taskCallRecords = [
   },
   {
     id: 'T-2002', date: '2026-09-24', time: '08:00:04', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
-    reason: '客户档案已锁定，写入被拒绝',
+    reason: 'API·客户数据 API 客户档案已锁定，写入被拒绝',
     calls: [
       { tool: 'API·客户数据 API', action: '写入拜访提纲', nature: 'WRITE', result: 'FAILED', reason: '客户档案已锁定，写入被拒绝' }
     ]
@@ -274,6 +321,22 @@ export const taskCallRecords = [
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'FAILED', reason: '不在工具白名单' }
     ]
+  },
+  {
+    // 失败后重试成功：先失败（连接超时）后重试成功，列表层仍记「成功」，失败细节只在详情里看到（同会话调用 C-1007，G3 场景）。
+    id: 'T-2011', date: '2026-09-27', time: '08:30:05', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
+    reason: '',
+    calls: [
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'SUCCESS', reason: '' }
+    ]
+  },
+  {
+    // 零工具调用：任务运行全程没触发外部工具（§8.5），详情展示空态文案「本次运行未调用外部工具」，
+    // 整体记成功、不涉及写操作。日期放在较早位置（09-22），不挤占既有用例依赖的首页行。
+    id: 'T-2012', date: '2026-09-22', time: '08:00:02', user: '刘敏', position: '经营分析岗', task: '客户满意度周报', trigger: '定时·每周一 08:00',
+    reason: '',
+    calls: []
   }
 ].map((r) => ({ ...r, ...deriveExec(r.calls) }))
 

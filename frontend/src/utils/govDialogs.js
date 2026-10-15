@@ -16,6 +16,7 @@ import { requestActionLabel } from '@/utils/reviewMeta'
  * @returns {Promise<boolean>} 用户是否确认
  */
 export async function confirmApproveReview(row) {
+  const isForceRevoke = row.requestAction === 'FORCE_REVOKE'
   const isDelist = row.requestAction === 'DELIST'
   const actionText = requestActionLabel(row.requestAction)
   try {
@@ -30,7 +31,7 @@ export async function confirmApproveReview(row) {
           h(
             'p',
             { style: 'margin:0;font-size:12px;color:var(--c-text-muted)' },
-            `通过后将立即${isDelist ? '停用' : '发布'}并更新审核状态。`
+            `通过后将立即${isForceRevoke ? '强制回收' : isDelist ? '停用' : '发布'}并更新审核状态。`
           )
         ]),
       '确认通过审核',

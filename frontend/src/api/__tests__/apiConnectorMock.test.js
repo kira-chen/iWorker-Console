@@ -10,6 +10,7 @@ import { explainMcpError } from '@/utils/mcpVerify'
  *   §二.5 服务提供系统（名称必填 ≤64 平台内唯一、描述必填 ≤2000；含 API 不可删）
  *   §一.1 搜索按名称或描述 / 状态筛选
  *   §三.3 鉴权密钥保存后遮罩、查看态不明文（出参 valueMasked、留空保留）
+ *   §4 强制回收（停用时勾选，同走审核；操作人=提交申请的管理员；旧快照缺回收字段按普通停用）
  *   + 持久化：每个写点 persist() 一次、快照形状校验、displayStatus 中间态归一。
  *
  * 隔离：mock 无 __reset 复位函数，每条用例 vi.resetModules() 后动态 import 拿全新种子；
@@ -412,7 +413,7 @@ describe('⑦ 鉴权出参脱敏（md §三.3 L136/L145：保存后遮罩、查�
 })
 
 describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中间态归一', () => {
-  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调', async () => {
+  it('11 个写点（含勾选强制回收的停用）各调 persist() 恰一次；读操作不调', async () => {
     await run(m.listApis())
     await run(m.getApi('api_1101'))
     await run(m.listProviderSystems())
@@ -427,8 +428,8 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       () => m.publishApi('api_1106'),
       () => m.withdrawApi('api_1106'),
       () => m.deactivateApi('api_1101'),
-      // 2026-10-09 补缺口 C2：强制回收（prd-API.md §4）也是写点；用另一条已发布种子 api_1103，不与上面的停用撞行
-      () => m.forceRevokeApi('api_1103', '持久化回收'),
+      // 2026-10-09 补缺口 C2：勾选强制回收的停用（prd-API.md §4）也是写点；用另一条已发布种子 api_1103，不与上面的停用撞行
+      () => m.deactivateApi('api_1103', { forceRevoke: true, reason: '持久化回收' }),
       // 删除仅未发布态可用（md-API §2 L54-56，2026-09-23 待办 yuepu#7②）：api_1102 是 PENDING_REVIEW 种子，
       // 改用未发布的 api_1104 验证这一写点
       () => m.deleteApi('api_1104')
@@ -463,53 +464,128 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
   })
 })
 
-describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
+describe('apiConnectorMock · 强制回收（停用时勾选，prd-API.md §4）', () => {
   const reason = '接口下线，紧急回收'
   const auditOps = async () => (await import('../accessAuditMock')).opsRecords
+  const revoke = (id = 'api_1101', r = reason) => run(m.deactivateApi(id, { forceRevoke: true, reason: r }))
 
-  it('已发布行可回收：状态回未发布、写 revoked、保留 publishedAt；立即生效不进审核（无待审类型）', async () => {
+  it('提交后与普通停用一致：审核中（停用审核）、不写 revoked、不落审计，publishedAt 保留', async () => {
     const before = await run(m.getApi('api_1101'))
     expect(before.revoked).toBeNull()
-    const row = await run(m.forceRevokeApi('api_1101', reason))
-    expect(row.status).toBe('NOT_PUBLISHED')
-    expect(row.pendingAction).toBeNull()
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
-    expect(row.publishedAt).toBe(before.publishedAt)
-    expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
-    const listed = (await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101')
-    expect(listed.revoked.reason).toBe(reason)
-    expect(harness.persist).toHaveBeenCalledTimes(1) // 2026-10-09 补缺口 C2：回收是写点，恰落盘一次
-  })
-
-  it('引用清单（技能 / 岗位）原样保留', async () => {
-    const before = await run(m.getApi('api_1101'))
-    expect(before.referencedBySkills.length).toBeGreaterThan(0)
-    expect(before.referencedByPositions.length).toBeGreaterThan(0)
-    const after = await run(m.forceRevokeApi('api_1101', reason))
-    expect(after.referencedBySkills).toEqual(before.referencedBySkills)
-    expect(after.referencedByPositions).toEqual(before.referencedByPositions)
-  })
-
-  it('写访问审计：模块 API · 动作 强制回收 · 变更内容 = 回收原因', async () => {
     const ops = await auditOps()
     const n = ops.length
-    await run(m.forceRevokeApi('api_1101', reason))
-    expect(ops.length).toBe(n + 1)
-    expect(ops[0]).toMatchObject({ module: 'API', action: '强制回收', target: '报销单查询', detail: reason })
+    const row = await revoke()
+    expect(row.status).toBe('PENDING_REVIEW')
+    expect(row.pendingAction).toBe('DEACTIVATE')
+    expect(row.revoked).toBeNull()
+    expect(row.publishedAt).toBe(before.publishedAt)
+    expect(ops.length).toBe(n)
+    expect(harness.persist).toHaveBeenCalledTimes(1)
   })
 
-  it('前置条件：未发布 / 审核中（发布审核、停用审核）/ 不存在一律拒绝', async () => {
-    await expect(run(m.forceRevokeApi('api_1104', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 未发布
-    await expect(run(m.forceRevokeApi('api_1102', reason))).rejects.toThrow('API状态已变化，请刷新后重试') // 待审发布
-    await run(m.deactivateApi('api_1103')) // 已发布 → 待审停用
-    await expect(run(m.forceRevokeApi('api_1103', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
-    await expect(run(m.forceRevokeApi('nope', reason))).rejects.toThrow('API 不存在')
-    await run(m.forceRevokeApi('api_1101', reason))
-    await expect(run(m.forceRevokeApi('api_1101', reason))).rejects.toThrow('API状态已变化，请刷新后重试')
+  it('审核通过才生效：未发布 + revoked(原因/时间/操作人) + 引用清单原样保留 + 列表带回收信息', async () => {
+    const before = await run(m.getApi('api_1101'))
+    expect(before.referencedBySkills.length).toBeGreaterThan(0)
+    await revoke()
+    expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+    const row = await run(m.getApi('api_1101'))
+    expect(row.status).toBe('NOT_PUBLISHED')
+    expect(row.pendingAction).toBeNull()
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
+    expect(row.referencedBySkills).toEqual(before.referencedBySkills)
+    expect(row.referencedByPositions).toEqual(before.referencedByPositions)
+    const listed = (await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101')
+    expect(listed.revoked.reason).toBe(reason)
+  })
+
+  it('审核通过后写访问审计：模块 API · 动作 强制回收 · 变更内容 = 回收原因', async () => {
+    const ops = await auditOps()
+    const n = ops.length
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, true)
+    expect(ops.length).toBe(n + 1)
+    expect(ops[0]).toMatchObject({ module: 'API', action: '强制回收', target: '报销单查询', detail: reason })
+    expect(ops[0].operator).toBe('demo')
+  })
+
+  it('提交后 pendingRevokeReason 等于原因；撤回 / 驳回 / 通过后都被清空', async () => {
+    const pending = async () => (await run(m.getApi('api_1101'))).pendingRevokeReason
+    await revoke()
+    expect(await pending()).toBe(reason)
+    await run(m.withdrawApi('api_1101'))
+    expect(await pending()).toBe('')
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, false)
+    expect(await pending()).toBe('')
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, true)
+    expect(await pending()).toBe('')
+  })
+
+  // PRD 访问审计 §6.2：操作人为提交申请的管理员（不是审核人）
+  it('操作人 = 提交强制回收的管理员：A 提交、切换演示身份为 B 通过 → revoked.operator 与审计 operator 都是 A', async () => {
+    const ops = await auditOps()
+    let identity = null
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => key === 'ai_assistant_user' ? identity : null,
+      setItem: (key, value) => { if (key === 'ai_assistant_user') identity = String(value) },
+      removeItem: (key) => { if (key === 'ai_assistant_user') identity = null }
+    })
+    const setUser = (username) => localStorage.setItem('ai_assistant_user', JSON.stringify({ username }))
+    try {
+      setUser('admin_a')
+      await revoke()
+      setUser('admin_b')
+      expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+      expect((await run(m.getApi('api_1101'))).revoked.operator).toBe('admin_a')
+      expect(ops[0]).toMatchObject({ action: '强制回收', operator: 'admin_a' })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('审核驳回：回已发布，无回收后果（不写 revoked、不落审计），之后普通停用通过也不带回收', async () => {
+    const ops = await auditOps()
+    const n = ops.length
+    await revoke()
+    expect(m.applyApiReviewResult('api_1101', undefined, false)).toBe(true)
+    const row = await run(m.getApi('api_1101'))
+    expect(row.status).toBe('PUBLISHED')
+    expect(row.revoked).toBeNull()
+    expect(ops.length).toBe(n)
+    await run(m.deactivateApi('api_1101')) // 普通停用：残留的回收原因不得串进来
+    m.applyApiReviewResult('api_1101', undefined, true)
+    expect((await run(m.getApi('api_1101'))).revoked).toBeNull()
+    expect(ops.length).toBe(n)
+  })
+
+  it('撤回：回已发布，无回收后果；之后普通停用通过也不带回收', async () => {
+    await revoke()
+    const back = await run(m.withdrawApi('api_1101'))
+    expect(back.status).toBe('PUBLISHED')
+    expect(back.revoked).toBeNull()
+    await run(m.deactivateApi('api_1101'))
+    m.applyApiReviewResult('api_1101', undefined, true)
+    expect((await run(m.getApi('api_1101'))).revoked).toBeNull()
+  })
+
+  it('回收原因必填且 ≤500 字（40001）；校验失败不改状态', async () => {
+    await expect(revoke('api_1101', '   ')).rejects.toMatchObject({ code: 40001, message: '请输入回收原因' })
+    await expect(revoke('api_1101', 'x'.repeat(501))).rejects.toMatchObject({ code: 40001 })
+    expect((await run(m.getApi('api_1101'))).status).toBe('PUBLISHED')
+  })
+
+  it('前置条件：未发布 / 审核中 / 不存在一律拒绝', async () => {
+    await expect(revoke('api_1104')).rejects.toThrow('仅已发布状态可停用')
+    await expect(revoke('api_1102')).rejects.toThrow('仅已发布状态可停用')
+    await run(m.deactivateApi('api_1103'))
+    await expect(revoke('api_1103')).rejects.toThrow('仅已发布状态可停用')
+    await expect(revoke('nope')).rejects.toThrow('API 不存在')
   })
 
   it('重新发布：提交 / 撤回 / 驳回不清 revoked，审核通过才清并回已发布', async () => {
-    await run(m.forceRevokeApi('api_1101', reason))
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, true)
     await run(m.publishApi('api_1101'))
     expect((await run(m.getApi('api_1101'))).revoked).not.toBeNull()
     await run(m.withdrawApi('api_1101'))
@@ -525,8 +601,9 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
   })
 
   // 2026-10-09 /test-audit 补缺口 C1：回收 → 快照 → 在全新模块实例里还原（等价刷新；mockPersist 在本文件被桩掉，走 snapshot/restore 这条缝）
-  it('持久化往返：回收后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
-    await run(m.forceRevokeApi('api_1101', reason))
+  it('持久化往返：审核通过后刷新 → 仍是未发布，且带回收原因 / 时间 / 操作人', async () => {
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, true)
     const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
     vi.resetModules()
     m = await import('../apiConnectorMock')
@@ -534,8 +611,36 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     harness.options.restore(snap)
     const row = await run(m.getApi('api_1101'))
     expect(row.status).toBe('NOT_PUBLISHED')
-    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: expect.any(String) })
+    expect(row.revoked).toEqual({ reason, at: expect.any(String), operator: 'demo' })
     expect((await run(m.listApis({ state: 'NOT_PUBLISHED' }))).list.find((a) => a.id === 'api_1101').revoked.reason).toBe(reason)
+  })
+
+  it('持久化：审核中的强制回收申请刷新后保留，审核通过仍落「已回收」', async () => {
+    await revoke()
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    vi.resetModules()
+    m = await import('../apiConnectorMock')
+    harness = persistHarness.modules.get('apiConnector')
+    harness.options.restore(snap)
+    expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+    expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
+  })
+
+  // 不 bump version 的前提：旧快照里的待审停用缺 pendingRevokeReason，restore 后按普通停用处理
+  it('持久化：旧快照里缺 pendingRevokeReason 的待审停用，通过后按普通停用处理（无 revoked、无强制回收审计）', async () => {
+    const snap = JSON.parse(JSON.stringify(harness.options.snapshot()))
+    const row = snap.apis.find((a) => a.id === 'api_1101')
+    Object.assign(row, { status: 'PENDING_REVIEW', pendingAction: 'DEACTIVATE' })
+    delete row.pendingRevokeReason
+    delete row.pendingRevokeBy
+    harness.options.restore(snap)
+    const ops = await auditOps()
+    const n = ops.length
+    expect(m.applyApiReviewResult('api_1101', undefined, true)).toBe(true)
+    const done = await run(m.getApi('api_1101'))
+    expect(done.status).toBe('NOT_PUBLISHED')
+    expect(done.revoked).toBeFalsy()
+    expect(ops.length).toBe(n)
   })
 
   it('持久化：restore 兼容缺 revoked 的旧快照行（出参 revoked 为 null）', async () => {
@@ -544,7 +649,8 @@ describe('apiConnectorMock · 强制回收（prd-API.md §4）', () => {
     harness.options.restore(snap)
     // 待办 yuepu#81：restore 对缺键行补 null，与另外三个 mock 出参口径一致（不用 ?? null 掩盖）
     expect((await run(m.getApi('api_1101'))).revoked).toBeNull()
-    const row = await run(m.forceRevokeApi('api_1101', reason))
-    expect(row.revoked.reason).toBe(reason)
+    await revoke()
+    m.applyApiReviewResult('api_1101', undefined, true)
+    expect((await run(m.getApi('api_1101'))).revoked.reason).toBe(reason)
   })
 })

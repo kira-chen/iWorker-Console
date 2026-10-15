@@ -59,6 +59,14 @@ describe('confirmApproveReview（md 审核中心 §5.2）', () => {
     expect(text).not.toContain('发布')
   })
 
+  it('强制回收申请 → 正文写「强制回收申请」、提示行说「强制回收」（与停用分开，通过后员工端也失去它）', async () => {
+    await confirmApproveReview({ name: '人力资源系统', requestAction: 'FORCE_REVOKE' })
+    const text = textOf(confirm.mock.calls[0][0])
+    expect(text).toContain('确认通过 人力资源系统 的强制回收申请？')
+    expect(text).toContain('通过后将立即强制回收并更新审核状态。')
+    expect(text).not.toContain('发布')
+  })
+
   it('用户点取消（ElMessageBox reject）→ 返回 false，不抛错', async () => {
     confirm.mockRejectedValueOnce('cancel')
     await expect(confirmApproveReview(publishRow)).resolves.toBe(false)

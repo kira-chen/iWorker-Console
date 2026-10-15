@@ -12,7 +12,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * 只 mock api 层；ElMessage / ElMessageBox 用 spy 拦截（不桩组件）。
  * 2026-09-12 审计 K30 ①②③ 闭环后补：§三.3.6 L222 默认规格【删除】置灰 + 悬停提示、§二.3 L110【清空筛选】、
  *   §三.1 L123-127 列格式「2 核 / 4 Gi」「20 Gi」「10 分钟」「20 分钟」「不限 / 24 小时」。
- * 2026-10-08 补：§三.1 生效用户悬停名单含姓名与来源（岗位来源用词待 J34 裁决，本处只断言「个人配置」）；
+ * 2026-10-08 补：§三.1 生效用户悬停名单含姓名与来源（岗位来源按 J34 使用「岗位 · 岗位名称」）；
  *   §三.3.1 / §三.5「删除过程中重复点击不重复发送请求」。
  */
 
@@ -30,13 +30,13 @@ const spec = (over) => ({
   effectiveUsers: [], pendingUsers: [], usedCount: 0, pendingCount: 0, createdAt: '2026-08-15 10:20', updatedAt: '2026-08-28 09:40', ...over
 })
 const LIST = [
-  spec({ id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置', isDefault: true, allowUserApply: false, usedCount: 9, updatedAt: '2026-08-30 14:12' }),
+  spec({ id: 2, name: '标准', boundaryDesc: '大多数用户的常用配置', isDefault: true, allowUserApply: true, usedCount: 9, updatedAt: '2026-08-30 14:12' }),
   spec({ id: 1, name: '轻', boundaryDesc: '轻量问答与日常处理', cpu: 1, memoryGi: 2, diskGi: 5, positionIds: [402], positionNames: ['客户成功岗'], positionCount: 1, usedCount: 1, updatedAt: '2026-08-28 09:40' }),
   spec({ id: 3, name: '重', boundaryDesc: '文档处理、数据分析', cpu: 4, memoryGi: 16, diskGi: 100, maxLifetimeHours: 24, positionIds: [401], positionNames: ['财务审核岗'], positionCount: 1, directUsers: [{ username: 'zhaomin', name: '赵敏', approval: null }], usedCount: 3, updatedAt: '2026-08-29 16:55' }),
   spec({ id: 4, name: '高敏', boundaryDesc: '处理敏感数据的隔离运行环境', cpu: 2, memoryGi: 8, diskGi: 50, maxLifetimeHours: 8, updatedAt: '2026-08-18 11:30' }),
   spec({ id: 5, name: '专属 · 生产计划员', boundaryDesc: '排产表体积大', directUsers: [{ username: 'zhouming', name: '周明', approval: 'PENDING' }], updatedAt: '2026-08-26 10:08' })
 ]
-const SUMMARY = { specCount: 5, userCount: 13, positionCount: 2 }
+const SUMMARY = { specCount: 5, userCount: 11, positionCount: 2 }
 
 let mounted, confirmSpy, alertSpy, successSpy, errorSpy
 beforeEach(() => {
@@ -58,7 +58,7 @@ const rowByName = (name) => rows().find((r) => r.querySelector('.rs-name')?.text
 const rowBtn = (row, text) => [...row.querySelectorAll('.rs-actions .el-button')].find((b) => b.textContent.trim() === text)
 
 describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', () => {
-  it('真实挂载冒烟：页头「运行规格」+ 说明 + 业务说明条、5 行、汇总行「5 个规格 · 2 个岗位已配置 · 13 个用户有生效规格」、时间列 th 带 col-nowrap、console.error 零调用（md §二.1 / §三.1）', async () => {
+  it('真实挂载冒烟：页头「运行规格」+ 说明 + 业务说明条、5 行、汇总行「5 个规格 · 2 个岗位已配置 · 11 个用户有生效规格」、时间列 th 带 col-nowrap、console.error 零调用（md §二.1 / §三.1）', async () => {
     const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => { mounted = mountReal(AdminRuntimeSpecs) }).not.toThrow()
     await flushAll(10)
@@ -75,10 +75,10 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     expect(rowByName('轻').textContent).toContain('客户成功岗')
     expect(rowByName('高敏').textContent).toContain('未指定')
     // 用户申请列（md §三.1）
-    expect(rowByName('标准').textContent).toContain('关闭申请')
+    expect(rowByName('标准').textContent).toContain('开放申请')
     expect(rowByName('轻').textContent).toContain('开放申请')
     // 底部汇总（md §三.1「N 个规格 · P 个岗位已配置 · M 个用户有生效规格」）
-    expect(mounted.container.querySelector('.rs-foot-sum').textContent.replace(/\s+/g, ' ').trim()).toBe('5 个规格 · 2 个岗位已配置 · 13 个用户有生效规格')
+    expect(mounted.container.querySelector('.rs-foot-sum').textContent.replace(/\s+/g, ' ').trim()).toBe('5 个规格 · 2 个岗位已配置 · 11 个用户有生效规格')
     // 时间列表头不换行（2026-09-11 补 col-nowrap，否则 132px 内折成两行读不出分钟）
     const timeTh = [...mounted.container.querySelectorAll('.el-table__header th')].find((th) => th.textContent.includes('最近更新时间'))  // md prd.运行规格.md L131 列头（09-17 对齐 0914 C2）
     expect(timeTh.classList.contains('col-nowrap')).toBe(true)
@@ -221,16 +221,18 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     expect(api.listRuntimeSpecs.mock.calls.length).toBe(callsBefore)
   })
 
-  it('删除失败 → toast 具体原因，列表保留（md §三.3.6 L228）', async () => {
+  it('删除时后端返回规格不存在 → 统一提示并按原条件刷新列表与汇总（md §三.5 / §四.10）', async () => {
     confirmSpy.mockResolvedValue('confirm')
-    api.deleteRuntimeSpec.mockRejectedValue(new Error('规格不存在或已被删除'))
+    api.deleteRuntimeSpec.mockRejectedValue({ code: 40400, message: '规格不存在' })
     mounted = mountReal(AdminRuntimeSpecs)
     await flushAll(10)
+    const callsBefore = api.listRuntimeSpecs.mock.calls.length
     rowBtn(rowByName('高敏'), '删除').click()
     await flushAll(8)
     expect(errorSpy).toHaveBeenCalledWith('规格不存在或已被删除')
     expect(successSpy).not.toHaveBeenCalled()
     expect(rows()).toHaveLength(5)
+    expect(api.listRuntimeSpecs.mock.calls.length).toBe(callsBefore + 2)
   })
 
   it('双空态：无筛选「还没有运行规格 · 点「新建规格」创建第一个」；有搜索词「没有符合条件的运行规格」（md §二.3）', async () => {
@@ -260,7 +262,25 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     expect(rows()).toHaveLength(5)
   })
 
-  it('「重」行生效用户数悬停 → 名单里有「赵敏」且标明来源「个人配置」（md §三.1；岗位来源用词待 J34 裁决，此处不断言）', async () => {
+  it('列表成功但汇总缺失时底部显示「—」，不阻塞列表操作', async () => {
+    api.listRuntimeSpecs.mockResolvedValue({ list: LIST, total: LIST.length })
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    expect(rows()).toHaveLength(5)
+    expect(mounted.container.querySelector('.rs-foot-sum').textContent.trim()).toBe('—')
+  })
+
+  it('每页条数切到 20 后按 page=1、size=20 重新取数', async () => {
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    const select = mounted.container.querySelector('select.page-size')
+    select.value = '20'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushAll(10)
+    expect(api.listRuntimeSpecs).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }))
+  })
+
+  it('「重」行生效用户数悬停 → 名单按 J34 标明「个人配置」与「岗位 · 岗位名称」（md §三.1）', async () => {
     const heavyUsers = [
       { username: 'zhaomin', name: '赵敏', source: 'USER', positionName: '' },
       { username: 'zhangwei', name: '张伟', source: 'POSITION', positionName: '财务审核岗' }
@@ -275,6 +295,22 @@ describe('AdminRuntimeSpecs · 列表页（md 运行规格 §二 / §三）', ()
     const cell = rowByName('重').querySelector('.rs-used-cell')
     expect(cell.textContent.trim()).toBe('2')
     expect(cell.getAttribute('title')).toContain('赵敏（个人配置）')
+    expect(cell.getAttribute('title')).toContain('张伟（岗位 · 财务审核岗）')
+  })
+
+  it('生效用户超过 10 人时悬停名单只列前 10 人并补「共 11 人」', async () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ username: `u${i}`, name: `用户${i}`, source: 'USER', positionName: '' }))
+    api.listRuntimeSpecs.mockResolvedValue({
+      list: LIST.map((s) => (s.name === '重' ? { ...s, effectiveUsers: many, usedCount: 11 } : s)),
+      total: LIST.length,
+      summary: SUMMARY
+    })
+    mounted = mountReal(AdminRuntimeSpecs)
+    await flushAll(10)
+    const title = rowByName('重').querySelector('.rs-used-cell').getAttribute('title')
+    expect(title).toContain('用户9（个人配置）')
+    expect(title).toContain('共 11 人')
+    expect(title).not.toContain('用户10（个人配置）')
   })
 
   it('删除请求还没返回时再点一次【删除】→ 删除接口只调用一次，确认框也只弹一次（md §三.3.1 / §三.5「重复点击不重复发送请求」）', async () => {

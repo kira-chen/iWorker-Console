@@ -28,6 +28,8 @@ const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // localeCompare 排序会排反；改引 utils/datetime 单一真相 nowIsoLocal（另五个 mock 早已迁完，这里漏了）
 import { nowIsoLocal as nowIso, compareTimeText } from '@/utils/datetime'
 import { MODEL_PROVIDER_OPTIONS, MODEL_CATEGORY_OPTIONS } from '@/utils/modelPresets'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let modelSeq = 106
@@ -398,6 +400,7 @@ export async function deleteModel(id) {
   if (!m) throw err('模型不存在')
   if (displayKey(m) !== 'DRAFT') throw err('仅未发布状态可删除')
   models = models.filter((x) => x.id !== id)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '模型', action: '删除', objectId: m.id, target: m.name })
   persist()
   return {}
 }

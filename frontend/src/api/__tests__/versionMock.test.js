@@ -30,6 +30,11 @@ import { fmtMinute } from '@/utils/datetime'
  * - 访问审计写记录（发布 / 停用审核通过时、撤回时），变更内容一律为版本的更新说明。
  * 种子：Windows v1.2.0 / Mac v1.1.0 已发布；Windows v1.0.0 / v1.1.0、Mac v1.0.0 是被顶替回到未发布的旧版本（发布过）；
  * Windows v1.3.0（id 4）从未发布；Mac v1.2.0（id 7）发布审核中（审核中心 id 13、我的申请 id 518 同一笔）。
+ *
+ * 2026-10-15（#93 ⑤）：updateVersion 两条编辑拦截文案逐字对 md §3.3【编辑】置灰悬停提示。页面悬停提示取自
+ * AdminVersions.vue 的 editDisabledReason（独立字面量，与 mock 不是同一常量），页面层断言在
+ * views/admin/__tests__/adminVersions.test.js（tipOf(...,'编辑')）；本文件只守 mock 层文案，两处各自对 md 逐字，
+ * 任一处改动另一处的用例会报红提醒同步。
  */
 
 const pkg = { fileName: 'iWorker-Setup-1.4.0.exe', fileSize: 1024, sha256: 'a'.repeat(64) }
@@ -201,14 +206,14 @@ describe('新建与编辑（PRD §四 / §八）', () => {
   })
 
   it('已发布过的版本不可编辑：已发布的、被顶替回到未发布的旧版本都一样', async () => {
-    const msg = '曾发布过的版本不可编辑，如需更正请新建更高版本号的版本'
+    const msg = '已发布过的版本不可编辑；如需更正请新建更高版本号的版本'
     await expect(updateVersion(WIN_LIVE, draft())).rejects.toMatchObject({ message: msg })
     await expect(updateVersion(WIN_OLD, draft())).rejects.toMatchObject({ message: msg })
   })
 
   it('审核中锁定：不可编辑，提示先撤回；撤回后（从未发布过）可继续编辑', async () => {
     await expect(updateVersion(MAC_PENDING, draft({ terminal: 'MAC', version: 'v1.2.9' }))).rejects.toMatchObject({
-      message: '审核中，已锁定不可修改。可先撤回申请后继续编辑'
+      message: '审核中，已锁定不可编辑；如需修改请先撤回申请'
     })
     await withdrawVersion(MAC_PENDING)
     await expect(updateVersion(MAC_PENDING, draft({ terminal: 'MAC', version: 'v1.2.9', package: { ...pkg, fileName: 'x.dmg' } }))).resolves.toBeTruthy()
@@ -381,15 +386,9 @@ describe('撤回审核中的申请', () => {
     expect(back).toMatchObject({ status: 'UNPUBLISHED', publishedAt: before.publishedAt, publishedBy: before.publishedBy })
   })
 
-  it('撤回写一条访问审计「撤回」，变更内容为该版本的更新说明；不在审核中的版本不可撤回', async () => {
+  it('撤回不写访问审计（2026-10-15 拍板）；不在审核中的版本不可撤回', async () => {
     await withdrawVersion(MAC_PENDING)
-    expect(liveOps()).toHaveLength(1)
-    expect(liveOps()[0]).toMatchObject({
-      module: '版本管理',
-      action: '撤回',
-      target: 'Mac v1.2.0',
-      detail: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。'
-    })
+    expect(liveOps()).toHaveLength(0)
     await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该申请已被审核，无法撤回，请查看最新审核结果' })
     await expect(withdrawVersion(9999)).rejects.toMatchObject({ message: '版本不存在或已被删除' })
   })
@@ -511,11 +510,11 @@ describe('写访问审计「管理端操作」（PRD §八 审计 / prd.访问�
     expect(liveOps()[0]).toMatchObject({ operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: WIN_LIVE_NOTES })
   })
 
-  it('版本管理的记录（发布 / 停用 / 撤回）变更内容一律是更新说明，不为空', async () => {
+  it('版本管理的记录（发布 / 停用）变更内容一律是更新说明，不为空；撤回不记', async () => {
     await publishAndApprove(WIN_NEW)
     await stopAndApprove(WIN_NEW)
     await withdrawVersion(MAC_PENDING)
-    expect(liveOps().map((r) => r.action)).toEqual(['撤回', '停用', '发布'])
+    expect(liveOps().map((r) => r.action)).toEqual(['停用', '发布'])
     for (const r of liveOps()) expect(r.detail).toBeTruthy()
   })
 

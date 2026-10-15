@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
- * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「技能调用」的行为，对齐
+ * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「会话调用」的行为，对齐
  * docs/PRD/数字员工管理端PRD/05治理/工具调用审计/prd.工具调用审计.md §二 ~ §七。
  *
  * 2026-10-09 记录单元改版（与研发梅竹讨论后）重写：记录单元从「一次工具调用」改为
@@ -13,8 +14,12 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
  * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 种子数据固定在 2026-09-20 ~ 2026-09-27（toolCallAuditMock.js），固定系统时间到
- * 2026-09-28，避免默认 90 天窗口随真实日期推移把种子数据挤出窗口、用例到期变红。
+ * 种子数据固定在 2026-09-19 ~ 2026-09-28（toolCallAuditMock.js），固定系统时间到
+ * 2026-09-28（helpers/fixedAuditClock.js，与 Tabs 文件共用），避免默认 90 天窗口随真实日期推移
+ * 把种子数据挤出窗口、用例到期变红。
+ *
+ * 定位约定：列表每页 7 条（jsdom），按行取值的用例一律先 search（请求编号 / 技能名）再取行，
+ * 不依赖「第几位」——种子再多一条比它新的记录，也不会把目标行挤出首页。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -33,11 +38,8 @@ const flush = async () => {
   }
 }
 
-const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
-
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(FIXED_NOW)
+  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -54,7 +56,7 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  vi.useRealTimers()
+  restoreAuditClock()
 })
 
 function mountReal() {
@@ -76,14 +78,15 @@ async function search(kw) {
   await flush()
 }
 
-async function openDetailOf(skill) {
+async function openDetailOf(skill, byId = false) {
   await search(skill)
-  const row = bodyRows().find((r) => r.textContent.includes(skill))
+  // 没调用任何技能的会话列表里只有「—」，没有技能名可认，按搜索结果的首行取（搜索词＝请求编号）
+  const row = byId ? bodyRows()[0] : bodyRows().find((r) => r.textContent.includes(skill))
   ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
   await flush()
 }
 
-describe('AdminToolCallAudit · 技能调用页签 · 真实 Element Plus 挂载冒烟', () => {
+describe('AdminToolCallAudit · 会话调用页签 · 真实 Element Plus 挂载冒烟', () => {
   it('整页真挂载不抛、console.error 零调用；页头 / 统计卡片 / 列表字段齐全（PRD §一 / §二 / §四）', async () => {
     expect(() => mountReal()).not.toThrow()
     await flush()
@@ -105,6 +108,32 @@ describe('AdminToolCallAudit · 技能调用页签 · 真实 Element Plus 挂载
     expect(text).toContain('销售顾问')
     expect(text).toContain('方案要点生成')
     expect(container.querySelector('.list-pager')).toBeTruthy()
+  })
+})
+
+describe('页面说明与标签颜色（#92 ②③⑥，§一 / §六 / §5.3）', () => {
+  it('页面说明按 §一：追溯每次会话 / 任务运行的发起人、确认过程与执行结果', async () => {
+    mountReal()
+    await flush()
+    expect(container.textContent).toContain('追溯每次会话 / 任务运行的发起人、确认过程与执行结果')
+    expect(container.textContent).not.toContain('追溯每次工具调用')
+  })
+
+  it('列表层「涉及写操作」：是 = 绿色、否 = 灰色（§六）', async () => {
+    mountReal()
+    await flush()
+    const tagOf = (text) => [...bodyRows()[0].querySelectorAll('.status-tag')].find((t) => t.textContent.trim() === text)
+    await search('客户记录更新')
+    expect(tagOf('是').className).toContain('st--success')
+    await search('报销查询')
+    expect(tagOf('否').className).toContain('st--info')
+  })
+
+  it('失败的会话结果说明用「上方调用明细」（§5.3）', async () => {
+    mountReal()
+    await flush()
+    await openDetailOf('排产计划调整')
+    expect(document.body.querySelector('.el-drawer__body').textContent).toContain('建议对照上方调用明细')
   })
 })
 
@@ -146,7 +175,7 @@ describe('统计卡片（§二）', () => {
     helpBtn().click()
     await flush()
     const text = container.querySelector('.help-body').textContent
-    expect(text).toContain('同一次对话里技能被循环调用多次，每次各自算一条独立记录，不合并统计')
+    expect(text).toContain('一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里')
     helpBtn().click()
     await flush()
     expect(container.querySelector('.help-body')).toBeNull()
@@ -189,7 +218,8 @@ describe('列表（§四）', () => {
     await flush()
   })
 
-  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', () => {
+  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', async () => {
+    await search('生产数据查询')
     const row = bodyRows().find((r) => r.textContent.includes('生产数据查询'))
     expect(row.textContent).toContain('是') // 涉及写操作
     expect(row.textContent).toContain('失败')
@@ -197,7 +227,16 @@ describe('列表（§四）', () => {
     expect(container.textContent).not.toContain('执行耗时')
   })
 
-  it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', () => {
+  it('一次会话调用多个技能合并为一条记录，「调用的技能」列以顿号分隔（PRD 第五轮改版：记录单元＝会话）', async () => {
+    await search('报价单生成')
+    const rows = bodyRows().filter((r) => r.textContent.includes('报价单生成'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('客户信息查询、报价单生成')
+    expect(container.textContent).toContain('调用的技能')
+  })
+
+  it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', async () => {
+    await search('排产冲突检测')
     const row = bodyRows().find((r) => r.textContent.includes('排产冲突检测'))
     expect(row.textContent).toContain('成功')
     expect(row.textContent).not.toContain('连接超时')
@@ -219,22 +258,79 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     await flush()
   })
 
-  it('操作摘要展示用户 / 岗位、技能、涉及写操作；不展示待处理确认、执行耗时（都随改版去掉）', async () => {
+  it('操作摘要展示用户 / 岗位、涉及写操作；不列「调用的技能」（按技能时间线已有）、待处理确认、执行耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
     const text = drawer.textContent
     expect(text).toContain('陈杰')
     expect(text).toContain('销售顾问')
-    expect(text).toContain('报价单生成')
+    expect(drawer.querySelector('.el-descriptions').textContent).not.toContain('调用的技能')
     expect(text).toContain('涉及写操作')
     expect(text).not.toContain('待处理确认')
     expect(text).not.toContain('执行耗时')
   })
 
+  it('调用明细分「按工具 / 按技能」两条互不关联的时间线：默认按工具，不标调用来源；切到按技能只列技能及成败（PRD §5.2，2026-10-13）', async () => {
+    await openDetailOf('报价单生成')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    const dimBtns = drawer.querySelectorAll('.tca-dims .el-button')
+    expect(dimBtns[0].textContent).toContain('按工具 2')
+    expect(dimBtns[1].textContent).toContain('按技能 2')
+    // 默认按工具：两个工具项，不出现技能名 / 「会话直接调用」
+    expect(drawer.querySelectorAll('.call-item').length).toBe(2)
+    expect(drawer.textContent).not.toContain('会话直接调用')
+    dimBtns[1].click()
+    await flush()
+    expect(drawer.querySelectorAll('.call-item').length).toBe(0)
+    const skills = drawer.querySelectorAll('.tca-skill-head')
+    expect(skills.length).toBe(2)
+    expect(skills[0].textContent).toContain('客户信息查询')
+    expect(skills[0].textContent).toContain('成功')
+    expect(skills[1].textContent).toContain('报价单生成')
+  })
+
+  it('技能失败时按技能时间线展示失败标签与原因；没调用技能的会话展示技能维度空文案', async () => {
+    await openDetailOf('排产计划调整')
+    const drawer = document.body.querySelector('.el-drawer__body')
+    drawer.querySelectorAll('.tca-dims .el-button')[1].click()
+    await flush()
+    expect(drawer.querySelector('.tca-skill-head').textContent).toContain('失败')
+    expect(drawer.textContent).toContain('连接超时')
+    document.body.querySelector('.el-drawer__footer .el-button').click()
+    await flush()
+    await openDetailOf('C-1010', true)
+    const d2 = document.body.querySelector('.el-drawer__body')
+    const btns = d2.querySelectorAll('.tca-dims .el-button')
+    expect(btns[1].textContent).toContain('按技能 0')
+    btns[1].click()
+    await flush()
+    expect(d2.textContent).toContain('本次会话未调用技能')
+  })
+
+  it('零工具调用的会话（C-1011）：列表行结果「成功」、涉及写操作「否」；详情「按工具」展示空态文案「本次会话未调用外部工具」，不视为异常（#92 ①，§七）', async () => {
+    await search('C-1011')
+    const tags = [...bodyRows()[0].querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    expect(tags).toContain('成功') // 列表行内的结果标签（不是抽屉里别处的「成功」）
+    expect(tags).toContain('否') // 涉及写操作
+    expect(tags).not.toContain('失败')
+    await openDetailOf('C-1011', true)
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.querySelectorAll('.tca-dims .el-button')[0].textContent).toContain('按工具 0')
+    expect(drawer.querySelectorAll('.call-item').length).toBe(0)
+    expect(drawer.textContent).toContain('本次会话未调用外部工具')
+  })
+
+  it('多次调用失败的会话（C-1012）：列表行结果「失败」、原因概要「2 次调用失败，详见详情」（§四「不止一次调用出问题」）', async () => {
+    await search('C-1012')
+    const row = bodyRows()[0]
+    expect(row.textContent).toContain('失败')
+    expect(row.textContent).toContain('2 次调用失败，详见详情')
+  })
+
   it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.textContent).toContain('工具调用明细')
+    expect(drawer.textContent).toContain('调用明细')
     const items = drawer.querySelectorAll('.call-item')
     expect(items.length).toBe(2)
     // 页面只展示工具标识 / 读写性质 / 确认 / 结果（PRD §5.2 没有写具体操作描述、耗时这两项）：
@@ -305,7 +401,7 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
   it('未调用任何外部工具时展示占位文案（当前种子均有调用，断言兜底文案字符串存在于组件逻辑——通过无 calls 的 detail 直接校验展示规则）', async () => {
     await openDetailOf('方案要点生成')
     const drawer = document.body.querySelector('.el-drawer__body')
-    expect(drawer.querySelectorAll('.call-item').length).toBe(1)
+    expect(drawer.querySelectorAll('.call-item').length).toBe(2) // 方案要点生成：按工具维度 2 次工具调用（不区分由谁发起）
   })
 })
 

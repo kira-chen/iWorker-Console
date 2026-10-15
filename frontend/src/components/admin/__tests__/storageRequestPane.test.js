@@ -6,9 +6,9 @@ import { mountReal, flushAll } from '@/views/admin/__tests__/helpers/smokeMount'
 /**
  * StorageRequestPane.vue（存储空间 · 扩容申请页签）组件级用例。
  * 2026-10-09 /test-audit 补缺口，对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md
- *   §四·1 筛选 / §四·2 列表（申请时用量、处理结果）/ §四·3 同意 / §四·4 拒绝（限长 500）/ §四·5 并发与空态 / 查看弹窗；
+ *   §四·1 筛选 / §四·2 列表（当前用量、处理结果）/ §四·3 同意 / §四·4 拒绝（限长 500）/ §四·5 并发与空态 / 查看弹窗；
  *   以及「无岗位时员工名后不出现孤零零的『·』」（10-09 视觉验收修复的防回归）。
- * 页签外壳（标题、角标、跳转词、处理时间排序箭头、同意预填）见 views/admin/__tests__/adminStorageSpace.test.js；业务规则见 api/__tests__/storageSpaceMock.test.js。
+ * 页签外壳（标题、角标、跳转带入、处理时间排序箭头、同意预填）见 views/admin/__tests__/adminStorageSpace.test.js；业务规则见 api/__tests__/storageSpaceMock.test.js。
  * 真实挂载，只 mock api 层；本文件 fixture 自造，与 mock 种子无关。
  */
 
@@ -162,6 +162,16 @@ describe('StorageRequestPane · 同意 / 拒绝弹窗', () => {
     expect(textOf(dialogBody().querySelector('.sq-dlg-info div'))).toBe('陈宇（chenyu）· 经营分析岗')
   })
 
+  it('同意弹窗新总量有下限 1 GB：提示含「1–20 GB」，输入框 aria-valuemin=1，渲染期无 Vue 未定义告警（md §三·4 / §四·3）', async () => {
+    const warnSpyVue = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const c = await mountPane()
+    btn(rowsOf(c)[0], '同意').click()
+    await flushAll(8)
+    expect(textOf(dialogBody())).toContain('正整数，1–20 GB')
+    expect(dialogBody().querySelector('.sq-number input').getAttribute('aria-valuemin')).toBe('1')
+    expect(warnSpyVue.mock.calls.filter((args) => String(args[0]).includes('not defined'))).toEqual([])
+  })
+
   it('拒绝原因输入框限长 500 字（超出无法继续输入），并带字数统计（md §四·4）', async () => {
     const c = await mountPane()
     btn(rowsOf(c)[0], '拒绝').click()
@@ -199,7 +209,7 @@ describe('StorageRequestPane · 同意 / 拒绝弹窗', () => {
 })
 
 describe('StorageRequestPane · 查看弹窗（已处理的申请）', () => {
-  it('已同意：展示员工与岗位、提交于、申请时用量、申请说明、状态、新总量、处理人与处理时间', async () => {
+  it('已同意：展示员工与岗位、提交于、当前用量、申请说明、状态、新总量、处理人与处理时间', async () => {
     api.listExpansionRequests.mockResolvedValue({ list: [APPROVED], total: 1 })
     const c = await mountPane()
     btn(rowsOf(c)[0], '查看').click()

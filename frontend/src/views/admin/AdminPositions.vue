@@ -41,6 +41,7 @@ import {
   createPosition,
   unpublishPosition,
   deletePosition,
+  getPositionBindings,
   getPosition,
   publishPosition,
   withdrawPosition,
@@ -477,8 +478,13 @@ async function remove(row) {
     await alertDialog(`该岗位已被 ${claimCount} 个用户领用，需先解除领用后再删除`, '删除岗位', { confirmText: '知道了' })
     return
   }
+  // 绑定了专家团 / 岗位专家时追加提示（prd.岗位.md §3.6）；取不到不影响删除流程
+  const b = await getPositionBindings(row.positionId).catch(() => null)
+  const bindTip = b && (b.teams.length || b.experts.length)
+    ? `\n该岗位绑定了 ${b.teams.length} 个专家团、${b.experts.length} 位岗位专家，删除后这些绑定解除，团和专家本身不会被删除。`
+    : ''
   // 确认键保留 danger 红档（代码约定，原型全绿属简化）
-  const ok = await confirmDialog(`删除后「${row.name}」将不可用，确认删除？`, '删除岗位', {
+  const ok = await confirmDialog(`删除后「${row.name}」将不可用，确认删除？${bindTip}`, '删除岗位', {
     confirmText: '删除',
     danger: true
   })

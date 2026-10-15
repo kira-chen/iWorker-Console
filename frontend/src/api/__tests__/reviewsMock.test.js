@@ -337,6 +337,51 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     expect(app.reviewer).toBe('演示管理员')
   })
 
+  /** 访问审计「管理端操作」里该对象的「停用」记录（prd.访问审计.md §6.2「停用记录」）。 */
+  const delistAudits = async (target) => {
+    const audit = await import('../accessAuditMock')
+    return audit.opsRecords.filter((r) => r.action === '停用' && r.target === target && r.live)
+  }
+
+  it('停用申请审核通过 → 访问审计记一条「停用」，操作人为提交人（PRD 访问审计 §6.2 停用记录）', async () => {
+    const kbMock = await import('../knowledgeBaseMock')
+    const kb = await kbMock.get('kb_1')
+    expect(await delistAudits(kb.name), '前提：提交前没有该对象的停用记录').toHaveLength(0)
+
+    await kbMock.transition('kb_1', 'delist')
+    expect(await delistAudits(kb.name), '提交停用申请本身不记').toHaveLength(0)
+    const row = (await gov.listReviews({ type: 'KNOWLEDGE_BASE', size: 50 })).list.find((r) => r.refId === 'kb_1')
+    await gov.approveReview(row.id)
+
+    const recs = await delistAudits(kb.name)
+    expect(recs).toHaveLength(1)
+    expect(recs[0]).toMatchObject({ module: '知识库', operator: row.submitterName, detail: '' })
+    expect(recs[0].version).toBeUndefined()
+  })
+
+  it('停用申请被驳回 → 访问审计不记「停用」', async () => {
+    const kbMock = await import('../knowledgeBaseMock')
+    const kb = await kbMock.get('kb_2')
+    await kbMock.transition('kb_2', 'delist')
+    const row = (await gov.listReviews({ type: 'KNOWLEDGE_BASE', size: 50 })).list.find((r) => r.refId === 'kb_2')
+    await gov.rejectReview(row.id, '仍在使用')
+
+    expect(await delistAudits(kb.name)).toHaveLength(0)
+  })
+
+  it('停用审核通过 API → 访问审计记 API 模块的「停用」（原先 MCP / API 停用不进审计）', async () => {
+    const apiMock = await import('../apiConnectorMock')
+    const published = (await apiMock.listApis({ size: 100 })).list.find((a) => a.status === 'PUBLISHED')
+    expect(published, '前提：种子里有已发布 API').toBeTruthy()
+    await apiMock.deactivateApi(published.id)
+    const row = (await gov.listReviews({ type: 'TOOL', size: 50 })).list.find((r) => r.refId === published.id && r.requestAction === 'DELIST')
+    await gov.approveReview(row.id)
+
+    const recs = await delistAudits(published.name)
+    expect(recs).toHaveLength(1)
+    expect(recs[0].module).toBe('API')
+  })
+
   it('通过 MODEL 发布行 → 模型变已发布（md `prd-模型.md` §八 L186）', async () => {
     const modelMock = await import('../adminModelMock')
     const cur = await modelMock.getModel('md_105')
@@ -544,5 +589,18 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     expect(total).toBe(12)
     expect(list.some((r) => r.id === 13)).toBe(false)
     expect((await reloaded.getReview(13)).status).toBe('PUBLISHED')
+  })
+
+  // 2026-10-12 /test-audit：强制回收并入停用（审核中心 PRD §5.2）——回收原因随审核行落盘，刷新后详情标记不丢。
+  it('强制回收停用申请提交后刷新 → 审核行仍带 forceRevokeReason；普通停用申请没有该键', async () => {
+    const m = await import('../reviewsMock')
+    m.submitReviewRow({ type: 'EXPERT', refId: 901, name: '强制回收专家', requestAction: 'DELIST', forceRevokeReason: '内容违规', submittedAt: '2026-10-12 09:00' })
+    m.submitReviewRow({ type: 'EXPERT', refId: 902, name: '普通停用专家', requestAction: 'DELIST', submittedAt: '2026-10-12 09:01' })
+
+    vi.resetModules()
+    const reloaded = await import('../reviewsMock')
+    const { list } = await reloaded.listReviews({ size: 50 })
+    expect(list.find((r) => r.refId === 901).forceRevokeReason).toBe('内容违规')
+    expect('forceRevokeReason' in list.find((r) => r.refId === 902)).toBe(false)
   })
 })

@@ -984,6 +984,8 @@ async function loadGovContext() {
   }
 }
 
+// 停用申请勾选了强制回收时的回收原因（审核中心行 / 我的申请行带 forceRevokeReason）
+const govForceRevokeReason = computed(() => govReviewRow.value?.forceRevokeReason || myAppRow.value?.forceRevokeReason || '')
 const govBarButtons = computed(() => {
   // A5：快照缺失 → md §七「阻止审核」，只留「关闭」（驳回/通过/撤回/重新提交一律撤下）
   if (govSnapshotMissing.value) {
@@ -1028,7 +1030,7 @@ async function onGovBarAction(key) {
       try {
         const { approveReview } = await import('@/api/reviews')
         await approveReview(review)
-        ElMessage.success(review.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
+        ElMessage.success(review.requestAction === 'FORCE_REVOKE' ? '已通过强制回收申请' : review.requestAction === 'DELIST' ? '已通过停用申请' : '已通过审核')
         router.push({ name: 'UnifiedReview' })
       } catch (e) {
         ElMessage.error(e?.message || '审核失败')
@@ -1277,6 +1279,10 @@ function onTestMaskClick(e) {
 
       <!-- 治理吸底操作栏（2026-09-01 PRD 对齐改造）：审核中心/我的申请借用本页作 SKILL 详情时渲染 -->
       <div v-if="govBarButtons.length" class="se-gov-bar">
+        <!-- 强制回收申请：底栏左侧提示回收原因，审核人一眼区别于普通停用（审核中心 PRD §5.2） -->
+        <span v-if="govForceRevokeReason" class="se-gov-revoke-hint" data-test="se-gov-revoke-hint" :title="govForceRevokeReason">
+          强制回收申请 · 回收原因：{{ govForceRevokeReason }}
+        </span>
         <el-button
           v-for="b in govBarButtons"
           :key="b.key"
@@ -1377,6 +1383,15 @@ function onTestMaskClick(e) {
 .se-snapshot-missing {
   flex-shrink: 0;
   margin: 0 var(--space-5) var(--space-2);
+}
+.se-gov-revoke-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
 }
 .se-gov-bar {
   flex-shrink: 0;

@@ -18,9 +18,11 @@ import {
   listStorageMembers,
   getStorageOverview,
   adjustStorageQuota,
-  batchAdjustStorageQuota
+  batchAdjustStorageQuota,
+  setDefaultQuota,
+  setDiskTotal
 } from '@/api/storageSpace'
-import { STORAGE_STATE, QUOTA_MIN_GB, DEFAULT_QUOTA_GB, quotaInputError, fmtGb } from '@/utils/storageSpace'
+import { STORAGE_STATE, QUOTA_MIN_GB, QUOTA_MAX_GB, DEFAULT_QUOTA_GB, DISK_TOTAL_GB, quotaFloorGb, quotaInputError, fmtGb } from '@/utils/storageSpace'
 
 const props = defineProps({
   /** 访问审计「查看」跳转带入的员工用户名，作为初始搜索词 */
@@ -52,7 +54,7 @@ function clearFilters() {
 }
 
 /* ---------- 默认容量条 ---------- */
-const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0 })
+const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0, diskTotalGb: DISK_TOTAL_GB, allocatedGb: 0, remainingGb: DISK_TOTAL_GB, defaultFloorGb: QUOTA_MIN_GB })
 async function loadOverview() {
   try {
     overview.value = await getStorageOverview()
@@ -71,17 +73,19 @@ onMounted(() => {
 })
 
 /* ---------- 容量输入弹窗（单个 / 批量两处共用一套输入与校验） ---------- */
-const dialog = reactive({ kind: '', visible: false, value: 5, error: '', submitting: false, target: null })
+const dialog = reactive({ kind: '', visible: false, value: DEFAULT_QUOTA_GB, error: '', submitting: false, target: null })
 const dialogTitle = computed(() => ({
   single: '调整容量',
-  batch: '批量设置容量'
+  batch: '批量设置容量',
+  default: '修改默认容量',
+  disk: '修改磁盘总量'
 }[dialog.kind] || ''))
 
 function openDialog(kind, target = null) {
   dialog.kind = kind
   dialog.target = target
   dialog.error = ''
-  dialog.value = kind === 'single' ? target.totalGb : overview.value.defaultQuotaGb
+  dialog.value = kind === 'single' ? target.totalGb : kind === 'disk' ? overview.value.diskTotalGb : overview.value.defaultQuotaGb
   dialog.visible = true
 }
 
@@ -91,11 +95,21 @@ const overusedTargets = computed(() => {
   if (dialog.kind === 'batch') return selected.value.filter((r) => r.usedGb != null && dialog.value <= r.usedGb)
   return []
 })
-/** 调整容量 / 批量设置最小 1 GB，可任意调大调小，不受当前容量限制 */
-const minGb = QUOTA_MIN_GB
+/**
+ * 输入框下限：可任意调大，调小不得低于员工当前已用（整数 GB 向上取整）。
+ * 批量取所选员工中最大的已用，修改默认容量取所有默认员工中最大的已用；磁盘总量的下限是已分配，由 mock 校验。
+ */
+const minGb = computed(() => {
+  if (dialog.kind === 'single') return quotaFloorGb(dialog.target?.usedGb)
+  if (dialog.kind === 'batch') return Math.max(QUOTA_MIN_GB, ...selected.value.map((r) => quotaFloorGb(r.usedGb)))
+  if (dialog.kind === 'default') return overview.value.defaultFloorGb
+  return QUOTA_MIN_GB
+})
+/** 弹窗输入上限：员工容量与默认容量 ≤ 20 GB；磁盘总量没有 20 GB 限制，只要求不低于已分配 */
+const maxGb = computed(() => (dialog.kind === 'disk' ? 1000000 : QUOTA_MAX_GB))
 
 // 输入框不做取整（不设 precision），小数原样保留，由 quotaInputError 提示，而不是悄悄改成整数
-const validate = () => quotaInputError(dialog.value, minGb)
+const validate = () => quotaInputError(dialog.value, minGb.value, maxGb.value)
 
 /** 调整后总量不高于已用 → 员工会立刻变成已满，提交前二次确认（调整容量、批量设置、恢复默认共用一句话）。 */
 async function confirmFull(who) {
@@ -120,9 +134,29 @@ function showSubmitError(e, fallback) {
   dialog.error = e?.message || fallback
 }
 
+async function submitSetting() {
+  dialog.submitting = true
+  try {
+    if (dialog.kind === 'default') {
+      await setDefaultQuota(dialog.value)
+      ElMessage.success(`默认容量已改为 ${dialog.value} GB`)
+    } else {
+      await setDiskTotal(dialog.value)
+      ElMessage.success(`磁盘总量已改为 ${dialog.value} GB`)
+    }
+    dialog.visible = false
+    refreshAll()
+  } catch (e) {
+    dialog.error = e?.message || '保存失败，请稍后重试'
+  } finally {
+    dialog.submitting = false
+  }
+}
+
 async function submitDialog() {
   dialog.error = validate()
   if (dialog.error) return
+  if (dialog.kind === 'default' || dialog.kind === 'disk') return submitSetting()
   if (overusedTargets.value.length) {
     const who = overusedTargets.value.length === 1
       ? `${overusedTargets.value[0].name}的`
@@ -183,8 +217,14 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
 <template>
   <div class="sq-pane">
     <div class="sq-default">
+      <span class="sq-default-label">磁盘总量：<b>{{ overview.diskTotalGb }} GB</b>，</span>
+      <span class="sq-default-hint">已分配 {{ overview.allocatedGb }} GB，余量 <b :class="{ 'sq-danger': overview.remainingGb <= 0 }">{{ overview.remainingGb }} GB</b>；按物理总量分配、不超分，余量不足时无法再调大员工容量</span>
+      <el-button link type="primary" @click="openDialog('disk')">修改</el-button>
+    </div>
+    <div class="sq-default">
       <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
       <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
+      <el-button link type="primary" @click="openDialog('default')">修改</el-button>
     </div>
 
     <ListToolbar>
@@ -266,14 +306,20 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
         <div class="sq-sub">当前已用 {{ fmtGb(dialog.target.usedGb) }} / 总量 {{ fmtGb(dialog.target.totalGb) }}，
           容量来源：{{ dialog.target.quotaSource === 'PERSONAL' ? '个人设置' : '默认' }}</div>
       </div>
+      <div v-else-if="dialog.kind === 'default'" class="sq-dlg-info">
+        对 <b>{{ overview.defaultMemberCount }}</b> 名未单独设置容量的员工生效，已单独设置的员工不受影响
+      </div>
+      <div v-else-if="dialog.kind === 'disk'" class="sq-dlg-info">
+        当前已分配 {{ overview.allocatedGb }} GB，新的磁盘总量不能低于已分配
+      </div>
       <div v-else class="sq-dlg-info">
         将统一设置 <b>{{ selected.length }}</b> 名员工的容量
         <span v-if="overusedTargets.length" class="sq-danger">，其中 {{ overusedTargets.length }} 名的已用不低于新总量</span>
       </div>
 
-      <div class="sq-field-label"><b class="sq-required">*</b> 新总量（GB）</div>
-      <el-input-number v-model="dialog.value" :min="minGb" :step="1" class="sq-number" />
-      <div class="sq-sub">正整数，不小于 {{ minGb }} GB</div>
+      <div class="sq-field-label"><b class="sq-required">*</b> {{ dialog.kind === 'disk' ? '磁盘总量' : dialog.kind === 'default' ? '默认容量' : '新总量' }}（GB）</div>
+      <el-input-number v-model="dialog.value" :min="minGb" :max="maxGb" :step="dialog.kind === 'disk' ? 100 : 1" class="sq-number" />
+      <div class="sq-sub">{{ dialog.kind === 'disk' ? '正整数，不低于已分配' : `正整数，${minGb}–${QUOTA_MAX_GB} GB${minGb > QUOTA_MIN_GB ? '（调小不得低于已用）' : ''}` }}</div>
       <div v-if="dialog.error" class="sq-error">{{ dialog.error }}</div>
 
       <template #footer>
