@@ -202,6 +202,17 @@ export const toolCallRecords = [
     reason: '',
     skillCalls: [{ skill: '话术润色', result: 'SUCCESS', reason: '' }],
     calls: []
+  },
+  {
+    // 多次调用失败：同一次会话里两个工具调用都失败、没有后续成功收口，整体记失败；
+    // 原因概要按 §四「不止一次调用出问题」展示「N 次调用失败，详见详情」（单次失败才写「工具标识 原因」）。
+    id: 'C-1012', date: '2026-09-19', time: '11:12:47', user: '张浩', position: '生产计划员',
+    reason: '2 次调用失败，详见详情',
+    skillCalls: [],
+    calls: [
+      { tool: '业务系统·SAP ERP', action: '查询库存', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'FAILED', reason: '权限不足' }
+    ]
   }
 ].map((r) => ({ ...r, skills: r.skillCalls.map((c) => c.skill), ...deriveExec(r.calls) }))
 
@@ -240,7 +251,7 @@ export const taskCallRecords = [
   },
   {
     id: 'T-2002', date: '2026-09-24', time: '08:00:04', user: '周敏', position: '客户成功岗', task: '拜访前资料准备', trigger: '定时·每天 08:00',
-    reason: '客户档案已锁定，写入被拒绝',
+    reason: 'API·客户数据 API 客户档案已锁定，写入被拒绝',
     calls: [
       { tool: 'API·客户数据 API', action: '写入拜访提纲', nature: 'WRITE', result: 'FAILED', reason: '客户档案已锁定，写入被拒绝' }
     ]
@@ -309,6 +320,15 @@ export const taskCallRecords = [
     reason: 'MCP·知识库 MCP 不在工具白名单',
     calls: [
       { tool: 'MCP·知识库 MCP', action: '检索库存预警阈值', nature: 'READ', result: 'FAILED', reason: '不在工具白名单' }
+    ]
+  },
+  {
+    // 失败后重试成功：先失败（连接超时）后重试成功，列表层仍记「成功」，失败细节只在详情里看到（同会话调用 C-1007，G3 场景）。
+    id: 'T-2011', date: '2026-09-27', time: '08:30:05', user: '刘敏', position: '经营分析岗', task: '每日经营晨报', trigger: '定时·每天 08:30',
+    reason: '',
+    calls: [
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'FAILED', reason: '连接超时' },
+      { tool: 'API·客户数据 API', action: '查询昨日营收数据', nature: 'READ', result: 'SUCCESS', reason: '' }
     ]
   }
 ].map((r) => ({ ...r, ...deriveExec(r.calls) }))

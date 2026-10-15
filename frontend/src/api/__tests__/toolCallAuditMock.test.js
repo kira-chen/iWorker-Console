@@ -237,3 +237,27 @@ describe('知识库检索 knowledgeCallRecords（2026-10-09 明确不采用记�
     expect(knowledgeOutputOf(knowledgeCallRecords.find((r) => r.result === 'FAILED')).note).toContain('【待补充】')
   })
 })
+
+describe('演示样例覆盖（#92 ⑰）', () => {
+  it('会话调用有「多次调用失败」的执行：不止一次工具调用失败且整体失败，原因概要写「N 次调用失败，详见详情」（§四）', () => {
+    const multiFail = toolCallRecords.find((r) => r.calls.filter((c) => c.result === 'FAILED').length > 1)
+    expect(multiFail).toBeTruthy()
+    expect(multiFail.result).toBe('FAILED')
+    const n = multiFail.calls.filter((c) => c.result === 'FAILED').length
+    expect(multiFail.reason).toBe(`${n} 次调用失败，详见详情`)
+  })
+
+  it('岗位自动化任务有「失败后重试成功」的运行：中途有失败的调用，整体仍记成功（§一「记录单元」）', () => {
+    const retried = taskCallRecords.find((r) => r.calls.some((c) => c.result === 'FAILED') && r.result === 'SUCCESS')
+    expect(retried).toBeTruthy()
+  })
+
+  it('任务运行只有一次失败调用时，原因概要以工具标识开头（§8.4「业务系统·SAP ERP 连接超时」格式）', () => {
+    const singleFail = taskCallRecords.filter((r) => r.result === 'FAILED' && r.calls.filter((c) => c.result === 'FAILED').length === 1)
+    expect(singleFail.length).toBeGreaterThan(0)
+    for (const r of singleFail) {
+      const failed = r.calls.find((c) => c.result === 'FAILED')
+      expect(r.reason.startsWith(failed.tool)).toBe(true)
+    }
+  })
+})
