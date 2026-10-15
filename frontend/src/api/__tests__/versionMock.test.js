@@ -201,14 +201,14 @@ describe('新建与编辑（PRD §四 / §八）', () => {
   })
 
   it('已发布过的版本不可编辑：已发布的、被顶替回到未发布的旧版本都一样', async () => {
-    const msg = '曾发布过的版本不可编辑，如需更正请新建更高版本号的版本'
+    const msg = '已发布过的版本不可编辑；如需更正请新建更高版本号的版本'
     await expect(updateVersion(WIN_LIVE, draft())).rejects.toMatchObject({ message: msg })
     await expect(updateVersion(WIN_OLD, draft())).rejects.toMatchObject({ message: msg })
   })
 
   it('审核中锁定：不可编辑，提示先撤回；撤回后（从未发布过）可继续编辑', async () => {
     await expect(updateVersion(MAC_PENDING, draft({ terminal: 'MAC', version: 'v1.2.9' }))).rejects.toMatchObject({
-      message: '审核中，已锁定不可修改。可先撤回申请后继续编辑'
+      message: '审核中，已锁定不可编辑；如需修改请先撤回申请'
     })
     await withdrawVersion(MAC_PENDING)
     await expect(updateVersion(MAC_PENDING, draft({ terminal: 'MAC', version: 'v1.2.9', package: { ...pkg, fileName: 'x.dmg' } }))).resolves.toBeTruthy()

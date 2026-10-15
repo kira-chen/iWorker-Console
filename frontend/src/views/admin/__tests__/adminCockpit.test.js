@@ -13,7 +13,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * 驾驶舱其余区块是静态 mock，这里只留「页面仍在」的探针，不逐个断言。
  *
  * 2026-10-08 /test-audit 补缺口（同对齐 prd.驾驶舱.md；静态示例数值不测，只测交互规则）：
- * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews（memory router 断 currentRoute.name）；
+ * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews / AdminPositionAssignments（带 pending=1）/ AdminStorageSpace（带 tab=request、status=PENDING）（memory router 断 currentRoute.name 与 query）；
  * - §四.2 岗位领用 Top 5 只列已发布岗位；
  * - §六.2 点踩明细每页 10 条、首 / 末页按钮置灰；§七.1 点踩明细与对话明细两个弹窗互斥；
  * - §一.1 页头「更新于 HH:MM」，刷新后为当前时刻。

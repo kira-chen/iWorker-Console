@@ -54,8 +54,23 @@ const seedMembers = () => [
 // 扩容申请：员工端只在「清理缓存后仍满」或「缓存本来就是零」时才给申请入口，所以申请时缓存都已为零（cacheCleared 恒为 true）。
 // 管理端只展示员工「当前用量」（列表行的 current 由 listExpansionRequests 现算），不存、不展示申请时的用量。
 // position 是提交时的岗位快照，与岗位分配种子对齐（只有 202 李娜 / 204 王芳 / 201 张伟有绑定，其余提交时未绑定岗位）。
+// 另有 2 条属于停用账号（周明 205 待处理、吴杰 211 已拒绝）：页面一律不展示、不计角标，用来演示「停用账号的扩容申请一并隐藏」，重新启用后才出现。
 // 待处理 4 条（陈宇最新）；已处理 4 条：赵敏已同意（5→10 GB），何静、刘强、孙欣曾被拒绝（处理人有 demo / zhangwei 两位，对应访问审计种子）。
 const seedRequests = () => [
+  {
+    id: 'ER-1007', userId: 205, username: 'zhouming', name: '周明', position: '',
+    cacheCleared: true, skippedAutomations: 1,
+    reason: '排产表产物较多，申请扩容。',
+    submittedAt: '2026-10-08 09:15', status: 'PENDING',
+    newTotalGb: null, rejectReason: '', handler: '', handledAt: ''
+  },
+  {
+    id: 'ER-0997', userId: 211, username: 'wujie', name: '吴杰', position: '',
+    cacheCleared: true, skippedAutomations: 0,
+    reason: '项目资料较多，申请扩容。',
+    submittedAt: '2026-09-15 10:20', status: 'REJECTED',
+    newTotalGb: null, rejectReason: '请先清理历史产物后再申请。', handler: 'demo', handledAt: '2026-09-15 15:00'
+  },
   {
     id: 'ER-1006', userId: 203, username: 'chenyu', name: '陈宇', position: '',
     cacheCleared: true, skippedAutomations: 2,
@@ -165,8 +180,9 @@ const visibleRequests = () => requests.filter((r) => r.active)
 // v4（2026-10-09）：员工清单与用户模块 / 岗位分配真联动（种子只存用量，身份取当前值）；种子补徐琳与更多申请历史，旧快照弃用回种子。
 // v5（2026-10-09）：扩容申请只展示当前用量，申请记录不再带申请时的 usedGb / totalGb，种子随之变，旧快照弃用回种子。
 // v6（2026-10-12）：默认容量改为可调（出厂 1 GB）、新增磁盘总量（出厂 1000 GB）；原按 5 GB 默认的存量员工改成个人设置 5 GB，演示状态不变，旧快照弃用回种子。
+// v7（2026-10-15）：种子补两条停用账号（周明 / 吴杰）的扩容申请，演示「停用账号的申请一并隐藏」，旧快照弃用回种子。
 const persist = attachPersist('storageSpace', {
-  version: 6,
+  version: 7,
   // 只存业务数据；用户名 / 显示名 / 岗位 / 在职标记是派生值，每次读写前由 reconcile() 从用户模块取，不落存档
   snapshot: () => ({
     members: members.map(({ userId, finalGb, cacheGb, quotaGb, statAt }) => ({ userId, finalGb, cacheGb, quotaGb, statAt })),
