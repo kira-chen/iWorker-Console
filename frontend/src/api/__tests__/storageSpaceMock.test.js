@@ -453,12 +453,21 @@ describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md
 })
 
 describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', () => {
-  it('修改默认容量：只影响未单独设置的员工，逐人写「调整容量」审计，概览同步', async () => {
+  it('修改默认容量：只影响未单独设置的员工，只写一条「修改默认容量」审计（不逐人写「调整容量」），概览同步', async () => {
     const res = await setDefaultQuota(3)
     expect(res).toEqual({ defaultQuotaGb: 3, count: 2 })
     expect(await memberOf('yangfan')).toMatchObject({ totalGb: 3, quotaSource: 'DEFAULT' })
     expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'PERSONAL' })
-    expect(liveOps().map((r) => r.detail)).toEqual(['1 GB → 3 GB', '1 GB → 3 GB'])
+    // 只写 1 条全局记录「修改默认容量」（对象「默认容量」，不带用户标识、不逐人写「调整容量」）
+    expect(liveOps().filter((r) => r.action === '调整容量')).toHaveLength(0)
+    const global = liveOps().filter((r) => r.action === '修改默认容量')
+    expect(global).toHaveLength(1)
+    expect(global[0]).toMatchObject({ target: '默认容量', detail: '1 GB → 3 GB', operator: 'demo' })
+    expect(global[0].objectId).toBeUndefined()
+    // 客户端要读这条：type「修改默认容量」、无用户、newTotalGb = 新默认值
+    const fromClient = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.type === '修改默认容量')
+    expect(fromClient).toHaveLength(1)
+    expect(fromClient[0]).toMatchObject({ username: null, userId: null, newTotalGb: 3, requestId: null })
     expect(await getStorageOverview()).toMatchObject({ defaultQuotaGb: 3, allocatedGb: 59, remainingGb: 941 })
   })
 
@@ -487,6 +496,10 @@ describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', 
 
   it('磁盘总量可改，余量 = 总量 − 已分配；不得低于已分配', async () => {
     expect(await setDiskTotal(500)).toEqual({ diskTotalGb: 500, remainingGb: 445 })
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({ action: '修改磁盘总量', target: '磁盘总量', detail: '1000 GB → 500 GB', operator: 'demo' })
+    await setDiskTotal(500) // 没变化不再记
+    expect(liveOps()).toHaveLength(1)
     await expect(setDiskTotal(54)).rejects.toThrow('磁盘总量不能低于已分配的 55 GB')
     await expect(setDiskTotal(1.5)).rejects.toThrow('磁盘总量只能填整数')
     expect((await getStorageOverview()).diskTotalGb).toBe(500)

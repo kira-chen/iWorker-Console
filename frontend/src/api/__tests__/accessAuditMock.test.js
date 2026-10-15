@@ -96,7 +96,7 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
     const m = await import('../accessAuditMock')
     const seedCount = m.opsRecords.length
     m.appendOpsRecord({ operator: 'xiaomei', module: '版本管理', action: '发布', target: 'Windows v1.3.0', detail: '说明' })
-    expect(snap().v).toBe(1)
+    expect(snap().v).toBe(2)
     expect(snap().data.live).toHaveLength(1)
     expect(Object.keys(snap().data).sort()).toEqual(['live', 'opsSeq'])
 
@@ -120,7 +120,7 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
 
     // 旧快照：live 记录没有新字段
     vi.resetModules()
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 1, data: { opsSeq: 101, live: [{ id: 100, time: '2026-09-20 10:00', operator: 'x', module: '版本管理', action: '发布', target: 'Mac v1.0.1', detail: '', live: true }] } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { opsSeq: 101, live: [{ id: 100, time: '2026-09-20 10:00', operator: 'x', module: '版本管理', action: '发布', target: 'Mac v1.0.1', detail: '', live: true }] } }))
     const legacy = await import('../accessAuditMock')
     expect(legacy.opsRecords[0]).toMatchObject({ id: 100, target: 'Mac v1.0.1' })
   })
@@ -137,7 +137,7 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
 
   it('存量快照形状不合法 → 兜底：忽略坏快照、只剩种子，不抛错', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 1, data: { opsSeq: 100, live: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { opsSeq: 100, live: 'oops' } }))
     const m = await import('../accessAuditMock')
     expect(m.opsRecords.some((r) => r.live)).toBe(false)
     expect(warn).toHaveBeenCalled()
@@ -247,16 +247,18 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     expect(approve.rejectReason).toBe('') // 只有拒绝扩容带拒绝原因
   })
 
-  it('存储空间视图：运行期经 appendOpsRecord 写入的三类动作都会进视图；存储空间模块下的未知动作（如已删除的「修改默认容量」）不进视图', () => {
+  it('存储空间视图：调整容量 / 同意扩容 / 拒绝扩容 / 修改默认容量会进视图（后者无用户、newTotalGb = 新默认值）；「修改磁盘总量」等其它动作不进视图', () => {
     const common = { operator: 'a', module: '存储空间', target: 'chenyu', objectId: 203, meta: { userId: 203, username: 'chenyu' } }
     appendOpsRecord({ ...common, action: '调整容量', detail: '5 GB → 8 GB', meta: { ...common.meta, newTotalGb: 8 } })
     appendOpsRecord({ ...common, action: '同意扩容', detail: '5 GB → 10 GB', meta: { ...common.meta, requestId: 'ER-7', newTotalGb: 10 } })
     appendOpsRecord({ ...common, action: '拒绝扩容', detail: '原因', meta: { ...common.meta, requestId: 'ER-8' } })
-    appendOpsRecord({ ...common, action: '修改默认容量', detail: '5 GB → 8 GB' })
+    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改默认容量', target: '默认容量', detail: '1 GB → 3 GB', meta: { fromGb: 1, newTotalGb: 3 } })
+    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改磁盘总量', target: '磁盘总量', detail: '1000 GB → 500 GB' })
     const live = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
-    expect(live.map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
+    expect(live.map((r) => r.type).sort()).toEqual(['修改默认容量', '同意扩容', '拒绝扩容', '调整容量'])
     expect(live.find((r) => r.type === '调整容量')).toMatchObject({ requestId: null, newTotalGb: 8 })
     expect(live.find((r) => r.type === '同意扩容')).toMatchObject({ requestId: 'ER-7', newTotalGb: 10 })
+    expect(live.find((r) => r.type === '修改默认容量')).toMatchObject({ username: null, userId: null, requestId: null, newTotalGb: 3 })
   })
 
   it('旧快照记录（没有 at / objectId / meta）也不抛错：at 按分钟补 :00', () => {

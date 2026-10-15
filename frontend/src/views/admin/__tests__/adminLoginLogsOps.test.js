@@ -250,10 +250,10 @@ describe('访问审计 · 管理端操作 · 强制回收与用户技能审核�
     return [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
   }
 
-  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 撤回 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量（§6.1，共 13 项）', async () => {
-    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 13 项
+  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量 / 修改默认容量 / 修改磁盘总量（§6.1，共 14 项，撤回不记故不在其中）', async () => {
+    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 14 项
     const labels = await openDropdown(1)
-    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 13)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '撤回', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量'])
+    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 14)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量'])
   })
 
   it('模块筛选完整顺序里「存储空间」在「运行规格」之后、「审核中心」之前（§6.1 第 3 条）', async () => {
@@ -724,13 +724,12 @@ describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09，�
     expect(detailCell(tr).textContent.trim()).toBe('5 GB → 8 GB')
   })
 
-  it('动作筛选含「同意扩容」「拒绝扩容」「调整容量」，没有已删除的「修改默认容量」', async () => {
+  it('动作筛选含「同意扩容」「拒绝扩容」「调整容量」「修改默认容量」「修改磁盘总量」（2026-10-15 默认容量与磁盘总量的修改开始记录）', async () => {
     const select = pane().querySelectorAll('.lt-filter')[1]
     select.querySelector('.el-select__wrapper').click()
     await flushAll(4)
     const items = [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
-    expect(items).toEqual(expect.arrayContaining(['同意扩容', '拒绝扩容', '调整容量']))
-    expect(items).not.toContain('修改默认容量')
+    expect(items).toEqual(expect.arrayContaining(['同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量']))
   })
 
   it('调整容量的【查看】跳转到存储空间页（默认容量分配页签），并把员工用户名作为关键词带过去（§6.3）', async () => {

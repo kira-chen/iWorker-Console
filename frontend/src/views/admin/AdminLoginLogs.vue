@@ -223,9 +223,10 @@ const ACT_CLS = {
   同意扩容: 'tag-green',
   拒绝扩容: 'tag-red',
   调整容量: 'tag-green',
+  修改默认容量: 'tag-green',
+  修改磁盘总量: 'tag-green',
   停用: 'tag-orange',
   强制回收: 'tag-red',
-  撤回: 'tag-orange',
   删除: 'tag-red',
   审核通过: 'tag-green',
   审核驳回: 'tag-red',
@@ -258,11 +259,13 @@ function opsGoto(row) {
     ElMessage.info(`正式系统中将跳转至「${row.module}」模块`)
     return
   }
-  // 存储空间：调整容量落在容量分配页签（默认页签），同意 / 拒绝扩容落在扩容申请页签（访问审计 §6.3）
-  const extra = row.module === '存储空间' && row.action !== '调整容量' ? { tab: 'request' } : def.extraQuery
+  // 存储空间：调整容量、修改默认容量 / 磁盘总量落在容量分配页签（默认页签），同意 / 拒绝扩容落在扩容申请页签（访问审计 §6.3）；
+  // 修改默认容量 / 磁盘总量的对象是全局设置而非员工，不注入关键词（否则员工列表会被滤空）
+  const extra = row.module === '存储空间' && ['同意扩容', '拒绝扩容'].includes(row.action) ? { tab: 'request' } : def.extraQuery
+  const globalSetting = row.module === '存储空间' && ['修改默认容量', '修改磁盘总量'].includes(row.action)
   router.push({
     name: def.name,
-    query: { ...(extra || {}), keyword: row.target }
+    query: { ...(extra || {}), ...(globalSetting ? {} : { keyword: row.target }) }
   })
 }
 </script>
@@ -470,7 +473,7 @@ function opsGoto(row) {
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量','修改默认容量','修改磁盘总量']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button>查询</el-button>

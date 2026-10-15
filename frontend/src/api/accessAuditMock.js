@@ -29,15 +29,15 @@ export const opsRecords = [
   { id: 4, time: '2026-08-27 17:15', operator: 'admin', module: '审核中心', action: '审核通过', target: '生产计划专属规格申请', detail: '' },
   { id: 5, time: '2026-08-27 16:08', operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 财税合规助手', detail: '岗位与技能权限范围不匹配', at: '2026-08-27 16:08:00', objectId: 'usr_hist_2', meta: { reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手' } },
   { id: 6, time: '2026-08-27 14:40', operator: 'li.qiang', module: 'API', action: '停用', target: '报表批量导出接口', detail: '' },
-  { id: 7, time: '2026-08-27 11:20', operator: 'zhang.wei', module: '技能', action: '撤回', target: '经营分析技能', version: 'v1.3', detail: '' },
+  { id: 7, time: '2026-08-27 11:20', operator: 'zhang.wei', module: '技能', action: '删除', target: '经营分析技能', version: 'v1.3', detail: '' },
   { id: 8, time: '2026-08-27 09:55', operator: 'wang.fang', module: '模型', action: '发布', target: '财税合规专属模型', detail: '' },
   { id: 9, time: '2026-08-26 17:33', operator: 'admin', module: '专家', action: '停用', target: '税务筹划专家', version: 'v2.1', detail: '' },
   { id: 10, time: '2026-08-26 15:10', operator: 'zhang.wei', module: '业务系统', action: '发布', target: 'Salesforce CRM 集成', detail: '' },
-  { id: 11, time: '2026-08-26 11:45', operator: 'li.qiang', module: '岗位', action: '撤回', target: '采购分析岗', version: 'v1.1', detail: '' },
+  { id: 11, time: '2026-08-26 11:45', operator: 'li.qiang', module: '岗位', action: '删除', target: '采购分析岗', version: 'v1.1', detail: '' },
   { id: 12, time: '2026-08-25 16:20', operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '', at: '2026-08-25 16:20:00', objectId: 'usr_hist_1', meta: { reviewId: 'usr_hist_1', submitter: 'wang.fang', skillName: '合同管理助手' } },
   // 版本管理（客户端版本）：与 versionMock.js 种子里各版本的发布记录一一对应（时间 / 发布人 / 更新说明同源，
   // 由 versionMock.test.js 的「审计种子与版本种子一致」用例守着）。操作对象 =「终端 + 版本号」，不附灰色版本号小标签；
-  // 变更内容 = 该版本的更新说明（发布 / 停用 / 撤回三种动作一律如此）。新版本生效时旧版本被自动顶替回到未发布，不单独记一条「停用」。
+  // 变更内容 = 该版本的更新说明（发布 / 停用两种动作一律如此；撤回不记）。新版本生效时旧版本被自动顶替回到未发布，不单独记一条「停用」。
   { id: 13, time: '2026-06-20 10:00', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Windows v1.0.0', detail: '首个正式版本：\n1. 支持岗位对话与技能调用\n2. 支持知识库检索\n3. 支持定时任务' },
   { id: 14, time: '2026-06-20 10:10', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Mac v1.0.0', detail: '首个正式版本（Mac）：支持岗位对话、技能调用与知识库检索。' },
   { id: 15, time: '2026-07-18 10:00', operator: 'zhang.wei', module: '版本管理', action: '发布', target: 'Windows v1.1.0', detail: '新增技能市场；优化长对话滚动体验。' },
@@ -63,8 +63,9 @@ const LIVE_ID_START = 100 // 新增记录 id 从 100 起，避开种子 id
 let opsSeq = LIVE_ID_START
 
 // 只持久化「运行期新增」的记录（带 live 标记），种子仍以代码为准——改种子不会被旧本地存档盖住。
+// v2（2026-10-15）：撤回不再记审计、删除开始记，种子里两条「撤回」改为「删除」
 const persist = attachPersist('accessAuditOps', {
-  version: 1,
+  version: 2,
   snapshot: () => ({ opsSeq, live: opsRecords.filter((r) => r.live) }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.opsSeq) || !Array.isArray(d.live)) {
@@ -111,7 +112,7 @@ const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时
  *   forceRevoke   {kind, recordId, at, objectType(=模块), objectId, objectName, reason}                         §6.5.1
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
- *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
+ *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'|'修改默认容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
  */
 export function listClientFacingOps({ since } = {}) {
   const out = []
@@ -139,12 +140,13 @@ export function listClientFacingOps({ since } = {}) {
         fromPosition: m.fromPosition ? { ...m.fromPosition } : null,
         toPosition: m.toPosition ? { ...m.toPosition } : null
       })
-    } else if (r.module === '存储空间' && ['同意扩容', '拒绝扩容', '调整容量'].includes(r.action)) {
+    } else if (r.module === '存储空间' && ['同意扩容', '拒绝扩容', '调整容量', '修改默认容量'].includes(r.action)) {
+      // 修改默认容量是全局设置：没有用户（username / userId 为 null），newTotalGb = 新默认值，客户端对「跟随默认」的员工生效
       const m = r.meta || {}
       out.push({
         kind: 'storageQuota', recordId: r.id, at, type: r.action,
-        username: m.username ?? r.target,
-        userId: m.userId ?? r.objectId ?? null,
+        username: r.action === '修改默认容量' ? null : m.username ?? r.target,
+        userId: r.action === '修改默认容量' ? null : m.userId ?? r.objectId ?? null,
         requestId: m.requestId ?? null,
         newTotalGb: m.newTotalGb ?? null,
         rejectReason: r.action === '拒绝扩容' ? r.detail || '' : ''

@@ -457,6 +457,7 @@ export async function deleteTeam(id) {
   if (t.status !== 'draft') throw err('已发布的专家团不可删除，需先完成停用审核', null, 409)
   const removed = t.members.length
   teams = teams.filter((x) => x !== t)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '删除', objectId: t.id, target: t.name, version: t.latestVersionLabel })
   delete publications[t.id]
   delete reviewSnapshots[String(t.id)]
   persist()
