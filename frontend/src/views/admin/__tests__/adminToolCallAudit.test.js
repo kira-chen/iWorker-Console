@@ -276,6 +276,15 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(d2.textContent).toContain('本次会话未调用技能')
   })
 
+  it('零工具调用的会话（C-1011）：列表照常成功、不涉及写操作；详情「按工具」展示空态文案「本次会话未调用外部工具」，不视为异常（#92 ①，§七）', async () => {
+    await openDetailOf('C-1011', true)
+    const drawer = document.body.querySelector('.el-drawer__body')
+    expect(drawer.querySelectorAll('.tca-dims .el-button')[0].textContent).toContain('按工具 0')
+    expect(drawer.querySelectorAll('.call-item').length).toBe(0)
+    expect(drawer.textContent).toContain('本次会话未调用外部工具')
+    expect(drawer.textContent).toContain('成功')
+  })
+
   it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
     await openDetailOf('报价单生成')
     const drawer = document.body.querySelector('.el-drawer__body')

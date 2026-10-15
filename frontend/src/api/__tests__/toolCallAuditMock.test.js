@@ -76,9 +76,10 @@ describe('三组记录', () => {
 })
 
 describe('会话调用 toolCallRecords（记录单元＝一次会话，2026-10-12 第五轮改版）', () => {
-  it('每条记录至少有一次工具调用；calls 的工具标识均为「连接器类型·名称」', () => {
+  it('calls 的工具标识均为「连接器类型·名称」；一次会话可以零工具调用，deriveExec 不崩（#92 ①，§一「可能调用零到多个外部工具」）', () => {
+    // 前提：种子里确实有零调用样例，否则下面的遍历证明不了什么
+    expect(toolCallRecords.some((r) => r.calls.length === 0)).toBe(true)
     for (const r of toolCallRecords) {
-      expect(r.calls.length).toBeGreaterThan(0)
       for (const c of r.calls) expect(c.tool).toMatch(/^(MCP|API|业务系统)·.+/)
     }
   })
@@ -87,7 +88,8 @@ describe('会话调用 toolCallRecords（记录单元＝一次会话，2026-10-1
     for (const r of toolCallRecords) {
       expect(r.hasWrite).toBe(r.calls.some((c) => c.nature === 'WRITE'))
       const last = r.calls[r.calls.length - 1]
-      expect(r.result).toBe(last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
+      // 零调用没有失败的调用，整体记成功
+      expect(r.result).toBe(!last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED')
     }
   })
 

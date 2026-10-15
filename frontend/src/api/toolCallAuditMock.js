@@ -77,8 +77,9 @@ export const EXEC_RESULT_LABEL = { SUCCESS: '成功', FAILED: '失败' }
  */
 function deriveExec(calls) {
   const hasWrite = calls.some((c) => c.nature === 'WRITE')
+  // 零调用（calls 为空）：没有失败的调用，整体记成功（§一「可能调用零到多个外部工具」，详情展示空态文案）
   const last = calls[calls.length - 1]
-  const result = last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
+  const result = !last || last.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED'
   return { hasWrite, result }
 }
 
@@ -193,6 +194,14 @@ export const toolCallRecords = [
     calls: [
       { tool: 'API·费控系统', action: '查询预算额度', nature: 'READ', confirm: 'NONE', result: 'SUCCESS', reason: '' }
     ]
+  },
+  {
+    // 零工具调用：调用了技能但全程没有触发任何外部工具（§一「可能调用零到多个外部工具」），
+    // 详情「按工具」维度展示空态文案「本次会话未调用外部工具」，不视为异常（§七）。
+    id: 'C-1011', date: '2026-09-28', time: '10:05:30', user: '陈杰', position: '销售顾问',
+    reason: '',
+    skillCalls: [{ skill: '话术润色', result: 'SUCCESS', reason: '' }],
+    calls: []
   }
 ].map((r) => ({ ...r, skills: r.skillCalls.map((c) => c.skill), ...deriveExec(r.calls) }))
 
