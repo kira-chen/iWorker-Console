@@ -526,6 +526,7 @@ export async function deleteMcp(id) {
   }
   // 软引用（PRD §二.3.7）：被技能引用亦可删——列表侧已做「确认影响后继续删除」二次确认
   mcps = mcps.filter((m) => m.id !== id && m.code !== id)
+  if (m) appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '删除', objectId: m.id, target: m.name })
   persist()
   return {}
 }

@@ -381,15 +381,9 @@ describe('撤回审核中的申请', () => {
     expect(back).toMatchObject({ status: 'UNPUBLISHED', publishedAt: before.publishedAt, publishedBy: before.publishedBy })
   })
 
-  it('撤回写一条访问审计「撤回」，变更内容为该版本的更新说明；不在审核中的版本不可撤回', async () => {
+  it('撤回不写访问审计（2026-10-15 拍板）；不在审核中的版本不可撤回', async () => {
     await withdrawVersion(MAC_PENDING)
-    expect(liveOps()).toHaveLength(1)
-    expect(liveOps()[0]).toMatchObject({
-      module: '版本管理',
-      action: '撤回',
-      target: 'Mac v1.2.0',
-      detail: '新增记忆管理；修复深色模式下部分弹窗文字看不清的问题。'
-    })
+    expect(liveOps()).toHaveLength(0)
     await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该版本当前没有审核中的申请' })
     await expect(withdrawVersion(9999)).rejects.toMatchObject({ message: '版本不存在或已被删除' })
   })
@@ -511,11 +505,11 @@ describe('写访问审计「管理端操作」（PRD §八 审计 / prd.访问�
     expect(liveOps()[0]).toMatchObject({ operator: 'xiaomei', module: '版本管理', action: '停用', target: 'Windows v1.2.0', detail: WIN_LIVE_NOTES })
   })
 
-  it('版本管理的记录（发布 / 停用 / 撤回）变更内容一律是更新说明，不为空', async () => {
+  it('版本管理的记录（发布 / 停用）变更内容一律是更新说明，不为空；撤回不记', async () => {
     await publishAndApprove(WIN_NEW)
     await stopAndApprove(WIN_NEW)
     await withdrawVersion(MAC_PENDING)
-    expect(liveOps().map((r) => r.action)).toEqual(['撤回', '停用', '发布'])
+    expect(liveOps().map((r) => r.action)).toEqual(['停用', '发布'])
     for (const r of liveOps()) expect(r.detail).toBeTruthy()
   })
 

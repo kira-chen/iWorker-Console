@@ -289,7 +289,7 @@ describe('写访问审计「管理端操作」（prd.访问审计.md §6「运�
     })
   })
 
-  it('新建、编辑、删除、用户自主申请、撤回/解除均不写管理端操作记录', async () => {
+  it('新建、编辑、用户自主申请、撤回/解除均不写管理端操作记录；删除写一条「删除」（2026-10-15）', async () => {
     const created = await createRuntimeSpec({
       name: '不入审计档', boundaryDesc: '验证范围外动作', cpu: 1, memoryGi: 2, diskGi: 5,
       readinessTimeoutMin: 5, idleRecycleMin: 5, maxLifetimeHours: 0, positionIds: [], allowUserApply: true
@@ -297,7 +297,9 @@ describe('写访问审计「管理端操作」（prd.访问审计.md §6「运�
     await updateRuntimeSpec(created.id, { ...created, maxLifetimeHours: 6 })
     await applyRuntimeSpecForUser(created.id, 'chenyu')
     await unassignRuntimeSpecUser(created.id, 'chenyu')
-    await deleteRuntimeSpec(created.id)
     expect(liveOps()).toHaveLength(0)
+    await deleteRuntimeSpec(created.id)
+    expect(liveOps()).toHaveLength(1)
+    expect(liveOps()[0]).toMatchObject({ module: '运行规格', action: '删除', target: '不入审计档', operator: 'demo', detail: '' })
   })
 })

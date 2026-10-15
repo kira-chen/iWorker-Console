@@ -291,6 +291,7 @@ export async function deleteBizSystem(id) {
   }
   // 软引用（PRD 口径同 API 连接器）：被技能引用亦可删——列表侧已做「确认影响后继续删除」二次确认
   bizRows = bizRows.filter((b) => b.id !== id)
+  if (b) appendOpsRecord({ operator: currentDemoUsername(), module: '业务系统', action: '删除', objectId: b.id, target: b.name })
   persist()
   return {}
 }

@@ -449,6 +449,7 @@ export async function deleteExpert(id) {
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）
   e.skillIds.forEach((id) => removeSkillRefNameIfUnused(e, id, false))
   experts = experts.filter((x) => x !== e)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '删除', objectId: e.id, target: e.name, version: e.latestVersionLabel })
   delete publications[e.id]
   persist()
   return removed

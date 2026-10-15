@@ -780,6 +780,7 @@ export async function deleteApi(id) {
   }
   // PRD §二.4：软引用——无论是否被技能引用，确认后均可删除
   apis = apis.filter((a) => a.id !== id && a.code !== id)
+  if (a) appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '删除', objectId: a.id, target: a.name })
   persist()
   return {}
 }
