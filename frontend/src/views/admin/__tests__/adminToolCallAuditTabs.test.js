@@ -305,6 +305,56 @@ describe('知识库检索页签（PRD §九）', () => {
   })
 })
 
+describe('文案与颜色逐字对 md（#92 ②⑦⑧⑨④）', () => {
+  const openDetail = async (p, text) => {
+    // 先按关键词（请求编号 / 检索词）搜出唯一一行，免得目标行被分页挤到第二页
+    const input = p.querySelector('input.el-input__inner')
+    input.value = text
+    input.dispatchEvent(new Event('input'))
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    const row = bodyRows(p)[0]
+    ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查看详情').click()
+    await flush()
+    return document.body.querySelector('.el-drawer__body')
+  }
+
+  it('自动化任务：是 = 绿色（§8.6 同 §六）；【统计口径】逐字（§8.2）', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const p = pane('task')
+    const writeRow = bodyRows(p).find((r) => r.textContent.includes('拜访前资料准备') && r.textContent.includes('成功'))
+    const yes = [...writeRow.querySelectorAll('.status-tag')].find((t) => t.textContent.trim() === '是')
+    expect(yes.className).toContain('st--success')
+    buttonOf(p, '统计口径').click()
+    await flush()
+    expect(p.textContent).toContain('任务无人值守，不存在进行中、用户取消和待确认；全部操作免授权，不区分读写处理')
+  })
+
+  it('自动化任务详情：操作摘要字段名为「任务」、失败说明为「对照工具调用明细，核对出问题的具体连接器状态或权限」（§8.5）', async () => {
+    mountReal()
+    await flush()
+    await openTab('task')
+    const drawer = await openDetail(pane('task'), 'T-2002')
+    const t = drawer.textContent
+    expect(t).not.toContain('自动化任务')
+    expect(drawer.querySelector('.el-descriptions').textContent).toContain('任务')
+    expect(t).toContain('建议对照工具调用明细，核对出问题的具体连接器状态或权限')
+  })
+
+  it('知识库详情：第二步标题为「执行结果」；未发出请求（无访问权限）只展示原因，不拼「检索耗时 未执行」（§9.5）', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const drawer = await openDetail(pane('knowledge'), 'K-3004')
+    const t = drawer.textContent
+    expect(t).toContain('执行结果')
+    expect(t).toContain('无该知识库访问权限')
+    expect(t).not.toContain('检索耗时 未执行')
+  })
+})
+
 describe('导出 CSV（PRD §三）', () => {
   it('两个新页签各自导出当前筛选结果', async () => {
     mountReal()

@@ -48,7 +48,8 @@ const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_CONFIRM_TAG = { NONE: 'info', CONFIRMED: 'success' }
 const YES_NO = { true: '是', false: '否' }
-const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
+// §六 列表层：是（涉及写操作）绿、否灰
+const YES_NO_TAG = (v) => (v ? 'success' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
 const query = reactive({ result: '', hasWrite: '' })
@@ -170,7 +171,7 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  if (d.result === 'FAILED') return '建议对照上方调用明细，核对出问题的技能，或具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
   return '本次执行已完成，可在调用明细中查看具体过程。'
 }
 </script>

@@ -44,7 +44,8 @@ import {
 const RUN_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const CALL_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
 const YES_NO = { true: '是', false: '否' }
-const YES_NO_TAG = (v) => (v ? 'accent' : 'info')
+// §六 列表层（§8.6 同）：是（涉及写操作）绿、否灰
+const YES_NO_TAG = (v) => (v ? 'success' : 'info')
 
 /* ── 筛选：时间范围 / 关键词 / 排序由 useAuditList 管，这里只声明本页签自己的条件 ── */
 const query = reactive({ result: '', hasWrite: '' })
@@ -105,7 +106,7 @@ function chooseMetric(key) {
 }
 
 const HELP = [
-  '执行结果只有成功、失败两类：任务无人值守、全部操作免授权，不会运行到一半停下等人处理，没有"进行中"。按整体是否完成预期产出判定成功 / 失败——哪怕中途有工具调用失败，只要后续被兜底 / 重试成功，整体仍记"成功"。',
+  '执行结果只有成功、失败两类，任务无人值守，不存在进行中、用户取消和待确认；全部操作免授权，不区分读写处理。',
   '单次工具调用的具体耗时与执行时刻不采集，不在本页展示。'
 ]
 
@@ -140,7 +141,7 @@ const detail = computed(() => {
     result: { label: EXEC_RESULT_LABEL[d.result], type: RUN_RESULT_TAG[d.result] },
     summary: [
       { label: '用户 / 岗位', value: `${d.user} / ${d.position}` },
-      { label: '自动化任务', value: d.task },
+      { label: '任务', value: d.task },
       { label: '触发方式', value: d.trigger },
       { label: '涉及写操作', value: YES_NO[d.hasWrite] }
     ],
@@ -161,7 +162,7 @@ const detail = computed(() => {
 })
 
 function resultExplain(d) {
-  if (d.result === 'FAILED') return '建议对照下方工具调用明细，核对出问题的具体工具的连接器状态或权限，并确认是否已有后续重试记录。'
+  if (d.result === 'FAILED') return '建议对照工具调用明细，核对出问题的具体连接器状态或权限，并确认是否已有后续重试记录。'
   return '本次运行已完成，可在工具调用明细中查看具体过程。'
 }
 </script>

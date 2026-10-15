@@ -109,6 +109,32 @@ describe('AdminToolCallAudit · 会话调用页签 · 真实 Element Plus 挂载
   })
 })
 
+describe('页面说明与标签颜色（#92 ②③⑥，§一 / §六 / §5.3）', () => {
+  it('页面说明按 §一：追溯每次会话 / 任务运行的发起人、确认过程与执行结果', async () => {
+    mountReal()
+    await flush()
+    expect(container.textContent).toContain('追溯每次会话 / 任务运行的发起人、确认过程与执行结果')
+    expect(container.textContent).not.toContain('追溯每次工具调用')
+  })
+
+  it('列表层「涉及写操作」：是 = 绿色、否 = 灰色（§六）', async () => {
+    mountReal()
+    await flush()
+    const tagOf = (text) => [...bodyRows()[0].querySelectorAll('.status-tag')].find((t) => t.textContent.trim() === text)
+    await search('客户记录更新')
+    expect(tagOf('是').className).toContain('st--success')
+    await search('报销查询')
+    expect(tagOf('否').className).toContain('st--info')
+  })
+
+  it('失败的会话结果说明用「上方调用明细」（§5.3）', async () => {
+    mountReal()
+    await flush()
+    await openDetailOf('排产计划调整')
+    expect(document.body.querySelector('.el-drawer__body').textContent).toContain('建议对照上方调用明细')
+  })
+})
+
 describe('统计卡片（§二）', () => {
   beforeEach(async () => {
     mountReal()
