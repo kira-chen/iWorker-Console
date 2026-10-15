@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
  * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「会话调用」的行为，对齐
@@ -13,8 +14,12 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
  * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
  * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 种子数据固定在 2026-09-20 ~ 2026-09-27（toolCallAuditMock.js），固定系统时间到
- * 2026-09-28，避免默认 90 天窗口随真实日期推移把种子数据挤出窗口、用例到期变红。
+ * 种子数据固定在 2026-09-19 ~ 2026-09-28（toolCallAuditMock.js），固定系统时间到
+ * 2026-09-28（helpers/fixedAuditClock.js，与 Tabs 文件共用），避免默认 90 天窗口随真实日期推移
+ * 把种子数据挤出窗口、用例到期变红。
+ *
+ * 定位约定：列表每页 7 条（jsdom），按行取值的用例一律先 search（请求编号 / 技能名）再取行，
+ * 不依赖「第几位」——种子再多一条比它新的记录，也不会把目标行挤出首页。
  */
 const MOCK = await import('@/api/toolCallAuditMock')
 const AdminToolCallAudit = (await import('@/views/admin/AdminToolCallAudit.vue')).default
@@ -33,11 +38,8 @@ const flush = async () => {
   }
 }
 
-const FIXED_NOW = new Date('2026-09-28T12:00:00+08:00')
-
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(FIXED_NOW)
+  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -54,7 +56,7 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  vi.useRealTimers()
+  restoreAuditClock()
 })
 
 function mountReal() {
@@ -216,7 +218,8 @@ describe('列表（§四）', () => {
     await flush()
   })
 
-  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', () => {
+  it('列字段：技能、涉及写操作、执行结果 / 原因齐全；失败行展示原因概要；不展示耗时（系统不采集）', async () => {
+    await search('生产数据查询')
     const row = bodyRows().find((r) => r.textContent.includes('生产数据查询'))
     expect(row.textContent).toContain('是') // 涉及写操作
     expect(row.textContent).toContain('失败')
@@ -224,14 +227,16 @@ describe('列表（§四）', () => {
     expect(container.textContent).not.toContain('执行耗时')
   })
 
-  it('一次会话调用多个技能合并为一条记录，「调用的技能」列以顿号分隔（PRD 第五轮改版：记录单元＝会话）', () => {
+  it('一次会话调用多个技能合并为一条记录，「调用的技能」列以顿号分隔（PRD 第五轮改版：记录单元＝会话）', async () => {
+    await search('报价单生成')
     const rows = bodyRows().filter((r) => r.textContent.includes('报价单生成'))
     expect(rows).toHaveLength(1)
     expect(rows[0].textContent).toContain('客户信息查询、报价单生成')
     expect(container.textContent).toContain('调用的技能')
   })
 
-  it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', () => {
+  it('整体成功但中途有工具调用失败的记录（排产冲突检测）：列表不展示原因概要，只在详情里看到失败细节（PRD §一「记录单元」两层展示）', async () => {
+    await search('排产冲突检测')
     const row = bodyRows().find((r) => r.textContent.includes('排产冲突检测'))
     expect(row.textContent).toContain('成功')
     expect(row.textContent).not.toContain('连接超时')
@@ -302,13 +307,24 @@ describe('详情抽屉（§5.1 / §5.2 / §5.3）', () => {
     expect(d2.textContent).toContain('本次会话未调用技能')
   })
 
-  it('零工具调用的会话（C-1011）：列表照常成功、不涉及写操作；详情「按工具」展示空态文案「本次会话未调用外部工具」，不视为异常（#92 ①，§七）', async () => {
+  it('零工具调用的会话（C-1011）：列表行结果「成功」、涉及写操作「否」；详情「按工具」展示空态文案「本次会话未调用外部工具」，不视为异常（#92 ①，§七）', async () => {
+    await search('C-1011')
+    const tags = [...bodyRows()[0].querySelectorAll('.status-tag')].map((t) => t.textContent.trim())
+    expect(tags).toContain('成功') // 列表行内的结果标签（不是抽屉里别处的「成功」）
+    expect(tags).toContain('否') // 涉及写操作
+    expect(tags).not.toContain('失败')
     await openDetailOf('C-1011', true)
     const drawer = document.body.querySelector('.el-drawer__body')
     expect(drawer.querySelectorAll('.tca-dims .el-button')[0].textContent).toContain('按工具 0')
     expect(drawer.querySelectorAll('.call-item').length).toBe(0)
     expect(drawer.textContent).toContain('本次会话未调用外部工具')
-    expect(drawer.textContent).toContain('成功')
+  })
+
+  it('多次调用失败的会话（C-1012）：列表行结果「失败」、原因概要「2 次调用失败，详见详情」（§四「不止一次调用出问题」）', async () => {
+    await search('C-1012')
+    const row = bodyRows()[0]
+    expect(row.textContent).toContain('失败')
+    expect(row.textContent).toContain('2 次调用失败，详见详情')
   })
 
   it('一次执行两次工具调用（报价单生成：先读客户信息再写创建报价单）：工具调用明细按顺序展示两项，各自独立，不展示耗时', async () => {
