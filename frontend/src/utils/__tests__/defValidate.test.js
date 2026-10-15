@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateMcpForm,
+  BIZ_QUESTION_MAX,
   validateApiAuthParams,
   validateMcpEnv,
   validateBizSystemForm,
@@ -25,6 +26,10 @@ import {
  */
 
 describe('常量', () => {
+  it('BIZ_QUESTION_MAX = 300（一览表示例类统一规则：每条示例问题最多 300 字符；AI 生成截断长度与输入框 maxlength 同源）', () => {
+    expect(BIZ_QUESTION_MAX).toBe(300)
+  })
+
   it('MCP transports（sse 为旧版 HTTP+SSE，2026-09-21 起支持）', () => {
     expect(MCP_TRANSPORTS).toEqual(['stdio', 'streamable-http', 'sse'])
   })

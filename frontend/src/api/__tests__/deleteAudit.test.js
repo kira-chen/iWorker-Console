@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import { deletePosition, __resetPositionMock } from '../positionMock'
-import { setUserPosition, __resetPositionAssignmentMock } from '../positionAssignmentMock'
+import { __resetPositionAssignmentMock } from '../positionAssignmentMock'
 import { deleteExpert, __resetExpertMock } from '../domainExpertMock'
 import { deleteMcp, __resetMcpMock } from '../mcpConnectorMock'
 
@@ -35,8 +35,8 @@ describe('各模块删除写访问审计「删除」', () => {
   })
 
   it('删除岗位：写「岗位 / 删除」，对象为岗位名', async () => {
-    await setUserPosition(202, null) // 402 种子被 li.na 领用，先解绑才能删
-    await deletePosition(402)
+    // 402 是已发布岗位（数据层守卫 yuepu#57①：仅未发布且不在审核中的岗位可删），改删未发布且无人领用的 404
+    await deletePosition(404)
     expect(liveOps()).toHaveLength(1)
     expect(liveOps()[0]).toMatchObject({ module: '岗位', action: '删除', detail: '' })
     expect(liveOps()[0].target).toBeTruthy()

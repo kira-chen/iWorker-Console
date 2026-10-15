@@ -68,7 +68,7 @@ const list = useAdminList(listKnowledgeBases, {
     return p
   }
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty, reload, search } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty, reload, search } = list
 
 const editorVisible = ref(false)
 const editingId = ref(null)
@@ -243,6 +243,7 @@ onActivated(reload)
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         :empty-text="hasFilter ? '暂无符合条件的知识库' : '还没有知识库 · 点「新建知识库」创建第一个'"
         @retry="reload"

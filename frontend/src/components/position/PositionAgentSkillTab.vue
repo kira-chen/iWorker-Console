@@ -82,7 +82,7 @@ const agentSkillRows = computed(() => {
   for (const a of store.agents) {
     out.push({ kind: 'agent', agentId: a.agentId, name: a.name, description: a.description || '', skillCount: (a.skills || []).length })
     for (const sk of a.skills || []) {
-      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, tools: agentSkillToolCount(sk), revoked: sk.revoked || null })
+      out.push({ kind: 'skill', rowKey: 's_' + a.agentId + '_' + sk.skillId, agentId: a.agentId, skillId: sk.skillId, name: sk.name, category: sk.category, displayCategoryName: sk.displayCategoryName || '', tools: agentSkillToolCount(sk), revoked: sk.revoked || null })
     }
   }
   return out
@@ -94,7 +94,9 @@ function agentSkillToolCount(sk) {
   if (Number.isFinite(sk?.toolCount)) return sk.toolCount
   return Array.isArray(sk?.referencedTools) ? sk.referencedTools.length : 0
 }
-const skillCategoryText = (c) => (c ? categoryLabel(c) : '—')
+// md §6.4 技能子行的「技能分类」= 技能本体的分类名（displayCategoryName）；缺省回落 category 原值
+// （旧形状里 OPERATION / QUERY 派生类走 categoryLabel 译成「操作类 / 查询类」），都没有才显「—」。
+const skillCategoryText = (row) => row.displayCategoryName || categoryLabel(row.category) || row.category || '—'
 
 /* ---------- Agent 抽屉：新建 / 编辑同一抽屉（2026-09-09 原型复刻批次 4C，#14） ----------
  * 原「＋ 新增 Agent」直建一条「新 Agent」空行 + 行内「＋技能」开弹窗挑技能的两段式，按负责人
@@ -113,6 +115,14 @@ const agentSkillIdsBefore = ref([])
 const agentSkillOptions = ref([])
 const agentSkillLoading = ref(false)
 const agentSkillKeyword = ref('')
+// md §6.4：候选「仅展示已发布且未被当前岗位引用过的岗位私有技能……同一岗位内同一技能只引用一次」：
+// 排除本岗位其它 Agent 已引用的技能；正在编辑的这个 Agent 自己已引用的保留（要能取消勾选）。（yuepu#60⑥）
+const agentSkillCandidates = computed(() => {
+  const usedElsewhere = new Set(
+    store.agents.filter((a) => a.agentId !== agentEditId.value).flatMap((a) => (a.skills || []).map((s) => s.skillId))
+  )
+  return agentSkillOptions.value.filter((o) => !usedElsewhere.has(o.id))
+})
 const agentSkillAtLimit = computed(() => agentDraft.value.skillIds.length >= LIMITS.SKILL_MAX)
 
 async function loadAgentSkillOptions() {
@@ -214,43 +224,6 @@ async function saveAgentDraft() {
   }
 }
 
-async function onReorderSkills(agentId, newSkills) {
-  store.reorderSkillsLocal(agentId, newSkills)
-  // 逐条 PUT sortOrder 持久化（决议 9 整体 PUT 思路，最小代价）
-  try {
-    await Promise.all(
-      newSkills.map((s, i) => store.patchSkill(s.skillId, { sortOrder: i }))
-    )
-  } catch (e) {
-    ElMessage.error('调序保存失败')
-  }
-}
-// Agent↔Agent 跨泳道迁移：走 assign 端点（PUT /skills/{id}/assign）。收纳区退役后，仅服务白板内
-// 把技能从一个 Agent 拖到另一个 Agent。
-async function assignSkillTo(skillId, fromAgentId, toAgentId) {
-  if (fromAgentId === toAgentId) return
-  const target = store.agents.find((a) => a.agentId === toAgentId)
-  try {
-    await store.assignSkillToAgent(skillId, toAgentId)
-    ElMessage.success(`已分配技能到 ${target?.name || 'Agent'}`)
-  } catch (e) {
-    // 1002 该 Agent 技能数上限 / 1003 跨岗位非法 / 其它
-    if (e?.code === 1002) {
-      ElMessage.error(`${target?.name || '该 Agent'} 技能数已达上限`)
-    } else if (e?.code === 1003) {
-      ElMessage.error('该技能不属于本岗位，无法分配')
-    } else {
-      ElMessage.error(e?.message || '分配失败')
-    }
-    // 失败：重拉详情回到后端真实态
-    store.load(store.positionId)
-  }
-}
-
-function onMoveSkill({ skillId, fromAgentId, toAgentId }) {
-  assignSkillTo(skillId, fromAgentId, toAgentId)
-}
-
 /* ============================ 技能从 Agent 移除（V84 引用模型：可逆 detach） ============================
  * 从 Agent 移除 = 删该 Agent 对技能的引用行；技能本体留在库里、可在「技能」页查看，也可再拉入任意 Agent。
  * 取代旧「解绑=彻底游离、不可逆」语义（后端 detach 端点：DELETE /fde/agents/{agentId}/skills/{skillId}）。 */
@@ -304,7 +277,7 @@ async function onDeleteSkill({ agentId, skillId }) {
           <el-table-column label="职责描述 / 分类" min-width="320">
             <template #default="{ row }">
               <span v-if="row.kind === 'agent'" class="pd-agent-desc">{{ row.description || '—' }}</span>
-              <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row.category) }}</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">{{ skillCategoryText(row) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="工具" width="120" align="center">
@@ -370,11 +343,11 @@ async function onDeleteSkill({ agentId, skillId }) {
       <div class="pd-card-body">
         <el-input v-model="agentSkillKeyword" placeholder="搜索技能名称、描述或标识" clearable />
         <div v-loading="agentSkillLoading" class="pd-agent-skill-list">
-          <div v-if="!agentSkillLoading && !agentSkillOptions.length" class="pd-agent-skill-empty">
+          <div v-if="!agentSkillLoading && !agentSkillCandidates.length" class="pd-agent-skill-empty">
             暂无可引用的岗位私有技能
           </div>
           <el-checkbox
-            v-for="opt in agentSkillOptions"
+            v-for="opt in agentSkillCandidates"
             :key="opt.id"
             :model-value="agentDraft.skillIds.includes(opt.id)"
             :disabled="agentDrawerReadonly || (agentSkillAtLimit && !agentDraft.skillIds.includes(opt.id))"

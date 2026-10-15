@@ -142,6 +142,19 @@ const verify = ref(null)
 const testing = ref(false)
 const embeddingModels = ref([])
 let muteVerifyReset = false
+/**
+ * 回填详情但不触发「验证状态重置」：回填会改变 connSig，其 watch 在下一轮才跑，
+ * 此时 loading 已复位，不静默就会把刚回填的 SUCCESS 冲成「修改连接配置后需要重新测试」（yuepu#62④）。
+ */
+async function hydrateQuietly(d) {
+  muteVerifyReset = true
+  try {
+    hydrate(d)
+    await nextTick()
+  } finally {
+    muteVerifyReset = false
+  }
+}
 
 /** 超时时间必填且须在区间内（md §六.1 API 1000～60000 / §七.6 MCP 1000～120000）；清空后 el-input-number 回 null，一并拦。 */
 const timeoutRule = (min, max) => ({
@@ -191,11 +204,23 @@ function clearErrors() {
   Object.keys(fieldErrors).forEach((k) => delete fieldErrors[k])
 }
 const emptyAuthRow = () => ({ in: 'HEADER', key: '', description: '', clientFill: false, value: '', configured: false })
-// 切到 API KEY 且无行 → 预置一行（md §六.1.1：至少保留一行有效参数）
+// 类型切到 API 或鉴权切到 API KEY 且无行 → 预置一行（md §六.1.1：至少保留一行有效参数）。
+// 新建切 API 时鉴权默认就是 API KEY（md §六.1），authType 不变也要触发，所以同时盯 sourceType（yuepu#62①）。
 watch(
-  () => form.api.authType,
+  () => [form.sourceType, form.api.authType],
+  ([type, auth]) => {
+    if (type === 'API' && auth === 'API_KEY' && !apiAuthRows.value.length) apiAuthRows.value = [emptyAuthRow()]
+  }
+)
+// 切到 stdio → 清空 http 侧 Endpoint 与鉴权（md §七.2.3「切换到 stdio 则按各自字段清空」；yuepu#62③）
+watch(
+  () => form.mcp.transport,
   (t) => {
-    if (t === 'API_KEY' && !apiAuthRows.value.length) apiAuthRows.value = [emptyAuthRow()]
+    if (t !== 'stdio') return
+    form.mcp.endpoint = ''
+    form.mcp.authType = 'none'
+    form.mcp.authHeaderName = ''
+    mcpCredential.value = ''
   }
 )
 
@@ -308,7 +333,7 @@ async function load() {
   loading.value = true
   try {
     embeddingModels.value = await listEmbeddingModelOptions().catch(() => [])
-    if (targetId.value) hydrate(await getKnowledgeSource(targetId.value))
+    if (targetId.value) await hydrateQuietly(await getKnowledgeSource(targetId.value))
   } catch (e) {
     loadError.value = e?.message || '加载失败'
   } finally {
@@ -464,9 +489,10 @@ function buildConfig() {
   }
   return {
     transport: form.mcp.transport,
-    endpoint: (form.mcp.endpoint || '').trim(),
-    authType: form.mcp.authType,
-    authHeaderName: (form.mcp.authHeaderName || '').trim(),
+    // stdio 不使用 http 侧字段：载荷里一并清空，不让残留的 Endpoint / 鉴权随保存下发（md §七.2.3）
+    endpoint: isHttpTransport(form.mcp.transport) ? (form.mcp.endpoint || '').trim() : '',
+    authType: isHttpTransport(form.mcp.transport) ? form.mcp.authType : 'none',
+    authHeaderName: isHttpTransport(form.mcp.transport) ? (form.mcp.authHeaderName || '').trim() : '',
     command: form.mcp.command,
     args: mcpArgsText.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     envVars: form.mcp.transport === 'stdio' ? outParamRows(mcpEnvRows.value, false) : [],
@@ -480,7 +506,7 @@ function buildConfig() {
 /** 保存 / 测试提交的明文密钥通道：API=Bearer Token；MCP=访问凭证（留空=保留原值）。 */
 function authValueOut() {
   if (form.sourceType === 'API') return form.api.authType === 'BEARER' ? apiBearerToken.value.trim() || null : null
-  if (form.sourceType === 'MCP') return form.mcp.authType !== 'none' ? mcpCredential.value.trim() || null : null
+  if (form.sourceType === 'MCP') return isHttpTransport(form.mcp.transport) && form.mcp.authType !== 'none' ? mcpCredential.value.trim() || null : null
   return null
 }
 /** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.4），一次性标红全部问题项。 */
@@ -626,7 +652,7 @@ function close() {
       <!-- 上传类：内置 RAG 配置（md §五.1；壳与排布照原型 sourceFields('上传')） -->
       <section v-if="form.sourceType === 'UPLOAD'" class="section-card">
         <div class="section-title">内置 RAG 配置</div>
-        <el-form-item label="文档类型">
+        <el-form-item label="文档类型" required>
           <el-radio-group v-model="form.docKind">
             <el-radio v-for="o in DOC_KIND_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
           </el-radio-group>
@@ -653,7 +679,7 @@ function close() {
           <div class="ksrc-help">更换后需全量重建索引</div>
         </el-form-item>
         <!-- 原型：检索策略 = .proto2-form-grid 2 列 [select | Top-K 内联] + 绿底阈值提示框 -->
-        <el-form-item label="检索方式">
+        <el-form-item label="检索方式" required>
           <div class="ksrc-grid2">
             <el-select v-model="form.retrieval">
               <el-option v-for="o in RETRIEVAL_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
@@ -712,6 +738,7 @@ function close() {
               value-header="参数值"
               desc-placeholder="选填：这个参数是做什么的"
               add-label="+ 添加参数"
+              secret-value
               client-fill-hint="客户端填写参数由客户端收集，平台不存值"
               @update:rows="apiAuthRows = $event"
               @interact="delete fieldErrors.apiAuth"
@@ -850,6 +877,7 @@ function close() {
                 value-header="平台值"
                 desc-placeholder="选填：这个变量是做什么的"
                 add-label="+ 添加变量"
+                secret-value
                 client-fill-hint="客户端填写变量由客户端收集，平台不存值"
                 @update:rows="mcpEnvRows = $event"
                 @interact="delete fieldErrors.mcpEnv"

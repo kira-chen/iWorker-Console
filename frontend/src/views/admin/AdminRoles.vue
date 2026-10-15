@@ -4,7 +4,7 @@
  *
  * 【本轮对齐要点】
  * - 页面说明：「…就能进入哪些页面」。
- * - 工具栏补「搜索角色名称」搜索框 + 【查询】（回车同效）。角色量级恒小且不分页，搜索为**本地过滤**
+ * - 工具栏补「搜索角色名称」搜索框 + 【查询】（回车同效）。角色搜索为**本地过滤**（列表本身走 useAdminList 的客户端分页）
  *   （点查询/回车才生效，输入不实时过滤——与原型 role-query 口径一致）。
  * - 列：角色名称 / 用户数量（「N 个用户」）/ 页面权限 / 最近更新时间（排序，默认倒序）/ 操作；
  *   删「创建时间」列；userCount 由 mock 提供。
@@ -61,7 +61,7 @@ const list = useAdminList(listRoles, {
     )
   }
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 const fetchList = list.reload
 
 function applySearch() {
@@ -83,10 +83,11 @@ async function loadPermissionTree() {
   try {
     const data = await getPermissionTree()
     permissionTree.value = Array.isArray(data) ? data : data?.list || []
-  } catch (e) {
+  } catch {
     // 权限树读失败：列表仍可列角色。权限列因无树可对照 → scopeLines 恒空 → 统一显「未开通任何页面」
     // （2026-09-01 拍板：不再回显裸权限标识）；编辑抽屉内保持其自身失败态文案。
-    permissionTree.value = []
+    // 失败不覆盖已加载的树：首次失败时树本就为空；每次开抽屉都会重拉，重拉时的瞬时失败不该把已有的好树清掉，
+    // 否则列表权限列整体退成「未开通任何页面」、抽屉也误报失败。
   }
 }
 
@@ -116,13 +117,16 @@ function scopeLines(modules) {
 const editorVisible = ref(false)
 const editingRole = ref(null)
 
+// 每次打开抽屉都重拉权限树：上次加载失败时，关闭重开才能重试（md 角色 §三.5「关闭后重新打开会再次加载权限选项」）
 function openCreate() {
   editingRole.value = null
   editorVisible.value = true
+  loadPermissionTree()
 }
 function openEdit(row) {
   editingRole.value = { ...row }
   editorVisible.value = true
+  loadPermissionTree()
 }
 function onSaved() {
   editorVisible.value = false
@@ -192,6 +196,7 @@ async function remove(row) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="showEmpty"
         empty-text="还没有角色，点击「新建角色」创建第一个"
         @retry="fetchList"

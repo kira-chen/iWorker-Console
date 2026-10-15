@@ -47,7 +47,7 @@ const props = defineProps({
    *
    *   // —— 2026-09-01 岗位 PRD 对齐新增可配置项（全部可缺省，缺省=原有行为，技能/专家不受影响）——
    *   title?: string,                          // 抽屉标题（岗位传「版本管理」；默认「版本发布」）
-   *   bumpOptions?: [{value,label,hint}],      // 更新类型词与 hint（岗位传 修订版本/功能更新/重大更新）
+   *   bumpOptions?: [{value,label,hint}],      // 更新类型词与 hint（岗位传 修复更新/功能更新/重大更新）
    *   historySubtitle?: string,                // 版本历史区副标题（缺省用「整包快照 + 下线口径」旧文案）
    *   delistConfirmText?: (row, ver) => string,// 停用/禁用某版本的确认文案模板（岗位传「禁用「名」的 vX.Y.Z？」）
    *   relistConfirmText?: (row, ver) => string,// 启用/恢复某版本的确认文案模板
@@ -83,7 +83,7 @@ const canWithdraw = computed(() => (view.value.actions || []).includes('withdraw
 const busy = ref(false)
 
 /* ==================== ① 发布新版本 ==================== */
-// 更新类型默认词表（技能/专家现状）；实体可经 adapter.bumpOptions 覆写（岗位：修订版本/功能更新/重大更新）
+// 更新类型默认词表（技能/专家现状）；实体可经 adapter.bumpOptions 覆写（岗位：修复更新/功能更新/重大更新）
 const DEFAULT_BUMP_OPTIONS = [
   { value: 'NONE', label: '修订更新', hint: '修复问题或小幅调整' },
   { value: 'MINOR', label: '功能更新', hint: '新增功能或能力' },

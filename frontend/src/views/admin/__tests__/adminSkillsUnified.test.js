@@ -676,15 +676,15 @@ describe('新建：类型 + 每包独立分类（2026-09-01）', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  // 2026-09-04 PRD-20260903 对齐：toast 文案「编辑」改带直引号（照新原型逐字）
-  it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击"编辑"继续配置」+ 刷列表不跳编辑页', async () => {
+  // 2026-09-04 曾改成带直引号（照旧原型）；#63① 已对齐 md 技能 §三.2，现为无引号：「请从列表点击编辑继续配置」
+  it('zip 导入完成统一返回列表：toast「已导入 N 个技能包，请从列表点击编辑继续配置」+ 刷列表不跳编辑页', async () => {
     const vm = await mountPage()
     pushSpy.mockClear()
     const before = listSpy.mock.calls.length
     vm.onSkillsCreatedBatch({ skillIds: ['sk_a', 'sk_b'], skillType: 'PLATFORM' })
     await nextTick()
     const { ElMessage } = await import('element-plus')
-    expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击"编辑"继续配置')
+    expect(ElMessage.success).toHaveBeenCalledWith('已导入 2 个技能包，请从列表点击编辑继续配置')
     expect(pushSpy).not.toHaveBeenCalled()
     expect(listSpy.mock.calls.length).toBe(before + 1)
   })
@@ -914,7 +914,7 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
     return { vm, host }
   }
   const ready = { displayCategoryId: '办公效率', icon: '▤', description: 'd', exampleQuestion: 'q', hasSkillMd: true }
-  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, refNames: ['经营分析专家', '法务合规专家', '投研助理专家'], publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
   const draftRow = { ...rowPlatform, ...ready, id: 'r_draft', name: '未发布技能' }
   const rowOf = (host, name) => [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name))
   const opBtn = (host, name, text) =>

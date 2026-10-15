@@ -252,7 +252,8 @@ function criticalChange(payload) {
   return refsChanged || scopeChanged
 }
 async function save({ silent = false } = {}) {
-  const valid = await formRef.value.validate().catch(() => false)
+  // 加载失败 / 加载中表单未渲染，formRef 为 null：直接拦下，不抛 TypeError（yuepu#49）
+  const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return false
   const payload = buildPayload()
   if (isEdit.value && criticalChange(payload)) {
@@ -294,14 +295,18 @@ async function onSave() {
 
 /** 发布前完整校验（md §三.6）当前表单态的原因（用于按钮 tooltip 与拦截提示）。 */
 const publishBlock = computed(() =>
-  publishBlockReason({
+  publishBlockReason(
+    {
     name: form.name,
     icon: form.icon,
     description: form.description,
     kbType: form.kbType,
     scopeRefId: form.kbType === 'ENTERPRISE' ? 'ALL' : form.scopeRefId,
     sources: allRefIds().map(sourceById).filter(Boolean)
-  })
+    },
+    // 可见对象须仍在候选里（md §三.6，yuepu#62⑧）；候选没加载出来时不据此误拦，由提交接口兜底
+    { scopeOptionIds: scopeOptions.value.length ? scopeOptions.value.map((o) => o.id) : undefined }
+  )
 )
 
 async function confirmAction(key) {
@@ -322,7 +327,7 @@ async function doPublish() {
       return
     }
   } else {
-    const valid = await formRef.value.validate().catch(() => false)
+    const valid = await formRef.value?.validate().catch(() => false)
     if (!valid) return
     if (publishBlock.value) {
       // 校验失败：保留编辑内容、就地展示原因，不进入审核中（md §三.6）
@@ -467,7 +472,12 @@ function close() {
     <template #footer>
       <div class="kb-foot">
         <!-- 查看抽屉：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭（提交停用已删，md §三.4.2） -->
-        <template v-if="viewMode">
+        <!-- 加载失败 / 加载中：详情未知，只留【关闭】（【保存】【删除】【提交发布】都不出，yuepu#49） -->
+        <template v-if="loadError || loading">
+          <span class="kb-foot-sp" />
+          <el-button @click="close">关闭</el-button>
+        </template>
+        <template v-else-if="viewMode">
           <span class="kb-foot-sp" />
           <el-button @click="close">关闭</el-button>
           <el-button v-if="pendingLocked" plain :loading="busy === 'withdraw'" @click="doWithdraw">撤回</el-button>

@@ -55,7 +55,7 @@ const query = reactive({ keyword: queryString(route?.query?.keyword), terminal: 
 
 // 取数编排统一走 useAdminList（四态 / 分页 / 竞态防护），本页只描述「取什么」
 const list = useAdminList(listVersions, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const reload = list.search
 
 function toggleSort() {
@@ -159,7 +159,12 @@ async function withdraw(row) {
   )
   if (!ok) return
   await withBusy(row, 'withdraw', async () => {
-    await withdrawVersion(row.id)
+    try {
+      await withdrawVersion(row.id)
+    } catch (e) {
+      refresh() // 撤回时申请已被审核：提示后刷新列表，让行状态与最新审核结果一致（md §九）
+      throw e
+    }
     ElMessage.success(`已撤回${kind}申请`)
     refresh()
   })
@@ -252,7 +257,7 @@ function onAction(key, row) {
     </ListToolbar>
 
     <div class="table-wrap">
-      <ListStates :loading="loading" :error="loadError" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
+      <ListStates :loading="loading" :error="loadError" :error-message="loadErrorMessage" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
         <el-table v-loading="loading" :data="rows" row-key="id">
           <!-- 列宽：合计需在 1440 屏（内容区约 1170px）内不出横向滚动，故版本号 / 终端 / 发布人比通用列宽略收 -->
           <el-table-column label="版本号" :width="100" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">

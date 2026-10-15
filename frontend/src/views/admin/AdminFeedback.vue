@@ -46,7 +46,7 @@ const detailVisible = ref(false)
 // 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）：
 // 四态 / 分页 / 空筛选项过滤 / 防空页回退 / 竞态防护均由其承担，本页只描述「取什么」。
 const list = useAdminList(listFeedbacks, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 
 const reload = list.search
@@ -170,6 +170,7 @@ onBeforeUnmount(() => {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="暂无用户反馈"
         @retry="fetchList"

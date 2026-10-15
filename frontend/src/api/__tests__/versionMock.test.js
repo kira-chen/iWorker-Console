@@ -389,7 +389,7 @@ describe('撤回审核中的申请', () => {
   it('撤回不写访问审计（2026-10-15 拍板）；不在审核中的版本不可撤回', async () => {
     await withdrawVersion(MAC_PENDING)
     expect(liveOps()).toHaveLength(0)
-    await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该版本当前没有审核中的申请' })
+    await expect(withdrawVersion(WIN_LIVE)).rejects.toMatchObject({ message: '该申请已被审核，无法撤回，请查看最新审核结果' })
     await expect(withdrawVersion(9999)).rejects.toMatchObject({ message: '版本不存在或已被删除' })
   })
 })
