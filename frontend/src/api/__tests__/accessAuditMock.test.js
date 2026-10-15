@@ -247,16 +247,18 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     expect(approve.rejectReason).toBe('') // 只有拒绝扩容带拒绝原因
   })
 
-  it('存储空间视图：运行期经 appendOpsRecord 写入的三类动作都会进视图；存储空间模块下的未知动作（如已删除的「修改默认容量」）不进视图', () => {
+  it('存储空间视图：调整容量 / 同意扩容 / 拒绝扩容 / 修改默认容量会进视图（后者无用户、newTotalGb = 新默认值）；「修改磁盘总量」等其它动作不进视图', () => {
     const common = { operator: 'a', module: '存储空间', target: 'chenyu', objectId: 203, meta: { userId: 203, username: 'chenyu' } }
     appendOpsRecord({ ...common, action: '调整容量', detail: '5 GB → 8 GB', meta: { ...common.meta, newTotalGb: 8 } })
     appendOpsRecord({ ...common, action: '同意扩容', detail: '5 GB → 10 GB', meta: { ...common.meta, requestId: 'ER-7', newTotalGb: 10 } })
     appendOpsRecord({ ...common, action: '拒绝扩容', detail: '原因', meta: { ...common.meta, requestId: 'ER-8' } })
-    appendOpsRecord({ ...common, action: '修改默认容量', detail: '5 GB → 8 GB' })
+    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改默认容量', target: '默认容量', detail: '1 GB → 3 GB', meta: { fromGb: 1, newTotalGb: 3 } })
+    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改磁盘总量', target: '磁盘总量', detail: '1000 GB → 500 GB' })
     const live = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
-    expect(live.map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
+    expect(live.map((r) => r.type).sort()).toEqual(['修改默认容量', '同意扩容', '拒绝扩容', '调整容量'])
     expect(live.find((r) => r.type === '调整容量')).toMatchObject({ requestId: null, newTotalGb: 8 })
     expect(live.find((r) => r.type === '同意扩容')).toMatchObject({ requestId: 'ER-7', newTotalGb: 10 })
+    expect(live.find((r) => r.type === '修改默认容量')).toMatchObject({ username: null, userId: null, requestId: null, newTotalGb: 3 })
   })
 
   it('旧快照记录（没有 at / objectId / meta）也不抛错：at 按分钟补 :00', () => {
