@@ -213,11 +213,11 @@ export function validateMcpForm(form) {
   if (!(form.description || '').trim()) errors.description = '服务描述必填'
   else if (form.description.trim().length > 2000) errors.description = '服务描述最多 2000 个字符'
   if (!form.icon) errors.icon = '请选择或上传图标'
-  // 连接器类型必选（md MCP §三.3 L243 / 一览表 §5.1 #5；待办 yuepu#35）：三件套里唯独 MCP 此前两处都没校验，
+  // 连接器类型必选（md MCP §三.3「连接器类型」条（行号会随改稿漂移，不再写） / 一览表 §5.1 #5；待办 yuepu#35）：三件套里唯独 MCP 此前两处都没校验，
   // 不选会被 createMcp 的 `payload.type || 'PLATFORM'` 兜底静默落成「市场连接器」。文案与 API 侧逐字一致。
   if (!form.type) errors.type = '请选择连接器类型'
   // 示例问题（2026-09-09 PRD 复核轮 · G4，清单第五节第 3 项「拉齐为强制必填」）：
-  // md prd-连接器-MCP.md §三.3 L247「示例问题：必填，固定 3 条输入行……单条示例问题最多 300 字符」，
+  // md prd-连接器-MCP.md §三.3「示例问题：必填，固定 3 条输入行……单条示例问题最多 300 字符」，
   // MCP 编辑器 UI 也一直写着「必填，固定 3 条」，但保存端此前无该分支——UI 说必填、保存却放行，
   // 三件套里只有 MCP 是这样（API 走 ApiEditor.validate、业务系统走 validateBizSystemForm）。
   // 此处补齐，文案与业务系统侧逐字一致。

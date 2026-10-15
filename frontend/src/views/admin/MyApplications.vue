@@ -63,7 +63,7 @@ const query = reactive({
 })
 
 const list = useAdminList(listMyApplications, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -239,6 +239,7 @@ async function resubmit(row, key = 'resubmit') {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="暂无申请记录"
         @retry="fetchList"

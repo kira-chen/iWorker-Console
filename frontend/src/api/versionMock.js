@@ -419,7 +419,7 @@ export async function withdrawVersion(id) {
   await delay()
   const row = find(id)
   if (!row) throw err('版本不存在或已被删除')
-  if (row.status !== PENDING_REVIEW) throw err('该版本当前没有审核中的申请')
+  if (row.status !== PENDING_REVIEW) throw err('该申请已被审核，无法撤回，请查看最新审核结果') // md 版本管理 §九
   restoreBeforeReview(row)
   row.updatedAt = nowIsoLocal()
   persist()

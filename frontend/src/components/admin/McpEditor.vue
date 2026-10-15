@@ -56,6 +56,7 @@ import { MCP_AUTH_CONFIG_ENABLED } from '@/utils/featureFlags'
 import { schemaToRows } from '@/utils/schema'
 import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
+import { nowIsoLocal } from '@/utils/datetime'
 import { CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 
 
@@ -537,7 +538,7 @@ async function fetchTools() {
     if (data?.connStatus) conn.connStatus = data.connStatus
     if (data?.protocolVersion) conn.protocolVersion = data.protocolVersion
     if (data?.serverVersion) conn.serverVersion = data.serverVersion
-    conn.lastCheckedAt = data?.lastCheckedAt || new Date().toISOString()
+    conn.lastCheckedAt = data?.lastCheckedAt || nowIsoLocal()
     // 拉取成功联动连接态：通知父组件就地刷新该行标签（已存场景后端已写库）
     emit('probed', {
       id: isEdit.value ? props.mcpId : null,

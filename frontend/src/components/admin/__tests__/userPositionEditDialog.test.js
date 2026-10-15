@@ -3,15 +3,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 
 /**
- * UserPositionEditDialog.vue（修改绑定岗位弹窗）—— 2026-09-12 对齐
+ * UserPositionEditDialog.vue（分配岗位弹窗）—— 2026-09-12 对齐
  * docs/PRD/数字员工管理端PRD/02岗位/岗位管理/prd.岗位管理.md §四.1 单个分配（修改绑定）/ §五 待分配申请处理（重新绑定）
  * （历史出处：提案 20260721-2 岗位分配）。
  *
  * 覆盖：
- *  - §四.1 弹窗规则（注：md 弹窗名为「分配岗位」，下方标题断言仍取代码现状「修改绑定岗位」，差异未在本次处置范围）：顶部「为 显示名 选择绑定岗位，保存后即时生效」、首项「未绑定」、换绑提示；
+ *  - §四.1 弹窗规则（弹窗标题「分配岗位」，yuepu#60③ 已对齐 md）：顶部「为 显示名 选择绑定岗位，保存后即时生效」、首项「未绑定」、换绑提示；
  *  - §四.1「点击【保存】后更新绑定关系、关闭弹窗…提示岗位绑定已更新」：换绑 / 解绑 → setUserPosition(userId, 新岗位 | null) + 提示「岗位绑定已更新」+ 关窗（update:visible false）+ emit saved；
  *  - 无变化：默认直接关窗，不打接口、不提示；forceSave=true（§五 待分配申请处理「保存后系统自动标记该申请为已处理」）未变化仍保存并 emit saved；
  *  - 保存失败（§七「保存失败：弹窗保持打开并展示失败原因」）：显具体原因或「保存失败，请重试」，窗口保持打开。
+ *
+ * 2026-10-09 头注订正：弹窗标题「分配岗位」已随待办 yuepu#60③ 对齐 md；
+ * 「选未绑定保存不标记申请为已分配」（待办 yuepu#57⑦）的页面编排归 adminPositionAssignments.test.js，本文件只管弹窗自身。
  */
 
 const api = { setUserPosition: vi.fn() }
@@ -77,9 +80,9 @@ afterEach(() => {
 })
 
 describe('UserPositionEditDialog · 弹窗文案（md §四.1 单个分配·弹窗规则）', () => {
-  it('标题「修改绑定岗位」；顶部「为 X 选择绑定岗位，保存后即时生效」；默认选中当前岗位、首项「未绑定」；换绑提示照 md', async () => {
+  it('标题「分配岗位」；顶部「为 X 选择绑定岗位，保存后即时生效」；默认选中当前岗位、首项「未绑定」；换绑提示照 md', async () => {
     await mount({ visible: true, row: ROW, positionOptions: OPTS })
-    expect(container.querySelector('.el-dialog').dataset.title).toBe('修改绑定岗位')
+    expect(container.querySelector('.el-dialog').dataset.title).toBe('分配岗位')
     expect(container.querySelector('.upe-target').textContent.replace(/\s+/g, '')).toBe('为X选择绑定岗位，保存后即时生效。')
     expect(container.querySelector('.upe-target b').textContent).toBe('X')
     expect(container.querySelector('.upe-label').textContent).toBe('绑定岗位')
@@ -123,6 +126,7 @@ describe('UserPositionEditDialog · 保存（md §四.1「点击【保存】后�
     expect(msg.success).toHaveBeenCalledWith('岗位绑定已更新')
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(savedSpy).toHaveBeenCalledTimes(1)
+    expect(savedSpy).toHaveBeenCalledWith({ positionId: 'ps_new' }) // 页面据此决定是否标记待分配申请已分配（yuepu#57⑦）
   })
 
   it('解绑：选「未绑定」保存 → setUserPosition(userId, null) + 提示「岗位绑定已更新」+ 关窗 + emit saved', async () => {
@@ -135,6 +139,7 @@ describe('UserPositionEditDialog · 保存（md §四.1「点击【保存】后�
     expect(msg.success).toHaveBeenCalledWith('岗位绑定已更新')
     expect(visibleSpy).toHaveBeenCalledWith(false)
     expect(savedSpy).toHaveBeenCalledTimes(1)
+    expect(savedSpy).toHaveBeenCalledWith({ positionId: null })
   })
 
   it('无变化（默认 forceSave=false）：直接关窗，不调 api、不提示、不 emit saved', async () => {

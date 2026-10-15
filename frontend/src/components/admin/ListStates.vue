@@ -17,7 +17,7 @@
  * 纯文字 340px 居中（主文案 + 可选副文案），去掉 el-empty 插图。失败态仍用 el-empty（原型无失败态，代码超集）。
  *
  * 用法：包在 el-table 外层，失败/空态由本组件出，有数据时渲染默认插槽（表格）。
- *   <ListStates :loading="l.loading" :error="l.loadError" :empty="l.isEmpty"
+ *   <ListStates :loading="l.loading" :error="l.loadError" :error-message="l.loadErrorMessage" :empty="l.isEmpty"
  *               empty-text="还没有角色 · 点「新建角色」创建第一个" @retry="l.reload">
  *     <el-table :data="l.rows"> ... </el-table>
  *   </ListStates>
@@ -27,6 +27,8 @@ defineProps({
   loading: { type: Boolean, default: false },
   /** 取数失败 */
   error: { type: Boolean, default: false },
+  /** 失败原因（待办 yuepu#74：md 多处要求「失败展示原因和重试」）；空则只显示「加载失败」 */
+  errorMessage: { type: String, default: '' },
   /** 无数据（非加载中、非失败） */
   empty: { type: Boolean, default: false },
   /** 空态文案，见上方口径 */
@@ -40,6 +42,7 @@ defineEmits(['retry'])
 <template>
   <!-- 失败优先：取数失败时只出重试，不出空态（空态会被误读成「真的没数据」） -->
   <el-empty v-if="error" :image-size="96" description="加载失败">
+    <p v-if="errorMessage" class="ls-error-reason" data-testid="list-error-reason">{{ errorMessage }}</p>
     <el-button @click="$emit('retry')">重试</el-button>
   </el-empty>
 
@@ -54,6 +57,12 @@ defineEmits(['retry'])
 </template>
 
 <style scoped>
+/* 失败原因：紧贴「加载失败」下方的弱色说明 */
+.ls-error-reason {
+  margin: 0 0 12px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
 /* 纯文字空态（原型 .empty：340px 高、居中、弱色） */
 .ls-empty {
   height: 340px;

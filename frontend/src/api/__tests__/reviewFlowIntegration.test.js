@@ -370,7 +370,7 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
       expect(ops).toHaveLength(1)
       expect(ops[0]).toMatchObject({ module: k.auditModule, action: '强制回收', target: st.name, detail: REASON })
       expect(await stopOps()).toHaveLength(0)
-      const view = (await import('../accessAuditMock')).listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
+      const view = (await import('../accessAuditMock')).listClientFacingOps().filter((r) => r.kind === 'forceRevoke' && r.objectName === st.name) // 种子里另有「已回收」样例的审计
       expect(view).toHaveLength(1)
       expect(view[0]).toMatchObject({ kind: 'forceRevoke', objectType: k.auditModule, objectName: st.name, reason: REASON })
     })

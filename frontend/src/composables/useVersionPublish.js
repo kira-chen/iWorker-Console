@@ -14,7 +14,7 @@ import { validateVersionLabel, versionIncrementHint } from '@/utils/positionMode
  *
  * 【升级类型自动算号】（2026-09-08 PRD-20260908 对齐，md §3.7 / §9.2「不支持手动输入版本号」；
  * 算法与 VersionDrawer.labelForBump 同口径）：
- *  - load() 后把建议号解析为 suggestedSegs（= 上版 patch+1，即「修订版本」号）；
+ *  - load() 后把建议号解析为 suggestedSegs（= 上版 patch+1，即「修复更新」号）；
  *  - setBump('NONE'|'MINOR'|'MAJOR') 改升级类型 → versionLabel 由 labelForBump 自动重算：
  *      NONE  → vX.Y.Z（建议号原值）  MINOR → vX.(Y+1).0  MAJOR → v(X+1).0.0
  *  - firstPublish：建议号为 v1.0.0（mock 无历史版本时的返回）→ 首个版本，无升级类型可选；
@@ -40,7 +40,7 @@ export function useVersionPublish(options = {}) {
   const nextLoading = ref(false)
   // 升级类型自动算号态
   const bump = ref('NONE')
-  const suggestedSegs = ref(null) // [X, Y, Z]：建议号（修订版本）三段；null = 建议号不可解析（走手填）
+  const suggestedSegs = ref(null) // [X, Y, Z]：建议号（修复更新）三段；null = 建议号不可解析（走手填）
   const firstPublish = ref(false)
 
   function parseVersion(label) {

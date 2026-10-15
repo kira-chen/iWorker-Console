@@ -13,7 +13,7 @@ import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__te
  *      不弹确认框；有图标进入二次确认。
  *   3. 可见范围必填（待办 yuepu#7⑤）——§三.3.1「可见范围 | 是 | 企业类型固定为全员；专家类型选择专家…；岗位类型选择岗位」：
  *      企业类型免选可保存且不出 `scopeRefId is required`；专家类型未选红字「请选择可见范围」。
- *   4. 加载失败态（yuepu#49②）——编辑态详情加载失败表单不渲染；底部仍出现可点按钮为已知缺陷，it.fails 钉桩。
+ *   4. 加载失败态（yuepu#49②）——编辑态详情加载失败表单不渲染；底部只留【关闭】。
  *
  * 第 3 组背景：
  * 真挂载 Element Plus（桩 el-form-item 拦不住这个 bug）：`<el-form-item required>` 会让 Element 额外塞一条
@@ -183,10 +183,8 @@ describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1）', () => {
   })
 })
 
-// 已知缺陷钉桩（2026-10-08 待办 yuepu#49②）：KnowledgeBaseEditor 自写 #footer，绕开了 DrawerEditor 的 submitBlocked
-// （#43 只修了默认页脚）。加载失败时表单不渲染、formRef 为 null，【保存】点下去会在 formRef.value.validate() 抛 TypeError；
-// 又因 isOffline(null) 为 true，失败态还多出【删除】【提交发布】。只断言按钮状态、不真点——点了会产生未捕获的
-// TypeError，污染整轮运行。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
+// yuepu#49②：自写 #footer 绕开了 DrawerEditor 的 submitBlocked；加载失败时表单不渲染、formRef 为 null，
+// 底部只留【关闭】，不出【保存】【删除】【提交发布】（isOffline(null) 为 true 的误判已被页脚分支挡住）。
 describe('KnowledgeBaseEditor · 加载失败态（yuepu#49②）', () => {
   it('前提：编辑态详情加载失败 → 表单不渲染', async () => {
     api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
@@ -198,16 +196,43 @@ describe('KnowledgeBaseEditor · 加载失败态（yuepu#49②）', () => {
     expect(drawer().querySelector('form.el-form')).toBeNull()
   })
 
-  it.fails('yuepu#49② 编辑态加载失败 → 底部不出现可点的【保存】【删除】【提交发布】', async () => {
-    api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
+  /** 编辑态详情加载失败 / 加载中的共用装配（loadPending=true 让详情请求一直悬着 = 加载中） */
+  async function mountEditFail({ loadPending = false } = {}) {
+    if (loadPending) api.getKnowledgeBase.mockReturnValue(new Promise(() => {}))
+    else api.getKnowledgeBase.mockRejectedValue(new Error('炸了'))
     api.listKnowledgeSources.mockResolvedValue({ list: [] })
     api.listExpertOptions.mockResolvedValue([])
     api.listPositionOptions.mockResolvedValue([])
     mounted = mountReal(Editor, { visible: true, kbId: 'kb_1' })
     await flushAll(10)
-    const clickable = [...drawer().querySelectorAll('.el-button')]
+  }
+  const clickableFooter = () =>
+    [...drawer().querySelectorAll('.el-button')]
       .filter((b) => !b.disabled && !b.classList.contains('is-disabled'))
       .map((b) => b.textContent.trim())
+
+  it('yuepu#49② 编辑态加载失败 → 底部只剩可点的【关闭】，不出现【保存】【删除】【提交发布】', async () => {
+    await mountEditFail()
+    const clickable = clickableFooter()
+    // 前提：页脚真渲染了（否则「不含保存」会在页脚整个没渲染时也通过）
+    expect(clickable).toContain('关闭')
     for (const text of ['保存', '删除', '提交发布']) expect(clickable).not.toContain(text)
+  })
+
+  it('yuepu#49② 编辑态加载中（详情请求在途）→ 底部同样只留【关闭】', async () => {
+    await mountEditFail({ loadPending: true })
+    expect(drawer().querySelector('form.el-form')).toBeNull() // 前提：表单未渲染 = 加载中
+    const clickable = clickableFooter()
+    expect(clickable).toContain('关闭')
+    for (const text of ['保存', '删除', '提交发布']) expect(clickable).not.toContain(text)
+  })
+
+  it('yuepu#49② formRef 为 null（加载失败）时直接调 save() → 返回 false、不抛 TypeError、不写库', async () => {
+    await mountEditFail()
+    // 页脚已无【保存】入口，直接调组件内部 save() 验证守卫（setupState 为 Vue 开发态可读的内部入口）
+    const { save } = mounted.app._instance.subTree.component.setupState
+    await expect(save()).resolves.toBe(false)
+    expect(api.updateKnowledgeBase).not.toHaveBeenCalled()
+    expect(api.createKnowledgeBase).not.toHaveBeenCalled()
   })
 })

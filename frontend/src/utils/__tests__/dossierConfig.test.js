@@ -64,6 +64,16 @@ describe('validateDossierConfig', () => {
   })
 })
 
+describe('SUMMARY 最近 x 条上限（md 岗位 §4.2.3：1–10，yuepu#60⑤）', () => {
+  const errOf = (n) =>
+    validateDossierConfig(hydrateDossierConfig({ reduceRules: [{ key: '态势', strategy: 'SUMMARY', params: { n } }] })).errors['reduceRules[0].params.n']
+  it('11 越界并提示「N 须为 1–10 的整数」；10 与 1 合法', () => {
+    expect(errOf(11)).toBe('N 须为 1–10 的整数')
+    expect(errOf(10)).toBeUndefined()
+    expect(errOf(1)).toBeUndefined()
+  })
+})
+
 describe('normalizeDossierForSubmit / dossierSnapshot', () => {
   it('去掉与条件 / 方式无关的冗余参数；ALWAYS 只留 type', () => {
     const c = hydrateDossierConfig({

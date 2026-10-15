@@ -64,6 +64,10 @@ export const opsRecords = [
   { id: 28, time: '2026-10-09 17:05', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（本机）', at: '2026-10-09 17:05:19', objectId: 208, meta: { userId: 208, username: 'zhaomin', env: 'LOCAL' } },
   { id: 29, time: '2026-10-10 09:21', operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（云端）', at: '2026-10-10 09:21:05', objectId: 201, meta: { userId: 201, username: 'zhangwei', env: 'CLOUD' } },
   { id: 30, time: '2026-10-09 17:06', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（云端）', at: '2026-10-09 17:06:02', objectId: 208, meta: { userId: 208, username: 'zhaomin', env: 'CLOUD' } },
+  // 强制回收（§6.2 / §6.5.1）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
+  // （objectId / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
+  { id: 31, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改', at: '2026-08-29 09:30:41', objectId: 'sk_306' },
+  { id: 32, time: '2026-08-29 10:12', operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改', at: '2026-08-29 10:12:08', objectId: 'api_1104' }
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */

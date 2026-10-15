@@ -286,6 +286,17 @@ describe('KnowledgeBaseEditor · 提交发布校验与保存失败（md §三.6 
     expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
   })
 
+  it('yuepu#62⑧ 专家库所选可见对象已不在候选里（对象被删）→ 点【提交发布】toast「所选可见范围专家已不存在，请重新选择」，不弹确认、不调发布接口（md §三.6）', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefId: 'ex_gone' }) })
+    footBtn('提交发布').click()
+    await settle()
+    expect(err).toHaveBeenCalledWith('所选可见范围专家已不存在，请重新选择')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+  })
+
   it('未发布库条件齐备点【提交发布】（对照）→ 进入「提交发布」确认', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
     await mountEditor({ detail: detailOf() })

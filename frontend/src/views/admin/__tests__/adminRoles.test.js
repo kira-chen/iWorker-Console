@@ -11,7 +11,8 @@ import { passthrough } from './helpers/commonStubs'
  *
  * 覆盖：
  *  - §一.2 搜索仅在点【查询】或回车后生效，输入不实时过滤；清空后【查询】展示全部；
- *  - §一.3 权限树加载失败 → 列表仍可看，页面权限列统一「未开通任何页面」；
+ *  - §一.3 权限树加载失败 → 列表仍可看，页面权限列统一「未开通任何页面」；重开抽屉重拉成功 → 列表权限列恢复、抽屉空态消失；
+ *    首次成功后重开时瞬时失败 → 已加载的树保留（列表权限列与抽屉里的树都不被清空，2026-10-09 修 loadPermissionTree 的 catch）；
  *  - §二.1 列序与主列：角色名称 .rl-name、「N 个用户」、页面权限聚合「√ 用户端」/「√ 管理端（页面、页面…）」/「未开通任何页面」、
  *    最近更新时间列头排序按钮；
  *  - §二.3.3 / §二.4 删除分流：有绑定 → alertDialog「无法删除角色」；无绑定 → confirmDialog danger【删除】→ toast「角色已删除」；
@@ -37,7 +38,16 @@ vi.mock('@/composables/useConfirm', () => ({ confirmDialog: (...a) => confirmDia
 vi.mock('@/components/PageHeader.vue', () => ({ default: { template: '<div class="page-header" />' } }))
 vi.mock('@/components/admin/ListStates.vue', () => ({ default: { template: '<div class="list-states"><slot /></div>' } }))
 vi.mock('@/components/admin/ListPagination.vue', () => ({ default: { template: '<div class="list-pager" />' } }))
-vi.mock('@/components/admin/RoleEditor.vue', () => ({ default: { template: '<div class="role-editor" />' } }))
+// RoleEditor 桩：只回显收到的权限树条数；树为空时出与真组件同条件（!permissionTree.length）的失败空态文案
+// （真组件的空态渲染见 RoleEditor.test.js「页面权限加载失败」）
+vi.mock('@/components/admin/RoleEditor.vue', () => ({
+  default: {
+    props: ['visible', 'role', 'permissionTree'],
+    template:
+      '<div class="role-editor" :data-visible="String(visible)" :data-tree-count="permissionTree.length">' +
+      '<p v-if="!permissionTree.length" class="re-tree-empty">权限树加载失败 · 关闭重开重试</p></div>'
+  }
+}))
 
 const AdminRoles = (await import('@/views/admin/AdminRoles.vue')).default
 
@@ -195,6 +205,61 @@ describe('AdminRoles · 权限树加载失败（md §一.3 L31）', () => {
     await mount()
     expect(rowNames()).toEqual(['系统管理员', '普通用户', '审计观察员'])
     expect([...container.querySelectorAll('.el-row')].map(permText)).toEqual(['未开通任何页面', '未开通任何页面', '未开通任何页面'])
+  })
+})
+
+describe('AdminRoles · 抽屉重开重拉权限树（md §三.5 L135「关闭后重新打开会再次加载权限选项」；yuepu#65①）', () => {
+  it('首次加载失败 → 点【新建角色】打开抽屉会再拉一次权限树，拉到后列表的页面权限列恢复明细', async () => {
+    getPermissionTree.mockRejectedValueOnce(new Error('boom'))
+    await mount()
+    expect([...container.querySelectorAll('.el-row')].map(permText)[1]).toBe('未开通任何页面')
+    expect(getPermissionTree).toHaveBeenCalledTimes(1)
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建角色')).click()
+    await flush()
+    expect(getPermissionTree).toHaveBeenCalledTimes(2)
+    expect(permText(rowByName('普通用户'))).toContain('√用户端')
+  })
+
+  it('抽屉里的「权限树加载失败 · 关闭重开重试」空态：首次失败时出现，重开重拉成功后消失', async () => {
+    getPermissionTree.mockRejectedValueOnce(new Error('boom'))
+    await mount()
+    const editor = () => container.querySelector('.role-editor')
+    expect(editor().querySelector('.re-tree-empty')).not.toBeNull() // 前提：首次失败，抽屉组件收到空树 → 失败空态在
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建角色')).click()
+    await flush()
+    // 点开抽屉触发的第二次拉取成功了，所以此刻空态已消失、抽屉拿到完整的树
+    expect(editor().dataset.treeCount).toBe(String(TREE.length))
+    expect(editor().querySelector('.re-tree-empty')).toBeNull()
+  })
+
+  it('抽屉重开时重拉仍失败（权限树始终拉不到）→ 抽屉里持续显示失败空态，列表权限列保持「未开通任何页面」', async () => {
+    getPermissionTree.mockRejectedValue(new Error('boom'))
+    await mount()
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建角色')).click()
+    await flush()
+    expect(container.querySelector('.role-editor .re-tree-empty').textContent).toContain('权限树加载失败')
+    expect(permText(rowByName('普通用户'))).toBe('未开通任何页面')
+  })
+
+  it('首次加载成功、重开抽屉时瞬时失败 → 已加载的权限树保留：列表权限列仍显明细，抽屉拿到的树不为空、无失败空态', async () => {
+    await mount()
+    expect(permText(rowByName('普通用户'))).toContain('√用户端')
+    getPermissionTree.mockRejectedValueOnce(new Error('瞬时失败'))
+    await inst().setupState.openEdit(ROWS[0])
+    await flush()
+    expect(getPermissionTree).toHaveBeenCalledTimes(2)
+    expect(permText(rowByName('普通用户'))).toContain('√用户端')
+    expect(permText(rowByName('系统管理员'))).toContain('管理端（岗位、岗位管理）')
+    const editor = container.querySelector('.role-editor')
+    expect(editor.dataset.treeCount).toBe(String(TREE.length))
+    expect(editor.querySelector('.re-tree-empty')).toBeNull()
+  })
+
+  it('编辑已有角色打开抽屉同样重拉', async () => {
+    await mount()
+    await inst().setupState.openEdit(ROWS[1])
+    await flush()
+    expect(getPermissionTree).toHaveBeenCalledTimes(2)
   })
 })
 

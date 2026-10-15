@@ -32,8 +32,7 @@ vi.mock('@/api/apiConnector', () => ({
   updateApi: vi.fn(),
   getProviderSystem: vi.fn(),
   createProviderSystem: vi.fn(),
-  updateProviderSystem: vi.fn(),
-  aiGenerateExampleQuestion: vi.fn()
+  updateProviderSystem: vi.fn()
 }))
 
 const AdminApis = (await import('@/views/admin/AdminApis.vue')).default

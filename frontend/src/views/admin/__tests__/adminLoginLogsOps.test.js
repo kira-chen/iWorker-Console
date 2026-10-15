@@ -24,7 +24,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * - §5.2 成功绿标签 / 失败红标签带具体原因；产物来源灰标签；默认下载时间倒序，列头箭头 ↓ / ↑ 切换；
  * - §三 点选起始日后距其超 30 天的日期置灰、两端选定后解除；各页签时间范围独立；§二 切页签各页签查询条件独立。
  *   日期面板不真点（jsdom 下面板定位不稳），改读真 ElDatePicker 收到的 disabled-date 函数并经其 calendar-change 回调驱动。
- * - 疑似缺陷（it.fails 钉桩）：§5.1 两个下拉的「全部」项文案（#64④）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
+ * - §5.1 两个下拉的「全部」项文案（#64④ 已修转正）。§5.2 列头、动态分页与 §三 30 天跨度已由 #73 修复转正。
  *
  * 2026-10-09 起三个页签的列表都是 useAdminList 'client' 分页，每页条数按窗口高度算（useDynPageSize）：
  * 全局挂载把 window.innerHeight 调到 2000（每页 26 条，12 条夹具一页放得下，行数类用例不受分页影响），
@@ -401,11 +401,11 @@ describe('访问审计 · 用户端文件下载 · 查询区（§5.1）', () => 
     await vi.waitFor(() => expect(document.body.querySelector('.el-message')?.textContent).toContain('CSV 导出已开始，请稍候…'))
   })
 
-  it.fails('下载结果下拉的「全部」项文案为「全部结果」（疑似缺陷：页面占位为「全部下载结果」；md 访问审计 §5.1「下拉，全部结果 / 成功 / 失败」）', () => {
+  it('下载结果下拉的「全部」项文案为「全部结果」（md 访问审计 §5.1「下拉，全部结果 / 成功 / 失败」）', () => {
     expect(dlPane().querySelectorAll('.lt-filter')[0].textContent).toContain('全部结果')
   })
 
-  it.fails('产物来源下拉的「全部」项文案为「全部来源」（疑似缺陷：页面占位为「全部产物来源」；md 访问审计 §5.1「下拉，全部来源 / 会话产物 / …」）', () => {
+  it('产物来源下拉的「全部」项文案为「全部来源」（md 访问审计 §5.1「下拉，全部来源 / 会话产物 / …」）', () => {
     expect(dlPane().querySelectorAll('.lt-filter')[1].textContent).toContain('全部来源')
   })
 })
@@ -520,6 +520,16 @@ describe('访问审计 · 用户端文件下载 · 分页（§5.2「列表根据
     expect(dlRows()).toHaveLength(pageSize())
   })
 
+  it('停在第 2 页时点【查询】→ 回到第 1 页，列表仍是全部记录（md §5.1(5)；yuepu#84）', async () => {
+    await goPage(2)
+    expect(activePage()).toBe('2')
+    const btn = [...dlPane().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询')
+    btn.click()
+    await flushAll(4)
+    expect(activePage()).toBe('1')
+    expect(dlRows()).toHaveLength(pageSize())
+  })
+
   it('停在第 2 页时输入搜索关键词 → 回到第 1 页，只剩命中记录', async () => {
     await goPage(2)
     const input = dlPane().querySelector('.lt-search input')
@@ -590,6 +600,16 @@ describe('访问审计 · 管理端操作 · 分页（§六「列表根据页面
     expect(rows()).toHaveLength(pageSize())
   })
 
+  it('停在第 2 页时点【查询】→ 回到第 1 页，列表仍是全部记录（md §6.1(5)；yuepu#84）', async () => {
+    await goPage(2)
+    expect(activePage()).toBe('2')
+    const btn = [...pane().querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '查询')
+    btn.click()
+    await flushAll(4)
+    expect(activePage()).toBe('1')
+    expect(rows()).toHaveLength(pageSize())
+  })
+
   it('停在第 2 页时输入搜索关键词 → 回到第 1 页，只剩命中记录', async () => {
     await goPage(2)
     const input = pane().querySelector('.lt-search input')
@@ -634,6 +654,11 @@ describe('访问审计 · 时间范围跨度最多 30 天（§三）', () => {
   it('三个页签各有一个日期区间选择器，且都接了「禁选日期」规则', () => {
     expect(pickers()).toHaveLength(3)
     for (const p of pickers()) expect(typeof p.props.disabledDate).toBe('function')
+  })
+
+  it('三个日期区间选择器都不可清空，避免清空后展示 90 天之外的记录（md §三「仅展示当前日期向前 90 天」；yuepu#85）', () => {
+    expect(pickers()).toHaveLength(3)
+    for (const p of pickers()) expect(p.props.clearable).toBe(false)
   })
 
   it('还没点选起始日时 → 不置灰任何日期', () => {

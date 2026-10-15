@@ -78,9 +78,3 @@ export function deactivateApi(id, opts = {}) {
   if (USE_MOCK) return mock.deactivateApi(id, opts)
   return request.post(`${API}/${id}/deactivate`, opts, W)
 }
-
-/* ================= 示例问题 AI 生成 ================= */
-export function aiGenerateExampleQuestion(payload) {
-  if (USE_MOCK) return mock.aiGenerateExampleQuestion(payload)
-  return request.post(`${API}/example-question`, payload, W)
-}

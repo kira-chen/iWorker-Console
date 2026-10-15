@@ -257,7 +257,7 @@ async function loadPubSummary() {
 // 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7，负责人拍板全站统一；
 // md 已同口径改为「按窗口高度动态计算」，原 pageSize:10 覆盖已移除）
 const list = useAdminList(listMcp, { params: () => ({ ...applied }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 
 async function fetchList() {
   await list.reload()
@@ -529,6 +529,7 @@ async function remove(row) {
     <ListStates
       :loading="loading"
       :error="loadError"
+      :error-message="loadErrorMessage"
       :empty="isEmpty"
       :empty-text="applied.keyword || applied.type || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
@@ -591,7 +592,7 @@ async function remove(row) {
         </el-table-column>
 
         <!-- 引用情况（PRD §二.1）：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 —；
-             点击弹「被技能引用」清单（原型 L171/L189，批次 2C · M2） -->
+             点击弹引用清单（标题按引用方类型：被岗位引用 / 被技能引用；原型 L171/L189，批次 2C · M2） -->
         <el-table-column label="引用情况" :width="135">
           <template #default="{ row }">
             <template v-if="row.type === CONNECTOR_TYPE.POSITION">

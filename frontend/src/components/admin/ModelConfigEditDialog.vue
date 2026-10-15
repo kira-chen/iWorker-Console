@@ -54,6 +54,8 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const formRef = ref(null)
+// 保存接口回的「模型名称已存在」就地红字（md 模型 §三.8「定位到模型名称位置」）；改名即清
+const nameServerError = ref('')
 const saving = ref(false)
 const verifying = ref(false)
 // 保存后就地回显的验证结果（null=尚未验证）
@@ -156,6 +158,13 @@ const rules = computed(() => ({
 }))
 
 watch(
+  () => form.name,
+  () => {
+    nameServerError.value = ''
+  }
+)
+
+watch(
   () => props.visible,
   (v) => {
     if (!v) return
@@ -181,6 +190,7 @@ watch(
     form.maxOutputTokens = m?.maxOutputTokens ?? null
     form.defaultTemperature = m?.defaultTemperature ?? null
     form.extraBody = m?.extraBody || ''
+    nameServerError.value = ''
     formRef.value?.clearValidate()
   },
   // immediate 必需，同 ApiEditor：治理侧条件挂载时组件创建即 visible=true，无跃迁（2026-09-09 收口回归 P1）
@@ -311,7 +321,10 @@ async function save() {
     emit('saved', { verifyId: targetId.value })
     close()
   } catch (e) {
-    if (e?.field) {
+    if (e?.field === 'name') {
+      // 重名属服务端校验：本地 name 规则（非空）会通过并清掉红字，故直接把原因挂到名称项上（yuepu#63⑦）
+      nameServerError.value = e.message || '模型名称已存在'
+    } else if (e?.field) {
       // 字段级错误红框定位（ApiError.field 对应表单 prop）
       formRef.value?.validateField?.(e.field)
     }
@@ -407,12 +420,12 @@ async function verifyOnly() {
             </el-select>
           </el-form-item>
 
-          <el-form-item prop="name">
+          <el-form-item prop="name" :error="nameServerError">
             <template #label>
               <FieldHelpLabel label="模型名称" :tip="TIPS.name" />
             </template>
             <!-- 2026-09-01 PRD 对齐：名称上限 100 → 64（与连接器名称同口径） -->
-            <el-input v-model="form.name" maxlength="64" placeholder="如 DeepSeek R1" />
+            <el-input v-model="form.name" maxlength="64" placeholder="如 DeepSeek V3" />
           </el-form-item>
 
           <!-- 图标（D3）：原型 L1319-1330 在「模型名称」之后插入「图标*」，形态同连接器图标行 -->

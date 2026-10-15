@@ -335,9 +335,8 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     expect(rows().map((r) => r.querySelector('.api-cell-name').textContent.trim())).toEqual(['在审接口', '停用中接口'])
   })
 
-  // 已知缺陷钉桩（2026-10-08 待办 yuepu#55）：AdminApis.vue `searching` 只认 keyword/state，漏了 type，
-  // 只按类型筛时空分组照样展示。修好后本条会报红——把 it.fails 改回 it 即成正式回归用例。
-  it.fails('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
+  // 回归（待办 yuepu#55 已修）：searching 须把「连接器类型」也算筛选，只按类型筛时空分组不展示。
+  it('yuepu#55 只按「连接器类型」筛选 → 也只展示有命中 API 的分组（md prd-API.md:20）', async () => {
     conn.listApis.mockImplementation(async (params = {}) => ({
       list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
     }))
@@ -586,6 +585,22 @@ describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹�
     expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
     expect(groups().length).toBe(0)
     expect(container.querySelector('.lt-search').value).toBe('不存在的关键词')
+  })
+
+  // yuepu#55 的另一面：只按「连接器类型」筛、且一个都没命中 → 不能剩一屏空白，要落到「没有匹配的 API」
+  it('yuepu#55 只按「连接器类型」筛且全不命中 → 「没有匹配的 API」，不残留空分组', async () => {
+    conn.listApis.mockImplementation(async (params = {}) => ({
+      list: APIS.filter((a) => !params.type || a.type === params.type).map((a) => ({ ...a }))
+    }))
+    await mount()
+    expect(groups().length).toBeGreaterThan(0) // 前提：未筛选时有分组
+    const sel = container.querySelectorAll('.lt-filter')[0]
+    sel.value = 'POSITION' // 夹具里没有岗位私有的 API
+    sel.dispatchEvent(new Event('change'))
+    await flush(6)
+    expect(conn.listApis).toHaveBeenLastCalledWith({ type: 'POSITION' }) // 前提：类型确实下发了
+    expect(container.querySelector('.el-empty').textContent).toContain('没有匹配的 API')
+    expect(groups().length).toBe(0)
   })
 })
 

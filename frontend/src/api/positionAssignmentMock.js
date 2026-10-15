@@ -1,8 +1,9 @@
 /**
  * 岗位分配页内存 mock（demo 数据层，模式同 positionMock.js；开关见 positionAssignment.js 头注释）。
  *
- * 种子照交互原型 v2（renderAssignments 区，约 L1500）：6 名用户
- * zhangwei / li.na / chenyu / wangfang / zhouming(停用) / sun.xin，其中 2 人（chenyu、sun.xin）未绑定。
+ * 行来自 adminUserMock 的全部用户（与用户页同源）；本文件只存「用户 → 岗位」绑定（bindings 种子：
+ * zhangwei / li.na / wangfang / zhouming(停用) 已绑定，其余用户含 chenyu、sun.xin 未绑定），
+ * 绑定形态照交互原型 v2（renderAssignments 区，约 L1500）。
  *
  * 2026-09-15 新流程：引入 getPendingApplicationByUserId 联查，每行增加
  * hasPendingRequest / pendingRequestId / pendingRequestAt 字段；

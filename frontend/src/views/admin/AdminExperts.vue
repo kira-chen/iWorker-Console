@@ -30,6 +30,7 @@ import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
+import { listPositions } from '@/api/position'
 import {
   listExperts,
   deleteExpert,
@@ -72,7 +73,7 @@ const STATE_OPTIONS = [
 
 // 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）
 const list = useAdminList(listExperts, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -258,6 +259,24 @@ async function withdrawFromList(row) {
   }
 }
 
+/* ---------- 引用清单（md prd.专家.md §二.1「岗位私有点击弹出引用清单（展示岗位名）」，口径同三个连接器页 openRefs） ----------
+ * 专家行只带 positionIds，岗位名按 id 从岗位列表解析；岗位已被删则不会在 positionIds 里（deletePosition 会摘除）。 */
+const refsDialog = reactive({ visible: false, title: '被岗位引用', names: [], loading: false })
+async function openRefs(row) {
+  refsDialog.names = []
+  refsDialog.loading = true
+  refsDialog.visible = true
+  try {
+    const { list } = await listPositions({ size: 1000 })
+    const nameOf = new Map((list || []).map((p) => [p.positionId, p.name]))
+    refsDialog.names = (row.positionIds || []).map((id) => nameOf.get(id) || `岗位 #${id}`)
+  } catch (e) {
+    ElMessage.error(e?.message || '加载引用清单失败')
+  } finally {
+    refsDialog.loading = false
+  }
+}
+
 /* ---------- 删除（强确认降级：普通二次确认；N 直接取行 skillCount，Z7 拍板） ---------- */
 async function onDelete(row) {
   if (busyId.value != null) return
@@ -368,6 +387,7 @@ async function confirmStop({ forceRevoke, reason }) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="还没有专家，点击「新建专家」创建第一个"
         @retry="fetchList"
@@ -424,7 +444,7 @@ async function confirmStop({ forceRevoke, reason }) {
           <el-table-column label="引用情况" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <template v-if="row.type === EXPERT_TYPE.POSITION">
-                <span v-if="row.positionCount > 0">{{ row.positionCount }}个岗位引用</span>
+                <el-button v-if="row.positionCount > 0" link type="primary" @click="openRefs(row)">{{ row.positionCount }}个岗位引用</el-button>
                 <span v-else class="cell-na">暂无引用</span>
               </template>
               <template v-else-if="row.type === EXPERT_TYPE.PLATFORM">
@@ -516,6 +536,19 @@ async function confirmStop({ forceRevoke, reason }) {
       @change="fetchList"
     />
 
+    <!-- 引用清单弹窗（岗位私有专家：标题「被岗位引用」，正文岗位名列表，按钮【关闭】；同连接器页） -->
+    <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="420px">
+      <div v-if="refsDialog.names.length" class="refs-list">
+        <div v-for="(n, i) in refsDialog.names" :key="i" class="refs-item">
+          <el-tag type="info" size="small">{{ n }}</el-tag>
+        </div>
+      </div>
+      <div v-else-if="!refsDialog.loading" class="cell-na">暂无引用</div>
+      <template #footer>
+        <el-button @click="refsDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 专家编辑抽屉（新建 / 编辑 / 只读查看共用）。【发布】在抽屉底部：静默保存后收抽屉、开版本侧栏。 -->
     <ExpertEditor
       v-model:visible="editorVisible"
@@ -552,6 +585,13 @@ async function confirmStop({ forceRevoke, reason }) {
 </template>
 
 <style scoped>
+/* 引用清单弹窗（同 AdminBizSystems） */
+.refs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .pane-contents {
   display: contents;
 }
