@@ -128,6 +128,13 @@ const adminChildren = [
     meta: { title: '角色管理', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
+    // 06组织 › 用户访问权限（2026-10-13）：员工能否开启「完全访问」的授权名单 + 权限申请处理
+    path: 'user-access',
+    name: 'AdminUserAccess',
+    component: () => import('@/views/admin/AdminUserAccess.vue'),
+    meta: { title: '用户访问权限', roles: ['ADMIN'], module: 'SYSCONFIG' }
+  },
+  {
     // S4 用户登录明细（仅 ADMIN，客户端会谈 R2）：登录/登出记录只读分页表。
     path: 'login-logs',
     name: 'AdminLoginLogs',

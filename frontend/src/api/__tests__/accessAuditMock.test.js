@@ -179,11 +179,11 @@ describe('§6.5 数据层字段：at / objectId / meta（页面不展示但必�
 })
 
 describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
-  it('只含强制回收 / 用户技能审核 / 岗位分配 / 存储空间四类；不含操作人；发布 / 停用 / 版本管理等不读取', () => {
+  it('只含强制回收 / 用户技能审核 / 岗位分配 / 存储空间 / 用户访问权限五类；不含操作人；发布 / 停用 / 版本管理等不读取', () => {
     appendOpsRecord({ operator: 'a', module: '版本管理', action: '发布', target: 'Windows v1.3.0' })
     appendOpsRecord({ operator: 'a', module: '技能', action: '发布', target: '某技能', version: 'v1' })
     const list = listClientFacingOps()
-    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['skillReview', 'positionAssign', 'storageQuota']))
+    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['skillReview', 'positionAssign', 'storageQuota', 'userAccess']))
     for (const r of list) expect(r).not.toHaveProperty('operator')
     expect(list.every((r) => r.recordId != null && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.at))).toBe(true)
     expect(new Set(list.map((r) => r.recordId)).size).toBe(list.length)
@@ -225,10 +225,10 @@ describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
     expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
     const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
     // 08-28 11:10:24 的岗位分配 + 存储空间种子（调整容量 / 同意 / 拒绝扩容，页面展示、客户端也读）
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12'])
+    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12', '2026-10-09 17:05:19', '2026-10-09 17:06:02', '2026-10-10 09:20:31', '2026-10-10 09:21:05', '2026-10-11 10:12:44', '2026-10-11 15:30:08'])
     const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
     expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    const later = listClientFacingOps({ since: '2026-10-08 14:30:12' }) // 严格晚于最后一条存储空间种子
+    const later = listClientFacingOps({ since: '2026-10-11 15:30:08' }) // 严格晚于最后一条种子（用户访问权限）
     expect(later.map((r) => r.recordId)).toEqual([fresh.id])
   })
 

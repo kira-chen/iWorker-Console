@@ -31,7 +31,7 @@ const userName = computed(() => userStore.userInfo?.name || '管理员')
 // - 03 能力：专家 / 平台技能 / 系统内置技能 / 知识库(规划中) / 连接器 / 模型，整段随 canSysConfig 显隐；「模型」仅 ADMIN 逐项收窄。
 // - 04 运行：实例管理 / 运行规格 / 存储空间 / 配额与限流，仅 ADMIN；实例管理、运行规格与存储空间已落地。
 // - 05 治理：审核中心(原「发布审核」) / 用户技能审核 / 访问审计(原「登录明细」) / 用户反馈 / 字段字典(原「字段管理」) / 版本管理，均仅 ADMIN。
-// - 06 组织：用户 / 角色与权限(原「角色」)，仅 ADMIN。
+// - 06 组织：用户 / 角色与权限(原「角色」) / 用户访问权限(2026-10-13)，仅 ADMIN。
 // 【显隐口径 V102】每项挂 page（页面权限 code，与后端 Module 枚举一一对应），优先按 userStore.hasPage 逐页判定；
 // 后端未下发 pages 时（旧 token / 旧响应）退回原口径：roles 派生的 canFde / canSysConfig / isAdmin + item.visible。
 // 禁止用单值 role 判权。详见下方 itemVisible。
@@ -127,7 +127,9 @@ const allGroups = [
     items: [
       { index: 'AdminUsers', label: '用户', icon: 'User', page: 'ORGANIZATION_USER' },
       // 角色与权限（原「角色」）。
-      { index: 'AdminRoles', label: '角色与权限', icon: 'Key', page: 'ORGANIZATION_ROLE' }
+      { index: 'AdminRoles', label: '角色与权限', icon: 'Key', page: 'ORGANIZATION_ROLE' },
+      // 用户访问权限（2026-10-13）：员工能否开启「完全访问」的授权名单与权限申请处理。
+      { index: 'AdminUserAccess', label: '用户访问权限', icon: 'Lock', page: 'ORGANIZATION_USER_ACCESS' }
     ]
   }
 ]

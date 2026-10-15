@@ -56,6 +56,14 @@ export const opsRecords = [
   { id: 22, time: '2026-10-05 15:18', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'hejing', detail: '客户资料归档建议放进「我的资料」，该库独立计量、不占存储空间，也不受这里的容量限制，不需要为此扩容。同时请先清理历史产物里已经不再使用的中间文件和重复版本，确认清理后仍然不够再重新提交申请，并在说明里写清楚预计新增的数据量和用途，方便评估合理的扩容幅度。', at: '2026-10-05 15:18:07', objectId: 210, meta: { userId: 210, username: 'hejing', requestId: 'ER-1001' } },
   { id: 23, time: '2026-09-28 11:40', operator: 'demo', module: '存储空间', action: '拒绝扩容', target: 'liuqiang', detail: '申请说明过于简单，请补充使用场景和预计增量后重新提交。', at: '2026-09-28 11:40:30', objectId: 207, meta: { userId: 207, username: 'liuqiang', requestId: 'ER-0999' } },
   { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。', at: '2026-09-20 14:05:19', objectId: 206, meta: { userId: 206, username: 'sun.xin', requestId: 'ER-0998' } },
+  // 用户访问权限（06组织 › 用户访问权限）：授权、收回、通过申请、驳回申请四类都在审计页展示，也都是客户端状态同步与通知的来源。
+  // 与 userAccessMock 的种子一一对应：张伟 / 赵敏由管理员授权（本机 + 云端各一条），李娜申请通过（UA-1002，本机），刘强申请被驳回（UA-1001，本机）。
+  { id: 25, time: '2026-10-11 15:30', operator: 'demo', module: '用户访问权限', action: '通过申请', target: 'li.na', detail: '未授权 → 已授权（申请通过·本机）', at: '2026-10-11 15:30:08', objectId: 202, meta: { userId: 202, username: 'li.na', env: 'LOCAL', requestId: 'UA-1002' } },
+  { id: 26, time: '2026-10-11 10:12', operator: 'zhangwei', module: '用户访问权限', action: '驳回申请', target: 'liuqiang', detail: '当前任务无需完全访问，如确有需要请说明用途后重新申请。', at: '2026-10-11 10:12:44', objectId: 207, meta: { userId: 207, username: 'liuqiang', env: 'LOCAL', requestId: 'UA-1001' } },
+  { id: 27, time: '2026-10-10 09:20', operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（本机）', at: '2026-10-10 09:20:31', objectId: 201, meta: { userId: 201, username: 'zhangwei', env: 'LOCAL' } },
+  { id: 28, time: '2026-10-09 17:05', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（本机）', at: '2026-10-09 17:05:19', objectId: 208, meta: { userId: 208, username: 'zhaomin', env: 'LOCAL' } },
+  { id: 29, time: '2026-10-10 09:21', operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（云端）', at: '2026-10-10 09:21:05', objectId: 201, meta: { userId: 201, username: 'zhangwei', env: 'CLOUD' } },
+  { id: 30, time: '2026-10-09 17:06', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（云端）', at: '2026-10-09 17:06:02', objectId: 208, meta: { userId: 208, username: 'zhaomin', env: 'CLOUD' } },
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */
@@ -113,6 +121,7 @@ const atOf = (r) => r.at || `${r.time}:00` // 老种子 / 旧快照没有 at 时
  *   skillReview   {kind, recordId, at, result('审核通过'|'审核驳回'), reviewId, submitter, skillName, rejectReason} §6.5.2
  *   positionAssign{kind, recordId, at, type('分配'|'变更'), username, userId, fromPosition|null, toPosition}    §6.5.3
  *   storageQuota  {kind, recordId, at, type('同意扩容'|'拒绝扩容'|'调整容量'|'修改默认容量'), username, userId, requestId|null, newTotalGb|null, rejectReason} §6.5.4
+ *   userAccess    {kind, recordId, at, type('授权'|'收回'|'通过申请'|'驳回申请'), username, userId, env('LOCAL'|'CLOUD'), requestId|null, rejectReason}  用户访问权限 PRD §六
  */
 export function listClientFacingOps({ since } = {}) {
   const out = []
@@ -150,6 +159,16 @@ export function listClientFacingOps({ since } = {}) {
         requestId: m.requestId ?? null,
         newTotalGb: m.newTotalGb ?? null,
         rejectReason: r.action === '拒绝扩容' ? r.detail || '' : ''
+      })
+    } else if (r.module === '用户访问权限' && ['授权', '收回', '通过申请', '驳回申请'].includes(r.action)) {
+      const m = r.meta || {}
+      out.push({
+        kind: 'userAccess', recordId: r.id, at, type: r.action,
+        username: m.username ?? r.target,
+        userId: m.userId ?? r.objectId ?? null,
+        env: m.env ?? null,
+        requestId: m.requestId ?? null,
+        rejectReason: r.action === '驳回申请' ? r.detail || '' : ''
       })
     }
   }
