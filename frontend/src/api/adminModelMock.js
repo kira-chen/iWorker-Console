@@ -27,6 +27,8 @@ const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // 2026-09-23 待办 yuepu#20：原为 new Date().toISOString()（UTC「Z」结尾），种子是 +08:00，两种格式混进同一个
 // localeCompare 排序会排反；改引 utils/datetime 单一真相 nowIsoLocal（另五个 mock 早已迁完，这里漏了）
 import { nowIsoLocal as nowIso, compareTimeText } from '@/utils/datetime'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let modelSeq = 106
@@ -366,6 +368,7 @@ export async function deleteModel(id) {
   if (!m) throw err('模型不存在')
   if (displayKey(m) !== 'DRAFT') throw err('仅未发布状态可删除')
   models = models.filter((x) => x.id !== id)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '模型', action: '删除', objectId: m.id, target: m.name })
   persist()
   return {}
 }

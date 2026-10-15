@@ -567,6 +567,7 @@ export async function removeSkill(id) {
   }
   const i = skills.indexOf(s)
   skills.splice(i, 1)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '删除', objectId: s.id, target: s.name, version: s.version })
   persist()
   return { skillId: id }
 }

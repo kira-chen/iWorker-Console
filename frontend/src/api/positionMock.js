@@ -45,6 +45,8 @@ import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as rena
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs } from './bizSystemMock'
 import { revokedConnectorNames } from './positionRevokedRefs'
+import { appendOpsRecord } from './accessAuditMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
@@ -369,6 +371,7 @@ export async function deletePosition(id) {
   wb.agents = []
   ids.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
   positions = positions.filter((x) => x !== p)
+  appendOpsRecord({ operator: currentDemoUsername(), module: '岗位', action: '删除', objectId: p.positionId, target: p.name, version: p.latestVersion })
   delete publications[p.positionId]
   delete workbench[String(p.positionId)]
   delete workbench[p.positionId]

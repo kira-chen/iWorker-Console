@@ -225,7 +225,6 @@ const ACT_CLS = {
   调整容量: 'tag-green',
   停用: 'tag-orange',
   强制回收: 'tag-red',
-  撤回: 'tag-orange',
   删除: 'tag-red',
   审核通过: 'tag-green',
   审核驳回: 'tag-red',
@@ -470,7 +469,7 @@ function opsGoto(row) {
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','撤回','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button>查询</el-button>
