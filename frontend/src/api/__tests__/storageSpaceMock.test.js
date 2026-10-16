@@ -436,7 +436,7 @@ describe('yuepu#86 预警阈值用浮点比较，恰好 90% 被判成正常（md
     expect(await memberOf('zhangwei')).toMatchObject({ usedGb: 11.7, totalGb: 13 })
   })
 
-  it.fails('yuepu#86 11.7 / 13 恰好 90% 应为预警（现状：13*0.9 = 11.700000000000001，被判成正常）', async () => {
+  it('yuepu#86 11.7 / 13 恰好 90% 为预警（不被 13*0.9 = 11.700000000000001 的浮点误差判成正常）', async () => {
     const snap = persistHarness.options.snapshot()
     Object.assign(snap.members.find((m) => m.userId === 201), { finalGb: 11.7, cacheGb: 0, quotaGb: 13 })
     persistHarness.options.restore(snap)
@@ -500,5 +500,19 @@ describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', 
     await expect(approveExpansionRequest('ER-1006', 6)).rejects.toThrow('磁盘余量不足')
     await adjustStorageQuota(201, 3) // 调小永远放行（不低于已用 2.7）
     expect((await getStorageOverview()).remainingGb).toBe(2)
+  })
+})
+
+describe('yuepu#87① 持久化快照只存业务字段', () => {
+  it('扩容申请快照不带 username / name / active 三个派生值，但保留提交时的岗位快照', async () => {
+    await memberOf('zhangwei') // 触发一次 reconcile，派生值已写到内存里的申请上
+    const reqs = persistHarness.options.snapshot().requests
+    expect(reqs.length).toBeGreaterThan(0)
+    for (const r of reqs) {
+      expect(r).not.toHaveProperty('username')
+      expect(r).not.toHaveProperty('name')
+      expect(r).not.toHaveProperty('active')
+      expect(r).toHaveProperty('position')
+    }
   })
 })
