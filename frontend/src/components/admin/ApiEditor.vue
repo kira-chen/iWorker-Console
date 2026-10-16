@@ -5,9 +5,9 @@
  * 抽屉式，新建 / 编辑 / 查看三态（查看全只读，底部仅【关闭】；点遮罩不直接关闭防误丢内容）。
  * 信息结构（2026-09-01 拍板对齐交互原型 v2 的 API 弹窗，renderApiEditor；原顶部提示行删除）：
  *   首行元信息（编辑/查看态：创建 / 最近更新 / 最近发布时间，弱色提示展示）
- *   → 基本信息（原型最终态：名称|图标 → 所属服务提供系统 → 描述[必填,通栏] → 状态[启用/停用]|操作性质；
+ *   → 基本信息（原型最终态：名称|图标 → 所属服务提供系统 → 描述[必填,通栏] → 操作性质；
  *     图标 2026-09-02 B-5 拍板加回——原型后置补丁层 addConnectorIconField 实为 API 抽屉注入图标，
- *     推翻 2026-09-01 N4-① 旧结论；启用/停用状态单选按原型加回仅作示意；
+ *     推翻 2026-09-01 N4-① 旧结论；启用/停用状态单选 2026-10-16 浦月指示删除；
  *     API ID 行：2026-09-12 起编辑 / 查看态只读展示（md §三.2 L120 · K36 / Q113），新建态不展示）
  *   抽屉顶部提示行「1 个 API 对应 1 个可被技能引用的工具，发布前必须通过连通性验证。」三态常显
  *   （2026-09-12 md §三.1 L102 · K35 / Q114，推翻 2026-09-01「原顶部提示行删除」）
@@ -84,8 +84,8 @@ const form = reactive({
   providerSystemId: null,
   url: '',
   method: 'GET',
-  // 启用/停用：md §三.4 L152「必填，默认启用；停用后技能不再可引用该 API」。
-  // 2026-09-09 PRD 复核轮 · A16/Q338 恢复录入控件（曾于批次 3A · A3 按「md 亦无」删除，本版 md 已列出）。
+  // 启用/停用：2026-10-16 浦月指示删除编辑页「状态」录入控件；字段保留作数据透传
+  // （新建默认启用，编辑态沿用原值），不在表单中修改。
   enabled: true,
   // 读/写：write → 客户端实际执行前必须经用户确认；read 直接执行（PRD §三.2）
   readWrite: 'read',
@@ -349,11 +349,10 @@ function validate() {
     errors.url = `API 地址最多 ${CONNECTOR_URL_MAX} 个字符`
   }
   if (!methods.includes(form.method)) errors.method = '请选择请求方式'
-  // 鉴权类型 / 读写标记 / 启用停用状态均为必填（一览表 §六 6.2 #7 #11 #12）：都有默认值，
+  // 鉴权类型 / 读写标记均为必填（一览表 §六 6.2 #7 #11）：都有默认值，
   // 控件也无法清空，这里仍显式校验，把「必填」落成代码规则（数据异常时不放行）。
   if (!authTypes.some((t) => t.value === authType.value)) errors.authType = '请选择鉴权类型'
   if (form.readWrite !== 'read' && form.readWrite !== 'write') errors.readWrite = '请选择这个操作是读还是写'
-  if (typeof form.enabled !== 'boolean') errors.enabled = '请选择启用或停用'
   if (isApiKey.value) {
     // 多参数行整体校验（去重/互斥/必值；已配置行留空=保留原值由 row.configured 承接）
     const authErr = validateApiAuthParams(authRows.value)
@@ -545,18 +544,6 @@ async function save() {
               <div class="ad-rw-hint">写操作在客户端执行前会先弹确认；读操作直接执行。</div>
             </el-form-item>
           </div>
-          <!-- 启用 / 停用状态（2026-09-09 PRD 复核轮 · G4/A16 · Q338）：
-               md prd-API.md §三.4 L152「启用 / 停用状态：必填，默认启用；停用后技能不再可引用该 API」，
-               《各模块必填选填字段一览表》亦已补录该字段。此控件曾按「原型最终态删了、md 亦无」一并删除，
-               本版 md 已明确列出 → 恢复录入。字段与 payload 链路一直完整（form.enabled / buildPayload），
-               本次只是把 UI 补回来。 -->
-          <el-form-item label="状态" :error="fieldErrors.enabled" required>
-            <el-radio-group v-model="form.enabled" class="ad-enabled-group">
-              <el-radio :value="true">启用</el-radio>
-              <el-radio :value="false">停用</el-radio>
-            </el-radio-group>
-            <div class="ad-rw-hint">停用后技能不再可引用该 API；已引用的技能运行效果可能受限。</div>
-          </el-form-item>
           <!-- API ID（2026-09-12 对齐 md §三.2 L120「系统生成，编辑和查看态只读展示（如 api_1101）」· 审计 K36 / Q113）：
                新建态尚未生成不展示；编辑 / 查看态只读文本，不给输入框 -->
           <el-form-item v-if="isEdit" label="API ID">
@@ -840,11 +827,6 @@ async function save() {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
   line-height: 1.5;
-}
-/* 启用/停用 radio 组（A16/Q338 恢复）：与读/写组同排版，独占整行 */
-.ad-enabled-group {
-  display: flex;
-  align-items: center;
 }
 /* Bearer 前置段（完整请求头格式展示）：等宽字体弱色 */
 .ad-bearer-input :deep(.el-input-group__prepend) {
