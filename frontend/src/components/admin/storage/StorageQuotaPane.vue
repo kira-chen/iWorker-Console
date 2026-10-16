@@ -158,7 +158,7 @@ async function submitDialog() {
   if (dialog.error) return
   if (dialog.kind === 'default' || dialog.kind === 'disk') return submitSetting()
   if (overusedTargets.value.length) {
-    const who = overusedTargets.value.length === 1
+    const who = dialog.kind === 'single'
       ? `${overusedTargets.value[0].name}的`
       : `其中 ${overusedTargets.value.length} 名员工的`
     if (!(await confirmFull(who))) return

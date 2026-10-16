@@ -410,7 +410,7 @@ describe('导出 CSV（PRD §三）', () => {
     for (const name of ['task', 'knowledge']) {
       await openTab(name)
       createObjectURL.mockClear()
-      buttonOf(pane(name), '导出筛选结果 CSV').click()
+      buttonOf(pane(name), '导出 CSV').click()
       await flush()
       expect(createObjectURL).toHaveBeenCalledTimes(1)
     }
