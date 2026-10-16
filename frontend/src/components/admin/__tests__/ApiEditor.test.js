@@ -351,12 +351,11 @@ describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
 })
 
 describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §三.4 L149,L153）', () => {
-  it('新建：鉴权默认「不鉴权」、请求方式默认 GET、状态默认「启用」、操作性质默认「读」；底部【取消】【保存】', async () => {
+  it('新建：鉴权默认「不鉴权」、请求方式默认 GET、操作性质默认「读」（状态录入 2026-10-16 已删，payload 仍默认启用）；底部【取消】【保存】', async () => {
     const el = await mountEditor(null)
     expect(el.querySelector('.el-radio[data-value="NONE"]').classList.contains('is-checked')).toBe(true)
     expect(el.querySelector('.el-radio[data-value="BEARER"]').classList.contains('is-checked')).toBe(false)
     expect(itemByLabel(el, '请求方式').querySelector('select').value).toBe('GET')
-    expect(el.querySelector('.ad-enabled-group .el-radio[data-value="true"]').classList.contains('is-checked')).toBe(true)
     expect(el.querySelector('.el-radio[data-value="read"]').classList.contains('is-checked')).toBe(true)
     // 不鉴权时不展示凭证字段（md §三.3 L126）
     expect(el.querySelector('.pr-rows')).toBeNull()
@@ -374,11 +373,10 @@ describe('ApiEditor · 新建默认值与三态（md §三.1 / §三.3 L124 / §
     expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
   })
 
-  it('请求方式 / 鉴权类型 / 操作性质（读写）/ 状态（启用停用）均标必填红星（一览表 §六 6.2 #6 #7 #11 #12）', async () => {
+  it('请求方式 / 鉴权类型 / 操作性质（读写）均标必填红星（一览表 §六 6.2 #6 #7 #11）', async () => {
     const el = await mountEditor(null)
     expect(itemByLabel(el, '请求方式').dataset.required).toBe('1')
     expect(itemByLabel(el, '鉴权类型').dataset.required).toBe('1')
-    expect(itemByLabel(el, '状态').dataset.required).toBe('1')
     expect(readWriteItem(el).dataset.required).toBe('1')
   })
 
