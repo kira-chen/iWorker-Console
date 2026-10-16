@@ -118,18 +118,11 @@ export async function setUserPosition(userId, positionId) {
         module: '岗位分配',
         action: fromId == null ? '分配' : '变更',
         target: user.username,
-        detail: `${fromId == null ? '未绑定' : fromName} → ${toName}`,
-        objectId: user.id,
-        meta: {
-          userId: user.id,
-          username: user.username,
-          fromPosition: fromId == null ? null : { id: fromId, name: fromName },
-          toPosition: { id: toId, name: toName }
-        }
+        detail: `${fromId == null ? '未绑定' : fromName} → ${toName}`
       })
     }
   } else {
-    // 清除绑定（改回「未绑定」）不属于客户端通知范围，本期不写审计（§6.2）
+    // 清除绑定（改回「未绑定」）本期不写审计（§6.2）
     delete bindings[String(userId)]
   }
   persist()

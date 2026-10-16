@@ -508,7 +508,7 @@ describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-dem
     const audit = await import('@/api/accessAuditMock')
     expect(fresh.applyExpertReviewResult(201, 'DELIST', true)).toBe(true)
     expect(await fresh.getExpert(201)).toMatchObject({ status: 'draft', revoked: null })
-    expect(audit.opsRecords.some((x) => x.action === '强制回收' && x.objectId === 201)).toBe(false)
+    expect(audit.opsRecords.some((x) => x.live && x.module === '专家' && x.action === '强制回收')).toBe(false)
   })
 
   // 审核中的强制回收申请刷新后不丢：pendingRevokeReason 在快照里，通过时才能照样落「已回收」

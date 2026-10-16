@@ -400,7 +400,7 @@ export async function deleteModel(id) {
   if (!m) throw err('模型不存在')
   if (displayKey(m) !== 'DRAFT') throw err('仅未发布状态可删除')
   models = models.filter((x) => x.id !== id)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '模型', action: '删除', objectId: m.id, target: m.name })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '模型', action: '删除', target: m.name })
   persist()
   return {}
 }

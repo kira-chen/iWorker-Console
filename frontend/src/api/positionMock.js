@@ -405,7 +405,7 @@ export async function deletePosition(id) {
   wb.agents = []
   ids.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
   positions = positions.filter((x) => x !== p)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '岗位', action: '删除', objectId: p.positionId, target: p.name, version: p.latestVersion })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '岗位', action: '删除', target: p.name, version: p.latestVersion })
   delete publications[p.positionId]
   delete workbench[String(p.positionId)]
   delete workbench[p.positionId]

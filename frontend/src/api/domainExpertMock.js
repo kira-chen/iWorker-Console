@@ -472,7 +472,7 @@ export async function deleteExpert(id) {
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）
   e.skillIds.forEach((id) => removeSkillRefNameIfUnused(e, id, false))
   experts = experts.filter((x) => x !== e)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '删除', objectId: e.id, target: e.name, version: e.latestVersionLabel })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '删除', target: e.name, version: e.latestVersionLabel })
   delete publications[e.id]
   persist()
   return removed
@@ -682,7 +682,7 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
         // 强制回收（PRD 专家 §3.5.1）：审核通过才生效——打「已回收」标记并落访问审计
         const revokeBy = e.pendingRevokeBy || currentDemoUsername() // 旧快照缺该键时兜底当前用户
         e.revoked = makeRevokedInfo(e.pendingRevokeReason, revokeBy)
-        appendOpsRecord({ operator: revokeBy, module: '专家', action: '强制回收', objectId: e.id, target: e.name, detail: e.pendingRevokeReason, version: e.latestVersionLabel })
+        appendOpsRecord({ operator: revokeBy, module: '专家', action: '强制回收', target: e.name, detail: e.pendingRevokeReason, version: e.latestVersionLabel })
       }
     } else {
       const label = e.pendingVersion || 'v1.0.0'

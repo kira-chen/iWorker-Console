@@ -386,7 +386,7 @@ export async function remove(id) {
   const r = find(id)
   if (r.status === 'PUBLISHED' || r.pendingAction) conflict('仅未发布且没有待审核操作的知识库可删除')
   rows = rows.filter((x) => x.id !== id)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '知识库', action: '删除', objectId: r.id, target: r.name })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '知识库', action: '删除', target: r.name })
   persist()
   return null
 }

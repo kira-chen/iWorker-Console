@@ -236,15 +236,14 @@ describe('skillReviewMock · 持久化 restore 形状守卫', () => {
   })
 })
 
-describe('skillReviewMock · 写访问审计（prd.访问审计.md §6.2「用户技能审核记录」、§6.5.2）', () => {
+describe('skillReviewMock · 写访问审计（prd.访问审计.md §6.2「用户技能审核记录」）', () => {
   const recs = () => opsRecords.filter((r) => r.live && r.module === '用户技能审核')
 
-  it('通过：写「审核通过」记录，target=「提交人 / 技能名」，detail 为空，objectId=审核单 id，meta 带 reviewId / submitter / skillName', async () => {
+  it('通过：写「审核通过」记录，target=「提交人 / 技能名」，detail 为空', async () => {
     await approveReviewApplication('usr_1', { reviewer: 'audit.admin' })
     expect(recs()).toHaveLength(1)
     expect(recs()[0]).toMatchObject({
-      action: '审核通过', target: 'zhangsan / 自动发送邮件', detail: '', objectId: 'usr_1',
-      meta: { reviewId: 'usr_1', submitter: 'zhangsan', skillName: '自动发送邮件' }
+      module: '用户技能审核', action: '审核通过', target: 'zhangsan / 自动发送邮件', detail: ''
     })
     expect(recs()[0].operator).toBeTruthy()
   })
@@ -252,8 +251,7 @@ describe('skillReviewMock · 写访问审计（prd.访问审计.md §6.2「用�
   it('驳回：写「审核驳回」记录，detail = 驳回原因（已 trim）', async () => {
     await rejectReviewApplication('usr_4', { reason: ' 请缩小权限范围 ' })
     expect(recs()[0]).toMatchObject({
-      action: '审核驳回', detail: '请缩小权限范围', objectId: 'usr_4',
-      meta: { reviewId: 'usr_4', submitter: 'zhaoliu', skillName: '内网文件同步' }
+      action: '审核驳回', detail: '请缩小权限范围'
     })
     expect(recs()[0].target).toBe('zhaoliu / 内网文件同步')
   })

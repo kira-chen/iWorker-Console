@@ -284,7 +284,7 @@ function writeDelistAudit(row) {
   if (row.requestAction !== 'DELIST') return
   const module = DELIST_AUDIT_MODULE[row.type === 'TOOL' ? `TOOL:${row.subType}` : row.type]
   if (!module) return
-  const rec = { operator: row.submitterName, module, action: '停用', objectId: row.refId, target: row.name }
+  const rec = { operator: row.submitterName, module, action: '停用', target: row.name }
   if (VERSIONED_AUDIT_TYPES.includes(row.type) && row.version && row.version !== '—') rec.version = row.version
   appendOpsRecord(rec)
 }

@@ -803,6 +803,6 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v7，2026-10-09 待�
     const detail = await fresh.getSkillDetail('sk_301')
     expect(pubState(detail)).toBe('DELISTED')
     expect(detail.revoked).toBeNull()
-    expect(audit.opsRecords.some((x) => x.action === '强制回收' && x.objectId === 'sk_301')).toBe(false)
+    expect(audit.opsRecords.some((x) => x.live && x.module === '技能' && x.action === '强制回收')).toBe(false)
   })
 })

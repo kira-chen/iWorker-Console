@@ -208,15 +208,13 @@ export async function listAccessOperations() {
 }
 
 /* ---------------- 访问审计 ---------------- */
-function audit(action, u, detail, env, extra = {}) {
+function audit(action, u, detail) {
   appendOpsRecord({
     operator: currentDemoUsername(),
     module: '用户访问权限',
     action,
     target: u.username,
-    detail,
-    objectId: u.userId,
-    meta: { userId: u.userId, username: u.username, env, ...extra }
+    detail
   })
 }
 
@@ -272,13 +270,13 @@ export async function listAccessMembers(params = {}) {
 function applyGrant(u, env) {
   if (grantOf(u.userId, env)) return false
   grants.push({ userId: u.userId, env, source: 'ADMIN', requestId: null, grantedAt: now(), grantedBy: currentDemoUsername() })
-  audit('授权', u, `未授权 → 已授权（${ENV_LABEL[env]}）`, env)
+  audit('授权', u, `未授权 → 已授权（${ENV_LABEL[env]}）`)
   return true
 }
 
 function applyRevoke(u, env) {
   grants = grants.filter((g) => !(g.userId === u.userId && g.env === env))
-  audit('收回', u, `已授权 → 未授权（${ENV_LABEL[env]}）`, env)
+  audit('收回', u, `已授权 → 未授权（${ENV_LABEL[env]}）`)
 }
 
 /**
@@ -364,7 +362,7 @@ export async function approveAccessRequest(id) {
   r.handler = currentDemoUsername()
   r.handledAt = now()
   grants.push({ userId: u.userId, env: r.env, source: 'REQUEST', requestId: r.id, grantedAt: r.handledAt, grantedBy: r.handler })
-  audit('通过申请', u, `未授权 → 已授权（申请通过·${ENV_LABEL[r.env]}）`, r.env, { requestId: r.id })
+  audit('通过申请', u, `未授权 → 已授权（申请通过·${ENV_LABEL[r.env]}）`)
   persist()
   return clone(r)
 }
@@ -380,7 +378,7 @@ export async function rejectAccessRequest(id, reason) {
   r.rejectReason = text
   r.handler = currentDemoUsername()
   r.handledAt = now()
-  audit('驳回申请', findMember(r.userId), text, r.env, { requestId: r.id })
+  audit('驳回申请', findMember(r.userId), text)
   persist()
   return clone(r)
 }

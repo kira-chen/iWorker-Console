@@ -545,7 +545,7 @@ export async function deleteMcp(id) {
   }
   // 软引用（PRD §二.3.7）：被技能引用亦可删——列表侧已做「确认影响后继续删除」二次确认
   mcps = mcps.filter((m) => m.id !== id && m.code !== id)
-  if (m) appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '删除', objectId: m.id, target: m.name })
+  if (m) appendOpsRecord({ operator: currentDemoUsername(), module: 'MCP', action: '删除', target: m.name })
   persist()
   return {}
 }
@@ -739,7 +739,7 @@ function applyRevokeIfPending(m, reason, by) {
   if (!reason) return
   const operator = by || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
   m.revoked = makeRevokedInfo(reason, operator)
-  appendOpsRecord({ operator, module: 'MCP', action: '强制回收', objectId: m.id, target: m.name, detail: reason })
+  appendOpsRecord({ operator, module: 'MCP', action: '强制回收', target: m.name, detail: reason })
 }
 
 /**

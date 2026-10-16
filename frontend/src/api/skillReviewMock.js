@@ -302,8 +302,8 @@ export async function getReviewApplication(reviewId) {
 }
 
 /**
- * 通过 / 驳回成功后写一条访问审计「管理端操作」记录（prd.访问审计.md §6.2「用户技能审核记录」、§6.5.2）：
- * 操作对象「提交人 / 技能名」，驳回填原因、通过为空；审核单标识 / 提交人 / 技能名另存 meta，客户端据此只通知提交者本人。
+ * 通过 / 驳回成功后写一条访问审计「管理端操作」记录（prd.访问审计.md §6.2「用户技能审核记录」）：
+ * 操作对象「提交人 / 技能名」，驳回填原因、通过为空。
  */
 function writeReviewAudit(r, action, detail) {
   appendOpsRecord({
@@ -311,9 +311,7 @@ function writeReviewAudit(r, action, detail) {
     module: '用户技能审核',
     action,
     target: `${r.submitter} / ${r.skillName}`,
-    detail,
-    objectId: r.id,
-    meta: { reviewId: r.id, submitter: r.submitter, skillName: r.skillName }
+    detail
   })
 }
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { opsRecords, appendOpsRecord, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { opsRecords, appendOpsRecord, resetAccessAuditMock } from '../accessAuditMock'
 import * as skillMock from '../unifiedSkillMock'
 import { listApisSync } from '../apiConnectorMock'
 
@@ -8,14 +8,15 @@ import { listApisSync } from '../apiConnectorMock'
  * accessAuditMock「管理端操作」记录：种子 + 运行期写入（2026-09-20，版本管理发布 / 停用写记录）。
  * 对齐 prd.访问审计.md §6.2（操作对象 / 变更内容）与 prd.版本管理.md §八「审计」。
  *
- * 2026-09-30 起新增（4125917）：§6.2 强制回收 / 用户技能审核 / 岗位分配三类记录；§6.5.1–6.5.3 落给客户端的数据层
- * （appendOpsRecord 的 at / objectId / meta / version 可选字段，listClientFacingOps 的 since 增量、排序、旧种子无 at 兜底）。
+ * 2026-09-30 起新增（4125917）：§6.2 强制回收 / 用户技能审核 / 岗位分配三类记录；appendOpsRecord 的 version 可选字段。
  *
  * 2026-10-12 口径：强制回收记录由各业务 mock 在“停用审核通过、回收生效”时才 appendOpsRecord（PRD 访问审计 §6.2），
- * 本文件只验记录本身与 §6.5.1 视图的形状；“提交时不写 / 驳回撤回不写 / 通过时只写强制回收不写停用”的联动见 reviewFlowIntegration.test.js。
+ * 本文件只验记录本身的形状；“提交时不写 / 驳回撤回不写 / 通过时只写强制回收不写停用”的联动见 reviewFlowIntegration.test.js。
  *
- * 2026-10-09 起新增：存储空间记录（§6.2 存储空间记录块 / §6.5.4）——listClientFacingOps 的 storageQuota 视图（调整容量 / 同意扩容 / 拒绝扩容，字段键集固定、不含原总量与操作人）、
- * 5 条存储空间审计种子（与 storageSpaceMock 种子一一对应，由 storageSpaceMock.test.js 守）。
+ * 2026-10-09 起新增：存储空间记录（§6.2 存储空间记录块）——5 条存储空间审计种子（与 storageSpaceMock 种子一一对应，由 storageSpaceMock.test.js 守）。
+ *
+ * 2026-10-16：客户端通知改由管理端在管理员操作时直接生成，审计记录只服务页面展示——原 §6.5 落给客户端的数据层
+ * （at / objectId / meta 字段与 listClientFacingOps）已删除，本文件改为守「记录只存页面字段」。
  */
 
 beforeEach(() => resetAccessAuditMock())
@@ -70,7 +71,7 @@ describe('appendOpsRecord（运行期写入）', () => {
   })
 })
 
-describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）', () => {
+describe('持久化（mockPersist v3，key iworker-demo-mock:accessAuditOps）', () => {
   const KEY = 'iworker-demo-mock:accessAuditOps'
   const makeStorage = () => {
     const map = new Map()
@@ -98,7 +99,7 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
     const m = await import('../accessAuditMock')
     const seedCount = m.opsRecords.length
     m.appendOpsRecord({ operator: 'xiaomei', module: '版本管理', action: '发布', target: 'Windows v1.3.0', detail: '说明' })
-    expect(snap().v).toBe(2)
+    expect(snap().v).toBe(3)
     expect(snap().data.live).toHaveLength(1)
     expect(Object.keys(snap().data).sort()).toEqual(['live', 'opsSeq'])
 
@@ -110,36 +111,24 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
     expect(reloaded.appendOpsRecord({ operator: 'a', module: '版本管理', action: '停用', target: 'x' }).id).toBe(101)
   })
 
-  it('新字段 at / objectId / meta 随 live 记录一起落盘并在刷新后恢复；不带新字段的旧快照照常恢复', async () => {
-    const m = await import('../accessAuditMock')
-    m.appendOpsRecord({ operator: 'a', module: '岗位分配', action: '变更', target: 'li.na', detail: 'A → B', objectId: 202, meta: { userId: 202, username: 'li.na', fromPosition: { id: 1, name: 'A' }, toPosition: { id: 2, name: 'B' } } })
-    expect(snap().data.live[0]).toMatchObject({ objectId: 202, meta: { username: 'li.na' } })
-    expect(snap().data.live[0].at).toMatch(/:\d{2}$/)
-    vi.resetModules()
-    const reloaded = await import('../accessAuditMock')
-    expect(reloaded.opsRecords[0]).toMatchObject({ objectId: 202, meta: { toPosition: { id: 2, name: 'B' } } })
-    expect(reloaded.listClientFacingOps().some((r) => r.username === 'li.na' && r.type === '变更')).toBe(true)
-
-    // 旧快照：live 记录没有新字段
-    vi.resetModules()
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { opsSeq: 101, live: [{ id: 100, time: '2026-09-20 10:00', operator: 'x', module: '版本管理', action: '发布', target: 'Mac v1.0.1', detail: '', live: true }] } }))
+  it('快照里残留旧字段（at / objectId / meta）的 live 记录照常恢复，不抛错（多余字段无害，页面不读）', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { opsSeq: 101, live: [{ id: 100, time: '2026-09-20 10:00', operator: 'x', module: '岗位分配', action: '变更', target: 'li.na', detail: 'A → B', at: '2026-09-20 10:00:05', objectId: 202, meta: { userId: 202 }, live: true }] } }))
     const legacy = await import('../accessAuditMock')
-    expect(legacy.opsRecords[0]).toMatchObject({ id: 100, target: 'Mac v1.0.1' })
+    expect(legacy.opsRecords[0]).toMatchObject({ id: 100, target: 'li.na', detail: 'A → B', live: true })
   })
 
-  it('存储空间的 live 记录落盘后刷新仍在，且客户端视图（listClientFacingOps）读得到', async () => {
+  it('存储空间的 live 记录落盘后刷新仍在', async () => {
     const m = await import('../accessAuditMock')
-    m.appendOpsRecord({ operator: 'a', module: '存储空间', action: '拒绝扩容', target: 'chenyu', detail: '先清理', objectId: 203, meta: { userId: 203, username: 'chenyu', requestId: 'ER-9' } })
+    m.appendOpsRecord({ operator: 'a', module: '存储空间', action: '拒绝扩容', target: 'chenyu', detail: '先清理' })
     expect(snap().data.live[0]).toMatchObject({ module: '存储空间', action: '拒绝扩容' })
     vi.resetModules()
     const reloaded = await import('../accessAuditMock')
-    expect(reloaded.opsRecords[0]).toMatchObject({ module: '存储空间', action: '拒绝扩容', live: true })
-    expect(reloaded.listClientFacingOps().some((r) => r.kind === 'storageQuota' && r.requestId === 'ER-9' && r.rejectReason === '先清理')).toBe(true)
+    expect(reloaded.opsRecords[0]).toMatchObject({ module: '存储空间', action: '拒绝扩容', target: 'chenyu', detail: '先清理', live: true })
   })
 
   it('存量快照形状不合法 → 兜底：忽略坏快照、只剩种子，不抛错', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 2, data: { opsSeq: 100, live: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 3, data: { opsSeq: 100, live: 'oops' } }))
     const m = await import('../accessAuditMock')
     expect(m.opsRecords.some((r) => r.live)).toBe(false)
     expect(warn).toHaveBeenCalled()
@@ -147,144 +136,57 @@ describe('持久化（mockPersist v1，key iworker-demo-mock:accessAuditOps）',
   })
 })
 
-describe('§6.5 数据层字段：at / objectId / meta（页面不展示但必须保存）', () => {
-  it('at 精确到秒且与 time 同一时刻（time = at 截到分钟）', () => {
-    const r = appendOpsRecord({ operator: 'a', module: '技能', action: '强制回收', target: 'x', detail: '原因' })
-    expect(r.at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
-    expect(r.at.slice(0, 16)).toBe(r.time)
-  })
+describe('记录只存页面展示的字段（2026-10-16：客户端通知改由管理端操作时直接生成，审计不再为客户端多存字段）', () => {
+  const PAGE_KEYS = ['action', 'detail', 'id', 'module', 'operator', 'target', 'time']
 
-  it('objectId / meta 传入即落库（meta 深拷贝）；旧调用不传则不带这两个键', () => {
-    const meta = { reviewId: 'usr_9', submitter: 'zs', skillName: '技能A' }
-    const a = appendOpsRecord({ operator: 'a', module: '用户技能审核', action: '审核通过', target: 'zs / 技能A', objectId: 'usr_9', meta })
-    meta.skillName = '被改了'
-    expect(opsRecords.find((r) => r.id === a.id)).toMatchObject({ objectId: 'usr_9', meta: { reviewId: 'usr_9', submitter: 'zs', skillName: '技能A' } })
+  it('appendOpsRecord 写入的记录只有页面字段（+ live 标记，带版本号时 + version）；调用方多传的 at / objectId / meta 不落库', () => {
+    const a = appendOpsRecord({ operator: 'a', module: '技能', action: '强制回收', target: 'x', detail: '原因', version: 'v2', objectId: 'sk_1', meta: { k: 1 }, at: '2026-01-01 00:00:00' })
+    expect(Object.keys(opsRecords.find((r) => r.id === a.id)).sort()).toEqual([...PAGE_KEYS, 'live', 'version'].sort())
     const b = appendOpsRecord({ operator: 'a', module: '版本管理', action: '发布', target: 'Windows v1.3.0' })
-    expect(b).not.toHaveProperty('objectId')
-    expect(b).not.toHaveProperty('meta')
+    expect(Object.keys(b).sort()).toEqual([...PAGE_KEYS, 'live'].sort())
   })
 
-  it('种子：用户技能审核两条带 objectId + meta；岗位分配「分配 / 变更」各一条，detail =「原岗位 → 新岗位」', () => {
-    const reviews = opsRecords.filter((r) => r.module === '用户技能审核')
-    expect(reviews).toHaveLength(2)
-    for (const r of reviews) {
-      expect(r.objectId).toBeTruthy()
-      expect(r.target).toBe(`${r.meta.submitter} / ${r.meta.skillName}`)
-      expect(r.meta.reviewId).toBe(r.objectId)
+  it('种子记录都不带 at / objectId / meta', () => {
+    for (const r of opsRecords) {
+      expect(r).not.toHaveProperty('at')
+      expect(r).not.toHaveProperty('objectId')
+      expect(r).not.toHaveProperty('meta')
     }
+  })
+
+  it('种子：用户技能审核两条，操作对象 =「提交人 / 技能名」，驳回带原因、通过为空；岗位分配「分配 / 变更」各一条，detail =「原岗位 → 新岗位」', () => {
+    const reviews = opsRecords.filter((r) => r.module === '用户技能审核')
+    expect(reviews.map((r) => r.target).sort()).toEqual(['sun.hao / 财税合规助手', 'wang.fang / 合同管理助手'])
+    expect(reviews.find((r) => r.action === '审核驳回').detail).toBe('岗位与技能权限范围不匹配')
+    expect(reviews.find((r) => r.action === '审核通过').detail).toBe('')
     const assigns = opsRecords.filter((r) => r.module === '岗位分配')
     expect(assigns.map((r) => r.action).sort()).toEqual(['分配', '变更'])
-    expect(assigns.find((r) => r.action === '分配').detail).toMatch(/^未绑定 → /)
-    expect(assigns.find((r) => r.action === '分配').meta.fromPosition).toBeNull()
-    expect(assigns.find((r) => r.action === '变更').meta.fromPosition).toMatchObject({ id: expect.anything(), name: expect.any(String) })
-  })
-})
-
-describe('listClientFacingOps（§6.5 落给客户端的数据）', () => {
-  it('只含强制回收 / 用户技能审核 / 岗位分配 / 存储空间 / 用户访问权限五类；不含操作人；发布 / 停用 / 版本管理等不读取', () => {
-    appendOpsRecord({ operator: 'a', module: '版本管理', action: '发布', target: 'Windows v1.3.0' })
-    appendOpsRecord({ operator: 'a', module: '技能', action: '发布', target: '某技能', version: 'v1' })
-    const list = listClientFacingOps()
-    expect(new Set(list.map((r) => r.kind))).toEqual(new Set(['forceRevoke', 'skillReview', 'positionAssign', 'storageQuota', 'userAccess']))
-    for (const r of list) expect(r).not.toHaveProperty('operator')
-    expect(list.every((r) => r.recordId != null && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.at))).toBe(true)
-    expect(new Set(list.map((r) => r.recordId)).size).toBe(list.length)
+    expect(assigns.find((r) => r.action === '分配')).toMatchObject({ target: 'chenyu', detail: '未绑定 → 经营分析岗' })
+    expect(assigns.find((r) => r.action === '变更')).toMatchObject({ target: 'li.na', detail: '客户成功岗 → 财务审核岗' })
   })
 
-  it('强制回收视图（§6.5.1）：对象类型 = 模块、对象标识、对象名称、回收原因；五个模块都覆盖，无版本号 / 操作人', () => {
-    for (const module of ['技能', '专家', 'MCP', 'API', '业务系统']) {
-      appendOpsRecord({ operator: 'admin', module, action: '强制回收', target: `${module}X`, detail: '安全问题', version: 'v2', objectId: `id-${module}` })
-    }
-    const revokes = listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
-    // API 多一条：种子里已有 api_1104 的强制回收记录（待办 yuepu#83）
-    expect(revokes.map((r) => r.objectType).sort()).toEqual(['API', 'API', 'MCP', '专家', '业务系统', '技能', '技能'])
-    expect(revokes.find((r) => r.objectType === 'MCP')).toEqual({
-      kind: 'forceRevoke', recordId: expect.any(Number), at: expect.any(String),
-      objectType: 'MCP', objectId: 'id-MCP', objectName: 'MCPX', reason: '安全问题'
-    })
-  })
-
-  it('用户技能审核视图（§6.5.2）：审核结果 / 审核单标识 / 提交人 / 技能名称 / 驳回原因（通过为空）', () => {
-    const list = listClientFacingOps().filter((r) => r.kind === 'skillReview')
-    const rejected = list.find((r) => r.result === '审核驳回')
-    expect(rejected).toEqual({
-      kind: 'skillReview', recordId: expect.any(Number), at: '2026-08-27 16:08:00',
-      result: '审核驳回', reviewId: 'usr_hist_2', submitter: 'sun.hao', skillName: '财税合规助手', rejectReason: '岗位与技能权限范围不匹配'
-    })
-    expect(list.find((r) => r.result === '审核通过')).toMatchObject({ submitter: 'wang.fang', skillName: '合同管理助手', rejectReason: '' })
-  })
-
-  it('岗位分配视图（§6.5.3）：类型 / 用户 / 原岗位（分配时为 null）/ 新岗位', () => {
-    const list = listClientFacingOps().filter((r) => r.kind === 'positionAssign')
-    expect(list.find((r) => r.type === '分配')).toMatchObject({ username: 'chenyu', userId: 203, fromPosition: null, toPosition: { id: 401, name: '经营分析岗' } })
-    expect(list.find((r) => r.type === '变更')).toMatchObject({
-      username: 'li.na', fromPosition: { id: 402, name: '客户成功岗' }, toPosition: { id: 403, name: '财务审核岗' }
-    })
-  })
-
-  it('since 增量：只返回操作时间严格晚于 since 的记录；按时间正序；不受页面 90 天窗口限制', () => {
-    const all = listClientFacingOps()
-    for (let i = 1; i < all.length; i++) expect(all[i - 1].at <= all[i].at).toBe(true)
-    expect(all[0].at).toBe('2026-08-25 16:20:00') // 老记录（远早于 90 天窗口）仍在
-    const cut = listClientFacingOps({ since: '2026-08-28 10:50:37' })
-    // 08-28 11:10:24 的岗位分配 + 08-29 的两条强制回收种子（待办 yuepu#83）+ 存储空间种子（调整容量 / 同意 / 拒绝扩容，页面展示、客户端也读）
-    expect(cut.map((r) => r.at)).toEqual(['2026-08-28 11:10:24', '2026-08-29 09:30:41', '2026-08-29 10:12:08', '2026-09-20 14:05:19', '2026-09-28 11:40:30', '2026-10-05 15:18:07', '2026-10-07 16:02:41', '2026-10-08 14:30:12', '2026-10-09 17:05:19', '2026-10-09 17:06:02', '2026-10-10 09:20:31', '2026-10-10 09:21:05', '2026-10-11 10:12:44', '2026-10-11 15:30:08'])
-    const fresh = appendOpsRecord({ operator: 'a', module: 'API', action: '强制回收', target: 'A1', objectId: 'api-1' })
-    expect(listClientFacingOps({ since: '2099-01-01 00:00:00' })).toEqual([])
-    const later = listClientFacingOps({ since: '2026-10-11 15:30:08' }) // 严格晚于最后一条种子（用户访问权限）
-    expect(later.map((r) => r.recordId)).toEqual([fresh.id])
-  })
-
-  it('存储空间视图（§6.5.4）：种子里的调整容量 / 同意扩容 / 拒绝扩容都在，字段齐全且不含操作人', () => {
-    const sq = listClientFacingOps().filter((r) => r.kind === 'storageQuota')
-    expect(sq.map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '拒绝扩容', '拒绝扩容', '调整容量'])
-    const adjust = sq.find((r) => r.type === '调整容量')
-    expect(adjust).toMatchObject({ username: 'xulin', userId: 212, requestId: null, newTotalGb: 8, rejectReason: '' })
-    const approve = sq.find((r) => r.type === '同意扩容')
-    expect(approve).toMatchObject({ username: 'zhaomin', userId: 208, requestId: 'ER-1002', newTotalGb: 10 })
-    const reject = sq.find((r) => r.requestId === 'ER-0999')
-    expect(reject).toMatchObject({ type: '拒绝扩容', username: 'liuqiang', rejectReason: '申请说明过于简单，请补充使用场景和预计增量后重新提交。' })
-    // 客户端字段键集钉死（不含 operator、原总量 fromGb、detail、meta）：有人把它们混进视图，这条就红
-    const KEYS = ['at', 'kind', 'newTotalGb', 'recordId', 'rejectReason', 'requestId', 'type', 'userId', 'username']
-    for (const r of sq) expect(Object.keys(r).sort()).toEqual(KEYS)
-    expect(approve.rejectReason).toBe('') // 只有拒绝扩容带拒绝原因
-  })
-
-  it('存储空间视图：调整容量 / 同意扩容 / 拒绝扩容 / 修改默认容量会进视图（后者无用户、newTotalGb = 新默认值）；「修改磁盘总量」等其它动作不进视图', () => {
-    const common = { operator: 'a', module: '存储空间', target: 'chenyu', objectId: 203, meta: { userId: 203, username: 'chenyu' } }
-    appendOpsRecord({ ...common, action: '调整容量', detail: '5 GB → 8 GB', meta: { ...common.meta, newTotalGb: 8 } })
-    appendOpsRecord({ ...common, action: '同意扩容', detail: '5 GB → 10 GB', meta: { ...common.meta, requestId: 'ER-7', newTotalGb: 10 } })
-    appendOpsRecord({ ...common, action: '拒绝扩容', detail: '原因', meta: { ...common.meta, requestId: 'ER-8' } })
-    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改默认容量', target: '默认容量', detail: '1 GB → 3 GB', meta: { fromGb: 1, newTotalGb: 3 } })
-    appendOpsRecord({ operator: 'a', module: '存储空间', action: '修改磁盘总量', target: '磁盘总量', detail: '1000 GB → 500 GB' })
-    const live = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
-    expect(live.map((r) => r.type).sort()).toEqual(['修改默认容量', '同意扩容', '拒绝扩容', '调整容量'])
-    expect(live.find((r) => r.type === '调整容量')).toMatchObject({ requestId: null, newTotalGb: 8 })
-    expect(live.find((r) => r.type === '同意扩容')).toMatchObject({ requestId: 'ER-7', newTotalGb: 10 })
-    expect(live.find((r) => r.type === '修改默认容量')).toMatchObject({ username: null, userId: null, requestId: null, newTotalGb: 3 })
-  })
-
-  it('旧快照记录（没有 at / objectId / meta）也不抛错：at 按分钟补 :00', () => {
-    opsRecords.unshift({ id: 900, time: '2026-09-01 08:00', operator: 'a', module: '用户技能审核', action: '审核驳回', target: 'u1 / S1', detail: 'r', live: true })
-    const r = listClientFacingOps().find((x) => x.recordId === 900)
-    expect(r).toMatchObject({ at: '2026-09-01 08:00:00', submitter: 'u1', skillName: 'S1', reviewId: null, rejectReason: 'r' })
+  it('种子：存储空间五条（调整容量 / 同意扩容 / 三条拒绝扩容），拒绝扩容的变更内容 = 拒绝原因', () => {
+    const sq = opsRecords.filter((r) => r.module === '存储空间')
+    expect(sq.map((r) => r.action).sort()).toEqual(['同意扩容', '拒绝扩容', '拒绝扩容', '拒绝扩容', '调整容量'])
+    expect(sq.find((r) => r.action === '调整容量')).toMatchObject({ target: 'xulin', detail: '5 GB → 8 GB' })
+    expect(sq.find((r) => r.action === '同意扩容')).toMatchObject({ target: 'zhaomin', detail: '5 GB → 10 GB' })
+    expect(sq.find((r) => r.target === 'liuqiang')).toMatchObject({ action: '拒绝扩容', detail: '申请说明过于简单，请补充使用场景和预计增量后重新提交。' })
   })
 })
 
 describe('强制回收种子与「已回收」样例对象一一对应（待办 yuepu#83：demo 打开即能看到已回收标签 / 访问审计记录）', () => {
   const seedRevokes = () => opsRecords.filter((r) => r.action === '强制回收' && !r.live)
 
-  it('种子里有技能与 API 各一条强制回收记录，客户端视图（§6.5.1）带对象标识与回收原因', () => {
-    expect(seedRevokes().map((r) => r.module).sort()).toEqual(['API', '技能'])
-    const views = listClientFacingOps().filter((r) => r.kind === 'forceRevoke')
-    expect(views.map((v) => [v.objectType, v.objectId, v.objectName]).sort()).toEqual([
-      ['API', 'api_1104', '新增客户跟进'],
-      ['技能', 'sk_306', '公文润色']
+  it('种子里有技能与 API 各一条强制回收记录：操作对象 = 对象名称，变更内容 = 回收原因', () => {
+    expect(seedRevokes().map((r) => [r.module, r.target]).sort()).toEqual([
+      ['API', '新增客户跟进'],
+      ['技能', '公文润色']
     ])
+    for (const r of seedRevokes()) expect(r.detail).toBeTruthy()
   })
 
   it('技能 sk_306：未发布且带 revoked，回收原因 / 版本号与审计记录一致', async () => {
-    const rec = seedRevokes().find((r) => r.objectId === 'sk_306')
+    const rec = seedRevokes().find((r) => r.module === '技能')
     const detail = await skillMock.getSkillDetail('sk_306')
     expect(detail.name).toBe(rec.target)
     expect(detail.revoked).toMatchObject({ reason: rec.detail })
@@ -295,7 +197,7 @@ describe('强制回收种子与「已回收」样例对象一一对应（待办 
   })
 
   it('API api_1104：未发布且带 revoked，回收原因 / 名称与审计记录一致；仍被 402 岗位引用（引用关系保留）', () => {
-    const rec = seedRevokes().find((r) => r.objectId === 'api_1104')
+    const rec = seedRevokes().find((r) => r.module === 'API')
     const row = listApisSync().find((a) => a.id === 'api_1104')
     expect(row.status).toBe('NOT_PUBLISHED')
     expect(row.name).toBe(rec.target)

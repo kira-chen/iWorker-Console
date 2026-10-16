@@ -58,9 +58,3 @@ export function nowIsoLocal() {
   )
 }
 
-/** 当前时刻 → `YYYY-MM-DD HH:mm:ss`（本地墙钟，精确到秒；访问审计记录数据层的「操作时间」用，页面展示仍走分钟）。 */
-export function nowSecondText() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${fmtMinute(d)}:${pad(d.getSeconds())}`
-}
