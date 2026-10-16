@@ -46,7 +46,6 @@ const store = reactive({
   removeAgent: vi.fn(),
   assignSkillToAgent: vi.fn(),
   detachSkillFromAgent: vi.fn(),
-  reorderSkillsLocal: vi.fn(),
   patchSkill: vi.fn()
 })
 vi.mock('@/stores/position', () => ({ usePositionStore: () => store }))
