@@ -78,7 +78,6 @@ const props = defineProps({
   skill: { type: Object, default: null },
   loading: { type: Boolean, default: false },
   loadError: { type: Boolean, default: false },
-  positionName: { type: String, default: '岗位' }, // 已不再展示（顶行无岗位标签，yuepu#63⑤），仅保留入参兼容
   positionId: { type: [Number, String], default: null },
   // showClose / closeLabel 已退役（2026-09-12 审计 J14）：唯一挂载点 AdminSkillEditPage 恒传 false，
   // true 侧（岗位面包屑 / ↩ 返回总览 / 删除 ⋯）零可达；返回统一走 backLabel + emit('back')。
