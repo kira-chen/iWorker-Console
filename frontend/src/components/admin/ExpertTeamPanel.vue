@@ -57,7 +57,7 @@ const STATE_OPTIONS = [
 
 const query = reactive({ keyword: '', type: '', category: '', status: '', sort: 'desc' })
 const list = useAdminList(listTeams, { params: () => ({ ...query }) })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 const fetchList = list.reload
 const reload = list.search
 
@@ -286,6 +286,7 @@ async function confirmStop({ forceRevoke, reason }) {
       <ListStates
         :loading="loading"
         :error="loadError"
+        :error-message="loadErrorMessage"
         :empty="isEmpty"
         empty-text="还没有专家团，点击「新建专家团」创建第一个"
         @retry="fetchList"

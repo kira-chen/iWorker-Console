@@ -243,7 +243,7 @@ async function submitBatch() {
     </ListToolbar>
 
     <div class="table-wrap">
-      <ListStates :loading="loading" :error="loadError" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
+      <ListStates :loading="loading" :error="loadError" :error-message="list.loadErrorMessage" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
         <el-table ref="tableRef" v-loading="loading" :data="rows" row-key="userId" :row-class-name="rowClass" @selection-change="onSelectionChange">
           <el-table-column type="selection" width="44" :selectable="canSelect" />
           <!-- 列宽、不换行、空值占位照全站列表规范（utils/tableLayout）；用户名加粗 + 显示名分列，同用户页 -->
