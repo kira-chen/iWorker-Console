@@ -304,15 +304,11 @@ describe('ApiEditor · 抽屉骨架（md API §三.2 ~ §三.5）', () => {
     }
   })
 
-  it('基本信息卡有「状态」启用 / 停用 radio，附「停用后技能不再可引用该 API」提示（md §三.4「启用 / 停用状态：必填，默认启用」）', async () => {
+  it('编辑页不展示「状态」启用 / 停用录入（2026-10-16 浦月指示删除）', async () => {
     const el = await mountEditor(API)
-    const basic = cardOfTitle(el, '基本信息')
-    const item = [...basic.querySelectorAll('.el-form-item')].find((f) => f.dataset.label === '状态')
-    expect(item).toBeTruthy()
-    const radios = [...item.querySelectorAll('.el-radio')]
-    expect(radios.map((r) => r.textContent.trim())).toEqual(['启用', '停用'])
-    expect(radios.map((r) => r.dataset.value)).toEqual(['true', 'false'])
-    expect(item.textContent).toContain('停用后技能不再可引用该 API')
+    const labels = [...el.querySelectorAll('.el-form-item')].map((f) => f.dataset.label)
+    expect(labels).not.toContain('状态')
+    expect(el.textContent).not.toContain('停用后技能不再可引用该 API')
   })
 
   it('图标行与示例问题都在基本信息卡内，示例问题不是独立分区（md API §三.2「示例问题：必填，固定 3 条输入行，位于基本信息卡片内」）', async () => {
