@@ -83,7 +83,7 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
     const m = await import('../storageSpaceMock')
     await m.adjustStorageQuota(201, 8)
     const { v, data } = readSnapshot()
-    expect(v).toBe(7)
+    expect(v).toBe(8)
     expect(Object.keys(data).sort()).toEqual(['defaultQuotaGb', 'diskTotalGb', 'members', 'requests'])
     for (const member of data.members) {
       expect(Object.keys(member).sort()).toEqual(['cacheGb', 'finalGb', 'quotaGb', 'statAt', 'userId'])
@@ -114,7 +114,7 @@ describe('storageSpaceMock · 持久化（刷新后读回 / 快照只存业务�
 
   it('本地快照版本对但形状不合法（members 不是数组）→ 兜底回种子，页面不白屏', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { members: 'oops', requests: [] } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { members: 'oops', requests: [] } }))
     const m = await import('../storageSpaceMock')
     expect((await m.getStorageOverview()).pendingCount).toBe(4)
     expect(warn).toHaveBeenCalled()

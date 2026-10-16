@@ -38,12 +38,6 @@ watch(() => query.keyword, () => {
   if (keywordTimer) clearTimeout(keywordTimer)
   keywordTimer = setTimeout(reload, 300)
 })
-// 已挂载后再次跳来：同步搜索词与状态筛选
-watch(() => props.focusKeyword, (kw) => {
-  query.keyword = kw
-  query.status = props.focusStatus
-  reload()
-})
 onBeforeUnmount(() => keywordTimer && clearTimeout(keywordTimer))
 onMounted(list.reload)
 
