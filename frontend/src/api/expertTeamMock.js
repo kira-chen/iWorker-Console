@@ -457,7 +457,7 @@ export async function deleteTeam(id) {
   if (t.status !== 'draft') throw err('已发布的专家团不可删除，需先完成停用审核', null, 409)
   const removed = t.members.length
   teams = teams.filter((x) => x !== t)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '删除', objectId: t.id, target: t.name, version: t.latestVersionLabel })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '删除', target: t.name, version: t.latestVersionLabel })
   delete publications[t.id]
   delete reviewSnapshots[String(t.id)]
   persist()
@@ -608,7 +608,7 @@ export function applyTeamReviewResult(refId, requestAction, approved) {
         // 强制回收：审核通过才生效——打「已回收」标记并落访问审计
         const revokeBy = t.pendingRevokeBy || currentDemoUsername()
         t.revoked = makeRevokedInfo(t.pendingRevokeReason, revokeBy)
-        appendOpsRecord({ operator: revokeBy, module: '专家团', action: '强制回收', objectId: t.id, target: t.name, detail: t.pendingRevokeReason, version: t.latestVersionLabel })
+        appendOpsRecord({ operator: revokeBy, module: '专家团', action: '强制回收', target: t.name, detail: t.pendingRevokeReason, version: t.latestVersionLabel })
       }
     } else {
       const label = t.pendingVersion || 'v1.0.0'

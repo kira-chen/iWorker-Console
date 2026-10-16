@@ -22,7 +22,7 @@ import {
   __resetTeamMock
 } from '../expertTeamMock'
 import { __resetExpertMock, createExpert, deleteExpert, unpublishExpert, applyExpertReviewResult } from '../domainExpertMock'
-import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import { listReviews } from '../reviewsMock'
 
 beforeEach(() => {
@@ -216,14 +216,14 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     await withdrawTeam(301)
     expect(await getTeam(301)).toMatchObject({ status: 'published', pendingAction: null, revoked: null })
     expect(opsRecords.some((r) => r.module === '专家团' && r.action === '强制回收')).toBe(false)
-    // 通过：才回收并落审计，客户端可读
+    // 通过：才回收并落审计
     await unpublishTeam(301, { forceRevoke: true, reason: '团配置异常' })
     expect(applyTeamReviewResult(301, 'DELIST', true)).toBe(true)
     const t = await getTeam(301)
     expect(t).toMatchObject({ status: 'draft', latestVersionLabel: 'v1.0.0' })
     expect(t.revoked.reason).toBe('团配置异常')
     expect(opsRecords.some((r) => r.module === '专家团' && r.action === '强制回收' && r.detail === '团配置异常')).toBe(true)
-    expect(listClientFacingOps().find((r) => r.kind === 'forceRevoke' && r.objectType === '专家团')).toMatchObject({ objectName: '经营研究团', reason: '团配置异常' })
+    expect(opsRecords.find((r) => r.module === '专家团' && r.action === '强制回收')).toMatchObject({ target: '经营研究团', detail: '团配置异常' })
     expect((await getTeam(301)).members.every((m) => !m.unavailable)).toBe(true) // 成员专家不受影响
     // 重新发布审核通过后「已回收」标记清除
     await publishTeam(301, { releaseNotes: '恢复' })

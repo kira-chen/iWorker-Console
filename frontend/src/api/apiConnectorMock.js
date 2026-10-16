@@ -790,7 +790,7 @@ export async function deleteApi(id) {
   }
   // PRD §二.4：软引用——无论是否被技能引用，确认后均可删除
   apis = apis.filter((a) => a.id !== id && a.code !== id)
-  if (a) appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '删除', objectId: a.id, target: a.name })
+  if (a) appendOpsRecord({ operator: currentDemoUsername(), module: 'API', action: '删除', target: a.name })
   persist()
   return {}
 }
@@ -889,7 +889,7 @@ export function applyApiReviewResult(refId, requestAction, approved) {
         // 勾选了强制回收的停用审核通过 → 才打「已回收」并落访问审计（PRD §4）
         const operator = a.pendingRevokeBy || currentDemoUsername() // 旧快照缺 pendingRevokeBy → 兜底当前用户
         a.revoked = makeRevokedInfo(a.pendingRevokeReason, operator)
-        appendOpsRecord({ operator, module: 'API', action: '强制回收', objectId: a.id, target: a.name, detail: a.pendingRevokeReason })
+        appendOpsRecord({ operator, module: 'API', action: '强制回收', target: a.name, detail: a.pendingRevokeReason })
       }
     } else {
       a.status = 'PUBLISHED'

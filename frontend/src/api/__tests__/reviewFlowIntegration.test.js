@@ -259,7 +259,7 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
   })
 
   /* ---------------- 强制回收并入停用（2026-10-12）：五类对象的提交 / 通过 / 驳回 / 撤回联动 ----------------
-   * 强制回收不是独立流程，而是停用弹窗里的勾选项（PRD 审核中心 §5.2、访问审计 §6.2 / §6.5.1、各模块「强制回收（停用时勾选）」）：
+   * 强制回收不是独立流程，而是停用弹窗里的勾选项（PRD 审核中心 §5.2、访问审计 §6.2、各模块「强制回收（停用时勾选）」）：
    * 提交后对象仍已发布、审核中；只有审核**通过**才回收生效并写访问审计；驳回 / 撤回无任何回收后果。
    * 注意：这里不断言审计的“操作人”（口径由另一处改动负责）。
    */
@@ -370,9 +370,6 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
       expect(ops).toHaveLength(1)
       expect(ops[0]).toMatchObject({ module: k.auditModule, action: '强制回收', target: st.name, detail: REASON })
       expect(await stopOps()).toHaveLength(0)
-      const view = (await import('../accessAuditMock')).listClientFacingOps().filter((r) => r.kind === 'forceRevoke' && r.objectName === st.name) // 种子里另有「已回收」样例的审计
-      expect(view).toHaveLength(1)
-      expect(view[0]).toMatchObject({ kind: 'forceRevoke', objectType: k.auditModule, objectName: st.name, reason: REASON })
     })
 
     it.each(TYPES)('%s：审核驳回 → 对象仍已发布、无回收标记；申请变已驳回；访问审计没有强制回收记录', async (type) => {

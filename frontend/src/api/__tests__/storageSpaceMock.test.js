@@ -16,22 +16,20 @@ import {
   getStorageOverview, listStorageMembers, adjustStorageQuota, batchAdjustStorageQuota,
   listExpansionRequests, getExpansionRequest, approveExpansionRequest, rejectExpansionRequest, __resetStorageSpaceMock
 } from '../storageSpaceMock'
-import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import { quotaInputError } from '../../utils/storageSpace'
 import { listUsersSync, createUser, updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
 import { setUserPosition, getAssignmentByUserId, __resetPositionAssignmentMock } from '../positionAssignmentMock'
 
 // 2026-10-09 对齐 docs/PRD/数字员工管理端PRD/04运行/存储空间/prd.存储空间.md（§一·4 状态判定 / §三 容量分配 / §四 扩容申请 / §五 用户联动 / §六 审计）
-// 与 05治理/访问审计 §6.2 / §6.5.4。覆盖：状态与排序、调整 / 批量 / 恢复默认、有待处理申请不可调整、申请处理与并发、
-// 审计记录与客户端视图、与用户 / 岗位模块联动（reconcile）、种子自洽；持久化与读回见 storageSpaceMockPersist.test.js。
+// 与 05治理/访问审计 §6.2。覆盖：状态与排序、调整 / 批量 / 恢复默认、有待处理申请不可调整、申请处理与并发、
+// 审计记录、与用户 / 岗位模块联动（reconcile）、种子自洽；持久化与读回见 storageSpaceMockPersist.test.js。
 //
 // 种子速查（员工 id 取自 adminUserMock 种子，用户名 → id）：zhangwei 201 / li.na 202 / chenyu 203 / wangfang 204 /
 // sun.xin 206 / liuqiang 207 / zhaomin 208 / hejing 210 / xulin 212 / yangfan 209（未统计）/ ma.chao 213（未统计）；停用的 zhouming 205、wujie 211 不进清单。
 // 默认 5 GB；待处理 4 条：刘强 ER-1003、孙欣 ER-1004（预警：申请后自行清了空间）、王芳 ER-1005、陈宇 ER-1006；
 // 已处理 4 条：赵敏同意（个人 10 GB）、何静 / 刘强 / 孙欣被拒；徐琳个人 8 GB 且已满；李娜预警；张伟正常。
 const liveOps = () => opsRecords.filter((r) => r.live && r.module === '存储空间')
-// 客户端读取视图里本次测试新产生的存储空间记录（种子记录的 recordId < 100，排除掉）
-const liveClientOps = () => listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.recordId >= 100)
 const memberOf = async (username) => (await listStorageMembers({ size: 50 })).list.find((m) => m.username === username)
 
 beforeEach(() => {
@@ -89,14 +87,13 @@ describe('storageSpaceMock —— 容量口径与状态判定', () => {
 })
 
 describe('storageSpaceMock —— 访问审计可见性', () => {
-  it('同意 / 拒绝扩容 / 调整容量三类审计记录都写进访问审计（都不带 hidden，页面全展示）；客户端读取视图三类都在', async () => {
+  it('同意 / 拒绝扩容 / 调整容量三类审计记录都写进访问审计（都不带 hidden，页面全展示）', async () => {
     await approveExpansionRequest('ER-1006', 10)
     await rejectExpansionRequest('ER-1005', '先清理历史产物')
     await adjustStorageQuota(201, 8)
     const byAction = Object.fromEntries(liveOps().map((r) => [r.action, r]))
     expect(Object.keys(byAction).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
     for (const r of Object.values(byAction)) expect(r).not.toHaveProperty('hidden')
-    expect(liveClientOps().map((r) => r.type).sort()).toEqual(['同意扩容', '拒绝扩容', '调整容量'])
   })
 })
 
@@ -104,7 +101,7 @@ describe('storageSpaceMock —— 调整容量', () => {
   it('单个调整后总量与容量来源更新，并写「调整容量」（变更内容「原总量 → 新总量」）', async () => {
     await adjustStorageQuota(201, 8)
     expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 8, quotaSource: 'PERSONAL' })
-    expect(liveOps()[0]).toMatchObject({ action: '调整容量', target: 'zhangwei', detail: '5 GB → 8 GB', objectId: 201 })
+    expect(liveOps()[0]).toMatchObject({ action: '调整容量', target: 'zhangwei', detail: '5 GB → 8 GB' })
   })
 
   it('总量没变不写审计，也不改变容量来源：默认员工填 1 仍是「默认」，不会悄悄变成个人设置', async () => {
@@ -234,15 +231,12 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect((await listExpansionRequests({ status: 'PENDING', size: 10 })).total).toBe(4)
   })
 
-  it('同意：员工总量变为新总量，申请记已同意并写「同意扩容」，客户端字段带申请单标识与新总量', async () => {
+  it('同意：员工总量变为新总量，申请记已同意并写「同意扩容」（操作对象 = 员工用户名，变更内容「原总量 → 新总量」）', async () => {
     await approveExpansionRequest('ER-1006', 12)
     expect(await memberOf('chenyu')).toMatchObject({ totalGb: 12, state: 'NORMAL', pendingRequestId: null })
     const req = await getExpansionRequest('ER-1006')
     expect(req).toMatchObject({ status: 'APPROVED', newTotalGb: 12, handler: 'demo' })
-    expect(liveOps()[0]).toMatchObject({ action: '同意扩容', detail: '5 GB → 12 GB' })
-    expect(liveClientOps()[0]).toMatchObject({
-      type: '同意扩容', username: 'chenyu', userId: 203, requestId: 'ER-1006', newTotalGb: 12
-    })
+    expect(liveOps()[0]).toMatchObject({ action: '同意扩容', target: 'chenyu', detail: '5 GB → 12 GB' })
   })
 
   it('员工在申请待处理期间自行清出空间、不再满：申请仍待处理，管理员可照常同意（md 四·5）', async () => {
@@ -258,7 +252,6 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     persistHarness.options.restore(snap)
     await approveExpansionRequest('ER-1006', 12)
     expect(liveOps()[0]).toMatchObject({ action: '同意扩容', detail: '8 GB → 12 GB' })
-    expect(liveClientOps()[0]).toMatchObject({ type: '同意扩容', newTotalGb: 12 })
   })
 
   it('同意：新总量必须大于当前总量且在范围内', async () => {
@@ -280,10 +273,9 @@ describe('storageSpaceMock —— 扩容申请处理', () => {
     expect(await getExpansionRequest('ER-1006')).toMatchObject({ status: 'REJECTED', rejectReason: '请先清理历史产物', handler: 'demo' })
   })
 
-  it('拒绝成功：审计记「拒绝扩容」（变更内容 = 拒绝原因），客户端视图带拒绝原因', async () => {
+  it('拒绝成功：审计记「拒绝扩容」（变更内容 = 拒绝原因）', async () => {
     await rejectExpansionRequest('ER-1006', '请先清理历史产物')
     expect(liveOps()[0]).toMatchObject({ action: '拒绝扩容', target: 'chenyu', detail: '请先清理历史产物' })
-    expect(liveClientOps()[0]).toMatchObject({ type: '拒绝扩容', rejectReason: '请先清理历史产物' })
   })
 
   it('500 字刚好允许', async () => {
@@ -409,11 +401,11 @@ describe('storageSpaceMock —— 种子自洽（与用户 / 岗位 / 访问审�
     }
   })
 
-  it('已处理的申请在访问审计种子里有对应的审计记录（处理人、时间、申请单标识一致），个人设置的徐琳有「调整容量」记录', async () => {
+  it('已处理的申请在访问审计种子里有对应的审计记录（处理人、时间、员工一致），个人设置的徐琳有「调整容量」记录', async () => {
     const reqs = (await listExpansionRequests({ size: 50 })).list.filter((r) => r.status !== 'PENDING')
     const seeds = opsRecords.filter((r) => r.module === '存储空间' && !r.live)
     for (const r of reqs) {
-      const rec = seeds.find((x) => x.meta?.requestId === r.id)
+      const rec = seeds.find((x) => x.target === r.username && x.time === r.handledAt)
       expect(rec, `申请 ${r.id} 应有审计种子`).toBeTruthy()
       expect(rec).toMatchObject({ operator: r.handler, time: r.handledAt, target: r.username })
       expect(rec.action).toBe(r.status === 'APPROVED' ? '同意扩容' : '拒绝扩容')
@@ -458,16 +450,11 @@ describe('storageSpaceMock —— 默认容量与磁盘总量（2026-10-12）', 
     expect(res).toEqual({ defaultQuotaGb: 3, count: 2 })
     expect(await memberOf('yangfan')).toMatchObject({ totalGb: 3, quotaSource: 'DEFAULT' })
     expect(await memberOf('zhangwei')).toMatchObject({ totalGb: 5, quotaSource: 'PERSONAL' })
-    // 只写 1 条全局记录「修改默认容量」（对象「默认容量」，不带用户标识、不逐人写「调整容量」）
+    // 只写 1 条全局记录「修改默认容量」（对象「默认容量」，不逐人写「调整容量」）
     expect(liveOps().filter((r) => r.action === '调整容量')).toHaveLength(0)
     const global = liveOps().filter((r) => r.action === '修改默认容量')
     expect(global).toHaveLength(1)
     expect(global[0]).toMatchObject({ target: '默认容量', detail: '1 GB → 3 GB', operator: 'demo' })
-    expect(global[0].objectId).toBeUndefined()
-    // 客户端要读这条：type「修改默认容量」、无用户、newTotalGb = 新默认值
-    const fromClient = listClientFacingOps().filter((r) => r.kind === 'storageQuota' && r.type === '修改默认容量')
-    expect(fromClient).toHaveLength(1)
-    expect(fromClient[0]).toMatchObject({ username: null, userId: null, newTotalGb: 3, requestId: null })
     expect(await getStorageOverview()).toMatchObject({ defaultQuotaGb: 3, allocatedGb: 59, remainingGb: 941 })
   })
 

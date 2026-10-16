@@ -8,7 +8,7 @@ import {
   listAccessRequests, approveAccessRequest, rejectAccessRequest, submitAccessRequestAsEmployee, __resetUserAccessMock,
   listAccessOperations, accessOperationRecords
 } from '../userAccessMock'
-import { opsRecords, resetAccessAuditMock, listClientFacingOps } from '../accessAuditMock'
+import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import { listUsersSync, createUser, updateUser, deleteUser, __resetOrgMock } from '../adminUserMock'
 import { REJECT_REASON_MAX } from '../../utils/userAccess'
 
@@ -21,7 +21,6 @@ import { REJECT_REASON_MAX } from '../../utils/userAccess'
 // 有待处理申请 2 项（授权状态仍是未授权）：陈宇本机 UA-1004、王芳云端 UA-1003；其余未授权。
 // 已处理申请 2 条：李娜 UA-1002（本机）已通过、刘强 UA-1001（本机）已驳回。
 const liveOps = () => opsRecords.filter((r) => r.live && r.module === '用户访问权限')
-const liveClientOps = () => listClientFacingOps().filter((r) => r.kind === 'userAccess' && r.recordId >= 100)
 const ALL = { size: 100 }
 const memberOf = async (username) => (await listAccessMembers(ALL)).list.find((m) => m.username === username)
 const stateOf = async (username, env) => (await memberOf(username)).envs[env].state
@@ -111,8 +110,8 @@ describe('设置授权 / 批量授权（一位员工可同时授权本机与云�
     await updateAccess(id, { grant: ['LOCAL', 'CLOUD'] })
     expect(await stateOf('sun.xin', 'LOCAL')).toBe('GRANTED')
     expect(await stateOf('sun.xin', 'CLOUD')).toBe('GRANTED')
-    expect(liveOps().map((r) => `${r.action}:${r.meta.env}:${r.detail}`).sort()).toEqual([
-      '授权:CLOUD:未授权 → 已授权（云端）', '授权:LOCAL:未授权 → 已授权（本机）'
+    expect(liveOps().map((r) => `${r.action}:${r.target}:${r.detail}`).sort()).toEqual([
+      '授权:sun.xin:未授权 → 已授权（云端）', '授权:sun.xin:未授权 → 已授权（本机）'
     ])
   })
 
@@ -129,7 +128,7 @@ describe('设置授权 / 批量授权（一位员工可同时授权本机与云�
     await updateAccess(id, { grant: ['CLOUD'], revoke: ['LOCAL'] })
     expect(await stateOf('li.na', 'LOCAL')).toBe('NONE')
     expect(await stateOf('li.na', 'CLOUD')).toBe('GRANTED')
-    expect(liveOps().map((r) => `${r.action}:${r.meta.env}`).sort()).toEqual(['授权:CLOUD', '收回:LOCAL'])
+    expect(liveOps().map((r) => `${r.action}:${r.detail}`).sort()).toEqual(['授权:未授权 → 已授权（云端）', '收回:已授权 → 未授权（本机）'])
     expect(liveOps().find((r) => r.action === '收回')).toMatchObject({ detail: '已授权 → 未授权（本机）' })
   })
 
@@ -203,7 +202,7 @@ describe('权限申请（按环境）', () => {
     expect(await stateOf('chenyu', 'CLOUD')).toBe('NONE')
     const req = (await listAccessRequests({ keyword: 'chenyu' })).list[0]
     expect(req).toMatchObject({ status: 'APPROVED', handler: expect.any(String) })
-    expect(liveOps()[0]).toMatchObject({ action: '通过申请', target: 'chenyu', detail: '未授权 → 已授权（申请通过·本机）', meta: { requestId: 'UA-1004', env: 'LOCAL' } })
+    expect(liveOps()[0]).toMatchObject({ action: '通过申请', target: 'chenyu', detail: '未授权 → 已授权（申请通过·本机）' })
   })
 
   it('驳回：原因必填、限 500 字；驳回后该环境回未授权，可再申请', async () => {
@@ -211,7 +210,7 @@ describe('权限申请（按环境）', () => {
     await expect(rejectAccessRequest('UA-1004', 'x'.repeat(REJECT_REASON_MAX + 1))).rejects.toMatchObject({ code: 40001 })
     await rejectAccessRequest('UA-1004', '用途不明确')
     expect(await stateOf('chenyu', 'LOCAL')).toBe('NONE')
-    expect(liveOps()[0]).toMatchObject({ action: '驳回申请', detail: '用途不明确', meta: { env: 'LOCAL' } })
+    expect(liveOps()[0]).toMatchObject({ action: '驳回申请', target: 'chenyu', detail: '用途不明确' })
     const id = (await memberOf('chenyu')).userId
     await expect(submitAccessRequestAsEmployee(id, 'LOCAL', '补充说明')).resolves.toMatchObject({ status: 'PENDING', env: 'LOCAL' })
     expect(await hasPending('chenyu', 'LOCAL')).toBe(true)
@@ -264,26 +263,26 @@ describe('与用户模块联动', () => {
   })
 })
 
-describe('落给客户端的数据', () => {
-  it('四类动作都出现在客户端视图，带用户标识、运行环境、申请单标识与驳回原因', async () => {
+describe('访问审计记录（页面展示字段）', () => {
+  it('四类动作都写进访问审计：操作对象 = 员工用户名，变更内容带运行环境，驳回的变更内容 = 驳回原因', async () => {
     await updateAccess((await memberOf('sun.xin')).userId, { grant: ['LOCAL'] })
     await updateAccess((await memberOf('zhangwei')).userId, { revoke: ['CLOUD'] })
     await approveAccessRequest('UA-1004')
     await rejectAccessRequest('UA-1003', '请补充用途')
-    const types = liveClientOps().map((r) => r.type).sort()
-    expect(types).toEqual(['授权', '收回', '通过申请', '驳回申请'].sort())
-    const rejected = liveClientOps().find((r) => r.type === '驳回申请')
-    expect(rejected).toMatchObject({ username: 'wangfang', env: 'CLOUD', requestId: 'UA-1003', rejectReason: '请补充用途' })
-    expect(typeof rejected.userId).toBe('number')
-    const revoked = liveClientOps().find((r) => r.type === '收回')
-    expect(revoked).toMatchObject({ env: 'CLOUD', requestId: null, rejectReason: '' })
+    expect(liveOps().map((r) => `${r.action}:${r.target}:${r.detail}`).sort()).toEqual([
+      '授权:sun.xin:未授权 → 已授权（本机）',
+      '收回:zhangwei:已授权 → 未授权（云端）',
+      '通过申请:chenyu:未授权 → 已授权（申请通过·本机）',
+      '驳回申请:wangfang:请补充用途'
+    ].sort())
   })
 
   it('审计种子与授权、申请种子一致（含运行环境）', () => {
-    const seeds = listClientFacingOps().filter((r) => r.kind === 'userAccess' && r.recordId < 100)
-    expect(seeds.map((r) => `${r.type}:${r.username}:${r.env}`).sort()).toEqual([
-      '授权:zhangwei:CLOUD', '授权:zhangwei:LOCAL', '授权:zhaomin:CLOUD', '授权:zhaomin:LOCAL',
-      '通过申请:li.na:LOCAL', '驳回申请:liuqiang:LOCAL'
+    const seeds = opsRecords.filter((r) => r.module === '用户访问权限' && !r.live)
+    expect(seeds.map((r) => `${r.action}:${r.target}:${r.detail}`).sort()).toEqual([
+      '授权:zhangwei:未授权 → 已授权（云端）', '授权:zhangwei:未授权 → 已授权（本机）',
+      '授权:zhaomin:未授权 → 已授权（云端）', '授权:zhaomin:未授权 → 已授权（本机）',
+      '通过申请:li.na:未授权 → 已授权（申请通过·本机）', '驳回申请:liuqiang:当前任务无需完全访问，如确有需要请说明用途后重新申请。'
     ].sort())
   })
 })

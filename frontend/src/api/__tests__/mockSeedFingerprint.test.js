@@ -31,7 +31,7 @@ vi.mock('@/api/mockPersist', async (importOriginal) => ({
 
 /** 登记表：moduleKey → 当前持久化版本号 + 种子指纹。改种子时按本文件头注的步骤同步更新。 */
 const FINGERPRINTS = {
-  accessAuditOps: { version: 2, fp: 'ebadc885' },
+  accessAuditOps: { version: 3, fp: 'ebadc885' },
   adminModel: { version: 2, fp: '2887e06b' },
   adminUser: { version: 6, fp: '160798e0' },
   apiConnector: { version: 7, fp: 'aca4ffcf' },

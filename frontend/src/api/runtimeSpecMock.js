@@ -289,7 +289,7 @@ export async function deleteRuntimeSpec(id) {
   const liveDirectCount = s.directUsers.filter((u) => liveUserIds.has(Number(u.userId))).length
   if (liveDirectCount) throw err(`该规格存在 ${liveDirectCount} 个个人配置或待审批申请，请先处理后再删除`, 40004)
   specs.splice(specs.indexOf(s), 1)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '运行规格', action: '删除', objectId: s.id, target: s.name })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '运行规格', action: '删除', target: s.name })
   persist()
   return true
 }

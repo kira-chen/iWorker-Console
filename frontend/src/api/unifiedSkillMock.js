@@ -575,7 +575,7 @@ export async function removeSkill(id) {
   }
   const i = skills.indexOf(s)
   skills.splice(i, 1)
-  appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '删除', objectId: s.id, target: s.name, version: s.version })
+  appendOpsRecord({ operator: currentDemoUsername(), module: '技能', action: '删除', target: s.name, version: s.version })
   persist()
   return { skillId: id }
 }
@@ -746,7 +746,7 @@ export function applySkillReviewResult(refId, requestAction, approved) {
         // 强制回收审核通过才生效（PRD 技能 §3.5.1）：写「已回收」标记 + 落访问审计
         const revokeBy = s.pendingRevokeBy || currentDemoUsername() // 旧快照缺该键时兜底当前用户
         s.revoked = makeRevokedInfo(s.pendingRevokeReason, revokeBy)
-        appendOpsRecord({ operator: revokeBy, module: '技能', action: '强制回收', objectId: s.id, target: s.name, detail: s.pendingRevokeReason, version: s.version })
+        appendOpsRecord({ operator: revokeBy, module: '技能', action: '强制回收', target: s.name, detail: s.pendingRevokeReason, version: s.version })
       }
     } else {
       const label = s.pendingVersion || 'v1.0.0'

@@ -129,24 +129,22 @@ describe('positionAssignmentMock · 持久化读回（mockPersist v2；写点 se
   })
 })
 
-describe('positionAssignmentMock · 写访问审计（prd.访问审计.md §6.2「岗位分配记录」、§6.5.3）', () => {
+describe('positionAssignmentMock · 写访问审计（prd.访问审计.md §6.2「岗位分配记录」）', () => {
   const assignRecs = () => opsRecords.filter((r) => r.live && r.module === '岗位分配')
 
-  it('首绑记「分配」：target=用户名，detail=「未绑定 → 新岗位」，objectId=用户 id，meta 带前后岗位（原岗位 null）', async () => {
+  it('首绑记「分配」：target=用户名，detail=「未绑定 → 新岗位」', async () => {
     await setUserPosition(203, 402) // chenyu 原未绑定
     expect(assignRecs()).toHaveLength(1)
     expect(assignRecs()[0]).toMatchObject({
-      module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 客户成功岗', objectId: 203,
-      meta: { userId: 203, username: 'chenyu', fromPosition: null, toPosition: { id: 402, name: '客户成功岗' } }
+      module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 客户成功岗'
     })
     expect(assignRecs()[0].operator).toBeTruthy()
   })
 
-  it('换绑记「变更」：detail=「原岗位 → 新岗位」，meta 带原岗位名称与标识', async () => {
+  it('换绑记「变更」：detail=「原岗位 → 新岗位」', async () => {
     await setUserPosition(201, 402) // zhangwei 401 经营分析岗 → 402 客户成功岗
     expect(assignRecs()[0]).toMatchObject({
-      action: '变更', target: 'zhangwei', detail: '经营分析岗 → 客户成功岗', objectId: 201,
-      meta: { fromPosition: { id: 401, name: '经营分析岗' }, toPosition: { id: 402, name: '客户成功岗' } }
+      action: '变更', target: 'zhangwei', detail: '经营分析岗 → 客户成功岗'
     })
   })
 

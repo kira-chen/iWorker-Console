@@ -9,8 +9,8 @@
  * 用量（最终产物 + 缓存）由员工端在登录等四个时点统计后上报，管理端只读展示最近一次结果，所以这里只维护快照，
  * 不模拟统计过程；管理端能写的只有「容量」和「申请处理结果」。
  *
- * 管理端操作写进访问审计（模块「存储空间」，PRD 访问审计 §6.2 / §6.5.4）：
- *  同意扩容 / 拒绝扩容 / 调整容量，访问审计页都展示，也都是客户端通知的来源。
+ * 管理端操作写进访问审计（模块「存储空间」，PRD 访问审计 §6.2）：
+ *  同意扩容 / 拒绝扩容 / 调整容量，访问审计页都展示。
  *
  * 有待处理扩容申请的员工，容量只能经申请处理（同意 / 拒绝）改变，不能在容量分配页直接调整——
  * 页面上该行的操作是「待处理」而不是「调整容量」，批量设置也只作用于没有待处理申请的员工；mock 同样拦截，防绕过页面。
@@ -283,21 +283,19 @@ function findMember(userId) {
 }
 
 /* ---------------- 访问审计 ---------------- */
-function audit(action, m, detail, extra = {}) {
+function audit(action, m, detail) {
   appendOpsRecord({
     operator: currentDemoUsername(),
     module: '存储空间',
     action,
     target: m.username,
-    detail,
-    objectId: m.userId,
-    meta: { userId: m.userId, username: m.username, ...extra }
+    detail
   })
 }
 
-/** 全局设置（默认容量 / 磁盘总量）的审计：对象是设置项而非员工，不带用户标识；「修改默认容量」带新默认值，客户端据此处理所有跟随默认的员工（访问审计 §6.5.4），「修改磁盘总量」客户端不读取。 */
-function auditGlobal(action, target, detail, meta) {
-  appendOpsRecord({ operator: currentDemoUsername(), module: '存储空间', action, target, detail, ...(meta ? { meta } : {}) })
+/** 全局设置（默认容量 / 磁盘总量）的审计：对象是设置项而非员工，target 写设置项名称。 */
+function auditGlobal(action, target, detail) {
+  appendOpsRecord({ operator: currentDemoUsername(), module: '存储空间', action, target, detail })
 }
 
 /* ---------------- 容量分配 ---------------- */
@@ -337,7 +335,7 @@ function applyQuota(m, nextTotal, { restoreDefault = false } = {}) {
   m.quotaGb = restoreDefault ? null : nextTotal
   const total = totalOf(m)
   if (total === prevTotal) return false
-  audit('调整容量', m, `${prevTotal} GB → ${total} GB`, { fromGb: prevTotal, newTotalGb: total })
+  audit('调整容量', m, `${prevTotal} GB → ${total} GB`)
   return true
 }
 
@@ -348,7 +346,7 @@ function closePending(request, newTotalGb, prevTotal) {
   request.newTotalGb = newTotalGb
   request.handler = currentDemoUsername()
   request.handledAt = now()
-  audit('同意扩容', member, `${prevTotal} GB → ${newTotalGb} GB`, { requestId: request.id, fromGb: prevTotal, newTotalGb })
+  audit('同意扩容', member, `${prevTotal} GB → ${newTotalGb} GB`)
 }
 
 /** 有待处理申请的员工不能在容量分配页调整，先去扩容申请页签同意或拒绝。 */
@@ -454,7 +452,7 @@ export async function rejectExpansionRequest(id, reason) {
   r.rejectReason = text
   r.handler = currentDemoUsername()
   r.handledAt = now()
-  audit('拒绝扩容', findMember(r.userId), text, { requestId: r.id })
+  audit('拒绝扩容', findMember(r.userId), text)
   persist()
   return clone(r)
 }
@@ -479,7 +477,7 @@ export async function setDefaultQuota(quotaGb) {
   const prev = defaultQuotaGb
   defaultQuotaGb = next
   if (prev !== next) {
-    auditGlobal('修改默认容量', '默认容量', `${prev} GB → ${next} GB`, { fromGb: prev, newTotalGb: next })
+    auditGlobal('修改默认容量', '默认容量', `${prev} GB → ${next} GB`)
   }
   persist()
   return { defaultQuotaGb, count: prev === next ? 0 : followers.length }
