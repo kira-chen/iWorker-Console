@@ -22,8 +22,9 @@ import { useAdminList } from './useAdminList'
  * @param {Array} options.records 同一份全量数据的同步引用，供统计卡片与导出使用
  * @param {(record:Object)=>boolean} options.matches 页签自己的筛选条件
  * @param {(record:Object)=>Array<string>} options.keywordOf 关键词搜索的字段
+ * @param {string} [options.initialKeyword] 初始搜索词（页面带入时用）：首次取数前就生效，避免「先查全量、再按词查」多取一次
  */
-export function useAuditList({ fetcher, records, matches, keywordOf }) {
+export function useAuditList({ fetcher, records, matches, keywordOf, initialKeyword = '' }) {
   /* ── 时间范围 ── */
   const dateRange = ref(defaultRange())
   const pickFirst = ref(null)
@@ -38,8 +39,8 @@ export function useAuditList({ fetcher, records, matches, keywordOf }) {
   /* ── 排序与搜索 ── */
   const sortDir = ref('desc')
   const sortArrow = computed(() => (sortDir.value === 'desc' ? '↓' : '↑'))
-  const keyword = ref('')
-  const appliedKeyword = ref('')
+  const keyword = ref(initialKeyword)
+  const appliedKeyword = ref(String(initialKeyword).trim().toLowerCase())
 
   function filterRecords(all, { skipMatches = false } = {}) {
     const kw = appliedKeyword.value

@@ -8,7 +8,6 @@
  * - eqShowErrors 由父层 provide（发布编排在父层：openPublish 发现示例问题缺失时置红）。
  */
 import { ref, computed, inject } from 'vue'
-import { ElMessage } from 'element-plus'
 import { usePositionStore } from '@/stores/position'
 import {
   normalizeExampleQuestions,
@@ -18,7 +17,7 @@ import {
   EXAMPLE_Q_MAX_LEN,
   SOP_MAX_LEN
 } from '@/utils/positionModel'
-// 「生成中…」按钮文案走全站共享常量（本页原先硬写三个 ASCII 点，与其余 5 个编辑器不一致）
+// AI 生成按钮的「生成中…」文案、防串数据等行为统一走 useAiLiveGenerate（与其余编辑器同一套）
 import { useAiLiveGenerate } from '@/utils/aiLiveGenerate'
 import ClaimNotesEditor from '@/components/position/ClaimNotesEditor.vue'
 import IconField from '@/components/common/IconField.vue'

@@ -450,7 +450,8 @@ function enrollReview(r, pendingAction) {
     name: r.name,
     description: r.description || '',
     requestAction,
-    version: '—'
+    version: '—',
+    submitterName: currentDemoUsername() // 提交人 = 当前登录用户（yuepu#97①，同 reviewEnroll），停用审核通过后访问审计的操作人才对
   })
   submitApplicationRow({
     businessType: 'KNOWLEDGE_BASE',
@@ -459,7 +460,8 @@ function enrollReview(r, pendingAction) {
     description: r.description || '',
     applicationType: requestAction,
     version: '—',
-    versionNotes: pendingAction === 'DELIST' ? '申请停止该知识库对外提供' : '申请发布该知识库'
+    versionNotes: pendingAction === 'DELIST' ? '申请停止该知识库对外提供' : '申请发布该知识库',
+    submitter: currentDemoUsername()
   })
 }
 

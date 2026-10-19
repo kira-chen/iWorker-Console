@@ -245,7 +245,7 @@ describe('myApplicationsMock · 持久化 restore 形状守卫', () => {
   })
 
   it('存量快照版本对但 applications 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 18 条、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 7, data: { applications: { not: 'array' } } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { applications: { not: 'array' } } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../myApplicationsMock')
     expect((await fresh.listMyApplications({ size: 50 })).total).toBe(18)

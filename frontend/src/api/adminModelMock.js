@@ -306,13 +306,18 @@ function validateModelPayload(payload, selfId = null) {
     }
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw err('额外参数须为合法的 JSON 对象', 'extraBody')
   }
-  // 鉴权信息：AppID / AppSecret 方式 app_id 必填（≤200）；新接入时 app_secret 必填（api_key 必填由 createModel 校验）
-  if (payload.authType === 'APP_ID_SECRET') {
+  // 鉴权信息：AppID / AppSecret 方式 app_id 必填（≤200）。
+  // 凭据（api_key / app_secret）在「新接入」或「编辑时换了鉴权方式」时必填（yuepu#98）：编辑留空=保留原密钥，
+  // 但换鉴权方式后旧密钥作废（applyModelPayload），此时再留空就会存出一个没有任何凭据的模型。
+  const authType = payload.authType === 'APP_ID_SECRET' ? 'APP_ID_SECRET' : 'API_KEY'
+  const needCredential = !selfId || (cur && cur.authType !== authType)
+  if (authType === 'APP_ID_SECRET') {
     const appId = (payload.appId || '').trim()
     if (!appId) throw err('app_id 必填', 'appId')
     if (appId.length > APP_ID_MAX) throw err(`app_id 最多 ${APP_ID_MAX} 个字符`, 'appId')
-    if (!selfId && !(payload.appSecret || '').trim()) throw err('app_secret 必填', 'appSecret')
+    if (needCredential && !(payload.appSecret || '').trim()) throw err('app_secret 必填', 'appSecret')
   }
+  if (needCredential && !(payload.apiKey || '').trim()) throw err('api_key 必填', 'apiKey')
 }
 
 // 连接字段是否变更（口径同 ModelConfigEditDialog.connectionChanged）：
@@ -355,8 +360,7 @@ function applyModelPayload(m, payload) {
 
 export async function createModel(payload) {
   await delay(250)
-  validateModelPayload(payload)
-  if (!(payload.apiKey || '').trim()) throw err('api_key 必填', 'apiKey')
+  validateModelPayload(payload) // 含新接入必填 api_key / app_secret
   const m = mkModel({ id: `md_${modelSeq++}`, createdAt: nowIso(), updatedAt: nowIso() })
   applyModelPayload(m, payload)
   models.push(m)

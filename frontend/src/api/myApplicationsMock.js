@@ -69,7 +69,8 @@ let applications = seedRows()
 // version 6（2026-09-18 R1）：种子重写为与审核中心 / 业务对象逐笔一致，旧快照丢弃回种子。
 // version 7（2026-09-20）：新增业务类型「版本管理」（VERSION），种子补 518（Mac v1.2.0），旧快照丢弃回种子。
 const persist = attachPersist('myApplications', {
-  version: 7,
+  // version 8（2026-10-19 待办 yuepu#97②）：同 reviewsMock v9——旧存档里的强制回收申请行申请类型仍是 DELIST，旧快照弃用回种子。
+  version: 8,
   snapshot: () => ({ applications }),
   restore: (d) => {
     if (!d || !Array.isArray(d.applications)) {

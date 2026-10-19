@@ -79,7 +79,9 @@ const showEmpty = computed(() => isEmpty.value)
 /* ---------- 权限树（原型 permissionGroups 形态：[{ scope, groups:[{ name, pages[] }] }]） ---------- */
 const permissionTree = ref([])
 
+const permissionLoading = ref(false) // 权限树加载中：抽屉里显示「加载中」而不是先闪「加载失败」
 async function loadPermissionTree() {
+  permissionLoading.value = true
   try {
     const data = await getPermissionTree()
     permissionTree.value = Array.isArray(data) ? data : data?.list || []
@@ -88,6 +90,8 @@ async function loadPermissionTree() {
     // （2026-09-01 拍板：不再回显裸权限标识）；编辑抽屉内保持其自身失败态文案。
     // 失败不覆盖已加载的树：首次失败时树本就为空；每次开抽屉都会重拉，重拉时的瞬时失败不该把已有的好树清掉，
     // 否则列表权限列整体退成「未开通任何页面」、抽屉也误报失败。
+  } finally {
+    permissionLoading.value = false
   }
 }
 
@@ -278,6 +282,7 @@ async function remove(row) {
       v-model:visible="editorVisible"
       :role="editingRole"
       :permission-tree="permissionTree"
+      :permission-loading="permissionLoading"
       @saved="onSaved"
     />
   </div>

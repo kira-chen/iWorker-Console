@@ -19,7 +19,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import { useAdminList } from '@/composables/useAdminList'
 import UserAccessHandleDialog from '@/components/admin/userAccess/UserAccessHandleDialog.vue'
 import { listAccessMembers, updateAccess, batchGrantAccess, getUserAccessOverview } from '@/api/userAccess'
-import { ACCESS_STATE, GRANT_SOURCE, ENV_LABEL, OPERATION_ENV } from '@/utils/userAccess'
+import { ACCESS_STATE, GRANT_SOURCE, ENV_LABEL, ENVS, OPERATION_ENV } from '@/utils/userAccess'
 import { COL, COL_NOWRAP, NA, opsWidth } from '@/utils/tableLayout'
 
 const props = defineProps({
@@ -30,18 +30,19 @@ const props = defineProps({
 })
 const emit = defineEmits(['open-operation', 'changed'])
 
-const ENVS = Object.keys(ENV_LABEL) // ['LOCAL', 'CLOUD']
-
 const query = reactive({ keyword: props.initialKeyword, state: '', env: '', hasPendingRequest: props.initialPending })
+let keywordTimer = null // 输入防抖计时器（reload 里要清，故声明在前）
 // 处理申请后置顶高亮的员工（一次性：下次主动查询 / 翻页 / 改筛选时清除，同岗位管理）
 const focusUserId = ref(null)
 const list = useAdminList(listAccessMembers, {
   params: () => ({ ...query, ...(focusUserId.value != null ? { focusUserId: focusUserId.value } : {}) })
 })
-const { rows, total, loading, loadError, page, pageSize, isEmpty } = list
+const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
 // 【查询】/ 筛选变化：清置顶、回第 1 页重查
 function reload() {
   focusUserId.value = null
+  // 回车 / 点【查询】已立即查：把还在排队的输入防抖作废，别再多查一次
+  if (keywordTimer) { clearTimeout(keywordTimer); keywordTimer = null }
   return list.search()
 }
 const rowClass = ({ row }) => (focusUserId.value != null && row.userId === focusUserId.value ? 'ua-row-focus' : '')
@@ -66,7 +67,6 @@ function togglePendingFilter() {
   reload()
 }
 
-let keywordTimer = null
 let skipKeywordWatch = false
 watch(() => query.keyword, () => {
   if (skipKeywordWatch) { skipKeywordWatch = false; return }
@@ -80,6 +80,7 @@ onMounted(() => {
 })
 
 function clearFilters() {
+  if (query.keyword) skipKeywordWatch = true // 清空关键词这一下由下面的 reload 立即查，不再排防抖
   query.keyword = ''
   query.state = ''
   query.env = ''
@@ -243,7 +244,7 @@ async function submitBatch() {
     </ListToolbar>
 
     <div class="table-wrap">
-      <ListStates :loading="loading" :error="loadError" :error-message="list.loadErrorMessage" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
+      <ListStates :loading="loading" :error="loadError" :error-message="loadErrorMessage" :empty="isEmpty" :empty-text="emptyText" @retry="list.reload">
         <el-table ref="tableRef" v-loading="loading" :data="rows" row-key="userId" :row-class-name="rowClass" @selection-change="onSelectionChange">
           <el-table-column type="selection" width="44" :selectable="canSelect" />
           <!-- 列宽、不换行、空值占位照全站列表规范（utils/tableLayout）；用户名加粗 + 显示名分列，同用户页 -->

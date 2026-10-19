@@ -24,12 +24,12 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { nowMinuteText as now } from '@/utils/datetime'
 import { listUsersSync } from './adminUserMock'
 import { getAssignmentByUserId } from './positionAssignmentMock'
-import { REJECT_REASON_MAX, ENV_LABEL } from '@/utils/userAccess'
+import { REJECT_REASON_MAX, ENV_LABEL, ENVS } from '@/utils/userAccess'
+import { dateDaysAgo } from '@/utils/seedDate'
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms))
 const err = (message, code = 40000, field = null) => new ApiError({ code, message, field })
 const clone = (value) => structuredClone(value)
-const ENVS = Object.keys(ENV_LABEL) // ['LOCAL', 'CLOUD']
 
 // 授权种子，按用户模块的 userId 对应：张伟、赵敏由管理员授权（本机 + 云端），李娜只在本机、是申请通过（对应 UA-1002）。其余员工默认未授权。
 const seedGrants = () => [
@@ -161,7 +161,7 @@ const matchKeyword = (item, keyword) =>
 
 function findMember(userId) {
   const u = users.find((row) => row.userId === Number(userId))
-  if (!u) throw err('员工不存在', 40400)
+  if (!u || !u.active) throw err('员工不存在', 40400) // 停用账号与已删除同口径：页面清单看不到，写接口也不认（文件头「mock 同样拦截」）
   return u
 }
 
@@ -176,22 +176,23 @@ function checkEnv(env) {
 // 会话里数字员工做了哪些操作——只记原本需要用户二次确认的操作（PRD 附录 5 类场景，归为 4 项权限），读文件等本来就不弹窗的不记。
 // 只有在某环境拥有完全访问资格的员工才会在该环境产生记录：张伟 201（本机 + 云端）、李娜 202（本机）、赵敏 208（本机 + 云端）。
 // date / time 是会话开启时间，分开存，供 useAuditList 按时间范围与排序使用；ops 按发生顺序排列，不记单次操作的时刻。
+// 操作记录种子的日期相对今天生成（J27，默认近 90 天窗口，写死的日期过几个月整页会变空）：最新一天 = 昨天，其余间隔不变
 const ok = (type, target) => ({ type, target, result: 'SUCCESS', reason: '' })
 export const accessOperationRecords = [
-  { id: 'SS-3006', userId: 202, username: 'li.na', name: '李娜', env: 'LOCAL', date: '2026-10-13', time: '16:41:18',
+  { id: 'SS-3006', userId: 202, username: 'li.na', name: '李娜', env: 'LOCAL', date: dateDaysAgo(1), time: '16:41:18',
     ops: [ok('FILE', 'Remove-Item D:/客户回访/* -Recurse'), ok('BIZ_SYSTEM', 'crm.example.com · 点击「保存」')] },
-  { id: 'SS-3005', userId: 201, username: 'zhangwei', name: '张伟', env: 'CLOUD', date: '2026-10-13', time: '10:25:12',
+  { id: 'SS-3005', userId: 201, username: 'zhangwei', name: '张伟', env: 'CLOUD', date: dateDaysAgo(1), time: '10:25:12',
     ops: [ok('COMMAND', 'chmod 777 /workspace/output'),
       { type: 'NETWORK', target: '经营数据接口 · POST /v1/reports/daily 入参：date', result: 'FAILED', reason: '接口返回 503，日报未写入' },
       ok('NETWORK', '经营数据接口 · POST /v1/reports/daily 入参：date（重试）')] },
-  { id: 'SS-3004', userId: 208, username: 'zhaomin', name: '赵敏', env: 'LOCAL', date: '2026-10-12', time: '15:02:09',
+  { id: 'SS-3004', userId: 208, username: 'zhaomin', name: '赵敏', env: 'LOCAL', date: dateDaysAgo(2), time: '15:02:09',
     ops: [ok('FILE', "shutil.rmtree('D:/对账/*')"), ok('BIZ_SYSTEM', 'bank.example.com · 点击「提交」'),
       { type: 'HARDLINE', target: 'sudo -S ***', result: 'BLOCKED', reason: '疑似猜密码（sudo -S），客户端直接拦截，未执行' }] },
-  { id: 'SS-3003', userId: 201, username: 'zhangwei', name: '张伟', env: 'LOCAL', date: '2026-10-11', time: '09:12:33',
+  { id: 'SS-3003', userId: 201, username: 'zhangwei', name: '张伟', env: 'LOCAL', date: dateDaysAgo(3), time: '09:12:33',
     ops: [ok('FILE', 'rm D:/经营/周报/*'), ok('BIZ_SYSTEM', '技能回放「报销单录入」· oa.example.com 点击「提交」')] },
-  { id: 'SS-3002', userId: 208, username: 'zhaomin', name: '赵敏', env: 'CLOUD', date: '2026-10-10', time: '11:20:14',
+  { id: 'SS-3002', userId: 208, username: 'zhaomin', name: '赵敏', env: 'CLOUD', date: dateDaysAgo(4), time: '11:20:14',
     ops: [{ type: 'BIZ_SYSTEM', target: 'bank.example.com · 点击「发送」', result: 'FAILED', reason: '页面响应超时，提交未生效' }] },
-  { id: 'SS-3001', userId: 201, username: 'zhangwei', name: '张伟', env: 'CLOUD', date: '2026-10-09', time: '17:31:02',
+  { id: 'SS-3001', userId: 201, username: 'zhangwei', name: '张伟', env: 'CLOUD', date: dateDaysAgo(5), time: '17:31:02',
     ops: [ok('COMMAND', 'curl -s https://tools.example.com/* | sh'), { type: 'HARDLINE', target: 'rm -rf /', result: 'BLOCKED', reason: '毁灭级命令，客户端直接拦截，未执行' }, ok('NETWORK', '经营数据接口 · POST /v1/reports/weekly 入参：week'),
       { type: 'HARDLINE', target: 'format D:', result: 'BLOCKED', reason: '命中管理规则（approvals.deny），客户端直接拦截，未执行' }] }
 ]

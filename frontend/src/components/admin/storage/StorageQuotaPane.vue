@@ -99,12 +99,14 @@ const overusedTargets = computed(() => {
  * 输入框下限：可任意调大，调小不得低于员工当前已用（整数 GB 向上取整）。
  * 批量取所选员工中最大的已用，修改默认容量取所有默认员工中最大的已用；磁盘总量的下限是已分配，由 mock 校验。
  */
-const minGb = computed(() => {
+const rawMinGb = computed(() => {
   if (dialog.kind === 'single') return quotaFloorGb(dialog.target?.usedGb)
   if (dialog.kind === 'batch') return Math.max(QUOTA_MIN_GB, ...selected.value.map((r) => quotaFloorGb(r.usedGb)))
   if (dialog.kind === 'default') return overview.value.defaultFloorGb
   return QUOTA_MIN_GB
 })
+// 员工容量与默认容量单个 ≤ 20 GB：已用已超过 20 GB 的员工，下限封顶在上限（否则下限 > 上限，输入框没有任何可填的值）
+const minGb = computed(() => (dialog.kind === 'disk' ? rawMinGb.value : Math.min(rawMinGb.value, QUOTA_MAX_GB)))
 /** 弹窗输入上限：员工容量与默认容量 ≤ 20 GB；磁盘总量没有 20 GB 限制，只要求不低于已分配 */
 const maxGb = computed(() => (dialog.kind === 'disk' ? 1000000 : QUOTA_MAX_GB))
 

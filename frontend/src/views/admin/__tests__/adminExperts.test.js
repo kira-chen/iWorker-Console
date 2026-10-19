@@ -322,6 +322,28 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(ElMessage.error).not.toHaveBeenCalled()
   })
 
+  it('引用清单：连点两个专家，先点的响应迟到也不能覆盖后点的清单（请求序号，yuepu#99）', async () => {
+    listExperts.mockResolvedValueOnce({
+      list: [
+        { ...EXPERTS[0], id: 303, type: 'POSITION', positionIds: [401], positionCount: 1 },
+        { ...EXPERTS[1], id: 304, type: 'POSITION', positionIds: [402], positionCount: 1 }
+      ],
+      total: 2
+    })
+    await mount()
+    let releaseSlow
+    listPositions.mockReturnValueOnce(new Promise((r) => { releaseSlow = () => r({ list: [{ positionId: 401, name: '经营分析岗' }, { positionId: 402, name: '客户成功岗' }] }) }))
+    const btnOf = (i) => rowEls()[i].querySelector('.el-table-column[data-label="引用情况"] .el-button')
+    btnOf(0).click() // 第一个：响应被卡住
+    await flush(4)
+    btnOf(1).click() // 第二个：走默认桩，马上回来
+    await flush(6)
+    expect(refItems()).toEqual(['客户成功岗'])
+    releaseSlow() // 第一个迟到的响应
+    await flush(6)
+    expect(refItems()).toEqual(['客户成功岗']) // 仍是第二个专家的清单
+  })
+
   // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
   it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的市场技能数，缺省显 0', async () => {
     listExperts.mockResolvedValueOnce({

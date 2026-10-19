@@ -40,7 +40,6 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '新建技能' },
   /** 可选：zip 导入直接挂到该 Agent 下；不传则建游离/平台技能 */
-  agentId: { type: [String, Number], default: null },
   /**
    * 技能类型内置选择（必传）：在本弹窗顶部渲染类型单选。
    * 每项 { value, label, source, createFn }；source 透传 importSkillZip，
@@ -152,7 +151,6 @@ async function confirmImportZip() {
     item.error = ''
     try {
       const data = await importSkillZip(item.raw, {
-        agentId: props.agentId,
         source: effectiveSource.value,
         // 每包独立技能分类（2026-09-01 必选；demo 分类名即 id）
         displayCategoryId: item.categoryId || undefined

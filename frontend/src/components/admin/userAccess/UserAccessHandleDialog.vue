@@ -24,17 +24,23 @@ const requests = ref([])
 const loading = ref(false)
 const loadError = ref(false)
 
+// 请求序号（同 useAdminList）：关掉 A 再开 B，A 迟到的响应不能覆盖 B 的列表
+let reqSeq = 0
 async function load() {
   if (!props.member) return
+  const seq = ++reqSeq
+  // 开头清空：取数完成前不能留着上一位的申请（否则【通过】【驳回】会点到别人的单子）
+  requests.value = []
   loading.value = true
   loadError.value = false
   try {
     const res = await listAccessRequests({ status: 'PENDING', keyword: props.member.username, page: 1, size: 50 })
+    if (seq !== reqSeq) return
     requests.value = res.list.filter((r) => r.userId === props.member.userId)
   } catch {
-    loadError.value = true
+    if (seq === reqSeq) loadError.value = true
   } finally {
-    loading.value = false
+    if (seq === reqSeq) loading.value = false
   }
 }
 watch(() => props.visible, (v) => { if (v) load() })
@@ -50,7 +56,17 @@ async function done() {
 const isConflict = (e) => e?.code === 40900 || e?.code === 40400
 
 /* ---------- 通过 ---------- */
+const approving = ref(false) // 通过防重复提交：确认框 + 请求期间不能再点
 async function onApprove(row) {
+  if (approving.value) return
+  approving.value = true
+  try {
+    await doApprove(row)
+  } finally {
+    approving.value = false
+  }
+}
+async function doApprove(row) {
   try {
     await ElMessageBox.confirm(
       `确认通过 ${row.name} 的${ENV_LABEL[row.env]}完全访问权限申请？通过后 ${row.name} 即可在员工端的${ENV_LABEL[row.env]}运行方式下开启完全访问`,
@@ -120,7 +136,7 @@ async function submitReject() {
         </div>
         <div class="ua-quote">{{ req.reason || '（未填写申请理由）' }}</div>
         <div class="ua-req-ops">
-          <el-button type="primary" size="small" @click="onApprove(req)">通过</el-button>
+          <el-button type="primary" size="small" :loading="approving" :disabled="approving" @click="onApprove(req)">通过</el-button>
           <el-button type="danger" plain size="small" @click="openReject(req)">驳回</el-button>
         </div>
       </div>

@@ -27,6 +27,8 @@ export const REJECT_REASON_MAX = 500
 
 /** 运行环境：数字员工有本机（客户端）和云端两个运行环境，完全访问的授权、申请、操作记录都按环境区分 */
 export const ENV_LABEL = { LOCAL: '本机', CLOUD: '云端' }
+/** 运行环境枚举键 ['LOCAL', 'CLOUD']（授权名单列、mock 校验共用，原来页面与 mock 各定义一份） */
+export const ENVS = Object.keys(ENV_LABEL)
 
 /** 操作记录的运行环境：员工端数字员工所在的运行环境，本机 / 云端各开各的完全访问 */
 export const OPERATION_ENV = {

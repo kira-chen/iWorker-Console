@@ -246,3 +246,19 @@ describe('StorageQuotaPane · 加载失败（md §三·6）', () => {
     expect(warnSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('StorageQuotaPane · 已用超过 20 GB 时输入框下限不高于上限（待办 yuepu#98）', () => {
+  it('已用 22 GB 的员工：弹窗输入框 min 封顶在 20（max 也是 20），不会出现 min > max 的不可用输入框', async () => {
+    const BIG = member({ userId: 9, username: 'big', name: '超大用量员工', usedGb: 22, finalGb: 21, cacheGb: 1, totalGb: 20, ratio: 1.1, state: 'FULL' })
+    api.listStorageMembers.mockResolvedValue({ list: [BIG], total: 1 })
+    const c = await mountPane()
+    btn(rowByName(c, '超大用量员工'), '调整容量').click()
+    await flushAll(6)
+    const wrap = dialogBody().querySelector('.el-input-number')
+    const input = wrap.querySelector('input')
+    expect(input.getAttribute('aria-valuemax')).toBe('20')
+    expect(Number(input.getAttribute('aria-valuemin'))).toBeLessThanOrEqual(20)
+    // 输入框没被禁用成一个什么都填不了的状态
+    expect(wrap.classList.contains('is-disabled')).toBe(false)
+  })
+})

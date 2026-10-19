@@ -10,7 +10,7 @@
  * 取数 + 时间范围 + 排序 + 搜索的编排与工具调用审计各页签同一套（composables/useAuditList）：
  * 默认展示今天向前 90 天，单次最多选 30 天跨度。没有任何写入口，记录不可改删。
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -45,9 +45,10 @@ const {
   records: accessOperationRecords,
   // 权限类型筛选：会话里至少有一次该类型的操作就算命中
   matches: (r) => inWindow(r.date) && (!query.value.env || r.env === query.value.env) && (!query.value.type || r.ops.some((o) => o.type === query.value.type)),
-  keywordOf: (r) => [r.username, r.name, ...r.ops.map((o) => o.target)]
+  keywordOf: (r) => [r.username, r.name, ...r.ops.map((o) => o.target)],
+  initialKeyword: props.focusKeyword // 首次取数前生效，不再「先查全量、再按词查」取两次
 })
-const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
+const { rows, total, page, pageSize, loading, loadError, loadErrorMessage, isEmpty } = list
 // 在「单次最多 30 天跨度」之上，再限制不能选近 90 天之外的日期（含未来）
 const disabledDate = computed(() => {
   const span = spanDisabled.value
@@ -58,14 +59,6 @@ const disabledDate = computed(() => {
 const executed = (row) => row.ops.filter((o) => o.result !== 'BLOCKED').length
 const blocked = (row) => row.ops.filter((o) => o.result === 'BLOCKED').length
 const typesOf = (row) => [...new Set(row.ops.map((o) => OPERATION_TYPE[o.type]))].join('、')
-
-// useAuditList 内部已注册首次拉取；带入搜索词时在其后再按词搜一次
-onMounted(() => {
-  if (props.focusKeyword) {
-    keyword.value = props.focusKeyword
-    applySearch()
-  }
-})
 
 /* ── 详情抽屉：会话摘要 + 会话内的操作明细（按发生顺序，不标时间点） ── */
 const detailVisible = ref(false)
@@ -121,7 +114,7 @@ const summary = computed(() => {
     </ListToolbar>
 
     <div class="table-wrap">
-      <ListStates :loading="loading" :error="loadError" :error-message="list.loadErrorMessage" :empty="isEmpty" empty-text="没有符合条件的操作记录" @retry="list.reload">
+      <ListStates :loading="loading" :error="loadError" :error-message="loadErrorMessage" :empty="isEmpty" empty-text="没有符合条件的操作记录" @retry="list.reload">
         <el-table v-loading="loading" :data="rows" row-key="id">
           <el-table-column :width="COL.TIME + 24" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #header>

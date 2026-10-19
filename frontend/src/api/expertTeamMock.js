@@ -19,6 +19,7 @@ import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
 import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshotArchive'
+import { TEAM_MEMBER_MIN, TEAM_MEMBER_MAX } from '@/utils/expertTeam'
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 import { EXPERT_TYPE } from './expertTypes'
 import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
@@ -32,9 +33,8 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 
 let teamSeq = 305
 
-/** 成员数量上下限（md §三.3.1：至少 2 位、上限 6 位；2026-10-12 负责人由 20 调为 6）。 */
-export const TEAM_MEMBER_MIN = 2
-export const TEAM_MEMBER_MAX = 6
+// 成员数量上下限收在 utils/expertTeam.js，编辑器同引一份；这里继续导出，保持原有引用方不变
+export { TEAM_MEMBER_MIN, TEAM_MEMBER_MAX }
 
 /* ---------------- 候选范围（md §三.3.1 表） ----------------
  * 三类团都可放通用专家和市场专家；岗位私有专家只能进岗位私有团（2026-10-12 负责人拍板）。 */

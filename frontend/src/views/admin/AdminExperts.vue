@@ -264,18 +264,21 @@ async function withdrawFromList(row) {
 const refsDialog = reactive({ visible: false, title: '被岗位引用', names: [], loading: false })
 // 注意（yuepu#90③，潜伏项不改）：这里用 size:1000 取全量岗位再映射名称；真实后端若限制 size，会退化成「岗位 #id」，
 // 弹窗也无分页——接真实接口时应改为按 positionIds 批量取名。
+let refsSeq = 0 // 请求序号：连点两个专家的引用清单时，迟到的上一个响应不能覆盖后一个（同 useAdminList）
 async function openRefs(row) {
+  const seq = ++refsSeq
   refsDialog.names = []
   refsDialog.loading = true
   refsDialog.visible = true
   try {
     const { list } = await listPositions({ size: 1000 })
+    if (seq !== refsSeq) return
     const nameOf = new Map((list || []).map((p) => [p.positionId, p.name]))
     refsDialog.names = (row.positionIds || []).map((id) => nameOf.get(id) || `岗位 #${id}`)
   } catch (e) {
-    ElMessage.error(e?.message || '加载引用清单失败')
+    if (seq === refsSeq) ElMessage.error(e?.message || '加载引用清单失败')
   } finally {
-    refsDialog.loading = false
+    if (seq === refsSeq) refsDialog.loading = false
   }
 }
 

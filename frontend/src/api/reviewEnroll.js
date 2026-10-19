@@ -19,6 +19,7 @@
  */
 import { submitReviewRow, cancelReviewRow } from './reviewsMock'
 import { submitApplicationRow, withdrawApplicationRow } from './myApplicationsMock'
+import { currentDemoUsername } from '@/utils/demoIdentity'
 
 /** 「我的申请」业务类型 → 审核中心 type / subType（连接器两件套在审核中心是 TOOL + subType） */
 function reviewTypeOf(businessType) {
@@ -40,8 +41,8 @@ function reviewTypeOf(businessType) {
  *                                  据此在详情里展示红色「强制回收」标记与原因，审核通过后由业务 mock 落「已回收」）
  * @param {string} [p.snapshotKey]  岗位 / 专家 / 专家团 / 技能提交时生成的版本快照 key，随两张表的行一起落，「我的申请」回看时据此取回提交时的配置（yuepu#76）
  * @param {string} [p.submittedAt]  不传取当前分钟
- * @param {string} [p.submitter]    提交人登录用户名；不传沿用两张表各自的默认提交人（2026-09-20 版本管理新增，
- *                                  其它模块不传、行为不变）
+ * @param {string} [p.submitter]    提交人登录用户名；不传取当前登录用户（currentDemoUsername，yuepu#97①；
+ *                                  原先不传会落成两张表各自的默认 config.admin，访问审计「停用」的操作人因此恒为 config.admin）
  */
 export function enrollReview(p) {
   const { type, subType } = reviewTypeOf(p.businessType)
@@ -56,7 +57,7 @@ export function enrollReview(p) {
     requestAction,
     version: p.version || '—',
     ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
-    ...(p.submitter ? { submitterName: p.submitter } : {}),
+    submitterName: p.submitter || currentDemoUsername(), // 默认当前登录用户（yuepu#97①）：不再一律落成 config.admin，停用审核通过后的访问审计操作人才对
     ...(p.snapshotKey ? { snapshotKey: p.snapshotKey } : {}),
     ...(p.submittedAt ? { submittedAt: p.submittedAt } : {})
   })
@@ -69,7 +70,7 @@ export function enrollReview(p) {
     version: p.version || '—',
     versionNotes: p.versionNotes || '',
     ...(p.forceRevokeReason ? { forceRevokeReason: p.forceRevokeReason } : {}),
-    ...(p.submitter ? { submitter: p.submitter } : {}),
+    submitter: p.submitter || currentDemoUsername(),
     ...(p.snapshotKey ? { snapshotKey: p.snapshotKey } : {}),
     ...(p.submittedAt ? { submittedAt: p.submittedAt } : {})
   })

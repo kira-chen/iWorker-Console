@@ -933,3 +933,11 @@ describe('mcpConnectorMock · 强制回收（停用时勾选，同走审核）',
     expect((await statusOf('knowledge_hub')).aggregateStatus).toBe('PUBLISHED')
   })
 })
+
+describe('mcpConnectorMock · 保存校验失败不清失败标记（待办 yuepu#98）', () => {
+  it('改了连接配置、但文本超限被拒 → 抛错，且失败标记仍在（这次保存没生效，标记不该先被清掉）', async () => {
+    // expense_mcp 是 health='bad' 的种子行；被拒绝的保存不改任何数据，不污染其它随机序用例
+    await expect(updateMcp('expense_mcp', { endpoint: 'https://fixed.intra/mcp', description: 'x'.repeat(2001) })).rejects.toBeTruthy()
+    expect((await testMcpConn({ id: 'expense_mcp' })).ok).toBe(false)
+  })
+})
