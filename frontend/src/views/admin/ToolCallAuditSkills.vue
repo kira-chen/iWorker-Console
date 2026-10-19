@@ -41,7 +41,8 @@ import {
   EXEC_RESULT_LABEL,
   RESULT_LABEL,
   CONFIRM_LABEL,
-  NATURE_LABEL
+  NATURE_LABEL,
+  writeConfirmBucket
 } from '@/api/toolCallAuditMock'
 
 const EXEC_RESULT_TAG = { SUCCESS: 'success', FAILED: 'danger' }
@@ -58,40 +59,40 @@ const {
   dateRange, disabledDate, onCalendarChange,
   sortArrow, toggleSort,
   keyword, applySearch, onClearSearch,
-  list, statsAll
+  list, statsAll, cardAll
 } = useAuditList({
   fetcher: listToolCallAudits,
   records: toolCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
-  // 搜索范围：md §三 第 4 条 只写用户 / 岗位 / 技能 / 工具标识，未写请求编号（仅知识库页签 §9.3 写了）；
-  // 这里多带 r.id 是有意保留——演示里按编号（C-xxxx / T-xxxx）直达某条记录最省事，也是用例的定位手段。待产品确认是否收口。
+  // 搜索范围：用户 / 岗位 / 技能 / 工具标识 + 请求编号（C-xxxx，J66 批复 A：保留，md §三 / §8.3 已补「可搜请求编号」，按编号直达记录最省事）。
   keywordOf: (r) => [r.user, r.position, ...r.skills, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
 /* ── 统计卡片（PRD §二） ── */
 const metrics = computed(() => {
-  const all = statsAll.value
+  const all = cardAll.value
   const count = (result) => all.filter((r) => r.result === result).length
   const writes = all.filter((r) => r.hasWrite)
+  const bucket = (k) => writes.filter((r) => writeConfirmBucket(r) === k).length
   return [
     {
       key: 'all',
-      label: '执行总数',
+      label: '会话总数',
       value: all.length,
       sub: `成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`
     },
     {
       key: 'write',
-      label: '涉及写操作的执行',
+      label: '涉及写操作的会话',
       value: writes.length,
-      sub: `已确认 ${writes.filter((r) => r.calls.some((c) => c.confirm === 'CONFIRMED')).length} / 不需要确认 ${writes.filter((r) => r.calls.every((c) => c.nature !== 'WRITE' || c.confirm === 'NONE')).length}`
+      sub: `已确认 ${bucket('CONFIRMED')} / 不需要确认 ${bucket('NONE')} / 用户拒绝 ${bucket('REFUSED')}`
     },
     {
       key: 'failed',
-      label: '执行失败',
+      label: '失败的会话',
       value: count('FAILED'),
-      // 副标题「按整体结果判定」md 未写（§二 卡片说明列只有「整体判定为失败的记录数」），由说明列改写而来，意思一致故保留
+      // 副标题「按整体结果判定」：J67 批复 A，md §二 已补该副标题
       sub: '按整体结果判定',
       danger: true
     }
