@@ -565,8 +565,10 @@ function backToList() {
           <el-skeleton :rows="8" animated style="max-width: 900px; margin: 0 auto" />
         </div>
         <div v-else-if="store.error" class="board-state">
-          <p>{{ store.error }}</p>
+          <p>加载失败</p>
+          <p v-if="store.error" class="board-state-reason">{{ store.error }}</p>
           <el-button @click="store.load(route.params.id)">重试</el-button>
+          <el-button @click="backToList">返回</el-button>
         </div>
         <div v-else-if="store.loading" class="board-state"></div>
 
@@ -771,6 +773,10 @@ function backToList() {
   overflow: hidden;
   will-change: filter, opacity;
   contain: layout paint;
+}
+.board-state-reason {
+  margin: 0;
+  font-size: 12px;
 }
 .board-state {
   flex: 1;

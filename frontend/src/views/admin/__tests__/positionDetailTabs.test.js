@@ -17,7 +17,7 @@ import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §12「加载失败」补：
  *  store.error 非空 → 不出页签、出【重试】，点【重试】按当前路由 id 重新 store.load。
- *  失败文案（md「加载失败」vs 代码显示原始错误）与是否另给【返回】待 J19 裁决，此处只钉重试行为。
+ *  J19 批复（2026-10-19）代码按 md §12：主文案「加载失败」（原始错误降为次要说明）、【重试】【返回】并列，【返回】回岗位列表。
  */
 
 // reactive：顶栏脏检查 isDirty 是 computed，store.basic 被 patchBasic 整体替换后须能触发重算
@@ -43,9 +43,10 @@ vi.mock('element-plus', () => ({
 }))
 // 路由 mock：query 可按用例改写（只读态用 view=1）
 const routeMock = { params: { id: '5' }, query: {}, meta: {} }
+const routerPush = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
   onBeforeRouteLeave: () => {},
   // 2026-09-10：新增的业务系统页签经 api/admin → api/request → src/router 拖入真实 router 模块，
   // 整模块 mock 后需喂它能跑通的工厂（口径同 components/admin/__tests__/expertEditor.test.js）。
@@ -266,7 +267,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
   })
 })
 
-describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文案待 J19）', () => {
+describe('PositionDetailTabs · 加载失败（md §12：展示「加载失败」和【重试】【返回】；J19 批复代码按 md）', () => {
   const retryBtn = () => [...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '重试')
 
   it('详情加载失败（store.error 非空）→ 不渲染页签，出【重试】按钮', async () => {
@@ -274,6 +275,25 @@ describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文�
     await mount()
     expect(container.querySelector('.el-tabs')).toBeNull()
     expect(retryBtn()).toBeTruthy()
+  })
+
+  it('加载失败 → 主文案是「加载失败」，原始错误作次要说明，【重试】【返回】并列', async () => {
+    store.error = '网络异常'
+    await mount()
+    const state = container.querySelector('.board-state')
+    expect(state.querySelector('p').textContent.trim()).toBe('加载失败')
+    expect(state.textContent).toContain('网络异常')
+    const labels = [...state.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+    expect(labels).toEqual(['重试', '返回'])
+  })
+
+  it('点【返回】→ 回岗位列表', async () => {
+    store.error = '网络异常'
+    await mount()
+    routerPush.mockClear()
+    ;[...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '返回').click()
+    await nextTick()
+    expect(routerPush).toHaveBeenCalledWith({ name: 'AdminPositions' })
   })
 
   it('点【重试】→ 按当前路由的岗位 id 重新加载详情（store.load("5")）', async () => {
