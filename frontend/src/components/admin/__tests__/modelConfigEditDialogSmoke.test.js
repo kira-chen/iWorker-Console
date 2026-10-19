@@ -251,6 +251,15 @@ describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 �
     expect(red).toContain('已存在')
   })
 
+  it('重名后不改名再点保存、接口仍回重名 → 名称项红字重新出现（保存开头先清掉旧的，yuepu#98）', async () => {
+    await saveWithDupName()
+    expect(nameItem().querySelector('.el-form-item__error')?.textContent ?? '').toContain('已存在') // 前提
+    clickFoot('保存')
+    await settleErrors()
+    expect(api.updateModel).toHaveBeenCalledTimes(2)
+    expect(nameItem().querySelector('.el-form-item__error')?.textContent ?? '').toContain('已存在')
+  })
+
   it('重名红字出现后改名 → 红字消失（改名即清服务端回的重名提示）', async () => {
     await saveWithDupName()
     expect(nameItem().querySelector('.el-form-item__error')?.textContent ?? '').toContain('已存在') // 前提：红字确已出现
@@ -264,3 +273,33 @@ describe('ModelConfigEditDialog · 保存接口回字段级错误（md §三.8 �
   })
 })
 
+
+describe('ModelConfigEditDialog · 编辑换鉴权方式必须重填凭据（待办 yuepu#98）', () => {
+  const EDIT_MODEL = {
+    id: 'md_1', name: '老模型', providerName: 'deepseek', category: 'TEXT', baseUrl: 'https://a.example.com/v1', model: 'm-1',
+    contextWindow: 65536, authType: 'API_KEY', apiKeyMasked: 'sk-****0ab', hasApiKey: true
+  }
+
+  it('API_KEY 换成 AppID / AppSecret，api_key / app_secret 留空 → 就地红字拦下，updateModel 不被调用（否则存出一个没有任何凭据的模型）', async () => {
+    api.updateModel.mockReset()
+    mounted = mountReal(Dialog, { visible: true, model: { ...EDIT_MODEL } })
+    await flushAll(10)
+    formModel().authType = 'APP_ID_SECRET'
+    formModel().appId = 'iw-app'
+    await flushAll(6)
+    clickFoot('保存')
+    await settleErrors()
+    expect(api.updateModel).not.toHaveBeenCalled()
+    expect(errorTexts()).toEqual(expect.arrayContaining(['请输入 api_key', '请输入 app_secret']))
+  })
+
+  it('鉴权方式没变、凭据留空（保留原密钥）→ 不要求重填，照常保存', async () => {
+    api.updateModel.mockReset().mockResolvedValue({ id: 'md_1' })
+    mounted = mountReal(Dialog, { visible: true, model: { ...EDIT_MODEL } })
+    await flushAll(10)
+    clickFoot('保存')
+    await settleErrors()
+    expect(errorTexts()).not.toContain('请输入 api_key')
+    expect(api.updateModel).toHaveBeenCalledTimes(1)
+  })
+})

@@ -65,6 +65,10 @@ const verifyResult = ref(null)
 const createdId = ref(null)
 
 const isEdit = computed(() => !!(props.model?.id || createdId.value))
+// 编辑前的鉴权方式（新接入为 null；弹窗内刚创建成功后也按保存时的方式算）：凭据（api_key / app_secret）在
+// 「新接入」或「编辑时换了鉴权方式」时必填（yuepu#98，与 adminModelMock 同口径）——换方式后旧密钥作废，留空会存出无凭据的模型
+const originalAuthType = ref(null)
+const credentialRequired = computed(() => !isEdit.value || form.authType !== (originalAuthType.value || 'API_KEY'))
 // 当前保存目标行 id（编辑态=props，新建态=首次 create 返回的 id）
 const targetId = computed(() => props.model?.id || createdId.value)
 const TIPS = FIELD_TIPS
@@ -146,13 +150,13 @@ const rules = computed(() => ({
       trigger: 'blur'
     }
   ],
-  apiKey: !isEdit.value ? [{ required: true, message: '请输入 api_key', trigger: 'blur' }] : [],
+  apiKey: credentialRequired.value ? [{ required: true, message: '请输入 api_key', trigger: 'blur' }] : [],
   appId:
     form.authType === 'APP_ID_SECRET'
       ? [{ required: true, message: '请输入 app_id', trigger: 'blur' }]
       : [],
   appSecret:
-    form.authType === 'APP_ID_SECRET' && !isEdit.value
+    form.authType === 'APP_ID_SECRET' && credentialRequired.value
       ? [{ required: true, message: '请输入 app_secret', trigger: 'blur' }]
       : []
 }))
@@ -182,6 +186,7 @@ watch(
     // payload 漏传会把存量描述抹成 null——删除本行前先看 ModelConfigAdminService.update
     form.description = m?.description || ''
     form.authType = m?.authType || 'API_KEY'
+    originalAuthType.value = m?.id ? form.authType : null
     form.apiKey = ''
     form.appId = m?.appId || ''
     form.appSecret = ''
@@ -244,6 +249,7 @@ function onIconPick(payload) {
 }
 
 async function save() {
+  nameServerError.value = '' // 上次的重名红字：不改名直接再点保存时先清，校验通过后若仍重名会重新挂上（yuepu#98）
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) {
     // D6：行内红字之外再补一条 toast（原型 validateModel L246「请先修正标红项」，
@@ -314,6 +320,7 @@ async function save() {
     } else {
       const saved = await createModel(payload)
       createdId.value = saved?.id || null // 记住新行：后续保存走 update，防二次 create
+      originalAuthType.value = form.authType
     }
     // 保存即返回（1 秒内关闭弹窗），验证交给列表行内跑（约 40 秒）。
     // 旧实现在这里 await 验证，用户点「保存」却被扣住 40 秒——他要的是保存，不是等验证。

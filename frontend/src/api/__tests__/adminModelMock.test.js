@@ -415,3 +415,37 @@ describe('adminModelMock · 持久化读回（mockPersist v2；key iworker-demo-
     expect(globalThis.localStorage.getItem(KEY)).toBeNull()
   })
 })
+
+describe('adminModelMock —— 编辑换鉴权方式必须重填凭据（待办 yuepu#98）', () => {
+  const edit = (name, over = {}) => ({
+    name, baseUrl: 'https://api.example.com/v1', model: 'demo-chat', contextWindow: 65536, providerName: 'deepseek', ...over
+  })
+
+  it('API_KEY → AppID/AppSecret：app_secret、api_key 任一留空都按字段拒绝，模型原样不变；都填则通过并带上新凭据', async () => {
+    const s = Date.now()
+    const row = await mk(`凭据-a-${s}`, { authType: 'API_KEY', apiKey: 'sk-old-12345678' })
+    const base = edit(`凭据-a-${s}`, { authType: 'APP_ID_SECRET', appId: 'iw' })
+    await expect(updateModel(row.id, { ...base, appSecret: '', apiKey: '' })).rejects.toMatchObject({ field: 'appSecret', message: 'app_secret 必填' })
+    await expect(updateModel(row.id, { ...base, appSecret: 'sec-12345678', apiKey: '' })).rejects.toMatchObject({ field: 'apiKey', message: 'api_key 必填' })
+    expect(await getModel(row.id)).toMatchObject({ authType: 'API_KEY', apiKeyMasked: expect.any(String) }) // 被拒后模型没被改坏
+
+    const ok = await updateModel(row.id, { ...base, appSecret: 'sec-12345678', apiKey: 'k-new-12345678' })
+    expect(ok).toMatchObject({ authType: 'APP_ID_SECRET', hasAppSecret: true, apiKeyMasked: expect.any(String) })
+  })
+
+  it('AppID/AppSecret → API_KEY：api_key 留空拒绝；填了通过', async () => {
+    const s = Date.now()
+    const row = await mk(`凭据-b-${s}`, { authType: 'APP_ID_SECRET', appId: 'iw', apiKey: 'k-12345678', appSecret: 'sec-12345678' })
+    const base = edit(`凭据-b-${s}`, { authType: 'API_KEY' })
+    await expect(updateModel(row.id, { ...base, apiKey: '' })).rejects.toMatchObject({ field: 'apiKey', message: 'api_key 必填' })
+    const ok = await updateModel(row.id, { ...base, apiKey: 'sk-new-12345678' })
+    expect(ok).toMatchObject({ authType: 'API_KEY', apiKeyMasked: expect.any(String) })
+  })
+
+  it('鉴权方式不变：凭据留空仍是「保留原密钥」，不被新规则误伤', async () => {
+    const s = Date.now()
+    const row = await mk(`凭据-c-${s}`, { authType: 'API_KEY', apiKey: 'sk-keep-12345678' })
+    const updated = await updateModel(row.id, edit(`凭据-c-${s}`, { authType: 'API_KEY', apiKey: '', description: '只改描述' }))
+    expect(updated).toMatchObject({ apiKeyMasked: expect.any(String), description: '只改描述' })
+  })
+})

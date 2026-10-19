@@ -17,6 +17,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { removeRefs, renameRefs, syncRefs } from './positionRefs'
 import { ensureSkillRefs } from './skillRefsLoader'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
@@ -477,27 +478,10 @@ export async function deleteBizSystemOwnedSkill(id, skillId) {
  * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
  */
 export function removePositionRefs(positionId) {
-  let changed = false
-  bizRows.forEach((r) => {
-    const next = (r.referencedByPositions || []).filter((p) => String(p.positionId) !== String(positionId))
-    if (next.length !== (r.referencedByPositions || []).length) {
-      r.referencedByPositions = next
-      changed = true
-    }
-  })
-  if (changed) persist()
+  if (removeRefs(bizRows, positionId)) persist()
 }
 export function renamePositionRefs(positionId, positionName) {
-  let changed = false
-  bizRows.forEach((r) => {
-    ;(r.referencedByPositions || []).forEach((p) => {
-      if (String(p.positionId) === String(positionId) && p.positionName !== positionName) {
-        p.positionName = positionName
-        changed = true
-      }
-    })
-  })
-  if (changed) persist()
+  if (renameRefs(bizRows, positionId, positionName)) persist()
 }
 
 /**
@@ -506,21 +490,7 @@ export function renamePositionRefs(positionId, positionName) {
  * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
  */
 export function syncPositionRefs(positionId, positionName, boundIds) {
-  const bound = new Set((boundIds || []).map(String))
-  let changed = false
-  bizRows.forEach((r) => {
-    if (r.type !== 'POSITION') return
-    const list = r.referencedByPositions || []
-    const has = list.some((p) => String(p.positionId) === String(positionId))
-    if (bound.has(String(r.id)) && !has) {
-      r.referencedByPositions = [...list, { positionId, positionName }]
-      changed = true
-    } else if (!bound.has(String(r.id)) && has) {
-      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
-      changed = true
-    }
-  })
-  if (changed) persist()
+  if (syncRefs(bizRows, positionId, positionName, boundIds)) persist()
 }
 
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */

@@ -18,6 +18,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { removeRefs, renameRefs, syncRefs } from './positionRefs'
 import { ensureSkillRefs } from './skillRefsLoader'
 // 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
@@ -540,9 +541,10 @@ export async function updateMcp(id, payload) {
   if (pubAgg[m.id] === 'PENDING_REVIEW') throw err('审核中不可编辑，如需修改请先撤回')
   // 2026-09-09 · B 组：改过连接配置后清 demo 失败标记（口径同 apiConnectorMock 的 connChanged）——
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
-  if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
   assertMcpTextLimits(payload)
   if ('exampleQuestions' in payload) assertExampleQuestions(payload.exampleQuestions)
+  // 校验都过了才清失败标记：校验抛错时这次保存没生效，标记不该先被清掉（yuepu#98）
+  if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
   applyMcpPayload(m, payload)
   m.updatedAt = nowIso()
   persist()
@@ -820,27 +822,10 @@ export async function reviewMcpService(id, payload = {}) {
  * referencedByPositions 存的是含 positionName 的冻结副本，岗位侧删除 / 改名不回写会在三个连接器页留下已删岗位或旧名的陈旧行。
  */
 export function removePositionRefs(positionId) {
-  let changed = false
-  mcps.forEach((r) => {
-    const next = (r.referencedByPositions || []).filter((p) => String(p.positionId) !== String(positionId))
-    if (next.length !== (r.referencedByPositions || []).length) {
-      r.referencedByPositions = next
-      changed = true
-    }
-  })
-  if (changed) persist()
+  if (removeRefs(mcps, positionId)) persist()
 }
 export function renamePositionRefs(positionId, positionName) {
-  let changed = false
-  mcps.forEach((r) => {
-    ;(r.referencedByPositions || []).forEach((p) => {
-      if (String(p.positionId) === String(positionId) && p.positionName !== positionName) {
-        p.positionName = positionName
-        changed = true
-      }
-    })
-  })
-  if (changed) persist()
+  if (renameRefs(mcps, positionId, positionName)) persist()
 }
 
 /**
@@ -849,21 +834,7 @@ export function renamePositionRefs(positionId, positionName) {
  * 所以岗位绑定 / 解绑后必须同步增删本岗位这一条。只动 type=POSITION 的行；boundIds 之外的行摘掉本岗位，之内的补上。
  */
 export function syncPositionRefs(positionId, positionName, boundIds) {
-  const bound = new Set((boundIds || []).map(String))
-  let changed = false
-  mcps.forEach((r) => {
-    if (r.type !== 'POSITION') return
-    const list = r.referencedByPositions || []
-    const has = list.some((p) => String(p.positionId) === String(positionId))
-    if (bound.has(String(r.id)) && !has) {
-      r.referencedByPositions = [...list, { positionId, positionName }]
-      changed = true
-    } else if (!bound.has(String(r.id)) && has) {
-      r.referencedByPositions = list.filter((p) => String(p.positionId) !== String(positionId))
-      changed = true
-    }
-  })
-  if (changed) persist()
+  if (syncRefs(mcps, positionId, positionName, boundIds)) persist()
 }
 
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位；2026-09-23 待办 yuepu#23）。 */
