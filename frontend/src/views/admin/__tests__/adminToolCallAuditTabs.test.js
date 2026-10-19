@@ -81,7 +81,7 @@ describe('页签结构（PRD §一）', () => {
     expect(labels).toEqual(['会话调用', '岗位自动化任务', '知识库检索'])
     expect(container.querySelector('.el-tabs__item.is-active').textContent.trim()).toBe('会话调用')
 
-    expect(pane('skill').textContent).toContain('涉及写操作的执行')
+    expect(pane('skill').textContent).toContain('涉及写操作的会话')
     // lazy：没点开之前，任务 / 知识库页签的内容根本不在 DOM 里
     expect(pane('task')).toBeNull()
     expect(pane('knowledge')).toBeNull()
@@ -91,10 +91,10 @@ describe('页签结构（PRD §一）', () => {
     expect(pane('knowledge')).toBeNull()
   })
 
-  it('各页签查询条件互不影响：会话调用筛到「执行失败」，切走再切回仍保持', async () => {
+  it('各页签查询条件互不影响：会话调用筛到「失败的会话」，切走再切回仍保持', async () => {
     mountReal()
     await flush()
-    cardOf(pane('skill'), '执行失败').click()
+    cardOf(pane('skill'), '失败的会话').click()
     await flush()
     const failedOnly = bodyRows(pane('skill'))
     expect(failedOnly.length).toBeGreaterThan(0)
@@ -413,14 +413,78 @@ describe('导出 CSV（PRD §三）', () => {
   })
 })
 
+/** 列表分页处的「共 N 条数据」 */
+const listTotal = (p) => Number(/共\s*(\d+)/.exec(p.querySelector('.list-pager-info')?.textContent || '')?.[1])
+
+describe('知识库列表：无命中的成功记录带「无命中」小标签（PRD §9.3，yuepu#92⑭）', () => {
+  it('成功但命中 0 条的行有小标签，失败的行没有', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    cardOf(p, '无命中检索').click()
+    await flush()
+    const rows = [...p.querySelectorAll('.el-table__body tr')]
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) expect(r.textContent).toContain('无命中')
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    const all = [...p.querySelectorAll('.el-table__body tr')]
+    const tagged = all.filter((r) => r.textContent.includes('无命中'))
+    expect(tagged.length).toBeGreaterThan(0)
+    expect(tagged.length).toBeLessThan(all.length)
+  })
+})
+
+describe('统计卡片范围（PRD §二 / §8.2 / §9.2：时间范围 + 搜索词，不随执行结果 / 写操作 / 数据源类型筛选变化；yuepu#92⑯）', () => {
+  it('会话调用：点「失败的会话」→ 列表只剩失败的，但「会话总数」「涉及写操作的会话」两张卡的数字不变', async () => {
+    mountReal()
+    await flush()
+    const p = pane('skill')
+    const num = (label) => Number(cardOf(p, label).querySelector('.metric-value').textContent)
+    const [all, write] = [num('会话总数'), num('涉及写操作的会话')]
+    cardOf(p, '失败的会话').click()
+    await flush()
+    expect(listTotal(p)).toBe(num('失败的会话'))
+    expect(listTotal(p)).toBeLessThan(all)
+    expect(num('会话总数')).toBe(all)
+    expect(num('涉及写操作的会话')).toBe(write)
+  })
+
+  it('知识库检索：点「无命中检索」→ 列表只剩无命中的，「检索请求总数」卡的数字不变', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const all = Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)
+    cardOf(p, '无命中检索').click()
+    await flush()
+    expect(listTotal(p)).toBeLessThan(all)
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBe(all)
+  })
+
+  it('卡片数字随搜索词变化（范围含搜索词）', async () => {
+    mountReal()
+    await flush()
+    const p = pane('skill')
+    const input = () => p.querySelector('input[placeholder="搜索用户 / 岗位 / 技能 / 工具"]')
+    const all = Number(cardOf(p, '会话总数').querySelector('.metric-value').textContent)
+    input().value = '张'
+    input().dispatchEvent(new Event('input'))
+    input().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+    await flush()
+    expect(Number(cardOf(p, '会话总数').querySelector('.metric-value').textContent)).toBeLessThan(all)
+  })
+})
+
 describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范围；按 J23）', () => {
   const TABS = [
-    { name: 'skill', total: '执行总数', ph: '搜索用户 / 岗位 / 技能 / 工具' },
-    { name: 'task', total: '运行总数', ph: '搜索用户 / 岗位 / 任务 / 工具' },
-    { name: 'knowledge', total: '检索请求总数', ph: '搜索用户 / 岗位 / 知识库 / 检索词' }
+    { name: 'skill', total: '会话总数', failed: '失败的会话', ph: '搜索用户 / 岗位 / 技能 / 工具' },
+    { name: 'task', total: '运行总数', failed: '执行失败', ph: '搜索用户 / 岗位 / 任务 / 工具' },
+    { name: 'knowledge', total: '检索请求总数', failed: '执行失败', ph: '搜索用户 / 岗位 / 知识库 / 检索词' }
   ]
-  for (const { name, total, ph } of TABS) {
-    it(`${name} 页签：搜索后点「${total}」→ 搜索框清空、列表恢复全量；点「执行失败」则保留搜索词`, async () => {
+  for (const { name, total, failed, ph } of TABS) {
+    it(`${name} 页签：搜索后点「${total}」→ 搜索框清空、列表恢复全量；点「${failed}」则保留搜索词`, async () => {
       mountReal()
       await flush()
       if (name !== 'skill') await openTab(name)
@@ -435,7 +499,7 @@ describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范
       // 统计卡片随筛选联动：搜索后总数小于全量，证明搜索词确实生效
       expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBeLessThan(fullCount)
 
-      cardOf(p, '执行失败').click()
+      cardOf(p, failed).click()
       await flush()
       expect(input().value).toBe('张')
 
@@ -462,7 +526,9 @@ describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范
     mcp.click()
     await flush()
     expect(typeSelect().textContent).toContain('MCP') // 前提：筛选已生效
-    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBeLessThan(fullCount) // 统计卡随筛选联动，证明下拉确实收窄了结果
+    // 列表被筛小（证明下拉确实生效）；统计卡不随数据源类型筛选变化（PRD §9.2：卡片范围 = 时间范围 + 搜索词，yuepu#92⑯）
+    expect(listTotal(p)).toBeLessThan(fullCount)
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBe(fullCount)
 
     cardOf(p, '检索请求总数').click()
     await flush()
