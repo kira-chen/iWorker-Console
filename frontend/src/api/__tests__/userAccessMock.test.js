@@ -327,3 +327,30 @@ describe('操作记录（只读留痕）', () => {
     expect((await listAccessOperations()).filter((r) => r.userId === lina.id)).toHaveLength(before)
   })
 })
+
+describe('写接口只认在职账号 + 操作记录种子日期相对今天（待办 yuepu#96 ③④）', () => {
+  it('停用账号（种子 zhouming 205）：设置授权 / 批量授权 / 员工提交申请都按「员工不存在」拒绝，不写授权也不写审计', async () => {
+    const before = liveOps().length
+    await expect(updateAccess(205, { grant: ['LOCAL'] })).rejects.toMatchObject({ message: '员工不存在' })
+    await expect(batchGrantAccess([205], ['LOCAL'])).rejects.toMatchObject({ message: '员工不存在' })
+    await expect(submitAccessRequestAsEmployee(205, 'LOCAL', '想用')).rejects.toMatchObject({ message: '员工不存在' })
+    expect(liveOps().length).toBe(before)
+  })
+
+  it('刚被停用的在职账号同样被拦；重新启用后恢复可授权', async () => {
+    const id = listUsersSync().find((u) => u.username === 'sun.xin').id
+    await updateUser(id, { status: 'disabled' })
+    await expect(updateAccess(id, { grant: ['LOCAL'] })).rejects.toMatchObject({ message: '员工不存在' })
+    await updateUser(id, { status: 'active' })
+    await expect(updateAccess(id, { grant: ['LOCAL'] })).resolves.toBeDefined()
+  })
+
+  it('操作记录种子全部落在默认「近 90 天」窗口内，最新一条是昨天（不会随日子推移变空）', () => {
+    const pad = (n) => String(n).padStart(2, '0')
+    const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(d) }
+    const dates = accessOperationRecords.map((r) => r.date).sort()
+    expect(dates.at(-1)).toBe(daysAgo(1))
+    expect(dates[0] >= daysAgo(89)).toBe(true)
+  })
+})
