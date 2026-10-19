@@ -121,7 +121,7 @@ const summary = computed(() => {
     </ListToolbar>
 
     <div class="table-wrap">
-      <ListStates :loading="loading" :error="loadError" :empty="isEmpty" empty-text="没有符合条件的操作记录" @retry="list.reload">
+      <ListStates :loading="loading" :error="loadError" :error-message="list.loadErrorMessage" :empty="isEmpty" empty-text="没有符合条件的操作记录" @retry="list.reload">
         <el-table v-loading="loading" :data="rows" row-key="id">
           <el-table-column :width="COL.TIME + 24" :class-name="COL_NOWRAP" :label-class-name="COL_NOWRAP">
             <template #header>

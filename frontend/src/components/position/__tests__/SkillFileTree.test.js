@@ -625,20 +625,6 @@ describe('SkillFileTree 组③ 查找/过滤', () => {
     vi.useRealTimers()
   })
 
-  it('P1：只读浏览（platform-candidate）隐藏「按内容」入口、按名过滤仍可用、绝不调 searchSkillFiles', async () => {
-    const el = mount({ skillId: 1, files: FILES2, source: 'platform-candidate', activePath: 'SKILL.md', readonly: true })
-    // 模式切换行整体不渲染（仅按名时无意义的单按钮）→ 无「按内容」入口
-    expect([...el.querySelectorAll('.ft-mode')].some((b) => b.textContent.includes('按内容'))).toBe(false)
-    // 按名过滤仍可用（纯前端）
-    typeSearch(el, 'policy')
-    await Promise.resolve(); await Promise.resolve()
-    const names = [...el.querySelectorAll('.ft-name')].map((n) => n.textContent.trim())
-    expect(names).toContain('policy.md')
-    expect(names).not.toContain('faq.md')
-    // 绝不触发后端内容查询（越权 404 收口）
-    expect(searchSkillFiles).not.toHaveBeenCalled()
-  })
-
   it('P1：readonly 只读态隐藏「按内容」入口（不触发后端查询），但搜索框仍在——纯前端按名过滤可用', () => {
     const el = mount({ skillId: 1, files: FILES2, source: 'platform', activePath: 'SKILL.md', readonly: true })
     // 只读态下 contentSearchable=false → 整个模式切换行不渲染（仅「按名」一项时无意义的单按钮）

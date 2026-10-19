@@ -33,7 +33,7 @@ vi.mock('@/api/mockPersist', async (importOriginal) => ({
 const FINGERPRINTS = {
   accessAuditOps: { version: 3, fp: 'ebadc885' },
   adminModel: { version: 2, fp: '2887e06b' },
-  adminUser: { version: 6, fp: '160798e0' },
+  adminUser: { version: 7, fp: '2ac2a0ab' },
   apiConnector: { version: 7, fp: 'aca4ffcf' },
   bizSystem: { version: 5, fp: 'ceed8d44' },
   dataTable: { version: 2, fp: '592831be' },

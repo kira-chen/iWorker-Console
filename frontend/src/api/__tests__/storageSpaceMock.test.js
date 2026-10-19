@@ -348,6 +348,31 @@ describe('storageSpaceMock —— 与用户模块 / 岗位分配联动（reconci
     expect(await memberOf('hejing')).toMatchObject({ finalGb: 5, state: 'FULL' })
   })
 
+  it('停用账号：单个 / 批量调整绕过页面也被拒绝（员工不存在），不写容量不写审计；重新启用后可调整', async () => {
+    await updateUser(210, { status: 'disabled' })
+    const before = opsRecords.length
+    const zhangweiBefore = (await memberOf('zhangwei')).totalGb
+    await expect(adjustStorageQuota(210, 9)).rejects.toThrow('员工不存在')
+    await expect(adjustStorageQuota(210, 5, { restoreDefault: true })).rejects.toThrow('员工不存在')
+    await expect(batchAdjustStorageQuota([201, 210], zhangweiBefore + 4)).rejects.toThrow('员工不存在')
+    expect(opsRecords.length).toBe(before)
+    // 整批原子拒绝：批里另一个合法在职员工（张伟）也没被调整
+    expect((await memberOf('zhangwei')).totalGb).toBe(zhangweiBefore)
+    await updateUser(210, { status: 'active' })
+    expect(await memberOf('hejing')).toMatchObject({ totalGb: 5 })
+    await expect(adjustStorageQuota(210, 9)).resolves.toMatchObject({ totalGb: 9 })
+  })
+
+  it('停用账号「恢复默认」：个人设置过非默认值的账号（徐琳 8 GB）停用后恢复默认被拒，仍是 8 GB，不写审计', async () => {
+    expect((await memberOf('xulin')).totalGb).toBe(8) // 前提：个人设置了 8 GB（非默认 5 GB）
+    await updateUser(212, { status: 'disabled' })
+    const before = opsRecords.length
+    await expect(adjustStorageQuota(212, 5, { restoreDefault: true })).rejects.toThrow('员工不存在')
+    expect(opsRecords.length).toBe(before)
+    await updateUser(212, { status: 'active' })
+    expect((await memberOf('xulin')).totalGb).toBe(8)
+  })
+
   it('停用有待处理申请的账号：其申请不展示、不计入角标、不能被处理；重新启用后恢复', async () => {
     await updateUser(204, { status: 'disabled' }) // 王芳，待处理 ER-1005
     const ids = (await listExpansionRequests({ size: 50 })).list.map((r) => r.id)

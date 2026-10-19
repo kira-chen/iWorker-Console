@@ -141,20 +141,9 @@ const fieldErrors = reactive({})
 const verify = ref(null)
 const testing = ref(false)
 const embeddingModels = ref([])
-let muteVerifyReset = false
-/**
- * 回填详情但不触发「验证状态重置」：回填会改变 connSig，其 watch 在下一轮才跑，
- * 此时 loading 已复位，不静默就会把刚回填的 SUCCESS 冲成「修改连接配置后需要重新测试」（yuepu#62④）。
- */
-async function hydrateQuietly(d) {
-  muteVerifyReset = true
-  try {
-    hydrate(d)
-    await nextTick()
-  } finally {
-    muteVerifyReset = false
-  }
-}
+// 验证状态对应的连接配置签名基线：回填详情 / 拿到测试结果时记下当时的 connSig，之后 connSig 与它不同才算「用户改了连接配置」。
+// 回填、测试成功后精简已选工具这类程序性改动不会触发重置（yuepu#62④；J62 起不再用静默标志 + nextTick 兜）。
+let verifiedSig = ''
 
 /** 超时时间必填且须在区间内（md §六.1 API 1000～60000 / §七.6 MCP 1000～120000）；清空后 el-input-number 回 null，一并拦。 */
 const timeoutRule = (min, max) => ({
@@ -285,6 +274,7 @@ function resetForm() {
   mcpResponseRows.value = mkMcpResponseMapRows()
   availableTools.value = []
   verify.value = null
+  verifiedSig = ''
   clearErrors()
 }
 function hydrate(d) {
@@ -333,9 +323,16 @@ async function load() {
   loading.value = true
   try {
     embeddingModels.value = await listEmbeddingModelOptions().catch(() => [])
-    if (targetId.value) await hydrateQuietly(await getKnowledgeSource(targetId.value))
+    if (targetId.value) {
+      hydrate(await getKnowledgeSource(targetId.value))
+      // 等回填引发的监听（如详情带脏数据的 stdio 源会触发「切 stdio 清空 Endpoint / 鉴权」）跑完再记基线，
+      // 否则这类程序性清空会被当成「用户改了连接配置」冲掉已验证状态（loading 期间监听不重置）
+      await nextTick()
+      verifiedSig = connSig.value
+    }
   } catch (e) {
     loadError.value = e?.message || '加载失败'
+    verifiedSig = ''
   } finally {
     loading.value = false
   }
@@ -382,17 +379,22 @@ const connSig = computed(() => {
   }
   return ''
 })
-watch(connSig, () => {
-  if (loading.value || muteVerifyReset || viewMode.value || form.sourceType === 'UPLOAD') return
+watch(connSig, (sig) => {
+  if (loading.value || sig === verifiedSig || viewMode.value || form.sourceType === 'UPLOAD') return
   if (verify.value && verify.value.verifyStatus !== 'UNVERIFIED') verify.value = { verifyStatus: 'UNVERIFIED' }
 })
 
 /* ---------- 测试连接（API / MCP，md §六.4 / §七.5） ---------- */
 async function doTest() {
   testing.value = true
+  // 发请求时的配置签名：测试进行中用户若又改了连接配置，返回的结果属于旧配置，不能当成新配置已验证
+  const sigAtSend = connSig.value
   try {
     const r = await testKnowledgeSource(form.sourceType, { sourceId: targetId.value, config: buildConfig(), authValue: authValueOut() })
-    muteVerifyReset = true
+    if (connSig.value !== sigAtSend) {
+      verify.value = { verifyStatus: 'UNVERIFIED' }
+      return
+    }
     verify.value = r
     if (r.verifyStatus === 'SUCCESS') {
       if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
@@ -400,15 +402,14 @@ async function doTest() {
         availableTools.value = [...r.tools]
         mcpToolsSelected.value = mcpToolsSelected.value.filter((t) => r.tools.includes(t))
       }
-      ElMessage.success('连接测试成功')
-    } else {
-      ElMessage.error(r.verifyError || '连接失败')
     }
-    await nextTick()
+    // 基线须在弹 toast 之前记：ElMessage 挂载会顺带冲刷待执行的 connSig 监听，晚记会把精简已选工具误判成「用户改了配置」
+    verifiedSig = connSig.value
+    if (r.verifyStatus === 'SUCCESS') ElMessage.success('连接测试成功')
+    else ElMessage.error(r.verifyError || '连接失败')
   } catch (e) {
     ElMessage.error(e?.message || '测试失败')
   } finally {
-    muteVerifyReset = false
     testing.value = false
   }
 }

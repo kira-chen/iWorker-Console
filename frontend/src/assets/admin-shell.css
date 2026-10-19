@@ -385,7 +385,7 @@ body.admin-scope .list-pager .page-btn.active:hover {
 /* ---------------------------------------------------------------------------
  * 3. 确认弹窗（原型 L15 .modal：width min(440px) / padding 22 / 圆角 8 / h3 标题 + p 正文 /
  *    .modal-actions 右对齐 gap 9 margin-top 20；无 warning 图标、无右上 ×）
- * 由 composables/useConfirm.js 统一注入 customClass="admin-confirm"，页面不各写选项。
+ * 经 composables/useConfirm.js 调用的弹窗会注入 customClass="admin-confirm"，页面不各写选项；直调 ElMessageBox 的页面仍是 EP 默认样式，两种并存（J38）。
  * 危险操作确认键保留 danger 红档（代码既有约定，原型全绿属简化，不搬）。
  * ------------------------------------------------------------------------ */
 .el-message-box.admin-confirm {

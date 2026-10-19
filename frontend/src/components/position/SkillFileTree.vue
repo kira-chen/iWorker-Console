@@ -122,9 +122,9 @@ watch(
 const fullTreeData = computed(() => buildFileTree(props.files))
 
 /* ============================ 组③：目录树过滤（按名）+ 跨文件查找（按内容） ============================ */
-// 「按内容」查找是否可用：只读浏览（平台候选 platform-candidate / 任意 readonly）下后端无 /files/search 端点，
+// 「按内容」查找是否可用：只读浏览（任意 readonly）下后端无 /files/search 端点，
 // 调用会 404（越权）→ 只读态**隐藏「按内容」入口**，仅保留纯前端「按名过滤」（P1 收口，不触发后端查询）。
-const contentSearchable = computed(() => !props.readonly && props.source !== 'platform-candidate')
+const contentSearchable = computed(() => !props.readonly)
 // 查找态：query + 模式（name=纯前端名字过滤 / content=调后端搜内容）。
 const searchQuery = ref('')
 const searchMode = ref('name') // 'name' | 'content'
@@ -867,7 +867,7 @@ async function onExport() {
           <el-icon><CloseIcon /></el-icon>
         </button>
       </div>
-      <!-- 模式切换：按名 / 按内容（二合一查找入口）。只读浏览（platform-candidate / readonly）下后端无
+      <!-- 模式切换：按名 / 按内容（二合一查找入口）。只读浏览（readonly）下后端无
            /files/search 端点 → 隐藏「按内容」入口，只保留纯前端「按名过滤」（P1 收口，避免越权 404）。
            仅「按名」一项时整行不显（无意义的单按钮）。 -->
       <div v-if="contentSearchable" class="ft-search-modes">

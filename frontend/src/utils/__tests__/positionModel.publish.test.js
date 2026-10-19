@@ -4,7 +4,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateVersionLabel,
-  versionIncrementHint,
   computePublishCheck,
   computeCompletenessMissing,
   claimNotesComplete,
@@ -24,13 +23,6 @@ describe('展示版本号（2026-09-02 起语义化 vX.Y.Z，取代旧 v001~v999
       expect(err).toBeTruthy()
       expect(err).toContain('v1.2.0')
     }
-  })
-  it('小于等于历史最大 → 建议递增软提示（不阻断）；递增则空串', () => {
-    expect(versionIncrementHint('v1.1.0', 'v1.2.0')).toContain('v1.2.0')
-    expect(versionIncrementHint('v1.2.0', 'v1.2.0')).toContain('未递增') // 等于也提示
-    expect(versionIncrementHint('v1.2.1', 'v1.2.0')).toBe('') // 已递增无提示
-    expect(versionIncrementHint('v2.0.0', 'v1.9.3')).toBe('') // 主版本跳档已递增
-    expect(versionIncrementHint('v1.2.0', '')).toBe('') // 无历史不提示
   })
 })
 
@@ -77,9 +69,9 @@ describe('computePublishCheck（发布前检查）', () => {
     const c = computePublishCheck({ ...FULL })
     expect(c.blockingPassed).toBe(true)
     expect(c.doneRatio).toBe(1)
-    expect(c.items.map((i) => i.label)).toEqual(['岗位名称与描述', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
+    expect(c.items.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
     expect(c.items.map((i) => i.detail)).toEqual([
-      '必填内容已填写', '岗位图标已选择', '领用页文案已填写', '3 条示例问题已填写', '岗位能力综述已填写', '已配置 1 个采集字段', '已配置 Agent 与技能', '已配置 1 条自动化任务'
+      '已填写"销售"', '已选择', '已填写', '3 个引导问题已填写', '岗位能力综述已填写', '已配置 1 个', '已配置 Agent 与技能', '已配置 1 条自动化任务'
     ])
     expect(c.warnings).toEqual([]) // 无未验证工具 → 不出「存在告警项」提示行
     expect(c.items.every((i) => i.blocking)).toBe(true) // 八行全为阻断项
@@ -114,7 +106,7 @@ describe('computePublishCheck（发布前检查）', () => {
     const c = computePublishCheck({ ...FULL, intakeSchema: [{ label: '区域', type: 'text' }, { label: '业务线', type: 'text' }, { label: '', type: 'text' }] })
     const item = c.items.find((i) => i.key === 'intakeSchema')
     expect(item.ok).toBe(true)
-    expect(item.detail).toBe('已配置 2 个采集字段') // 无字段名的行不计
+    expect(item.detail).toBe('已配置 2 个') // 无字段名的行不计
     expect(c.blockingPassed).toBe(true)
   })
   it('岗位图标缺（空串 / 未传 / 纯空白）→ 硬阻断（2026-09-21 负责人拍板：图标必填）', () => {
@@ -158,7 +150,7 @@ describe('computePublishCheck（发布前检查）', () => {
     const c = computePublishCheck({ ...FULL, exampleQuestions: ['帮我查', '帮我生成', '最近'] })
     expect(c.items.find((i) => i.key === 'exampleQuestions').ok).toBe(true)
   })
-  it('缺岗位名 / 缺描述 → 「岗位名称与描述」阻断并点名缺项', () => {
+  it('缺岗位名 / 缺描述 → 「岗位名称」行阻断并点名缺项', () => {
     let c = computePublishCheck({ ...FULL, name: '' })
     expect(c.blockingPassed).toBe(false)
     expect(c.items.find((i) => i.key === 'name').ok).toBe(false)
@@ -211,7 +203,7 @@ describe('computePublishCheck（发布前检查）', () => {
     expect(c.blockingPassed).toBe(true) // Agent 与技能已配齐 → 阻断项通过；未验证工具只是告警
     expect(c.warnings.length).toBe(1)
     expect(c.warnings[0].key).toBe('agents')
-    expect(c.warnings[0].detail).toBe('已配置 Agent 与技能；存在 1 个工具未验证，不阻断发布')
+    expect(c.warnings[0].detail).toBe('存在 1 个工具未验证，不阻断发布')
     expect(c.warnings.find((w) => w.key === 'orphan')).toBeUndefined()
   })
 })

@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
  * AdminToolCallAudit.vue 真实挂载冒烟——默认页签「会话调用」的行为，对齐
@@ -14,9 +13,8 @@ import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
  * 已随改版失效，本次整份重写，不保留旧版 it.fails 钉桩——那些钉桩对应的是旧实现的
  * 具体文案缺陷，结构改版后已不适用；若后续要补新模型下的缺口，走单独一轮 /test-audit。
  *
- * 种子数据固定在 2026-09-19 ~ 2026-09-28（toolCallAuditMock.js），固定系统时间到
- * 2026-09-28（helpers/fixedAuditClock.js，与 Tabs 文件共用），避免默认 90 天窗口随真实日期推移
- * 把种子数据挤出窗口、用例到期变红。
+ * 种子日期相对「今天」生成（toolCallAuditMock.js 用 dateDaysAgo，J27），列表默认「近 90 天」窗口永远能框住种子，
+ * 所以这里不再固定系统时间；断言不依赖具体日期。
  *
  * 定位约定：列表每页 7 条（jsdom），按行取值的用例一律先 search（请求编号 / 技能名）再取行，
  * 不依赖「第几位」——种子再多一条比它新的记录，也不会把目标行挤出首页。
@@ -39,7 +37,6 @@ const flush = async () => {
 }
 
 beforeEach(() => {
-  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   let seq = 0
@@ -56,7 +53,6 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  restoreAuditClock()
 })
 
 function mountReal() {

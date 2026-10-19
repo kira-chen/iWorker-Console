@@ -419,6 +419,7 @@ const {
   releaseNotes, // 升级说明（必填）
   atMax: versionAtMax, // 无法自动建议版本号（人话提示 + 禁发）
   nextLoading: nextLabelLoading,
+  loadFailed: versionLoadFailed,
   bump: versionBump, // 更新类型（NONE 修复更新 / MINOR 功能更新 / MAJOR 重大更新，md §3.7）
   firstPublish: versionFirstPublish, // 首个版本：无更新类型可选，固定 v1.0.0
   setBump: setVersionBump,
@@ -564,8 +565,10 @@ function backToList() {
           <el-skeleton :rows="8" animated style="max-width: 900px; margin: 0 auto" />
         </div>
         <div v-else-if="store.error" class="board-state">
-          <p>{{ store.error }}</p>
+          <p>加载失败</p>
+          <p v-if="store.error" class="board-state-reason">{{ store.error }}</p>
           <el-button @click="store.load(route.params.id)">重试</el-button>
+          <el-button @click="backToList">返回</el-button>
         </div>
         <div v-else-if="store.loading" class="board-state"></div>
 
@@ -613,15 +616,16 @@ function backToList() {
             <PositionAgentSkillTab :is-readonly="isReadonly" />
           </el-tab-pane>
 
-          <!-- ⑥ 自动化任务（样例定时任务承载；只读态 pointer-events 冻结兜底）
+          <!-- ⑥ 自动化任务（样例定时任务承载；只读态由 Stage / 编辑器的 readonly 入参真正禁用，J20）
                页签标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③，原 `sampleTasks`；深链 ?tab= 旧值不兼容）；
                PositionSampleTaskStage 的 embedded 开关已退役（审计 J5），只剩页签内联形态。 -->
           <el-tab-pane label="自动化任务" name="tasks">
-            <div class="pd-pane pd-pane--flush" :class="{ 'pd-ro-freeze': isReadonly }">
+            <div class="pd-pane pd-pane--flush">
               <PositionSampleTaskStage
                 v-if="store.positionId != null"
                 :position-id="store.positionId"
                 :position-name="store.basic.name || '岗位'"
+                :readonly="isReadonly"
                 @update:sample-count="sampleTaskCount = $event"
               />
               <div v-else class="pd-empty">保存岗位后即可配置自动化任务。</div>
@@ -655,6 +659,8 @@ function backToList() {
       :publishing="publishing"
       :at-max="versionAtMax"
       :next-loading="nextLabelLoading"
+      :load-failed="versionLoadFailed"
+      @retry="loadNextVersionLabel()"
       @update:bump="setVersionBump"
       @publish="doPublish"
     />
@@ -767,6 +773,10 @@ function backToList() {
   overflow: hidden;
   will-change: filter, opacity;
   contain: layout paint;
+}
+.board-state-reason {
+  margin: 0;
+  font-size: 12px;
 }
 .board-state {
   flex: 1;
@@ -953,7 +963,7 @@ function backToList() {
 /* 人格页签样式段（必填星 / .pd-card 卡片家族 / 示例问题 3 格）随拆分搬入 PositionPersonaTab.vue
    （.pd-card 家族在人格与 Agent 两子组件各持一份：scoped 样式不穿子组件内层 DOM，也罩不住 append-to-body 抽屉） */
 /* 知识页签样式段（名称高亮 / 工具栏）随拆分搬入 PositionKnowledgeTab.vue */
-/* 只读冻结兜底：工作档案 / 自动化任务两个内嵌 Stage 暂无 readonly prop，
+/* 只读冻结兜底：仅工作档案页签仍保留（该 Stage 已有 readonly 入参，此处为兜底）；自动化任务页签已改由 readonly 入参真正禁用（J20）。
    查看态 / 审核中用 pointer-events 冻结（demo 口径，正式实现由后续批次下沉 readonly）。 */
 .pd-ro-freeze {
   pointer-events: none;

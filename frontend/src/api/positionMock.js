@@ -56,6 +56,7 @@ const err = (message, field = null, code = 40000) => new ApiError({ code, messag
 let posSeq = 405
 let agentSeq = 520
 
+// 口径（J61，2026-10-10 浦月批复）：水位线只升不降；只有整体重置 __resetPositionMock（含清站点数据 / resetMock=1）会把它归零，其它模块的重置不联动。
 /* ---------------- 岗位 id 水位线（待办 yuepu#52） ----------------
  * 按 positionId 存数据的模块（分配 / 自动化任务 / 工作档案 / 运行规格 / 知识库 / 专家 / 三个连接器）各自持久化，
  * 而本模块升版本会丢弃旧快照、posSeq 回到 405——新建岗位复用旧 id，立刻「继承」旧岗位遗留的任务 / 档案 / 领用关系。
@@ -382,6 +383,11 @@ export async function createPosition(payload = {}) {
   publications[p.positionId] = []
   // 工作台条目同步初始化（新建岗位小弹窗 → 跳工作台即可编辑；工作台新建态首存 hydrate 需完整详情树）
   workbench[String(p.positionId)] = emptyWorkbench(payload)
+  // payload 带连接器 id 时同样回写连接器侧「被岗位引用」清单，与 updatePosition 同口径（yuepu#90①；UI 新建弹窗不传这些字段）
+  const wb = workbench[String(p.positionId)]
+  if ('businessSystemIds' in payload) syncBizPositionRefs(p.positionId, p.name, wb.businessSystemIds)
+  if ('connectorMcpIds' in payload) syncMcpPositionRefs(p.positionId, p.name, wb.connectorMcpIds)
+  if ('connectorApiIds' in payload) syncApiPositionRefs(p.positionId, p.name, wb.connectorApiIds)
   writeIdFloor()
   persist()
   return detailVO(p)

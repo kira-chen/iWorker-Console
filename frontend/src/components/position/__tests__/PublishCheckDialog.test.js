@@ -125,6 +125,17 @@ describe('PublishCheckDialog · 发布提交门穷举（四个条件缺一不可
     expect(el.textContent).toContain('升级说明必填')
   })
 
+  it('版本号拉取失败（loadFailed）→ 禁用 + 「版本号获取失败」提示 + 【重试】emit retry；不出版本号/升级说明表单（不支持手填）', () => {
+    const retrySpy = vi.fn()
+    const el = mount({ loadFailed: true, onRetry: retrySpy })
+    expect(publishBtn(el).disabled).toBe(true)
+    expect(el.querySelector('.load-failed').textContent).toContain('版本号获取失败')
+    expect(el.querySelector('.pub-row')).toBeNull()
+    expect(el.querySelector('textarea')).toBeNull()
+    ;[...el.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '重试').click()
+    expect(retrySpy).toHaveBeenCalledTimes(1)
+  })
+
   it('无法自动建议版本号（atMax）→ 禁用，并以 warning 语义告知（非错误）', () => {
     const el = mount({ atMax: true })
     expect(publishBtn(el).disabled).toBe(true)

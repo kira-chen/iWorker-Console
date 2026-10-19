@@ -332,6 +332,7 @@ const {
   releaseNotes,
   atMax: versionAtMax,
   nextLoading: nextLabelLoading,
+  loadFailed: versionLoadFailed,
   bump: versionBump,
   firstPublish: versionFirstPublish,
   setBump: setVersionBump,
@@ -797,6 +798,8 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
       :publishing="publishing"
       :at-max="versionAtMax"
       :next-loading="nextLabelLoading"
+      :load-failed="versionLoadFailed"
+      @retry="loadNextVersionLabel()"
       @update:bump="setVersionBump"
       @publish="doPublish"
     />

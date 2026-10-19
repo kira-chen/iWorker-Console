@@ -17,7 +17,7 @@ import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
  *
  * 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §12「加载失败」补：
  *  store.error 非空 → 不出页签、出【重试】，点【重试】按当前路由 id 重新 store.load。
- *  失败文案（md「加载失败」vs 代码显示原始错误）与是否另给【返回】待 J19 裁决，此处只钉重试行为。
+ *  J19 批复（2026-10-19）代码按 md §12：主文案「加载失败」（原始错误降为次要说明）、【重试】【返回】并列，【返回】回岗位列表。
  */
 
 // reactive：顶栏脏检查 isDirty 是 computed，store.basic 被 patchBasic 整体替换后须能触发重算
@@ -43,9 +43,10 @@ vi.mock('element-plus', () => ({
 }))
 // 路由 mock：query 可按用例改写（只读态用 view=1）
 const routeMock = { params: { id: '5' }, query: {}, meta: {} }
+const routerPush = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
   onBeforeRouteLeave: () => {},
   // 2026-09-10：新增的业务系统页签经 api/admin → api/request → src/router 拖入真实 router 模块，
   // 整模块 mock 后需喂它能跑通的工厂（口径同 components/admin/__tests__/expertEditor.test.js）。
@@ -62,7 +63,7 @@ vi.mock('@/api/sampleTask', () => ({ listSampleTasks: vi.fn(() => Promise.resolv
 // 知识页签只读列表（2026-09-04 新增）：懒加载，Tab 骨架测试给空列表即可
 vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [], total: 0 })) }))
 vi.mock('@/composables/useVersionPublish', () => ({
-  useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, prevMaxLabel: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
+  useVersionPublish: () => ({ versionLabel: { value: '' }, releaseNotes: { value: '' }, versionAtMax: { value: false }, nextLabelLoading: { value: false }, primeNextLabel: vi.fn(), reset: vi.fn() })
 }))
 // featureFlags 局部 mock 必须与真实模块的导出保持一致，否则引用它的组件加载即报错。
 // 2026-09-12 负责人决策 3（审计 J2）：FRONT_RUNTIME_ENABLED 随员工端整体退役删除，本 mock 同步去掉该键。
@@ -73,7 +74,7 @@ for (const p of [
   '@/components/admin/AdminRail.vue', '@/components/StatusTag.vue', '@/components/ThemeToggle.vue',
   '@/components/position/PublishCheckDialog.vue',
   '@/components/position/PositionDataTableStage.vue',
-  '@/components/position/PositionSampleTaskStage.vue', '@/components/position/ClaimNotesEditor.vue',
+  '@/components/position/ClaimNotesEditor.vue',
   '@/components/position/IconPickerPopover.vue',
   '@/components/position/SkillMilkdownEditor.vue', '@/components/test/EffectTestStage.vue',
   // 2026-09-09 PRD 复核·G1（A19）：知识页签【检索测试】改原地弹窗后新引入，同样全桩
@@ -83,6 +84,12 @@ for (const p of [
 ]) {
   vi.doMock(p, () => ({ default: { name: 'Stub', setup: () => () => h('div', { class: 'stub' }) } }))
 }
+
+// 自动化任务 Stage（J20）：桩出它收到的 readonly 入参——只读链条（isReadonly → :readonly → 编辑器控件 disabled）的顶层接线由本文件守，
+// 底层「readonly 真禁用控件」由 SampleTaskEditorReadonly.test.js 守。桩里放一个输入框，disabled 直接跟随 readonly。
+vi.doMock('@/components/position/PositionSampleTaskStage.vue', () => ({
+  default: { name: 'PositionSampleTaskStage', props: ['positionId', 'positionName', 'readonly'], setup: (p) => () => h('div', { class: 'stub-task-stage' }, [h('input', { class: 'stub-task-input', disabled: !!p.readonly })]) }
+}))
 
 const PositionDetailTabs = (await import('@/views/admin/PositionDetailTabs.vue')).default
 
@@ -260,7 +267,7 @@ describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-
   })
 })
 
-describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文案待 J19）', () => {
+describe('PositionDetailTabs · 加载失败（md §12：展示「加载失败」和【重试】【返回】；J19 批复代码按 md）', () => {
   const retryBtn = () => [...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '重试')
 
   it('详情加载失败（store.error 非空）→ 不渲染页签，出【重试】按钮', async () => {
@@ -268,6 +275,25 @@ describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文�
     await mount()
     expect(container.querySelector('.el-tabs')).toBeNull()
     expect(retryBtn()).toBeTruthy()
+  })
+
+  it('加载失败 → 主文案是「加载失败」，原始错误作次要说明，【重试】【返回】并列', async () => {
+    store.error = '网络异常'
+    await mount()
+    const state = container.querySelector('.board-state')
+    expect(state.querySelector('p').textContent.trim()).toBe('加载失败')
+    expect(state.textContent).toContain('网络异常')
+    const labels = [...state.querySelectorAll('.el-button')].map((b) => b.textContent.trim())
+    expect(labels).toEqual(['重试', '返回'])
+  })
+
+  it('点【返回】→ 回岗位列表', async () => {
+    store.error = '网络异常'
+    await mount()
+    routerPush.mockClear()
+    ;[...container.querySelectorAll('.board-state .el-button')].find((b) => b.textContent.trim() === '返回').click()
+    await nextTick()
+    expect(routerPush).toHaveBeenCalledWith({ name: 'AdminPositions' })
   })
 
   it('点【重试】→ 按当前路由的岗位 id 重新加载详情（store.load("5")）', async () => {
@@ -278,5 +304,30 @@ describe('PositionDetailTabs · 加载失败（2026-10-08 对齐 md §12；文�
     await nextTick()
     expect(store.load.mock.calls.length).toBe(before + 1)
     expect(store.load.mock.calls.at(-1)[0]).toBe('5')
+  })
+})
+
+
+describe('PositionDetailTabs · 自动化任务页签只读接线（J20，md §10 审核中全部页签只读）', () => {
+  const taskInputs = () => [...container.querySelectorAll('.stub-task-input')]
+
+  it('前提：可编辑岗位 → 自动化任务页签的输入控件可用', async () => {
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => !i.disabled)).toBe(true)
+  })
+
+  it('审核中岗位（detail.pendingAction 非空）→ 自动化任务页签的输入控件全部 disabled', async () => {
+    store.detail.pendingAction = 'PUBLISH'
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => i.disabled)).toBe(true)
+  })
+
+  it('查看态（query.view=1）→ 自动化任务页签的输入控件全部 disabled', async () => {
+    routeMock.query = { view: '1' }
+    await mount()
+    expect(taskInputs().length).toBe(1)
+    expect(taskInputs().every((i) => i.disabled)).toBe(true)
   })
 })

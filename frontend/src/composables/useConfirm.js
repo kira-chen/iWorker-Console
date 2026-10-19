@@ -1,7 +1,7 @@
 import { ElMessageBox } from 'element-plus'
 
 /**
- * 管理后台确认弹窗统一封装（2026-09-08 原型复刻批次 1 · A8）。
+ * 管理后台确认弹窗封装——只管经它调用的页面（约 8 个文件），其余页面直调 ElMessageBox 仍是 Element Plus 默认样式，两种并存（J38 批复：不逐页迁移）（2026-09-08 原型复刻批次 1 · A8）。
  *
  * 【形态】照原型 L15 `.modal` + L186 `modal()`：居中 440px 白卡、圆角 8、**无 warning 图标**、
  * h3 标题 + p 正文、右下角 取消(plain) / 确认(primary)，无右上 ×。样式由 customClass
@@ -22,7 +22,7 @@ import { ElMessageBox } from 'element-plus'
  * 本批接入岗位列表 / 岗位管理；其余页面的 ElMessageBox 直调归后续批次逐页切换。
  */
 
-/** 公共选项：去图标、去 ×、统一 customClass，按钮文案默认 取消 / 确定 */
+/** 公共选项：去图标、去 ×、注入 customClass，按钮文案默认 取消 / 确定 */
 function baseOptions({ confirmText, cancelText, danger, warning, extra }) {
   const opts = {
     customClass: 'admin-confirm',

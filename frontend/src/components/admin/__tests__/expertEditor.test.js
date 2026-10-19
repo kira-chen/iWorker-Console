@@ -463,7 +463,7 @@ describe('ExpertEditor — 新建', () => {
 describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () => {
   const swatches = () => [...container.querySelectorAll('input[name="expertBackgroundColor"]')]
 
-  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（代码现状，md 列举顺序待裁决）', async () => {
+  it('固定 7 色板单选，默认选中 #DCF5E4；hint 文案；字段顺序 图标→背景色→简介（代码现状；md 列举顺序不约束布局，J11 批复 B）', async () => {
     await mount({ expertId: null })
     const radios = swatches()
     expect(radios.map((r) => r.value)).toEqual([

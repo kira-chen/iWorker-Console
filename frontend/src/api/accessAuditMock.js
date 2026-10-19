@@ -7,35 +7,41 @@
 // （PRD 访问审计 §6.2；提交申请时不写，驳回 / 撤回也不写，且不再额外写一条「停用」）。
 // 2026-09-30：强制回收 / 用户技能审核 / 岗位分配三类也接入（PRD §6.2 三条记录说明）。
 // 2026-10-16：客户端通知改由管理端在管理员操作时直接生成（客户端调通知接口显示），不再从审计记录拉取拼装——
+//
+// 2026-10-19（测试审计 J27）：种子里的 time 一律写成 daysAgo(n, 'HH:mm')（n 天前的几点几分），不再写死绝对日期——
+// 页面默认只看近 90 天，写死的日期过几个月整页会变空。n 取自原绝对日期距 2026-10-10 的天数，先后顺序与间隔不变。
+// 例外（仍是绝对日期）：版本管理 id 13–17、存储空间 id 20–24——它们的时间与 versionMock / storageSpaceMock 种子同源，
+// 由对应用例逐条核对，相对化须连同那两个 mock 的种子与 attachPersist version 一起改。
 // 审计记录只服务页面展示，原为客户端多存的 at / objectId / meta 字段与 listClientFacingOps 一并删除。
 // 其余模块的操作暂未接入，仍是静态种子。
 import { attachPersist } from './mockPersist'
 import { nowMinuteText } from '@/utils/datetime'
+import { daysAgo } from '@/utils/seedDate'
 
 export const dlRecords = [
-  { id: 1, time: '2026-08-28 10:32', user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
-  { id: 2, time: '2026-08-28 10:18', user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 3, time: '2026-08-28 09:55', user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 4, time: '2026-08-27 22:06', user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', source: '知识库·我的资料', result: 'FAILED', failReason: '磁盘空间不足（CS端）' },
-  { id: 5, time: '2026-08-27 18:40', user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', source: '会话产物', result: 'FAILED', failReason: '无写入权限（CS端）' },
-  { id: 6, time: '2026-08-27 16:15', user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', source: '知识库·本地产物', result: 'SUCCESS' },
-  { id: 7, time: '2026-08-27 14:50', user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', source: '知识库·我的资料', result: 'SUCCESS' },
-  { id: 8, time: '2026-08-27 11:23', user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
+  { id: 1, time: daysAgo(43, '10:32'), user: '刘敏', filename: '销售顾问v1.4.2岗位说明.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
+  { id: 2, time: daysAgo(43, '10:18'), user: '张浩', filename: '竞品资料库精编版.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 3, time: daysAgo(43, '09:55'), user: '王芳', filename: '合同付款条款手册.pdf', channel: 'Mac', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 4, time: daysAgo(44, '22:06'), user: '吴强', filename: '财税合规政策手册.pdf', channel: 'Mac', source: '知识库·我的资料', result: 'FAILED', failReason: '磁盘空间不足（CS端）' },
+  { id: 5, time: daysAgo(44, '18:40'), user: '李强', filename: '人事档案汇总2026Q3.xlsx', channel: 'Windows', source: '会话产物', result: 'FAILED', failReason: '无写入权限（CS端）' },
+  { id: 6, time: daysAgo(44, '16:15'), user: '陈宇', filename: '项目交付规范手册v2.pdf', channel: 'Windows', source: '知识库·本地产物', result: 'SUCCESS' },
+  { id: 7, time: daysAgo(44, '14:50'), user: '孙新', filename: '2026年客户名单.xlsx', channel: 'Mac', source: '知识库·我的资料', result: 'SUCCESS' },
+  { id: 8, time: daysAgo(44, '11:23'), user: '李娜', filename: '合同模板—服务合同.docx', channel: 'Windows', source: '会话产物', result: 'SUCCESS' },
 ]
 
 export const opsRecords = [
-  { id: 1, time: '2026-08-28 10:05', operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
-  { id: 2, time: '2026-08-28 09:48', operator: 'wang.fang', module: '知识库', action: '停用', target: '竞品资料库', detail: '' },
-  { id: 3, time: '2026-08-27 18:22', operator: 'admin', module: 'MCP', action: '发布', target: 'ERP 连接器', detail: '' },
-  { id: 4, time: '2026-08-27 17:15', operator: 'admin', module: '审核中心', action: '审核通过', target: '生产计划专属规格申请', detail: '' },
-  { id: 5, time: '2026-08-27 16:08', operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 财税合规助手', detail: '岗位与技能权限范围不匹配' },
-  { id: 6, time: '2026-08-27 14:40', operator: 'li.qiang', module: 'API', action: '停用', target: '报表批量导出接口', detail: '' },
-  { id: 7, time: '2026-08-27 11:20', operator: 'zhang.wei', module: '技能', action: '删除', target: '经营分析技能', version: 'v1.3', detail: '' },
-  { id: 8, time: '2026-08-27 09:55', operator: 'wang.fang', module: '模型', action: '发布', target: '财税合规专属模型', detail: '' },
-  { id: 9, time: '2026-08-26 17:33', operator: 'admin', module: '专家', action: '停用', target: '税务筹划专家', version: 'v2.1', detail: '' },
-  { id: 10, time: '2026-08-26 15:10', operator: 'zhang.wei', module: '业务系统', action: '发布', target: 'Salesforce CRM 集成', detail: '' },
-  { id: 11, time: '2026-08-26 11:45', operator: 'li.qiang', module: '岗位', action: '删除', target: '采购分析岗', version: 'v1.1', detail: '' },
-  { id: 12, time: '2026-08-25 16:20', operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '' },
+  { id: 1, time: daysAgo(43, '10:05'), operator: 'zhang.wei', module: '岗位', action: '发布', target: '销售顾问', version: 'v1.4.2', detail: 'v1.4.2 正式发布上线' },
+  { id: 2, time: daysAgo(43, '09:48'), operator: 'wang.fang', module: '知识库', action: '停用', target: '竞品资料库', detail: '' },
+  { id: 3, time: daysAgo(44, '18:22'), operator: 'admin', module: 'MCP', action: '发布', target: 'ERP 连接器', detail: '' },
+  { id: 4, time: daysAgo(44, '17:15'), operator: 'admin', module: '审核中心', action: '审核通过', target: '生产计划专属规格申请', detail: '' },
+  { id: 5, time: daysAgo(44, '16:08'), operator: 'admin', module: '用户技能审核', action: '审核驳回', target: 'sun.hao / 财税合规助手', detail: '岗位与技能权限范围不匹配' },
+  { id: 6, time: daysAgo(44, '14:40'), operator: 'li.qiang', module: 'API', action: '停用', target: '报表批量导出接口', detail: '' },
+  { id: 7, time: daysAgo(44, '11:20'), operator: 'zhang.wei', module: '技能', action: '删除', target: '经营分析技能', version: 'v1.3', detail: '' },
+  { id: 8, time: daysAgo(44, '09:55'), operator: 'wang.fang', module: '模型', action: '发布', target: '财税合规专属模型', detail: '' },
+  { id: 9, time: daysAgo(45, '17:33'), operator: 'admin', module: '专家', action: '停用', target: '税务筹划专家', version: 'v2.1', detail: '' },
+  { id: 10, time: daysAgo(45, '15:10'), operator: 'zhang.wei', module: '业务系统', action: '发布', target: 'Salesforce CRM 集成', detail: '' },
+  { id: 11, time: daysAgo(45, '11:45'), operator: 'li.qiang', module: '岗位', action: '删除', target: '采购分析岗', version: 'v1.1', detail: '' },
+  { id: 12, time: daysAgo(46, '16:20'), operator: 'admin', module: '用户技能审核', action: '审核通过', target: 'wang.fang / 合同管理助手', detail: '' },
   // 版本管理（客户端版本）：与 versionMock.js 种子里各版本的发布记录一一对应（时间 / 发布人 / 更新说明同源，
   // 由 versionMock.test.js 的「审计种子与版本种子一致」用例守着）。操作对象 =「终端 + 版本号」，不附灰色版本号小标签；
   // 变更内容 = 该版本的更新说明（发布 / 停用两种动作一律如此；撤回不记）。新版本生效时旧版本被自动顶替回到未发布，不单独记一条「停用」。
@@ -45,8 +51,8 @@ export const opsRecords = [
   { id: 16, time: '2026-08-20 10:30', operator: 'li.na', module: '版本管理', action: '发布', target: 'Windows v1.2.0', detail: '1. 对话引用来源支持一键复制\n2. 任务完成后增加桌面通知\n3. 修复长对话滚动偶尔跳到顶部的问题' },
   { id: 17, time: '2026-08-20 10:32', operator: 'li.na', module: '版本管理', action: '发布', target: 'Mac v1.1.0', detail: '与 Windows 端同步：引用来源一键复制、任务完成桌面通知。' },
   // 岗位分配（§6.2 岗位分配记录）：target = 用户名，detail =「原岗位 → 新岗位」（分配时原岗位为「未绑定」）。
-  { id: 18, time: '2026-08-28 11:10', operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗' },
-  { id: 19, time: '2026-08-28 10:50', operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' },
+  { id: 18, time: daysAgo(43, '11:10'), operator: 'admin', module: '岗位分配', action: '分配', target: 'chenyu', detail: '未绑定 → 经营分析岗' },
+  { id: 19, time: daysAgo(43, '10:50'), operator: 'zhang.wei', module: '岗位分配', action: '变更', target: 'li.na', detail: '客户成功岗 → 财务审核岗' },
   // 存储空间（§6.2 存储空间记录）：调整容量、同意扩容、拒绝扩容三类都在审计页展示。
   // 与 storageSpaceMock 的种子一一对应：
   // 徐琳个人设置 8 GB、赵敏申请已同意（5→10）、何静 / 刘强 / 孙欣三条被拒绝申请（处理人 demo / zhangwei），
@@ -58,16 +64,16 @@ export const opsRecords = [
   { id: 24, time: '2026-09-20 14:05', operator: 'zhangwei', module: '存储空间', action: '拒绝扩容', target: 'sun.xin', detail: '近期有大量重复产物，请先清理后再申请。' },
   // 用户访问权限（06组织 › 用户访问权限）：授权、收回、通过申请、驳回申请四类都在审计页展示。
   // 与 userAccessMock 的种子一一对应：张伟 / 赵敏由管理员授权（本机 + 云端各一条），李娜申请通过（UA-1002，本机），刘强申请被驳回（UA-1001，本机）。
-  { id: 25, time: '2026-10-11 15:30', operator: 'demo', module: '用户访问权限', action: '通过申请', target: 'li.na', detail: '未授权 → 已授权（申请通过·本机）' },
-  { id: 26, time: '2026-10-11 10:12', operator: 'zhangwei', module: '用户访问权限', action: '驳回申请', target: 'liuqiang', detail: '当前任务无需完全访问，如确有需要请说明用途后重新申请。' },
-  { id: 27, time: '2026-10-10 09:20', operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（本机）' },
-  { id: 28, time: '2026-10-09 17:05', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（本机）' },
-  { id: 29, time: '2026-10-10 09:21', operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（云端）' },
-  { id: 30, time: '2026-10-09 17:06', operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（云端）' },
+  { id: 25, time: daysAgo(-1, '15:30'), operator: 'demo', module: '用户访问权限', action: '通过申请', target: 'li.na', detail: '未授权 → 已授权（申请通过·本机）' },
+  { id: 26, time: daysAgo(-1, '10:12'), operator: 'zhangwei', module: '用户访问权限', action: '驳回申请', target: 'liuqiang', detail: '当前任务无需完全访问，如确有需要请说明用途后重新申请。' },
+  { id: 27, time: daysAgo(0, '09:20'), operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（本机）' },
+  { id: 28, time: daysAgo(1, '17:05'), operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（本机）' },
+  { id: 29, time: daysAgo(0, '09:21'), operator: 'demo', module: '用户访问权限', action: '授权', target: 'zhangwei', detail: '未授权 → 已授权（云端）' },
+  { id: 30, time: daysAgo(1, '17:06'), operator: 'zhangwei', module: '用户访问权限', action: '授权', target: 'zhaomin', detail: '未授权 → 已授权（云端）' },
   // 强制回收（§6.2）：与 apiConnectorMock api_1104、unifiedSkillMock sk_306 的「已回收」种子一一对应
   // （对象名称 / 回收原因 / 技能版本同源，由 accessAuditMock.test.js 的种子自洽用例守着）。
-  { id: 31, time: '2026-08-29 09:30', operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改' },
-  { id: 32, time: '2026-08-29 10:12', operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改' }
+  { id: 31, time: daysAgo(42, '09:30'), operator: 'admin', module: '技能', action: '强制回收', target: '公文润色', version: 'v3.0.2', detail: '润色结果夹带未脱敏的内部文号，紧急回收整改' },
+  { id: 32, time: daysAgo(42, '10:12'), operator: 'admin', module: 'API', action: '强制回收', target: '新增客户跟进', detail: '服务方通知该接口存在越权写入风险，紧急回收待整改' }
 ]
 
 /* ---------------- 运行期新增的操作记录（版本管理写入） ---------------- */

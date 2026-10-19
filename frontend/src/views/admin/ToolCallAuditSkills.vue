@@ -109,7 +109,9 @@ function chooseMetric(key) {
   query.hasWrite = ''
   if (key === 'write') query.hasWrite = true
   if (key === 'failed') query.result = 'FAILED'
-  list.search()
+  // 总数卡片 = 仅保留时间范围（PRD，按 J23）：搜索词一并清空；其余卡片只改筛选、保留搜索词
+  if (key === 'all') onClearSearch()
+  else list.search()
 }
 
 const HELP = [

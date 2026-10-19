@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
  * 工具调用审计 · 三页签（2026-09-28 加「岗位自动化任务」「知识库检索」页签，
@@ -18,8 +17,7 @@ import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
  * （已预授权 / 未授权）整套断言随之移除；「任务运行编号」字段废弃，记录本身已是运行级。
  * 「知识库检索」一节不受本次改版影响，原样保留。
  *
- * 固定系统时间到 2026-09-28（helpers/fixedAuditClock.js，与 adminToolCallAudit.test.js 共用）：种子在
- * 2026-09-19 ~ 09-28，列表默认窗口是「今天往前 90 天」，不固定则真实日期推移后用例到期变红。
+ * 种子日期相对「今天」生成（toolCallAuditMock.js 用 dateDaysAgo，J27），默认「近 90 天」窗口永远框得住，不再固定系统时间。
  * 「文案逐字对 md」一节借请求编号（C-/T-/K-）搜索定位目标行——靠搜索框的编号匹配，随产品裁决
  * （搜索框是否收口为不搜编号）调整定位方式。
  */
@@ -41,7 +39,6 @@ const flush = async () => {
 }
 
 beforeEach(() => {
-  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   createObjectURL = vi.fn(() => 'blob:mock/1')
@@ -56,7 +53,6 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  restoreAuditClock()
 })
 
 function mountReal() {
@@ -414,5 +410,84 @@ describe('导出 CSV（PRD §三）', () => {
       await flush()
       expect(createObjectURL).toHaveBeenCalledTimes(1)
     }
+  })
+})
+
+describe('总数卡片点击（PRD 各页签统计卡片表：仅保留时间范围；按 J23）', () => {
+  const TABS = [
+    { name: 'skill', total: '执行总数', ph: '搜索用户 / 岗位 / 技能 / 工具' },
+    { name: 'task', total: '运行总数', ph: '搜索用户 / 岗位 / 任务 / 工具' },
+    { name: 'knowledge', total: '检索请求总数', ph: '搜索用户 / 岗位 / 知识库 / 检索词' }
+  ]
+  for (const { name, total, ph } of TABS) {
+    it(`${name} 页签：搜索后点「${total}」→ 搜索框清空、列表恢复全量；点「执行失败」则保留搜索词`, async () => {
+      mountReal()
+      await flush()
+      if (name !== 'skill') await openTab(name)
+      const p = pane(name)
+      const input = () => p.querySelector(`input[placeholder="${ph}"]`)
+      const fullCount = Number(cardOf(p, total).querySelector('.metric-value').textContent)
+
+      input().value = '张'
+      input().dispatchEvent(new Event('input'))
+      input().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+      await flush()
+      // 统计卡片随筛选联动：搜索后总数小于全量，证明搜索词确实生效
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBeLessThan(fullCount)
+
+      cardOf(p, '执行失败').click()
+      await flush()
+      expect(input().value).toBe('张')
+
+      cardOf(p, total).click()
+      await flush()
+      expect(input().value).toBe('')
+      expect(Number(cardOf(p, total).querySelector('.metric-value').textContent)).toBe(fullCount)
+    })
+  }
+
+  // 知识检索页签另有两类筛选态：先选「数据源类型」下拉 / 先点「无命中检索」卡，再点总数卡——也要全部清回全量（总数卡 = 仅保留时间范围）
+  it('knowledge 页签：先选数据源类型再点「检索请求总数」→ 下拉回到「全部数据源类型」、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const fullCount = Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)
+    const typeSelect = () => p.querySelectorAll('.lt-filter')[1]
+
+    typeSelect().querySelector('.el-select__wrapper').click()
+    await flush()
+    const mcp = [...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === 'MCP')
+    expect(mcp).toBeTruthy() // 前提：数据源类型下拉里有「MCP」
+    mcp.click()
+    await flush()
+    expect(typeSelect().textContent).toContain('MCP') // 前提：筛选已生效
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBeLessThan(fullCount) // 统计卡随筛选联动，证明下拉确实收窄了结果
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(typeSelect().querySelector('.el-select__placeholder').textContent.trim()).toBe('全部数据源类型')
+    expect(typeSelect().textContent).not.toContain('MCP')
+    expect(Number(cardOf(p, '检索请求总数').querySelector('.metric-value').textContent)).toBe(fullCount)
+  })
+
+  it('knowledge 页签：先点「无命中检索」卡（高亮 + 列表只剩无命中）再点「检索请求总数」→ 高亮取消、列表恢复全量', async () => {
+    mountReal()
+    await flush()
+    await openTab('knowledge')
+    const p = pane('knowledge')
+    const rowTotal = () => Number(p.querySelector('.list-pager')?.textContent.match(/共s*(d+)s*条/)?.[1] ?? bodyRows(p).length)
+    const fullRows = rowTotal()
+
+    cardOf(p, '无命中检索').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(true)
+    expect(rowTotal()).toBe(Number(cardOf(p, '无命中检索').querySelector('.metric-value').textContent))
+    expect(rowTotal()).toBeLessThan(fullRows)
+
+    cardOf(p, '检索请求总数').click()
+    await flush()
+    expect(cardOf(p, '无命中检索').classList.contains('is-active')).toBe(false)
+    expect(rowTotal()).toBe(fullRows)
   })
 })

@@ -29,15 +29,13 @@ const W = { skipGlobalError: true }
 const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_SKILL_MOCK !== '0'
 const skillMock = () => import('./unifiedSkillMock')
 
-// 统一前缀解析：source ∈ 'fde' | 'platform' | 'platform-candidate'（F4：仅此一处收敛前缀分支）。
+// 统一前缀解析：source ∈ 'fde' | 'platform' | 'system' | 'review'（F4：仅此一处收敛前缀分支）。
 // - 'fde'                → /fde/skills（FDE_WORKBENCH 写端点）
 // - 'platform'           → /fde/platform-skills（SYS_CONFIG 平台技能写端点）
-// - 'platform-candidate' → /fde/platform-skill-candidates（FDE_WORKBENCH 平台技能只读端点，
-//   仅供平台技能 Tab 只读详情读取文件树/内容；该 source 下绝不调写方法——只读态写入口根本不渲染）。
+// （'platform-candidate' 只读端点分支已于 2026-10-10 J13 退役：唯一调用方 ReviewSkillDetailPage 7ca8241 已删）
 function base(source) {
   if (source === 'platform') return '/fde/platform-skills'
   if (source === 'system') return '/fde/system-skills'   // V89：系统默认技能（通道前缀分段隔离，端点与 platform 同构）
-  if (source === 'platform-candidate') return '/fde/platform-skill-candidates'
   if (source === 'review') return '/fde/user-skill-reviews'  // V94：用户技能审核只读预览（即时解析留档 zip 出文件树/内容，不落库）
   return '/fde/skills'
 }
@@ -105,13 +103,13 @@ export function getSkillFile(skillId, path, source) {
  * 跨文件查找（组③，功能波次 2b）：GET /{skillId}/files/search?q=&scope=。
  *
  * 端点仅在写域控制器存在：FDE `/fde/skills` 与平台 `/fde/platform-skills`。
- * **`platform-candidate`（只读浏览，SkillReferenceController 只有 /files 与 /files/content）无此端点**，
+ * **只读浏览（readonly）无此端点**，
  * 调用会 404（越权）→ 调用方（SkillFileTree）在只读态隐藏「按内容」入口、绝不调本函数（P1 收口）。
  *
  * @param {number|string} skillId
  * @param {string} q 查询词（空白则后端返回空 items）
  * @param {'name'|'content'|'all'} scope 匹配维度（默认 all）
- * @param {'fde'|'platform'} source 仅这两者有 search 端点（不含 platform-candidate）
+ * @param {'fde'|'platform'} source 仅这两者有 search 端点
  * @returns {Promise<SkillFileSearchVO>} { q, items:[{ path,name,fileType,isDir,nameHit, lines:[{lineNo,snippet}] }] }
  *   读接口走全局错误提示；调用方自行处理 loading/空态。
  */
@@ -274,7 +272,7 @@ export async function exportSkillZip(skillId, source) {
  *
  * @param {number|string} skillId
  * @param {string} path 包内相对 path（URL-encode）
- * @param {'fde'|'platform'|'platform-candidate'} source
+ * @param {'fde'|'platform'} source
  * @returns {Promise<string>} 实际下载的文件名
  * @throws {Error} 失败时抛（message 优先取后端 JSON 错误体）
  */

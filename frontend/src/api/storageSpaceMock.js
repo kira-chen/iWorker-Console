@@ -275,9 +275,10 @@ function assertDiskEnough(delta) {
   }
 }
 
+/** 停用账号与已删除账号同口径：页面清单里看不到，数据层也按「员工不存在」拒绝（调整 / 批量 / 申请处理都经此） */
 function findMember(userId) {
   const m = members.find((row) => row.userId === Number(userId))
-  if (!m) throw err('员工不存在', 40400)
+  if (!m || !m.active) throw err('员工不存在', 40400)
   return m
 }
 
