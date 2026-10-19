@@ -54,20 +54,19 @@ const {
   dateRange, disabledDate, onCalendarChange,
   sortArrow, toggleSort,
   keyword, applySearch, onClearSearch,
-  list, statsAll
+  list, statsAll, cardAll
 } = useAuditList({
   fetcher: listTaskCallAudits,
   records: taskCallRecords,
   matches: (r) => (!query.result || r.result === query.result) && (query.hasWrite === '' || r.hasWrite === query.hasWrite),
-  // 搜索范围：md §8.3 只写用户 / 岗位 / 任务（及触发方式） / 工具标识，未写请求编号（仅知识库页签 §9.3 写了）；
-  // 这里多带 r.id 是有意保留——演示里按编号（C-xxxx / T-xxxx）直达某条记录最省事，也是用例的定位手段。待产品确认是否收口。
+  // 搜索范围：用户 / 岗位 / 任务 / 触发方式 / 工具标识 + 请求编号（T-xxxx）。J66 批复 A：保留，md §8.3 已补「可搜请求编号」，按编号直达记录最省事。
   keywordOf: (r) => [r.user, r.position, r.task, r.trigger, r.id, ...r.calls.map((c) => c.tool)]
 })
 const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
 /* ── 统计卡片（PRD §8.2） ── */
 const metrics = computed(() => {
-  const all = statsAll.value
+  const all = cardAll.value
   const count = (result) => all.filter((r) => r.result === result).length
   const writes = all.filter((r) => r.hasWrite)
   return [
@@ -87,7 +86,7 @@ const metrics = computed(() => {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
-      // 副标题「按整体结果判定」md 未写（§8.2 卡片说明列只有「整体判定为失败的记录数」），由说明列改写而来，意思一致故保留
+      // 副标题「按整体结果判定」：J67 批复 A，md §8.2 已补该副标题
       sub: '按整体结果判定',
       danger: true
     }

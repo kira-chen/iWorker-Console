@@ -87,6 +87,20 @@ function deriveExec(calls) {
   return { hasWrite, result }
 }
 
+/**
+ * 涉及写操作的会话按「用户确认」归类（§二「涉及写操作的会话」卡片副标题，待办 yuepu#92⑬），三类互斥、合计等于写操作会话数：
+ *   REFUSED   用户拒绝——会话里有写操作被用户拒绝（confirm 留空，执行结果=失败、原因「用户取消本次操作」，见 §5.2）
+ *   CONFIRMED 已确认  ——没有被拒绝的写操作，且至少一次写操作经用户确认
+ *   NONE      不需要确认——其余（写操作都无需确认）
+ * 一次会话同时有多种情形时，按 用户拒绝 > 已确认 > 不需要确认 的顺序归入首个命中的一类。
+ */
+export function writeConfirmBucket(record) {
+  const writes = (record.calls || []).filter((c) => c.nature === 'WRITE')
+  if (writes.some((c) => c.confirm == null)) return 'REFUSED'
+  if (writes.some((c) => c.confirm === 'CONFIRMED')) return 'CONFIRMED'
+  return 'NONE'
+}
+
 /* ══════════════ 会话调用 ══════════════
  * 记录单元＝一次会话：calls 是这次会话里实际调用的（不限于技能引用的）按发生顺序调用的工具明细，skillCalls 是调用的技能
  * （同一技能多次调用合并为一项），两者互不关联（§五.2）。不展示「执行中」

@@ -52,7 +52,7 @@ const {
   dateRange, disabledDate, onCalendarChange,
   sortArrow, toggleSort,
   keyword, applySearch, onClearSearch,
-  list, statsAll
+  list, statsAll, cardAll
 } = useAuditList({
   fetcher: listKnowledgeCallAudits,
   records: knowledgeCallRecords,
@@ -66,7 +66,7 @@ const { rows, total, page, pageSize, loading, loadError, isEmpty } = list
 
 /* ── 统计卡片（PRD §九.2） ── */
 const metrics = computed(() => {
-  const all = statsAll.value
+  const all = cardAll.value
   const count = (result) => all.filter((r) => r.result === result).length
   return [
     {
@@ -86,7 +86,7 @@ const metrics = computed(() => {
       key: 'failed',
       label: '执行失败',
       value: count('FAILED'),
-      sub: '已尝试检索但未成功',
+      sub: '检索未成功（含因无访问权限未发出请求的）',
       danger: true
     }
   ]
@@ -265,6 +265,7 @@ function timelineSteps(d) {
           <el-table-column label="执行结果 / 原因" min-width="180">
             <template #default="{ row }">
               <StatusTag :type="RESULT_TAG[row.result]">{{ EXEC_RESULT_LABEL[row.result] }}</StatusTag>
+              <StatusTag v-if="isNoHit(row)" type="warning" class="tca-nohit">无命中</StatusTag>
               <span v-if="row.reason" class="tca-secondary">{{ row.reason }}</span>
             </template>
           </el-table-column>
@@ -309,6 +310,9 @@ function timelineSteps(d) {
 .tca-sort-arrow {
   margin-left: 2px;
   font-weight: var(--fw-medium);
+}
+.tca-nohit {
+  margin-left: 6px;
 }
 .tca-secondary {
   display: block;
