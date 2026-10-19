@@ -86,7 +86,7 @@ const onAction = vi.fn()
  * 复现「条件挂载的编辑器创建时 visible 已是 true」。
  */
 async function mount(init) {
-  state = reactive({ visible: false, kind: '', refId: null, item: null, readonly: true, buttons: REVIEW_BUTTONS, busyKey: '', snapshotGate: false, ...init })
+  state = reactive({ visible: false, kind: '', refId: null, item: null, readonly: true, buttons: REVIEW_BUTTONS, busyKey: '', snapshotKey: '', snapshotGate: false, ...init })
   container = document.createElement('div')
   document.body.appendChild(container)
   app = createApp({
@@ -101,6 +101,7 @@ async function mount(init) {
           buttons: state.buttons,
           busyKey: state.busyKey,
           snapshotGate: state.snapshotGate,
+          snapshotKey: state.snapshotKey,
           'onUpdate:visible': (v) => (state.visible = v),
           onAction
         })
@@ -142,11 +143,26 @@ afterEach(() => {
   document.querySelectorAll('.god-bar').forEach((el) => el.remove())
 })
 
+describe('GovObjectDetail · 按申请的快照 key 回看（yuepu#76）', () => {
+  it('我的申请传 snapshotKey → 按该 key 读提交时的历史快照（不是对象当前配置）', async () => {
+    await mount()
+    await open({ kind: 'POSITION', refId: 403, snapshotKey: '403#1', item: { name: '财务审核岗', requestAction: 'VERSION_PUBLISH' } })
+    expect(loadReviewSnapshot).toHaveBeenCalledWith('POSITION', 403, '403#1')
+  })
+
+  it('换一条申请（key 变）→ 重新读快照', async () => {
+    await mount()
+    await open({ kind: 'POSITION', refId: 403, snapshotKey: '403#1', item: { name: '财务审核岗' } })
+    await open({ snapshotKey: '403#2' })
+    expect(loadReviewSnapshot).toHaveBeenLastCalledWith('POSITION', 403, '403#2')
+  })
+})
+
 describe('GovObjectDetail · 快照闸门（md 审核中心 §四 L48 / §七 L102）', () => {
   it('岗位 + snapshotGate=true + 快照缺失 → 不开岗位详情，改出「无法查看」提示卡（版本快照缺失 + 提示文 + 申请对象名），吸底栏只剩【关闭】', async () => {
     await mount({ snapshotGate: true })
     await open({ kind: 'POSITION', refId: 403, item: { name: '财务审核岗', requestAction: 'VERSION_PUBLISH' } })
-    expect(loadReviewSnapshot).toHaveBeenCalledWith('POSITION', 403)
+    expect(loadReviewSnapshot).toHaveBeenCalledWith('POSITION', 403, '')
     const card = container.querySelector('.drawer[data-title="无法查看"]')
     expect(card).toBeTruthy()
     expect(card.querySelector('.section-title').textContent).toBe('版本快照缺失')

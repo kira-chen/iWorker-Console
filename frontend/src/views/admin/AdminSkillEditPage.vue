@@ -133,7 +133,7 @@ function loadDetail(skillId) {
   // 注意保持**非治理路径同步返回 Promise**（不给函数加 async）——本页 loadSkill 的并发编排
   // 与单测按微任务计时，多包一层 async 会平移时序（2026-09-09 实测踩坑）。
   if (isGovReadonly.value) {
-    return loadReviewSnapshot('SKILL', skillId).then((snap) => {
+    return loadReviewSnapshot('SKILL', skillId, queryString(route.query?.snap)).then((snap) => {
       govSnapshot.value = snap
       if (snap?.detail) return snap.detail
       return loadCurrentDetail(skillId)

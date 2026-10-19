@@ -740,10 +740,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v7，2026-10-09 待�
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=9）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(9)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

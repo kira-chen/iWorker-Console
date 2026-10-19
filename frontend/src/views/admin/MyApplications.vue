@@ -138,7 +138,7 @@ function openDetail(row, edit = false) {
     router.push({
       name: edit ? 'SysConfigSkillEdit' : 'SysConfigSkillView',
       params: { id: String(row.refId) },
-      query: { myApp: String(row.id) }
+      query: { myApp: String(row.id), ...(row.snapshotKey ? { snap: row.snapshotKey } : {}) }
     })
     return
   }
@@ -356,6 +356,7 @@ async function resubmit(row, key = 'resubmit') {
       v-model:visible="detailVisible"
       :kind="detailKind"
       :ref-id="detailRow?.refId"
+      :snapshot-key="detailRow?.snapshotKey"
       :item="detailRow"
       :readonly="detailMode !== 'edit'"
       :buttons="detailButtons"

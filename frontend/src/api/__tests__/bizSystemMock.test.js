@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
  */
 
 const persistHarness = vi.hoisted(() => ({ modules: new Map() }))
+// 连接器 list/get 入口的技能引用派生触发点：默认关掉省冷 import，断言引用清单的用例自己 import 技能模块（yuepu#77）
+vi.mock('../skillRefsLoader', () => ({ ensureSkillRefs: () => Promise.resolve() }))
 vi.mock('../mockPersist', () => ({
   attachPersist(moduleKey, options) {
     const persist = vi.fn()
@@ -38,6 +40,7 @@ import {
   listBizSystemSkills,
   createBizSystemOwnedSkill,
   deleteBizSystemOwnedSkill,
+  syncSkillRefs
 } from '../bizSystemMock'
 
 const VALID = {
@@ -55,6 +58,8 @@ async function mk(name) {
 
 describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（md §二.3 / §二.4）', () => {
   it('种子行内直接带 display 字段（status/pendingAction/refs/icon/时间），列表免二次请求', async () => {
+    // 引用清单由技能模块反向派生（yuepu#77，端到端见 connectorSkillRefs.test.js）；这里直接注入，只验连接器自身的出参
+    syncSkillRefs((id) => (id === 'biz_2102' ? [{ skillId: 'sk_x', skillName: '员工信息查询' }] : []))
     const b = await getBizSystem('biz_2102') // 审核中种子行，本文件从不改写
     expect(b.status).toBe('PENDING_REVIEW')
     expect(b.pendingAction).toBe('PUBLISH')
@@ -290,6 +295,7 @@ describe('bizSystemMock —— 业务系统三态状态机 + 软引用删除（m
 
   it('删除状态守卫 + 软引用：已发布不可删；停用审核通过回到未发布后，被引用仍可删（md §2 L43-45 / §二.3 L52 / §四，2026-09-23 待办 yuepu#7②）', async () => {
     // biz_2101 种子已发布且被 2 个技能引用——此前只靠 UI 藏按钮，直调 mock 能绕过状态限制
+    syncSkillRefs((id) => (id === 'biz_2101' ? [{ skillId: 'sk_x', skillName: 'X' }, { skillId: 'sk_y', skillName: 'Y' }] : []))
     const before = await getBizSystem('biz_2101')
     expect(before.referencedBySkillCount).toBeGreaterThan(0)
     await expect(deleteBizSystem('biz_2101')).rejects.toMatchObject({ message: expect.stringContaining('删除仅适用于未发布状态') })
@@ -348,7 +354,7 @@ describe('bizSystemMock —— 持久化', () => {
     return { m, harness, run }
   }
 
-  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=5 且含 bizSeq/skillSeq/bizRows', async () => {
+  it('11 个写点（含强制回收）各调 persist() 恰一次；读操作不调；快照 version=6 且含 bizSeq/skillSeq/bizRows', async () => {
     const { m, harness, run } = await fresh()
     await run(m.listBizSystems())
     await run(m.getBizSystem('biz_2103'))
@@ -381,7 +387,7 @@ describe('bizSystemMock —— 持久化', () => {
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 2)
     }
-    expect(harness.options.version).toBe(5)
+    expect(harness.options.version).toBe(6)
     const snap = harness.options.snapshot()
     expect(Number.isFinite(snap.bizSeq)).toBe(true)
     expect(Number.isFinite(snap.skillSeq)).toBe(true)

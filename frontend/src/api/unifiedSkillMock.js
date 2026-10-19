@@ -42,13 +42,14 @@ import { splitTextToToolRefNodes } from '@/utils/skillToolRef'
 // 不再是与它们完全脱钩的静态 TOOL_DIRECTORY；用各自的同步导出（不能用 listMcp/listApis/
 // listBizSystems——那三个是 async + delay，本文件的 seedReviewSnapshots 在模块初始化时同步调用
 // referencedToolsOf，用不了 async）
-import { listMcpSync } from './mcpConnectorMock'
-import { listApisSync } from './apiConnectorMock'
-import { listBizSystemsSync } from './bizSystemMock'
+import { listMcpSync, syncSkillRefs as syncMcpSkillRefs } from './mcpConnectorMock'
+import { listApisSync, syncSkillRefs as syncApiSkillRefs } from './apiConnectorMock'
+import { listBizSystemsSync, syncSkillRefs as syncBizSkillRefs } from './bizSystemMock'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相（mock 引 utils 为既有范式）
 import { nowMinuteText as nowText } from '@/utils/datetime'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
+import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshotArchive'
 // 强制回收：原因校验 + 回收信息构造（共享底座）+ 审核通过时落访问审计「管理端操作」
 import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
 import { appendOpsRecord } from './accessAuditMock'
@@ -130,7 +131,7 @@ const skills = [
     status: 'published', version: 'v1.2.0',
     createdAt: '2026-08-23 17:20', updatedAt: '2026-08-23 17:20', publishedAt: '2026-08-23 18:10',
     exampleQuestion: '帮我把这周的工作记录整理成周报',
-    toolRefs: ['mcp__expense_mcp', 'api__api_1103', 'mcp__knowledge_hub'],
+    toolRefs: ['mcp__expense_mcp', 'api__api_1103', 'mcp__knowledge_hub', 'api__api_1101'],
     files: {
       'SKILL.md': SKILL_MD_TPL('日报周报生成', '根据工作记录自动整理日报与周报', ['mcp__expense_mcp', 'api__api_1103', 'mcp__knowledge_hub']),
       'references/写作规范.md': '# 写作规范\n\n日报三段式：进展 / 风险 / 明日计划。'
@@ -195,7 +196,7 @@ const skills = [
     status: 'published', version: 'v1.0.0',
     createdAt: '2026-08-21 10:40', updatedAt: '2026-08-21 10:40', publishedAt: '2026-08-21 15:00',
     exampleQuestion: '帮我准备明天拜访这家客户的提纲',
-    toolRefs: ['api__api_1103', 'mcp__expense_mcp'],
+    toolRefs: ['api__api_1103', 'mcp__expense_mcp', 'mcp__mail_center'],
     files: { 'SKILL.md': SKILL_MD_TPL('客户拜访准备', '汇总客户资料并生成拜访提纲', ['api__api_1103', 'mcp__expense_mcp']) },
     snapshots: [
       { version: 'v1.0.0', status: 'ACTIVE', size: '10.3 KB', publisher: '管理员', publishedAt: '2026-08-21 15:00', disabledAt: '', notes: '首个版本' }
@@ -233,7 +234,7 @@ const skills = [
     pendingAction: 'publish', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首次发布',
     createdAt: '2026-08-24 14:02', updatedAt: '2026-08-25 09:30', publishedAt: '',
     exampleQuestion: '帮我把这张发票录成报销单',
-    toolRefs: ['mcp__expense_mcp', 'biz__biz_2102'],
+    toolRefs: ['mcp__expense_mcp', 'biz__biz_2102', 'biz__biz_2101', 'api__api_1101'],
     files: { 'SKILL.md': SKILL_MD_TPL('报销单智能填报', '按发票信息自动填写并提交报销单', ['mcp__expense_mcp', 'biz__biz_2102']) }
   }),
   seed({
@@ -624,7 +625,8 @@ function skillSnapshotDetail(s) {
 }
 
 function writeReviewSnapshot(s, requestAction, submittedAt) {
-  reviewSnapshots[String(s.id)] = {
+  const snap = {
+    key: nextSnapshotKey(reviewSnapshots, snapshotArchive, s.id),
     kind: 'SKILL',
     refId: s.id,
     requestAction,
@@ -632,12 +634,13 @@ function writeReviewSnapshot(s, requestAction, submittedAt) {
     submittedAt: submittedAt || nowText(), // 种子补播传对象自身时间，避免「提交时快照」显示成页面加载时刻（09-18 审查）
     detail: JSON.parse(JSON.stringify(skillSnapshotDetail(s)))
   }
+  reviewSnapshots[String(s.id)] = snap
+  return snap
 }
 
-/** 读取技能提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
-export function getSkillReviewSnapshot(id) {
-  const snap = reviewSnapshots[String(id)]
-  return snap ? JSON.parse(JSON.stringify(snap)) : null
+/** 读取技能提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。不传 key 只看在审快照，传 key 连历史归档一起查（yuepu#76）。 */
+export function getSkillReviewSnapshot(id, key) {
+  return findSnapshot(reviewSnapshots, snapshotArchive, id, key)
 }
 
 /** 种子在审技能若无快照则补播一份（demo 打开即有内容）。 */
@@ -668,8 +671,8 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   s.updatedAt = nowText()
   // A5：提交审核即存版本快照（md §四 L48）
   const requestAction = s.version ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH'
-  writeReviewSnapshot(s, requestAction)
-  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction, version: s.pendingVersion, versionNotes: s.pendingReleaseNotes })
+  const snap = writeReviewSnapshot(s, requestAction)
+  enrollReview({ businessType: 'SKILL', snapshotKey: snap.key, refId: s.id, name: s.name, description: s.description, requestAction, version: s.pendingVersion, versionNotes: s.pendingReleaseNotes })
   persist()
   return { skillId: s.id, pendingVersion: s.pendingVersion, publications: publicationsOf(s) }
 }
@@ -687,7 +690,7 @@ export async function withdrawPublish(id) {
   // 恢复提交前状态：有线上版本且未下架 → 已发布；否则未发布（含已下架再提交发布的撤回，09-18 R1）
   s.status = s.version && !s.delisted ? 'published' : 'draft'
   s.updatedAt = nowText()
-  delete reviewSnapshots[String(s.id)] // A5：撤回即销毁本次提交的版本快照
+  archiveSnapshot(reviewSnapshots, snapshotArchive, s.id) // 撤回：在审快照入归档（yuepu#76），我的申请仍可回看
   unenrollReview('SKILL', s.id)
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
@@ -718,8 +721,8 @@ export async function delistSkill(id, { forceRevoke = false, reason = '' } = {})
   s.pendingRevokeReason = revokeReason
   s.pendingRevokeBy = revokeReason ? currentDemoUsername() : '' // 操作人 = 提交申请的管理员（访问审计 §6.2），不是审核人
   s.updatedAt = nowText()
-  writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
-  enrollReview({ businessType: 'SKILL', refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: revokeReason ? `申请强制回收该技能：${revokeReason}` : '申请停止该技能对外提供', forceRevokeReason: revokeReason })
+  const snap = writeReviewSnapshot(s, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  enrollReview({ businessType: 'SKILL', snapshotKey: snap.key, refId: s.id, name: s.name, description: s.description, requestAction: 'DELIST', version: s.version || '—', versionNotes: revokeReason ? `申请强制回收该技能：${revokeReason}` : '申请停止该技能对外提供', forceRevokeReason: revokeReason })
   persist()
   return { skillId: s.id, publications: publicationsOf(s) }
 }
@@ -785,7 +788,7 @@ export function applySkillReviewResult(refId, requestAction, approved) {
   s.pendingRevokeReason = ''
   s.pendingRevokeBy = ''
   s.updatedAt = nowText()
-  delete reviewSnapshots[String(s.id)]
+  archiveSnapshot(reviewSnapshots, snapshotArchive, s.id) // 审核已结论：在审快照入归档（yuepu#76 保留历史快照）
   persist()
   return true
 }
@@ -1043,6 +1046,8 @@ export function _reset(id, patch = {}) {
 // A5 审核版本快照表（skillId → 快照）；实现说明见上方 publishSkill 前的「审核版本快照」区块。
 // 声明必须在 attachPersist 之前：restore 回调在 attachPersist 内同步执行，晚声明会撞 TDZ。
 let reviewSnapshots = {}
+// 历史归档（yuepu#76）：审核有结论 / 撤回时在审快照移入这里，「我的申请」回看已处理申请按 snapshotKey 取回提交时的配置
+let snapshotArchive = {}
 
 // version 2（2026-09-09 PRD 复核 G3G6 · A5）：新增 reviewSnapshots；旧快照无该键 → 兜底 {} 并对
 // 种子在审技能补播，避免既有在审行「快照缺失」误拦。
@@ -1060,9 +1065,11 @@ let reviewSnapshots = {}
 //    违反 md §6.4）；旧快照仍是 ['客户成功岗']。
 // version 7（2026-10-09，待办 yuepu#53 + #83 同版）：补 435aa3c 漏 bump——9 条种子技能 toolRefs 由虚构代码改为真实连接器代码、
 //    SKILL.md 加「## 引用工具」；并预置 sk_306 为「已回收」样例（delisted + revoked）。旧 v6 快照（旧 toolRefs、sk_306 仍是已发布）整体丢弃重播种。
-const persist = attachPersist('unifiedSkill', {
-  version: 7,
-  snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots }),
+const persistRaw = attachPersist('unifiedSkill', {
+  // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃回种子。
+  // v9（2026-10-19 待办 yuepu#77）：sk_301 / sk_305 / sk_308 的工具引用补 api_1101 / mail_center / biz_2101，让连接器侧「被技能引用」派生后有样例，旧快照弃用回种子。
+  version: 9,
+  snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (
       !d || !Number.isFinite(d.idSeq) || !Array.isArray(d.skills) ||
@@ -1076,7 +1083,30 @@ const persist = attachPersist('unifiedSkill', {
     Object.keys(exampleCursor).forEach((k) => delete exampleCursor[k])
     if (d.exampleCursor && typeof d.exampleCursor === 'object') Object.assign(exampleCursor, d.exampleCursor)
     reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    snapshotArchive = d.snapshotArchive && typeof d.snapshotArchive === 'object' ? d.snapshotArchive : {}
     seedReviewSnapshots()
   }
 })
 seedReviewSnapshots() // 无存量快照（首次加载 / 版本不符回种子）时同样补播
+syncConnectorSkillRefs() // 首次加载 / 恢复存档后也算一次
+// 每次落盘后重算连接器侧「被技能引用」（yuepu#77）：技能增删改、改名、改 SKILL.md 引用都经 persist，一处挂钩即可
+const persist = (...args) => {
+  persistRaw(...args)
+  syncConnectorSkillRefs()
+}
+
+/**
+ * 反向派生连接器「被技能引用」清单（待办 yuepu#77）：技能侧是引用关系的源头（SKILL.md「## 引用工具」→ toolRefs，
+ * 形如 `mcp__code` / `api__code` / `biz__id`），连接器侧的引用清单据此实时算出，不再是各连接器种子里的虚构技能名。
+ * 范围：现存的全部技能（含未发布 / 审核中 / 已回收——引用关系保留，同连接器「引用保留」口径）。
+ */
+export function syncConnectorSkillRefs() {
+  const byTool = {}
+  for (const s of skills) {
+    for (const code of s.toolRefs || []) (byTool[code] ||= []).push({ skillId: s.id, skillName: s.name })
+  }
+  const pick = (prefix) => (key) => (byTool[`${prefix}__${key}`] || []).map((r) => ({ ...r }))
+  syncMcpSkillRefs(pick('mcp'))
+  syncApiSkillRefs(pick('api'))
+  syncBizSkillRefs(pick('biz'))
+}

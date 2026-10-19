@@ -17,6 +17,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { ensureSkillRefs } from './skillRefsLoader'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { appendOpsRecord } from './accessAuditMock'
@@ -90,10 +91,7 @@ let bizRows = [
       { url: 'https://crm.example.com/customer', name: '客户详情', description: '查看客户完整资料' }
     ],
     exampleQuestions: [...SEED_QUESTIONS],
-    referencedBySkills: [
-      { skillId: 'sk_b1', skillName: '客户拜访准备' },
-      { skillId: 'sk_b2', skillName: '销售方案生成' }
-    ],
+    referencedBySkills: [],
     ownedSkills: [{ skillId: 'sk_own_1', name: '客户跟进记录' }],
     status: 'PUBLISHED',
     createdAt: '2026-08-18T10:20:00+08:00',
@@ -109,7 +107,7 @@ let bizRows = [
     loginUrl: 'https://hr.example.com/login',
     bizPages: [{ url: 'https://hr.example.com/employee', name: '员工档案', description: '员工信息页' }],
     exampleQuestions: [...SEED_QUESTIONS],
-    referencedBySkills: [{ skillId: 'sk_b3', skillName: '员工信息查询' }],
+    referencedBySkills: [],
     status: 'PENDING_REVIEW',
     pendingAction: 'PUBLISH',
     createdAt: '2026-08-20T09:05:00+08:00',
@@ -143,7 +141,8 @@ const BIZ_ROWS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(bizRows))
 //   旧快照仍带 positionId、缺引用清单，列表「N 个岗位引用」会恒为 0 → 丢弃重播种。
 // version 5（2026-10-12）：强制回收并入停用审核——行新增 `pendingRevokeReason`，旧快照缺该字段 → 丢弃重播种。
 const persist = attachPersist('bizSystem', {
-  version: 5,
+  // v6（2026-10-19 待办 yuepu#77）：种子里虚构的 referencedBySkills 清空，改由技能模块按 SKILL.md 引用实时反向派生，旧快照弃用回种子。
+  version: 6,
   snapshot: () => ({ bizSeq, skillSeq, bizRows }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.bizSeq) || !Number.isFinite(d.skillSeq) || !Array.isArray(d.bizRows)) {
@@ -180,10 +179,16 @@ function toRow(b) {
  * yuepu#10②）：不能直接复用 listBizSystems——那是 async + delay，技能侧的同步调用链（模块初始化
  * 时的 seedReviewSnapshots）用不了 async。
  */
+/** 反向派生「被技能引用」（待办 yuepu#77），口径同 mcpConnectorMock.syncSkillRefs；业务系统按 id 匹配。resolver(id) → [{ skillId, skillName }] */
+export function syncSkillRefs(resolver) {
+  for (const b of bizRows) b.referencedBySkills = resolver(b.id)
+}
+
 export function listBizSystemsSync() {
   return bizRows.map(toRow)
 }
 export async function listBizSystems(params = {}) {
+  await ensureSkillRefs() // 先让技能模块把「被技能引用」灌进来（yuepu#77）
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()
   let list = bizRows
@@ -203,6 +208,7 @@ export async function listBizSystems(params = {}) {
 }
 
 export async function getBizSystem(id) {
+  await ensureSkillRefs()
   await delay(150)
   const b = findBiz(id)
   if (!b) throw err('业务系统不存在')

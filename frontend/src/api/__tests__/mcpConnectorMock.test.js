@@ -22,6 +22,8 @@ import {
   reviewMcpService
 } from '../mcpConnectorMock'
 import { explainMcpError } from '@/utils/mcpVerify'
+// 连接器 list/get 入口的技能引用派生触发点：默认关掉省冷 import，断言引用清单的用例自己 import 技能模块（yuepu#77）
+vi.mock('../skillRefsLoader', () => ({ ensureSkillRefs: () => Promise.resolve() }))
 
 // 新建一条合法 stdio MCP（code 唯一，避免用例间撞行）
 function mkStdio(code) {
@@ -503,6 +505,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 
   // ⑧ 删除（md §二.3.7 软引用）/ 撤回（§二.3.5）/ 发布状态端点 / 审核驳回
   it('⑧ deleteMcp：被引用的未发布 mail_center 也能删（软引用）；删后详情报「MCP 不存在」、列表 total 减 1', async () => {
+    await import('../unifiedSkillMock') // 引用清单由技能模块反向派生（yuepu#77）
     // 删除仅在「未发布」态展示（md §三.7 L142），改用未发布态种子验证软引用；
     // 已发布态的 knowledge_hub 挪到下方状态守卫用例验证「已发布不可删」
     expect((await m.getMcp('mail_center')).referencedBySkillCount).toBe(1)
@@ -611,7 +614,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v11；7 个业务写点：
+ * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v12；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 注入内存版存储 + vi.resetModules 动态 import。
  *
@@ -627,7 +630,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
  * 真 Storage 里已写入的 key），必须在每例前后**显式删掉本模块的持久化 key**。vitest 默认 shuffle，
  * 本组可能排在 A19 之前跑，所以 beforeEach 也要清一次，不能只清 afterEach。
  */
-describe('mcpConnectorMock · 持久化（mockPersist v11）', () => {
+describe('mcpConnectorMock · 持久化（mockPersist v12）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
   const makeStorage = () => {
     const map = new Map()
@@ -688,12 +691,12 @@ describe('mcpConnectorMock · 持久化（mockPersist v11）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=11）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=12）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', type: 'PLATFORM', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(11)
+    expect(snap.v).toBe(12)
     expect(snap.data.mcps.map((x) => x.code)).toContain('mcp_reload')
     expect(snap.data.pubAgg.mcp_reload).toBe('PENDING_REVIEW')
     vi.resetModules()
@@ -745,7 +748,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v11）', () => {
 
   it('坏形状快照（mcps 不是数组）→ restore 抛「mcpConnector 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 11, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 12, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     expect((await m.listMcp()).total).toBe(11)
     expect(warn).toHaveBeenCalled()
@@ -885,6 +888,7 @@ describe('mcpConnectorMock · 强制回收（停用时勾选，同走审核）',
   })
 
   it('引用清单原样保留（技能引用 / 岗位引用）', async () => {
+    await import('../unifiedSkillMock') // 引用清单由技能模块反向派生（yuepu#77）
     const before = await m.getMcp('knowledge_hub')
     expect(before.referencedBySkills.length).toBeGreaterThan(0)
     await revokeApproved('knowledge_hub')

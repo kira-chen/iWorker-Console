@@ -32,7 +32,7 @@ import { needsSnapshot, loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/util
  * 本文件验证三条不变式：
  *   1. 提交审核 → 各提交模块自己存下快照（读得到，且带提交时点）；
  *   2. 快照冻结提交当时的配置——提交后再改业务对象，快照内容不变（这正是快照存在的理由）；
- *   3. 撤回 → 快照销毁（下次提交重新生成），治理侧据此按 md §七 阻止审核。
+ *   3. 撤回 → 在审快照移入历史归档（yuepu#76，不再销毁），在审位清空，治理侧据此按 md §七 阻止审核。
  */
 describe('审核版本快照 · A5', () => {
   it('utils/reviewSnapshot：只有岗位/专家/技能三类需要快照（md §四 L48）', () => {
@@ -72,7 +72,7 @@ describe('审核版本快照 · A5', () => {
       expect(getPositionReviewSnapshot(404).detail.description).toBe(snap.detail.description)
       expect(getPositionReviewSnapshot(404).detail.description).not.toBe('提交之后才改的描述')
 
-      // 撤回 → 快照销毁（治理侧读不到 → 按 md §七 阻止审核）
+      // 撤回 → 在审快照入归档（yuepu#76）：在审位读不到 → 治理侧按 md §七 阻止审核；按 key 仍取得回提交时的配置，见 reviewSnapshotArchive.test.js
       await withdrawPosition(404)
       expect(getPositionReviewSnapshot(404)).toBe(null)
     })
