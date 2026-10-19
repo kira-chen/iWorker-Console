@@ -71,7 +71,9 @@ const props = defineProps({
    * 目的是不让人对着看不到提交内容的对象做审核结论。我的申请是提交人自己回看，md §4.2–4.4
    * 明确「详情主体继续复用业务模块查看态」，终态申请本就不该被这道闸门挡在外面。
    */
-  snapshotGate: { type: Boolean, default: false }
+  snapshotGate: { type: Boolean, default: false },
+  /** 申请对应的快照 key（我的申请传，yuepu#76）：读该次提交的历史快照；不传读在审快照（审核中心）。 */
+  snapshotKey: { type: String, default: '' }
 })
 const emit = defineEmits(['update:visible', 'action'])
 
@@ -137,14 +139,14 @@ const barWidth = computed(() => `min(${DRAWER_W[props.kind] || 780}px, 100vw)`)
 const snapshot = ref(null)
 const snapshotLoading = ref(false)
 watch(
-  () => [props.visible, props.kind, props.refId],
-  async ([visible, kind, refId]) => {
+  () => [props.visible, props.kind, props.refId, props.snapshotKey],
+  async ([visible, kind, refId, snapshotKey]) => {
     if (!visible) return
     snapshot.value = null
     if (!needsSnapshot(kind)) return // 知识库/MCP/API/业务系统/模型：读当前配置（md §四 L48）
     snapshotLoading.value = true
     try {
-      snapshot.value = await loadReviewSnapshot(kind, refId)
+      snapshot.value = await loadReviewSnapshot(kind, refId, snapshotKey)
     } finally {
       snapshotLoading.value = false
     }

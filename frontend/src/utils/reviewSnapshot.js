@@ -33,25 +33,26 @@ export const SNAPSHOT_MISSING_HINT = '该申请的版本快照缺失，无法查
  * 读取某业务对象提交审核时的版本快照。
  * @param {string} kind POSITION | EXPERT | SKILL（其余类型一律返回 null，按当前配置取数）
  * @param {number|string} refId 业务实体 id
+ * @param {string} [key] 快照 key（yuepu#76）：不传只取审核中的在审快照；传了连历史归档一起按 key 取（我的申请回看已处理申请），取不到返回 null
  * @returns {Promise<Object|null>} { kind, refId, requestAction, version, submittedAt, detail } 或 null
  */
-export async function loadReviewSnapshot(kind, refId) {
+export async function loadReviewSnapshot(kind, refId, key) {
   if (!needsSnapshot(kind) || refId == null || refId === '') return null
   try {
     if (kind === 'POSITION') {
       const { getPositionReviewSnapshot } = await import('@/api/positionMock')
-      return getPositionReviewSnapshot(refId)
+      return getPositionReviewSnapshot(refId, key)
     }
     if (kind === 'EXPERT') {
       const { getExpertReviewSnapshot } = await import('@/api/domainExpertMock')
-      return getExpertReviewSnapshot(refId)
+      return getExpertReviewSnapshot(refId, key)
     }
     if (kind === 'EXPERT_TEAM') {
       const { getTeamReviewSnapshot } = await import('@/api/expertTeamMock')
-      return getTeamReviewSnapshot(refId)
+      return getTeamReviewSnapshot(refId, key)
     }
     const { getSkillReviewSnapshot } = await import('@/api/unifiedSkillMock')
-    return getSkillReviewSnapshot(refId)
+    return getSkillReviewSnapshot(refId, key)
   } catch (e) {
     // 模块加载失败（理论上不会）→ 视同快照缺失，交由调用方按 md §七 阻止审核
     return null

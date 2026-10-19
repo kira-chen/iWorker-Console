@@ -457,10 +457,10 @@ describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-dem
     vi.resetModules()
   })
 
-  it('createExpert 落盘（v=7）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
+  it('createExpert 落盘（v=8）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
     const first = await import('@/api/domainExpertMock')
     const created = await first.createExpert({ name: '读回验证专家', type: 'PLATFORM', category: '通用', avatar: '☆', intro: '读回', roleDesc: '你是读回专家', exampleQuestions: ['一', '二', '三'] })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(7)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(8)
     vi.resetModules()
     const fresh = await import('@/api/domainExpertMock')
     const { list } = await fresh.listExperts({ keyword: '读回验证专家' })

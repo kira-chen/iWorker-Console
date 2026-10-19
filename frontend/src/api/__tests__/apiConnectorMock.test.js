@@ -22,6 +22,8 @@ import { explainMcpError } from '@/utils/mcpVerify'
 vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
 
 const persistHarness = vi.hoisted(() => ({ modules: new Map() }))
+// 连接器 list/get 入口的技能引用派生触发点：默认关掉省冷 import，断言引用清单的用例自己 import 技能模块（yuepu#77）
+vi.mock('../skillRefsLoader', () => ({ ensureSkillRefs: () => Promise.resolve() }))
 vi.mock('../mockPersist', () => ({
   attachPersist(moduleKey, options) {
     const persist = vi.fn()
@@ -258,6 +260,7 @@ describe('⑥ listApis 搜索与筛选（md §一.1 L10-11）', () => {
   })
 
   it('列表行带 providerSystemName 与 referencedBySkillCount', async () => {
+    await import('../unifiedSkillMock') // 引用清单由技能模块反向派生（yuepu#77）
     const { list } = await run(m.listApis())
     const a = list.find((x) => x.id === 'api_1101')
     expect(a.providerSystemName).toBe('财务服务系统')
@@ -438,7 +441,7 @@ describe('⑧ 持久化：每个写点 persist 一次 + 快照形状校验 + 中
       await run(steps[i]())
       expect(harness.persist).toHaveBeenCalledTimes(i + 1)
     }
-    expect(harness.options.version).toBe(7) // v7：api_1104 预置已回收样例（待办 yuepu#83）+ 种子引用清理（yuepu#57⑧）；v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
+    expect(harness.options.version).toBe(8) // v7：api_1104 预置已回收样例（待办 yuepu#83）+ 种子引用清理（yuepu#57⑧）；v6：新增 revoked（强制回收）；v5：行去掉 positionId、新增 referencedByPositions（岗位私有不绑定具体岗位）
     const snap = harness.options.snapshot()
     expect(snap.apis.some((a) => a.name === '新接口')).toBe(true)
     expect(snap.apis.some((a) => a.id === 'api_1104')).toBe(false)
@@ -484,6 +487,7 @@ describe('apiConnectorMock · 强制回收（停用时勾选，prd-API.md §4）
   })
 
   it('审核通过才生效：未发布 + revoked(原因/时间/操作人) + 引用清单原样保留 + 列表带回收信息', async () => {
+    await import('../unifiedSkillMock') // 引用清单由技能模块反向派生（yuepu#77）
     const before = await run(m.getApi('api_1101'))
     expect(before.referencedBySkills.length).toBeGreaterThan(0)
     await revoke()
