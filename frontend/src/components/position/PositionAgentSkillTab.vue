@@ -202,7 +202,7 @@ async function saveAgentDraft() {
   const name = String(agentDraft.value.name || '').trim()
   const description = String(agentDraft.value.description || '').trim()
   if (!name) { ElMessage.warning('请填写 Agent 名称'); return }
-  // md §6.2：职责描述必填（Q25④ 上限 500）
+  // md §6.2：职责描述必填（上限 2000，一览表描述类统一规则，见下方输入框 maxlength）
   if (!description) { ElMessage.warning('请填写职责描述'); return }
   agentSaving.value = true
   try {

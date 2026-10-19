@@ -32,6 +32,7 @@ import { getFieldOptionNames } from '@/api/fieldDictMock'
 import { EXPERT_TYPE, EXPERT_TYPE_OPTIONS } from '@/api/expertTypes'
 import { fmtTime } from '@/utils/docMeta'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { TEAM_MEMBER_MIN, TEAM_MEMBER_MAX } from '@/utils/expertTeam'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -51,11 +52,13 @@ const TEAM_TYPE_OPTIONS = EXPERT_TYPE_OPTIONS.map((o) => ({
   label: { [EXPERT_TYPE.POSITION]: '岗位团', [EXPERT_TYPE.PLATFORM]: '市场团', [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用团' }[o.value]
 }))
 
-const MEMBER_MAX = 6 // 成员上限（负责人 2026-10-12 由 20 调为 6）
-const MEMBER_MIN = 2
+const MEMBER_MAX = TEAM_MEMBER_MAX // 成员上下限收在 utils/expertTeam.js，与 mock 共用一份
+const MEMBER_MIN = TEAM_MEMBER_MIN
 const isEdit = computed(() => props.teamId != null)
 const loading = ref(false)
 const loadError = ref('')
+// 加载中或加载失败：页脚【保存】【发布】置灰，save / publish 入口也拦（失败时表单被清空，抽屉复用时更不能把上一个团的值写进当前团，同 ExpertEditor yuepu#49）
+const footerBlocked = computed(() => loading.value || !!loadError.value)
 const saving = ref(false)
 const detail = ref(null)
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
@@ -291,6 +294,7 @@ async function load() {
     } catch (e) {
       if (seq !== loadSeq) return
       loadError.value = e?.message || '加载失败'
+      resetForm(null) // 失败态不留上一个专家团的表单值，避免误存进当前团（yuepu#99）
     } finally {
       if (seq === loadSeq) loading.value = false
     }
@@ -355,7 +359,7 @@ function applyServerError(e) {
 }
 
 async function save() {
-  if (disabled.value) return
+  if (disabled.value || footerBlocked.value) return
   if (!validate()) return warnInvalid()
   saving.value = true
   try {
@@ -378,7 +382,7 @@ async function save() {
 
 /** 编辑态【发布】：静默保存 → 收抽屉 → 交列表页做发布前检查并开版本管理侧栏。 */
 async function publishFromEditor() {
-  if (disabled.value || !isEdit.value) return
+  if (disabled.value || footerBlocked.value || !isEdit.value) return
   if (!validate()) return warnInvalid()
   saving.value = true
   try {
@@ -741,8 +745,8 @@ const metaItems = computed(() => {
     <template #footer>
       <el-button :disabled="saving" @click="close">{{ props.readonly ? '关闭' : '取消' }}</el-button>
       <template v-if="!props.readonly && !locked">
-        <el-button v-if="isEdit" :loading="saving" @click="publishFromEditor">发布</el-button>
-        <el-button type="primary" :loading="saving" @click="save">{{ isEdit ? '保存' : '创建专家团' }}</el-button>
+        <el-button v-if="isEdit" :loading="saving" :disabled="footerBlocked" @click="publishFromEditor">发布</el-button>
+        <el-button type="primary" :loading="saving" :disabled="footerBlocked" @click="save">{{ isEdit ? '保存' : '创建专家团' }}</el-button>
       </template>
     </template>
 

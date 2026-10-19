@@ -645,3 +645,53 @@ describe('自动化任务 · 左侧列表规则（md 岗位 §7.1）', () => {
     expect(ElMessage.success).not.toHaveBeenCalled()
   })
 })
+
+/* ============================ 只读态：空态文案与入口兜底（待办 yuepu#99） ============================ */
+describe('自动化任务 · 只读态（审核中 / 查看，md 岗位 §10）', () => {
+  const state = () => app._instance.subTree.component.setupState
+
+  it('只读 + 没有任务：占位只说「还没有自动化任务」，不再引导「加一条…」（只读态不能新增）', async () => {
+    listSampleTasks.mockResolvedValueOnce({ list: [] })
+    await mountStage({ positionId: 1, readonly: true })
+    expect(phTitle()).toBe('还没有自动化任务')
+    expect(phSub()).toBeUndefined()
+    expect(container.textContent).not.toContain('＋ 新增自动化任务')
+  })
+
+  it('只读 + 有任务：占位「从左侧选一条任务」，不出「或 ＋ 新增自动化任务」', async () => {
+    await mountStage({ positionId: 1, readonly: true })
+    state().clearSelection() // 默认会选中第一条，清掉选中才露出占位
+    await flush()
+    expect(phTitle()).toBe('从左侧选一条任务')
+    expect(phSub()).toBeUndefined()
+  })
+
+  it('可编辑态占位文案不变（对照）：仍有「或 ＋ 新增自动化任务」', async () => {
+    await mountStage({ positionId: 1 })
+    state().clearSelection()
+    await flush()
+    expect(phSub()).toBe('或 ＋ 新增自动化任务')
+  })
+
+  it('只读态直接调写函数（新增 / 删除 / 启停 / 排序）都被兜住：不弹确认、不发任何写请求', async () => {
+    await mountStage({ positionId: 1, readonly: true })
+    await state().startCreate()
+    await state().removeItem(task(1))
+    await state().toggleTaskStatus(task(1))
+    await state().reorder(0, 2)
+    await flush()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(deleteSampleTask).not.toHaveBeenCalled()
+    expect(setSampleTaskStatus).not.toHaveBeenCalled()
+    expect(reorderSampleTasks).not.toHaveBeenCalled()
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+  })
+
+  it('可编辑态同样的调用照常生效（对照：removeItem 会走确认并删除）', async () => {
+    await mountStage({ positionId: 1 })
+    await state().removeItem(task(1))
+    await flush()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(deleteSampleTask).toHaveBeenCalledTimes(1)
+  })
+})

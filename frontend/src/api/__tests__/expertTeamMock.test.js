@@ -278,3 +278,13 @@ function applyFakePublished(expertId) {
     applyExpertReviewResult(expertId, 'FIRST_PUBLISH', true)
   })
 }
+
+describe('专家团成员上下限只有一份（utils/expertTeam.js，编辑器与 mock 共用；yuepu#99）', () => {
+  it('mock 导出的上下限就是 utils 里的那份（2 ~ 6）', async () => {
+    const util = await import('@/utils/expertTeam')
+    const mock = await import('../expertTeamMock')
+    expect([util.TEAM_MEMBER_MIN, util.TEAM_MEMBER_MAX]).toEqual([2, 6])
+    expect(mock.TEAM_MEMBER_MIN).toBe(util.TEAM_MEMBER_MIN)
+    expect(mock.TEAM_MEMBER_MAX).toBe(util.TEAM_MEMBER_MAX)
+  })
+})

@@ -100,7 +100,7 @@ function taskEnabled(it) {
   return (it.status || 'ENABLED') === 'ENABLED'
 }
 async function toggleTaskStatus(it) {
-  if (statusBusy.value != null) return
+  if (props.readonly || statusBusy.value != null) return
   const next = taskEnabled(it) ? 'DISABLED' : 'ENABLED'
   statusBusy.value = it.id
   try {
@@ -152,6 +152,7 @@ async function selectItem(it) {
 }
 
 async function startCreate() {
+  if (props.readonly) return // 只读态（审核中 / 查看）不能新增，入口除按钮外也不留后门
   if (props.positionId == null) {
     ElMessage.warning('请先保存岗位')
     return
@@ -202,6 +203,7 @@ async function onCreated(vo) {
 /* ============================ 删除（二次确认，软删口径；文案逐字照 md §7.8 L437-438，2026-09-12 审计 K6） ============================ */
 const delBusy = ref(null)
 async function removeItem(it) {
+  if (props.readonly) return
   try {
     await ElMessageBox.confirm(
       '删除后该任务将不可恢复，确认删除？',
@@ -268,6 +270,7 @@ function resetDrag() {
 }
 
 async function reorder(from, to) {
+  if (props.readonly) return
   const prev = items.value.slice()
   const next = prev.slice()
   const [moved] = next.splice(from, 1)
@@ -452,7 +455,7 @@ function retryTest() {
         <div class="ph-title">
           {{ items.length ? '从左侧选一条任务' : '还没有自动化任务' }}
         </div>
-        <div class="ph-sub">
+        <div v-if="!readonly" class="ph-sub">
           {{ items.length ? '或 ＋ 新增自动化任务' : '加一条帮领用者快速上手（会随岗位发布，供客户端下载展示）' }}
         </div>
       </div>

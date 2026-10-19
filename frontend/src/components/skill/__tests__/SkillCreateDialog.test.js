@@ -10,7 +10,7 @@ import { createApp, h, ref, nextTick } from 'vue'
  * 原 AdminSkills #4 对话框断言（zip 主 + 手动次入口、F5c 就地回显）随本体迁到这里。
  * 2026-09-12 审计 T33：原 components/__tests__/skillCreateDialog.test.js（类型选择两窗合一，9 条）并入本文件末尾 describe。
  * 2026-10-10 J10：组件退役「不传 typeOptions」旧分支（旧调用形态已无调用方），本文件删去守旧分支的 6 条用例
- * （agentId/source 透传、createFn(name) 旧签名、旧空名 warning、platform 未选分类、fde 不拉分类、不传 typeOptions 旧形态），
+ * （source 透传、createFn(name) 旧签名、旧空名 warning、platform 未选分类、fde 不拉分类、不传 typeOptions 旧形态），
  * 其余用例统一经 typeOptions + 选定类型 + 每包选分类的新口径运行。
  */
 
@@ -180,7 +180,6 @@ describe('SkillCreateDialog · 技能分类下拉（三类技能均显示，选�
     ss.zipItems[0].categoryId = '效率'
     await ss.confirmImportZip()
     expect(importSkillZip).toHaveBeenCalledWith(raw, {
-      agentId: null,
       source: 'platform',
       displayCategoryId: '效率'
     })
@@ -229,8 +228,8 @@ describe('SkillCreateDialog · 多包批量上传（2026-08-17）', () => {
     ss.zipItems[0].categoryId = 'cat_1'
     ss.zipItems[1].categoryId = 'cat_2'
     await ss.confirmImportZip()
-    expect(importSkillZip).toHaveBeenNthCalledWith(1, rawA, { agentId: null, source: 'platform', displayCategoryId: 'cat_1' })
-    expect(importSkillZip).toHaveBeenNthCalledWith(2, rawB, { agentId: null, source: 'platform', displayCategoryId: 'cat_2' })
+    expect(importSkillZip).toHaveBeenNthCalledWith(1, rawA, { source: 'platform', displayCategoryId: 'cat_1' })
+    expect(importSkillZip).toHaveBeenNthCalledWith(2, rawB, { source: 'platform', displayCategoryId: 'cat_2' })
     expect(emitted.createdBatch).toEqual([expect.objectContaining({ skillIds: ['s1', 's2'], mode: 'zip' })])
     expect(emitted.created.length).toBe(0) // 多包不走单包导航事件
     expect(emitted.visible.at(-1)).toBe(false) // 关弹窗

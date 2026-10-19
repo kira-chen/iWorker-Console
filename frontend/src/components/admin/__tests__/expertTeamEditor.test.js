@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { h, reactive } from 'vue'
 import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smokeMount'
 
 /**
@@ -47,6 +48,13 @@ afterEach(() => {
 })
 
 const drawerOf = () => mounted.container.querySelector('.el-drawer')
+// 取组件内部的表单对象（失败态表单区被「重试」空态替换、不可见，只能读 setupState）
+const formOf = () => {
+  const el = mounted.container.querySelector('.el-drawer')
+  let inst = el.__vueParentComponent
+  while (inst && !inst.setupState?.form) inst = inst.parent
+  return inst.setupState.form
+}
 const footBtns = () => [...drawerOf().querySelectorAll('.el-drawer__footer .el-button')].map((b) => b.textContent.trim())
 
 describe('ExpertTeamEditor · 真实挂载', () => {
@@ -289,5 +297,62 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(drawer.querySelector('[data-testid="team-member-201"] .et-warn-tag').textContent).toBe('已回收')
     expect(drawer.querySelector('.et-meta').textContent).toContain('最新版本：v1.0.0')
     expect(drawer.querySelector('input[placeholder="如 合同会审团"]').disabled).toBe(true)
+  })
+})
+
+// yuepu#99：自写 #footer 的编辑器在加载失败 / 加载中也要把【保存】【发布】置灰、入口也拦、表单清空（同 ExpertEditor yuepu#49）
+describe('ExpertTeamEditor · 加载失败 / 加载中不可保存发布（yuepu#99）', () => {
+  const footerBtn = (text) =>
+    [...drawerOf().querySelectorAll('.el-drawer__footer .el-button')].find((b) => b.textContent.trim() === text)
+
+  it('加载失败 → 页脚已渲染，【保存】【发布】置灰，点了也不调 updateTeam', async () => {
+    api.getTeam.mockRejectedValueOnce(new Error('炸了'))
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(12)
+    expect(mounted.container.textContent).toContain('重试') // 前提：确实处于加载失败态
+    expect(footerBtn('取消')).toBeTruthy() // 前提：页脚真渲染了
+    for (const text of ['保存', '发布']) {
+      const b = footerBtn(text)
+      expect(b, text + ' 按钮应渲染').toBeTruthy()
+      expect(b.disabled, text + ' 应置灰').toBe(true)
+      b.click()
+    }
+    await flushAll(6)
+    expect(api.updateTeam).not.toHaveBeenCalled()
+  })
+
+  it('加载中 → 置灰，加载完成后恢复可点', async () => {
+    let release
+    api.getTeam.mockImplementationOnce(() => new Promise((r) => { release = () => r(detail()) }))
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 302 })
+    await flushAll(8)
+    for (const text of ['保存', '发布']) expect(footerBtn(text)?.disabled, text + ' 加载中应置灰').toBe(true)
+    release()
+    await flushAll(12)
+    for (const text of ['保存', '发布']) expect(footerBtn(text)?.disabled, text + ' 加载完成应可点').toBe(false)
+  })
+
+  it('同一抽屉从 302 切到 303、303 加载失败：表单已清空，不残留 302 的值（否则点保存会写进 303）', async () => {
+    api.getTeam.mockResolvedValueOnce(detail())
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    const state = reactive({ teamId: 302 })
+    const Wrapper = { render: () => h(ExpertTeamEditor, { visible: true, teamId: state.teamId }) }
+    mounted = mountReal(Wrapper)
+    await flushAll(12)
+    const form = () => mounted.container.querySelector('.el-drawer') && formOf()
+    expect(formOf().name).toBe('知识问答团') // 前提：302 已回填
+
+    api.getTeam.mockRejectedValueOnce(new Error('炸了'))
+    state.teamId = 303
+    await flushAll(12)
+    expect(mounted.container.textContent).toContain('重试')
+    expect(formOf().name).toBe('')
+    expect(formOf().members).toEqual([])
+    for (const text of ['保存', '发布']) footerBtn(text)?.click()
+    await flushAll(6)
+    expect(api.updateTeam).not.toHaveBeenCalled()
+    void form
   })
 })
