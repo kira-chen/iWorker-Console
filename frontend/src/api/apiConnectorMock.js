@@ -24,6 +24,7 @@ import { currentDemoUsername } from '@/utils/demoIdentity'
 import { maskSecret } from '@/utils/secretMask'
 import { CONNECTOR_URL_MAX, API_DESC_MAX, BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
+import { ensureSkillRefs } from './skillRefsLoader'
 import { CONNECTOR_TYPE } from './connectorTypes'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
@@ -131,10 +132,7 @@ let apis = [
       }
     },
     exampleQuestions: ['帮我查询报销单的当前审批状态', '我上周提的报销现在到哪一步了', '查一下单号 BX20260801 的报销金额'],
-    referencedBySkills: [
-      { skillId: 'sk_1', skillName: '报销查询技能' },
-      { skillId: 'sk_2', skillName: '财务单据助手' }
-    ],
+    referencedBySkills: [],
     status: 'PUBLISHED',
     displayStatus: 'HEALTHY',
     lastCheckedAt: '2026-08-24T16:10:00+08:00',
@@ -152,7 +150,7 @@ let apis = [
     readWrite: 'write',
     url: 'https://finance.example.com/api/payment/apply',
     exampleQuestions: ['帮我提交一笔差旅费付款申请', '给供应商发起一笔付款', '查付款申请需要哪些信息'],
-    referencedBySkills: [{ skillId: 'sk_3', skillName: '付款流程助手' }],
+    referencedBySkills: [],
     status: 'PENDING_REVIEW',
     pendingAction: 'PUBLISH',
     displayStatus: 'HEALTHY',
@@ -200,10 +198,7 @@ let apis = [
       required: ['data']
     },
     exampleQuestions: ['帮我查一下这家客户的基础资料', '客户 C1024 的联系方式是什么', '看看这家客户目前的状态'],
-    referencedBySkills: [
-      { skillId: 'sk_4', skillName: '客户画像技能' },
-      { skillId: 'sk_5', skillName: '商机跟进助手' }
-    ],
+    referencedBySkills: [],
     status: 'PUBLISHED',
     displayStatus: 'HEALTHY',
     lastCheckedAt: '2026-08-23T18:40:00+08:00',
@@ -459,7 +454,7 @@ let apis = [
       }
     },
     exampleQuestions: ['在产品知识库里查这个报错的处理办法', '公司差旅报销制度是怎么规定的', '新员工入职流程有哪些步骤'],
-    referencedBySkills: [{ skillId: 'sk_6', skillName: '产品知识问答' }],
+    referencedBySkills: [],
     status: 'PUBLISHED',
     displayStatus: 'HEALTHY',
     lastCheckedAt: '2026-08-31T16:05:00+08:00',
@@ -485,7 +480,8 @@ const APIS_SEED_SNAPSHOT = JSON.parse(JSON.stringify(apis))
 // （同 v7）yuepu#57⑧ 合并说明：402 不再引用未发布的 mail_center / crm，但 api_1104 是「已回收」样例，引用按 md 保留（不清理）。
 // （2026-10-12 强制回收并入停用审核新增的 pendingRevokeReason / pendingRevokeBy 为可缺省字段，缺失按普通停用处理，故不 bump version）
 const persist = attachPersist('apiConnector', {
-  version: 7,
+  // v8（2026-10-19 待办 yuepu#77）：种子里虚构的 referencedBySkills 清空，改由技能模块按 SKILL.md 引用实时反向派生，旧快照弃用回种子。
+  version: 8,
   snapshot: () => ({ psSeq, apiSeq, skillSeq, providerSystems, apis }),
   restore: (d) => {
     if (
@@ -612,10 +608,16 @@ export async function deleteProviderSystem(id) {
  * yuepu#10②）：不能直接复用 listApis——那是 async + delay，技能侧的同步调用链（模块初始化时的
  * seedReviewSnapshots）用不了 async。
  */
+/** 反向派生「被技能引用」（待办 yuepu#77），口径同 mcpConnectorMock.syncSkillRefs。resolver(code) → [{ skillId, skillName }] */
+export function syncSkillRefs(resolver) {
+  for (const a of apis) a.referencedBySkills = resolver(a.code)
+}
+
 export function listApisSync() {
   return apis.map(toRow)
 }
 export async function listApis(params = {}) {
+  await ensureSkillRefs() // 先让技能模块把「被技能引用」灌进来（yuepu#77）
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()
   let list = apis
@@ -631,6 +633,7 @@ export async function listApis(params = {}) {
 }
 
 export async function getApi(id) {
+  await ensureSkillRefs()
   await delay(150)
   const a = findApi(id)
   if (!a) throw err('API 不存在')

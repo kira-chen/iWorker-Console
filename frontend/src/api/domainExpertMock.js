@@ -26,6 +26,7 @@ import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
+import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshotArchive'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 // 2026-09-20 待办 yuepu#6②：专家类型 / 所属岗位落数据层（口径同连接器三件套 mcpConnectorMock 等）
@@ -210,6 +211,8 @@ let publications = seedPublications()
 // A5 审核版本快照表（expertId → 快照）；实现说明见下方「审核版本快照」区块。
 // 声明必须在 attachPersist 之前：restore 回调在 attachPersist 内同步执行，晚声明会撞 TDZ。
 let reviewSnapshots = {}
+// 历史归档（yuepu#76）：审核有结论 / 撤回时在审快照移入这里，「我的申请」回看已处理申请按 snapshotKey 取回提交时的配置
+let snapshotArchive = {}
 
 // 【持久化】（2026-09-02）状态镜像到 localStorage；写点=下方所有 persist() 调用处。
 // restore 做最小形状校验，快照不合法即抛错 → mockPersist 兜底回种子（发包安全铁律）。
@@ -224,8 +227,9 @@ const persist = attachPersist('domainExpert', {
   // `type || PLATFORM`，与连接器 mock 的处理一致。
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
   // v7（2026-10-12）：行新增 pendingRevokeReason（停用时勾选强制回收的在审原因），旧快照丢弃重播种子。
-  version: 7,
-  snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots }),
+  // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃重播种子。
+  version: 8,
+  snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
       throw new Error('domainExpert 快照形状不合法')
@@ -234,6 +238,7 @@ const persist = attachPersist('domainExpert', {
     experts = d.experts
     publications = d.publications
     reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    snapshotArchive = d.snapshotArchive && typeof d.snapshotArchive === 'object' ? d.snapshotArchive : {}
     seedReviewSnapshots()
   }
 })
@@ -551,7 +556,8 @@ export async function getExpertNextVersionLabel(id) {
  * （表本体 reviewSnapshots 声明在文件上方 attachPersist 之前，见该处注释。）
  */
 function writeReviewSnapshot(e, requestAction, submittedAt) {
-  reviewSnapshots[String(e.id)] = {
+  const snap = {
+    key: nextSnapshotKey(reviewSnapshots, snapshotArchive, e.id),
     kind: 'EXPERT',
     refId: e.id,
     requestAction,
@@ -559,12 +565,13 @@ function writeReviewSnapshot(e, requestAction, submittedAt) {
     submittedAt: submittedAt || nowIso(), // 种子补播传对象自身时间（09-18 审查）
     detail: JSON.parse(JSON.stringify(toDetail(e)))
   }
+  reviewSnapshots[String(e.id)] = snap
+  return snap
 }
 
-/** 读取专家提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
-export function getExpertReviewSnapshot(id) {
-  const s = reviewSnapshots[String(id)]
-  return s ? JSON.parse(JSON.stringify(s)) : null
+/** 读取专家提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。不传 key 只看在审快照，传 key 连历史归档一起查（yuepu#76）。 */
+export function getExpertReviewSnapshot(id, key) {
+  return findSnapshot(reviewSnapshots, snapshotArchive, id, key)
 }
 
 /** 种子在审专家若无快照则补播一份（demo 打开即有内容）。 */
@@ -601,8 +608,8 @@ export async function publishExpert(id, payload = {}) {
   e.updatedAt = nowIso()
   // A5：提交审核即存版本快照（md §四 L48）
   const requestAction = publishActionOf(rows.length > 0)
-  writeReviewSnapshot(e, requestAction)
-  enrollReview({ businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '', requestAction, version: label, versionNotes: e.pendingReleaseNotes })
+  const snap = writeReviewSnapshot(e, requestAction)
+  enrollReview({ businessType: 'EXPERT', snapshotKey: snap.key, refId: e.id, name: e.name, description: e.intro || e.description || '', requestAction, version: label, versionNotes: e.pendingReleaseNotes })
   persist()
   return {}
 }
@@ -619,7 +626,7 @@ export async function withdrawExpert(id) {
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
-  delete reviewSnapshots[String(e.id)] // A5：撤回即销毁本次提交的版本快照
+  archiveSnapshot(reviewSnapshots, snapshotArchive, e.id) // 撤回：在审快照入归档（yuepu#76），我的申请仍可回看
   unenrollReview('EXPERT', e.id)
   persist()
   return {}
@@ -649,9 +656,9 @@ export async function unpublishExpert(id, { forceRevoke = false, reason = '' } =
   // 2026-09-09 PRD-20260908 复核批次 0 · A20/Q199：**停用不刷新最近更新时间**。
   // md `prd.专家.md` §二.2 只列「保存配置、提交审核或撤回提交后」三种刷新场景，停用不在其内；
   // 与 `prd-模型.md` §二.2「停用时不改变最近更新时间」口径一致。原 e.updatedAt = nowIso() 已删。
-  writeReviewSnapshot(e, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  const snap = writeReviewSnapshot(e, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
   enrollReview({
-    businessType: 'EXPERT', refId: e.id, name: e.name, description: e.intro || e.description || '',
+    businessType: 'EXPERT', snapshotKey: snap.key, refId: e.id, name: e.name, description: e.intro || e.description || '',
     requestAction: 'DELIST', version: e.latestVersionLabel || '—',
     versionNotes: revokeReason ? `申请强制回收该专家：${revokeReason}` : '申请停止该专家对外提供',
     ...(revokeReason ? { forceRevokeReason: revokeReason } : {})
@@ -718,7 +725,7 @@ export function applyExpertReviewResult(refId, requestAction, approved) {
   delete e.pendingVersion
   delete e.pendingReleaseNotes
   e.updatedAt = nowIso()
-  delete reviewSnapshots[String(e.id)]
+  archiveSnapshot(reviewSnapshots, snapshotArchive, e.id) // 审核已结论：在审快照入归档（yuepu#76 保留历史快照）
   persist()
   return true
 }
@@ -800,6 +807,7 @@ export function __resetExpertMock() {
   publications = seedPublications()
   // 审核快照表一并回种子（2026-09-12 测试审计 T23）：此前不清，前一用例提交/撤回留下的快照会跨用例残留
   reviewSnapshots = {}
+  snapshotArchive = {}
   seedReviewSnapshots()
   persist()
 }

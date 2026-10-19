@@ -236,11 +236,11 @@ describe('positionMock · 持久化读回（mockPersist v10，写点 → 刷新�
     vi.resetModules()
   })
 
-  it('deletePosition 落盘（v=10）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+  it('deletePosition 落盘（v=12）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(10) // v10：402 种子不再绑未发布 / 审核中 MCP（yuepu#57⑧）；v9：技能引用 VO 增 displayCategoryName（yuepu#61②）；v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
+    expect(snap.v).toBe(12) // v12：种子技能引用补样例（yuepu#77）；v11：快照历史归档 snapshotArchive（yuepu#76）；v10：402 种子不再绑未发布 / 审核中 MCP（yuepu#57⑧）；v9：技能引用 VO 增 displayCategoryName（yuepu#61②）；v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')

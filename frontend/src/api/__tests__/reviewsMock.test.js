@@ -227,7 +227,7 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     const pubs = await posMock.listPositionPublications(401)
     expect(pubs[0]).toMatchObject({ versionLabel: 'v2.2.0', status: 'ACTIVE' })
     expect(pubs.filter((r) => r.status === 'ACTIVE')).toHaveLength(1)
-    expect(posMock.getPositionReviewSnapshot(401)).toBeNull() // 审核有结论 → 本次提交快照销毁
+    expect(posMock.getPositionReviewSnapshot(401)).toBeNull() // 审核有结论 → 在审快照入历史归档（yuepu#76），在审位读不到
   })
 
   it('通过 POSITION 停用行 → 岗位变未发布，版本历史保留（md `prd.岗位.md` §3.5 L92/审核中心 §六 L91）', async () => {

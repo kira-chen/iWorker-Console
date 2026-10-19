@@ -209,7 +209,7 @@ describe('审核中心借用态（?govReview）· md 审核中心 §4.2 / §五 
 
   it('有版本快照 → 详情展示提交审核时的快照内容，不是技能当前配置（§四：审核详情读取该快照）', async () => {
     await mountGov()
-    expect(loadReviewSnapshot).toHaveBeenCalledWith('SKILL', 'sk_9')
+    expect(loadReviewSnapshot).toHaveBeenCalledWith('SKILL', 'sk_9', '')
     expect(container.querySelector('.stub-focus').textContent).toBe('快照名')
     expect(container.querySelector('[data-testid="se-snapshot-missing"]')).toBeNull()
   })

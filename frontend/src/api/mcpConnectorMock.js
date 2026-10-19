@@ -18,6 +18,7 @@
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
+import { ensureSkillRefs } from './skillRefsLoader'
 // 2026-09-18 R1：发布 / 停用 / 撤回 统一经 reviewEnroll（同时管审核中心与我的申请两张表；原只有停用写审核中心一行）
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 import { appendOpsRecord } from './accessAuditMock'
@@ -179,21 +180,21 @@ const iso = (s) => `${s.replace(' ', 'T')}:00+08:00`
 // 取自 positionMock.js 已发布岗位种子）；不给 type 的行按 seedToMcp 兜底落 PLATFORM。
 const POS_401 = { positionId: 401, positionName: '经营分析岗' }
 const PROTO_SEEDS = [
-  { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, refs: ['市场研究助手', '销售方案生成', '客户问题解答'], updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp', type: 'PLATFORM' },
-  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, refs: ['报销单查询', '财务单据助手'], updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posRefs: [POS_401] },
+  { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp', type: 'PLATFORM' },
+  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posRefs: [POS_401] },
   // env 两条样例（一条平台值 + 一条客户端填写）：让 stdio 环境变量的「改值 / 待删除 / 撤销」
   // 三步式交互开箱即可点到，否则种子全是 env:[]，演示时会被误判为功能没做（2026-09-09 收口回归 P2）
-  { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, refs: [], updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx', env: [
+  { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx', env: [
     { key: 'WORKSPACE_ROOT', description: '允许访问的工作区根目录', clientFill: false, value: '/srv/iworker/workspace' },
     { key: 'ACCESS_TOKEN', description: '由使用者在客户端填写的访问令牌', clientFill: true, value: '' }
   ], type: 'SYSTEM_DEFAULT' },
-  { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, refs: ['项目周报', '任务风险识别', '研发进度跟踪', '会议行动项'], updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp', type: 'PLATFORM' },
-  { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, refs: [], updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx', type: 'SYSTEM_DEFAULT' },
-  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, refs: ['客户跟进助手'], updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION' },
-  { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, refs: ['会议行动项'], updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp', type: 'SYSTEM_DEFAULT' },
-  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, refs: ['销售方案生成'], updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION' },
-  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, refs: [], updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM' },
-  { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, refs: [], updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp', type: 'SYSTEM_DEFAULT' }
+  { code: 'project_hub', icon: '✓', name: '项目管理 MCP', transport: 'streamable-http', desc: '同步项目、任务和负责人信息', tools: 5, updated: '2026-08-21 14:20', agg: 'NOT_PUBLISHED', health: 'unknown', endpoint: 'https://project.intra/mcp', type: 'PLATFORM' },
+  { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx', type: 'SYSTEM_DEFAULT' },
+  { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION' },
+  { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp', type: 'SYSTEM_DEFAULT' },
+  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION' },
+  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM' },
+  { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp', type: 'SYSTEM_DEFAULT' }
 ]
 
 function seedToMcp(s) {
@@ -216,7 +217,7 @@ function seedToMcp(s) {
     timeoutMs: 10000,
     tools: mkTools(s.tools, s.code, s.name.replace(/ MCP$/, '')),
     exampleQuestions: [`帮我查一下${s.name.replace(/ MCP$/, '')}里的最新记录`, '帮我查询当前可用的工具', '帮我执行一次常用业务操作'],
-    referencedBySkills: refs(s.refs),
+    referencedBySkills: [],
     connStatus,
     displayStatus,
     protocolVersion: s.health === 'unknown' ? '' : '2025-06-18',
@@ -255,7 +256,7 @@ let mcps = [
       '帮我查询当前可用的工具',
       '帮我执行一次常用业务操作'
     ],
-    referencedBySkills: [{ skillId: 'sk_6', skillName: '产品知识问答' }],
+    referencedBySkills: [],
     protocolVersion: '2025-06-18',
     serverVersion: '1.4.2',
     serverName: 'spark-bridge',
@@ -305,7 +306,8 @@ const persist = attachPersist('mcpConnector', {
   //    连接器（md 岗位 §8），种子 referencedByPositions 随岗位侧同步清空；旧快照仍带这两条引用 → 丢弃重播种
   // v10（2026-10-12 强制回收并入停用）：行新增 `pendingRevokeReason`（待审强制回收原因），旧快照缺该字段 → 丢弃重播种
   // v11（2026-10-15 合并 main）：上面两条 v10 在两条分支上各自独立占用（种子岗位引用清空 / 行新增 pendingRevokeReason），合并后统一升 v11，使两侧旧快照都被丢弃重播种
-  version: 11,
+  // v12（2026-10-19 待办 yuepu#77）：种子里虚构的 referencedBySkills 清空，改由技能模块按 SKILL.md 引用实时反向派生，旧快照弃用回种子。
+  version: 12,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -365,6 +367,15 @@ function aggStateKey(id) {
  * referencedToolsOf 会被 skillSnapshotDetail 同步调用链（模块初始化时的 seedReviewSnapshots）
  * 用到，不能改造成 async。
  */
+/**
+ * 反向派生「被技能引用」（待办 yuepu#77）：引用清单不再是种子里的虚构技能名，由技能模块按各技能 SKILL.md 的
+ * 「## 引用工具」实时算出后写入（unifiedSkillMock.syncConnectorSkillRefs，技能增删改后都会重算）。
+ * resolver(code) → [{ skillId, skillName }]；只改内存里的派生字段，不落盘、不触发持久化。
+ */
+export function syncSkillRefs(resolver) {
+  for (const m of mcps) m.referencedBySkills = resolver(m.code)
+}
+
 export function listMcpSync() {
   // stateKey：列表三态聚合键（工具坞按「已发布且启用」过滤候选用，yuepu#50）
   return mcps.map((m) => ({ ...toRow(m), stateKey: aggStateKey(m.id) }))
@@ -377,6 +388,7 @@ export function listMcpSync() {
  * 返回当页 list + 过滤后全量 total（AdminMcp 走 useAdminList 默认服务端分页模式）。
  */
 export async function listMcp(params = {}) {
+  await ensureSkillRefs() // 先让技能模块把「被技能引用」灌进来（yuepu#77）
   await delay(200)
   const kw = (params.keyword || '').trim().toLowerCase()
   let list = mcps
@@ -399,6 +411,7 @@ export async function listMcp(params = {}) {
 }
 
 export async function getMcp(id) {
+  await ensureSkillRefs()
   await delay(150)
   const m = findMcp(id)
   if (!m) throw err('MCP 不存在')

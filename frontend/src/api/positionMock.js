@@ -27,6 +27,7 @@ import * as skillMock from './unifiedSkillMock'
 import { attachPersist } from './mockPersist'
 // 2026-09-09 收编：本地 nowIso（带 +08:00 本地 ISO）复制品改引 utils/datetime 单一真相
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
+import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshotArchive'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 // 2026-09-23 待办 yuepu#9①：领用数改由分配表实时派生，不再是本模块的静态字段（与 positionAssignmentMock
@@ -477,9 +478,12 @@ export async function getNextVersionLabel(id) {
  * 缺失时：审核详情按 md §七「业务快照缺失（岗位/专家/技能）→ 阻止审核并提示联系提交人重新提交」。
  */
 let reviewSnapshots = {}
+// 历史归档（yuepu#76）：审核有结论 / 撤回时在审快照移入这里，「我的申请」回看已处理申请按 snapshotKey 取回提交时的配置
+let snapshotArchive = {}
 
 function writeReviewSnapshot(p, requestAction, submittedAt) {
-  reviewSnapshots[String(p.positionId)] = {
+  const snap = {
+    key: nextSnapshotKey(reviewSnapshots, snapshotArchive, p.positionId),
     kind: 'POSITION',
     refId: p.positionId,
     requestAction,
@@ -488,11 +492,16 @@ function writeReviewSnapshot(p, requestAction, submittedAt) {
     // 提交当时的完整岗位配置（人格要素 / Agent→技能 / 采集 schema 等）
     detail: JSON.parse(JSON.stringify(detailVO(p)))
   }
+  reviewSnapshots[String(p.positionId)] = snap
+  return snap
 }
 
-/** 读取岗位提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。 */
-export function getPositionReviewSnapshot(id) {
-  return reviewSnapshots[String(id)] ? JSON.parse(JSON.stringify(reviewSnapshots[String(id)])) : null
+/**
+ * 读取岗位提交审核时的版本快照；无快照返回 null（治理侧据此阻止审核）。
+ * 不传 key：只看在审快照（审核中心）；传 key：在审 + 历史归档里按 key 取（「我的申请」回看已处理申请，yuepu#76）。
+ */
+export function getPositionReviewSnapshot(id, key) {
+  return findSnapshot(reviewSnapshots, snapshotArchive, id, key)
 }
 
 // 提交发布 → 进入审核（pendingAction=PUBLISH）。bump 由抽屉算好展示号后仍上送类型，
@@ -531,8 +540,8 @@ export async function publishPosition(id, payload = {}) {
   p.updatedAt = nowIso()
   // A5：提交审核即存版本快照（md §四 L48）
   const requestAction = publishActionOf(rows.length > 0)
-  writeReviewSnapshot(p, requestAction)
-  enrollReview({ businessType: 'POSITION', refId: p.positionId, name: p.name, description: p.description, requestAction, version: label, versionNotes: p.pendingReleaseNotes })
+  const snap = writeReviewSnapshot(p, requestAction)
+  enrollReview({ businessType: 'POSITION', snapshotKey: snap.key, refId: p.positionId, name: p.name, description: p.description, requestAction, version: label, versionNotes: p.pendingReleaseNotes })
   persist()
   return {}
 }
@@ -552,7 +561,7 @@ export async function withdrawPosition(id) {
   delete p.pendingReleaseNotes
   p.updatedAt = nowIso()
   // A5：撤回即销毁本次提交的版本快照（下次提交重新生成）
-  delete reviewSnapshots[String(p.positionId)]
+  archiveSnapshot(reviewSnapshots, snapshotArchive, p.positionId) // yuepu#76：撤回的申请快照入归档，我的申请仍可回看
   unenrollReview('POSITION', p.positionId)
   persist()
   return {}
@@ -570,8 +579,8 @@ export async function unpublishPosition(id) {
   if (claimed > 0) throw err(`该岗位已被 ${claimed} 个用户领用，需先解除领用后再停用`)
   p.pendingAction = 'DELIST'
   p.updatedAt = nowIso()
-  writeReviewSnapshot(p, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
-  enrollReview({ businessType: 'POSITION', refId: p.positionId, name: p.name, description: p.description, requestAction: 'DELIST', version: p.latestVersion || '—', versionNotes: '申请停用该岗位' })
+  const snap = writeReviewSnapshot(p, 'DELIST') // A5：停用申请同样存快照（md §四不区分申请类型）
+  enrollReview({ businessType: 'POSITION', snapshotKey: snap.key, refId: p.positionId, name: p.name, description: p.description, requestAction: 'DELIST', version: p.latestVersion || '—', versionNotes: '申请停用该岗位' })
   persist()
   return {}
 }
@@ -629,7 +638,7 @@ export function applyPositionReviewResult(refId, requestAction, approved) {
   delete p.pendingVersion
   delete p.pendingReleaseNotes
   p.updatedAt = nowIso()
-  delete reviewSnapshots[String(p.positionId)] // 审核已结论，本次提交快照使命结束
+  archiveSnapshot(reviewSnapshots, snapshotArchive, p.positionId) // 审核已结论：在审快照入归档（yuepu#76 保留历史快照），审核中心不再把它当在审快照
   persist()
   return true
 }
@@ -1083,6 +1092,7 @@ export function __resetPositionMock() {
     404: []
   }
   reviewSnapshots = {} // A5：审核版本快照随种子复位，再按在审岗位补播
+  snapshotArchive = {}
   seedReviewSnapshots()
   persist() // 持久化 2026-09-02：复位后同样落盘，避免存量快照盖回旧态
 }
@@ -1111,8 +1121,10 @@ const persist = attachPersist('position', {
   // 的引用清单同步）；connectorApiIds 保留已回收样例 api_1104（引用保留是 md 规则，yuepu#83）；旧快照仍带这两项 → 丢弃回种子。
   // v9（2026-10-09 待办 yuepu#61②）：技能引用 VO 新增 displayCategoryName（技能分类），种子在审岗位的审核版本快照
   // （reviewSnapshots）里内嵌了该 VO，快照形状变了；存量快照缺这个字段 → 丢弃回种子。
-  version: 10,
-  snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots }),
+  // v11（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照弃用回种子。
+  // v12（2026-10-19 待办 yuepu#77）：种子技能的工具引用补了几条（api_1101 / mail_center / biz_2101），岗位在审快照里内嵌的技能引用随之变，旧快照弃用回种子。
+  version: 12,
+  snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (
       !d || !Number.isFinite(d.posSeq) || !Number.isFinite(d.agentSeq) ||
@@ -1128,6 +1140,7 @@ const persist = attachPersist('position', {
     publications = d.publications
     workbench = d.workbench
     reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    snapshotArchive = d.snapshotArchive && typeof d.snapshotArchive === 'object' ? d.snapshotArchive : {}
     seedReviewSnapshots()
   }
 })

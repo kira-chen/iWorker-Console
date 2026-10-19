@@ -18,6 +18,7 @@
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
 import { nowIsoLocal as nowIso } from '@/utils/datetime'
+import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshotArchive'
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 import { EXPERT_TYPE } from './expertTypes'
 import { makeRevokedInfo, validateRevokeReason } from '@/utils/forceRevoke'
@@ -149,6 +150,8 @@ let publications = seedPublications()
 // 审核版本快照（teamId → 快照），提交模块自持，口径同 domainExpertMock.reviewSnapshots；
 // 声明必须在 attachPersist 之前（restore 回调同步执行，晚声明会撞 TDZ）。
 let reviewSnapshots = {}
+// 历史归档（yuepu#76）：审核有结论 / 撤回时在审快照移入这里，「我的申请」回看已处理申请按 snapshotKey 取回提交时的配置
+let snapshotArchive = {}
 
 // v1（2026-10-12）：专家团模块首次接入持久化。
 // v2（2026-10-12）：专家团去掉背景色字段，丢弃旧快照。
@@ -158,8 +161,9 @@ let reviewSnapshots = {}
 // v5（2026-10-12）：行新增 pendingRevokeReason / pendingRevokeBy（停用时勾选强制回收的在审原因，同专家 v7），旧快照丢弃重播种子。
 // v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
-  version: 7,
-  snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots }),
+  // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃重播种子。
+  version: 8,
+  snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
       throw new Error('expertTeam 快照形状不合法')
@@ -168,6 +172,7 @@ const persist = attachPersist('expertTeam', {
     teams = d.teams
     publications = d.publications
     reviewSnapshots = d.reviewSnapshots && typeof d.reviewSnapshots === 'object' ? d.reviewSnapshots : {}
+    snapshotArchive = d.snapshotArchive && typeof d.snapshotArchive === 'object' ? d.snapshotArchive : {}
   }
 })
 
@@ -460,6 +465,7 @@ export async function deleteTeam(id) {
   appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '删除', target: t.name, version: t.latestVersionLabel })
   delete publications[t.id]
   delete reviewSnapshots[String(t.id)]
+  delete snapshotArchive[String(t.id)]
   persist()
   return removed
 }
@@ -503,7 +509,8 @@ export async function getTeamNextVersionLabel(id) {
 
 /* 审核版本快照：提交模块自持（口径同 domainExpertMock，md 审核中心 §四），撤回 / 审核落地时销毁。 */
 function writeReviewSnapshot(t, requestAction, submittedAt) {
-  reviewSnapshots[String(t.id)] = {
+  const snap = {
+    key: nextSnapshotKey(reviewSnapshots, snapshotArchive, t.id),
     kind: 'EXPERT_TEAM',
     refId: t.id,
     requestAction,
@@ -511,11 +518,13 @@ function writeReviewSnapshot(t, requestAction, submittedAt) {
     submittedAt: submittedAt || nowIso(),
     detail: JSON.parse(JSON.stringify(toDetail(t)))
   }
+  reviewSnapshots[String(t.id)] = snap
+  return snap
 }
 
-export function getTeamReviewSnapshot(id) {
-  const s = reviewSnapshots[String(id)]
-  return s ? JSON.parse(JSON.stringify(s)) : null
+/** 不传 key 只看在审快照（审核中心）；传 key 连历史归档一起查（我的申请回看已处理申请，yuepu#76）。 */
+export function getTeamReviewSnapshot(id, key) {
+  return findSnapshot(reviewSnapshots, snapshotArchive, id, key)
 }
 
 // 提交发布 → 进入审核。payload: { bump, releaseNotes }。发布前检查见 checkTeamPublishable。
@@ -541,8 +550,8 @@ export async function publishTeam(id, payload = {}) {
   t.pendingReleaseNotes = String(payload.releaseNotes || '').trim()
   t.updatedAt = nowIso()
   const requestAction = publishActionOf(rows.length > 0)
-  writeReviewSnapshot(t, requestAction)
-  enrollReview({ businessType: 'EXPERT_TEAM', refId: t.id, name: t.name, description: t.intro, requestAction, version: label, versionNotes: t.pendingReleaseNotes })
+  const snap = writeReviewSnapshot(t, requestAction)
+  enrollReview({ businessType: 'EXPERT_TEAM', snapshotKey: snap.key, refId: t.id, name: t.name, description: t.intro, requestAction, version: label, versionNotes: t.pendingReleaseNotes })
   persist()
   return {}
 }
@@ -558,7 +567,7 @@ export async function withdrawTeam(id) {
   delete t.pendingVersion
   delete t.pendingReleaseNotes
   t.updatedAt = nowIso()
-  delete reviewSnapshots[String(t.id)]
+  archiveSnapshot(reviewSnapshots, snapshotArchive, t.id) // 在审快照入归档（yuepu#76 保留历史快照），我的申请仍可回看
   unenrollReview('EXPERT_TEAM', t.id)
   persist()
   return {}
@@ -584,9 +593,9 @@ export async function unpublishTeam(id, { forceRevoke = false, reason = '' } = {
     t.pendingRevokeReason = revokeReason
     t.pendingRevokeBy = currentDemoUsername() // 操作人 = 提交申请的管理员，不是审核人
   }
-  writeReviewSnapshot(t, 'DELIST')
+  const snap = writeReviewSnapshot(t, 'DELIST')
   enrollReview({
-    businessType: 'EXPERT_TEAM', refId: t.id, name: t.name, description: t.intro,
+    businessType: 'EXPERT_TEAM', snapshotKey: snap.key, refId: t.id, name: t.name, description: t.intro,
     requestAction: 'DELIST', version: t.latestVersionLabel || '—',
     versionNotes: revokeReason ? '申请强制回收该专家团：' + revokeReason : '申请停止该专家团对外提供',
     ...(revokeReason ? { forceRevokeReason: revokeReason } : {})
@@ -642,7 +651,7 @@ export function applyTeamReviewResult(refId, requestAction, approved) {
   delete t.pendingVersion
   delete t.pendingReleaseNotes
   t.updatedAt = nowIso()
-  delete reviewSnapshots[String(t.id)]
+  archiveSnapshot(reviewSnapshots, snapshotArchive, t.id) // 在审快照入归档（yuepu#76 保留历史快照），我的申请仍可回看
   persist()
   return true
 }
@@ -697,5 +706,6 @@ export function __resetTeamMock() {
   teams = seedTeams()
   publications = seedPublications()
   reviewSnapshots = {}
+  snapshotArchive = {}
   persist()
 }
