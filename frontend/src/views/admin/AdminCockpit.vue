@@ -214,7 +214,7 @@ function openAlertAction(item) {
 
 <template>
   <div class="cockpit" :class="{ loading: refreshing }">
-    <PageHeader title="驾驶舱" subtitle="查看数字员工资产、岗位领用、任务运行和治理待办。">
+    <PageHeader title="驾驶舱" subtitle="查看数字员工资产、岗位领用和治理待办。">
       <template #actions>
         <span class="ref-time">更新于 {{ refreshTime }}</span>
         <el-button @click="doRefresh">刷新</el-button>
@@ -513,12 +513,10 @@ function openAlertAction(item) {
   border-left: 4px solid var(--c-warning, #e6921e);
   border-radius: 6px;
   background: #fff;
-  transition: background 0.15s ease, transform 0.15s ease;
   display: flex;
   flex-direction: column;
 }
 .dash-todo-card.high { border-left-color: var(--c-danger); }
-.dash-todo-card:hover { background: #fbfcfb; transform: translateY(-1px); }
 .dash-todo-top {
   display: flex;
   align-items: center;
