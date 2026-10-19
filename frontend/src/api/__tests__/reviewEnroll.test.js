@@ -65,3 +65,27 @@ describe('reviewEnroll.enrollReview · 强制回收原因透传两张表', { tim
     expect('forceRevokeReason' in application).toBe(false)
   })
 })
+
+describe('reviewEnroll.enrollReview · 提交人默认取当前登录用户（待办 yuepu#97①）', { timeout: 60000 }, () => {
+  it('不传 submitter：审核中心行 submitterName 与我的申请行 submitter 都是当前登录用户名，不再落成 config.admin', async () => {
+    const t = await load()
+    t.gov.resetReviewsMock()
+    t.app.resetMyApplicationsMock()
+    const { currentDemoUsername } = await import('@/utils/demoIdentity')
+    t.enroll.enrollReview({ businessType: 'EXPERT', refId: 9002, name: '默认提交人专家', requestAction: 'DELIST', version: 'v1.0.0' })
+    const review = (await t.gov.listReviews({ keyword: '默认提交人专家', size: 50 })).list.find((r) => r.refId === 9002)
+    const application = (await t.app.listMyApplications({ keyword: '默认提交人专家', size: 50 })).list.find((r) => r.refId === 9002)
+    expect(review.submitterName).toBe(currentDemoUsername())
+    expect(application.submitter).toBe(currentDemoUsername())
+    expect(review.submitterName).not.toBe('config.admin')
+  })
+
+  it('显式传 submitter（如版本管理）仍以传入为准', async () => {
+    const t = await load()
+    t.gov.resetReviewsMock()
+    t.app.resetMyApplicationsMock()
+    t.enroll.enrollReview({ businessType: 'EXPERT', refId: 9003, name: '显式提交人专家', requestAction: 'FIRST_PUBLISH', version: 'v1.0.0', submitter: 'li.na' })
+    const review = (await t.gov.listReviews({ keyword: '显式提交人专家', size: 50 })).list.find((r) => r.refId === 9003)
+    expect(review.submitterName).toBe('li.na')
+  })
+})

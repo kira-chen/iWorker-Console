@@ -42,9 +42,9 @@ vi.mock('@/components/admin/ListPagination.vue', () => ({ default: { template: '
 // （真组件的空态渲染见 RoleEditor.test.js「页面权限加载失败」）
 vi.mock('@/components/admin/RoleEditor.vue', () => ({
   default: {
-    props: ['visible', 'role', 'permissionTree'],
+    props: ['visible', 'role', 'permissionTree', 'permissionLoading'],
     template:
-      '<div class="role-editor" :data-visible="String(visible)" :data-tree-count="permissionTree.length">' +
+      '<div class="role-editor" :data-visible="String(visible)" :data-tree-count="permissionTree.length" :data-loading="String(permissionLoading)">' +
       '<p v-if="!permissionTree.length" class="re-tree-empty">权限树加载失败 · 关闭重开重试</p></div>'
   }
 }))
@@ -205,6 +205,25 @@ describe('AdminRoles · 权限树加载失败（md §一.3 L31）', () => {
     await mount()
     expect(rowNames()).toEqual(['系统管理员', '普通用户', '审计观察员'])
     expect([...container.querySelectorAll('.el-row')].map(permText)).toEqual(['未开通任何页面', '未开通任何页面', '未开通任何页面'])
+  })
+})
+
+describe('AdminRoles · 抽屉里权限树加载中不闪「加载失败」（yuepu#97）', () => {
+  it('重新拉权限树期间传给抽屉 permissionLoading=true（抽屉据此显示「加载中」），拉完变回 false', async () => {
+    getPermissionTree.mockRejectedValueOnce(new Error('boom')) // 首次挂载失败 → 树为空
+    await mount()
+    const editor = () => container.querySelector('.role-editor')
+    expect(editor().dataset.loading).toBe('false')
+    let resolveTree
+    getPermissionTree.mockReturnValueOnce(new Promise((r) => { resolveTree = r }))
+    ;[...container.querySelectorAll('.el-button')].find((b) => b.textContent.includes('新建角色')).click()
+    await flush()
+    expect(editor().dataset.loading).toBe('true')
+    expect(editor().dataset.treeCount).toBe('0')
+    resolveTree(TREE)
+    await flush()
+    expect(editor().dataset.loading).toBe('false')
+    expect(editor().dataset.treeCount).toBe(String(TREE.length))
   })
 })
 

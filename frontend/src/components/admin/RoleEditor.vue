@@ -36,7 +36,9 @@ const props = defineProps({
   // 待编辑角色（null=新建）：{ id, name, modules:[页面名], userCount }
   role: { type: Object, default: null },
   // 页面权限树：[{ scope, groups:[{ name, pages[] }] }]
-  permissionTree: { type: Array, default: () => [] }
+  permissionTree: { type: Array, default: () => [] },
+  /** 权限树正在（重新）加载：树还是空时显示「加载中」，不闪「权限树加载失败」 */
+  permissionLoading: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -238,8 +240,9 @@ async function onSubmit() {
             </div>
           </article>
 
+          <div v-if="!permissionTree.length && permissionLoading" class="re-perm-loading">权限树加载中…</div>
           <el-empty
-            v-if="!permissionTree.length"
+            v-else-if="!permissionTree.length"
             :image-size="60"
             description="权限树加载失败 · 关闭重开重试"
           />
@@ -368,6 +371,12 @@ async function onSubmit() {
   color: var(--c-text-muted);
   font-size: var(--fs-sm);
   cursor: pointer;
+}
+.re-perm-loading {
+  padding: var(--space-6) 0;
+  text-align: center;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
 }
 .re-perm-err {
   width: 100%;

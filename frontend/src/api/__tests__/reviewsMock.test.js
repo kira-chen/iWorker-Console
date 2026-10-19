@@ -337,6 +337,8 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     expect(app.reviewer).toBe('演示管理员')
   })
 
+  // 同文件其它用例固定用到的知识库：本组新增用例避开它们，随机序下才不互相占状态
+  const USED_KB = ['kb_1', 'kb_2', 'kb_3', 'kb_6']
   /** 访问审计「管理端操作」里该对象的「停用」记录（prd.访问审计.md §6.2「停用记录」）。 */
   const delistAudits = async (target) => {
     const audit = await import('../accessAuditMock')
@@ -357,6 +359,32 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
     expect(recs).toHaveLength(1)
     expect(recs[0]).toMatchObject({ module: '知识库', operator: row.submitterName, detail: '' })
     expect(recs[0].version).toBeUndefined()
+  })
+
+  it('停用审核通过的访问审计操作人 = 提交人（不是一律 config.admin，yuepu#97①）', async () => {
+    const kbMock = await import('../knowledgeBaseMock')
+    // 取一个当前「已发布且无在审」的知识库（同文件其它用例会改库状态，不写死 id）
+    const kb = (await kbMock.list({ size: 100 })).list.find((k) => k.status === 'PUBLISHED' && !k.pendingAction && !USED_KB.includes(k.id))
+    expect(kb, '前提：有可停用的已发布知识库').toBeTruthy()
+    await kbMock.transition(kb.id, 'delist')
+    const row = (await gov.listReviews({ type: 'KNOWLEDGE_BASE', size: 50 })).list.find((r) => r.refId === kb.id)
+    const { currentDemoUsername } = await import('@/utils/demoIdentity')
+    expect(row.submitterName).toBe(currentDemoUsername())
+    await gov.approveReview(row.id)
+    const recs = await delistAudits(kb.name)
+    expect(recs).toHaveLength(1)
+    expect(recs[0].operator).toBe(currentDemoUsername())
+  })
+
+  it('旧存档里带强制回收原因的 DELIST 在审行：审核通过不再多写一条「停用」审计（强制回收审计由业务模块自己写，yuepu#97②）', async () => {
+    const kbMock = await import('../knowledgeBaseMock')
+    const kb = (await kbMock.list({ size: 100 })).list.find((k) => k.status === 'PUBLISHED' && !k.pendingAction && !USED_KB.includes(k.id))
+    expect(kb, '前提：有可停用的已发布知识库').toBeTruthy()
+    await kbMock.transition(kb.id, 'delist')
+    // 复现旧存档：同一对象的在审行仍是 DELIST、却带了强制回收原因（submitReviewRow 对在审行是覆盖更新）
+    const row = gov.submitReviewRow({ type: 'KNOWLEDGE_BASE', refId: kb.id, name: kb.name, requestAction: 'DELIST', forceRevokeReason: '旧存档里的强制回收' })
+    await gov.approveReview(row.id)
+    expect(await delistAudits(kb.name)).toHaveLength(0)
   })
 
   it('停用申请被驳回 → 访问审计不记「停用」', async () => {
@@ -559,7 +587,7 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
   })
 
   it('存量快照版本对但 reviews 不是数组 → 启动时抛「快照形状不合法」被兜底：回种子 13 条、坏 key 被清掉', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { reviews: 'oops' } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { reviews: 'oops' } }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fresh = await import('../reviewsMock')
     expect((await fresh.listReviews()).total).toBe(13)
@@ -568,9 +596,9 @@ describe('reviewsMock · 持久化 restore 形状守卫', () => {
     warn.mockRestore()
   })
 
-  it('对照：形状合法的存量快照（v=8）会被读回——列表按快照而非种子', async () => {
+  it('对照：形状合法的存量快照（v=9）会被读回——列表按快照而非种子', async () => {
     const seedOnly = [{ id: 42, name: '快照里的唯一行', type: 'MODEL', refId: 'md_104', requestAction: 'FIRST_PUBLISH', version: '—', submittedAt: '2026-09-01 10:00', status: 'PENDING_REVIEW' }]
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { reviews: seedOnly } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { reviews: seedOnly } }))
     const fresh = await import('../reviewsMock')
     const { list, total } = await fresh.listReviews()
     expect(total).toBe(1)

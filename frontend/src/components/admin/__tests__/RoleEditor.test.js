@@ -314,6 +314,14 @@ describe('RoleEditor · API 分发契约（保留旧守卫语义）', () => {
     expect(el.querySelector('.re-perm-summary').textContent).toBe('已选择 5 个页面')
   })
 
+  it('权限树正在加载（树为空 + permissionLoading）→ 显示「权限树加载中…」，不闪「权限树加载失败」；加载完出现树（yuepu#97）', async () => {
+    const el = mount({ role: null, permissionTree: [], permissionLoading: true })
+    await open()
+    expect(el.querySelector('.re-perm-loading').textContent).toContain('权限树加载中')
+    expect(el.querySelector('.el-empty')).toBeNull()
+    expect(el.textContent).not.toContain('权限树加载失败')
+  })
+
   it('页面权限加载失败（权限树为空）→ 权限区展示「权限树加载失败 · 关闭重开重试」，底部仍有【取消】【创建角色】/【保存】（md §三.5 L135）', async () => {
     const footBtns = (el) => [...el.querySelectorAll('.dr-footer button')].map((b) => b.textContent.trim())
     let el = mount({ role: null, permissionTree: [] })

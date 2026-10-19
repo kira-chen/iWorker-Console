@@ -119,7 +119,8 @@ const persist = attachPersist('reviews', {
   // 存量快照里已审的行没有该字段、且当时未联动业务对象与我的申请，三方会不自洽 → 丢弃回种子。
   // version 7（2026-09-18 R1）：种子重写为与各业务模块在审对象逐条一致（12 行），旧快照丢弃回种子。
   // version 8（2026-09-20）：新增业务类型「版本管理」（VERSION），种子补 id 13（Mac v1.2.0），旧快照丢弃回种子。
-  version: 8,
+  // version 9（2026-10-19 待办 yuepu#97②）：reviewEnroll 把「DELIST + 回收原因」记成 FORCE_REVOKE，升级前存进浏览器的强制回收在审行仍是 DELIST，旧快照弃用回种子。
+  version: 9,
   snapshot: () => ({ reviews }),
   restore: (d) => {
     if (!d || !Array.isArray(d.reviews)) {
@@ -282,6 +283,8 @@ const DELIST_AUDIT_MODULE = {
 const VERSIONED_AUDIT_TYPES = ['POSITION', 'EXPERT', 'EXPERT_TEAM', 'SKILL']
 function writeDelistAudit(row) {
   if (row.requestAction !== 'DELIST') return
+  // 强制回收申请由各业务 mock 落「强制回收」审计，这里再写「停用」就多了一条（旧存档里的强制回收在审行仍是 DELIST + forceRevokeReason，yuepu#97②）
+  if (row.forceRevokeReason) return
   const module = DELIST_AUDIT_MODULE[row.type === 'TOOL' ? `TOOL:${row.subType}` : row.type]
   if (!module) return
   const rec = { operator: row.submitterName, module, action: '停用', target: row.name }
