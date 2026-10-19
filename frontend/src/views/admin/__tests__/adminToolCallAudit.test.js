@@ -171,7 +171,7 @@ describe('统计卡片（§二）', () => {
     helpBtn().click()
     await flush()
     const text = container.querySelector('.help-body').textContent
-    expect(text).toContain('一次会话算一条记录：会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里')
+    expect(text).toContain('一次会话算一条记录，会话内多次调用技能、调用的工具超出技能引用范围，均合并在该条记录里；详情里技能、工具分两个维度展示，不区分工具由谁发起')
     helpBtn().click()
     await flush()
     expect(container.querySelector('.help-body')).toBeNull()
