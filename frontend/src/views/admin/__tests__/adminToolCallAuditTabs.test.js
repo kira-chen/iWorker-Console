@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
 
 /**
  * 工具调用审计 · 三页签（2026-09-28 加「岗位自动化任务」「知识库检索」页签，
@@ -18,8 +17,7 @@ import { useFixedAuditNow, restoreAuditClock } from './helpers/fixedAuditClock'
  * （已预授权 / 未授权）整套断言随之移除；「任务运行编号」字段废弃，记录本身已是运行级。
  * 「知识库检索」一节不受本次改版影响，原样保留。
  *
- * 固定系统时间到 2026-09-28（helpers/fixedAuditClock.js，与 adminToolCallAudit.test.js 共用）：种子在
- * 2026-09-19 ~ 09-28，列表默认窗口是「今天往前 90 天」，不固定则真实日期推移后用例到期变红。
+ * 种子日期相对「今天」生成（toolCallAuditMock.js 用 dateDaysAgo，J27），默认「近 90 天」窗口永远框得住，不再固定系统时间。
  * 「文案逐字对 md」一节借请求编号（C-/T-/K-）搜索定位目标行——靠搜索框的编号匹配，随产品裁决
  * （搜索框是否收口为不搜编号）调整定位方式。
  */
@@ -41,7 +39,6 @@ const flush = async () => {
 }
 
 beforeEach(() => {
-  useFixedAuditNow()
   globalThis.ResizeObserver = globalThis.ResizeObserver || ResizeObserverStub
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   createObjectURL = vi.fn(() => 'blob:mock/1')
@@ -56,7 +53,6 @@ afterEach(() => {
   errorSpy.mockRestore()
   delete globalThis.URL.createObjectURL
   delete globalThis.URL.revokeObjectURL
-  restoreAuditClock()
 })
 
 function mountReal() {
