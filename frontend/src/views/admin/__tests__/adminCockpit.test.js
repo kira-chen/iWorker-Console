@@ -186,6 +186,15 @@ describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §八）', () => {
  * ====================================================================================== */
 const todoCard = (source) => [...mounted.container.querySelectorAll('.dash-todo-card')].find((c) => c.querySelector('.dash-todo-source').textContent.trim() === source)
 
+describe('AdminCockpit · 页面说明（PRD §一.1，yuepu#94⑤）', () => {
+  it('页面说明是「查看数字员工资产、岗位领用和治理待办。」——页面没有任务运行区块，说明里不提', async () => {
+    await mount()
+    const text = document.body.textContent
+    expect(text).toContain('查看数字员工资产、岗位领用和治理待办。')
+    expect(text).not.toContain('任务运行')
+  })
+})
+
 describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
   it('「审核中心」卡【去审核】→ 跳到审核中心页面', async () => {
     await mount()
