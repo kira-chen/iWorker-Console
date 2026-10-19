@@ -90,14 +90,14 @@ describe('AdminToolCallAudit · 会话调用页签 · 真实 Element Plus 挂载
 
     const text = container.textContent
     expect(text).toContain('工具调用审计')
-    expect(text).toContain('执行总数')
-    expect(text).toContain('涉及写操作的执行')
-    expect(text).toContain('执行失败')
+    expect(text).toContain('会话总数')
+    expect(text).toContain('涉及写操作的会话')
+    expect(text).toContain('失败的会话')
     // 不展示"执行中"：卡片只有 3 张，没有"进行中"这张
     expect(cards().length).toBe(3)
 
     const total = MOCK.toolCallRecords.length
-    expect(cardOf('执行总数').textContent).toContain(String(total))
+    expect(cardOf('会话总数').textContent).toContain(String(total))
 
     expect(container.querySelector('.el-table')).toBeTruthy()
     expect(text).toContain('刘敏')
@@ -139,31 +139,40 @@ describe('统计卡片（§二）', () => {
     await flush()
   })
 
-  it('执行总数副标题展示成功 / 失败计数，与种子数据一致（不展示"进行中"）', () => {
+  it('会话总数副标题展示成功 / 失败计数，与种子数据一致（不展示"进行中"）', () => {
     const all = MOCK.toolCallRecords
     const count = (r) => all.filter((x) => x.result === r).length
-    expect(cardOf('执行总数').textContent).toContain(`成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`)
-    expect(cardOf('执行总数').textContent).not.toContain('进行中')
+    expect(cardOf('会话总数').textContent).toContain(`成功 ${count('SUCCESS')} / 失败 ${count('FAILED')}`)
+    expect(cardOf('会话总数').textContent).not.toContain('进行中')
   })
 
-  it('点「执行失败」→ 列表只剩整体结果=失败的记录', async () => {
-    cardOf('执行失败').click()
+  it('涉及写操作的会话副标题：已确认 / 不需要确认 / 用户拒绝三类互斥，合计等于卡片数字（yuepu#92⑬）', () => {
+    const all = MOCK.toolCallRecords.filter((x) => x.hasWrite)
+    const n = (k) => all.filter((x) => MOCK.writeConfirmBucket(x) === k).length
+    const card = cardOf('涉及写操作的会话').textContent
+    expect(card).toContain(`已确认 ${n('CONFIRMED')} / 不需要确认 ${n('NONE')} / 用户拒绝 ${n('REFUSED')}`)
+    expect(n('CONFIRMED') + n('NONE') + n('REFUSED')).toBe(all.length)
+    expect(n('REFUSED')).toBeGreaterThan(0)
+  })
+
+  it('点「失败的会话」→ 列表只剩整体结果=失败的记录', async () => {
+    cardOf('失败的会话').click()
     await flush()
     const rows = bodyRows()
     expect(rows.length).toBeGreaterThan(0)
     rows.forEach((r) => expect(r.textContent).toContain('失败'))
   })
 
-  it('点「涉及写操作的执行」→ 列表只剩涉及写操作的记录；清空后再点「执行总数」恢复全量', async () => {
-    cardOf('涉及写操作的执行').click()
+  it('点「涉及写操作的会话」→ 列表只剩涉及写操作的记录；清空后再点「会话总数」恢复全量', async () => {
+    cardOf('涉及写操作的会话').click()
     await flush()
     const writes = MOCK.toolCallRecords.filter((r) => r.hasWrite)
     expect(bodyRows().length).toBe(writes.length)
 
-    cardOf('执行总数').click()
+    cardOf('会话总数').click()
     await flush()
     // 分页限制了可见行数，不能直接数 DOM 行——用卡片自身的计数验证筛选已清空
-    expect(cardOf('执行总数').textContent).toContain(String(MOCK.toolCallRecords.length))
+    expect(cardOf('会话总数').textContent).toContain(String(MOCK.toolCallRecords.length))
   })
 
   it('【统计口径】默认收起，点开展示说明，再点收起', async () => {
@@ -405,7 +414,7 @@ describe('导出 CSV（§三）', () => {
   it('导出当前筛选结果，提示已导出 N 条', async () => {
     mountReal()
     await flush()
-    cardOf('执行失败').click()
+    cardOf('失败的会话').click()
     await flush()
     const n = bodyRows().length
     const exportBtn = [...container.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '导出 CSV')

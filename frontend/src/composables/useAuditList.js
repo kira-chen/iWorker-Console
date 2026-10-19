@@ -15,7 +15,7 @@ import { useAdminList } from './useAdminList'
  *
  * 【统计卡片的数据源】统计卡片要同步计算，而 fetcher 是异步的，所以卡片直接对常量数组
  * records 复用同一套 filterRecords；列表则走 useAdminList 的 paged:'client' 本地分页。
- * 两者口径一致（都是「当前时间范围 + 当前筛选」）。
+ * 列表与导出口径一致（都是「当前时间范围 + 当前筛选」）；统计卡片另用 cardAll（只含时间范围 + 搜索词，yuepu#92⑯）。
  *
  * @param {Object} options
  * @param {()=>Promise<Array>} options.fetcher 取数函数（api 层 mock，返回全量）
@@ -41,11 +41,11 @@ export function useAuditList({ fetcher, records, matches, keywordOf }) {
   const keyword = ref('')
   const appliedKeyword = ref('')
 
-  function filterRecords(all) {
+  function filterRecords(all, { skipMatches = false } = {}) {
     const kw = appliedKeyword.value
     const filtered = all.filter((r) =>
       inDateRange(r.date, dateRange.value) &&
-      matches(r) &&
+      (skipMatches || matches(r)) &&
       (!kw || keywordOf(r).join(' ').toLowerCase().includes(kw))
     )
     const key = (r) => `${r.date} ${r.time}`
@@ -73,11 +73,18 @@ export function useAuditList({ fetcher, records, matches, keywordOf }) {
   /** 当前时间范围 + 筛选后的全量结果（不分页）：统计卡片与导出都用它。 */
   const statsAll = computed(() => filterRecords(records))
 
+  /**
+   * 统计卡片的数据范围 = 当前时间范围 + 搜索词，**不含**页签自己的筛选（执行结果 / 是否涉及写操作 / 数据源类型 / 无命中）
+   * （PRD §二，待办 yuepu#92⑯）：卡片是看全貌的入口，点「执行失败」后总数卡不该跟着缩成失败条数。
+   * 导出仍用 statsAll（导出的是当前筛选结果）。
+   */
+  const cardAll = computed(() => filterRecords(records, { skipMatches: true }))
+
   return {
     dateRange, disabledDate, onCalendarChange,
     sortArrow, toggleSort,
     keyword, applySearch, onClearSearch,
-    list, statsAll
+    list, statsAll, cardAll
   }
 }
 

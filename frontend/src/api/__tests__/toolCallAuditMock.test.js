@@ -278,3 +278,26 @@ describe('演示样例覆盖（#92 ⑰）', () => {
     }
   })
 })
+
+describe('writeConfirmBucket · 涉及写操作的会话按用户确认归类（PRD §二，yuepu#92⑬）', () => {
+  const W = (confirm, extra = {}) => ({ nature: 'WRITE', confirm, result: 'SUCCESS', ...extra })
+  it('三类互斥，优先级 用户拒绝 > 已确认 > 不需要确认', async () => {
+    const { writeConfirmBucket } = await import('../toolCallAuditMock')
+    expect(writeConfirmBucket({ calls: [W('NONE')] })).toBe('NONE')
+    expect(writeConfirmBucket({ calls: [W('CONFIRMED')] })).toBe('CONFIRMED')
+    expect(writeConfirmBucket({ calls: [W(null, { result: 'FAILED' })] })).toBe('REFUSED')
+    // 同一会话既有被确认的写、又有被拒绝的写 → 归「用户拒绝」
+    expect(writeConfirmBucket({ calls: [W('CONFIRMED'), W(null, { result: 'FAILED' })] })).toBe('REFUSED')
+    // 读操作的 confirm 即使为空也不算被拒绝
+    expect(writeConfirmBucket({ calls: [{ nature: 'READ', confirm: null }, W('NONE')] })).toBe('NONE')
+  })
+
+  it('种子里涉及写操作的会话，三类合计等于写操作会话数，且「用户拒绝」至少有一条样例（C-1006）', async () => {
+    const { toolCallRecords, writeConfirmBucket } = await import('../toolCallAuditMock')
+    const writes = toolCallRecords.filter((r) => r.hasWrite)
+    const count = (k) => writes.filter((r) => writeConfirmBucket(r) === k).length
+    expect(count('CONFIRMED') + count('NONE') + count('REFUSED')).toBe(writes.length)
+    expect(count('REFUSED')).toBeGreaterThan(0)
+    expect(writeConfirmBucket(toolCallRecords.find((r) => r.id === 'C-1006'))).toBe('REFUSED')
+  })
+})
