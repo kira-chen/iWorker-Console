@@ -212,12 +212,13 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('AdminConnector'))
   })
 
-  it('「用户技能审核」卡【去审核】→ 跳到用户技能审核页面', async () => {
+  it('「用户技能审核」卡【去审核】→ 跳到用户技能审核页面，并预筛待审核', async () => {
     await mount()
     const btn = todoCard('用户技能审核').querySelector('button')
     expect(btn.textContent.trim()).toBe('去审核')
     btn.click()
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('SysConfigUserSkillReviews'))
+    expect(router.currentRoute.value.query.status).toBe('PENDING') // 目标页审核状态筛选回填「待审核」（2026-10-20 走查）
   })
 
   it('「岗位管理」卡【去分配】→ 跳到岗位管理页面', async () => {

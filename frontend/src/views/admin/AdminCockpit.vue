@@ -27,7 +27,7 @@ const refreshing = ref(false)
 const alerts = [
   { count: 11, level: 'medium', label: '待审核', meta: '发布审核 7 / 版本发布 3 / 停用审核 1', source: '审核中心', action: '去审核', to: 'UnifiedReview' },
   { count: 3,  level: 'high',   label: '连接失败', meta: 'MCP 2 / API 1',                    source: '连接器',   action: '去处理', to: 'AdminConnector' },
-  { count: 2,  level: 'high',   label: '高风险',   meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews' },
+  { count: 2,  level: 'high',   label: '高风险',   meta: '等待人工审核',                      source: '用户技能审核', action: '去审核', to: 'SysConfigUserSkillReviews', query: { status: 'PENDING' } },
   { count: 5,  level: 'medium', label: '待分配',   meta: '员工申请岗位，等待分配',            source: '岗位管理', action: '去分配', to: 'AdminPositionAssignments', query: { pending: '1' } },
   { count: 4,  level: 'medium', label: '待扩容',   meta: '员工产物容量不足，等待同意或拒绝',   source: '存储空间', action: '去处理', to: 'AdminStorageSpace', query: { tab: 'request', status: 'PENDING' } },
   { count: 2,  level: 'medium', label: '待授权',   meta: '员工申请开启完全访问，等待通过或驳回', source: '用户访问权限', action: '去处理', to: 'AdminUserAccess', query: { pending: '1' } },
