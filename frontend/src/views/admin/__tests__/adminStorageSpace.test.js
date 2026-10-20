@@ -99,9 +99,29 @@ async function typeNumber(value) {
   await flushAll(4)
 }
 
+/** 容量配置默认折叠（2026-10-20 走查）：点「容量配置」展开后才出现磁盘总量 / 默认容量两条设置 */
+async function expandConfig(c) {
+  c.querySelector('.sq-toggle').click()
+  await flushAll(2)
+}
+
 describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () => {
+  it('容量配置默认折叠：只有「容量配置」一个窄链接，点击展开后才出现磁盘总量与默认容量两条设置，再点收起', async () => {
+    const c = await mountPage()
+    expect(textOf(c.querySelector('.sq-toggle'))).toBe('容量配置')
+    expect(c.querySelector('.sq-toggle').getAttribute('aria-expanded')).toBe('false')
+    expect(c.querySelectorAll('.sq-default').length).toBe(0)
+    expect(textOf(c)).not.toContain('磁盘总量')
+    await expandConfig(c)
+    expect(c.querySelector('.sq-toggle').getAttribute('aria-expanded')).toBe('true')
+    expect(c.querySelectorAll('.sq-default').length).toBe(2)
+    await expandConfig(c)
+    expect(c.querySelectorAll('.sq-default').length).toBe(0)
+  })
+
   it('展示页面标题与说明（md §二）、默认容量条全文（md §三·1）与「扩容申请」页签的待处理角标', async () => {
     const c = await mountPage()
+    await expandConfig(c)
     expect(textOf(c.querySelector('h2'))).toBe('存储空间')
     expect(textOf(c)).toContain('分配员工产物存储容量，处理扩容申请；仅统计本地产物（最终产物 + 缓存），不含知识库资料')
     expect(textOf(c.querySelectorAll('.sq-default')[1])).toBe('默认容量：5 GB，未单独设置容量的员工按此值计算，当前 2 人；单个员工的容量请在列表中调整修改')
@@ -206,6 +226,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
 
   it('默认容量可调：容量条带【修改】，磁盘总量条展示总量 / 已分配 / 余量', async () => {
     const c = await mountPage()
+    await expandConfig(c)
     const bars = [...c.querySelectorAll('.sq-default')].map(textOf)
     expect(bars[0]).toContain('磁盘总量：1000 GB，已分配 55 GB，余量 945 GB') // 先磁盘总量
     expect(bars[1]).toContain('默认容量：5 GB') // 再默认容量
@@ -213,6 +234,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
 
   it('点默认容量条的【修改】：弹窗预填当前默认容量，确定后调用 setDefaultQuota 并提示', async () => {
     const c = await mountPage()
+    await expandConfig(c)
     btn(c.querySelectorAll('.sq-default')[1], '修改').click()
     await flushAll(6)
     expect(textOf(dialogBody())).toContain('修改默认容量')
@@ -226,6 +248,7 @@ describe('AdminStorageSpace · 容量分配页签（PRD §二 / §三）', () =>
   it('点磁盘总量条的【修改】：不受 20 GB 限制，确定后调用 setDiskTotal；后端拒绝时就地展示原因', async () => {
     api.setDiskTotal.mockRejectedValueOnce(new Error('磁盘总量不能低于已分配的 55 GB'))
     const c = await mountPage()
+    await expandConfig(c)
     btn(c.querySelectorAll('.sq-default')[0], '修改').click()
     await flushAll(6)
     await typeNumber(30)

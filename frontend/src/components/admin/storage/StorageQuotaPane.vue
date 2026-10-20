@@ -53,7 +53,8 @@ function clearFilters() {
   reload()
 }
 
-/* ---------- 默认容量条 ---------- */
+/* ---------- 容量配置（磁盘总量 / 默认容量；默认折叠，点「容量配置」展开） ---------- */
+const settingsOpen = ref(false)
 const overview = ref({ defaultQuotaGb: DEFAULT_QUOTA_GB, defaultMemberCount: 0, pendingCount: 0, diskTotalGb: DISK_TOTAL_GB, allocatedGb: 0, remainingGb: DISK_TOTAL_GB, defaultFloorGb: QUOTA_MIN_GB })
 async function loadOverview() {
   try {
@@ -218,15 +219,25 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
 
 <template>
   <div class="sq-pane">
-    <div class="sq-default">
-      <span class="sq-default-label">磁盘总量：<b>{{ overview.diskTotalGb }} GB</b>，</span>
-      <span class="sq-default-hint">已分配 {{ overview.allocatedGb }} GB，余量 <b :class="{ 'sq-danger': overview.remainingGb <= 0 }">{{ overview.remainingGb }} GB</b>；按物理总量分配、不超分，余量不足时无法再调大员工容量</span>
-      <el-button link type="primary" @click="openDialog('disk')">修改</el-button>
-    </div>
-    <div class="sq-default">
-      <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
-      <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
-      <el-button link type="primary" @click="openDialog('default')">修改</el-button>
+    <!-- 容量配置（2026-10-20 走查：两条设置太显眼）：默认只露一个窄的「容量配置」折叠链接（范式同用户访问权限页的
+         「完全访问权限口径」），点击展开后才出现磁盘总量调整与默认容量调整 -->
+    <div class="sq-config">
+      <button type="button" class="sq-toggle" :aria-expanded="settingsOpen" @click="settingsOpen = !settingsOpen">
+        <el-icon class="sq-arrow" :class="{ 'is-open': settingsOpen }"><ArrowRight /></el-icon>
+        <span>容量配置</span>
+      </button>
+      <div v-if="settingsOpen" class="sq-settings">
+        <div class="sq-default">
+          <span class="sq-default-label">磁盘总量：<b>{{ overview.diskTotalGb }} GB</b>，</span>
+          <span class="sq-default-hint">已分配 {{ overview.allocatedGb }} GB，余量 <b :class="{ 'sq-danger': overview.remainingGb <= 0 }">{{ overview.remainingGb }} GB</b>；按物理总量分配、不超分，余量不足时无法再调大员工容量</span>
+          <el-button link type="primary" size="small" @click="openDialog('disk')">修改</el-button>
+        </div>
+        <div class="sq-default">
+          <span class="sq-default-label">默认容量：<b>{{ overview.defaultQuotaGb }} GB</b>，</span>
+          <span class="sq-default-hint">未单独设置容量的员工按此值计算，当前 {{ overview.defaultMemberCount }} 人；单个员工的容量请在列表中调整</span>
+          <el-button link type="primary" size="small" @click="openDialog('default')">修改</el-button>
+        </div>
+      </div>
     </div>
 
     <ListToolbar>
@@ -344,17 +355,45 @@ const percent = (row) => (row.ratio == null ? 0 : Math.min(100, Math.round(row.r
   flex-direction: column;
   gap: var(--space-4);
 }
-.sq-default {
-  display: flex;
+/* 折叠态只有一个窄的行内链接，展开后下方出现带框的 .sq-settings（视觉同 UserAccessScope 的 .uas-toggle / .uas-panel） */
+.sq-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: 2px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.sq-toggle:hover {
+  color: var(--c-accent);
+}
+.sq-arrow {
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+.sq-arrow.is-open {
+  transform: rotate(90deg);
+}
+.sq-settings {
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   background: var(--bg-sunken);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
 }
+.sq-default {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+}
 .sq-default-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--c-text-strong);
 }
 .sq-default-hint {
