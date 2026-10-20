@@ -446,17 +446,13 @@ async function confirmStop({ forceRevoke, reason }) {
           <el-table-column label="技能数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.skillCount ?? 0 }}</template>
           </el-table-column>
-          <el-table-column label="引用情况" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+          <!-- 引用情况：只展示岗位引用（2026-10-20 浦月定）。市场专家原展示「N个技能」与左侧「技能数」列重复，改为「—」同通用专家；
+               列宽 COL.COUNT（80）放不下「N个岗位引用」且不换行会被截断，放宽到 120 -->
+          <el-table-column label="引用情况" :width="COL.COUNT + 40" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">
               <template v-if="row.type === EXPERT_TYPE.POSITION">
                 <el-button v-if="row.positionCount > 0" link type="primary" @click="openRefs(row)">{{ row.positionCount }}个岗位引用</el-button>
                 <span v-else class="cell-na">暂无引用</span>
-              </template>
-              <template v-else-if="row.type === EXPERT_TYPE.PLATFORM">
-                <!-- 市场专家展示其引用的市场技能数：demo 没有「应用」这个引用方的数据源，原文案「N个应用引用」与
-                     skillCount 语义相反（2026-09-24 负责人裁定按引用技能数展示，md 同步，待办 yuepu#13·专家 E3） -->
-                <span v-if="row.skillCount > 0">{{ row.skillCount }}个技能</span>
-                <span v-else class="cell-na">暂无技能</span>
               </template>
               <template v-else>
                 <span class="cell-na">—</span>
