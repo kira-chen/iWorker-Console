@@ -1,45 +1,42 @@
 <script setup>
 /**
- * 工具勾选器（Sprint 2.1 契约 §4.1/§4.2，扩展 Sprint2 仅 Mock → Mock + MCP + API 三分组）。
+ * 工具勾选器：MCP / API 两分组（2026-10-20 走查：自动化任务引用工具只有 MCP 和 API，去掉 Mock 分组；
+ * MCP / API 已是真实连接器，原「未接入 · 下轮上线」占位标记一并撤掉）。
  *
- * 单一职责：从三来源可选工具清单（由父组件经 props.available 注入，不自取数）勾选工具，
+ * 单一职责：从两来源可选工具清单（由父组件经 props.available 注入，不自取数）勾选工具，
  * 每条可叠加 requiresConfirmation 标记。双向绑定已选工具数组 v-model:selected。
  *
  * 关键：勾选/回显/去重一律按 (type, code) 联合键（契约 B3，同 code 跨源不唯一；
  * MCP code 为限定名 mcp__{mcpCode}__{toolName}）。逻辑见 utils/toolKey.js。
  *
  * selected 元素：{ type, code, requiresConfirmation }（按勾选顺序）。
- * available（props）：{ mock:[...], mcp:[...], api:[...] }，每项至少 { code, type, bizName, description, requiresConfirmation }。
- * MCP/API 工具标「未接入 / 下轮上线」tag（运行时占位，D-E）。
+ * available（props）：{ mcp:[...], api:[...] }，每项至少 { code, type, bizName, description, requiresConfirmation }。
  */
 import { computed } from 'vue'
 import { isToolSelected, toggleTool, setToolConfirm, selectedOrder } from '@/utils/toolKey'
 
 const props = defineProps({
   selected: { type: Array, default: () => [] },
-  // 三来源清单 { mock, mcp, api }
-  available: { type: Object, default: () => ({ mock: [], mcp: [], api: [] }) },
+  // 两来源清单 { mcp, api }
+  available: { type: Object, default: () => ({ mcp: [], api: [] }) },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' }, // data.field==='tools' 时父级传入
   // 是否展示「执行前需二次确认」开关与文案。默认 true（Skill 编辑器需要）；
   // 定时任务侧内联 skill 默认关闭二次确认、不暴露，传 false 隐藏该 UI（契约 §7）。
   showConfirm: { type: Boolean, default: true },
   // 员工端友好模式（默认 false=后台 FDA 原样）。true 时：去术语/去原始 code/去内部话术，
-  // 三来源合并为单一平铺列表，仅在定时任务场景由 TaskEditor 传入。后台 Skill 编辑器零回归。
+  // 两来源合并为单一平铺列表。
   friendly: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:selected'])
 
 const groups = computed(() => [
-  { type: 'MOCK', label: 'Mock 工具', tools: props.available?.mock || [], placeholder: false },
-  { type: 'MCP', label: 'MCP 工具', tools: props.available?.mcp || [], placeholder: true },
-  { type: 'API', label: 'API 工具', tools: props.available?.api || [], placeholder: true }
+  { type: 'MCP', label: 'MCP 工具', tools: props.available?.mcp || [] },
+  { type: 'API', label: 'API 工具', tools: props.available?.api || [] }
 ])
 
-// 员工端友好模式：三来源合并为单一平铺列表（保留各项原 type/placeholder 用于勾选键与可用性判断）
-const flatTools = computed(() =>
-  groups.value.flatMap((g) => g.tools.map((t) => ({ ...t, _placeholder: g.placeholder })))
-)
+// 员工端友好模式：两来源合并为单一平铺列表（保留各项原 type 用于勾选键）
+const flatTools = computed(() => groups.value.flatMap((g) => g.tools))
 
 const totalCount = computed(() =>
   groups.value.reduce((n, g) => n + g.tools.length, 0)
@@ -82,30 +79,15 @@ function order(tool) {
           v-for="tool in flatTools"
           :key="tool.type + '::' + tool.code"
           class="tp-item"
-          :class="{ 'is-checked': checked(tool), 'is-disabled': tool._placeholder }"
+          :class="{ 'is-checked': checked(tool) }"
         >
           <div class="tp-main">
             <el-checkbox
               :model-value="checked(tool)"
-              :disabled="tool._placeholder"
               @update:model-value="toggle(tool, $event)"
             >
               <span class="tp-name">{{ tool.bizName || tool.code }}</span>
             </el-checkbox>
-            <el-tooltip
-              v-if="tool._placeholder"
-              content="该工具即将开放，敬请期待"
-              placement="top"
-            >
-              <el-tag
-                size="small"
-                type="info"
-                effect="plain"
-                class="tp-flag"
-              >
-                暂不可用
-              </el-tag>
-            </el-tooltip>
           </div>
           <div v-if="tool.description" class="tp-desc">{{ tool.description }}</div>
         </div>
@@ -115,7 +97,7 @@ function order(tool) {
     <!-- 后台 FDA 原样模式（默认） -->
     <template v-else>
       <div class="tp-summary">
-        已选 <strong>{{ selectedCount }}</strong> 个工具（跨 Mock / MCP / API 三来源）
+        已选 <strong>{{ selectedCount }}</strong> 个工具（跨 MCP / API 两来源）
       </div>
       <el-collapse :model-value="activeNames" class="tp-collapse">
         <el-collapse-item v-for="g in groups" :key="g.type" :name="g.type">
@@ -124,20 +106,11 @@ function order(tool) {
             <el-tag size="small" type="info" effect="plain" class="tp-group-count">
               {{ g.tools.length }}
             </el-tag>
-            <el-tag
-              v-if="g.placeholder && g.tools.length"
-              size="small"
-              type="warning"
-              effect="light"
-              class="tp-group-flag"
-            >
-              未接入 · 下轮上线
-            </el-tag>
           </template>
 
           <el-empty
             v-if="!g.tools.length"
-            :description="g.type === 'MOCK' ? '暂无 Mock 工具' : `暂无已登记的 ${g.label}，请先到对应管理页登记`"
+            :description="`暂无已登记的 ${g.label}，请先到对应管理页登记`"
             :image-size="40"
           >
             <template #image>
@@ -159,15 +132,6 @@ function order(tool) {
                   <span class="tp-name">{{ tool.bizName || tool.code }}</span>
                 </el-checkbox>
                 <code class="tp-code">{{ tool.code }}</code>
-                <el-tag
-                  v-if="g.placeholder"
-                  size="small"
-                  type="warning"
-                  effect="plain"
-                  class="tp-flag"
-                >
-                  未接入
-                </el-tag>
                 <el-tag v-if="checked(tool)" size="small" type="info" class="tp-order">
                   第 {{ order(tool) }} 步
                 </el-tag>
@@ -194,7 +158,6 @@ function order(tool) {
       <div class="tp-foot">
         <span class="tp-hint">
           勾选顺序即调用顺序<template v-if="showConfirm">；二次确认靠开关，勿写进 SOP 文案</template>。
-          MCP / API 工具本轮为占位（引入即收窄白名单，运行时返回「尚未接入」），下轮接真实。
         </span>
       </div>
     </template>
@@ -246,9 +209,6 @@ function order(tool) {
   background: var(--bg-selected);
   border-color: var(--c-accent-soft);
 }
-.tp-item.is-disabled {
-  opacity: 0.6;
-}
 .tp-main {
   display: flex;
   align-items: center;
@@ -262,9 +222,6 @@ function order(tool) {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
-}
-.tp-flag {
-  margin-left: var(--space-1);
 }
 .tp-order {
   margin-left: auto;

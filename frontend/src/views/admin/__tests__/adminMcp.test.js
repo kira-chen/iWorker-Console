@@ -264,6 +264,14 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     expect(stateOf(rowByName('已下架服务'))).toBe('未发布')
   })
 
+  // 2026-10-20 走查：连接器类型「岗位私有」补全为「岗位私有连接器」（MCP / API / 业务系统共用 CONNECTOR_TYPE_LABEL）
+  it('连接器类型筛选项：岗位私有连接器 / 市场连接器 / 通用连接器', async () => {
+    await mount()
+    const opts = [...container.querySelectorAll('option')].map((o) => o.textContent.trim())
+    expect(opts).toEqual(expect.arrayContaining(['岗位私有连接器', '市场连接器', '通用连接器']))
+    expect(opts).not.toContain('岗位私有')
+  })
+
   // md §二.3.1 L83-86 各状态按钮组合（精确集合，顺序即操作列顺序）
   it('操作区 · 未发布：【查看】【编辑】【发布】【删除】共 4 个（md §二.3.1 L83）', async () => {
     await mount()

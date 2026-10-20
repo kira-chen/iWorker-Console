@@ -139,6 +139,9 @@ onMounted(() => {
   // 同名参数重复时 route.query.keyword 是数组，统一经 queryString 取第一个（与其余列表页同口径，待办 yuepu#22）
   const kw = queryString(route.query?.keyword)
   if (kw) query.keyword = kw
+  // 驾驶舱「用户技能审核」待办卡【去审核】带 query.status=PENDING，回填审核状态筛选（只认已知取值，乱值忽略）
+  const st = queryString(route.query?.status)
+  if (statusOptions.some((s) => s.value === st)) query.status = st
   fetchList()
   // 深链：/admin/user-skill-reviews?view=<id>（原整页路由 /:id/view 重定向至此）→ 直接打开抽屉
   const viewId = route.query?.view

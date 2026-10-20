@@ -141,7 +141,7 @@ function clearDirty() {
 }
 
 /* ============================ 工具清单（FDE 门 tool-picker，与岗位技能配工具同源） ============================ */
-const available = ref({ mock: [], mcp: [], api: [] })
+const available = ref({ mcp: [], api: [] })
 const toolsLoading = ref(false)
 
 async function loadTools() {
@@ -154,7 +154,6 @@ async function loadTools() {
       listToolPicker({ type: 'API' }).catch(() => [])
     ])
     available.value = {
-      mock: [],
       mcp: normalizeTools(mcp, 'MCP'),
       api: normalizeTools(api, 'API')
     }
@@ -182,7 +181,7 @@ function normalizeTools(list, fallbackType) {
 // (type,code) → bizName 映射，提交时补全 bizName
 const bizNameMap = computed(() => {
   const m = new Map()
-  for (const g of ['mock', 'mcp', 'api']) {
+  for (const g of ['mcp', 'api']) {
     for (const t of available.value?.[g] || []) {
       m.set(`${t.type}::${t.code}`, t.bizName || t.code)
     }
@@ -194,7 +193,7 @@ const bizNameMap = computed(() => {
 // (type,code) → 候选工具项映射，用于平铺行补名称 / 类型 / 健康度
 const toolMetaMap = computed(() => {
   const m = new Map()
-  for (const g of ['mock', 'mcp', 'api']) {
+  for (const g of ['mcp', 'api']) {
     for (const t of available.value?.[g] || []) m.set(`${t.type}::${t.code}`, t)
   }
   return m

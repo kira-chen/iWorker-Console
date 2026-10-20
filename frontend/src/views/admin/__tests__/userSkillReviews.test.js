@@ -313,6 +313,19 @@ describe('UserSkillReviews（2026-09-08 PRD-20260908 对齐）', () => {
     expect(listReviewApplications.mock.calls[0][0]).toEqual(expect.objectContaining({ keyword: 'usr_skill_a', page: 1 }))
   })
 
+  // 驾驶舱「用户技能审核」待办卡【去审核】带 ?status=PENDING（2026-10-20 走查），进页即按待审核筛选
+  it('跨模块入口 ?status=PENDING（驾驶舱待办卡）：首拉即按待审核取数', async () => {
+    routeQuery.value = { status: 'PENDING' }
+    await mount()
+    expect(listReviewApplications.mock.calls[0][0]).toEqual(expect.objectContaining({ status: 'PENDING', page: 1 }))
+  })
+
+  it('跨模块入口 ?status=乱值：不回填，按全部审核状态取数', async () => {
+    routeQuery.value = { status: 'BOGUS' }
+    await mount()
+    expect(listReviewApplications.mock.calls[0][0].status ?? '').toBe('')
+  })
+
   it('深链 ?view=id：挂载即开抽屉并清掉 query', async () => {
     routeQuery.value = { view: 'usr_3' }
     await mount()
