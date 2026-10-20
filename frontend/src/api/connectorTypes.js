@@ -1,7 +1,7 @@
 /**
  * 连接器类型定义（参照 unifiedSkill.js）
  *
- * 三分类：岗位私有 / 市场连接器 / 通用连接器
+ * 三分类：岗位私有连接器 / 市场连接器 / 通用连接器（2026-10-20 走查：「岗位私有」补全为「岗位私有连接器」，与另两类同构）
  * 适用于 MCP、API、业务系统三种连接器
  */
 
@@ -12,7 +12,7 @@ export const CONNECTOR_TYPE = {
 }
 
 export const CONNECTOR_TYPE_LABEL = {
-  [CONNECTOR_TYPE.POSITION]: '岗位私有',
+  [CONNECTOR_TYPE.POSITION]: '岗位私有连接器',
   [CONNECTOR_TYPE.PLATFORM]: '市场连接器',
   [CONNECTOR_TYPE.SYSTEM_DEFAULT]: '通用连接器'
 }

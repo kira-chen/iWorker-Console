@@ -7,7 +7,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  * AdminConnector.vue（连接器容器页）契约 —— 2026-09-12 测试审计新建（F3，此前零用例）。
  *
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/MCP/prd-连接器-MCP.md §一：
- * - §一.1「页面标题：展示"连接器"」/「页面说明：文案"平台全部连接器 —— 通用连接器 / 岗位私有 / 市场连接器 统一管理"」
+ * - §一.1「页面标题：展示"连接器"」/「页面说明：文案"平台全部连接器 —— 通用连接器 / 岗位私有连接器 / 市场连接器 统一管理"」
  *   （2026-09-28 待办 yuepu#31⑤：三份 md 同口径，此前误写成旧文案）/「类型页签：展示"MCP、API、业务系统"三个页签」；
  * - §一.2「进入连接器页面时，默认打开"MCP"页签」「点击不同页签后，页面展示对应的管理内容」
  *   「切换页签后再返回，原页签中的列表、搜索和筛选状态保持不变」（keep-alive）
@@ -94,7 +94,7 @@ describe('AdminConnector 容器页（md MCP §一.1 / §一.2）', () => {
     routeMock.query = { tab: 'mcp' }
     await mount()
     expect(container.querySelector('.page-header-title').textContent.trim()).toBe('连接器')
-    expect(container.querySelector('.page-header-sub').textContent.trim()).toBe('平台全部连接器 —— 通用连接器 / 岗位私有 / 市场连接器 统一管理')
+    expect(container.querySelector('.page-header-sub').textContent.trim()).toBe('平台全部连接器 —— 通用连接器 / 岗位私有连接器 / 市场连接器 统一管理')
     expect(tabLabels()).toEqual(['MCP', 'API', '业务系统'])
   })
 
