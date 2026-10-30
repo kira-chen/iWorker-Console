@@ -8,6 +8,8 @@
  * 某环境有待处理申请的，该环境的勾选框置灰（只能经【处理申请】的通过 / 驳回改变）；工具栏「待处理申请」按钮（含数量徽标）
  * 点击后只看有待处理申请的员工，再次点击还原全部（同岗位管理的「待分配申请」），行上【处理申请】弹窗里通过 / 驳回，不占单独页签；
  * 已有授权的员工行另有【查看】跳操作记录页签。
+ * 工具栏的「本机授权」「云端授权」两个筛选框与表格里的两列一一对应，同时生效取交集（不选 = 该环境不限制）：
+ * 一位员工在两个环境各有各的状态，所以不设一个笼统的「状态」框，免得还要约定「没选环境时算哪个」。
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -19,7 +21,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import { useAdminList } from '@/composables/useAdminList'
 import UserAccessHandleDialog from '@/components/admin/userAccess/UserAccessHandleDialog.vue'
 import { listAccessMembers, updateAccess, batchGrantAccess, getUserAccessOverview } from '@/api/userAccess'
-import { ACCESS_STATE, GRANT_SOURCE, ENV_LABEL, ENVS, OPERATION_ENV } from '@/utils/userAccess'
+import { ACCESS_STATE, GRANT_SOURCE, ENV_LABEL, ENVS } from '@/utils/userAccess'
 import { COL, COL_NOWRAP, NA, opsWidth } from '@/utils/tableLayout'
 
 const props = defineProps({
@@ -30,7 +32,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['open-operation', 'changed'])
 
-const query = reactive({ keyword: props.initialKeyword, state: '', env: '', hasPendingRequest: props.initialPending })
+// 授权筛选按环境各一个条件（对应表格「本机授权」「云端授权」两列）：envStates = { LOCAL: '', CLOUD: '' }，值取 ACCESS_STATE 的键，空串 = 不限制
+const emptyEnvStates = () => Object.fromEntries(ENVS.map((env) => [env, '']))
+const query = reactive({ keyword: props.initialKeyword, envStates: emptyEnvStates(), hasPendingRequest: props.initialPending })
 let keywordTimer = null // 输入防抖计时器（reload 里要清，故声明在前）
 // 处理申请后置顶高亮的员工（一次性：下次主动查询 / 翻页 / 改筛选时清除，同岗位管理）
 const focusUserId = ref(null)
@@ -50,7 +54,7 @@ function onPageChange() {
   focusUserId.value = null
   return list.reload()
 }
-const hasFilter = computed(() => !!(query.keyword.trim() || query.state || query.env || query.hasPendingRequest))
+const hasFilter = computed(() => !!(query.keyword.trim() || ENVS.some((env) => query.envStates[env]) || query.hasPendingRequest))
 const emptyText = computed(() => (query.hasPendingRequest ? '暂无待处理的权限申请' : hasFilter.value ? '没有符合条件的员工' : '还没有可授权的员工'))
 
 // 工具栏「待处理申请」徽标：全部待处理申请数（0 不展示）
@@ -82,8 +86,7 @@ onMounted(() => {
 function clearFilters() {
   if (query.keyword) skipKeywordWatch = true // 清空关键词这一下由下面的 reload 立即查，不再排防抖
   query.keyword = ''
-  query.state = ''
-  query.env = ''
+  query.envStates = emptyEnvStates()
   query.hasPendingRequest = false
   reload()
 }
@@ -105,8 +108,7 @@ function openHandle(row) {
 function onHandled(userId) {
   if (query.keyword) skipKeywordWatch = true
   query.keyword = ''
-  query.state = ''
-  query.env = ''
+  query.envStates = emptyEnvStates()
   query.hasPendingRequest = false
   focusUserId.value = userId ?? null
   page.value = 1
@@ -225,11 +227,9 @@ async function submitBatch() {
       <el-input v-model="query.keyword" placeholder="搜索用户名或显示名" clearable class="lt-search" @keyup.enter="reload">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="query.env" placeholder="全部运行环境" clearable class="lt-filter" @change="reload">
-        <el-option v-for="(meta, key) in OPERATION_ENV" :key="key" :label="meta.label" :value="key" />
-      </el-select>
-      <el-select v-model="query.state" placeholder="全部状态" clearable class="lt-filter" @change="reload">
-        <el-option v-for="(meta, key) in ACCESS_STATE" :key="key" :label="meta.label" :value="key" />
+      <!-- 授权筛选：本机、云端各一个框，与表格两列一一对应，同时生效取交集；选项文案带环境名（如「本机已授权」），选中后看得出筛的是哪一列 -->
+      <el-select v-for="env in ENVS" :key="env" v-model="query.envStates[env]" :placeholder="`${ENV_LABEL[env]}授权`" clearable class="lt-filter" @change="reload">
+        <el-option v-for="(meta, key) in ACCESS_STATE" :key="key" :label="`${ENV_LABEL[env]}${meta.label}`" :value="key" />
       </el-select>
       <!-- 待处理申请筛选：切换只看有待处理申请的员工，含数量徽标（0 不展示），样式同岗位管理的「待分配申请」 -->
       <el-button :class="['lt-pending-btn', { 'is-active': query.hasPendingRequest }]" @click="togglePendingFilter">

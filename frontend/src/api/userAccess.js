@@ -14,6 +14,7 @@ export function getUserAccessOverview() {
   return request.get('/fde/user-access/overview')
 }
 
+/** 授权名单：params = { keyword, envStates: { LOCAL?, CLOUD?: 'GRANTED' | 'NONE' }（各环境授权状态，同时生效取交集，缺省 = 不限制）, hasPendingRequest, page, size } */
 export function listAccessMembers(params = {}) {
   if (USE_MOCK) return mock.listAccessMembers(params)
   return request.get('/fde/user-access/members', { params })

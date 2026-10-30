@@ -88,12 +88,38 @@ describe('授权名单：一位员工一行，两个运行环境各一份状态'
     expect(list.slice(1).map((m) => m.username)).toEqual(base.filter((n) => n !== 'zhaomin'))
   })
 
-  it('筛选：关键字；状态不选环境 = 任一环境是该状态；选了环境 = 只看该环境', async () => {
+  it('筛选：关键字忽略前后空格', async () => {
     expect((await listAccessMembers({ keyword: ' 陈宇 ', ...ALL })).list.map((m) => m.username)).toEqual(['chenyu'])
-    // 任一环境已授权：张伟、李娜、赵敏
-    expect((await listAccessMembers({ state: 'GRANTED', ...ALL })).list.map((m) => m.username).sort()).toEqual(['li.na', 'zhangwei', 'zhaomin'])
-    // 只看云端已授权：李娜（只有本机）不在其中
-    expect((await listAccessMembers({ state: 'GRANTED', env: 'CLOUD', ...ALL })).list.map((m) => m.username).sort()).toEqual(['zhangwei', 'zhaomin'])
+  })
+
+  // 授权筛选：本机、云端各一个条件，与表格两列一一对应，同时生效取交集；空 / 不传 = 不限制
+  const namesBy = async (envStates) => (await listAccessMembers({ envStates, ...ALL })).list.map((m) => m.username).sort()
+
+  it('授权筛选：只选一个环境 = 只看该环境的状态（李娜只有本机，云端已授权里没有她）', async () => {
+    expect(await namesBy({ LOCAL: 'GRANTED' })).toEqual(['li.na', 'zhangwei', 'zhaomin'])
+    expect(await namesBy({ CLOUD: 'GRANTED' })).toEqual(['zhangwei', 'zhaomin'])
+  })
+
+  it('授权筛选：两个环境同时选 = 取交集（本机已授权 + 云端未授权 = 只授权了本机的人）', async () => {
+    expect(await namesBy({ LOCAL: 'GRANTED', CLOUD: 'NONE' })).toEqual(['li.na'])
+    expect(await namesBy({ LOCAL: 'GRANTED', CLOUD: 'GRANTED' })).toEqual(['zhangwei', 'zhaomin'])
+  })
+
+  it('授权筛选：一位员工在同一个框里不会既算已授权又算未授权；两个环境都未授权的包含有待处理申请的陈宇', async () => {
+    const both = await namesBy({ LOCAL: 'NONE', CLOUD: 'NONE' })
+    expect(both).toContain('chenyu') // 待处理申请只是标记，授权状态仍是未授权
+    for (const env of ['LOCAL', 'CLOUD']) {
+      const granted = await namesBy({ [env]: 'GRANTED' })
+      const none = await namesBy({ [env]: 'NONE' })
+      expect(granted.filter((n) => none.includes(n))).toEqual([])
+      expect([...granted, ...none].sort()).toEqual(await namesBy({}))
+    }
+  })
+
+  it('授权筛选：条件为空串或不传 = 不限制，列出全部员工', async () => {
+    const all = (await listAccessMembers(ALL)).list.map((m) => m.username).sort()
+    expect(await namesBy({ LOCAL: '', CLOUD: '' })).toEqual(all)
+    expect(all.length).toBeGreaterThan(3)
   })
 
   it('新建的员工两个环境都默认未授权', async () => {
