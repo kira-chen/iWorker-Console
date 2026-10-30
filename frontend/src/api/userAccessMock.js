@@ -237,12 +237,8 @@ export async function listAccessMembers(params = {}) {
   await delay()
   reconcile()
   const keyword = String(params.keyword || '').trim().toLowerCase()
-  // 状态筛选：选了运行环境就看该环境的状态，没选就看「任一环境」是否是该状态
-  const matchState = (row) => {
-    if (!params.state) return true
-    const envs = params.env ? [params.env] : ENVS
-    return envs.some((env) => row.envs[env].state === params.state)
-  }
+  // 授权筛选：本机、云端各一个条件（envStates = { LOCAL?, CLOUD? }，值 GRANTED / NONE，空 = 不限制），同时生效取交集，与表格两列一一对应
+  const matchState = (row) => ENVS.every((env) => !params.envStates?.[env] || row.envs[env].state === params.envStates[env])
   // 「待处理申请」按钮：只看任一环境有待处理申请的员工
   const hasPending = (row) => ENVS.some((env) => !!row.envs[env].pendingRequestId)
   const matchPending = (row) => !params.hasPendingRequest || hasPending(row)

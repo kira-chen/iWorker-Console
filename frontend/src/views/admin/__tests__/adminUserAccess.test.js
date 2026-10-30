@@ -221,13 +221,53 @@ describe('授权名单：一位员工一行，本机 / 云端各一列（PRD §�
     expect(disabled('孙欣')).toBe(false)
   })
 
-  it('运行环境筛选下拉：选「云端」后带 env 请求', async () => {
-    const root = await mountPage()
-    root.querySelectorAll('.el-select')[0].querySelector('.el-select__wrapper').click()
+})
+
+describe('授权名单：本机授权 / 云端授权两个筛选框（PRD §三·1）', () => {
+  const filterBoxes = (root) => [...root.querySelectorAll('.el-select.lt-filter')]
+  // 点开第 idx 个筛选框（0 = 本机授权，1 = 云端授权）选一项；选项文案带环境名，全页唯一
+  async function pick(root, idx, label) {
+    filterBoxes(root)[idx].querySelector('.el-select__wrapper').click()
     await flushAll(4)
-    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => textOf(i) === '云端').click()
+    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => textOf(i) === label).click()
     await flushAll(8)
-    expect(api.listAccessMembers).toHaveBeenLastCalledWith(expect.objectContaining({ env: 'CLOUD' }))
+  }
+  const lastParams = () => api.listAccessMembers.mock.lastCall[0]
+
+  it('工具栏是「本机授权」「云端授权」两个框（顺序同表头两列），不再有笼统的「全部状态」「全部运行环境」', async () => {
+    const root = await mountPage()
+    expect(filterBoxes(root).map(textOf)).toEqual(['本机授权', '云端授权'])
+    const headers = [...root.querySelectorAll('.el-table__header th')].map(textOf)
+    expect(headers.indexOf('本机授权')).toBeLessThan(headers.indexOf('云端授权'))
+    expect(textOf(root.querySelector('.ua-pane'))).not.toContain('全部状态')
+    expect(textOf(root.querySelector('.ua-pane'))).not.toContain('全部运行环境')
+  })
+
+  it('只选本机「已授权」→ 请求只带本机条件，云端不限制；框里显示「本机已授权」', async () => {
+    const root = await mountPage()
+    await pick(root, 0, '本机已授权')
+    expect(lastParams().envStates).toEqual({ LOCAL: 'GRANTED', CLOUD: '' })
+    expect(textOf(filterBoxes(root)[0])).toBe('本机已授权')
+    expect(textOf(filterBoxes(root)[1])).toBe('云端授权')
+  })
+
+  it('两个框同时选 → 两个条件一起带（取交集），如「本机已授权 + 云端未授权」', async () => {
+    const root = await mountPage()
+    await pick(root, 0, '本机已授权')
+    await pick(root, 1, '云端未授权')
+    expect(lastParams().envStates).toEqual({ LOCAL: 'GRANTED', CLOUD: 'NONE' })
+  })
+
+  it('选了授权筛选但没有结果 → 空态是「没有符合条件的员工」；点【清空筛选】两个框都回到不限制并重新查询', async () => {
+    const root = await mountPage()
+    api.listAccessMembers.mockResolvedValue({ list: [], total: 0 })
+    await pick(root, 0, '本机未授权')
+    await pick(root, 1, '云端已授权')
+    expect(textOf(root)).toContain('没有符合条件的员工')
+    btn(root, '清空筛选').click()
+    await flushAll(8)
+    expect(lastParams().envStates).toEqual({ LOCAL: '', CLOUD: '' })
+    expect(filterBoxes(root).map(textOf)).toEqual(['本机授权', '云端授权'])
   })
 })
 
