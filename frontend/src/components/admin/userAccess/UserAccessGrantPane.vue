@@ -6,7 +6,7 @@
  * 【设置授权】弹窗里勾选授权给本机、云端或两者，取消勾选已授权的环境就是收回；批量授权同样勾选环境。
  * 「完全访问」是撤掉每步确认的高风险能力：收回要二次确认，已开启的完全访问会立即关闭。
  * 某环境有待处理申请的，该环境的勾选框置灰（只能经【处理申请】的通过 / 驳回改变）；工具栏「待处理申请」按钮（含数量徽标）
- * 点击后只看有待处理申请的员工，再次点击还原全部（同岗位管理的「待分配申请」），行上【处理申请】弹窗里通过 / 驳回，不占单独页签；
+ * 点击后清掉其余筛选、只看有待处理申请的员工，再次点击还原全部（同岗位管理的「待分配申请」），行上【处理申请】弹窗里通过 / 驳回，不占单独页签；
  * 已有授权的员工行另有【查看】跳操作记录页签。
  * 工具栏的「本机授权」「云端授权」两个筛选框与表格里的两列一一对应，同时生效取交集（不选 = 该环境不限制）：
  * 一位员工在两个环境各有各的状态，所以不设一个笼统的「状态」框，免得还要约定「没选环境时算哪个」。
@@ -66,8 +66,11 @@ async function refreshPending() {
     // 徽标读失败不影响页面使用
   }
 }
+// 打开时先清掉搜索词 / 两个环境的授权筛选，只看待处理申请；再点一次还原全部
 function togglePendingFilter() {
-  query.hasPendingRequest = !query.hasPendingRequest
+  const on = !query.hasPendingRequest
+  if (on) resetQuery()
+  query.hasPendingRequest = on
   reload()
 }
 
@@ -83,11 +86,16 @@ onMounted(() => {
   refreshPending()
 })
 
-function clearFilters() {
-  if (query.keyword) skipKeywordWatch = true // 清空关键词这一下由下面的 reload 立即查，不再排防抖
+// 清空全部筛选。搜索词置空会触发防抖查询，调用方都会主动查一次，所以跳过那次 watch，免得重复请求
+function resetQuery() {
+  if (query.keyword) skipKeywordWatch = true
   query.keyword = ''
   query.envStates = emptyEnvStates()
   query.hasPendingRequest = false
+}
+
+function clearFilters() {
+  resetQuery()
   reload()
 }
 
@@ -106,10 +114,7 @@ function openHandle(row) {
 
 // 通过 / 驳回后：清掉筛选（该员工可能已不在「待处理申请」里），把这位员工置顶高亮，管理员一眼看到处理后的状态（同岗位管理分配后的做法）
 function onHandled(userId) {
-  if (query.keyword) skipKeywordWatch = true
-  query.keyword = ''
-  query.envStates = emptyEnvStates()
-  query.hasPendingRequest = false
+  resetQuery()
   focusUserId.value = userId ?? null
   page.value = 1
   list.search()
