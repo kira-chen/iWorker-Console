@@ -269,6 +269,32 @@ describe('授权名单：本机授权 / 云端授权两个筛选框（PRD §三�
     expect(lastParams().envStates).toEqual({ LOCAL: '', CLOUD: '' })
     expect(filterBoxes(root).map(textOf)).toEqual(['本机授权', '云端授权'])
   })
+
+  it('点「待处理申请」先清空搜索词和两个授权筛选再只看待处理；再点取消高亮时不动其余筛选', async () => {
+    const root = await mountPage()
+    await pick(root, 0, '本机已授权')
+    await pick(root, 1, '云端未授权')
+    const search = root.querySelector('.lt-search input')
+    search.value = 'zhang'
+    search.dispatchEvent(new Event('input'))
+    await new Promise((r) => setTimeout(r, 350)) // 搜索词 300ms 防抖后才查询
+    await flushAll(8)
+    expect(lastParams()).toMatchObject({ keyword: 'zhang', envStates: { LOCAL: 'GRANTED', CLOUD: 'NONE' } })
+
+    btn(root, '待处理申请1').click()
+    await flushAll(8)
+    expect(lastParams()).toMatchObject({ hasPendingRequest: true, envStates: { LOCAL: '', CLOUD: '' } })
+    expect(lastParams()).not.toHaveProperty('keyword') // 空搜索词不下发
+    // 用户可见：搜索框清空、两个下拉回到占位
+    expect(search.value).toBe('')
+    expect(filterBoxes(root).map(textOf)).toEqual(['本机授权', '云端授权'])
+
+    // 待处理视图里重新选的筛选，再点「待处理申请」取消时不被清掉
+    await pick(root, 0, '本机未授权')
+    btn(root, '待处理申请1').click()
+    await flushAll(8)
+    expect(lastParams()).toMatchObject({ hasPendingRequest: false, envStates: { LOCAL: 'NONE', CLOUD: '' } })
+  })
 })
 
 describe('设置授权：勾选授权给本机、云端或两者（PRD §三·3）', () => {
