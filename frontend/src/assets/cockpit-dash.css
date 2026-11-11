@@ -1,0 +1,131 @@
+/*
+ * 驾驶舱面板共用样式（2026-11-02 从 AdminCockpit.vue 的 scoped 样式抽出）。
+ *
+ * 驾驶舱拆成「概览 / 使用情况」两个页签后，使用情况页签的子组件（CockpitUsageTab、UsageFeedbackPanel、
+ * UsageDetailTables）与概览共用同一套面板 / 表格 / 小按钮样式，而点踩明细弹窗被 teleport 到 body，
+ * 不在任何 scoped 祖先之内，所以这些共用类放在这份非 scoped 文件里。类名一律 dash- 前缀，
+ * 唯二的短名 .spacer / .mini-btn 全站只有驾驶舱在用。
+ */
+
+/* ---- 面板 ---- */
+.dash-panel {
+  margin-top: 18px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg, 8px);
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+.dash-panel-head {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border-base);
+  background: #fbfcfb;
+}
+.dash-panel-title {
+  margin: 0;
+  color: #26312b;
+  font-size: 16px;
+  font-weight: 650;
+}
+.dash-panel-count {
+  color: #7f8984;
+  font-size: 12px;
+}
+.spacer { flex: 1; }
+
+/* ---- 表格 ---- */
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.dash-table th {
+  height: 42px;
+  padding: 0 16px;
+  background: #f4f6f5;
+  color: #69746e;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.dash-table td {
+  height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+.dash-table tbody tr:last-child td { border-bottom: 0; }
+.dash-table tbody tr:hover td { background: #fbfcfb; }
+.dash-num {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.dash-name-main {
+  display: block;
+  overflow: hidden;
+  color: #354039;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-name-sub {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #87918c;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-bar-value {
+  display: grid;
+  grid-template-columns: minmax(68px, 1fr) 42px;
+  align-items: center;
+  gap: 9px;
+}
+.dash-bar-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e9eeeb;
+}
+.dash-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--c-accent);
+}
+.dash-bar-number {
+  font: 600 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: right;
+}
+
+/* ---- mini-btn 复用原型样式 ---- */
+.mini-btn {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--border-base);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--c-text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.mini-btn:hover {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft, #eaf6f1);
+}
+.mini-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mini-btn:disabled:hover { color: var(--c-text); border-color: var(--border-base); background: #fff; }
+
+/* ---- 骨架屏动效（刷新 / 重新取数时套在内容上） ---- */
+@keyframes shimmer { to { background-position: -200% 0; } }
