@@ -1,26 +1,32 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia } from 'pinia'
 import { mountReal, flushAll } from './helpers/smokeMount'
+import { useUserStore } from '@/stores/user'
 
 /**
  * AdminCockpit.vue（01 总览 / 驾驶舱）单测。对齐 docs/PRD/数字员工管理端PRD/01总览/驾驶舱/prd.驾驶舱.md：
- * - §二 用户端当前下发版本：Windows / Mac 两张只读卡片，展示版本号、发布时间、更新说明（保留换行）；
+ * - §一.2 页签结构：「概览」「使用情况」，使用情况仅 ADMIN 可见、首次切到才取数；非 ADMIN 没有该页签；
+ * - §二 用户端当前下发版本：Windows / Mac 两张只读卡片，展示版本号、发布时间、升级进度、更新说明（保留换行）；
  *   该终端没有下发中版本显示「暂无下发版本」；数据取自版本管理概览（getVersionOverview），不可点击；
- * - §一.2 / §八 【刷新】重新拉取该面板并进入骨架屏；该面板取数失败单独展示「加载失败」+【重试】，不影响其余区块。
+ * - §一.3 / §十 【刷新】重新拉取该面板并进入骨架屏；该面板取数失败单独展示「加载失败」+【重试】，不影响其余区块。
  *
- * 真实挂载（真 Element Plus），只 mock 版本 api 与 ElMessage；版本业务规则本身见 versionMock.test.js。
- * 驾驶舱其余区块是静态 mock，这里只留「页面仍在」的探针，不逐个断言。
+ * 真实挂载（真 Element Plus），只 mock 版本 / 使用情况 api 与 ElMessage；版本业务规则本身见 versionMock.test.js，
+ * 使用情况页签的区块级规则见 components/admin/__tests__/cockpitUsageTab.test.js。
+ * 概览其余区块是静态 mock，这里只留「页面仍在」的探针，不逐个断言。
  *
  * 2026-10-08 /test-audit 补缺口（同对齐 prd.驾驶舱.md；静态示例数值不测，只测交互规则）：
  * - §三.2 异常待办【去审核】/【去处理】真实跳转 UnifiedReview / AdminConnector / SysConfigUserSkillReviews / AdminPositionAssignments（带 pending=1）/ AdminStorageSpace（带 tab=request、status=PENDING）（memory router 断 currentRoute.name 与 query）；
- * - §四.2 岗位领用 Top 5 只列已发布岗位；
- * - §六.2 点踩明细每页 10 条、首 / 末页按钮置灰；§七.1 点踩明细与对话明细两个弹窗互斥；
+ * - §八.2 点踩明细每页 10 条、首 / 末页按钮置灰；§九.1 点踩明细与对话明细两个弹窗互斥；§九.3 关闭对话明细回到点踩明细原页码；
  * - §一.1 页头「更新于 HH:MM」，刷新后为当前时刻。
+ * 2026-11-02 驾驶舱拆页签：点踩统计 / 点踩明细随之迁入使用情况页签（用例改为先切页签）；「岗位领用 Top 5」并入使用情况「按岗位」。
  */
 
 const api = { getVersionOverview: vi.fn() }
 vi.mock('@/api/version', () => api)
+const apiUsage = { getUsageSummary: vi.fn(), getVersionAdoption: vi.fn() }
+vi.mock('@/api/usage', () => apiUsage)
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }) }
@@ -39,14 +45,38 @@ const MAC = versionRow({
   id: 6, terminal: 'MAC', version: 'v1.1.0', publishedAt: '2026-08-20T10:32:00+08:00',
   releaseNotes: '与 Windows 端同步：引用来源一键复制、任务完成桌面通知。'
 })
+const ADOPTION = { WINDOWS: { upgraded: 126, behind: 35 }, MAC: { upgraded: 44, behind: 9 } }
+
+/** 使用情况汇总的最小夹具：字段形状同 usageMock 的 aggregate()，数值随意（区块规则在 cockpitUsageTab.test.js 里测）。 */
+const usageSummary = () => ({
+  range: 30,
+  claimedUsers: 241,
+  positionOptions: ['销售顾问', '经营分析师'],
+  kpis: {
+    activeUsers: { value: 219, change: -3.9, rate: 90.9, claimedUsers: 241 },
+    sessions: { value: 4089, change: -9.8, perUser: 18.7 },
+    tokens: { total: 54021199, input: 37390197, output: 16631002, change: -8.6 },
+    failRate: { value: 4.3, change: -0.2, failed: 442, calls: 10234 }
+  },
+  trend: [
+    { date: '10-30', activeUsers: 120, sessions: 300, inputTokens: 1000000, outputTokens: 400000 },
+    { date: '10-31', activeUsers: 30, sessions: 60, inputTokens: 200000, outputTokens: 80000 }
+  ],
+  feedback: { likes: 1405, dislikes: 158, rate: 10.1, prevRate: 12.7 },
+  users: [],
+  positions: [{ name: '销售顾问', version: 'v2.3.0', claimed: 48, active: 43, activeRate: 89.6, sessions: 765, avgTokens: 233468, likes: 10, dislikes: 2, dislikeRate: 16.7 }],
+  models: [],
+  abilities: []
+})
 
 let mounted
 const text = () => mounted.container.textContent.replace(/\s+/g, ' ')
 const cards = () => [...mounted.container.querySelectorAll('.ver-card')]
 const cardOf = (terminal) => cards().find((c) => c.dataset.terminal === terminal)
+const tabLabels = () => [...mounted.container.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())
 
 let router
-async function mount() {
+async function mount({ roles = ['ADMIN'] } = {}) {
   router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -56,23 +86,74 @@ async function mount() {
       { path: '/admin/user-skill-reviews', name: 'SysConfigUserSkillReviews', component: { template: '<div />' } },
       { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
       { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } },
-      { path: '/admin/user-access', name: 'AdminUserAccess', component: { template: '<div />' } }
+      { path: '/admin/user-access', name: 'AdminUserAccess', component: { template: '<div />' } },
+      { path: '/admin/models', name: 'AdminModels', component: { template: '<div />' } }
     ]
   })
   await router.push('/')
   await router.isReady()
-  mounted = mountReal(AdminCockpit, {}, { plugins: [router] })
+  const pinia = createPinia()
+  useUserStore(pinia).setUserInfo({ name: '测试管理员', roles })
+  mounted = mountReal(AdminCockpit, {}, { plugins: [router, pinia] })
   await flushAll(12)
+}
+
+/** 切到「使用情况」页签并等首次取数落到 DOM。 */
+async function openUsageTab() {
+  mounted.container.querySelector('#tab-usage').click()
+  await vi.waitFor(() => expect(mounted.container.querySelector('.fb-panel')).not.toBeNull())
+  await flushAll(6)
 }
 
 beforeEach(() => {
   api.getVersionOverview.mockReset().mockResolvedValue({ WINDOWS: WIN, MAC })
+  apiUsage.getUsageSummary.mockReset().mockImplementation(async () => usageSummary())
+  apiUsage.getVersionAdoption.mockReset().mockResolvedValue(ADOPTION)
 })
 afterEach(() => {
   vi.useRealTimers()
   mounted?.unmount()
   mounted = null
+  localStorage.clear()
   document.body.innerHTML = ''
+})
+
+describe('AdminCockpit · 页签结构（PRD §一.2）', () => {
+  it('ADMIN：两个页签「概览」「使用情况」，默认在概览；没切到使用情况之前不取使用数据', async () => {
+    await mount()
+    expect(tabLabels()).toEqual(['概览', '使用情况'])
+    expect(mounted.container.querySelector('#tab-overview').classList.contains('is-active')).toBe(true)
+    expect(text()).toContain('用户端当前下发版本')
+    expect(apiUsage.getUsageSummary).not.toHaveBeenCalled()
+    expect(mounted.container.querySelector('.usage-tab')).toBeNull()
+  })
+
+  it('非 ADMIN（岗位配置人员）：没有「使用情况」页签，只有概览内容；整页不会取使用数据', async () => {
+    await mount({ roles: ['FDE'] })
+    expect(tabLabels()).toEqual(['概览'])
+    expect(text()).toContain('用户端当前下发版本')
+    expect(mounted.container.querySelector('#tab-usage')).toBeNull()
+    expect(apiUsage.getUsageSummary).not.toHaveBeenCalled()
+  })
+
+  it('首次切到「使用情况」才取数一次，按默认筛选（近 30 天 / 全部终端 / 全部岗位）；切回概览再切回来不重复取', async () => {
+    await mount()
+    await openUsageTab()
+    expect(apiUsage.getUsageSummary).toHaveBeenCalledTimes(1)
+    expect(apiUsage.getUsageSummary).toHaveBeenCalledWith({ range: 30, terminal: '', position: '' })
+    mounted.container.querySelector('#tab-overview').click()
+    await flushAll(4)
+    mounted.container.querySelector('#tab-usage').click()
+    await flushAll(4)
+    expect(apiUsage.getUsageSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('概览不再有「岗位领用 Top 5」与「用户端点踩统计」（分别迁入使用情况页签的「按岗位」与「用户端点踩统计」）', async () => {
+    await mount()
+    expect(text()).not.toContain('岗位领用 Top 5')
+    expect(text()).not.toContain('用户端点踩统计')
+    expect(mounted.container.querySelector('.fb-panel')).toBeNull()
+  })
 })
 
 describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
@@ -113,12 +194,14 @@ describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
     expect(ElMessage).not.toHaveBeenCalled()
   })
 
-  it('某终端没有下发中版本：该卡片显示「暂无下发版本」，另一终端不受影响', async () => {
+  it('某终端没有下发中版本：该卡片显示「暂无下发版本」且不展示升级进度，另一终端不受影响', async () => {
     api.getVersionOverview.mockResolvedValue({ WINDOWS: WIN, MAC: null })
     await mount()
     expect(cardOf('MAC').textContent).toContain('暂无下发版本')
     expect(cardOf('MAC').querySelector('.ver-version')).toBeNull()
+    expect(cardOf('MAC').querySelector('[data-testid="ver-adopt"]')).toBeNull()
     expect(cardOf('WINDOWS').querySelector('.ver-version').textContent).toBe('v1.2.0')
+    expect(cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')).not.toBeNull()
   })
 
   it('停用审核期间该版本仍在下发：概览仍带它，卡片照常显示版本号与更新说明', async () => {
@@ -142,7 +225,34 @@ describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
   })
 })
 
-describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §八）', () => {
+describe('AdminCockpit · 升级进度（PRD §二.1）', () => {
+  it('每张有下发版本的卡片展示「已升级 N 人 · 未升到该版本 M 人」与「升级率 xx.x%」', async () => {
+    await mount()
+    const win = cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')
+    expect(win.textContent.replace(/\s+/g, ' ')).toContain('已升级 126 人 · 未升到该版本 35 人')
+    expect(win.textContent).toContain('升级率 78.3%') // 126 ÷ 161
+    const mac = cardOf('MAC').querySelector('[data-testid="ver-adopt"]')
+    expect(mac.textContent.replace(/\s+/g, ' ')).toContain('已升级 44 人 · 未升到该版本 9 人')
+    expect(mac.textContent).toContain('升级率 83.0%') // 44 ÷ 53
+    expect(win.querySelector('.dash-bar-track i').style.width).toBe('78.3%') // 进度条宽度 = 升级率
+  })
+
+  it('文案是「未升到该版本」而不是「旧版」（下发版本回退后，更高版本的用户也算未升到该版本）', async () => {
+    await mount()
+    expect(text()).toContain('未升到该版本')
+    expect(text()).not.toContain('旧版')
+  })
+
+  it('升级进度取数失败：只是不展示进度，版本卡片本身照常（不影响版本号与更新说明）', async () => {
+    apiUsage.getVersionAdoption.mockRejectedValue(new Error('boom'))
+    await mount()
+    expect(cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')).toBeNull()
+    expect(cardOf('WINDOWS').querySelector('.ver-version').textContent).toBe('v1.2.0')
+    expect(cardOf('WINDOWS').querySelector('.ver-notes').textContent).toBe(WIN.releaseNotes)
+  })
+})
+
+describe('AdminCockpit · 刷新与失败态（PRD §一.3 / §十）', () => {
   it('【刷新】重新拉取概览：期间两张卡片回到骨架屏，约 650ms 后显示最新版本并 toast「驾驶舱数据已刷新」', async () => {
     await mount()
     const { ElMessage } = await import('element-plus')
@@ -160,6 +270,21 @@ describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §八）', () => {
     expect(cardOf('WINDOWS').querySelector('.ver-version').textContent).toBe('v1.3.0')
     expect(cardOf('WINDOWS').querySelector('.ver-notes').textContent).toBe('新增记忆管理')
     expect(ElMessage).toHaveBeenCalledWith(expect.objectContaining({ message: '驾驶舱数据已刷新' }))
+  })
+
+  it('已打开过使用情况页签时，【刷新】同时重新拉取使用数据（两个页签都刷新）；没打开过则不拉', async () => {
+    await mount()
+    const refreshBtn = () => [...mounted.container.querySelectorAll('button')].find((b) => b.textContent.trim() === '刷新')
+    refreshBtn().click()
+    await flushAll(4)
+    expect(apiUsage.getUsageSummary).not.toHaveBeenCalled()
+
+    await vi.waitFor(() => expect(mounted.container.querySelector('.cockpit.loading')).toBeNull(), { timeout: 2000 })
+    await openUsageTab()
+    expect(apiUsage.getUsageSummary).toHaveBeenCalledTimes(1)
+    refreshBtn().click()
+    await flushAll(4)
+    expect(apiUsage.getUsageSummary).toHaveBeenCalledTimes(2)
   })
 
   it('取数失败：该面板展示「加载失败」+【重试】，其余区块（异常与待办）照常；点【重试】成功后恢复卡片', async () => {
@@ -187,10 +312,10 @@ describe('AdminCockpit · 刷新与失败态（PRD §一.2 / §八）', () => {
 const todoCard = (source) => [...mounted.container.querySelectorAll('.dash-todo-card')].find((c) => c.querySelector('.dash-todo-source').textContent.trim() === source)
 
 describe('AdminCockpit · 页面说明（PRD §一.1，yuepu#94⑤）', () => {
-  it('页面说明是「查看数字员工资产、岗位领用和治理待办。」——页面没有任务运行区块，说明里不提', async () => {
+  it('页面说明是「查看数字员工资产、治理待办，以及用户端的使用情况与反馈。」——页面没有任务运行区块，说明里不提', async () => {
     await mount()
     const text = document.body.textContent
-    expect(text).toContain('查看数字员工资产、岗位领用和治理待办。')
+    expect(text).toContain('查看数字员工资产、治理待办，以及用户端的使用情况与反馈。')
     expect(text).not.toContain('任务运行')
   })
 })
@@ -266,7 +391,7 @@ describe('AdminCockpit · 异常与待办真实跳转（PRD §三.2）', () => {
   })
 })
 
-describe('AdminCockpit · 页面区块顺序（PRD §二 / §四）', () => {
+describe('AdminCockpit · 概览页签区块顺序（PRD §二 / §四）', () => {
   it('核心指标卡区已删除：页面没有任何指标卡与圆环', async () => {
     await mount()
     expect(mounted.container.querySelector('.metrics')).toBeNull()
@@ -274,30 +399,20 @@ describe('AdminCockpit · 页面区块顺序（PRD §二 / §四）', () => {
     expect(mounted.container.querySelector('.dash-ring')).toBeNull()
   })
 
-  it('「用户端当前下发版本」是页头下第一个区块，排在「异常与待办」之前', async () => {
+  it('概览依次是「用户端当前下发版本」「异常与待办」「各模块发布状态」三块', async () => {
     await mount()
     const titles = [...mounted.container.querySelectorAll('.dash-panel-title')].map((e) => e.textContent.trim())
-    expect(titles.slice(0, 2)).toEqual(['用户端当前下发版本', '异常与待办'])
+    expect(titles).toEqual(['用户端当前下发版本', '异常与待办', '各模块发布状态'])
   })
 
-  it('「岗位领用 Top 5」标题旁展示「领用岗位员工数量 241 人」', async () => {
+  it('各模块发布状态：9 个模块各一行（岗位、专家、专家团、技能、MCP、API、业务系统、模型、知识库）', async () => {
     await mount()
-    const panel = [...mounted.container.querySelectorAll('.dash-panel')].find((p) => p.querySelector('.dash-panel-title')?.textContent.trim() === '岗位领用 Top 5')
-    expect(panel.querySelector('.dash-panel-count').textContent.trim()).toBe('领用岗位员工数量 241 人')
+    const names = [...mounted.container.querySelectorAll('.dash-asset-row .dash-asset-name')].map((e) => e.textContent.trim())
+    expect(names).toEqual(['岗位', '专家', '专家团', '技能', 'MCP', 'API', '业务系统', '模型', '知识库'])
   })
 })
 
-describe('AdminCockpit · 岗位领用 Top 5（PRD §四.2）', () => {
-  it('只列已发布岗位：5 行，每行状态都是「已发布」', async () => {
-    await mount()
-    const panel = [...mounted.container.querySelectorAll('.dash-panel')].find((p) => p.textContent.includes('岗位领用 Top 5'))
-    const rows = [...panel.querySelectorAll('tbody tr')]
-    expect(rows).toHaveLength(5)
-    rows.forEach((tr) => expect(tr.querySelector('.dash-name-sub').textContent.trim()).toMatch(/ \/ 已发布$/))
-  })
-})
-
-describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七）', () => {
+describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §八 / §九，随点踩统计迁入使用情况页签）', () => {
   const dlBody = () => [...document.body.querySelectorAll('.el-dialog')].find((d) => d.querySelector('.dl-dialog-title'))
   const cvBody = () => [...document.body.querySelectorAll('.el-dialog')].find((d) => d.querySelector('.cv-dialog-title'))
   /** 弹窗是否可见：el-dialog 关闭后外层遮罩 display:none（或尚未渲染）。 */
@@ -309,6 +424,7 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
   const footBtn = (label) => [...dlBody().querySelectorAll('.dl-foot button')].find((b) => b.textContent.trim() === label)
   async function openDl() {
     await mount()
+    await openUsageTab()
     ;[...mounted.container.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看点踩明细').click()
     await flushAll(6)
   }
@@ -344,7 +460,7 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
     expect(cvBody().querySelector('.cv-dialog-id').textContent.trim()).toBe('D-1031')
   })
 
-  it('对话明细【关闭】→ 回到点踩明细弹窗并停在原页码（PRD §七.3，2026-10-14 裁决），对话明细收起', async () => {
+  it('对话明细【关闭】→ 回到点踩明细弹窗并停在原页码（PRD §九.3，2026-10-14 裁决），对话明细收起', async () => {
     await openDl()
     footBtn('下一页').click()
     await flushAll(4)
@@ -359,7 +475,7 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
     expect(dlBody().querySelector('.dl-foot').textContent).toContain('第 2 / 6 页')
   })
 
-  it('对话明细只展示被点踩的单轮（2 条：用户提问 + 被点踩回复），提问即表格里的摘要，无前情展开开关（PRD §七.2）', async () => {
+  it('对话明细只展示被点踩的单轮（2 条：用户提问 + 被点踩回复），提问即表格里的摘要，无前情展开开关（PRD §九.2）', async () => {
     await openDl()
     const row = dlBody().querySelector('tbody tr')
     const snippet = row.querySelector('.dl-snippet').textContent.trim()
@@ -374,7 +490,7 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
     expect(cvBody().querySelector('.cv-ctx-toggle')).toBeNull()
   })
 
-  it('点踩明细筛选行只有「时间范围」，没有用户筛选（按用户维度采集仅是数据口径，PRD §六.3）', async () => {
+  it('点踩明细筛选行只有「时间范围」，没有用户筛选（按用户维度采集仅是数据口径，PRD §八.3）', async () => {
     await openDl()
     const labels = [...dlBody().querySelectorAll('.dl-filters .dl-filter-label')].map((l) => l.textContent.trim())
     expect(labels).toEqual(['时间范围'])
@@ -382,12 +498,13 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §六 / §七�
 
   it('点踩统计区块头只剩【查看点踩明细】，没有【导出报表】（2026-10-12 裁决）', async () => {
     await mount()
+    await openUsageTab()
     const labels = [...mounted.container.querySelectorAll('.fb-panel .dash-panel-head button')].map((b) => b.textContent.trim())
     expect(labels).toEqual(['查看点踩明细'])
   })
 })
 
-describe('AdminCockpit · 页头更新时间（PRD §一.1 / §一.2）', () => {
+describe('AdminCockpit · 页头更新时间（PRD §一.1 / §一.3）', () => {
   it('页头展示「更新于 HH:MM」（24 小时制到分钟）', async () => {
     await mount()
     expect(mounted.container.querySelector('.ref-time').textContent.trim()).toMatch(/^更新于 ([01]\d|2[0-3]):[0-5]\d$/)
