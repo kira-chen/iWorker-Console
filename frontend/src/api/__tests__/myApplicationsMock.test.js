@@ -98,6 +98,10 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     const gov = await import('../reviewsMock')
     const pos = await import('../positionMock')
     pos.__resetPositionMock()
+    // 种子 401 引用了未发布的「法务审阅专家」(203) 与「岗位协同团」(303)（存量数据样例），发布前检查会阻断
+    // （产品优化需求-202611 修改点 2）；本用例测的是审核联动，不是引用校验，先解除这两个引用
+    ;(await import('../domainExpertMock')).unbindExpertFromPosition(203, 401)
+    ;(await import('../expertTeamMock')).unbindTeamFromPosition(303, 401)
     const fresh = await app.resubmitMyApplication(503)
     expect(fresh.id).not.toBe(503)
     expect(fresh).toMatchObject({ businessType: 'POSITION', refId: 401, applicationType: 'VERSION_PUBLISH', result: 'PENDING', reviewer: '', rejectReason: '' })
@@ -113,6 +117,10 @@ describe('myApplicationsMock · 我的申请内存 mock', { timeout: 20000 }, ()
     const gov = await import('../reviewsMock')
     const pos = await import('../positionMock')
     pos.__resetPositionMock()
+    // 种子 401 引用了未发布的「法务审阅专家」(203) 与「岗位协同团」(303)（存量数据样例），发布前检查会阻断
+    // （产品优化需求-202611 修改点 2）；本用例测的是审核联动，不是引用校验，先解除这两个引用
+    ;(await import('../domainExpertMock')).unbindExpertFromPosition(203, 401)
+    ;(await import('../expertTeamMock')).unbindTeamFromPosition(303, 401)
     const fresh = await app.resubmitMyApplication(503)
     const review = (await gov.listReviews({ type: 'POSITION' })).list.find((r) => r.refId === 401)
     await gov.approveReview(review.id)

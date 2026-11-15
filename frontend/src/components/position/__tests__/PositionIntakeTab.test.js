@@ -262,6 +262,55 @@ describe('采集字段页签 · 新增 / 编辑抽屉（md §3.2）', () => {
   })
 })
 
+// 2026-11-10 产品优化需求-202611 修改点 5（R10）：字段 key 建议值按完整拼音生成（生成规则本身见 positionModel.intake.test.js）
+describe('采集字段页签 · 字段 key 建议值（R10）', () => {
+  const keyInput = () => drawer().querySelectorAll('.el-input')[1] // 第二个输入框是 key（占位随字段名变化）
+
+  it('输入字段名后，key 输入框占位实时显示全拼建议值', async () => {
+    await mount()
+    headBtn().click()
+    await flush()
+    expect(keyInput().getAttribute('placeholder')).toBe('auto')
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '分管专业')
+    expect(keyInput().getAttribute('placeholder')).toBe('fenguanzhuanye')
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '分管专业领域')
+    expect(keyInput().getAttribute('placeholder')).toBe('fenguanzhuanyelingyu')
+  })
+
+  it('key 留空保存 → 使用建议值写进行数据，列表 key 列展示该值', async () => {
+    await mount()
+    headBtn().click()
+    await flush()
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '分管专业')
+    await clickFoot('保存')
+    expect(store.basic.intakeSchema[1]).toMatchObject({ label: '分管专业', key: 'fenguanzhuanye' })
+    expect([...col('字段 key').querySelectorAll('.cell')][1].textContent.trim()).toBe('fenguanzhuanye')
+  })
+
+  it('保存后 key 固定：再编辑改字段名，key 不重新生成', async () => {
+    await mount()
+    headBtn().click()
+    await flush()
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '分管专业')
+    await clickFoot('保存')
+    await clickRowOp(1, '编辑')
+    expect(keyInput().value).toBe('fenguanzhuanye')
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '主管业务')
+    await clickFoot('保存')
+    expect(store.basic.intakeSchema[1]).toMatchObject({ label: '主管业务', key: 'fenguanzhuanye' })
+  })
+
+  it('手填的 key 优先于建议值', async () => {
+    await mount()
+    headBtn().click()
+    await flush()
+    await type(drawerInputByPlaceholder('如：客户公司名称'), '分管专业')
+    await type(keyInput(), 'major')
+    await clickFoot('保存')
+    expect(store.basic.intakeSchema[1]).toMatchObject({ label: '分管专业', key: 'major' })
+  })
+})
+
 describe('采集字段页签 · 行级校验提示（父层 doSaveBasic 经 pdIntakeErrors 注入，2026-09-18 待办 yuepu#13·岗位 P3）', () => {
   it('注入的错误按行下标标在对应单元格（key 重复 / 字段名必填 / 选项必填），无错误的行不出现提示', async () => {
     store.basic = { positionId: 5, name: '经营分析岗', intakeSchema: [row('A', { key: 'dup' }), row('B', { key: 'dup' }), row('', { type: 'single_select' })] }

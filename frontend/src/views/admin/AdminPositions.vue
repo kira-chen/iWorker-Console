@@ -5,8 +5,9 @@
  * 【本轮对齐要点】
  * - 工具栏：搜索覆盖岗位名称+岗位描述（回车/【查询】触发）、状态筛选三态（未发布/审核中/已发布）、
  *   【＋ 新建岗位】文案照原型。
- * - 列表列：状态标签并入岗位名称列；列序 岗位名称|岗位描述|技能数|Agent 数|领用数|最新版本|
- *   最近更新时间(排序,默认降序)|操作；三个计数列表头与单元格带 title 悬停口径提示。
+ * - 列表列：状态标签并入岗位名称列；列序 岗位名称|岗位描述|技能数|领用数|最新版本|
+ *   最近更新时间(排序,默认降序)|操作；计数列表头与单元格带 title 悬停口径提示。
+ *   （2026-11-09 产品优化需求-202611 R1：取消 Agent，删除「Agent 数」列）
  * - 状态三态为**展示层映射**（Q6：不改共享 publishState 语义）：草稿→未发布、三种审核中→审核中。
  * - 操作列（照原型 positionActions）：编辑（审核中 disabled）+ 按状态给 发布/删除、撤回、停用/版本管理；
  *   【查看】暂不实现（Q4 待拍板）；测试按钮维持 EFFECT_TEST_ENABLED flag 现状。
@@ -145,7 +146,6 @@ function isReviewing(row) {
 // 计数列悬停口径提示（照原型 L1181 表头/单元格 title）
 const COUNT_TIPS = {
   skill: '当前岗位关联的岗位私有技能总数。',
-  agent: '基于该岗位创建的 Agent 总数。',
   claim: '当前已领用该岗位的用户总数。'
 }
 
@@ -220,25 +220,25 @@ function goView(row) {
 
 /* ---------- 效果测试台（纯前端 demo，就地扮演终端用户试跑该岗位） ---------- */
 // 与技能列表行的「🧪 测试」对称。打开时用现有只读接口拉一次岗位详情喂给组件 props（不新增后端接口）；
-// 列表行通常只有摘要（name/intro/agentCount/skillCount），详情接口补齐 persona/agents/intakeSchema/数据表数。
+// 列表行通常只有摘要（name/intro/skillCount），详情接口补齐 persona/skills/intakeSchema/数据表数。
 // 详情/表数拉取失败或字段缺：沿用组件已有 mock 兜底，保证 demo 永远渲染好看。
 const testVisible = ref(false)
 const testLoading = ref(false)
-const testProp = ref(null) // { basic, agents, tableCount }
+const testProp = ref(null) // { basic, skills, tableCount }
 const testRowId = ref(null) // 竞态护栏：await 期间又点了别的行 / 关了，丢弃过期详情
 
 async function openTest(row) {
   testRowId.value = row.positionId
-  // 先用列表行摘要兜底渲染（即便详情接口失败，左栏也有岗位名/定位/Agent·技能数）。
+  // 先用列表行摘要兜底渲染（即便详情接口失败，左栏也有岗位名/定位/技能数）。
   testProp.value = {
     basic: { name: row.name, intro: row.intro, persona: '', intakeSchema: [] },
-    agents: [],
+    skills: [],
     tableCount: 0
   }
   testVisible.value = true
   testLoading.value = true
   try {
-    // 岗位详情（含 agents[].skills[]）+ 数据表数并行拉；表数失败不阻断（component 自带兜底）。
+    // 岗位详情（含 skills[]）+ 数据表数并行拉；表数失败不阻断（component 自带兜底）。
     const [detail, tables] = await Promise.all([
       getPosition(row.positionId),
       listDataTables(row.positionId).catch(() => null)
@@ -248,7 +248,7 @@ async function openTest(row) {
     testProp.value = {
       // 详情 VO 字段为扁平结构（name/intro/persona/intakeSchema）；component 用 p.basic||p 读取，直接喂 detail 即可。
       basic: detail || { name: row.name, intro: row.intro },
-      agents: Array.isArray(detail?.agents) ? detail.agents : [],
+      skills: Array.isArray(detail?.skills) ? detail.skills : [],
       tableCount: (tables?.list || []).length
     }
   } catch {
@@ -279,7 +279,7 @@ function openVersionDialog(row) {
  * 2026-09-09 PRD 复核·G2（A1）：口径与详情页 openPublish **完全一致**——原「仅校验技能数≥1」
  * 是 md §9.1 改 6 项前的旧门，已与 `computeCompletenessMissing` 统一（发布/保存共用同一份，
  * 见 utils/positionModel.js COMPLETENESS_ITEMS）。列表行只带计数摘要、不含 SOP / 示例问题 /
- * Agent 技能树 / 自动化任务，故此处先拉详情 + 样例任务条数拼出与详情页同形的 detail 入参。
+ * 技能引用 / 自动化任务，故此处先拉详情 + 样例任务条数拼出与详情页同形的 detail 入参。
  * 缺项 → toast「请先填写：…」并跳详情页对应页签（?tab=，详情页 :96 已消费该 query）。
  */
 const publishCheckingId = ref(null)
@@ -508,7 +508,7 @@ const OPS_MAX = EFFECT_TEST_ENABLED ? 5 : 4
 // 列宽照原型 L1200 <colgroup>（2026-09-08 原型复刻批次 2A · B7）：250/300/70/80/80/100/165；
 // 名称 / 描述为 min-width 随余量按比例伸缩，其余定宽。共享 COL 常量仍用于操作列（opsWidth）。
 // 2026-09-11 表头改不换行后的重定宽：列宽减 .cell 的 32px 内距才是表头可用宽。
-// 三个计数列表头分别需 技能数 53 / Agent 数 85 / 领用数 53，故 SKILL_COUNT/COUNT 各按
+// 计数列表头 技能数 53 / 领用数 53（「Agent 数」列已随 R1 删除），故 SKILL_COUNT/COUNT 各按
 // 「最长表头 + 32 内距」取整；本表共 10 列，NAME/DESC 同步收窄让总宽回到视口内
 // （放宽计数列却不收窄主列，会把表格顶出横向滚动，反而把领用数挤出屏幕）。
 const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 100, TIME: 165 }
@@ -592,17 +592,11 @@ const POS_COL = { NAME: 200, DESC: 240, SKILL_COUNT: 88, COUNT: 120, VERSION: 10
             </template>
           </el-table-column>
 
-          <!-- 三个计数列：表头与单元格 title 悬停口径提示（照原型）；领用数 0 直接显 0 -->
+          <!-- 计数列：表头与单元格 title 悬停口径提示（照原型）；领用数 0 直接显 0 -->
           <el-table-column :width="POS_COL.SKILL_COUNT" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #header><span class="pos-count-help" :title="COUNT_TIPS.skill">技能数</span></template>
             <template #default="{ row }">
               <span class="pos-count-help" :title="COUNT_TIPS.skill">{{ row.skillCount ?? 0 }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column :width="POS_COL.COUNT" class-name="col-nowrap" label-class-name="col-nowrap">
-            <template #header><span class="pos-count-help" :title="COUNT_TIPS.agent">Agent 数</span></template>
-            <template #default="{ row }">
-              <span class="pos-count-help" :title="COUNT_TIPS.agent">{{ row.agentCount ?? 0 }}</span>
             </template>
           </el-table-column>
           <el-table-column :width="POS_COL.COUNT" class-name="col-nowrap" label-class-name="col-nowrap">

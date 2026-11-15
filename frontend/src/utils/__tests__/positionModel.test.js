@@ -2,6 +2,7 @@
 // 技能工具引用 → positionModel.toolRef.test.js、发布校验 → positionModel.publish.test.js；本文件余留
 // 触发词 / 技能示例问题 / 推荐问题 / 人格页签必填要素（对齐 md 岗位 §2 人格页签、技能 md §三）。
 import { describe, it, expect } from 'vitest'
+import { expertUsageImpactText } from '@/utils/positionModel'
 import {
   LIMITS,
   validateTrigger,
@@ -21,7 +22,9 @@ import {
   exampleQuestionsComplete,
   normalizeClaimNotes,
   genExampleQuestions,
-  genPositionSop
+  genPositionSop,
+  genPositionSopBrief,
+  SOP_BRIEF_MAX_LEN
 } from '@/utils/positionModel'
 
 describe('validateTrigger（N1：硬拦空/重复，字数改软提示不硬拦）', () => {
@@ -122,5 +125,59 @@ describe('人格页签必填要素（2026-09-04 PRD-20260903 对齐新增）', (
     expect(lines[3]).toContain('核对')
     expect(lines[4]).toContain('输出结论')
     expect(sop.length).toBeLessThanOrEqual(SOP_MAX_LEN)
+  })
+})
+
+describe('专家 / 专家团停用确认窗口的影响范围（产品优化需求-202611 R13 §5）', () => {
+  it('岗位引用、执行任务两句按实际有无分别出；都没有不出', () => {
+    expect(expertUsageImpactText({ positionCount: 2, taskCount: 3 })).toBe('已被 2 个岗位引用，这些岗位再发布前要先移除它；3 条自动化任务由它执行，停用后这些任务将被挂起。')
+    expect(expertUsageImpactText({ positionCount: 1, taskCount: 0 })).toBe('已被 1 个岗位引用，这些岗位再发布前要先移除它。')
+    // 市场 / 通用专家没被岗位引用，也可能是自动化任务的执行对象
+    expect(expertUsageImpactText({ positionCount: 0, taskCount: 1 })).toBe('1 条自动化任务由它执行，停用后这些任务将被挂起。')
+    expect(expertUsageImpactText({ positionCount: 0, taskCount: 0 })).toBe('')
+    expect(expertUsageImpactText()).toBe('')
+  })
+})
+
+describe('genPositionSopBrief：按完整版 SOP 生成 SOP 简版（产品优化需求-202611 修改点 18）', () => {
+  it('编号步骤式 SOP → 每步取到第一个逗号为止的主干，重新编号', () => {
+    const full = '1. 理解用户意图，并结合岗位描述确认任务目标。\n2. 选择所需的技能与工具，必要时补充提问。\n3. 输出结论、依据和后续建议。'
+    expect(genPositionSopBrief(full)).toBe('1. 理解用户意图\n2. 选择所需的技能与工具\n3. 输出结论、依据和后续建议')
+  })
+
+  it('只有一段文字 → 按句号拆成步骤', () => {
+    expect(genPositionSopBrief('先确认需求，再拆分任务。逐项执行并核对。最后汇报结果')).toBe('1. 先确认需求\n2. 逐项执行并核对\n3. 最后汇报结果')
+  })
+
+  it('结果不超过 200 字', () => {
+    const full = Array.from({ length: 40 }, (_, i) => `${i + 1}. 第${i + 1}步要做的关键动作描述得比较长一些`).join('\n')
+    expect(Array.from(genPositionSopBrief(full)).length).toBeLessThanOrEqual(SOP_BRIEF_MAX_LEN)
+  })
+
+  it('完整版为空 → 空串', () => {
+    expect(genPositionSopBrief('')).toBe('')
+  })
+
+  // 生成要求（修改点 18）：保留编号步骤，3–5 步，每步不超过 20 字，全文不超过 200 字
+  it('超过 5 步 → 只留 5 步并重新编号，首尾两步必留', () => {
+    const full = Array.from({ length: 9 }, (_, i) => `${i + 1}. 动作${i + 1}，补充说明`).join('\n')
+    expect(genPositionSopBrief(full)).toBe('1. 动作1\n2. 动作3\n3. 动作5\n4. 动作7\n5. 动作9')
+  })
+
+  it('每步不超过 20 字：主干超长的截到 20 字', () => {
+    const full = '1. 拉取昨日各业务线营收毛利回款与费用的全部明细数据并按事业部汇总\n2. 输出结论'
+    const steps = genPositionSopBrief(full).split('\n').map((l) => l.replace(/^\d+\. /, ''))
+    expect(steps[0]).toBe('拉取昨日各业务线营收毛利回款与费用的全部')
+    expect(Array.from(steps[0]).length).toBe(20)
+    expect(steps[1]).toBe('输出结论')
+  })
+
+  it('有编号步骤时只取编号行，标题、引言不进简版；「第 N 步：」前缀去掉', () => {
+    const full = '# 经营分析岗 SOP\n\n先读一下背景说明。\n1. 第1步：核对数据口径\n2. 第2步：形成复盘建议'
+    expect(genPositionSopBrief(full)).toBe('1. 核对数据口径\n2. 形成复盘建议')
+  })
+
+  it('不足 3 步 → 有几步留几步，不凑数', () => {
+    expect(genPositionSopBrief('1. 汇总上周数据，形成报告')).toBe('1. 汇总上周数据')
   })
 })

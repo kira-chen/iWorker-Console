@@ -19,6 +19,9 @@ import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__te
  *   §七.2.3 切换到 stdio 按各自字段清空；§七.3 检索工具 ≥1、先测试再出工具清单；§七.6 超时默认 10000
  *   §八.2 保存失败保留表单不关抽屉；敏感信息保存后遮罩、编辑态留空=保留
  *   以及《各模块必填选填字段一览表.md》§10.1～§10.3 的必填项。
+ * 2026-11-10 另对齐 docs/PRD/数字员工管理端PRD/产品优化需求-202611.md（草案）修改点 9 / 10 / 11：
+ *   R7 方案 A MCP 每个已勾选检索工具一张可折叠配置卡（新勾选默认展开 / 取消勾选先确认 / 未配置完成标记 /
+ *   保存逐个工具校验并定位卡片 / 测试结果按工具展示）；R6 新建结果数组路径留空；R8 API「请求地址」常驻 JSON 说明。
  *
  * 写法：真挂载 Element Plus（mountReal），api 层整体 vi.mock；表单标量经 el-form 的 model 写入，
  * 组件内部行状态（Token、工具勾选、Arguments、映射行）一律走 DOM 输入。
@@ -90,6 +93,19 @@ async function mountEditor(props = {}) {
 }
 async function pickType(t) {
   formModel().sourceType = t
+  await flushAll(6)
+}
+/* MCP 检索工具：复选框在「检索工具」卡（.ksrc-card）里；每个已勾选工具一张配置卡（产品优化需求-202611 R7 方案 A） */
+const toolBoxes = () => [...drawer().querySelectorAll('.ksrc-card .el-checkbox')]
+const toolBox = (tool) => toolBoxes().find((b) => b.textContent.trim() === tool)
+const toolCard = (tool) => drawer().querySelector(`.ksrc-tool-card[data-tool="${tool}"]`)
+/** 在某个检索工具的配置卡里填结果数组路径与 title / content 的接口返回字段名 */
+async function fillToolCard(tool, { path = '$.items[*]', title = 'title', content = 'text' } = {}) {
+  const card = toolCard(tool)
+  typeInto(card.querySelector('.sme-array-path input'), path)
+  const respRows = [...card.querySelectorAll('.sme-resp-row')]
+  typeInto(respRows[0].querySelectorAll('input')[0], title)
+  typeInto(respRows[1].querySelectorAll('input')[0], content)
   await flushAll(6)
 }
 
@@ -240,7 +256,7 @@ describe('KnowledgeSourceEditor · API 数据源（md §六）', () => {
     expect(formModel().api.authType).toBe('API_KEY')
     expect(formModel().api.timeoutMs).toBe(8000)
     expect(drawer().textContent).toContain('单位毫秒，默认 8000，范围 1000～60000')
-    for (const label of ['请求方式', '检索地址', '超时时间', '鉴权方式']) expect(itemByLabel(label).classList.contains('is-required')).toBe(true)
+    for (const label of ['请求方式', '请求地址', '超时时间', '鉴权方式']) expect(itemByLabel(label).classList.contains('is-required')).toBe(true)
     expect([...itemByLabel('鉴权方式').querySelectorAll('.el-radio')].map((r) => r.textContent.trim())).toEqual(['无鉴权', 'API KEY', 'Bearer Token'])
     // 映射：预设 query / topK + 示例 filters；响应预设 content / source / score
     expect([...drawer().querySelectorAll('.smp-fixed-name')].map((c) => c.textContent.trim())).toEqual(['query', 'topK'])
@@ -249,7 +265,7 @@ describe('KnowledgeSourceEditor · API 数据源（md §六）', () => {
     expect([...drawer().querySelectorAll('.sme-fixed-name')].map((c) => c.textContent.trim())).toEqual(['content', 'source', 'score'])
   })
 
-  it('检索地址必填且须 http(s)：空 → 「请填写请求地址」；ftp:// → 「需为合法 HTTP/HTTPS 地址」；API KEY 无参数 → 至少配置一条', async () => {
+  it('请求地址必填且须 http(s)：空 → 「请填写请求地址」；ftp:// → 「需为合法 HTTP/HTTPS 地址」；API KEY 无参数 → 至少配置一条', async () => {
     await mountEditor()
     await pickType('API')
     typeInto(itemByLabel('数据源名称').querySelector('input'), '国标检索')
@@ -518,25 +534,23 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     await mountEditor()
     await pickType('MCP')
   }
-  const toolBoxes = () => [...drawer().querySelectorAll('.ksrc-card .el-checkbox')]
-
-  it('切到 MCP：传输方式三选项（streamable-http / stdio / sse）默认 streamable-http，鉴权默认无鉴权且不展示凭证，超时默认 10000，结果数组路径带示例值', async () => {
+  it('切到 MCP：传输方式三选项（streamable-http / stdio / sse）默认 streamable-http，鉴权默认无鉴权且不展示凭证，超时默认 10000；未勾工具时不出映射卡', async () => {
     await mountMcp()
 
     expect(formModel().mcp.transport).toBe('streamable-http')
     expect(formModel().mcp.authType).toBe('none')
     expect(formModel().mcp.timeoutMs).toBe(10000)
-    expect(formModel().mcp.resultArrayPath).toBe('$.content[0].items[*]')
     expect(itemByLabel('MCP 服务地址').querySelector('input').getAttribute('maxlength')).toBe('500')
     expect(itemByLabel('Bearer Token')).toBeUndefined()
     expect(itemByLabel('Header 名')).toBeUndefined()
     expect(drawer().textContent).toContain('单位毫秒，默认 10000，范围 1000～120000')
     expect(drawer().textContent).toContain('请先完成连接测试以获取工具列表')
-    // 响应字段预设 title / content / sourceName，接口返回字段名默认留空
-    expect([...drawer().querySelectorAll('.sme-fixed-name')].map((c) => c.textContent.trim())).toEqual(['title', 'content', 'sourceName'])
+    // 映射改为按检索工具分别配置（产品优化需求-202611 R7 方案 A）：还没勾工具时只有引导文案，没有映射卡
+    expect(drawer().textContent).toContain('勾选检索工具后，在这里按工具分别配置映射')
+    expect(drawer().querySelector('.sme-card')).toBeNull()
   })
 
-  it('未填服务地址、未选工具点【保存】：红字「请填写 MCP 服务地址」「至少选择一个检索工具」「请填写…」类映射错误，不调 create', async () => {
+  it('未填服务地址、未选工具点【保存】：红字「请填写 MCP 服务地址」「至少选择一个检索工具」，不调 create', async () => {
     await mountMcp()
     typeInto(itemByLabel('数据源名称').querySelector('input'), '法规库 MCP')
     await flushAll(4)
@@ -545,7 +559,6 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
 
     expect(errorTexts()).toContain('请填写 MCP 服务地址')
     expect(errorTexts()).toContain('至少选择一个检索工具')
-    expect(errorTexts()).toContain('响应字段：title 需填写接口返回字段名')
     expect(api.createKnowledgeSource).not.toHaveBeenCalled()
 
     formModel().mcp.endpoint = 'ws://mcp.example.com'
@@ -595,7 +608,7 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     expect(valueInput().type).toBe('password')
   })
 
-  it('测试成功返回工具清单：以复选框列出、展示「连接正常 · 2 个工具」；勾选工具并补齐映射后保存，载荷 tools / 结果数组路径 / 凭证正确', async () => {
+  it('测试成功返回工具清单：以复选框列出、展示「连接正常 · 2 个工具」；勾选工具并在其配置卡补齐映射后保存，载荷 tools / 该工具的映射配置 / 凭证正确', async () => {
     api.testKnowledgeSource.mockResolvedValue({
       verifyStatus: 'SUCCESS',
       verifiedAt: null,
@@ -622,10 +635,8 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     expect(drawer().querySelector('.ksrc-verify.ok').textContent).toContain('连接正常 · 2 个工具')
 
     toolBoxes()[0].querySelector('input').click()
-    const respRows = [...drawer().querySelectorAll('.sme-resp-row')]
-    typeInto(respRows[0].querySelectorAll('input')[0], 'meta.title')
-    typeInto(respRows[1].querySelectorAll('input')[0], 'text')
-    await flushAll(6)
+    await flushAll(4)
+    await fillToolCard('search_documents', { path: '$.items[*]', title: 'meta.title', content: 'text' })
 
     await save()
 
@@ -637,16 +648,17 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
       endpoint: 'https://mcp.example.com/mcp',
       authType: 'bearer',
       tools: ['search_documents'],
-      resultArrayPath: '$.content[0].items[*]',
       timeoutMs: 10000,
       envVars: []
     })
-    expect(payload.config.responseMap.map((r) => [r.name, r.sourceField])).toEqual([
+    const tc = payload.config.toolConfigs.search_documents
+    expect(tc.resultArrayPath).toBe('$.items[*]')
+    expect(tc.responseMap.map((r) => [r.name, r.sourceField])).toEqual([
       ['title', 'meta.title'],
       ['content', 'text'],
       ['sourceName', '']
     ])
-    expect(payload.config.requestMap.map((r) => r.name)).toEqual(['query', 'topK']) // MCP 不注入 API 的示例组
+    expect(tc.requestMap.map((r) => r.name)).toEqual(['query', 'topK']) // MCP 不注入 API 的示例组
   })
 
   it('重新测试返回的清单不再含已勾选工具 → 该工具被移出已选（以最新清单为准）', async () => {
@@ -684,10 +696,8 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     clickBtn('测试连接')
     await flushAll(10)
     toolBoxes()[0].querySelector('input').click()
-    const respRows = [...drawer().querySelectorAll('.sme-resp-row')]
-    typeInto(respRows[0].querySelectorAll('input')[0], 'title')
-    typeInto(respRows[1].querySelectorAll('input')[0], 'content')
-    await flushAll(6)
+    await flushAll(4)
+    await fillToolCard('search_documents', { title: 'title', content: 'content' })
 
     await save()
 
@@ -728,10 +738,8 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
     clickBtn('测试连接')
     await flushAll(10)
     toolBoxes()[0].querySelector('input').click()
-    const respRows = [...drawer().querySelectorAll('.sme-resp-row')]
-    typeInto(respRows[0].querySelectorAll('input')[0], 'title')
-    typeInto(respRows[1].querySelectorAll('input')[0], 'content')
-    await flushAll(6)
+    await flushAll(4)
+    await fillToolCard('search_documents', { title: 'title', content: 'content' })
     await save()
     return { payload: api.createKnowledgeSource.mock.calls[0]?.[0], afterSwitch }
   }
@@ -761,6 +769,209 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
       expect(payload.config.authHeaderName).toBe('')
     }
   )
+})
+
+/* ======================================================================
+ * 产品优化需求-202611 修改点 11（R8）：「「请求地址」……请求地址输入框下方常驻说明"仅支持返回 JSON 的检索接口"」
+ * 「字段名称统一为"请求地址"」。连接测试「接口返回的不是 JSON」的提示由数据层给出，见 knowledgeBaseMock.test.js。
+ * ====================================================================== */
+describe('KnowledgeSourceEditor · API 数据源只支持 JSON 接口（R8）', () => {
+  it('请求地址输入框下方常驻说明「仅支持返回 JSON 的检索接口」（填了地址也还在）', async () => {
+    await mountEditor()
+    await pickType('API')
+    expect(itemByLabel('请求地址').querySelector('.ksrc-help').textContent.trim()).toBe('仅支持返回 JSON 的检索接口')
+    formModel().api.url = 'https://rag.example.com/search'
+    await flushAll(4)
+    expect(itemByLabel('请求地址').querySelector('.ksrc-help').textContent.trim()).toBe('仅支持返回 JSON 的检索接口')
+  })
+
+  it('字段名统一为「请求地址」：抽屉里不再出现「检索地址」', async () => {
+    await mountEditor()
+    await pickType('API')
+    expect(itemByLabel('请求地址')).toBeTruthy()
+    expect(drawer().textContent).not.toContain('检索地址')
+  })
+})
+
+/* ======================================================================
+ * 产品优化需求-202611 修改点 10（R7）方案 A：「每个已勾选的工具单独一张配置卡，卡片标题为工具名，可以折叠。卡内是该工具的
+ * 请求参数映射、结果数组路径和响应字段映射。新勾选的工具默认展开」「取消勾选工具时弹出确认"取消后该工具的映射配置将清空，确认取消？"」
+ * 「配置不全的工具卡在标题旁标"未配置完成"；保存时逐个工具校验，错误定位到对应卡片」「连接测试逐个工具执行，结果按工具分别展示」；
+ * 修改点 9（R6）：「新建数据源时结果数组路径留空，示例只作占位提示，不预填」。
+ * ====================================================================== */
+describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 方案 A / R6）', () => {
+  /** 新建 MCP、填服务地址并测试连接，拿到工具清单（未勾选任何工具） */
+  async function mountMcpTested(tools = ['search_documents', 'search_chunks']) {
+    api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', verifiedAt: null, verifyError: null, tools, toolCount: tools.length, toolResults: [] })
+    await mountEditor()
+    await pickType('MCP')
+    typeInto(itemByLabel('数据源名称').querySelector('input'), '法规库 MCP')
+    formModel().mcp.endpoint = 'https://mcp.example.com/mcp'
+    await flushAll(4)
+    clickBtn('测试连接')
+    await flushAll(10)
+  }
+  async function clickTool(tool) {
+    toolBox(tool).querySelector('input').click()
+    await flushAll(6)
+  }
+  const cardHead = (tool) => toolCard(tool).querySelector('.el-collapse-item__header')
+
+  it('勾选工具 → 出现以工具名为标题的配置卡，且默认展开', async () => {
+    await mountMcpTested()
+    expect(toolCard('search_documents')).toBeNull() // 前提：未勾选时没有卡片
+    await clickTool('search_documents')
+    expect(cardHead('search_documents').textContent).toContain('search_documents')
+    expect(toolCard('search_documents').classList.contains('is-active')).toBe(true)
+  })
+
+  it('R6 新勾选工具的结果数组路径留空，示例 $.items[*]、$.data.list[*] 只作占位', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    const pathInput = toolCard('search_documents').querySelector('.sme-array-path input')
+    expect(pathInput.value).toBe('')
+    expect(pathInput.placeholder).toBe('JSONPath，如 $.items[*]、$.data.list[*]')
+  })
+
+  it('配置不全的卡片标题旁标「未配置完成」，补齐路径与 title / content 后标记消失', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    expect(cardHead('search_documents').textContent).toContain('未配置完成')
+    await fillToolCard('search_documents')
+    await settle() // el-tag 带离场过渡，DOM 要等下一帧才移除
+    expect(cardHead('search_documents').textContent).not.toContain('未配置完成')
+  })
+
+  it('两个工具各配各的：每张卡的路径互不串，保存载荷按工具分别带映射配置', async () => {
+    api.createKnowledgeSource.mockResolvedValue(undefined)
+    await mountMcpTested()
+    await clickTool('search_documents')
+    await clickTool('search_chunks')
+    await fillToolCard('search_documents', { path: '$.items[*]', title: 'title', content: 'text' })
+    await fillToolCard('search_chunks', { path: '$.data.list[*]', title: 'heading', content: 'chunk_text' })
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.items[*]')
+    expect(toolCard('search_chunks').querySelector('.sme-array-path input').value).toBe('$.data.list[*]')
+
+    await save()
+
+    const cfg = api.createKnowledgeSource.mock.calls[0][0].config
+    expect(cfg.tools).toEqual(['search_documents', 'search_chunks'])
+    expect(cfg.toolConfigs.search_documents.resultArrayPath).toBe('$.items[*]')
+    expect(cfg.toolConfigs.search_chunks.resultArrayPath).toBe('$.data.list[*]')
+    expect(cfg.toolConfigs.search_chunks.responseMap.map((r) => r.sourceField)).toEqual(['heading', 'chunk_text', ''])
+  })
+
+  it('取消勾选先弹确认「取消后该工具的映射配置将清空，确认取消？」；选保留 → 仍勾选，卡片与已填内容都在', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    await fillToolCard('search_documents', { path: '$.items[*]' })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel')
+
+    await clickTool('search_documents')
+
+    expect(confirm).toHaveBeenCalledWith('取消后该工具的映射配置将清空，确认取消？', expect.any(String), expect.any(Object))
+    expect(toolBox('search_documents').classList.contains('is-checked')).toBe(true)
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.items[*]')
+  })
+
+  it('选保留后再点一次取消勾选，仍会弹确认（复选框不会卡在「点了没反应」）', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+    await clickTool('search_documents')
+    expect(confirm).toHaveBeenCalledTimes(1) // 前提：第一次取消勾选弹了确认、选了保留
+
+    await clickTool('search_documents')
+
+    expect(confirm).toHaveBeenCalledTimes(2)
+  })
+
+  it('确认取消勾选 → 卡片消失、该工具配置清空：重新勾选回来是空白配置', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    await fillToolCard('search_documents', { path: '$.items[*]' })
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValueOnce('confirm')
+
+    await clickTool('search_documents')
+    expect(toolBox('search_documents').classList.contains('is-checked')).toBe(false)
+    expect(toolCard('search_documents')).toBeNull()
+
+    await clickTool('search_documents')
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('')
+  })
+
+  it('保存逐个工具校验：第二个工具缺结果数组路径 → 不保存，错误标在它的卡片里，该卡展开并滚动到它', async () => {
+    const scrolled = []
+    const hadScroll = 'scrollIntoView' in Element.prototype
+    const origScroll = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function () {
+      scrolled.push(this)
+    }
+    try {
+      await mountMcpTested()
+      await clickTool('search_documents')
+      await clickTool('search_chunks')
+      await fillToolCard('search_documents')
+      await fillToolCard('search_chunks', { path: '' })
+      cardHead('search_chunks').click() // 先把出错的卡收起来，验证保存时会重新展开
+      await flushAll(4)
+      expect(toolCard('search_chunks').classList.contains('is-active')).toBe(false) // 前提
+
+      await save()
+
+      expect(api.createKnowledgeSource).not.toHaveBeenCalled()
+      expect(toolCard('search_chunks').querySelector('.sme-err').textContent.trim()).toBe('请填写结果数组路径')
+      expect(toolCard('search_documents').querySelector('.sme-err')).toBeNull()
+      expect(toolCard('search_chunks').classList.contains('is-active')).toBe(true)
+      expect(scrolled).toContain(toolCard('search_chunks'))
+    } finally {
+      if (hadScroll) Element.prototype.scrollIntoView = origScroll
+      else delete Element.prototype.scrollIntoView
+    }
+  })
+
+  it('连接测试结果按工具分别展示：每个工具一行，通过的显示取到几条，没通过的显示原因', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    await clickTool('search_chunks')
+    api.testKnowledgeSource.mockResolvedValueOnce({
+      verifyStatus: 'FAILED',
+      verifiedAt: null,
+      verifyError: '检索工具「search_chunks」测试未通过',
+      tools: ['search_documents', 'search_chunks'],
+      toolCount: 2,
+      toolResults: [
+        { tool: 'search_documents', ok: true, itemCount: 2 },
+        { tool: 'search_chunks', ok: false, error: '按结果数组路径未取到数组，请检查路径' }
+      ]
+    })
+
+    clickBtn('测试连接')
+    await flushAll(10)
+
+    const lines = [...drawer().querySelectorAll('.ksrc-tool-results li')]
+    expect(lines.map((li) => [li.querySelector('code').textContent.trim(), li.querySelector('span').textContent.trim()])).toEqual([
+      ['search_documents', '按结果数组路径取到 2 条结果'],
+      ['search_chunks', '按结果数组路径未取到数组，请检查路径']
+    ])
+    expect(lines.map((li) => li.className)).toEqual(['ok', 'bad'])
+    expect(drawer().querySelector('.ksrc-verify.bad').textContent).toContain('连接失败：检索工具「search_chunks」测试未通过')
+  })
+
+  it('测试通过后改某个工具卡里的结果数组路径 → 验证状态重置为「修改连接配置后需要重新测试」', async () => {
+    await mountMcpTested()
+    await clickTool('search_documents')
+    await fillToolCard('search_documents')
+    clickBtn('测试连接')
+    await flushAll(10)
+    expect(drawer().querySelector('.ksrc-verify.ok')).toBeTruthy() // 前提：已测试通过
+
+    typeInto(toolCard('search_documents').querySelector('.sme-array-path input'), '$.list[*]')
+    await flushAll(6)
+
+    expect(drawer().querySelector('.ksrc-verify')).toBeNull()
+    expect(drawer().querySelector('.ksrc-test').textContent).toContain('修改连接配置后需要重新测试')
+  })
 })
 
 /* ====================================================================== */
@@ -933,7 +1144,7 @@ describe('KnowledgeSourceEditor · 编辑回填与敏感信息遮罩（md §四.
     expect(itemByLabel('状态').textContent).toContain('正被知识库引用（产品知识库、售后库），需先解除引用才能停用')
   })
 
-  it('编辑 MCP 源：回填传输方式 / 鉴权掩码 / 已选工具（勾选态）/ 结果数组路径；未验证源不展示状态行', async () => {
+  it('编辑 MCP 源：回填传输方式 / 鉴权掩码 / 已选工具（勾选态）/ 该工具配置卡里的结果数组路径与响应字段；未验证源不展示状态行', async () => {
     api.getKnowledgeSource.mockResolvedValue({
       id: 'ks_mcp',
       sourceType: 'MCP',
@@ -947,22 +1158,29 @@ describe('KnowledgeSourceEditor · 编辑回填与敏感信息遮罩（md §四.
         authHeaderName: 'X-Api-Key',
         credentialMasked: 'ab****yz',
         tools: ['search_documents'],
-        resultArrayPath: '$.data[*]',
         timeoutMs: 30000,
-        responseMap: [
-          { name: 'title', sourceField: 't', preset: true },
-          { name: 'content', sourceField: 'c', preset: true },
-          { name: 'sourceName', sourceField: '', preset: true }
-        ]
+        toolConfigs: {
+          search_documents: {
+            resultArrayPath: '$.data[*]',
+            responseMap: [
+              { name: 'title', sourceField: 't', preset: true },
+              { name: 'content', sourceField: 'c', preset: true },
+              { name: 'sourceName', sourceField: '', preset: true }
+            ]
+          }
+        }
       }
     })
     await mountEditor({ sourceId: 'ks_mcp' })
 
     expect(formModel().status).toBe('DISABLED')
-    expect(formModel().mcp).toMatchObject({ transport: 'streamable-http', authType: 'header', authHeaderName: 'X-Api-Key', timeoutMs: 30000, resultArrayPath: '$.data[*]' })
+    expect(formModel().mcp).toMatchObject({ transport: 'streamable-http', authType: 'header', authHeaderName: 'X-Api-Key', timeoutMs: 30000 })
     expect(itemByLabel('访问凭证').textContent).toContain('当前：ab****yz')
     const box = [...drawer().querySelectorAll('.ksrc-card .el-checkbox')].find((b) => b.textContent.trim() === 'search_documents')
     expect(box.classList.contains('is-checked')).toBe(true)
+    const card = drawer().querySelector('.ksrc-tool-card[data-tool="search_documents"]')
+    expect(card.querySelector('.sme-array-path input').value).toBe('$.data[*]')
+    expect([...card.querySelectorAll('.sme-resp-row')].map((r) => r.querySelectorAll('input')[0].value)).toEqual(['t', 'c', ''])
     expect(drawer().querySelector('.ksrc-verify')).toBeNull()
     expect(drawer().querySelector('.ksrc-test').textContent).toContain('修改连接配置后需要重新测试')
   })
@@ -1041,7 +1259,7 @@ describe('KnowledgeSourceEditor · 查看态只读', () => {
     const footBtns = [...drawer().querySelectorAll('.el-drawer__footer .el-button')].map((b) => b.textContent.trim())
     expect(footBtns).toEqual(['关闭'])
     expect(itemByLabel('数据源名称').querySelector('input').disabled).toBe(true)
-    expect(itemByLabel('检索地址').querySelector('input').disabled).toBe(true)
+    expect(itemByLabel('请求地址').querySelector('input').disabled).toBe(true)
     expect(drawer().textContent).not.toContain('修改连接配置后需要重新测试')
 
     clickBtn('关闭')

@@ -16,6 +16,8 @@
  *  - FDE 技能（默认 'fde'）：GET /api/fde/skills/tool-picker?type=&keyword=&positionId=（四类 tab，数据表传 positionId 防越权）。
  *  - 平台技能（'platform'）：GET /api/fde/platform-skills/tool-picker?type=&keyword=（SYS_CONFIG 门，只 MCP/API，不接 positionId）。
  * 健康态优雅降级：工具无 displayStatus 时统一展示「未检测」占位，不报错。
+ * 发布态（产品优化需求-202611 修改点 13（R4））：includeUnpublished=true（技能编辑页）时候选含未发布 / 审核中的连接器，
+ * 工具卡名称旁标「未发布」「审核中」，已发布不标；不传时候选仍只有已发布的。
  */
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { ArrowLeftBold, ArrowRightBold, Grid } from '@element-plus/icons-vue'
@@ -23,6 +25,7 @@ import { listToolPicker } from '@/api/position'
 import { platformSkillApi, systemSkillApi } from '@/api/platformSkill'
 import { listDataTables, getDataTable } from '@/api/dataTable'
 import { healthLabel, healthClass } from '@/utils/positionModel'
+import { toolPubTag } from '@/utils/toolPubState'
 import { fieldTypeLabel } from '@/utils/dataTableTypes'
 import { TERMS } from '@/utils/skillTerms'
 import ReferencedToolsPanel from '@/components/position/ReferencedToolsPanel.vue'
@@ -50,7 +53,13 @@ const props = defineProps({
    * 空态「去连接器接入」链接开关（技能编辑器语境传 true）：
    * 无工具空态改「该类暂无工具，去连接器接入」，链接跳连接器页；默认 false 保持旧文案。
    */
-  connectorEmptyLink: { type: Boolean, default: false }
+  connectorEmptyLink: { type: Boolean, default: false },
+  /**
+   * 候选是否含未发布 / 审核中的连接器（产品优化需求-202611 修改点 13（R4），技能编辑页传 true）：
+   * 打开后 tool-picker 带 includeUnpublished，已停用、已强制回收的仍不出现；技能提交发布时再由版本管理弹窗拦。
+   * 默认 false：数据源不变，候选只有已发布的。
+   */
+  includeUnpublished: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:collapsed', 'insert', 'locate', 'remove-ref'])
 
@@ -128,12 +137,15 @@ async function fetchTools() {
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     // 数据表按岗位过滤（防越权引用）。平台技能无 TABLE tab，不会进此分支。
     if (activeTab.value === 'TABLE' && props.positionId != null) params.positionId = props.positionId
+    // R4：技能编辑页放开未发布 / 审核中的连接器（两条数据源都带上）
+    if (props.includeUnpublished) params.includeUnpublished = true
     // 数据源分流：平台技能走 SYS_CONFIG 门的平台 tool-picker（只 MCP/API，不接 positionId）；
     // FDE 技能走原 FDE 门 tool-picker（四类，TABLE 带 positionId）。
     const data = isPlatform.value
       ? await (props.skillSource === 'system' ? systemSkillApi : platformSkillApi).toolPicker({
           type: params.type,
-          ...(params.keyword ? { keyword: params.keyword } : {})
+          ...(params.keyword ? { keyword: params.keyword } : {}),
+          ...(params.includeUnpublished ? { includeUnpublished: true } : {})
         })
       : await listToolPicker(params)
     tools.value = Array.isArray(data) ? data : data?.items || []
@@ -381,6 +393,12 @@ function fieldTypeText(t) {
         >
           <div class="dtool-top">
             <span class="dtool-name">{{ tool.bizName || tool.name || tool.code }}</span>
+            <!-- R4：发布态标签紧贴名称（未发布 / 审核中；已发布不标），健康标识照旧在其后 -->
+            <span
+              v-if="toolPubTag(tool.pubState)"
+              class="pubtag"
+              :class="`pubtag--${toolPubTag(tool.pubState).type}`"
+            >{{ toolPubTag(tool.pubState).label }}</span>
             <span class="health" :class="`h-${healthClass(tool.displayStatus || tool.checkStatus)}`">
               <span class="d"></span>{{ healthLabel(tool.displayStatus || tool.checkStatus) }}
             </span>
@@ -703,6 +721,23 @@ function fieldTypeText(t) {
 }
 .h-off .d {
   background: var(--c-text-faint);
+}
+/* R4 发布态标签：与健康标识同规格的小胶囊；配色取连接器列表三态（未发布=灰 info / 审核中=黄 warning） */
+.pubtag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-weight: var(--fw-medium);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.pubtag--info {
+  background: var(--bg-active);
+  color: var(--c-text-muted);
+}
+.pubtag--warning {
+  background: var(--c-warning-soft);
+  color: var(--c-warning);
 }
 .wflag {
   font-size: 11px;

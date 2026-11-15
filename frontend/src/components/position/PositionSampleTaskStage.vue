@@ -84,6 +84,12 @@ function missingPrompt(it) {
   return !String(it?.prompt || '').trim()
 }
 
+// 缺执行对象标记（产品优化需求-202611 修改点 3）：执行方式选了「专家 / 专家团」却没选具体对象，与「缺指令」同样处理——
+// 编辑页与数据层保存时都已拦截，这里只给存量数据补可感知提示
+function missingExecTarget(it) {
+  return (it?.execType === 'EXPERT' || it?.execType === 'TEAM') && (it?.execTargetId == null || it?.execTargetId === '')
+}
+
 // 副行摘要（2026-09-10 岗位详情原型对齐 L3：照原型态精简为「每周 09:00 · 2 个工具」，
 // 原「触发条件：…·执行动作引用…」长句在卡宽内必截断出省略号；现行 md §7 未规定列表副行文案）
 function subLine(it) {
@@ -402,6 +408,14 @@ function retryTest() {
                   placement="top"
                 >
                   <span class="st-flag">缺指令</span>
+                </el-tooltip>
+                <!-- 与「缺指令」同样处理（修改点 3）：保存时已拦，只有存量数据会出这个标签，提示口径照「缺指令」 -->
+                <el-tooltip
+                  v-if="missingExecTarget(it)"
+                  :content="'还没选要执行的「' + (it.execType === 'TEAM' ? '专家团' : '专家') + '」，发布时会被拦下，请先补齐'"
+                  placement="top"
+                >
+                  <span class="st-flag">缺执行对象</span>
                 </el-tooltip>
                 <!-- 执行链路未就绪，仿真试跑入口统一由 EFFECT_TEST_ENABLED 隐藏（utils/featureFlags.js）；md 岗位 §7 未写试跑，本入口仅作代码说明（J18） -->
                 <el-button

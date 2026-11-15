@@ -34,7 +34,9 @@ const props = defineProps({
   /** 普通停用被拦截的原因（技能被引用）；非空时未勾选强制回收不可提交 */
   blockedMessage: { type: String, default: '' },
   /** 提交中：确认按钮转圈防重复提交 */
-  submitting: { type: Boolean, default: false }
+  submitting: { type: Boolean, default: false },
+  /** 额外的影响范围说明（如专家「已被 N 个岗位引用；M 条自动化任务由它执行…」），普通停用与强制回收都展示；空串不展示 */
+  impactNote: { type: String, default: '' }
 })
 const emit = defineEmits(['update:modelValue', 'confirm'])
 
@@ -93,6 +95,7 @@ function onConfirm() {
     <template v-if="!forceRevoke">
       <p v-if="blockedMessage" class="dd-blocked" data-test="dd-blocked">{{ blockedMessage }}</p>
       <p v-else class="dd-text" data-test="dd-plain">{{ plainMessage }}</p>
+      <p v-if="impactNote" class="dd-text" data-test="dd-impact">{{ impactNote }}</p>
     </template>
     <template v-else>
       <p class="dd-text">
@@ -100,6 +103,7 @@ function onConfirm() {
         ><template v-if="refCount > 0">，当前已被 {{ refCount }} 个{{ refText }}引用（引用关系保留，标记为「已回收」）。</template
         ><template v-else>。</template>
       </p>
+      <p v-if="impactNote" class="dd-text" data-test="dd-impact">{{ impactNote }}</p>
       <p class="dd-danger" data-test="dd-danger">
         强制回收经审核通过后生效，生效后不可撤销：{{ holderText }}将失去它，引用它的自动化将被挂起。审核通过前仍可正常使用。
       </p>

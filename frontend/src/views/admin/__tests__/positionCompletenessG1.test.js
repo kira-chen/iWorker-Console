@@ -5,9 +5,10 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
 /**
  * 岗位详情 · md §9.1 完整性校验（2026-09-09 PRD 复核·G1 / A1，负责人 Q11 新决策）行为契约。
  *
- * 决策原文：「岗位详情页的必填项有①人格页面的必填字段必须要填；②Agent与技能必须要有；
- * ③自动化任务至少要有1个；在『保存』和『提交发布』时都要进行完整性校验。」
+ * 决策要点：①人格页面的必填字段必须要填；②技能必须要有；③自动化任务至少要有 1 个；『保存』和『提交发布』时都做完整性校验。
  * 二轮补充确认走 B 方案 —— 保存时只提示不拦，提交发布时才硬拦。
+ * ②原为「Agent 与技能必须要有」，产品优化需求-202611 修改点 1（R1）取消 Agent 后改为第 8 项「技能：至少引用 1 个技能」，
+ * 校验失败定位到「技能」页签；夹具按岗位直接引用技能（store.skills）组织，不再有 agents[]。
  *
  * 本组钉三件事：
  *  ① 【发布岗位】九项任一缺失 → 不开发布弹窗、toast「请先填写：…」、自动切到第一个缺失项所在页签；
@@ -16,6 +17,7 @@ import { createApp, h, nextTick, computed, provide, inject } from 'vue'
  *
  * 2026-10-09 /test-audit 补缺口 E3（岗位 PRD §8 / §9.1「被强制回收」）：页面用 revokedConnectorNames(store.basic) 实时取值喂发布前检查，
  *  引用了已回收的连接器 / 技能 → 清单里出阻断行「引用的「X」已被回收，请移除后再发布」（见文末 describe）。
+ *  产品优化需求-202611 修改点 2（R13）同组补：引用的专家（团）不可用 → 清单里出动态阻断行，不进九项 toast。
  *
  * 另钉 A19（Q455）：知识页签【检索测试】原地开弹窗、不 router.push。
  *
@@ -36,26 +38,32 @@ const basicFull = () => ({
   description: '负责销售线索跟进', positionSop: '1. 理解意图',
   businessSystemIds: [], intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }]
 })
-const agentsFull = () => [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [{ skillId: 1, name: 's' }] }]
+// R1：岗位直接引用岗位私有技能（store.skills），不再有 Agent 层
+const skillsFull = () => [{ skillId: 1, name: 's' }]
 
 const store = {
   positionId: 5,
   loading: false,
   error: '',
   basic: basicFull(),
-  agents: agentsFull(),
-  allSkills: [],
+  skills: skillsFull(),
+  // R13「专家与专家团」页签的引用（选填，不进九项；不可用时进发布前检查的动态阻断行）
+  experts: [],
+  teams: [],
   isPublished: false,
   detail: { positionId: 5, status: 'draft', pendingAction: null },
   get checkInput() {
     return {
       name: this.basic.name, icon: this.basic.icon, description: this.basic.description, claimDescriptions: this.basic.claimDescriptions, positionSop: this.basic.positionSop,
-      exampleQuestions: this.basic.exampleQuestions, intakeSchema: this.basic.intakeSchema, agents: this.agents
+      exampleQuestions: this.basic.exampleQuestions, intakeSchema: this.basic.intakeSchema,
+      skills: this.skills, experts: this.experts, teams: this.teams, execTargetIssues: []
     }
   },
   load: vi.fn(() => Promise.resolve()),
   reset: vi.fn(),
   saveBasic: vi.fn(() => Promise.resolve({ warnings: [] })),
+  // 发布前重拉专家与专家团引用（页面 openPublish 调用）；本组夹具直接写 experts / teams，这里空转
+  refreshExpertRefs: vi.fn(() => Promise.resolve()),
   hydrate: vi.fn()
 }
 vi.mock('@/stores/position', () => ({ usePositionStore: () => store }))
@@ -87,9 +95,9 @@ const listSampleTasksSpy = vi.fn(() => Promise.resolve({ list: [{ id: 1 }] }))
 vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasksSpy(...a) }))
 // 知识页签一条已发布知识库，供 A19【检索测试】用例点
 vi.mock('@/api/knowledgeBase', () => ({
-  // scopeRefId 与本文件其它 positionId:5 的夹具同源（2026-09-23 待办 yuepu#9④：知识页签改按
-  // scopeRefId 联查岗位 id，不再按 scopeRefName 字符串匹配岗位名）
-  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefId: 5, scopeRefName: '销售', status: 'PUBLISHED' }], total: 1 }))
+  // scopeRefIds 与本文件其它 positionId:5 的夹具同源（2026-09-23 待办 yuepu#9④：知识页签改按
+  // 岗位 id 联查，不再按名称字符串匹配；2026-11-09 R3 起可见范围多选，字段改为 scopeRefIds 数组）
+  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefIds: [5], scopeRefNames: ['销售'], status: 'PUBLISHED' }], total: 1 }))
 }))
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({
@@ -169,12 +177,16 @@ const topBtn = (text) => [...container.querySelectorAll('.topbar .el-button')].f
 const clickTop = async (text) => { topBtn(text).click(); await flush() }
 const banner = () => container.querySelector('.pd-complete-banner')
 const activeTab = () => container.querySelector('.el-tabs').getAttribute('data-active')
+// 激活页签的文案：「技能」页签的标识 PRD 草稿（产品优化需求-202611）没有规定，按用户看到的页签名断言
+const activeTabLabel = () => container.querySelector(`.el-tab-pane[data-name="${activeTab()}"]`)?.getAttribute('data-label')
 const lastWarn = () => ElMessage.warning.mock.calls.at(-1)?.[0] || ''
 
 beforeEach(() => {
   vi.clearAllMocks()
   store.basic = basicFull()
-  store.agents = agentsFull()
+  store.skills = skillsFull()
+  store.experts = []
+  store.teams = []
   store.load.mockResolvedValue()
   store.saveBasic.mockResolvedValue({ warnings: [] })
   listSampleTasksSpy.mockResolvedValue({ list: [{ id: 1 }] })
@@ -270,13 +282,13 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
     expect(activeTab()).toBe('intake')
   })
 
-  it('第 8 项：无 Agent / Agent 无技能 → 阻断并定位「Agent 与技能」页签', async () => {
-    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [] }]
+  it('第 8 项：岗位未引用技能 → 阻断、不开弹窗、toast「请先填写：技能」、定位「技能」页签（产品优化需求-202611 修改点 1）', async () => {
+    store.skills = []
     await mount()
     await clickTop('发布岗位')
     expect(container.querySelector('.publish-check-dialog')).toBeNull()
-    expect(lastWarn()).toBe('请先填写：Agent 与技能')
-    expect(activeTab()).toBe('agents')
+    expect(lastWarn()).toBe('请先填写：技能')
+    expect(activeTabLabel()).toBe('技能')
   })
 
   it('第 9 项：自动化任务 0 条 → 阻断并定位「自动化任务」页签', async () => {
@@ -290,11 +302,11 @@ describe('A1 · 【发布岗位】按 md §9.1 九项硬阻断', () => {
 
   it('多项缺失 → toast 按 md 列举顺序全列，定位到第一个缺失项所在页签', async () => {
     store.basic.name = ''
-    store.agents = []
+    store.skills = []
     listSampleTasksSpy.mockResolvedValue({ list: [] })
     await mount()
     await clickTop('发布岗位')
-    expect(lastWarn()).toBe('请先填写：岗位名称、Agent 与技能、自动化任务')
+    expect(lastWarn()).toBe('请先填写：岗位名称、技能、自动化任务')
     expect(activeTab()).toBe('persona')
   })
 })
@@ -317,13 +329,13 @@ describe('A1 · 【保存】执行同一套校验但不阻断（md §9.1 末段�
   })
 
   it('提示条条目可点跳到该项所在页签；× 可关闭', async () => {
-    store.agents = []
+    store.skills = []
     await mount()
     await clickTop('保存')
     const item = banner().querySelector('.pd-cb-item')
-    expect(item.textContent).toBe('Agent 与技能')
+    expect(item.textContent).toBe('技能')
     item.click(); await flush()
-    expect(activeTab()).toBe('agents')
+    expect(activeTabLabel()).toBe('技能')
     banner().querySelector('.pd-cb-close').click(); await flush()
     expect(banner()).toBeNull()
   })
@@ -366,10 +378,8 @@ describe('A19 · 知识页签【检索测试】原地弹窗（md §5.2 / Q455）
     const opCol = [...pane.querySelectorAll('.el-table-column')].find((c) => c.getAttribute('data-label') === '操作')
     return [...(opCol?.querySelectorAll('.el-button') || [])].find((b) => b.textContent.trim() === text)
   }
-  // 切页签：走「保存后提示条条目点击」以外的通用路径——直接点某个未完成项不合适，
-  // 这里用 el-tabs 桩的 modelValue 无法反向驱动，故借 A1 的定位副作用：清空 Agent 后点发布即切到 agents，
-  // 再清空条件已不适用；改为直接触发组件内 watch —— 用最朴素的办法：让发布阻断定位到 knowledge 不可行，
-  // 因此本组通过「先渲染再手动 dispatch」不可达。改用 route.query.tab 指定初始页签（组件支持）。
+  // 切页签：el-tabs 桩的 modelValue 无法反向驱动，发布阻断的定位副作用也到不了 knowledge（知识不在九项里），
+  // 故用 route.query.tab 指定初始页签（组件支持）。
   async function mountOnKnowledge() {
     routeMock.query = { tab: 'knowledge' }
     await mount()
@@ -429,13 +439,25 @@ describe('E3 · 发布前检查：引用了已被强制回收的对象 → 阻�
     expect(revokedRows()).toHaveLength(0)
   })
 
-  it('Agent 下的技能带回收标记 → 清单里同样出「引用的「技能名」已被回收，请移除后再发布」', async () => {
-    store.agents = [{ agentId: 'ag_1', name: 'A', description: 'd', skills: [
+  it('岗位引用的技能带回收标记 → 清单里同样出「引用的「技能名」已被回收，请移除后再发布」（产品优化需求-202611 修改点 1：技能直接挂在岗位上）', async () => {
+    store.skills = [
       { skillId: 1, name: '日报周报生成', revoked: { reason: '风险', at: '2026-09-30 10:00', operator: 'admin' } }
-    ] }]
+    ]
     await mount()
     await clickTop('发布岗位')
     const rows = revokedRows()
     expect(rows.map((p) => p.textContent)).toEqual(['引用的「日报周报生成」已被回收，请移除后再发布'])
+  })
+
+  // 修改点 2（R13）「岗位发布校验」：本页签选填、不进九项；引用的专家（团）停用 / 回收等 → 发布前检查里每个问题一行动态阻断
+  it('引用的专家已停用 → 不走九项 toast、照常打开发布前检查，清单里出「引用的「专家名」已停用，请移除后再发布」且为未通过', async () => {
+    store.experts = [{ expertId: 'ex_1', name: '税务政策专家', unavailable: '已停用' }]
+    await mount()
+    await clickTop('发布岗位')
+    expect(ElMessage.warning).not.toHaveBeenCalled()
+    expect(container.querySelector('.publish-check-dialog')).toBeTruthy()
+    const rows = probeRows().filter((p) => p.textContent.includes('税务政策专家'))
+    expect(rows.map((p) => p.textContent)).toEqual(['引用的「税务政策专家」已停用，请移除后再发布'])
+    expect(rows[0].getAttribute('data-ok')).toBe('false')
   })
 })

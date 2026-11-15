@@ -15,7 +15,9 @@ import {
   withdrawPublish,
   delistSkill,
   updateSkill,
-  getSkillReviewSnapshot
+  getSkillReviewSnapshot,
+  _getRaw as getRawSkill,
+  _reset as resetSkill
 } from '../unifiedSkillMock'
 import { publishExpert, withdrawExpert, getExpertReviewSnapshot } from '../domainExpertMock'
 import { needsSnapshot, loadReviewSnapshot, SNAPSHOT_MISSING_HINT } from '@/utils/reviewSnapshot'
@@ -126,11 +128,16 @@ describe('审核版本快照 · A5', () => {
 
     it('提交停用同样存快照', async () => {
       const id = 'sk_303' // 已发布种子
+      // sk_303 被通用专家 202「企业知识助手」引用，被引用的技能不能停用（产品优化需求-202611：停用看全部专家引用）；
+      // 本用例测快照写入，不测引用拦截：先清空技能侧的专家引用名单，末尾复原
+      const expertRefsBefore = [...(getRawSkill(id).expertRefNames || [])]
+      resetSkill(id, { expertRefNames: [] })
       const before = getSkillReviewSnapshot(id)
       if (before) await withdrawPublish(id)
       await delistSkill(id)
       expect(getSkillReviewSnapshot(id).requestAction).toBe('DELIST')
       await withdrawPublish(id)
+      resetSkill(id, { expertRefNames: expertRefsBefore })
     })
   })
 

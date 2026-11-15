@@ -3,7 +3,7 @@
  * 岗位详情 · 「知识」页签（md §5，2026-09-08 PRD-20260908 对齐）。
  *
  * 页签内只做只读列表（走现有 api/knowledgeBase.js，不改函数签名）：
- * 取岗位知识库（kbType=POSITION）并按可见范围 scopeRefId = 当前岗位 id 过滤
+ * 取岗位知识库（kbType=POSITION）并按「可见范围包含当前岗位 id」过滤（R3 起可见范围多选，一个库可给多个岗位）
  * （2026-09-23 待办 yuepu#9④：此前按岗位名字符串匹配，改名或未保存的草稿改名都会导致页签失联）；
  * 工具栏（搜索名称 / 状态 / 查询）照原型 knowledgePane L1871 本地过滤；
  * 行内仅【查看】【检索测试】（md §5.3），无新建 / 编辑入口（md §5.2 已删、原型 L4021 移除按钮），
@@ -55,7 +55,7 @@ async function loadPositionKbs() {
     const list = Array.isArray(data) ? data : data?.list || []
     // 按岗位 id 联查，不按岗位名字符串（2026-09-23 待办 yuepu#9④）：改岗位名（甚至只是表单里
     // 还没保存的草稿改动）不应影响知识页签的关联结果，id 才是稳定的关联键
-    kbRows.value = list.filter((r) => String(r.scopeRefId ?? '') === String(store.positionId ?? ''))
+    kbRows.value = list.filter((r) => (r.scopeRefIds || []).map(String).includes(String(store.positionId ?? '')))
     kbLoaded.value = true
   } catch {
     kbError.value = true
@@ -103,7 +103,7 @@ function gotoKbModule(action, row) {
 <template>
   <div class="pd-pane">
     <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：区块头 + 工具栏 + 表格整体并入一张白卡
-         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与 Agent 页签同款包卡） -->
+         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与技能页签同款包卡） -->
     <section class="pd-card">
       <!-- 区块头照原型 pdHead('知识库','该岗位可见范围内的知识库')；新建按钮已删（md §5.2 / 原型 L4021） -->
       <div class="pd-card-head">
@@ -201,7 +201,7 @@ function gotoKbModule(action, row) {
   /* 对表：原型 pd2-kb-toolbar padding 14px 16px（现状纵向 12px 少一档） */
   padding: 14px var(--space-4);
 }
-/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同 Agent 页签的 scope 复制口径，
+/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同技能页签的 scope 复制口径，
    照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
 .pd-card {
   background: var(--bg-surface);

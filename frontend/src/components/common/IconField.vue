@@ -14,12 +14,17 @@
  * 本批先接入岗位人格页「岗位图标」卡一处作样板；专家 / 技能 / MCP / API / 业务系统 / 模型抽屉
  * 换用归后续批次。
  *
+ * 2026-11-10 产品优化需求-202611 修改点 16（R12）：【上传图标】右侧加常驻提示（格式 / 大小 / 建议尺寸，
+ * 文案取 iconCrop.ICON_UPLOAD_HINT），所有用本组件的模块一并生效；只读态不能上传，不显示。
+ * 原图尺寸校验与「偏小」提示在 IconPickerPopover 的上传链路里。
+ *
  * 用法：
  *   <IconField :icon="form.icon" :name="form.name" :readonly="readonly" @pick="({ icon, iconSource }) => …" />
  */
 import { ref, computed } from 'vue'
 import IconPickerPopover from '@/components/position/IconPickerPopover.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
+import { ICON_UPLOAD_HINT } from '@/utils/iconCrop'
 
 const props = defineProps({
   /** 当前图标值：字符 / emoji / URL / dataURL */
@@ -59,6 +64,7 @@ defineExpose({ openLibrary, triggerUpload })
     </span>
     <el-button plain :disabled="readonly" @click="openLibrary">从图标库选择</el-button>
     <el-button plain :disabled="readonly" @click="triggerUpload">上传图标</el-button>
+    <span v-if="!readonly" class="icon-hint" data-testid="icon-upload-hint">{{ ICON_UPLOAD_HINT }}</span>
 
     <!-- 无头：只提供图标库弹窗 + 上传裁剪链路，不渲染头像触发块 -->
     <IconPickerPopover
@@ -76,6 +82,7 @@ defineExpose({ openLibrary, triggerUpload })
 /* 原型 L14 .icon-row{display:flex;align-items:center;gap:10px} */
 .icon-row {
   display: flex;
+  flex-wrap: wrap; /* 常驻提示单独换到按钮下一行 */
   align-items: center;
   gap: 10px;
 }
@@ -101,5 +108,14 @@ defineExpose({ openLibrary, triggerUpload })
 }
 .icon-row.is-readonly .icon-preview {
   opacity: 0.8;
+}
+/* R12 常驻提示：单独占一行放在按钮下方；contain: inline-size 让它不参与宽度计算——
+   否则在「名称 | 图标」这类两栏表单里，整行提示会把图标列撑宽、把旁边的输入框挤窄 */
+.icon-hint {
+  flex-basis: 100%;
+  contain: inline-size;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--c-text-faint);
 }
 </style>

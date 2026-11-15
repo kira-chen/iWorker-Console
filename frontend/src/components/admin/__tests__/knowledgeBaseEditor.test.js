@@ -12,12 +12,14 @@ import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__te
  *   2. 查看态【提交发布】的图标门（待办 yuepu#34）——§三.6 发布完整校验：无图标 toast「请选择知识库图标」、
  *      不弹确认框；有图标进入二次确认。
  *   3. 可见范围必填（待办 yuepu#7⑤）——§三.3.1「可见范围 | 是 | 企业类型固定为全员；专家类型选择专家…；岗位类型选择岗位」：
- *      企业类型免选可保存且不出 `scopeRefId is required`；专家类型未选红字「请选择可见范围」。
+ *      企业类型免选可保存且不出 `scopeRefIds is required`；专家类型未选红字「请选择可见范围」。
+ *      产品优化需求-202611 R3：可见范围改多选——专家下拉项「名称（专家类型）」、可选多位专家一起保存；
+ *      岗位上下文新建默认选上当前岗位、可再加其他岗位。
  *   4. 加载失败态（yuepu#49②）——编辑态详情加载失败表单不渲染；底部只留【关闭】。
  *
  * 第 3 组背景：
  * 真挂载 Element Plus（桩 el-form-item 拦不住这个 bug）：`<el-form-item required>` 会让 Element 额外塞一条
- * 内置 `{ required: true }` 规则，企业类型的 scopeRefId 恒为 '' → 报英文 `scopeRefId is required`，
+ * 内置 `{ required: true }` 规则，企业类型的 scopeRefIds 恒为空 → 报英文 `scopeRefIds is required`，
  * 企业知识库永远存不下来。修法是把必填星标放进 rules 里（`required: true` + 自定义 validator），
  * 由 validator 统一裁决「企业类型免选」。
  */
@@ -50,12 +52,16 @@ const clickBtn = (label) => [...drawer().querySelectorAll('.el-button')].find((b
 /** 可见范围表单项（按标签文字定位，不依赖顺序） */
 const scopeItem = () => [...drawer().querySelectorAll('.el-form-item')].find((i) => i.querySelector('.el-form-item__label')?.textContent.trim() === '可见范围')
 
-async function mountCreate({ withIcon = true } = {}) {
+async function mountCreate({ withIcon = true, props = {} } = {}) {
   api.listKnowledgeSources.mockResolvedValue({ list: [] })
-  api.listExpertOptions.mockResolvedValue([{ id: 'ex_1', name: '售前专家' }])
-  api.listPositionOptions.mockResolvedValue([{ id: 'pos_1', name: '销售顾问' }])
+  // R3：专家候选为专家模块真实数据（带专家类型），岗位候选为全部岗位
+  api.listExpertOptions.mockResolvedValue([
+    { id: 201, name: '经营分析专家', type: 'PLATFORM', typeLabel: '市场专家' },
+    { id: 205, name: '经营数据核查专家', type: 'POSITION', typeLabel: '岗位私有' }
+  ])
+  api.listPositionOptions.mockResolvedValue([{ id: 401, name: '经营分析岗' }, { id: 404, name: '市场研究岗' }])
   api.createKnowledgeBase.mockResolvedValue({ id: 'kb_new', name: '新库', kbType: 'ENTERPRISE', sources: [] })
-  mounted = mountReal(Editor, { visible: true, kbId: null })
+  mounted = mountReal(Editor, { visible: true, kbId: null, ...props })
   await flushAll(10)
   // 名称 / 描述走 v-model 真输入
   const inputs = drawer().querySelectorAll('input.el-input__inner, textarea.el-textarea__inner')
@@ -104,7 +110,7 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
   // 查看抽屉不调 formRef.validate()，发布前只靠 publishBlockReason(detail)；此前它不查图标，
   // 无图标的库在查看态能一路点到提交发布（md §三.6 发布完整校验是独立条款）
   const viewDetail = (over = {}) => ({
-    id: 'kb_v', name: '查看态库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '有描述',
+    id: 'kb_v', name: '查看态库', icon: '📦', kbType: 'ENTERPRISE', scopeRefIds: [], scopeRefs: [], scopeRefNames: [], description: '有描述',
     status: 'DRAFT', pendingAction: null,
     sources: [{ id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 2, parsedDocCount: 2 }],
     ...over
@@ -147,19 +153,19 @@ describe('KnowledgeBaseEditor · 查看态【提交发布】的图标门（待�
 })
 
 describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1）', () => {
-  it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefId is required`', async () => {
+  it('企业类型（默认）：可见范围固定「全员」不用选，点【保存】能调到 createKnowledgeBase，且无 `scopeRefIds is required`', async () => {
     await mountCreate()
     expect(formModel().kbType).toBe('ENTERPRISE')
-    expect(formModel().scopeRefId).toBe('')
+    expect(formModel().scopeRefIds).toEqual([])
 
     clickBtn('保存')
     await flushAll(10)
     await new Promise((r) => setTimeout(r, 250)) // ElFormItem 红字过 100ms 防抖才渲染
     await flushAll(4)
 
-    expect(errorTexts().join('|')).not.toContain('scopeRefId is required')
+    expect(errorTexts().join('|')).not.toContain('scopeRefIds is required')
     expect(api.createKnowledgeBase).toHaveBeenCalledTimes(1)
-    expect(api.createKnowledgeBase.mock.calls[0][0]).toMatchObject({ kbType: 'ENTERPRISE', scopeRefId: null })
+    expect(api.createKnowledgeBase.mock.calls[0][0]).toMatchObject({ kbType: 'ENTERPRISE', scopeRefIds: [] })
   })
 
   it('企业类型：「可见范围」标签仍带必填星标（PRD 一览表「是」）', async () => {
@@ -178,8 +184,67 @@ describe('KnowledgeBaseEditor · 可见范围必填（md §三.3.1）', () => {
     await flushAll(4)
 
     expect(errorTexts()).toContain('请选择可见范围')
-    expect(errorTexts().join('|')).not.toContain('scopeRefId is required')
+    expect(errorTexts().join('|')).not.toContain('scopeRefIds is required')
     expect(api.createKnowledgeBase).not.toHaveBeenCalled()
+  })
+})
+
+// 产品优化需求-202611 R3：专家、岗位知识库的可见范围改多选，一个知识库可给多位专家或多个岗位使用
+describe('KnowledgeBaseEditor · 可见范围多选（产品优化需求-202611 R3）', () => {
+  /** 可见范围下拉的候选项（下拉内容挂在 body 上，按 select 输入框的 aria-controls 定位） */
+  const scopeOptionItems = () => {
+    const listId = scopeItem().querySelector('input').getAttribute('aria-controls')
+    return [...document.getElementById(listId).querySelectorAll('.el-select-dropdown__item')]
+  }
+  const clickScopeOption = (text) => scopeOptionItems().find((i) => i.textContent.trim() === text).click()
+  const saveAndSettle = async () => {
+    clickBtn('保存')
+    await flushAll(10)
+    await new Promise((r) => setTimeout(r, 250))
+    await flushAll(4)
+  }
+
+  it('专家类型：下拉项展示「专家名（专家类型）」', async () => {
+    await mountCreate()
+    formModel().kbType = 'EXPERT'
+    await flushAll(6)
+    expect(scopeOptionItems().map((i) => i.textContent.trim())).toEqual(['经营分析专家（市场专家）', '经营数据核查专家（岗位私有）'])
+  })
+
+  it('专家类型：先后选 2 位专家点【保存】→ createKnowledgeBase 收到两位专家的 id', async () => {
+    await mountCreate()
+    formModel().kbType = 'EXPERT'
+    await flushAll(6)
+    clickScopeOption('经营分析专家（市场专家）')
+    await flushAll(4)
+    clickScopeOption('经营数据核查专家（岗位私有）')
+    await flushAll(4)
+    await saveAndSettle()
+    expect(api.createKnowledgeBase).toHaveBeenCalledTimes(1)
+    expect(api.createKnowledgeBase.mock.calls[0][0]).toMatchObject({ kbType: 'EXPERT', scopeRefIds: [201, 205] })
+  })
+
+  it('从岗位上下文新建：当前岗位已默认选上，再加一个岗位点【保存】→ createKnowledgeBase 收到两个岗位的 id', async () => {
+    await mountCreate({ props: { positionLock: { id: 401, name: '经营分析岗' } } })
+    expect(formModel().scopeRefIds).toEqual([401])
+    clickScopeOption('市场研究岗')
+    await flushAll(4)
+    await saveAndSettle()
+    expect(api.createKnowledgeBase).toHaveBeenCalledTimes(1)
+    expect(api.createKnowledgeBase.mock.calls[0][0]).toMatchObject({ kbType: 'POSITION', scopeRefIds: [401, 404] })
+  })
+
+  // 产品优化需求-202611 修改点 8：从岗位「知识」页签跳来时岗位 id 来自地址栏（字符串「401」），候选 id 是数字 401；
+  // 此前类型不一致 → 标签显示裸 id「401」、下拉里该岗位不打勾、再点一次会重复加
+  it('修改点 8 岗位锁 id 是字符串「401」→ 可见范围标签显示「经营分析岗」、下拉里该岗位打勾；再加一个岗位保存，收到的是 [401, 404] 不重复', async () => {
+    await mountCreate({ props: { positionLock: { id: '401', name: '经营分析岗' } } })
+    expect([...scopeItem().querySelectorAll('.el-select__tags-text')].map((t) => t.textContent.trim())).toEqual(['经营分析岗'])
+    expect(scopeOptionItems().find((i) => i.textContent.trim() === '经营分析岗').classList.contains('is-selected')).toBe(true)
+    clickScopeOption('市场研究岗')
+    await flushAll(4)
+    await saveAndSettle()
+    expect(api.createKnowledgeBase).toHaveBeenCalledTimes(1)
+    expect(api.createKnowledgeBase.mock.calls[0][0].scopeRefIds).toEqual([401, 404])
   })
 })
 

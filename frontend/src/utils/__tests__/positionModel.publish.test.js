@@ -1,6 +1,9 @@
 // 2026-09-12 测试审计 T35：自 positionModel.test.js 拆出「发布」主题（对齐 md 岗位 §3.7 版本号 / §9.1 阻断校验 /
-// §9.2 发布前检查弹窗）：版本号校验 / 发布告警归一 / computePublishCheck / computeCompletenessMissing / agentsWithSkillOk。条目原样迁移，断言不改。
+// §9.2 发布前检查弹窗）：版本号校验 / 发布告警归一 / computePublishCheck / computeCompletenessMissing / skillsRefOk。条目原样迁移，断言不改。
 // 2026-09-21 负责人拍板：领用页文案必填（至少 1 条）、岗位图标必填、采集字段必填（至少 1 个），阻断项由六项扩为九项，夹具与断言随之补齐。
+// 2026-11-12 产品优化需求-202611 修改点 1（R1）：取消 Agent，岗位直接引用技能。阻断项第 8 条由「Agent 与技能：至少配置 1 个 Agent，
+// 且该 Agent 至少引用 1 个技能」改为「技能：至少引用 1 个技能」，校验失败定位到「技能」页签；发布前检查弹窗「Agent 与技能：存在 X 个
+// 工具未验证」改为「技能：存在 X 个工具未验证」。夹具 agents[].skills[] 改为 skills[]；「多 Agent 有一个带技能即通过」随 Agent 取消删除。
 import { describe, it, expect } from 'vitest'
 import {
   validateVersionLabel,
@@ -8,7 +11,7 @@ import {
   computeCompletenessMissing,
   claimNotesComplete,
   intakeFieldCount,
-  agentsWithSkillOk,
+  skillsRefOk,
   normalizePublishWarnings
 } from '@/utils/positionModel'
 
@@ -51,8 +54,8 @@ describe('normalizePublishWarnings（发布告警归一，契约 §1.6.1）', ()
 
 describe('computePublishCheck（发布前检查）', () => {
   // 2026-09-09 PRD 复核·G1（A1 / Q11 负责人新决策）：阻断项由 4 项扩到 md §9.1 六项——
-  // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / Agent 与技能（≥1 Agent 且该 Agent ≥1 技能）/
-  // 自动化任务（≥1 条）。此前「Agent 与技能仅警告不阻断」的口径已被推翻。
+  // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / 技能（≥1 个；原「Agent 与技能」，产品优化需求-202611 R1 改）/
+  // 自动化任务（≥1 条）。此前「技能仅警告不阻断」的口径已被推翻。
   // 2026-09-21 负责人拍板再追加岗位图标（已选择）、领用页文案（≥1 条）、采集字段（≥1 个）→ 九项。
   const FULL = {
     name: '销售',
@@ -62,16 +65,17 @@ describe('computePublishCheck（发布前检查）', () => {
     positionSop: '1. 先看数据',
     intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }],
     exampleQuestions: ['q1', 'q2', 'q3'],
-    agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
+    skills: [{ skillId: 1 }],
     sampleTaskCount: 1
   }
-  it('九项全满足 → blockingPassed=true；清单八行标签与文案', () => {
+  it('九项全满足 → blockingPassed=true；清单八行标签与文案（第 7 行为「技能」，产品优化需求-202611 修改点 1）', () => {
     const c = computePublishCheck({ ...FULL })
     expect(c.blockingPassed).toBe(true)
     expect(c.doneRatio).toBe(1)
-    expect(c.items.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
+    expect(c.items.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '领用页文案', '示例问题', '岗位 SOP', '采集字段', '技能', '自动化任务'])
+    // 「技能」行通过态文案 PRD 未逐字规定（§9.2 只写了告警态），按代码现状「已引用技能」守住，防止回退成旧的「已配置 Agent 与技能」
     expect(c.items.map((i) => i.detail)).toEqual([
-      '已填写"销售"', '已选择', '已填写', '3 个引导问题已填写', '岗位能力综述已填写', '已配置 1 个', '已配置 Agent 与技能', '已配置 1 条自动化任务'
+      '已填写"销售"', '已选择', '已填写', '3 个引导问题已填写', '岗位能力综述已填写', '已配置 1 个', '已引用技能', '已配置 1 条自动化任务'
     ])
     expect(c.warnings).toEqual([]) // 无未验证工具 → 不出「存在告警项」提示行
     expect(c.items.every((i) => i.blocking)).toBe(true) // 八行全为阻断项
@@ -89,7 +93,7 @@ describe('computePublishCheck（发布前检查）', () => {
   it('引用了已回收的技能 / 连接器（岗位 PRD §6.4 / §8）：每个对象一行硬阻断，文案「引用的「XX」已被回收，请移除后再发布」；无回收对象时清单不变', () => {
     const c = computePublishCheck({
       ...FULL,
-      agents: [{ name: 'A', skills: [{ skillId: 1, name: '日报生成', revoked: { reason: 'r', at: 't', operator: 'o' } }, { skillId: 2, name: '正常技能', revoked: null }] }],
+      skills: [{ skillId: 1, name: '日报生成', revoked: { reason: 'r', at: 't', operator: 'o' } }, { skillId: 2, name: '正常技能', revoked: null }],
       revokedConnectors: ['报销系统 MCP', 'CRM 系统']
     })
     const rows = c.items.filter((i) => i.key.startsWith('revokedRef_'))
@@ -163,20 +167,16 @@ describe('computePublishCheck（发布前检查）', () => {
     expect(c.items.find((i) => i.key === 'sop').ok).toBe(false)
     expect(c.blockingPassed).toBe(false)
   })
-  it('空 Agent / Agent 无技能 → 阻断（md §6.5 / §9.1 第 8 条，2026-09-09 Q11 新决策）', () => {
-    for (const agents of [[], undefined, [{ name: '空组', skills: [] }]]) {
-      const c = computePublishCheck({ ...FULL, agents })
+  it('未引用技能（空数组 / 未传）→ 「技能」行阻断，文案「至少引用 1 个技能」（产品优化需求-202611 修改点 1：阻断项第 8 条改为「技能：至少引用 1 个技能」）', () => {
+    for (const skills of [[], undefined]) {
+      const c = computePublishCheck({ ...FULL, skills })
       expect(c.blockingPassed).toBe(false)
-      const item = c.items.find((i) => i.key === 'agents')
+      const item = c.items.find((i) => i.key === 'skills')
+      expect(item.label).toBe('技能')
       expect(item.blocking).toBe(true)
       expect(item.ok).toBe(false)
-      expect(item.detail).toBe('至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能')
+      expect(item.detail).toBe('至少引用 1 个技能')
     }
-  })
-  it('多 Agent 中只要有一个带技能即通过（md 用「该 Agent」单数指代，非「每个 Agent」）', () => {
-    const c = computePublishCheck({ ...FULL, agents: [{ name: '空组', skills: [] }, { name: 'B', skills: [{ skillId: 2 }] }] })
-    expect(c.items.find((i) => i.key === 'agents').ok).toBe(true)
-    expect(c.blockingPassed).toBe(true)
   })
   it('自动化任务 0 条 → 阻断（md §7.9 / §9.1 第 9 条）', () => {
     for (const sampleTaskCount of [0, undefined]) {
@@ -193,18 +193,11 @@ describe('computePublishCheck（发布前检查）', () => {
     expect(c.items.find((i) => i.key === 'intake')).toBeUndefined()
     expect(c.blockingPassed).toBe(true)
   })
-  it('异常工具 → Agent 与技能行附注「存在 X 个工具未验证，不阻断发布」并计入 warnings（工具异常本身不阻断）', () => {
-    const c = computePublishCheck({
-      ...FULL,
-      // orphanSkills 已退役：即便传入也不应产生 warning（删 Agent 后技能脱离岗位、不属本岗位）。
-      orphanSkills: [{ skillId: 9 }],
-      unhealthyTools: ['crm']
-    })
-    expect(c.blockingPassed).toBe(true) // Agent 与技能已配齐 → 阻断项通过；未验证工具只是告警
+  it('异常工具 → 「技能」行附注「存在 X 个工具未验证，不阻断发布」并计入 warnings（工具异常本身不阻断；产品优化需求-202611 修改点 1 由「Agent 与技能」行改为「技能」行）', () => {
+    const c = computePublishCheck({ ...FULL, unhealthyTools: ['crm'] })
+    expect(c.blockingPassed).toBe(true) // 已引用技能 → 阻断项通过；未验证工具只是告警
     expect(c.warnings.length).toBe(1)
-    expect(c.warnings[0].key).toBe('agents')
-    expect(c.warnings[0].detail).toBe('存在 1 个工具未验证，不阻断发布')
-    expect(c.warnings.find((w) => w.key === 'orphan')).toBeUndefined()
+    expect(c.warnings[0]).toMatchObject({ key: 'skills', label: '技能', detail: '存在 1 个工具未验证，不阻断发布' })
   })
 })
 
@@ -215,16 +208,16 @@ describe('computeCompletenessMissing（md §9.1 九项完整性校验 · 保存�
     name: '销售', icon: '▤', description: '负责销售', claimDescriptions: ['自动汇总经营数据'], positionSop: '1. 先看数据',
     intakeSchema: [{ label: '负责区域', key: 'region', type: 'text' }],
     exampleQuestions: ['q1', 'q2', 'q3'],
-    agents: [{ name: 'A', skills: [{ skillId: 1 }] }],
+    skills: [{ skillId: 1 }],
     sampleTaskCount: 2
   }
   it('九项齐备 → 空数组', () => {
     expect(computeCompletenessMissing(FULL)).toEqual([])
   })
-  it('全空 → 九项按 md 列举顺序全部返回，且各带所在页签', () => {
+  it('全空 → 九项按 md 列举顺序全部返回，且各带所在页签（第 8 项「技能」定位到「技能」页签 skills，产品优化需求-202611 修改点 1）', () => {
     const miss = computeCompletenessMissing({})
-    expect(miss.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '岗位描述', '领用页文案', '3 条示例问题', '岗位 SOP', '采集字段', 'Agent 与技能', '自动化任务'])
-    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'persona', 'persona', 'intake', 'agents', 'tasks'])
+    expect(miss.map((i) => i.label)).toEqual(['岗位名称', '岗位图标', '岗位描述', '领用页文案', '3 条示例问题', '岗位 SOP', '采集字段', '技能', '自动化任务'])
+    expect(miss.map((i) => i.tab)).toEqual(['persona', 'persona', 'persona', 'persona', 'persona', 'persona', 'intake', 'skills', 'tasks'])
   })
   it('逐项缺失只报该项', () => {
     expect(computeCompletenessMissing({ ...FULL, name: '  ' }).map((i) => i.key)).toEqual(['name'])
@@ -237,7 +230,7 @@ describe('computeCompletenessMissing（md §9.1 九项完整性校验 · 保存�
     expect(computeCompletenessMissing({ ...FULL, claimDescriptions: ['  '] }).map((i) => i.key)).toEqual(['claimDescriptions'])
     expect(computeCompletenessMissing({ ...FULL, exampleQuestions: ['q1', '', 'q3'] }).map((i) => i.key)).toEqual(['exampleQuestions'])
     expect(computeCompletenessMissing({ ...FULL, positionSop: '' }).map((i) => i.key)).toEqual(['positionSop'])
-    expect(computeCompletenessMissing({ ...FULL, agents: [{ name: '空组', skills: [] }] }).map((i) => i.key)).toEqual(['agents'])
+    expect(computeCompletenessMissing({ ...FULL, skills: [] }).map((i) => i.key)).toEqual(['skills'])
     expect(computeCompletenessMissing({ ...FULL, sampleTaskCount: 0 }).map((i) => i.key)).toEqual(['sampleTasks'])
   })
   it('与 computePublishCheck 口径一致：missing 为空 ⇔ blockingPassed', () => {
@@ -267,11 +260,15 @@ describe('intakeFieldCount（采集字段必填：至少 1 个有字段名的字
   })
 })
 
-describe('agentsWithSkillOk（md §9.1 第 8 条）', () => {
-  it('无 Agent / 非数组 / Agent 全无技能 → false；任一 Agent 有技能 → true', () => {
-    expect(agentsWithSkillOk()).toBe(false)
-    expect(agentsWithSkillOk([])).toBe(false)
-    expect(agentsWithSkillOk([{ skills: [] }, { skills: null }])).toBe(false)
-    expect(agentsWithSkillOk([{ skills: [] }, { skills: [{ skillId: 1 }] }])).toBe(true)
+describe('skillsRefOk（md §9.1 第 8 条，产品优化需求-202611 修改点 1 改为「技能：至少引用 1 个技能」）', () => {
+  it('未传 / 非数组 / 空数组 → false；引用了 1 个技能 → true', () => {
+    expect(skillsRefOk()).toBe(false)
+    expect(skillsRefOk(null)).toBe(false)
+    expect(skillsRefOk([])).toBe(false)
+    expect(skillsRefOk([{ skillId: 1 }])).toBe(true)
+  })
+  it('悬空引用（技能本体已被删除，VO 标 deleted）不算数：只剩悬空引用 → false，另有一个有效引用 → true（待办 yuepu#9⑤）', () => {
+    expect(skillsRefOk([{ skillId: 9, deleted: true }])).toBe(false)
+    expect(skillsRefOk([{ skillId: 9, deleted: true }, { skillId: 1, deleted: false }])).toBe(true)
   })
 })

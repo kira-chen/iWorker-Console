@@ -116,11 +116,11 @@ async function mount() {
 
 // 五态样本：已发布(有领用) / 已发布(零领用) / 未发布(无技能) / 未发布(有技能) / 审核中(停用在审)
 const ROWS = [
-  { positionId: 'ps_pub', name: '销售', description: '卖货', agentCount: 2, skillCount: 3, claimedUserCount: 5, status: 'published', pendingAction: null, latestVersion: 'v1.0.0', updatedAt: '2026-08-25T16:20:00+08:00' },
-  { positionId: 'ps_pub0', name: '零领用岗', description: '', agentCount: 1, skillCount: 1, claimedUserCount: 0, status: 'published', pendingAction: null, latestVersion: 'v1.1.0', updatedAt: '2026-08-24T10:00:00+08:00' },
-  { positionId: 'ps_draft', name: '草稿岗', description: '', agentCount: 0, skillCount: 0, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-23T09:00:00+08:00' },
-  { positionId: 'ps_draft_ok', name: '可发布草稿岗', description: '', agentCount: 1, skillCount: 2, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-22T09:00:00+08:00' },
-  { positionId: 'ps_reviewing', name: '停用中岗', description: '', agentCount: 1, skillCount: 1, claimedUserCount: 0, status: 'published', pendingAction: 'DELIST', latestVersion: 'v1.0.0', updatedAt: '2026-08-21T09:00:00+08:00' }
+  { positionId: 'ps_pub', name: '销售', description: '卖货', skillCount: 3, claimedUserCount: 5, status: 'published', pendingAction: null, latestVersion: 'v1.0.0', updatedAt: '2026-08-25T16:20:00+08:00' },
+  { positionId: 'ps_pub0', name: '零领用岗', description: '', skillCount: 1, claimedUserCount: 0, status: 'published', pendingAction: null, latestVersion: 'v1.1.0', updatedAt: '2026-08-24T10:00:00+08:00' },
+  { positionId: 'ps_draft', name: '草稿岗', description: '', skillCount: 0, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-23T09:00:00+08:00' },
+  { positionId: 'ps_draft_ok', name: '可发布草稿岗', description: '', skillCount: 2, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-22T09:00:00+08:00' },
+  { positionId: 'ps_reviewing', name: '停用中岗', description: '', skillCount: 1, claimedUserCount: 0, status: 'published', pendingAction: 'DELIST', latestVersion: 'v1.0.0', updatedAt: '2026-08-21T09:00:00+08:00' }
 ]
 
 function rowByName(name) {
@@ -133,7 +133,8 @@ function btn(row, text) {
   return btns(row).find((b) => b.textContent.trim() === text)
 }
 
-// md §9.1 九项齐备的岗位详情（A1 发布门入参）：名称/图标/描述/领用页文案/示例问题 3 条/SOP/采集字段/Agent 与技能/自动化任务
+// md §9.1 九项齐备的岗位详情（A1 发布门入参）：名称/图标/描述/领用页文案/示例问题 3 条/SOP/采集字段/技能/自动化任务
+// （第 8 项按 产品优化需求-202611 修改点 1 改为「技能：至少引用 1 个技能」，岗位直接引用技能，不再有 agents[]）
 const FULL_DETAIL = {
   name: '可发布草稿岗',
   icon: '▤',
@@ -142,7 +143,7 @@ const FULL_DETAIL = {
   exampleQuestions: ['q1', 'q2', 'q3'],
   positionSop: 'sop',
   intakeSchema: [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }],
-  agents: [{ name: 'A1', skills: [{ skillId: 1 }] }]
+  skills: [{ skillId: 1, name: '经营数据汇总' }]
 }
 
 beforeEach(() => {
@@ -219,13 +220,13 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
   })
 
   it('②c 发布门（A1）：缺项 → toast「请先填写：…」+ 跳详情页第一个缺失项所在页签，不开侧栏', async () => {
-    // 缺 岗位 SOP（persona 页签）+ Agent 与技能（agents 页签）+ 自动化任务（tasks 页签，md §三.1.3「自动化任务（`tasks`）」）
-    getPosition.mockResolvedValue({ ...FULL_DETAIL, positionSop: '', agents: [{ name: 'A1', skills: [] }] })
+    // 缺 岗位 SOP（persona 页签）+ 技能（skills 页签，修改点 1「技能：至少引用 1 个技能」）+ 自动化任务（tasks 页签，md §三.1.3「自动化任务（`tasks`）」）
+    getPosition.mockResolvedValue({ ...FULL_DETAIL, positionSop: '', skills: [] })
     listSampleTasks.mockResolvedValue({ list: [] })
     await mount()
     btn(rowByName('可发布草稿岗'), '发布').click()
     await flush()
-    expect(ElMessage.warning).toHaveBeenCalledWith('请先填写：岗位 SOP、Agent 与技能、自动化任务')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请先填写：岗位 SOP、技能、自动化任务')
     // 第一个缺失项 = 岗位 SOP → persona 页签
     expect(push).toHaveBeenCalledWith({
       name: 'PositionWorkbench',
@@ -313,7 +314,7 @@ describe('AdminPositions 操作列（md §二.3；历史出处：原型 position
 
   it('④c 删除领用护栏（2026-09-04 新 md）：被领用的未发布岗 → 提示先解除领用，不执行删除', async () => {
     listPositions.mockResolvedValue({
-      list: [{ positionId: 'ps_claimed_draft', name: '被领用草稿岗', description: '', agentCount: 1, skillCount: 1, claimedUserCount: 3, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-20T09:00:00+08:00' }],
+      list: [{ positionId: 'ps_claimed_draft', name: '被领用草稿岗', description: '', skillCount: 1, claimedUserCount: 3, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-20T09:00:00+08:00' }],
       total: 1
     })
     await mount()

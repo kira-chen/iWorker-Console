@@ -46,7 +46,12 @@ const stubs = {
   'el-tooltip': { template: '<div><slot /></div>' },
   'el-skeleton': { template: '<div />' },
   'el-button': { template: '<button><slot /></button>' },
-  'el-switch': { template: '<span class="el-switch-stub" />' },
+  // 透出 v-model / disabled，供「不在市场展示」与默认安装互斥的用例点击与断言
+  'el-switch': {
+    props: ['modelValue', 'disabled'],
+    emits: ['update:modelValue'],
+    template: '<span class="el-switch-stub" :data-on="String(!!modelValue)" :data-disabled="String(!!disabled)" @click="!disabled && $emit(\'update:modelValue\', !modelValue)" />'
+  },
   'el-dropdown': { template: '<div><slot /><slot name="dropdown" /></div>' },
   'el-dropdown-menu': { template: '<div><slot /></div>' },
   'el-dropdown-item': { template: '<div><slot /></div>' },
@@ -258,5 +263,40 @@ describe('示例问题【AI 生成】接线（md 技能 §三.3 L195；yuepu#13�
     vi.advanceTimersByTime(600)
     await nextTick()
     expect(updateSkillSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('不在市场展示（产品优化需求-202611 R14：仅市场技能有，与默认安装互斥）', () => {
+  const BASE_SKILL = { skillId: 'sk_a', name: '客户回访', description: '回访客户并记录要点', exampleQuestion: '', triggers: [], skillMd: '# md', referencedTools: [], category: null }
+  const hideBox = () => container.querySelector('[data-testid="hide-from-market"]')
+  const diSwitch = () => container.querySelector('[data-testid="default-install"] .el-switch-stub')
+
+  it('市场技能：顶栏有「不在市场展示」开关', () => {
+    mountAdmin()
+    expect(hideBox().textContent).toContain('不在市场展示')
+  })
+
+  it('岗位私有技能、系统默认通道：不展示这个开关', () => {
+    mountAdmin({ skillSource: 'fde' })
+    expect(hideBox()).toBeNull()
+    app.unmount()
+    container.remove()
+    mountAdmin({ skillSource: 'system', hideMarketFields: true })
+    expect(hideBox()).toBeNull()
+  })
+
+  it('打开「不在市场展示」→ 同一次回吐里默认安装一起关掉', () => {
+    mountAdmin({ skill: { ...BASE_SKILL, defaultInstall: true } })
+    hideBox().querySelector('.el-switch-stub').click()
+    expect(updateSkillSpy).toHaveBeenLastCalledWith(expect.objectContaining({ hideFromMarket: true, defaultInstall: false }))
+  })
+
+  it('已不在市场展示 → 默认安装开关置灰；在市场展示时可用', () => {
+    mountAdmin({ skill: { ...BASE_SKILL, hideFromMarket: true } })
+    expect(diSwitch().dataset.disabled).toBe('true')
+    app.unmount()
+    container.remove()
+    mountAdmin({ skill: { ...BASE_SKILL, hideFromMarket: false } })
+    expect(diSwitch().dataset.disabled).toBe('false')
   })
 })

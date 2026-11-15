@@ -5,12 +5,12 @@ import { createApp, h, nextTick, reactive } from 'vue'
 /**
  * ExpertEditor.vue 单测。
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md
- *   §三.1 三态抽屉 / §三.2 基本信息 / §三.3 示例问题 / §三.4 市场技能引用 / §三.5 知识库 / §三.6 时间信息 / §三.7 保存与关闭。
+ *   §三.1 三态抽屉 / §三.2 基本信息 / §三.3 示例问题 / §三.4 技能引用 / §三.5 知识库 / §三.6 时间信息 / §三.7 保存与关闭。
  * 本文件 el-drawer/el-form 为桩；真实挂载冒烟见 expertEditorSmoke.test.js。
  * 2026-09-01 PRD 对齐改造取代旧口径（原断言基于：先建后挂的 add/removeExpertSkill 弹窗选择器 /
  * 无分类无示例问题 / 编辑态才校验技能），本文件按新契约重写：
  * - 基本信息补「分类」必选；「专家帮你做」固定 3 条 + 【AI 生成】；
- * - 市场技能引用内嵌卡片勾选（默认收起前 2 + 展开更多；搜索；新建态即可勾选，选择随 create/update 落库）；
+ * - 技能引用内嵌卡片勾选（默认收起前 2 + 展开更多；搜索；选择随 create/update 落库）；
  * - footer：新建=取消/创建专家，编辑=取消/发布/保存；【发布】静默保存后 emit publish 并收抽屉；
  * - toast：创建「专家已创建」、保存「专家配置已保存」；
  * - 只读查看态（原型 openExpertViewer）：状态/分类/编号示例问题/技能引用 N 个技能/底部时间条/仅【关闭】。
@@ -22,19 +22,27 @@ import { createApp, h, nextTick, reactive } from 'vue'
  * - 示例问题校验收紧（专用 toast + 空框标红 + focus 首个空输入框 + 区标题红星）；
  * - 技能引用区后只读「知识库」区块（既有 listKnowledgeBases 只读接口 + 可见范围过滤 +
  *   默认露 2 行/展开更多（N）/搜索；查看/检索测试跳知识库路由带参）。
+ *
+ * 2026-11-09 按《产品优化需求-202611》R2 / R13 草案更新：
+ * - 「所属岗位」只读：展示引用本专家的岗位名 + 灰字「在岗位详情「专家与专家团」页签维护」，新建不选岗位，payload 不带 positionIds；
+ * - 知识库区：岗位私有专家另含所属岗位的岗位知识库，名称旁标「企业 / 专家 / 岗位」。
+ *
+ * 2026-11-10 专家按类型引用技能：
+ * - 区标题「技能引用」；候选按专家类型取（listExpertSkillCandidates({ expertType })）：岗位私有专家 = 岗位私有 + 市场 + 通用技能，
+ *   市场 / 通用专家 = 市场 + 通用技能；新建先选类型才有候选（未选显「请先选择专家类型」），编辑 / 查看 / 快照按专家自身类型取；
+ * - 新建时切换类型，超出新范围的已选技能被取消并 info 提示；技能卡标类型（岗位私有 / 市场技能 / 通用技能）；
+ * - 发布门文案「至少引用 1 个技能才能发布」，汇总「已选择 X 个 · 共 Y 个技能」。
  */
 
 const getExpert = vi.fn()
 const createExpert = vi.fn()
 const updateExpert = vi.fn()
 const listExpertSkillCandidates = vi.fn()
-const getExpertKbScopeRefId = vi.fn()
 vi.mock('@/api/domainExpert', () => ({
   getExpert: (...a) => getExpert(...a),
   createExpert: (...a) => createExpert(...a),
   updateExpert: (...a) => updateExpert(...a),
-  listExpertSkillCandidates: (...a) => listExpertSkillCandidates(...a),
-  getExpertKbScopeRefId: (...a) => getExpertKbScopeRefId(...a)
+  listExpertSkillCandidates: (...a) => listExpertSkillCandidates(...a)
 }))
 
 // 只读「知识库」区块数据源（既有只读接口，签名不动）
@@ -53,7 +61,7 @@ vi.mock('vue-router', () => ({
   createWebHistory: () => ({})
 }))
 
-const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
+const ElMessage = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() })
 vi.mock('element-plus', () => ({ ElMessage }))
 
 vi.mock('@/components/position/IconPickerPopover.vue', () => ({
@@ -245,18 +253,30 @@ async function fillRequired(name = '新专家') {
   await checkSkill(0)
 }
 
+// 技能候选（形状同 domainExpertMock.skillCandidatesFor）：市场 / 通用专家 = 市场 + 通用技能；岗位私有专家另含岗位私有技能
 const CANDIDATES = [
-  { id: 302, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析' },
-  { id: 304, name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', category: '办公效率' },
-  { id: 307, name: '竞品信息汇总', description: '汇总公开渠道的竞品动态', category: '内容创作' }
+  { id: 302, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析', type: 'PLATFORM' },
+  { id: 304, name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', category: '办公效率', type: 'PLATFORM' },
+  { id: 303, name: '会议纪要整理', description: '提取会议结论、待办事项与责任人', category: '办公效率', type: 'SYSTEM_DEFAULT' }
 ]
+const POSITION_CANDIDATES = [
+  { id: 301, name: '日报周报生成', description: '根据工作记录自动整理日报与周报', category: '办公效率', type: 'POSITION' },
+  ...CANDIDATES
+]
+/** 候选桩：同真实接口口径——按 expertType 给范围，没给类型返回空。 */
+const candidatesFor = ({ expertType } = {}) =>
+  Promise.resolve(expertType === 'POSITION' ? POSITION_CANDIDATES : expertType ? CANDIDATES : [])
+/** 带了专家类型的候选请求（只看实参里的 expertType）。 */
+const typedCandidateCalls = () => listExpertSkillCandidates.mock.calls.map(([p]) => p?.expertType).filter(Boolean)
 
 // 可见范围过滤用知识库行（vo 形状；kb_pos 为 POSITION 型 → 专家不可见，任何态都不该出现）
 const KBS = [
-  { id: 'kb_1', name: '产品与解决方案库', description: '公司全线产品的规格书与典型案例', kbType: 'ENTERPRISE', scopeRefId: null, status: 'PUBLISHED', pendingAction: null, docCount: 128, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'ENABLED' }] },
-  { id: 'kb_2', name: '报价政策与折扣权限', description: '', kbType: 'ENTERPRISE', scopeRefId: null, status: 'PUBLISHED', pendingAction: null, docCount: 46, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
-  { id: 'kb_6', name: '2026 产品白皮书库', description: '', kbType: 'EXPERT', scopeRefId: 'ex_1', status: 'DRAFT', pendingAction: null, docCount: 52, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
-  { id: 'kb_pos', name: '销售话术与异议处理', description: '', kbType: 'POSITION', scopeRefId: 'ps_1', status: 'PUBLISHED', pendingAction: null, docCount: 312, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] }
+  { id: 'kb_1', name: '产品与解决方案库', description: '公司全线产品的规格书与典型案例', kbType: 'ENTERPRISE', scopeRefIds: [], status: 'PUBLISHED', pendingAction: null, docCount: 128, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'ENABLED' }] },
+  { id: 'kb_2', name: '报价政策与折扣权限', description: '', kbType: 'ENTERPRISE', scopeRefIds: [], status: 'PUBLISHED', pendingAction: null, docCount: 46, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  // R3：可见范围多选、用专家模块真实 id——kb_6 同时给 201（本文件 DETAIL）和 204；kb_ex_other 只给 204，201 看不到
+  { id: 'kb_6', name: '2026 产品白皮书库', description: '', kbType: 'EXPERT', scopeRefIds: [201, 204], status: 'DRAFT', pendingAction: null, docCount: 52, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_ex_other', name: '研究报告素材库', description: '', kbType: 'EXPERT', scopeRefIds: [204], status: 'PUBLISHED', pendingAction: null, docCount: 7, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_pos', name: '销售话术与异议处理', description: '', kbType: 'POSITION', scopeRefIds: [402], status: 'PUBLISHED', pendingAction: null, docCount: 312, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] }
 ]
 
 const DETAIL = {
@@ -277,19 +297,18 @@ const DETAIL = {
   exampleQuestions: ['帮我生成一份行业调研报告', '帮我分析本月经营数据中的异常', '帮我整理一份管理层决策建议'],
   skillIds: [302, 304],
   skills: [
-    { skillId: 302, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析' },
-    { skillId: 304, name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', category: '办公效率' }
+    { skillId: 302, name: '经营数据分析', description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析', type: 'PLATFORM' },
+    { skillId: 304, name: '合同风险检查', description: '识别合同条款中的风险点并给出说明', category: '办公效率', type: 'PLATFORM' }
   ]
 }
 
 beforeEach(() => {
   for (const fn of [getExpert, createExpert, updateExpert, listExpertSkillCandidates,
-    getExpertKbScopeRefId, listKnowledgeBases, routerPush,
-    ElMessage.success, ElMessage.error, ElMessage.warning]) fn.mockReset()
+    listKnowledgeBases, routerPush,
+    ElMessage.success, ElMessage.error, ElMessage.warning, ElMessage.info]) fn.mockReset()
   getExpert.mockResolvedValue({ ...DETAIL })
-  listExpertSkillCandidates.mockResolvedValue(CANDIDATES)
+  listExpertSkillCandidates.mockImplementation(candidatesFor)
   listKnowledgeBases.mockResolvedValue({ list: KBS.map((k) => ({ ...k })), total: KBS.length })
-  getExpertKbScopeRefId.mockReturnValue('ex_1')
 })
 afterEach(() => {
   vi.useRealTimers() // 2026-10-08：AI 生成用例用 fake timers，失败中断也在此还原，免得串到下一条
@@ -298,15 +317,16 @@ afterEach(() => {
 })
 
 describe('ExpertEditor — 新建', () => {
-  it('标题「新建专家」+ 顶部说明条；footer =【取消】【创建专家】；新建态即可勾选技能', async () => {
+  it('标题「新建专家」+ 顶部说明条；footer =【取消】【创建专家】；选了专家类型即可勾选技能', async () => {
     await mount({ expertId: null })
     expect(container.querySelector('.dr-title').textContent).toContain('新建专家')
     expect(container.querySelector('.ee-note').textContent)
-      .toBe('专家由多个市场技能组成。技能保持引用关系，市场技能更新后专家会同步使用最新内容。')
+      .toBe('专家由多个技能组成。技能保持引用关系，技能更新后专家会同步使用最新内容。')
     expect(btn('取消')).toBeTruthy()
     expect(btn('创建专家')).toBeTruthy()
     expect(btn('发布')).toBeUndefined() // 发布仅编辑态
-    // 内嵌候选可勾（不再是「先保存再挂技能」）
+    // 内嵌候选可勾（不再是「先保存再挂技能」）；2026-11-10 起先选专家类型才出候选
+    await selectType('PLATFORM')
     expect(skillChecks().length).toBeGreaterThan(0)
     expect(getExpert).not.toHaveBeenCalled()
   })
@@ -385,11 +405,11 @@ describe('ExpertEditor — 新建', () => {
     await fillRequired('  新专家  ')
     btn('创建专家').click()
     await flush()
+    // 不带 positionIds：所属岗位由岗位侧引用维护（产品优化需求-202611 R13）
     expect(createExpert).toHaveBeenCalledWith({
       name: '新专家',
       category: '通用',
       type: 'PLATFORM',
-      positionIds: [],
       avatar: '🧑',
       backgroundColor: '#DCF5E4', // 背景色默认色随建落库
       intro: '一句话简介',
@@ -402,12 +422,13 @@ describe('ExpertEditor — 新建', () => {
     expect(visibleSpy).toHaveBeenCalledWith(false)
   })
 
-  it('专家类型=岗位私有但不绑定岗位 → 仍可创建成功（2026-09-18 按 PRD 字面松绑「必须绑定」强校验）', async () => {
+  // 2026-09-18 已按 PRD 字面松绑「必须绑定」；2026-11-09 产品优化需求-202611 R13：新建时根本不再选岗位
+  it('新建岗位私有专家不选岗位 → 创建成功，payload 不带 positionIds（R13）', async () => {
     createExpert.mockResolvedValueOnce({ ...DETAIL, id: 207, name: '新专家' })
     await mount({ expertId: null })
     await type(inputs()[0], '新专家')
     await selectCategory('通用')
-    await selectType('POSITION') // 不选「所属岗位」，留空
+    await selectType('POSITION')
     container.querySelector('.icon-picker').click()
     await flush(2)
     await type(inputs()[1], '一句话简介')
@@ -422,7 +443,8 @@ describe('ExpertEditor — 新建', () => {
     expect(errTexts()).not.toContain('岗位')
     btn('创建专家').click()
     await flush()
-    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [] }))
+    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION' }))
+    expect(createExpert.mock.calls[0][0]).not.toHaveProperty('positionIds')
     expect(ElMessage.success).toHaveBeenCalledWith('专家已创建')
   })
 
@@ -476,90 +498,59 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
     expect(labels).toEqual(['专家类型', '专家名', '分类', '图标', '背景色', '简介', '职责描述'])
   })
 
-  /** 所属岗位下拉（第 3 个 select）；loadPublishedPositions() 挂载即调用，listPositions mock 走真实 200ms
-   *  setTimeout（非微任务），需要真实等待——轮询而非固定 sleep，机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。 */
-  async function positionSelectReady() {
-    const positionSelect = container.querySelector('select.el-select[multiple]')
-    expect(positionSelect).toBeTruthy()
+  /* 所属岗位（产品优化需求-202611 R13）：只读展示引用本专家的岗位名，在岗位详情「专家与专家团」页签维护，不再是多选下拉。
+   * 岗位名由 loadPositionNames() 挂载即调真实 listPositions 解析（mock 走真实 200ms setTimeout，非微任务），
+   * 需要真实等待——轮询而非固定 sleep，机器负载高时固定时长也可能不够，轮询到 3s 上限更稳。 */
+  const positionField = () => container.querySelector('[data-testid="expert-positions"]')
+  const positionTags = () => [...container.querySelectorAll('.ee-pos-tag')].map((t) => t.textContent.trim())
+  async function positionNamesReady() {
     const deadline = Date.now() + 3000
-    while (Date.now() < deadline && ![...positionSelect.querySelectorAll('option')].some((o) => o.textContent === '经营分析岗')) {
+    while (Date.now() < deadline && positionTags().some((t) => t.startsWith('岗位 #'))) {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    return positionSelect
-  }
-  async function pickPositions(positionSelect, ...values) {
-    for (const o of positionSelect.querySelectorAll('option')) o.selected = values.includes(o.value)
-    positionSelect.dispatchEvent(new Event('change'))
-    await flush(2)
   }
 
-  it('专家类型=岗位私有 → 「所属岗位」为多选下拉，展示真实已发布岗位（2026-09-18 修坏链：status 大小写 + positionId 非 id）', async () => {
+  it('专家类型=岗位私有 → 「所属岗位」只读：新建时没有岗位可选，显示「暂无岗位引用」+ 灰字「在岗位详情「专家与专家团」页签维护」', async () => {
     await mount({ expertId: null })
+    expect(positionField()).toBeNull() // 未选类型 / 非岗位私有不展示
     await selectType('POSITION')
-    const positionSelect = await positionSelectReady()
-    expect(positionSelect.multiple).toBe(true)
-    const optionLabels = [...positionSelect.querySelectorAll('option')].map((o) => o.textContent)
-    expect(optionLabels).toContain('经营分析岗')
-    const optionValues = [...positionSelect.querySelectorAll('option')].map((o) => o.value)
-    expect(optionValues).toContain('401')
-  })
-
-  it('所属岗位可多选绑定不同岗位 → 创建时 payload.positionIds 带全部所选岗位 id（数字）', async () => {
-    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 208, name: '新专家' })
-    await mount({ expertId: null })
-    await fillRequired('新专家')
-    await selectType('POSITION')
-    const positionSelect = await positionSelectReady()
-    await pickPositions(positionSelect, '401', '402')
-    expect(positionSelect.dataset.values).toBe('[401,402]')
-    btn('创建专家').click()
-    await flush()
-    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'POSITION', positionIds: [401, 402] }))
-    expect(createExpert.mock.calls[0][0]).not.toHaveProperty('positionId')
-  })
-
-  it('已选岗位后把类型改回非岗位私有 → 所属岗位清空，payload.positionIds 为空（不带脏数据）', async () => {
-    createExpert.mockResolvedValueOnce({ ...DETAIL, id: 209, name: '新专家' })
-    await mount({ expertId: null })
-    await fillRequired('新专家')
-    await selectType('POSITION')
-    await pickPositions(await positionSelectReady(), '401')
+    const field = positionField()
+    expect(field).toBeTruthy()
+    expect(field.querySelector('select')).toBeNull() // 不再是下拉，不能增减
+    expect(field.textContent).toContain('暂无岗位引用')
+    expect(field.textContent).toContain('在岗位详情「专家与专家团」页签维护')
     await selectType('PLATFORM')
-    btn('创建专家').click()
-    await flush()
-    expect(createExpert).toHaveBeenCalledWith(expect.objectContaining({ type: 'PLATFORM', positionIds: [] }))
+    expect(positionField()).toBeNull()
   })
 
-  it('编辑态：岗位私有专家回填已绑定的多个岗位；类型置灰不可改、所属岗位仍可增减；未绑定时提示「未绑定岗位」', async () => {
+  it('编辑态：岗位私有专家以标签只读展示引用本专家的岗位名；类型置灰不可改；保存 payload 不带 positionIds', async () => {
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
     await mount({ expertId: 201 })
-    const positionSelect = container.querySelector('select.el-select[multiple]')
+    await positionNamesReady()
     expect(container.querySelector('.el-radio-group').dataset.disabled).toBe('1')
     expect(container.textContent).toContain('专家类型建成后不可更改')
-    expect([...container.querySelectorAll('.el-form-item > label')].map((l) => l.textContent)).toContain('分类')
-    expect(positionSelect.disabled).toBe(false)
-    expect(positionSelect.dataset.values).toBe('[401,402]')
-    expect(container.textContent).not.toContain('未绑定岗位')
-    // 增减：减到只剩 401，保存 → updateExpert 带 positionIds [401]
+    expect(positionTags()).toEqual(['经营分析岗', '客户成功岗'])
+    expect(positionField().querySelector('select')).toBeNull()
+    expect(positionField().textContent).not.toContain('暂无岗位引用')
+    expect(positionField().textContent).toContain('在岗位详情「专家与专家团」页签维护')
     updateExpert.mockResolvedValueOnce({ ...DETAIL })
-    await pickPositions(await positionSelectReady(), '401')
     btn('保存').click()
     await flush()
-    expect(updateExpert).toHaveBeenCalledWith(201, expect.objectContaining({ type: 'POSITION', positionIds: [401] }))
-    // 未绑定任何岗位 → 提示「未绑定岗位」
+    expect(updateExpert).toHaveBeenCalledWith(201, expect.objectContaining({ type: 'POSITION' }))
+    expect(updateExpert.mock.calls[0][1]).not.toHaveProperty('positionIds')
+  })
+
+  it('查看态（readonly）：同样只读展示岗位名标签；没被岗位引用时显示「暂无岗位引用」', async () => {
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401] })
+    await mount({ expertId: 201, readonly: true })
+    await positionNamesReady()
+    expect(positionTags()).toEqual(['经营分析岗'])
     app.unmount()
     container.remove()
     getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [] })
-    await mount({ expertId: 201 })
-    expect(container.textContent).toContain('未绑定岗位')
-  })
-
-  it('查看态（readonly）：所属岗位多选下拉置灰，仅展示已绑定岗位', async () => {
-    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401, 402] })
     await mount({ expertId: 201, readonly: true })
-    const positionSelect = container.querySelector('select.el-select[multiple]')
-    expect(positionSelect.disabled).toBe(true)
-    expect(positionSelect.dataset.values).toBe('[401,402]')
+    expect(positionTags()).toEqual([])
+    expect(positionField().textContent).toContain('暂无岗位引用')
   })
 
   it('选色落表单并随创建提交；图标预览容器 --ee-bg 实时同步', async () => {
@@ -587,10 +578,10 @@ describe('ExpertEditor — 背景色（md §三.2 L171：指定 7 色）', () =>
 describe('ExpertEditor — 抽屉内部形态（md §三.1/§三.2：分区卡片 + 图标行；2026-09-09 批次 3C 落地）', () => {
   it('E1：四个分区平铺改为 .section-card 分区卡，且「专家帮你做」并入基本信息卡内作子分区（不再是独立卡）', async () => {
     await mount({ expertId: 201 })
-    // 编辑态卡：基本信息 / 市场技能引用 / 知识库（「专家帮你做」已并入第一张卡）
+    // 编辑态卡：基本信息 / 技能引用 / 知识库（「专家帮你做」已并入第一张卡）
     const cards = [...container.querySelectorAll('.section-card')]
     const cardTitles = cards.map((c) => c.querySelector(':scope > .section-title')?.textContent.trim().split(/\s+/)[0])
-    expect(cardTitles).toEqual(['基本信息', '市场技能引用', '知识库'])
+    expect(cardTitles).toEqual(['基本信息', '技能引用', '知识库'])
     // 「专家帮你做」在基本信息卡内的子分区里，不再自成一卡
     const sub = container.querySelector('.ee-basic-subsection')
     expect(sub).toBeTruthy()
@@ -598,12 +589,12 @@ describe('ExpertEditor — 抽屉内部形态（md §三.1/§三.2：分区卡�
     expect(cards[0].contains(sub)).toBe(true)
   })
 
-  it('E1：只读查看态三段同样卡片化（基本信息 / 市场技能引用 / 知识库，与编辑态一致）', async () => {
+  it('E1：只读查看态三段同样卡片化（基本信息 / 技能引用 / 知识库，与编辑态一致）', async () => {
     await mount({ expertId: 201, readonly: true })
     const titles = [...container.querySelectorAll('.section-card > .section-title')].map((t) =>
       t.textContent.trim().split(/\s+/)[0]
     )
-    expect(titles).toEqual(['基本信息', '市场技能引用', '知识库'])
+    expect(titles).toEqual(['基本信息', '技能引用', '知识库'])
   })
 
   it('E2/C5：图标行是显式双按钮（IconField：预览块 +【从图标库选择】【上传图标】），不再是头像触发式 popover', async () => {
@@ -656,14 +647,14 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     await mount({ expertId: 201 })
     const sec = kbSec()
     expect(sec).toBeTruthy()
-    // 位置：紧随市场技能引用区之后
-    expect(sec.previousElementSibling.textContent).toContain('市场技能引用')
+    // 位置：紧随技能引用区之后
+    expect(sec.previousElementSibling.querySelector('.section-title').textContent).toContain('技能引用')
     expect(sec.textContent).toContain('当前专家可见范围内的知识库')
     for (const th of ['知识库名称', '数据源', '文档数量', '状态', '操作']) {
       expect(sec.textContent).toContain(th)
     }
     expect(listKnowledgeBases).toHaveBeenCalled()
-    // 可见 3 行（kb_1/kb_2 企业级 + kb_6 本专家专属），默认露 2 行
+    // 可见 3 行（kb_1/kb_2 企业级 + kb_6 可见范围含本专家 201），默认露 2 行
     expect(kbRows()).toHaveLength(2)
     expect(sec.textContent).not.toContain('销售话术与异议处理') // POSITION 型不可见
     const more = kbBtn('展开更多（1）')
@@ -673,6 +664,23 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbRows()).toHaveLength(3)
     expect(sec.textContent).toContain('2026 产品白皮书库')
     expect(kbBtn('收起')).toBeTruthy()
+  })
+
+  // R3：专家知识库可见范围多选，按「可见范围包含当前专家（真实专家 id）」过滤，不再靠写死的 ex_1 映射
+  it('专家知识库按可见范围是否包含当前专家过滤：只给 204 的库 201 看不到；同时给 201、204 的库两人都看得到', async () => {
+    await mount({ expertId: 201 })
+    kbBtn('展开更多（1）').click()
+    await flush(2)
+    expect(kbSec().textContent).toContain('2026 产品白皮书库')
+    expect(kbSec().textContent).not.toContain('研究报告素材库')
+    app.unmount()
+    container.remove()
+    getExpert.mockResolvedValue({ ...DETAIL, id: 204, name: '研究报告专家' })
+    await mount({ expertId: 204 })
+    kbBtn('展开更多（2）').click()
+    await flush(2)
+    expect(kbSec().textContent).toContain('2026 产品白皮书库')
+    expect(kbSec().textContent).toContain('研究报告素材库')
   })
 
   it('行内容：数据源连排 / 文档数量 / 状态；搜索过滤全量匹配并隐藏展开钮；无匹配显「没有匹配的知识库」', async () => {
@@ -724,9 +732,8 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(dlg.dataset.kb).toBe('kb_1')
   })
 
-  it('新建态：无专属映射 → 仅企业级可见（2 行、无展开钮）；只读查看态同样渲染本区块', async () => {
+  it('新建态：专家还没有 id，任何专家知识库的可见范围都不含它 → 仅企业级可见（2 行、无展开钮）；只读查看态同样渲染本区块', async () => {
     await mount({ expertId: null })
-    expect(getExpertKbScopeRefId).not.toHaveBeenCalled()
     expect(kbRows()).toHaveLength(2)
     expect(kbSec().textContent).not.toContain('展开更多')
     app.unmount(); container.remove()
@@ -735,13 +742,41 @@ describe('ExpertEditor — 只读「知识库」区块（2026-09-04）', () => {
     expect(kbSec()).not.toBeNull()
     expect(listKnowledgeBases).toHaveBeenCalledTimes(2) // 新建态 + 只读态各一次
   })
+
+  // 产品优化需求-202611 R2 §3：岗位私有专家另展示可见范围为所属岗位的岗位知识库；名称旁标「企业 / 专家 / 岗位」
+  it('岗位私有专家另展示所属岗位的岗位知识库（其它岗位的不展示）；市场专家看不到岗位知识库；名称旁标类型', async () => {
+    const KB_401 = { id: 'kb_401', name: '经营分析指标口径库', description: '', kbType: 'POSITION', scopeRefIds: [404, 401], status: 'PUBLISHED', pendingAction: null, docCount: 9, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }] }
+    listKnowledgeBases.mockResolvedValue({ list: [...KBS, KB_401].map((k) => ({ ...k })), total: KBS.length + 1 })
+    const typeOf = (name) => kbRows().find((r) => r.textContent.includes(name))?.querySelector('.ee-kb-type')?.textContent
+    // 岗位私有、被 401 引用：企业 2 + 专家 1（kb_6 可见范围含 201）+ 岗位 1（kb_401 可见范围 [404, 401] 含 401）；
+    // kb_pos 的可见范围 [402] 不含所属岗位，不展示
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'POSITION', positionIds: [401] })
+    await mount({ expertId: 201 })
+    kbBtn('展开更多（2）').click()
+    await flush(2)
+    expect(kbRows()).toHaveLength(4)
+    expect(typeOf('经营分析指标口径库')).toBe('岗位')
+    expect(typeOf('产品与解决方案库')).toBe('企业')
+    expect(typeOf('2026 产品白皮书库')).toBe('专家')
+    expect(kbSec().textContent).not.toContain('销售话术与异议处理')
+    app.unmount()
+    container.remove()
+    // 市场专家（即使行上带了 positionIds 也不算）：不展示岗位知识库
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'PLATFORM', positionIds: [401] })
+    await mount({ expertId: 201 })
+    kbBtn('展开更多（1）').click()
+    await flush(2)
+    expect(kbRows()).toHaveLength(3)
+    expect(kbSec().textContent).not.toContain('经营分析指标口径库')
+  })
 })
 
-describe('ExpertEditor — 市场技能内嵌选择器', () => {
+describe('ExpertEditor — 技能内嵌选择器', () => {
   it('默认收起前 2 个 + 【展开更多（1）】；展开后显 3 个 + 【收起】；汇总行实时', async () => {
     await mount({ expertId: null })
+    await selectType('PLATFORM') // 市场专家：3 个候选（市场 + 通用技能）
     expect(skillChecks()).toHaveLength(2)
-    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 0 个 · 共 3 个市场技能')
+    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 0 个 · 共 3 个技能')
     const more = btn('展开更多（1）')
     expect(more).toBeTruthy()
     more.click()
@@ -749,17 +784,115 @@ describe('ExpertEditor — 市场技能内嵌选择器', () => {
     expect(skillChecks()).toHaveLength(3)
     expect(btn('收起')).toBeTruthy()
     await checkSkill(2)
-    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 1 个 · 共 3 个市场技能')
+    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 1 个 · 共 3 个技能')
   })
 
-  it('搜索按名称/描述/分类过滤；无匹配显「没有匹配的市场技能」', async () => {
+  it('搜索按名称/描述/分类过滤；无匹配显「没有匹配的技能」', async () => {
     await mount({ expertId: null })
+    await selectType('PLATFORM')
     const search = inputs()[5] // 技能搜索框
     await type(search, '数据分析')
     expect(skillChecks()).toHaveLength(1)
     await type(search, '不存在的技能')
     expect(skillChecks()).toHaveLength(0)
-    expect(container.textContent).toContain('没有匹配的市场技能')
+    expect(container.querySelector('.ee-sk-empty').textContent.trim()).toBe('没有匹配的技能')
+  })
+
+})
+
+/* ===== 2026-11-10 专家按类型引用技能 =====
+ * 候选按专家类型取：岗位私有专家 = 岗位私有 + 市场 + 通用技能；市场专家、通用专家 = 市场 + 通用技能。
+ * 新建先选类型再选技能；切换类型时超出新范围的已选技能被取消并提示；编辑 / 查看 / 审核快照按专家自身类型取候选。 */
+describe('ExpertEditor — 技能引用按专家类型（2026-11-10）', () => {
+  const skillSec = () =>
+    [...container.querySelectorAll('.section-card')].find((c) => c.querySelector(':scope > .section-title')?.textContent.includes('技能引用'))
+  const sub = () => skillSec().querySelector('.section-sub').textContent.trim()
+  const summary = () => container.querySelector('.ee-sk-summary').textContent
+
+  it('新建 · 还没选专家类型：副标题「先选择专家类型，再选择技能」、空态「请先选择专家类型」、无候选卡、搜索禁用；不按类型取候选', async () => {
+    await mount({ expertId: null })
+    expect(sub()).toBe('先选择专家类型，再选择技能')
+    expect(skillSec().querySelector('.ee-sk-empty').textContent.trim()).toBe('请先选择专家类型')
+    expect(skillChecks()).toHaveLength(0)
+    expect(skillSec().querySelector('.ee-sk-search').disabled).toBe(true)
+    expect(summary()).toBe('已选择 0 个 · 共 0 个技能')
+    expect(typedCandidateCalls()).toEqual([])
+  })
+
+  it('新建 · 选了类型才按类型取候选：市场专家 / 通用专家 → 市场 + 通用技能；岗位私有 → 另含岗位私有技能；副标题随类型说明可引用范围', async () => {
+    await mount({ expertId: null })
+    await selectType('PLATFORM')
+    expect(listExpertSkillCandidates).toHaveBeenLastCalledWith({ expertType: 'PLATFORM' })
+    expect(sub()).toBe('可引用市场、通用技能，至少添加 1 个')
+    expect(summary()).toBe('已选择 0 个 · 共 3 个技能')
+    await selectType('POSITION')
+    expect(listExpertSkillCandidates).toHaveBeenLastCalledWith({ expertType: 'POSITION' })
+    expect(sub()).toBe('可引用岗位私有、市场、通用技能，至少添加 1 个')
+    expect(summary()).toBe('已选择 0 个 · 共 4 个技能')
+    await selectType('SYSTEM_DEFAULT')
+    expect(listExpertSkillCandidates).toHaveBeenLastCalledWith({ expertType: 'SYSTEM_DEFAULT' })
+    expect(sub()).toBe('可引用市场、通用技能，至少添加 1 个')
+    expect(skillSec().querySelector('.ee-sk-search').disabled).toBe(false)
+  })
+
+  it('新建 · 岗位私有改成市场专家：已选的岗位私有技能被取消并提示「已取消 1 个不在「市场专家」可引用范围内的技能」，范围内的保留', async () => {
+    await mount({ expertId: null })
+    await selectType('POSITION')
+    await checkSkill(0) // 301 日报周报生成（岗位私有）
+    await checkSkill(1) // 302 经营数据分析（市场技能）
+    expect(summary()).toBe('已选择 2 个 · 共 4 个技能')
+    await selectType('PLATFORM')
+    expect(ElMessage.info).toHaveBeenCalledWith('已取消 1 个不在「市场专家」可引用范围内的技能')
+    expect(summary()).toBe('已选择 1 个 · 共 3 个技能')
+    expect(skillChecks()[0].checked).toBe(true) // 302 仍勾选（市场专家候选首位）
+    expect(skillSec().textContent).not.toContain('日报周报生成')
+  })
+
+  it('新建 · 切换类型时已选技能都在新范围内 → 不取消、不提示', async () => {
+    await mount({ expertId: null })
+    await selectType('PLATFORM')
+    await checkSkill(0) // 302 经营数据分析（市场技能，岗位私有专家同样可引用）
+    await selectType('POSITION')
+    expect(ElMessage.info).not.toHaveBeenCalled()
+    expect(summary()).toBe('已选择 1 个 · 共 4 个技能')
+  })
+
+  it('技能卡标技能类型：岗位私有 / 市场技能 / 通用技能', async () => {
+    await mount({ expertId: null })
+    await selectType('POSITION')
+    btn('展开更多（2）').click()
+    await flush(2)
+    const cards = [...skillSec().querySelectorAll('.ee-skill-check')]
+    expect(cards.map((c) => [c.querySelector('strong').textContent, c.querySelector('.ee-skill-type')?.textContent])).toEqual([
+      ['日报周报生成', '岗位私有'],
+      ['经营数据分析', '市场技能'],
+      ['合同风险检查', '市场技能'],
+      ['会议纪要整理', '通用技能']
+    ])
+  })
+
+  it('编辑态：详情回来之后才按专家自身类型取候选（岗位私有专家 → 含岗位私有技能）', async () => {
+    let release
+    getExpert.mockImplementationOnce(() => new Promise((r) => { release = () => r({ ...DETAIL, type: 'POSITION' }) }))
+    await mount({ expertId: 201 })
+    expect(listExpertSkillCandidates).not.toHaveBeenCalled() // 类型未知前不取候选
+    release()
+    await flush()
+    expect(typedCandidateCalls()).toEqual(['POSITION'])
+    expect(summary()).toBe('已选择 2 个 · 共 4 个技能')
+  })
+
+  it('查看态与审核快照：同样按专家自身类型取候选（快照不实时拉详情）', async () => {
+    getExpert.mockResolvedValue({ ...DETAIL, type: 'SYSTEM_DEFAULT' })
+    await mount({ expertId: 201, readonly: true })
+    expect(typedCandidateCalls()).toEqual(['SYSTEM_DEFAULT'])
+    app.unmount()
+    container.remove()
+    listExpertSkillCandidates.mockClear()
+    getExpert.mockClear()
+    await mount({ expertId: 201, readonly: true, snapshotDetail: { ...DETAIL, type: 'POSITION' } })
+    expect(getExpert).not.toHaveBeenCalled()
+    expect(typedCandidateCalls()).toEqual(['POSITION'])
   })
 })
 
@@ -774,7 +907,7 @@ describe('ExpertEditor — 编辑', () => {
     // 302 / 304 已勾选（默认收起态恰好展示前 2 个候选）
     expect(skillChecks()[0].checked).toBe(true)
     expect(skillChecks()[1].checked).toBe(true)
-    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 2 个 · 共 3 个市场技能')
+    expect(container.querySelector('.ee-sk-summary').textContent).toBe('已选择 2 个 · 共 3 个技能')
     expect(btn('取消')).toBeTruthy()
     expect(btn('发布')).toBeTruthy()
     expect(btn('保存')).toBeTruthy()
@@ -799,7 +932,6 @@ describe('ExpertEditor — 编辑', () => {
       name: '改名后',
       category: '投资',
       type: 'PLATFORM',
-      positionIds: [],
       avatar: '▤',
       backgroundColor: '#DCF5E4',
       intro: '汇总经营数据',
@@ -832,12 +964,13 @@ describe('ExpertEditor — 编辑', () => {
     expect(publishSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 201 }))
   })
 
-  it('【发布】0 技能 → 「至少引用 1 个市场技能才能发布」拦下，不保存不转交', async () => {
+  it('【发布】0 技能 → 「至少引用 1 个技能才能发布」拦下 + 技能区就地红字，不保存不转交', async () => {
     getExpert.mockResolvedValueOnce({ ...DETAIL, skillIds: [], skills: [] })
     await mount({ expertId: 201 })
     btn('发布').click()
     await flush()
-    expect(ElMessage.warning).toHaveBeenCalledWith('至少引用 1 个市场技能才能发布')
+    expect(ElMessage.warning).toHaveBeenCalledWith('至少引用 1 个技能才能发布')
+    expect(errTexts()).toContain('请至少添加 1 个技能')
     expect(updateExpert).not.toHaveBeenCalled()
     expect(publishSpy).not.toHaveBeenCalled()
   })
@@ -967,7 +1100,7 @@ describe('ExpertEditor — 只读查看（md §三.1「查看」：标题「查�
     // 示例问题回填到输入框（disabled）
     expect(inputs()[2].value).toBe('帮我生成一份行业调研报告')
     expect(inputs()[2].disabled).toBe(true)
-    expect(container.textContent).toContain('已选择 2 个 · 共 3 个市场技能')
+    expect(container.textContent).toContain('已选择 2 个 · 共 3 个技能')
     expect(container.textContent).toContain('经营数据分析')
     expect(container.querySelector('.ee-meta').textContent).toContain('最新版本：v2.3.0')
     // 仅关闭：无保存/发布
@@ -981,7 +1114,7 @@ describe('ExpertEditor — 只读查看（md §三.1「查看」：标题「查�
   it('无技能引用 → 「已选择 0 个」汇总 + 无技能卡片', async () => {
     getExpert.mockResolvedValueOnce({ ...DETAIL, skillIds: [], skills: [] })
     await mount({ expertId: 201, readonly: true })
-    expect(container.textContent).toContain('已选择 0 个 · 共 3 个市场技能')
+    expect(container.textContent).toContain('已选择 0 个 · 共 3 个技能')
   })
 })
 

@@ -105,7 +105,8 @@ const stubs = {
     emits: ['click'],
     template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot /></button>'
   },
-  'el-tooltip': { template: '<span><slot /></span>' },
+  // content 落到 data-content，供断言悬停提示文案（缺执行对象标签）
+  'el-tooltip': { props: ['content'], template: '<span class="stub-tip" :data-content="content"><slot /></span>' },
   'el-drawer': {
     props: ['modelValue', 'title'],
     template: '<div v-if="modelValue" class="stub-drawer" :data-title="title"><slot /></div>'
@@ -597,6 +598,24 @@ describe('自动化任务 · 左侧列表规则（md 岗位 §7.1）', () => {
     const items = [...container.querySelectorAll('.st-item')]
     expect(items[0].querySelector('.st-flag')?.textContent.trim()).toBe('缺指令')
     expect(items[1].querySelector('.st-flag')).toBeNull()
+  })
+
+  it('存量任务选了「专家 / 专家团」却没选对象 → 名称旁出红色「缺执行对象」，悬停提示与「缺指令」同口径；选了对象、按技能执行的都不出（产品优化需求-202611 修改点 3）', async () => {
+    listSampleTasks.mockResolvedValueOnce({
+      list: [
+        task(1, { execType: 'TEAM', execTargetId: null }),
+        task(2, { execType: 'EXPERT', execTargetId: null }),
+        task(3, { execType: 'TEAM', execTargetId: 304 }),
+        task(4, { execType: 'SKILL' })
+      ]
+    })
+    await mountStage({ positionId: 1 })
+    const flagOf = (i) => itemEls()[i].querySelector('.st-flag')
+    expect(flagOf(0)?.textContent.trim()).toBe('缺执行对象')
+    expect(flagOf(0).closest('.stub-tip').dataset.content).toBe('还没选要执行的「专家团」，发布时会被拦下，请先补齐')
+    expect(flagOf(1).closest('.stub-tip').dataset.content).toBe('还没选要执行的「专家」，发布时会被拦下，请先补齐')
+    expect(flagOf(2)).toBeNull()
+    expect(flagOf(3)).toBeNull()
   })
 
   it('已有 20 条 → 新增按钮置灰、文案「已达 20 条任务上限」，点击不进新建态（md §7.1「软上限 20 条，达到上限后新增按钮置灰并提示"已达 20 条任务上限"」）', async () => {

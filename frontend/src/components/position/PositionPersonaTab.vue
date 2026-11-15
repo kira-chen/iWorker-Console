@@ -13,9 +13,11 @@ import {
   normalizeExampleQuestions,
   genExampleQuestions,
   genPositionSop,
+  genPositionSopBrief,
   DESCRIPTION_MAX_LEN,
   EXAMPLE_Q_MAX_LEN,
-  SOP_MAX_LEN
+  SOP_MAX_LEN,
+  SOP_BRIEF_MAX_LEN
 } from '@/utils/positionModel'
 // AI 生成按钮的「生成中…」文案、防串数据等行为统一走 useAiLiveGenerate（与其余编辑器同一套）
 import { useAiLiveGenerate } from '@/utils/aiLiveGenerate'
@@ -78,6 +80,18 @@ function useGen(generate, field, doneToast) {
 }
 const aiQuestions = useGen(genExampleQuestions, 'exampleQuestions', '已生成示例问题') // md §2.5 逐字
 const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md §2.6 逐字
+// SOP 简版（产品优化需求-202611 修改点 18）：来源是完整版岗位 SOP（不是岗位描述），完整版为空时按钮置灰并提示「请先填写岗位 SOP」
+const aiSopBrief = useAiLiveGenerate({
+  getSourceText: () => store.basic?.positionSop,
+  sourceLabel: '岗位 SOP',
+  getSourceContext: () => ({ sop: store.basic?.positionSop }),
+  generate: ({ sop }) => genPositionSopBrief(sop),
+  apply: (v) => patchBasic('positionSopBrief', v),
+  isReadonly: () => props.isReadonly,
+  getEntityId: () => store.positionId,
+  resetOn: () => store.positionId,
+  doneToast: '已生成 SOP 简版'
+})
 </script>
 
 <template>
@@ -222,12 +236,44 @@ const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md
           type="textarea"
           :rows="6"
           :maxlength="SOP_MAX_LEN"
-          placeholder="说明岗位如何组合使用 Agent、技能、知识与工具完成工作"
+          placeholder="说明岗位如何组合使用技能、知识与工具完成工作"
           class="pd-sop-input"
           :disabled="isReadonly"
           @update:model-value="patchBasic('positionSop', $event)"
         />
         <div class="pd-card-hint">必填，最多 {{ SOP_MAX_LEN }} 个字符</div>
+      </div>
+    </section>
+
+    <!-- 5b. SOP 简版（产品优化需求-202611 修改点 18：客户端岗位卡片展示用；选填，≤200 字 + 按完整版 AI 生成） -->
+    <section class="pd-card" data-testid="sop-brief-card">
+      <div class="pd-card-head">
+        <span class="pd-card-title">SOP 简版</span>
+        <span class="pd-card-sub">客户端岗位卡片展示用；数字员工执行时仍按完整版岗位 SOP</span>
+        <span class="pd-card-spacer"></span>
+        <el-button
+          class="pd-ai-btn"
+          size="small"
+          plain
+          :loading="aiSopBrief.busy.value"
+          :disabled="aiSopBrief.disabled.value"
+          :title="aiSopBrief.title.value || undefined"
+          @click="aiSopBrief.run"
+        >
+          {{ aiSopBrief.label.value }}
+        </el-button>
+      </div>
+      <div class="pd-card-body">
+        <el-input
+          :model-value="store.basic.positionSopBrief || ''"
+          type="textarea"
+          :rows="3"
+          :maxlength="SOP_BRIEF_MAX_LEN"
+          placeholder="用几句话概括岗位怎么干活，展示在员工客户端的岗位卡片上"
+          :disabled="isReadonly"
+          @update:model-value="patchBasic('positionSopBrief', $event)"
+        />
+        <div class="pd-card-hint">选填，最多 {{ SOP_BRIEF_MAX_LEN }} 个字符；不填时客户端展示完整版岗位 SOP</div>
       </div>
     </section>
 
@@ -254,7 +300,7 @@ const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md
 
 <style scoped>
 /* 样式随模板自 PositionDetailTabs.vue 原样搬入（病 A 拆分）：
-   .pd-card 家族在人格与 Agent 两页签各自成 scope 复制一份——scoped 样式不穿子组件内层 DOM，
+   .pd-card 家族在人格与技能等页签各自成 scope 复制一份——scoped 样式不穿子组件内层 DOM，
    留父层需改 :deep 且罩不住 append-to-body 的抽屉内容，为保视觉零差异按页签就近持有。 */
 /* 常规内容页：照原型 pd2-pane 居中限宽（max-width 1180px），卡片纵向排布 */
 .pd-pane {
@@ -276,7 +322,7 @@ const aiSop = useGen(genPositionSop, 'positionSop', '已生成岗位 SOP') // md
 .pd-card {
   background: var(--bg-surface);
   /* 2026-09-10 像素账本 G3 附带（描边铺开）：本页签是四个 pd-card 页签里唯一漏改的一个——
-     采集 / 知识 / Agent 三页签早前已改 --border-admin-card，人格页签仍留着半透明
+     采集 / 知识 / 技能三页签早前已改 --border-admin-card，人格页签仍留着半透明
      --border-base（浅色 10% 黑），同一套卡在四个页签间描边深浅不一。此处补齐。 */
   border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);

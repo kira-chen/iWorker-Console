@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
 import { deletePosition, __resetPositionMock } from '../positionMock'
 import { __resetPositionAssignmentMock } from '../positionAssignmentMock'
-import { deleteExpert, __resetExpertMock } from '../domainExpertMock'
+import { deleteExpert, unbindExpertFromPosition, __resetExpertMock } from '../domainExpertMock'
 import { deleteMcp, __resetMcpMock } from '../mcpConnectorMock'
 
 const liveOps = () => opsRecords.filter((r) => r.live)
@@ -24,6 +24,9 @@ describe('各模块删除写访问审计「删除」', () => {
   })
 
   it('删除专家：写「专家 / 删除」，对象为专家名，变更内容为空', async () => {
+    // 203 法务审阅专家被 401、402 引用，被岗位引用时不能删（产品优化需求-202611 修改点 2）；本用例测删除写记录，先解除引用
+    unbindExpertFromPosition(203, 401)
+    unbindExpertFromPosition(203, 402)
     await deleteExpert(203)
     expect(liveOps()).toHaveLength(1)
     expect(liveOps()[0]).toMatchObject({ module: '专家', action: '删除', target: '法务审阅专家', detail: '' })

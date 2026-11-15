@@ -11,8 +11,9 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  *   §三.3「审核中配置锁定，仅允许查看或撤回」；
  * - §三.5 已发布库新增 / 移除 / 替换数据源保存前必须二次确认；只改名称或描述按现有规则保存；
  * - §三.3.2 候选项仅含启用数据源（已被本库引用的停用源作存量兜底保留）；无解析成功文档 / 验证失败显示风险提示；
- * - §三.3.1 + 《各模块必填选填字段一览表》§十：名称最多 64、描述最多 2000；专家类型可见范围创建后不可更改；
- *   §三.8 岗位上下文新建锁定类型与可见范围；
+ * - §三.3.1 + 《各模块必填选填字段一览表》§十：名称最多 64、描述最多 2000；
+ *   §三.8 岗位上下文新建锁定类型；产品优化需求-202611 R3：可见范围多选、专家类型可见范围创建后可改、
+ *   岗位上下文新建只默认选上当前岗位（可再加）；
  * - §三.6 发布完整校验「至少引用 1 个已启用数据源」，失败不进入审核中（展示形态见 J9，当前为 toast）；
  *   §八.2 保存失败保留表单内容、不关闭抽屉。
  */
@@ -50,7 +51,9 @@ const detailOf = (over = {}) => ({
   name: '测试知识库',
   icon: '📦',
   kbType: 'ENTERPRISE',
-  scopeRefId: null,
+  scopeRefIds: [],
+  scopeRefs: [],
+  scopeRefNames: [],
   description: '原描述',
   status: 'DRAFT',
   pendingAction: null,
@@ -69,8 +72,12 @@ afterEach(() => {
 
 async function mountEditor({ props = {}, detail = null, pool = [UP_A, UP_B] } = {}) {
   api.listKnowledgeSources.mockResolvedValue({ list: pool })
-  api.listExpertOptions.mockResolvedValue([{ id: 'ex_1', name: '方案专家' }])
-  api.listPositionOptions.mockResolvedValue([{ id: 'pos_1', name: '销售顾问' }])
+  // R3：专家候选为专家模块真实数据（带专家类型），岗位候选为全部岗位
+  api.listExpertOptions.mockResolvedValue([
+    { id: 201, name: '经营分析专家', type: 'PLATFORM', typeLabel: '市场专家' },
+    { id: 204, name: '研究报告专家', type: 'PLATFORM', typeLabel: '市场专家' }
+  ])
+  api.listPositionOptions.mockResolvedValue([{ id: 401, name: '经营分析岗' }, { id: 404, name: '市场研究岗' }])
   if (detail) api.getKnowledgeBase.mockResolvedValue(detail)
   const onClose = vi.fn()
   mounted = mountReal(Editor, { visible: true, kbId: detail ? detail.id : null, 'onUpdate:visible': onClose, ...props })
@@ -230,23 +237,32 @@ describe('KnowledgeBaseEditor · 数据源候选与风险提示（md §三.3.2�
   })
 })
 
-/* ================= §三.8 / §三.3.1 上下文锁与字数上限 ================= */
-describe('KnowledgeBaseEditor · 岗位上下文锁 / 专家范围锁 / 字数上限（md §三.8 / §三.3.1）', () => {
+/* ================= §三.8 / §三.3.1 / R3 上下文与可见范围可改性、字数上限 ================= */
+// 产品优化需求-202611 R3：可见范围改多选；专家类型原「创建后不可更改」取消；
+// 岗位上下文新建只把当前岗位默认选上、可再加其他岗位（类型仍锁「岗位」）
+describe('KnowledgeBaseEditor · 岗位上下文 / 可见范围可改性 / 字数上限（md §三.8 / §三.3.1 / R3）', () => {
+  const LOCK = { id: 401, name: '经营分析岗' }
   const selectOf = (label) => itemByLabel(label).querySelector('.el-select__wrapper')
   const selectedText = (label) => itemByLabel(label).querySelector('.el-select__selected-item:not(.is-hidden)')?.textContent.trim()
+  /** 多选下拉里已选对象的标签文字 */
+  const scopeTags = () => [...itemByLabel('可见范围').querySelectorAll('.el-select__tags-text')].map((t) => t.textContent.trim())
 
-  it('从岗位上下文新建 → 类型锁「岗位」、可见范围锁当前岗位，两者都禁用', async () => {
-    await mountEditor({ props: { positionLock: { id: 'pos_1', name: '销售顾问' } } })
+  it('从岗位上下文新建 → 类型锁「岗位」，类型下拉禁用', async () => {
+    await mountEditor({ props: { positionLock: LOCK } })
     expect(selectedText('类型')).toBe('岗位')
     expect(selectOf('类型').classList.contains('is-disabled')).toBe(true)
-    expect(selectedText('可见范围')).toBe('销售顾问')
-    expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(true)
   })
 
-  it('从岗位上下文新建 → 帮助文案「岗位知识库不可更改」「可见范围锁定为当前岗位」', async () => {
-    await mountEditor({ props: { positionLock: { id: 'pos_1', name: '销售顾问' } } })
+  it('R3 从岗位上下文新建 → 可见范围默认选上当前岗位，且下拉可编辑（可再加其他岗位）', async () => {
+    await mountEditor({ props: { positionLock: LOCK } })
+    expect(scopeTags()).toEqual(['经营分析岗'])
+    expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(false)
+  })
+
+  it('从岗位上下文新建 → 帮助文案「岗位知识库不可更改」「已默认选上当前岗位，可再选其他岗位」', async () => {
+    await mountEditor({ props: { positionLock: LOCK } })
     expect(itemByLabel('类型').textContent).toContain('岗位知识库不可更改')
-    expect(itemByLabel('可见范围').textContent).toContain('可见范围锁定为当前岗位')
+    expect(itemByLabel('可见范围').textContent).toContain('已默认选上当前岗位，可再选其他岗位')
   })
 
   it('普通新建（对照）→ 类型可选、帮助文案「创建后不可更改」', async () => {
@@ -255,15 +271,28 @@ describe('KnowledgeBaseEditor · 岗位上下文锁 / 专家范围锁 / 字数�
     expect(itemByLabel('类型').textContent).toContain('创建后不可更改')
   })
 
-  it('编辑专家知识库 → 可见范围（所属专家）禁用', async () => {
-    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefId: 'ex_1' }) })
-    expect(selectedText('可见范围')).toBe('方案专家')
-    expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(true)
+  it('R3 编辑专家知识库 → 可见范围不再锁定（原「创建后不可更改」取消），帮助文案「选择可使用该知识库的专家，可多选」', async () => {
+    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefIds: [201], scopeRefs: [{ id: 201, name: '经营分析专家' }], scopeRefNames: ['经营分析专家'] }) })
+    expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(false)
+    expect(itemByLabel('可见范围').textContent).toContain('选择可使用该知识库的专家，可多选')
+    expect(itemByLabel('可见范围').textContent).not.toContain('创建后不可更改')
   })
 
-  it('编辑岗位知识库（对照）→ 可见范围仍可改', async () => {
-    await mountEditor({ detail: detailOf({ kbType: 'POSITION', scopeRefId: 'pos_1' }) })
+  it('R3 编辑多选的专家知识库 → 已选专家逐个以标签回显，标签带专家类型', async () => {
+    const refs = [{ id: 201, name: '经营分析专家' }, { id: 204, name: '研究报告专家' }]
+    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefIds: [201, 204], scopeRefs: refs, scopeRefNames: refs.map((r) => r.name) }) })
+    expect(scopeTags()).toEqual(['经营分析专家（市场专家）', '研究报告专家（市场专家）'])
+  })
+
+  it('编辑岗位知识库（对照）→ 可见范围可改，帮助文案「选择可使用该知识库的岗位，可多选」', async () => {
+    await mountEditor({ detail: detailOf({ kbType: 'POSITION', scopeRefIds: [401], scopeRefs: [{ id: 401, name: '经营分析岗' }], scopeRefNames: ['经营分析岗'] }) })
     expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(false)
+    expect(itemByLabel('可见范围').textContent).toContain('选择可使用该知识库的岗位，可多选')
+  })
+
+  it('审核中（对照）→ 可见范围仍锁定（只在查看 / 审核期锁）', async () => {
+    await mountEditor({ detail: detailOf({ kbType: 'POSITION', scopeRefIds: [401], scopeRefs: [{ id: 401, name: '经营分析岗' }], scopeRefNames: ['经营分析岗'], pendingAction: 'PUBLISH' }) })
+    expect(selectOf('可见范围').classList.contains('is-disabled')).toBe(true)
   })
 
   it('名称输入框最多 64 字、描述最多 2000 字（一览表 §十）', async () => {
@@ -286,13 +315,50 @@ describe('KnowledgeBaseEditor · 提交发布校验与保存失败（md §三.6 
     expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
   })
 
-  it('yuepu#62⑧ 专家库所选可见对象已不在候选里（对象被删）→ 点【提交发布】toast「所选可见范围专家已不存在，请重新选择」，不弹确认、不调发布接口（md §三.6）', async () => {
+  it('yuepu#62⑧ 专家库所选可见对象已不在候选里（对象被删）→ 点【提交发布】toast「可见范围无有效专家，请重新选择后再发布」，不弹确认、不调发布接口（md §三.6）', async () => {
     const err = vi.spyOn(ElMessage, 'error')
     const confirm = vi.spyOn(ElMessageBox, 'confirm')
-    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefId: 'ex_gone' }) })
+    // 详情里还解析得出 9991，但专家候选（201 / 204）里已没有它
+    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefIds: [9991], scopeRefs: [{ id: 9991, name: '已删专家' }], scopeRefNames: ['已删专家'] }) })
     footBtn('提交发布').click()
     await settle()
-    expect(err).toHaveBeenCalledWith('所选可见范围专家已不存在，请重新选择')
+    expect(err).toHaveBeenCalledWith('可见范围无有效专家，请重新选择后再发布')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+  })
+
+  it('R3 查看抽屉：专家库所选专家都已被删（解析不出名称）→ 点【提交发布】toast「可见范围无有效专家，请重新选择后再发布」，不弹确认、不调发布接口', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    await mountEditor({ props: { mode: 'view' }, detail: detailOf({ kbType: 'EXPERT', scopeRefIds: [9991], scopeRefs: [], scopeRefNames: [] }) })
+    footBtn('提交发布').click()
+    await settle()
+    expect(err).toHaveBeenCalledWith('可见范围无有效专家，请重新选择后再发布')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+  })
+
+  it('R3 编辑抽屉：岗位库所选岗位都已被删 → 可见范围回显为空并提示「无有效岗位」，点【提交发布】红字「无有效岗位，请重新选择」，不弹确认、不调发布接口', async () => {
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    await mountEditor({ detail: detailOf({ kbType: 'POSITION', scopeRefIds: [9991], scopeRefs: [], scopeRefNames: [] }) })
+    expect(itemByLabel('可见范围').querySelectorAll('.el-select__tags-text').length).toBe(0)
+    expect(itemByLabel('可见范围').querySelector('.kb-help').textContent.trim()).toBe('原来选的岗位都已被删除（无有效岗位），请重新选择')
+    footBtn('提交发布').click()
+    await settle()
+    expect(itemByLabel('可见范围').querySelector('.el-form-item__error')?.textContent.trim()).toBe('无有效岗位，请重新选择')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
+  })
+
+  // 产品优化需求-202611 修改点 8「提交发布时拦截，提示"可见范围无有效专家，请重新选择后再发布"（岗位同理）」：
+  // 编辑抽屉此前只出字段红字，没有列表 / 查看抽屉那句 toast
+  it('修改点 8 编辑抽屉：专家库所选专家都已被删 → 点【提交发布】toast「可见范围无有效专家，请重新选择后再发布」（与列表 / 查看抽屉同一句），不弹确认、不调发布接口', async () => {
+    const err = vi.spyOn(ElMessage, 'error')
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    await mountEditor({ detail: detailOf({ kbType: 'EXPERT', scopeRefIds: [9991], scopeRefs: [], scopeRefNames: [] }) })
+    footBtn('提交发布').click()
+    await settle()
+    expect(err).toHaveBeenCalledWith('可见范围无有效专家，请重新选择后再发布')
     expect(confirm).not.toHaveBeenCalled()
     expect(api.publishKnowledgeBase).not.toHaveBeenCalled()
   })

@@ -25,8 +25,7 @@ import {
   deletePosition,
   updatePosition,
   createPosition,
-  createAgent,
-  assignSkill,
+  attachPositionSkill,
   getPosition,
   listPositions,
   __resetPositionMock
@@ -114,7 +113,7 @@ describe('yuepu#51（已修）岗位侧绑定 / 解绑回写连接器「N 个岗
   })
 })
 
-// yuepu#52（已修）删岗清知识库可见范围：强断言（id 恰 +1、岗位库 scopeRefId 落盘置空、非岗位库不被清）在 positionIdReuse.test.js
+// yuepu#52（已修）删岗清知识库可见范围：强断言（id 恰 +1、岗位库可见范围落盘摘掉该岗位、非岗位库不被清）在 positionIdReuse.test.js
 
 describe('yuepu#57（已修）数据层守卫 / 校验缺口', () => {
   // ① md prd.岗位.md:97,119 仅「未发布且不在审核中」可删；403 = 草稿 + 待发布审核。
@@ -136,24 +135,26 @@ describe('yuepu#57（已修）数据层守卫 / 校验缺口', () => {
     expect(ids).toEqual(expect.arrayContaining([402, 403]))
   })
 
-  // ② md 岗位 §6.4 候选为「已发布」的岗位私有技能
-  async function draftPositionSkillAndAgent() {
+  // ② 岗位「技能」页签候选为「已发布、未回收的岗位私有技能」（产品优化需求-202611 修改点 1；原 md 岗位 §6.4 Agent 引用技能同口径）。
+  // 取消 Agent 后由岗位直接引用技能，守卫随之落在 attachPositionSkill
+  async function draftPositionSkill() {
     const { skillId } = await skillMock.createSkill({ name: '未发布私有技能', type: 'POSITION', categoryName: '办公效率' })
-    // 名称 + 职责描述都给齐：#4 号 K（createAgent 无必填校验）修好后，缺描述会先被拒，钉桩会为错误的原因通过
-    const agent = await createAgent(404, { name: '验证 Agent', description: '验证用职责描述' })
-    return { skillId, agentId: agent.agentId ?? agent.id }
+    return skillId
   }
 
-  it('前提：未发布的岗位私有技能与 404 下的新 Agent 都能建出来', async () => {
-    const { skillId, agentId } = await draftPositionSkillAndAgent()
-    expect(skillId).toBeTruthy()
-    expect(agentId).toBeTruthy()
+  it('前提：未发布的岗位私有技能能建出来（草稿态）；404 尚未引用已发布的岗位私有技能 sk_301', async () => {
+    const skillId = await draftPositionSkill()
+    expect(skillMock._getRaw(skillId)).toMatchObject({ type: 'POSITION', status: 'draft' })
+    expect(skillMock._getRaw('sk_301')).toMatchObject({ type: 'POSITION', status: 'published' })
+    expect((await getPosition(404)).skills.map((s) => s.skillId)).not.toContain('sk_301')
   })
 
-  it('yuepu#57② Agent 不能引用未发布的岗位私有技能；已发布的仍可引用', async () => {
-    const { skillId, agentId } = await draftPositionSkillAndAgent()
-    await expect(assignSkill(skillId, agentId)).rejects.toThrow(/已发布/)
-    await expect(assignSkill('sk_301', agentId)).resolves.toBeTruthy()
+  it('yuepu#57② 岗位不能引用未发布的岗位私有技能（引用列表不变）；已发布的仍可引用', async () => {
+    const skillId = await draftPositionSkill()
+    await expect(attachPositionSkill(404, skillId)).rejects.toThrow(/已发布/)
+    expect((await getPosition(404)).skills.map((s) => s.skillId)).not.toContain(skillId)
+    await expect(attachPositionSkill(404, 'sk_301')).resolves.toMatchObject({ skillId: 'sk_301' })
+    expect((await getPosition(404)).skills.map((s) => s.skillId)).toContain('sk_301')
   })
 
   // ③ relistSkill 状态守卫（已修，转正式回归；正反向用例另见 unifiedSkillMock.test.js「重新上架状态守卫」）
@@ -222,20 +223,20 @@ describe('yuepu#57（已修）数据层守卫 / 校验缺口（2026-10-08 /test-
   // 写成数据层断言等于替修复人臆造接口。页面层钉桩归岗位管理页用例。
 })
 
-describe('Agent 技能子行「技能分类」进数据层（yuepu#61② 已修；md 岗位 §6.4「技能子行展示：技能名称、技能分类、工具数量」）', () => {
-  // 页面层钉桩 PositionAgentSkillTab.test.js 用的夹具直接写了 category:'数据分析'，真实 VO 里 category 恒为
-  // OPERATION/QUERY 派生值，11 类技能分类根本没进 VO——修复多半新增字段承载，页面层钉桩不会翻红（岗位组 T17c、专家组 T11）。
-  // 断言不绑字段名：技能子行 VO 的某个字段等于技能本体的分类即可。
-  it('前提：401 的「数据汇总」Agent 引用了 sk_301，且该技能本体有 11 类分类值', async () => {
+describe('yuepu#61②（已修）岗位技能行「技能分类」进数据层（产品优化需求-202611 修改点 1「技能」页签：一行一个技能，展示技能名称、技能分类、工具数量）', () => {
+  // 页面层钉桩当年用的夹具直接写了 category:'数据分析'，真实 VO 里 category 恒为
+  // OPERATION/QUERY 派生值，技能分类根本没进 VO——修复多半新增字段承载，页面层钉桩不会翻红（岗位组 T17c、专家组 T11）。
+  // 2026-11-12 取消 Agent 后技能直接挂在岗位详情 skills[] 上，原「Agent 技能子行」即现在的「技能」页签技能行。
+  it('前提：401 的「技能」页签引用了 sk_301，且该技能本体有分类值', async () => {
     const detail = await getPosition(401)
-    const ref = detail.agents.find((a) => a.agentId === 501).skills[0]
-    expect(ref.skillId).toBe('sk_301')
+    const ref = detail.skills.find((s) => s.skillId === 'sk_301')
+    expect(ref).toBeTruthy()
     expect(skillMock._getRaw('sk_301').category).toBeTruthy()
   })
 
-  it('技能子行 VO 带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY（yuepu#61②）', async () => {
+  it('yuepu#61② 技能行 VO 带出技能本体的分类（如「办公效率」），而不只是 OPERATION / QUERY', async () => {
     const detail = await getPosition(401)
-    const ref = detail.agents.find((a) => a.agentId === 501).skills[0]
+    const ref = detail.skills.find((s) => s.skillId === 'sk_301')
     expect(ref.displayCategoryName).toBe(skillMock._getRaw('sk_301').category)
   })
 })

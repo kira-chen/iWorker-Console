@@ -30,7 +30,7 @@ export const elDrawer = {
 }
 
 /**
- * 岗位详情页签桩（positionAgentTab4C / positionCompletenessG1 / positionDetailTabs 三份逐字相同）：
+ * 岗位详情页签桩（positionCompletenessG1 / positionDetailTabs 两份逐字相同）：
  * 全部 pane 同时渲染，激活项与各 pane 的 label / name 落在 data-* 上供断言。
  */
 export const elTabs = { name: 'el-tabs', props: ['modelValue'], template: '<div class="el-tabs" :data-active="modelValue"><slot /></div>' }

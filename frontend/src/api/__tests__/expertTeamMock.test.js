@@ -48,12 +48,14 @@ const base = (over = {}) => ({
 
 // 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家团.md（md）
 describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
-  it('种子 3 条：默认按最近更新时间降序；303 是唯一「未发布无版本」样本；301 设了主理人、302 没设', async () => {
+  // 2026-11-09 产品优化需求-202611 R13：补种子 304「经营复盘团」（岗位私有、已发布、主理人 205、被 401 引用），共 4 条
+  it('种子 4 条：默认按最近更新时间降序；303 是唯一「未发布无版本」样本；301 / 304 设了主理人、302 没设', async () => {
     const { list, total } = await listTeams()
-    expect(total).toBe(3)
-    expect(list.map((t) => t.name)).toEqual(['岗位协同团', '知识问答团', '经营研究团'])
+    expect(total).toBe(4)
+    expect(list.map((t) => t.name)).toEqual(['经营复盘团', '岗位协同团', '知识问答团', '经营研究团'])
     const byName = Object.fromEntries(list.map((t) => [t.name, t]))
     expect(byName['岗位协同团']).toMatchObject({ status: 'draft', latestVersionLabel: '', type: 'POSITION', positionIds: [401], positionCount: 1 })
+    expect(byName['经营复盘团']).toMatchObject({ status: 'published', type: 'POSITION', positionIds: [401], leaderName: '经营数据核查专家', memberCount: 2, missingCount: 0 })
     expect(byName['经营研究团']).toMatchObject({ leaderName: '经营分析专家', memberCount: 2 })
     expect(byName['知识问答团']).toMatchObject({ leaderId: null, leaderName: '' })
     expect((await listTeams({ sort: 'asc' })).list[0].name).toBe('经营研究团')
@@ -66,7 +68,7 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect((await listTeams({ category: '投资' })).list.map((t) => t.name)).toEqual(['岗位协同团', '经营研究团'])
     expect((await listTeams({ category: '通用' })).list.map((t) => t.name)).toEqual(['知识问答团'])
     expect((await listTeams({ status: 'draft' })).list.map((t) => t.name)).toEqual(['岗位协同团'])
-    expect((await listTeams({ status: 'published' })).total).toBe(2)
+    expect((await listTeams({ status: 'published' })).total).toBe(3)
     expect((await listTeams({ status: 'review' })).total).toBe(0)
   })
 
@@ -75,10 +77,10 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(candidateTypesOf('SYSTEM_DEFAULT')).toEqual(['SYSTEM_DEFAULT', 'PLATFORM'])
     expect(candidateTypesOf('POSITION')).toContain('POSITION')
     const ids = async (type) => (await listTeamMemberCandidates({ type })).map((x) => x.id).sort()
-    // 种子里只有 201 / 202 / 204 已发布（203 法务审阅专家是未发布草稿）
+    // 种子里已发布的是 201 / 202 / 204（市场 / 通用）和 205（岗位私有）；203 法务审阅专家是未发布草稿
     expect(await ids('SYSTEM_DEFAULT')).toEqual([201, 202, 204])
     expect(await ids('PLATFORM')).toEqual([201, 202, 204])
-    expect(await ids('POSITION')).toEqual([201, 202, 204])
+    expect(await ids('POSITION')).toEqual([201, 202, 204, 205])
   })
 
   it('创建：团名重名拦截（字段 name）；岗位私有专家不能进市场 / 通用团；主理人必须是成员', async () => {
@@ -109,6 +111,16 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(u.intro).toBe('改了')
   })
 
+  // 产品优化需求-202611 R13 §2：所属岗位由岗位侧「专家与专家团」页签引用维护，新建时不再选岗位，团编辑页只读展示
+  it('所属岗位不经 createTeam / updateTeam 写入：新建带 positionIds 也落空；更新带了也不改（R13）', async () => {
+    const t = await createTeam(base({ name: '新岗位团', type: 'POSITION', positionIds: [401, 402] }))
+    expect(t).toMatchObject({ type: 'POSITION', positionIds: [], positionCount: 0 })
+    // 303 被 401 引用：更新带 positionIds 不生效，其它字段照改
+    const u = await updateTeam(303, { positionIds: [402], intro: '改介绍' })
+    expect(u).toMatchObject({ positionIds: [401], positionCount: 1, intro: '改介绍' })
+    expect(await updateTeam(303, { positionIds: [] })).toMatchObject({ positionIds: [401] })
+  })
+
   it('保存校验（md §三.8）：没设主理人缺协作关系 / 设了主理人缺主理人职责 / 成员团内负责什么为空 各有各的字段提示', async () => {
     const full = await getTeam(303)
     expect(checkTeamPublishable(full)).toBeNull()
@@ -122,16 +134,20 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
     expect(checkTeamPublishable({ ...full, exampleQuestions: ['a', '', 'c'] })).toMatchObject({ field: 'examples' })
   })
 
-  it('发布前检查：成员须均为已发布；岗位私有成员须绑定团的全部所属岗位', async () => {
+  it('发布前检查：成员须均为已发布；岗位私有成员没加入团的所属岗位不再在这里拦（R13 挪到岗位发布前检查）', async () => {
     const full = await getTeam(303)
     // 203（岗位私有，未发布）→ 先因「未发布」被拦
     const withDraft = { ...full, members: [full.members[0], { expertId: 203, duty: '合同' }] }
     expect(checkTeamPublishable(withDraft).message).toContain('成员「法务审阅专家」未发布')
-    // 把 203 发布成「已发布」后：绑定了 401 / 402，团绑 401 + 999 → 缺 999
+    // 把 203 发布成「已发布」后：绑定了 401 / 402，团绑 401 + 999 → 缺 999 也放行（由岗位侧「成员没有加入本岗位」阻断）
     await applyFakePublished(203)
-    const t = { ...withDraft, positionIds: [401, 999] }
-    expect(checkTeamPublishable(t).message).toMatch(/成员「法务审阅专家」未绑定岗位「.*999.*」，该岗位员工将无法使用，请调整/)
+    expect(checkTeamPublishable({ ...withDraft, positionIds: [401, 999] })).toBeNull()
     expect(checkTeamPublishable({ ...withDraft, positionIds: [401, 402] })).toBeNull()
+  })
+
+  it('被岗位引用的专家团不能删（R13 §5）：303 是草稿、被 401 引用 → 拦并列出岗位，团仍在', async () => {
+    await expect(deleteTeam(303)).rejects.toThrow('该专家团被 1 个岗位引用（经营分析岗），需先从岗位中移除后再删除')
+    expect((await getTeam(303)).name).toBe('岗位协同团')
   })
 
   it('团内负责什么选填：空则生效内容取该专家当前简介（现取不复制）；填了用填的；试跑里同口径（md §三.3.1）', async () => {
@@ -144,8 +160,9 @@ describe('expertTeamMock —— 专家团 mock（2026-10-12）', () => {
   it('岗位绑定情况（删除岗位确认文案用）：绑定本岗位的岗位团与岗位私有专家；其他岗位为空', async () => {
     const { getPositionBindings } = await import('../positionMock')
     const b = await getPositionBindings(401)
-    expect(b.teams).toEqual([{ id: 303, name: '岗位协同团', status: 'draft' }])
-    expect(b.experts.map((e) => e.name)).toEqual(['法务审阅专家']) // 种子 203 绑了 401 / 402
+    // 2026-11-09 补种子：团 304 经营复盘团、专家 205 经营数据核查专家也被 401 引用
+    expect(b.teams).toEqual([{ id: 303, name: '岗位协同团', status: 'draft' }, { id: 304, name: '经营复盘团', status: 'published' }])
+    expect(b.experts.map((e) => e.name)).toEqual(['法务审阅专家', '经营数据核查专家']) // 种子 203 绑了 401 / 402
     expect(await getPositionBindings(999)).toEqual({ teams: [], experts: [] })
   })
 

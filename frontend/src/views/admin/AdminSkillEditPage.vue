@@ -25,7 +25,7 @@ import {
   updateBizSystemOwnedSkill
 } from '@/api/admin'
 import { setSkillCategory } from '@/api/skillCategory'
-// 技能分类选项统一同源 fieldDict（固定 11 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 列表接口。
+// 技能分类选项统一同源 fieldDict（2026-09-01 疑点8 处置），不再调 skillCategory.js 列表接口。
 import { listFieldDict } from '@/api/fieldDict'
 import {
   apiFor,
@@ -38,6 +38,8 @@ import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import SkillFocusEditor from '@/components/position/SkillFocusEditor.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
 import RevokedBanner from '@/components/admin/RevokedBanner.vue'
+// 产品优化需求-202611 修改点 13（R4）：引用了未发布 / 审核中连接器时版本管理弹窗的阻断提示（与列表页、mock 同源）
+import { unpublishedToolsMessage } from '@/utils/toolPubState'
 // 组④：效果测试台按需异步加载（重组件，仅点试跑才拉）。
 // 兜底（CR）：加 loading/error 占位 + timeout + chunk 加载失败 toast，弱网不至于浮层空白无反馈。
 const TestLoading = { render: () => h('div', { class: 'se-test-fallback' }, '正在打开试跑…') }
@@ -241,10 +243,12 @@ const versionAdapter = computed(() => {
     lastActiveTip: '当前版本是该技能最后一个启用版本。如需停止对外提供，请先整体下架技能',
     exclusiveActive: true,
     // 【发布】按钮已按完整必填集置灰（publishReadiness），此处保留市场技能分类门兜底（原型 version-gate）。
+    // 其后接 R4 发布校验：引用了未发布 / 审核中的连接器 → 弹窗展示「引用的「名称」尚未发布…」并禁用【提交发布】。
+    // 不并进 publishReadiness：草案写明提示在版本管理弹窗里展示，【发布】置灰的话弹窗打不开、提示就看不到了。
     submitGate: () =>
-      pageSkillType.value === SKILL_TYPE.PLATFORM && !(sk.displayCategoryId ?? null)
+      (pageSkillType.value === SKILL_TYPE.PLATFORM && !(sk.displayCategoryId ?? null)
         ? '该技能还未选择「技能分类」，按规则不可提交发布'
-        : '',
+        : '') || unpublishedToolsMessage(sk.referencedTools),
     // 疑点10：撤回确认保留现状分场景文案
     withdrawText: (state) =>
       state === 'REVIEWING'
@@ -302,10 +306,10 @@ function markSaveError(path) {
 
 /* ---------- 配置区（手动保存）：与 SKILL.md 文档区自动保存拆开 ----------
  * 需求（2026-07-08）：只有 Markdown 文档区（SKILL.md 正文 + references 等文件）自动保存；
- * 技能其它配置（名称/描述/触发词/示例问题/默认安装/展示分类）改动只标脏，须用户点「保存配置」才提交。
+ * 技能其它配置（名称/描述/触发词/示例问题/默认安装/不在市场展示/展示分类）改动只标脏，须用户点「保存配置」才提交。
  * 展示分类并入手动保存（不再选即存）；离开/切技能时配置只提示不自动存（数据安全靠确认框，不静默提交）。 */
 const savedConfig = reactive({
-  name: '', icon: '', description: '', triggers: [], exampleQuestion: '', defaultInstall: false, displayCategoryId: null
+  name: '', icon: '', description: '', triggers: [], exampleQuestion: '', defaultInstall: false, hideFromMarket: false, displayCategoryId: null
 })
 const configSaving = ref(false)
 // 把当前 skill 的配置字段设为「已保存」基线（loadSkill 后 / 保存成功后调用）。
@@ -317,6 +321,7 @@ function snapshotConfig() {
   savedConfig.triggers = [...(s.triggers ?? [])]
   savedConfig.exampleQuestion = s.exampleQuestion ?? ''
   savedConfig.defaultInstall = !!s.defaultInstall
+  savedConfig.hideFromMarket = !!s.hideFromMarket
   savedConfig.displayCategoryId = s.displayCategoryId ?? null
 }
 function sameStrList(a, b) {
@@ -334,6 +339,7 @@ const configDirty = computed(() => {
     || !sameStrList(s.triggers ?? [], savedConfig.triggers)
     || (s.exampleQuestion ?? '') !== savedConfig.exampleQuestion
     || !!s.defaultInstall !== savedConfig.defaultInstall
+    || !!s.hideFromMarket !== savedConfig.hideFromMarket
     || (s.displayCategoryId ?? null) !== savedConfig.displayCategoryId
 })
 
@@ -346,7 +352,7 @@ const activeFileContent = computed({
   set: (v) => onUpdateActiveContent(v)
 })
 
-/* ---------- 技能分类选项（2026-09-01 疑点8：三类技能均显示，固定 11 类 fieldDict 同源）----------
+/* ---------- 技能分类选项（2026-09-01 疑点8：三类技能均显示，选项 fieldDict 同源）----------
  * 不再调 skillCategory.js 后端接口取选项；demo 用「分类名」充当 id（与 unifiedSkillMock 口径一致）。
  * 业务系统技能无分类概念，不拉。 */
 const categoryOptions = ref([])
@@ -447,6 +453,8 @@ async function loadSkill(skillId) {
       exampleQuestion: data.exampleQuestion || '',
       // N9 平台技能默认安装标记（仅平台技能编辑有意义）：详情回填，随技能 PUT 提交。
       defaultInstall: !!data.defaultInstall,
+      // 不在市场展示（R14，仅市场技能有意义）：详情回填，随配置保存提交
+      hideFromMarket: !!data.hideFromMarket,
       skillMd: data.skillMd || '',
       // 强制回收标记（PRD 技能 §3.5.1）：编辑 / 查看页顶部红色提示条用；未被回收为 null
       revoked: data.revoked || null,
@@ -455,7 +463,9 @@ async function loadSkill(skillId) {
       // 派生类别（只读派生标签，前端不可改；保存回显会刷新它）
       category: data.category ?? null,
       // N3 展示分类引用 id（可空=未分类）。并入手动「保存配置」（2026-07-08：不再选即存）。
-      displayCategoryId: data.displayCategoryId ?? null,
+      // 分类已在字段字典删掉（displayCategoryName 为空）→ 下拉回到未选，不显示旧分类名；保存时按「请选择技能分类」拦下重选
+      // （产品优化需求-202611 修改点 15：删除分类后技能显示「未分类」）
+      displayCategoryId: data.displayCategoryName === '' ? null : (data.displayCategoryId ?? null),
       // 技能类型与所属岗位（岗位私有类型显示标签用）
       type: data.type || pageSkillType.value,
       positionId: data.positionId ?? null,
@@ -629,7 +639,9 @@ async function saveConfig() {
       // 若透传（空技能为 []）会误触后端「显式编辑触发词必 ≥1」保存门（N1），把无关配置保存拦死。
       exampleQuestion: s.exampleQuestion,
       // N9 默认安装标记：仅平台技能有意义，FDE 技能提交后端忽略（部分更新）。
-      defaultInstall: s.defaultInstall
+      defaultInstall: s.defaultInstall,
+      // 不在市场展示（R14）：仅市场技能有意义，其他类型提交后端忽略（部分更新）
+      hideFromMarket: s.hideFromMarket
       // 不带 skillMd：正文由文档区自动保存，配置保存不重复提交正文。
     })
     if (skill.value?.skillId !== id) return
@@ -907,6 +919,17 @@ function onJsonError(path, msg) {
   else delete jsonErrorMap[path]
 }
 
+/* ---------- 上传技能包回吐（产品优化需求-202611 R5 草案） ----------
+ * 整包替换后丢掉未保存的改动（确认框已提示），取消待发的自动保存——否则旧正文会在 2 秒后把新 SKILL.md 覆盖回去；
+ * 重拉详情与目录树，停留在编辑页并打开 SKILL.md（loadSkill → resetFileState 默认激活入口）。
+ * 工具引用已由数据层按新 SKILL.md 重新识别，随详情回来。 */
+async function onPackageUploaded() {
+  clearTimeout(saveTimer)
+  clearTimeout(fileSaveTimer)
+  await loadSkill(currentSkillId.value)
+  if (!loadError.value) ElMessage.success('技能包已上传，检查无误后可发布新版本')
+}
+
 function onTreeRetry() {
   loadTree(currentSkillId.value)
 }
@@ -925,7 +948,7 @@ function backToList() {
     router.push({ name: 'AdminMyApplications' })
     return
   }
-  // 岗位借用态（2026-09-09 批次 4C #15）：从岗位详情「Agent 与技能」页签行内【编辑】进来，
+  // 岗位借用态（2026-09-09 批次 4C #15）：从岗位详情「技能」页签（2026-11-09 R1 前为「Agent 与技能」）行内【编辑】进来，
   // 「← 返回」回到该岗位详情的来源页签，不再落到技能列表。
   // fromPosition / fromTab 经 queryString 归一：地址栏重复参数（数组）取第一个（yuepu#89⑤）
   const fromPosition = queryString(route.query?.fromPosition)
@@ -933,7 +956,7 @@ function backToList() {
     router.push({
       name: 'PositionWorkbench',
       params: { id: fromPosition },
-      query: { tab: queryString(route.query.fromTab) || 'agents' }
+      query: { tab: queryString(route.query.fromTab) || 'skills' }
     })
     return
   }
@@ -1242,6 +1265,7 @@ function onTestMaskClick(e) {
           @file-renamed="onFileRenamed"
           @file-deleted="onFileDeleted"
           @tree-changed="onTreeChanged"
+          @package-uploaded="onPackageUploaded"
           @json-error="onJsonError"
           @retry-save="retrySave"
           @save-config="saveConfig"

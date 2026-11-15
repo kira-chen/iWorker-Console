@@ -25,6 +25,15 @@
  * 2026-09-08 决议第 9 项（md §八.1 L417）：数据源列表「概要」按验证状态由 mock 派生（sourceVO.summary）——
  *   新建保存未测试「未验证」→ 测试通过「已连通」（MCP 附所选检索工具名，如「已连通 · search_documents」）/
  *   测试失败「连接失败」→ 修改连接配置后保存重置「未验证」；对「刚测试过的这份配置」保存时不重置（lastTest 签名比对）。
+ * 2026-11-09 产品优化需求-202611 R3：专家、岗位知识库的可见范围改为多选（scopeRefId → scopeRefIds[]），
+ *   一个知识库可给多位专家或多个岗位使用；专家候选改读专家模块（domainExpertMock）真实数据，不再写死 ex_1/ex_2。
+ *   被删的专家 / 岗位不再解析出名称（vo.scopeRefs 只含仍存在的对象），一个都不剩时列表标「无有效专家 / 岗位」、发布前检查阻断。
+ * 2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8），只动数据源：
+ *   - R7 方案 A：MCP config 的 requestMap / responseMap / resultArrayPath 改为每个已选检索工具一份（config.toolConfigs），
+ *     保存时逐个工具校验；检索测试调用全部已选工具后合并取 topK（合并规则待研发确认，见 snippetsOf）。
+ *   - R6：MCP 连接测试按各工具自己的结果数组路径，从模拟的工具原始返回（mockMcpToolResult）里真实取值，
+ *     取不到数组 / text 不是 JSON 时给出两种提示（取值口径见 knowledgeBaseMeta.evalMcpResultArray）。
+ *   - R8：API 连接测试遇到返回不是 JSON 的接口提示「接口返回的不是 JSON，暂不支持该接口」（演示约定：地址里带 html）。
  * 2026-09-09 PRD 复核 G3+G6 · A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」）：
  *   transition() 的 publish / delist 同时向 reviewsMock + myApplicationsMock 写审核行与申请行，
  *   withdraw 摘审核行、申请行置「已撤回」；知识库按 md `prd.审核中心.md` §四**不生成快照**，
@@ -50,11 +59,16 @@ import {
   mkMcpResponseMapRows,
   validateRequestMap,
   validateResponseMap,
-  validateMcpResponseMap
+  validateMcpToolConfig,
+  evalMcpResultArray,
+  API_NOT_JSON_ERROR
 } from '@/utils/knowledgeBaseMeta'
 import { MCP_TRANSPORTS, isHttpTransport, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
 // 2026-09-23 待办 yuepu#9④：岗位可见范围候选改从 positionMock 实时读，不再自己维护一份脱节的名单
 import { listAllPositions } from './positionMock'
+// R3：专家可见范围候选 / 名称解析读专家模块真实数据（domainExpertMock 不反向引本模块，无环）
+import { listExpertsSync } from './domainExpertMock'
+import { EXPERT_TYPE_LABEL } from './expertTypes'
 import { appendOpsRecord } from './accessAuditMock'
 import { currentDemoUsername } from '@/utils/demoIdentity'
 
@@ -62,12 +76,6 @@ const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let seq = 100
 const nid = (p) => `${p}_${(seq++).toString(36).padStart(11, 'x')}`
 
-// 潜伏项（yuepu#89⑦，保留不改）：知识库「专家可见范围」候选写死 ex_1 / ex_2，与专家管理模块（domainExpertMock）的真实专家列表脱节；
-// 接真实后端时应改为读专家列表。
-const EXPERTS = [
-  { id: 'ex_1', name: '方案专家' },
-  { id: 'ex_2', name: '售后专家' }
-]
 const EMBEDDING_MODELS = [
   { id: 'md_emb_1', name: 'text-embedding-3-small' },
   { id: 'md_emb_2', name: 'bge-m3' }
@@ -97,6 +105,41 @@ const upl = (id, name, over = {}) =>
   })
 // MCP 测试连接成功后返回的固定工具清单（md §七.3：工具清单在连接测试成功后获得）
 export const MCP_TEST_TOOLS = ['search_documents', 'search_chunks', 'hybrid_search']
+/**
+ * 演示用的 MCP 工具原始返回（产品优化需求-202611 修改点 9（R6））。MCP 协议里工具结果形如
+ * { content: [{ type: 'text', text }], structuredContent? }，结果数据要么在 structuredContent，要么是 text 里的一段 JSON。
+ * 三个演示工具各用一种常见写法、字段名也各不相同（这正是每个工具要单独配映射的原因，修改点 10），对应的结果数组路径：
+ * - search_documents：text 里是 {"items":[{title,text}]}                       → $.items[*]
+ * - search_chunks：   text 里是 {"data":{"list":[{heading,chunk_text}]}}       → $.data.list[*]
+ * - hybrid_search：   带 structuredContent {"results":[{doc_title,chunk}]}，text 只是给人看的摘要（不是 JSON）→ $.results[*]
+ * plainText = true（服务地址或启动参数里带 plain 的演示服务）：所有工具只回一句纯文本，用来演示「工具返回内容不是 JSON」。
+ */
+function mockMcpToolResult(tool, plainText) {
+  if (plainText) return { content: [{ type: 'text', text: '共找到 2 条相关条文：《安全生产法》第二十一条、第二十五条。' }] }
+  if (tool === 'hybrid_search') {
+    return {
+      content: [{ type: 'text', text: '混合检索命中 2 条结果' }],
+      structuredContent: {
+        results: [
+          { doc_title: '安全生产法', chunk: '生产经营单位的主要负责人是本单位安全生产第一责任人，对本单位的安全生产工作全面负责。', score: 0.91 },
+          { doc_title: '安全生产许可证条例', chunk: '企业未取得安全生产许可证的，不得从事生产活动。', score: 0.84 }
+        ]
+      }
+    }
+  }
+  if (tool === 'search_chunks') {
+    const list = [
+      { heading: '第二十一条', chunk_text: '生产经营单位的主要负责人对本单位安全生产工作负有建立健全安全生产责任制等职责。' },
+      { heading: '第二十五条', chunk_text: '安全生产管理机构以及安全生产管理人员应当组织或者参与拟订本单位安全生产规章制度。' }
+    ]
+    return { content: [{ type: 'text', text: JSON.stringify({ data: { list, total: list.length } }) }] }
+  }
+  const items = [
+    { title: '安全生产法 第二十一条', text: '生产经营单位的主要负责人对本单位安全生产工作负有下列职责……' },
+    { title: '安全生产法 第二十五条', text: '生产经营单位的安全生产管理机构以及安全生产管理人员履行下列职责……' }
+  ]
+  return { content: [{ type: 'text', text: JSON.stringify({ items, total: items.length }) }] }
+}
 const apiSrc = (id, name, over = {}) =>
   mkSrc(
     id,
@@ -116,6 +159,15 @@ const apiSrc = (id, name, over = {}) =>
     },
     'SUCCESS'
   )
+/**
+ * 一个检索工具的种子映射配置（修改点 10：每个工具一份）。结果数组路径与字段名照 mockMcpToolResult 的真实返回填写，
+ * 连接测试能按路径取到数组；sourceName 留空演示「取数据源名称」。键顺序与编辑器组装的载荷一致，原样保存不会被当成改了配置。
+ */
+const mcpToolSeed = (resultArrayPath, fields) => ({
+  requestMap: mkRequestMapRows(), // 与 API 同构，预设 query/topK（md §七.4）
+  resultArrayPath,
+  responseMap: mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: fields[r.name] ?? '' }))
+})
 // 原「引用现有 MCP」种子（2026-09-07 PRD-20260904 删除该模式）改为直接填写等价配置
 const mcpSrc = (id, name, over = {}) =>
   mkSrc(
@@ -132,10 +184,11 @@ const mcpSrc = (id, name, over = {}) =>
       args: [],
       envVars: [],
       tools: ['search_documents', 'hybrid_search'], // 检索工具多选（md §七.3：≥1）
-      requestMap: mkRequestMapRows(), // 与 API 同构，预设 query/topK（md §七.4）
-      // 响应字段（md §七.5）：接口返回字段名给出真实示例（title/content 必填映射，sourceName 留空演示取数据源名称）
-      responseMap: mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: { title: 'title', content: 'text', sourceName: '' }[r.name] ?? '' })),
-      resultArrayPath: '$.content[0].items[*]', // md §七.5：结果数组路径必填
+      // 每个已选工具各一份请求参数映射 / 结果数组路径 / 响应字段（产品优化需求-202611 修改点 10（R7）方案 A）
+      toolConfigs: {
+        search_documents: mcpToolSeed('$.items[*]', { title: 'title', content: 'text' }),
+        hybrid_search: mcpToolSeed('$.results[*]', { title: 'doc_title', content: 'chunk' })
+      },
       timeoutMs: 10000, // md §七.6：必填，系统默认值可直接修改
       ...over
     },
@@ -163,18 +216,20 @@ sources.find((s) => s.id === 'ks_5b').verifyError = 'TIMEOUT: 连接超时（800
 Object.assign(sources.find((s) => s.id === 'ks_old'), { status: 'DISABLED', verifyStatus: 'FAILED', verifiedAt: null, verifyError: 'HTTP 502 Bad Gateway' })
 
 let rows = [
-  { id: 'kb_1', name: '产品与解决方案库', icon: '📦', kbType: 'ENTERPRISE', scopeRefId: null, description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
-  { id: 'kb_2', name: '报价政策与折扣权限', icon: '💰', kbType: 'ENTERPRISE', scopeRefId: null, description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
-  { id: 'kb_3', name: '法规与标准库', icon: '⚖️', kbType: 'ENTERPRISE', scopeRefId: null, description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
+  { id: 'kb_1', name: '产品与解决方案库', icon: '📦', kbType: 'ENTERPRISE', scopeRefIds: [], description: '公司全线产品的规格书、解决方案与典型案例，供售前与销售顾问检索。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_1a', 'ks_1b', 'ks_1c'] },
+  { id: 'kb_2', name: '报价政策与折扣权限', icon: '💰', kbType: 'ENTERPRISE', scopeRefIds: [], description: '各产品线报价政策、折扣审批权限与常见报价问题，供销售与售前使用。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_2a'] },
+  { id: 'kb_3', name: '法规与标准库', icon: '⚖️', kbType: 'ENTERPRISE', scopeRefIds: [], description: '行业法规、国标与行标条文检索，供合规与方案设计参考。', status: 'DRAFT', pendingAction: 'PUBLISH', sourceIds: ['ks_3a', 'ks_3b', 'ks_3c'] },
   // D3：两库分别挂经营分析岗（401）与财务审核岗（403），名称/描述随岗位改写，让两岗知识页签都有数据可演示
-  // （2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 的真实 positionId，不再是脱节的 'ps_1'/'ps_2'）
-  { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefId: 401, description: '经营分析岗常用指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
-  { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefId: 403, description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
-  { id: 'kb_6', name: '2026 产品白皮书库', icon: '📄', kbType: 'EXPERT', scopeRefId: 'ex_1', description: '2026 年度产品白皮书与技术方案，供方案专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
+  // （2026-09-23 待办 yuepu#9④：可见范围用 positionMock 的真实 positionId，不再是脱节的 'ps_1'/'ps_2'）
+  // R3（2026-11-09）：可见范围改多选，kb_4 同时给经营分析岗（401）和市场研究岗（404），演示一个库给多个岗位用
+  { id: 'kb_4', name: '经营分析指标口径库', icon: '📊', kbType: 'POSITION', scopeRefIds: [401, 404], description: '经营分析岗、市场研究岗常用的指标定义、统计口径与报表模板说明。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_4a'] },
+  { id: 'kb_5', name: '财务审核制度库', icon: '🧾', kbType: 'POSITION', scopeRefIds: [403], description: '报销与付款审核的制度文件、稽核要点与常见问题。', status: 'PUBLISHED', pendingAction: null, sourceIds: ['ks_5a', 'ks_5b'] },
+  // R3（2026-11-09）：专家可见范围改用专家模块真实 id，且多选——同时给经营分析专家（201）和研究报告专家（204）
+  { id: 'kb_6', name: '2026 产品白皮书库', icon: '📄', kbType: 'EXPERT', scopeRefIds: [201, 204], description: '2026 年度产品白皮书与技术方案，供经营分析、研究报告类专家撰稿引用。', status: 'DRAFT', pendingAction: null, sourceIds: ['ks_6a'] },
   // kb_7：全套唯一的「无数据源草稿」样本，用于演示发布前校验拦截（sourceIds 为空，勿加数据源）。
   // 2026-09-23：icon / description 原为空串，而两者均已必填（61dbd19 图标改必填、描述早已必填），
   // 导致这条种子一点【编辑】就被必填卡死、存不回去；补齐两字段，「无数据源」这个演示点不受影响。
-  { id: 'kb_7', name: '薪酬与绩效制度', icon: '💰', kbType: 'ENTERPRISE', scopeRefId: null, description: '薪酬结构、绩效考核办法与调薪流程说明，供 HR 与管理者查询。', status: 'DRAFT', pendingAction: null, sourceIds: [] }
+  { id: 'kb_7', name: '薪酬与绩效制度', icon: '💰', kbType: 'ENTERPRISE', scopeRefIds: [], description: '薪酬结构、绩效考核办法与调薪流程说明，供 HR 与管理者查询。', status: 'DRAFT', pendingAction: null, sourceIds: [] }
 ]
 // 文档按上传类数据源 id 归属；parseReadyAt=解析完成时间戳（listDocs 读到该时刻后 PARSING → PARSED，供轮询示意）
 const docsBySource = {
@@ -206,8 +261,12 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 //    （401/403）；旧快照仍是 'ps_1'/'ps_2'，在新版 scopeName() 里查无此岗位、静默显示可见范围为空。
 // ② kb_7 补 icon / description（原为空串，而两者均已必填 → 该种子一点编辑就存不回去）；
 //    旧快照里的 kb_7 仍是空值。
+// version 10（2026-11-09 产品优化需求-202611 R3）：可见范围 scopeRefId 改为多选数组 scopeRefIds，
+// kb_6 的专家可见范围由写死的 'ex_1' 改为专家模块真实 id；旧快照结构不兼容，弃用回种子。
+// v11（2026-11-10 产品优化需求-202611 R7 / R6）：MCP 数据源的 requestMap / responseMap / resultArrayPath 改为每个检索工具
+// 一份（config.toolConfigs），种子结果数组路径按新取值口径改为 $.items[*] / $.results[*]；旧快照结构不兼容，弃用回种子。
 const persist = attachPersist('knowledgeBase', {
-  version: 9,
+  version: 11,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -268,15 +327,40 @@ function sourceVO(s) {
     summary: sourceSummary(s)
   }
 }
-function scopeName(r) {
-  if (r.kbType === 'EXPERT') return EXPERTS.find((e) => e.id === r.scopeRefId)?.name || ''
-  if (r.kbType === 'POSITION') return listAllPositions().find((p) => String(p.id) === String(r.scopeRefId))?.name || ''
-  return ''
+/** 可见范围 id 列表归一：非数组当空、去空值、转数字、去重（专家、岗位 id 都是数字）。 */
+function normScopeIds(ids) {
+  return Array.isArray(ids) ? [...new Set(ids.filter((id) => id != null && id !== '').map(Number))] : []
+}
+/** 可见范围候选：专家（含类型，供下拉展示）/ 岗位，均为平台全部对象（R3：含未发布的）。 */
+function expertScopeOptions() {
+  return listExpertsSync().map((e) => ({ id: e.id, name: e.name, type: e.type, typeLabel: EXPERT_TYPE_LABEL[e.type] || '' }))
+}
+function scopeOptionsOf(kbType) {
+  if (kbType === 'EXPERT') return expertScopeOptions()
+  if (kbType === 'POSITION') return listAllPositions()
+  return []
+}
+/** 可见范围解析成 [{ id, name }]，只保留仍存在的对象（被删的专家 / 岗位自然从可见范围里消失）。 */
+function scopeRefsOf(r) {
+  const options = scopeOptionsOf(r.kbType)
+  return (r.scopeRefIds || [])
+    .map((id) => options.find((o) => String(o.id) === String(id)))
+    .filter(Boolean)
+    .map((o) => ({ id: o.id, name: o.name }))
 }
 function vo(r) {
   const resolved = r.sourceIds.map((id) => sources.find((s) => s.id === id)).filter(Boolean).map(sourceVO)
   const docCount = resolved.filter((s) => s.sourceType === 'UPLOAD' && s.status === 'ENABLED').reduce((n, s) => n + (s.docCount || 0), 0)
-  return { ...r, sourceIds: [...r.sourceIds], scopeRefName: scopeName(r), sources: resolved, docCount }
+  const scopeRefs = scopeRefsOf(r)
+  return {
+    ...r,
+    sourceIds: [...r.sourceIds],
+    scopeRefIds: [...(r.scopeRefIds || [])],
+    scopeRefs,
+    scopeRefNames: scopeRefs.map((x) => x.name),
+    sources: resolved,
+    docCount
+  }
 }
 function find(id) {
   const r = rows.find((x) => x.id === id)
@@ -317,7 +401,10 @@ function validate(payload, selfId) {
   if (!String(payload.icon || '').trim()) throw new ApiError({ message: '请选择或上传图标', code: 400, field: 'icon' })
   const dup = rows.find((r) => r.id !== selfId && r.kbType === payload.kbType && r.name.trim().toLowerCase() === payload.name.trim().toLowerCase())
   if (dup) throw new ApiError({ message: '同类型下已存在同名知识库', code: 409, field: 'name' })
-  if (payload.kbType !== 'ENTERPRISE' && !payload.scopeRefId) throw new ApiError({ message: '请选择可见范围', code: 400, field: 'scopeRefId' })
+  // R3：专家、岗位类型至少选 1 个可见对象（多选，上限待定）
+  if (payload.kbType !== 'ENTERPRISE' && !normScopeIds(payload.scopeRefIds).length) {
+    throw new ApiError({ message: '请选择可见范围', code: 400, field: 'scopeRefIds' })
+  }
   const ids = payload.sourceIds || []
   if (new Set(ids).size !== ids.length) throw new ApiError({ message: '数据源引用重复', code: 400 })
   for (const t of ['UPLOAD', 'API', 'MCP']) {
@@ -336,7 +423,7 @@ function validate(payload, selfId) {
 export async function create(payload) {
   await delay()
   validate(payload)
-  const r = { id: nid('kb'), name: payload.name.trim(), icon: String(payload.icon).trim(), kbType: payload.kbType, scopeRefId: payload.scopeRefId || null, description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
+  const r = { id: nid('kb'), name: payload.name.trim(), icon: String(payload.icon).trim(), kbType: payload.kbType, scopeRefIds: payload.kbType === 'ENTERPRISE' ? [] : normScopeIds(payload.scopeRefIds), description: String(payload.description || '').trim(), status: 'DRAFT', pendingAction: null, sourceIds: [...(payload.sourceIds || [])] }
   rows = [r, ...rows]
   persist()
   return vo(r)
@@ -345,22 +432,19 @@ export async function update(id, payload) {
   await delay()
   const r = find(id)
   if (r.pendingAction) conflict('审核中不可编辑，如需修改请先撤回')
-  // md §三.3.1 L86：专家类型知识库的可见范围（所属专家）创建后不可更改；此前只在 KnowledgeBaseEditor 里置灰，
-  // 数据层照样放行绕过 UI 的改动（2026-09-18 待办 yuepu#13·连接器 C4）。岗位类型可改（改了按 §三.5 回未发布重审）。
-  if (r.kbType === 'EXPERT' && payload.scopeRefId && String(payload.scopeRefId) !== String(r.scopeRefId)) {
-    throw new ApiError({ message: '专家知识库的可见范围创建后不可更改', code: 400, field: 'scopeRefId' })
-  }
-  validate({ ...payload, kbType: r.kbType }, id)
+  // R3（产品优化需求-202611）：专家类型原「可见范围创建后不可更改」取消，专家、岗位都可在编辑时增减（改了按 §三.5 回未发布重审）。
+  // 没传 scopeRefIds 的部分更新沿用原可见范围。
+  const nextScope = r.kbType === 'ENTERPRISE' ? [] : payload.scopeRefIds !== undefined ? normScopeIds(payload.scopeRefIds) : [...(r.scopeRefIds || [])]
+  validate({ ...payload, kbType: r.kbType, scopeRefIds: nextScope }, id)
   // 关键变更（md §三.5）：数据源引用集合变化 或 可见范围变化 → 已发布库回未发布重审
   const refsChanged = JSON.stringify([...r.sourceIds].sort()) !== JSON.stringify([...(payload.sourceIds || [])].sort())
-  const nextScope = r.kbType === 'ENTERPRISE' ? null : payload.scopeRefId || r.scopeRefId
-  const scopeChanged = nextScope !== r.scopeRefId
+  const scopeChanged = JSON.stringify([...nextScope].sort()) !== JSON.stringify([...(r.scopeRefIds || [])].sort())
   Object.assign(r, {
     name: payload.name.trim(),
     // validate 已保证非空；此前 `?? r.icon` 不拦空串，传 icon:'' 会静默清空已有图标（待办 yuepu#34）
     icon: String(payload.icon).trim(),
     description: String(payload.description || '').trim(),
-    scopeRefId: nextScope,
+    scopeRefIds: nextScope,
     sourceIds: [...(payload.sourceIds || [])]
     // kbType 创建后不可修改（md §三.3.1）：忽略入参
   })
@@ -369,15 +453,30 @@ export async function update(id, payload) {
   return vo(r)
 }
 /**
- * 删岗级联（待办 yuepu#52）：岗位知识库（kbType=POSITION）的可见范围 scopeRefId 指向被删岗位时置空——
- * 否则它悬空指向已删岗位，岗位 id 被复用时还会错挂到新岗位上。知识库本体与数据源保留（不动审核状态），
- * 置空后 scopeName 显示为空，管理员编辑时需重新选择可见范围（validate 会要求）。只动 scopeRefId 等于该岗位的行。
+ * 删岗级联（待办 yuepu#52）：把被删岗位从岗位知识库（kbType=POSITION）的可见范围里摘掉——
+ * 否则它悬空指向已删岗位，岗位 id 被复用时还会错挂到新岗位上。知识库本体与数据源保留（不动审核状态）。
+ * R3 起可见范围是多选：只摘这一个岗位，其余岗位照旧；摘空后列表标「无有效岗位」，编辑时需重新选择（validate 会要求）。
  */
 export function clearPositionScope(positionId) {
   let changed = false
   rows.forEach((r) => {
-    if (r.kbType === 'POSITION' && String(r.scopeRefId) === String(positionId)) {
-      r.scopeRefId = null
+    if (r.kbType !== 'POSITION') return
+    const next = (r.scopeRefIds || []).filter((id) => String(id) !== String(positionId))
+    if (next.length !== (r.scopeRefIds || []).length) {
+      r.scopeRefIds = next
+      changed = true
+    }
+  })
+  if (changed) persist()
+}
+/** 专家删除级联（domainExpertMock.deleteExpert 调用）：从专家知识库的可见范围里摘掉该专家，其余专家保留。 */
+export function clearExpertScope(expertId) {
+  let changed = false
+  rows.forEach((r) => {
+    if (r.kbType !== 'EXPERT') return
+    const next = (r.scopeRefIds || []).filter((id) => String(id) !== String(expertId))
+    if (next.length !== (r.scopeRefIds || []).length) {
+      r.scopeRefIds = next
       changed = true
     }
   })
@@ -474,6 +573,15 @@ const SNIPPETS = {
   API: [{ source: '第三方知识服务 · 标准方案条目', page: null, content: '标准解决方案包含需求诊断、方案蓝图、实施路径与运营支持四个阶段，各阶段有对应的交付物模板与里程碑检查项。' }],
   MCP: [{ source: 'MCP 工具返回 · 知识块', page: null, content: '解决方案标准内容清单：场景说明、能力矩阵、系统对接方式、数据安全说明、报价与服务目录。' }]
 }
+/**
+ * 一个数据源在检索测试里召回的片段。MCP 数据源调用全部已选检索工具，每个工具各回一条（产品优化需求-202611
+ * 修改点 10（R7）方案 A）；这些结果在 search() 里与其他数据源的结果合并、按相关度排序、取前 topK——
+ * 多工具结果怎么合并 / 去重、topK 各工具分别取还是合并后取【待研发确认 R7-2】，demo 先按最直观的「合并后整体排序取前 topK」示意。
+ */
+function snippetsOf(s) {
+  if (s.sourceType !== 'MCP') return SNIPPETS[s.sourceType] || []
+  return (s.config?.tools || []).map((tool) => ({ ...SNIPPETS.MCP[0], source: `MCP 工具返回 · ${tool}` }))
+}
 export async function search(id, params) {
   await delay(500)
   const r = find(id)
@@ -489,7 +597,7 @@ export async function search(id, params) {
       errors.push({ sourceType: s.sourceType, sourceId: s.id, sourceName: s.name, message: `${s.name} 检索失败：${s.verifyError || 'TIMEOUT（8000 ms）'}` })
       continue
     }
-    for (const sn of SNIPPETS[s.sourceType] || []) {
+    for (const sn of snippetsOf(s)) {
       base -= 0.05
       items.push({ score: Math.max(0.35, base), sourceType: s.sourceType, sourceId: s.id, sourceName: s.name, source: sn.source, page: sn.page, content: `${sn.content}${q ? `（命中问题：${q}）` : ''}` })
     }
@@ -527,7 +635,7 @@ const bad = (message, field) => {
 const prevParamRow = (prevRows, r, withIn) =>
   (prevRows || []).find((p) => p.key === (r.key || '').trim() && (!withIn || (p.in || '') === (r.in || '')))
 /**
- * 数据源保存校验（md §五.1 UPLOAD / §六.1～§六.3 API / §七.2～§七.4 MCP；映射校验仅 API）。
+ * 数据源保存校验（md §五.1 UPLOAD / §六.1～§六.3 API / §七.2～§七.5 MCP；MCP 映射按检索工具逐个校验）。
  * prev = 编辑目标（判定「已配置密钥留空=保留」）。
  * UPLOAD 三必填（2026-09-12 对齐 md §五.1 · 审计 K40）：Embedding 模型 / 检索策略 / Top-K（1～20），文档类型亦必填。
  */
@@ -590,11 +698,14 @@ function validateSourceConfig(payload, prev) {
     if (!Array.isArray(cfg.tools) || !cfg.tools.length) bad('至少选择一个检索工具', 'tools')
     const t = Number(cfg.timeoutMs)
     if (!Number.isFinite(t) || t < 1000 || t > 120000) bad('超时时间需在 1000～120000ms 之间', 'timeoutMs')
-    // 请求 / 响应映射（md §七.4 / §七.5；与 API 同一套机制，MCP 多校验结果数组路径）
-    const mcpReqErr = validateRequestMap(cfg.requestMap)
-    if (mcpReqErr) bad(mcpReqErr, 'requestMap')
-    const mcpRespErr = validateMcpResponseMap(cfg.responseMap, cfg.resultArrayPath)
-    if (mcpRespErr) bad(mcpRespErr, 'responseMap')
+    // 逐个已选检索工具校验它自己的请求参数映射 / 结果数组路径 / 响应字段（md §七.4 / §七.5；修改点 10 方案 A），
+    // 报错带上工具名，说清是哪个工具没配好
+    for (const tool of cfg.tools) {
+      const tc = cfg.toolConfigs?.[tool]
+      if (!tc) bad(`检索工具 ${tool}：请配置请求参数映射、结果数组路径和响应字段`, 'toolConfigs')
+      const err = validateMcpToolConfig(tc)
+      if (err.request || err.response) bad(`检索工具 ${tool}：${err.request || err.response}`, 'toolConfigs')
+    }
   }
 }
 // 敏感信息：明文只在提交瞬间存在，落库即 maskSecret 掩码（md §四.3：保存后遮罩展示，不回显明文；
@@ -624,6 +735,9 @@ function mergeConfig(prev, payload) {
     cfg.envVars = cfg.transport === 'stdio' ? maskParamRows(cfg.envVars, prev?.config?.envVars, false) : []
     const needsCred = isHttpTransport(cfg.transport) && cfg.authType && cfg.authType !== 'none'
     cfg.credentialMasked = needsCred ? (payload.authValue ? maskSecret(payload.authValue) : prev?.config?.credentialMasked || '') : ''
+    // 只留已勾选工具的映射配置（修改点 10：取消勾选即清空该工具的配置），按勾选顺序重排
+    const tools = Array.isArray(cfg.tools) ? cfg.tools : []
+    cfg.toolConfigs = Object.fromEntries(tools.filter((tool) => cfg.toolConfigs?.[tool]).map((tool) => [tool, cfg.toolConfigs[tool]]))
   }
   return cfg
 }
@@ -651,9 +765,11 @@ function connSignature(type, cfg = {}) {
       args: cfg.args,
       env: (cfg.envVars || []).map((r) => [r.key, !!r.clientFill]),
       tools: cfg.tools,
-      req: cfg.requestMap,
-      resp: cfg.responseMap,
-      resultArrayPath: cfg.resultArrayPath
+      // 每个工具的映射（修改点 10）：按勾选顺序逐个取三项，不直接序列化 toolConfigs 对象，免得键顺序不同被误判为改了配置
+      toolConfigs: (cfg.tools || []).map((tool) => {
+        const tc = cfg.toolConfigs?.[tool] || {}
+        return [tool, tc.requestMap, tc.resultArrayPath, tc.responseMap]
+      })
     })
   }
   return ''
@@ -741,17 +857,12 @@ export async function testSource(sourceType, payload) {
       code: 400
     })
   }
-  const failed = /fail|timeout/i.test(String(target))
-  // MCP 测试成功返回固定工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）
-  const result = failed
+  // 演示约定：地址（stdio 为 Command）里带 fail / timeout 的服务按连不上处理
+  const result = /fail|timeout/i.test(String(target))
     ? { verifyStatus: 'FAILED', verifiedAt: nowIsoLocal(), verifyError: 'TIMEOUT: 连接超时（8000 ms）', latencyMs: 8000 }
-    : {
-        verifyStatus: 'SUCCESS',
-        verifiedAt: nowIsoLocal(),
-        verifyError: null,
-        latencyMs: 168,
-        ...(sourceType === 'MCP' ? { tools: [...MCP_TEST_TOOLS], toolCount: MCP_TEST_TOOLS.length } : {})
-      }
+    : sourceType === 'API'
+      ? mockApiTest(cfg)
+      : mockMcpTest(cfg)
   // 回写：仅当「本次测的配置」与库内已保存的配置一致时才立即写回该行（列表概要随之变为
   // 「已连通」/「连接失败」，决议第 9 项要的「测完不用保存就能看到」）；若表单里还带着未保存的
   // 连接相关改动（地址/鉴权/映射/工具等，含尚未落库的新密钥），只记 lastTest 供保存时判定复用，
@@ -768,6 +879,43 @@ export async function testSource(sourceType, payload) {
   }
   lastTest = { sourceId: prev ? prev.id : null, sig: testedSig(sourceType, prev, payload || {}), result: pickVerify(result) }
   return result
+}
+/**
+ * API 连接测试（服务已连通之后）：只支持返回 JSON 的检索接口（产品优化需求-202611 修改点 11（R8））。
+ * 演示约定：请求地址里带 html 的接口按「返回一张 HTML 页面」模拟，提示接口返回的不是 JSON。
+ */
+function mockApiTest(cfg) {
+  if (/html/i.test(String(cfg.url))) return { verifyStatus: 'FAILED', verifiedAt: nowIsoLocal(), verifyError: API_NOT_JSON_ERROR, latencyMs: 142 }
+  return { verifyStatus: 'SUCCESS', verifiedAt: nowIsoLocal(), verifyError: null, latencyMs: 168 }
+}
+/**
+ * MCP 连接测试（服务已连通之后）：
+ * ① 返回服务提供的工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）；
+ * ② 对每个已勾选的检索工具各调一次，按该工具自己的结果数组路径从工具原始返回里取结果数组，结果按工具分别返回
+ *    （toolResults，修改点 9 / 10）。任一工具没取到数组，整次测试算未通过（md §七.5：路径无效或取不到数组时展示具体错误）。
+ * 刚连上、还没勾选工具时只有 ①，算测试通过。
+ */
+function mockMcpTest(cfg) {
+  const plainText = /plain/i.test([cfg.endpoint, ...(cfg.args || [])].join(' '))
+  const toolResults = (cfg.tools || [])
+    .filter((tool) => MCP_TEST_TOOLS.includes(tool)) // 服务清单里已没有的工具不测，编辑器拿到新清单后会把它移出已选
+    .map((tool) => {
+      const path = String(cfg.toolConfigs?.[tool]?.resultArrayPath || '').trim()
+      if (!path) return { tool, ok: false, error: '请填写结果数组路径' }
+      const { items, error } = evalMcpResultArray(mockMcpToolResult(tool, plainText), path)
+      return error ? { tool, ok: false, error } : { tool, ok: true, itemCount: items.length }
+    })
+  const failedTools = toolResults.filter((r) => !r.ok).map((r) => r.tool)
+  return {
+    verifyStatus: failedTools.length ? 'FAILED' : 'SUCCESS',
+    verifiedAt: nowIsoLocal(),
+    // 文案照修改点 10「检索工具「工具名」测试未通过」；多个工具没通过时逐个加书名号、用「、」分隔
+    verifyError: failedTools.length ? `检索工具${failedTools.map((t) => `「${t}」`).join('、')}测试未通过` : null,
+    latencyMs: 168,
+    tools: [...MCP_TEST_TOOLS],
+    toolCount: MCP_TEST_TOOLS.length,
+    toolResults
+  }
 }
 // 「引用现有 MCP」模式已删除（2026-09-07 PRD-20260904 md §七.1 仅直接填写），
 // 原 mcpTools(mcpId) / mcps() 连接器同源取数一并移除；工具清单改由 testSource 成功返回。
@@ -816,7 +964,7 @@ export async function deleteDoc(sourceId, docId) {
 /* ---- 选择器 ---- */
 export async function experts() {
   await delay(100)
-  return EXPERTS.map((e) => ({ ...e }))
+  return expertScopeOptions()
 }
 export async function positions() {
   await delay(100)

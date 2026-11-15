@@ -75,27 +75,43 @@ describe('positionMock · 岗位 id 水位线（yuepu#52）', () => {
   })
 })
 
-describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#52）', () => {
-  it('删岗后以它为可见范围的岗位知识库保留但 scopeRefId 置空；其它库的可见范围不动；同 id 新岗位不会继承', async () => {
+describe('positionMock.deletePosition · 从岗位知识库可见范围摘掉被删岗位（yuepu#52；R3 多选）', () => {
+  it('删岗后以它为唯一可见对象的岗位知识库保留，可见范围摘空、解析不出名称（列表标「无有效岗位」）', async () => {
     const pos = await import('../positionMock')
     const kb = await import('../knowledgeBaseMock')
     const p = await pos.createPosition({ name: '知识库级联岗' })
-    const mine = await kb.create({ name: '级联岗位库', icon: '📘', kbType: 'POSITION', scopeRefId: p.positionId, description: '随岗位删除' })
-    expect(String((await kb.get(mine.id)).scopeRefId)).toBe(String(p.positionId))
+    const mine = await kb.create({ name: '级联岗位库', icon: '📘', kbType: 'POSITION', scopeRefIds: [p.positionId], description: '随岗位删除' })
+    expect((await kb.get(mine.id)).scopeRefIds).toEqual([p.positionId])
     await pos.deletePosition(p.positionId)
     const after = await kb.get(mine.id)
-    expect(after.scopeRefId).toBeNull()
-    expect(after.scopeRefName).toBe('')
-    // 其它库不受影响：种子岗位库 kb_4 仍指向 401
-    expect(String((await kb.get('kb_4')).scopeRefId)).toBe('401')
-    // 同 id 不复用及岗位库不被继承，见下一条（重新加载后的强断言）
+    expect(after.scopeRefIds).toEqual([])
+    expect(after.scopeRefNames).toEqual([])
+  })
+
+  it('R3 多选库：删其中一个岗位只摘这一个，其余岗位照旧', async () => {
+    const pos = await import('../positionMock')
+    const kb = await import('../knowledgeBaseMock')
+    const p = await pos.createPosition({ name: '共用库被删岗' })
+    const shared = await kb.create({ name: '多岗共用库', icon: '📘', kbType: 'POSITION', scopeRefIds: [p.positionId, 403], description: '两个岗位共用' })
+    await pos.deletePosition(p.positionId)
+    const after = await kb.get(shared.id)
+    expect(after.scopeRefIds).toEqual([403])
+    expect(after.scopeRefNames).toEqual(['财务审核岗'])
+  })
+
+  it('删岗不影响可见范围里没有它的岗位库（种子 kb_4 仍是 401 + 404）', async () => {
+    const pos = await import('../positionMock')
+    const kb = await import('../knowledgeBaseMock')
+    const p = await pos.createPosition({ name: '无关岗' })
+    await pos.deletePosition(p.positionId)
+    expect((await kb.get('kb_4')).scopeRefIds).toEqual([401, 404])
   })
 
   it('删岗后模拟升级丢弃岗位快照 + 重新加载两个模块：同 id 不复用（新岗位 id 恰为 p+1），且没有任何岗位库指向它', async () => {
     const pos = await import('../positionMock')
     const kb = await import('../knowledgeBaseMock')
     const p = await pos.createPosition({ name: '水位线收紧岗' })
-    await kb.create({ name: '收紧级联库', icon: '📘', kbType: 'POSITION', scopeRefId: p.positionId, description: '随岗位删除' })
+    await kb.create({ name: '收紧级联库', icon: '📘', kbType: 'POSITION', scopeRefIds: [p.positionId], description: '随岗位删除' })
     await pos.deletePosition(p.positionId)
     globalThis.localStorage.removeItem(POS_KEY) // 升级丢弃岗位快照，只剩独立落盘的水位线
     vi.resetModules()
@@ -104,32 +120,35 @@ describe('positionMock.deletePosition · 清岗位知识库可见范围（yuepu#
     const next = await pos2.createPosition({ name: '后建岗' })
     expect(next.positionId).toBe(p.positionId + 1)
     const { list } = await kb2.list({ size: 100 })
-    const pointing = list.filter((k) => String(k.scopeRefId) === String(next.positionId))
+    const pointing = list.filter((k) => k.scopeRefIds.map(String).includes(String(next.positionId)))
     expect(pointing).toEqual([])
   })
 })
 
-describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52）', () => {
-  it('清空后重新加载模块，岗位库 scopeRefId 仍为 null（不是只改了内存）', async () => {
+describe('knowledgeBaseMock.clearPositionScope · 落盘读回（yuepu#52；R3 多选）', () => {
+  it('摘掉 401 后重新加载模块，kb_4 只剩 404（落了盘，不是只改了内存）', async () => {
     const kb = await import('../knowledgeBaseMock')
-    expect(String((await kb.get('kb_4')).scopeRefId)).toBe('401')
+    expect((await kb.get('kb_4')).scopeRefIds).toEqual([401, 404])
     kb.clearPositionScope(401)
     vi.resetModules()
     const kb2 = await import('../knowledgeBaseMock')
-    expect((await kb2.get('kb_4')).scopeRefId).toBeNull()
-    // 另一岗位的库不受牵连
-    expect(String((await kb2.get('kb_5')).scopeRefId)).toBe('403')
+    expect((await kb2.get('kb_4')).scopeRefIds).toEqual([404])
   })
 
-  it('kbType 不是 POSITION 但 scopeRefId 同值的库不被清（只清岗位库）', async () => {
+  it('只摘传入的岗位：摘 401 时另一岗位的库（kb_5 = 403）不受牵连', async () => {
     const kb = await import('../knowledgeBaseMock')
-    const other = await kb.create({ name: '同值非岗位库', icon: '📘', kbType: 'EXPERT', scopeRefId: 401, description: '专家库误指同值' })
     kb.clearPositionScope(401)
-    expect((await kb.get('kb_4')).scopeRefId).toBeNull()
-    expect(String((await kb.get(other.id)).scopeRefId)).toBe('401')
+    expect((await kb.get('kb_5')).scopeRefIds).toEqual([403])
+  })
+
+  it('kbType 不是 POSITION 但可见范围含同值 id 的库不被动（只摘岗位库）', async () => {
+    const kb = await import('../knowledgeBaseMock')
+    const other = await kb.create({ name: '同值非岗位库', icon: '📘', kbType: 'EXPERT', scopeRefIds: [401], description: '专家库误指同值' })
+    kb.clearPositionScope(401)
+    expect((await kb.get(other.id)).scopeRefIds).toEqual([401])
     vi.resetModules()
     const kb2 = await import('../knowledgeBaseMock')
-    expect(String((await kb2.get(other.id)).scopeRefId)).toBe('401')
+    expect((await kb2.get(other.id)).scopeRefIds).toEqual([401])
   })
 })
 

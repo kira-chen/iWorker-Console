@@ -16,12 +16,21 @@
  * 【操作区】查看 / 编辑 / 发布·撤回·停用 / 删除（验证入口在「验证」列，同模型页）。
  *   配色对齐模型页：常规=primary、正向状态操作（发布）=success、
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
+ *
+ * 【按服务提供系统分组（产品优化需求-202611 修改点 14（R9））】参照 API 列表改成两层：
+ *   分组头（展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】）→ 组内 MCP 表格（列与操作不变）。
+ *   - 服务提供系统与 API 共用（listProviderSystems）；系统的新建 / 编辑 / 删除仍只在 API 页签（待确认，暂按此），本页分组头不放这两个按钮；
+ *   - 没选系统的 MCP 归入末尾「未分组」（仅在确有这类 MCP 时出现）；
+ *   - 排序在各组内独立；按服务提供系统分页（计数单位「个」），规则同 API 列表；
+ *   - 搜索 / 筛选后只展示有匹配 MCP 的分组；无条件时展示全部系统（含空系统，便于从分组头新建）。
+ *   顶栏【新建 MCP】保留（系统选填，新建时不预选）。
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
+import { listProviderSystems } from '@/api/apiConnector'
 import {
   getMcpServicePublishStatus,
   publishMcpService,
@@ -34,7 +43,8 @@ import { explainMcpError } from '@/utils/mcpVerify'
 import { mcpListStateMeta } from '@/utils/marketMeta'
 import { CONNECTOR_TYPE, CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
 import { COL, opsWidth } from '@/utils/tableLayout'
-import { useAdminList } from '@/composables/useAdminList'
+import { useDynPageSize } from '@/composables/useDynPageSize'
+import { compareTimeText } from '@/utils/datetime'
 import ListStates from '@/components/admin/ListStates.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import ListPagination from '@/components/admin/ListPagination.vue'
@@ -45,10 +55,7 @@ import HealthTag from '@/components/HealthTag.vue'
 import McpEditor from '@/components/admin/McpEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
-// 初值 true：首屏即 loading 态（v-loading 遮罩），避免挂载首帧 loading=false+空列表先闪空态。
-// fetchList 在 onMounted 调用，try/finally 任何路径（成功/失败）都会把 loading 置回 false，不会卡死。
-// sort：「最近更新时间」列头排序方向（2026-09-08 原型复刻批次 2C：改 sortable="custom" 交 mock 全量排序，
-// 与专家 / 模型页同做法；原 el-table 本地 sortable 只排当页）。
+// 「最近更新时间」排序：R9 起在各分组内独立进行（每组表头各有排序箭头，见下方 groupSorts），不再下发 mock 统一排序。
 // 2026-09-09 PRD 复核轮 · G4/A12（Q154「要统一，并且设计成选项B的手动触发」）：
 // 输入区（query）与已应用条件（applied）分离，与 API / 业务系统页同口径。
 // - keyword：md §一.3 L25「输入或清除搜索内容后，点击【查询】按钮刷新结果，并回到第 1 页」
@@ -56,23 +63,14 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 // - state：md §一.3 L26「切换或清空状态筛选后，页面按照当前条件刷新，同时回到第 1 页」
 //   → 切换即刷新，但用的是 applied.keyword（未点查询的输入不生效），两条口径互不打架。
 const query = reactive({ keyword: '', type: '', state: '' })
-const applied = reactive({ keyword: '', type: '', state: '', sort: 'desc' })
-
-// 排序方向箭头
-const sortArrow = computed(() => applied.sort === 'desc' ? '↓' : '↑')
-
-// 切换排序
-function toggleSort() {
-  applied.sort = applied.sort === 'desc' ? 'asc' : 'desc'
-  fetchList()
-}
-
-// 服务端分页：mock listMcp(page/size/keyword/state/sort) 返回当前页 list + 过滤后全量 total。
+const applied = reactive({ keyword: '', type: '', state: '' })
 
 const editorVisible = ref(false)
 const editingId = ref(null)
 // 只读查看态（与模型页同口径：查看/编辑共用一个编辑器，靠 readonly 区分）
 const editorReadonly = ref(false)
+// 新建时预选的服务提供系统（R9：分组头【＋ 在本系统下新建 MCP】带入；顶栏【新建 MCP】为 null）
+const editorDefaultPsId = ref(null)
 const checkBusy = ref(null) // 立即检活进行中的行 id
 
 // 行内动作 busy 态：{ [id]: 'publish' | 'delist' | 'withdraw' | 'delete' }
@@ -226,8 +224,9 @@ function isLocked(row) {
 
 // 状态筛选（三态聚合键）随 applied.state 下发 mock 侧过滤（2026-09-08 批次 2C：种子补到 11 条后
 // 分页与筛选都在 mock 里做，原「当页前端过滤」的 visibleRows 废止——否则筛选后 total 与页数对不上）。
+// R9 起分页改为按服务提供系统在本页做（见 pagedGroups），筛选仍在 mock 里做。
 
-// 逐行拉取服务级聚合态（按本页 rows 并发；单行失败不阻断他行，缺失按未发布处理）。
+// 逐行拉取服务级聚合态（按当前条件下的全部 rows 并发；单行失败不阻断他行，缺失按未发布处理）。
 async function loadPubSummary() {
   const ids = rows.value.map((r) => r.id).filter((id) => id != null)
   if (!ids.length) {
@@ -252,23 +251,132 @@ async function loadPubSummary() {
   pubAgg.value = acc
 }
 
-// 取数编排统一走 useAdminList（见 docs/frontend/规范-管理后台列表页.md）。
-// 发布态摘要（loadPubSummary）依赖列表结果，故作为 mapRow 之后的副作用单独触发。
-// 每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 · A7，负责人拍板全站统一；
-// md 已同口径改为「按窗口高度动态计算」，原 pageSize:10 覆盖已移除）
-const list = useAdminList(listMcp, { params: () => ({ ...applied }) })
-const { rows, total, loading, loadError, loadErrorMessage, page, pageSize, isEmpty } = list
+/* ---------------- 数据加载 ----------------
+ * R9 前走 useAdminList 服务端按 MCP 分页；分组后分页单位改成「服务提供系统」（见下方 pagedGroups），
+ * 故改为自己取数：服务提供系统 + 当前条件下的全部 MCP 两路并取，客户端按系统归并（写法同 AdminApis.fetchAll）。
+ * 发布态摘要（loadPubSummary）依赖列表结果，列表取到后再单独触发。 */
+// 初值 true：首屏即 loading 态（v-loading 遮罩），避免挂载首帧 loading=false+空列表先闪空态。
+// fetchList 在 onMounted 调用，try/finally 任何路径（成功/失败）都会把 loading 置回 false，不会卡死。
+const loading = ref(true)
+const loadError = ref(false)
+// 失败原因（ListStates 的 error-message；口径同 useAdminList，待办 yuepu#74）
+const loadErrorMessage = ref('')
+const providerSystems = ref([]) // [{ id, name, description, mcpCount }]：与 API 共用的服务提供系统
+const rows = ref([]) // 当前条件下的全部 MCP（含 providerSystemId），客户端按系统归并
+const ungroupedTotal = ref(null) // 「未分组」MCP 总数（不随筛选变），分组头计数用
+// 请求序号：只认最后一次发起的请求，丢弃过期响应（同 useAdminList，防快速切筛选时旧响应覆盖新响应）
+let reqSeq = 0
 
 async function fetchList() {
-  await list.reload()
+  const seq = ++reqSeq
+  loading.value = true
+  loadError.value = false
+  loadErrorMessage.value = ''
+  try {
+    // 只下发有值的筛选项（同 useAdminList：空串不入参）
+    const params = {}
+    for (const k of ['keyword', 'type', 'state']) if (applied[k]) params[k] = applied[k]
+    const [psData, mcpData] = await Promise.all([listProviderSystems({}), listMcp(params)])
+    if (seq !== reqSeq) return
+    providerSystems.value = psData?.list || []
+    rows.value = mcpData?.list || []
+    ungroupedTotal.value = mcpData?.ungroupedTotal ?? null
+  } catch (e) {
+    if (seq !== reqSeq) return
+    loadError.value = true
+    loadErrorMessage.value = (e && e.message) || ''
+  } finally {
+    if (seq === reqSeq) loading.value = false
+  }
   // 列表取到后再拉发布态摘要（失败不影响列表本身，内部已自行兜底）
-  if (!loadError.value) await loadPubSummary()
+  if (seq === reqSeq && !loadError.value) await loadPubSummary()
 }
 
+/** 条件变化 / 保存后：回第 1 页再取数（md §一.2「回到第 1 页」/ §三.8「返回列表第 1 页并刷新列表」）。 */
 function reload() {
-  page.value = 1
+  psPage.value = 1
   return fetchList()
 }
+
+/* ---------------- 按服务提供系统分组（R9） ---------------- */
+// 「未分组」不是真实系统，用固定 key 占位；分组 key 同时用于折叠态与组内排序方向
+const UNGROUPED = '__ungrouped__'
+
+// 折叠态：默认全部展开；记录被折叠的分组 key
+const collapsed = ref(new Set())
+function toggleCollapse(key) {
+  const next = new Set(collapsed.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsed.value = next
+}
+function isCollapsed(key) {
+  return collapsed.value.has(key)
+}
+
+// 组内排序（md §二.1「支持按照时间排序」；R9「排序在各组内独立进行」）：每组表头各有排序箭头，默认由近到远
+const groupSorts = ref({}) // { [分组 key]: 'desc' | 'asc' }
+function groupSort(key) {
+  return groupSorts.value[key] || 'desc'
+}
+function sortArrow(key) {
+  return groupSort(key) === 'desc' ? '↓' : '↑'
+}
+function toggleGroupSort(key) {
+  groupSorts.value = { ...groupSorts.value, [key]: groupSort(key) === 'desc' ? 'asc' : 'desc' }
+}
+function sortRows(list, key) {
+  const dir = groupSort(key) === 'desc' ? -1 : 1
+  // 按时间点比较而非字典序：UTC「Z」串与 +08:00 串混排会排反（待办 yuepu#20）
+  return [...list].sort((a, b) => dir * compareTimeText(a.updatedAt, b.updatedAt))
+}
+
+const filtering = computed(() => !!(applied.keyword || applied.type || applied.state))
+
+/**
+ * 两层数据：[{ key, ps, mcps }]，真实系统在前（顺序同 API 列表），「未分组」垫底（ps=null）。
+ * - 无筛选：展示全部系统（含空系统，分组头可直接「在本系统下新建 MCP」）；
+ * - 搜索 / 筛选后：只展示有命中 MCP 的分组（R9，同 API 列表 md §一.2）；
+ * - 「未分组」只在确有没选系统的 MCP 时出现；指向已不存在系统的 MCP 也兜进这里，不让它从列表里凭空消失。
+ */
+const groups = computed(() => {
+  const known = new Set(providerSystems.value.map((p) => p.id))
+  const byKey = {}
+  for (const m of rows.value) {
+    const key = m.providerSystemId && known.has(m.providerSystemId) ? m.providerSystemId : UNGROUPED
+    ;(byKey[key] ||= []).push(m)
+  }
+  const list = providerSystems.value
+    .map((ps) => ({ key: ps.id, ps, mcps: sortRows(byKey[ps.id] || [], ps.id) }))
+    .filter((g) => !filtering.value || g.mcps.length > 0)
+  if (byKey[UNGROUPED]?.length) {
+    list.push({ key: UNGROUPED, ps: null, mcps: sortRows(byKey[UNGROUPED], UNGROUPED) })
+  }
+  return list
+})
+
+// 分组头「N 个 MCP」：该系统下 MCP 总数，不随搜索 / 筛选变（同 API 列表 apiCount 口径）；后端没给就回退本组命中数
+function groupMcpCount(g) {
+  const total = g.ps ? g.ps.mcpCount : ungroupedTotal.value
+  return total ?? g.mcps.length
+}
+
+/* 分页：按服务提供系统分页（R9「规则同 API 列表」，见 prd-API.md §二.1 分页规则）——
+ * 一页放 N 个系统，组内 MCP 全部展示，不会把同一系统的 MCP 拆到两页；计数单位「个」，每页个数仍走全站统一的视口算法。 */
+const psPage = ref(1)
+const psPageSize = useDynPageSize()
+const pagedGroups = computed(() => {
+  const start = (psPage.value - 1) * psPageSize.value
+  return groups.value.slice(start, start + psPageSize.value)
+})
+// 删除 / 筛选致分组数缩水时，把越界页钳回末页（与 AdminApis / useAdminList 同口径）
+watch([() => groups.value.length, psPageSize], () => {
+  const max = Math.max(1, Math.ceil(groups.value.length / Math.max(1, psPageSize.value)))
+  if (psPage.value > max) psPage.value = max
+})
+
+// 没有任何分组可展示（非加载中、非失败）：无条件 = 首次暂无数据；有条件 = 无查询结果
+const isEmpty = computed(() => !loading.value && !loadError.value && !groups.value.length)
 
 /**
  * 点【查询】/ 搜索框回车（A12）：把输入区关键词与状态一并应用后刷新并回第 1 页。
@@ -304,20 +412,24 @@ onMounted(() => {
   fetchList()
 })
 
-function openCreate() {
+/** 新建：顶栏【新建 MCP】不预选系统；分组头【＋ 在本系统下新建 MCP】传入该系统 id 预选（R9）。 */
+function openCreate(psId = null) {
   editingId.value = null
   editorReadonly.value = false
+  editorDefaultPsId.value = psId
   editorVisible.value = true
 }
 function openEdit(row) {
   editingId.value = row.id
   editorReadonly.value = false
+  editorDefaultPsId.value = null
   editorVisible.value = true
 }
 /** 查看：只读打开定义详情——审核锁定期与日常复核走这里，避免误改。 */
 function openView(row) {
   editingId.value = row.id
   editorReadonly.value = true
+  editorDefaultPsId.value = null
   editorVisible.value = true
 }
 function onSaved() {
@@ -478,10 +590,7 @@ async function remove(row) {
   try {
     await deleteMcp(row.id)
     ElMessage.success('已删除')
-    // 兜底：若删的是当前页最后一条（删后本页将空）且不在第 1 页，则回退一页再拉，避免停在越界空页。
-    if (rows.value.length === 1 && page.value > 1) {
-      page.value -= 1
-    }
+    // 删后若本页分组变空（如筛选下删掉某组唯一一条），越界页由上方 watch 钳回末页，不会停在空页
     await fetchList()
   } catch (e) {
     ElMessage.error(e?.message || '删除失败')
@@ -518,258 +627,289 @@ async function remove(row) {
            唯一触发方式（原 300ms 防抖自动刷新已删，两套并存的口径冲突消解） -->
       <el-button @click="search">查询</el-button>
       <template #right>
-        <el-button type="primary" class="lt-create" @click="openCreate">
+        <!-- 顶栏新建不预选系统（R9：系统选填）；须写成 openCreate()，否则点击事件对象会被当成系统 id 传入 -->
+        <el-button type="primary" class="lt-create" @click="openCreate()">
           <el-icon><Plus /></el-icon> 新建 MCP
         </el-button>
       </template>
     </ListToolbar>
 
-    <!-- 表格白卡 .table-wrap（原型 L37；2026-09-08 批次 2C · S4 核对补套） -->
-    <div class="table-wrap">
+    <!-- 分组列表（R9）：loading 遮罩罩住整个列表区；表格白卡 .table-wrap 下沉到每组组体内（同 API 列表 .aps-table-wrap） -->
+    <div v-loading="loading" class="conn-list">
     <ListStates
       :loading="loading"
       :error="loadError"
       :error-message="loadErrorMessage"
       :empty="isEmpty"
-      :empty-text="applied.keyword || applied.type || applied.state ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
+      :empty-text="filtering ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
       @retry="fetchList"
     >
-      <el-table
-        v-loading="loading"
-        :data="rows"
-        row-key="id"
-      >
-        <!-- 服务：合并列（PRD §二.1/原型 service-summary）——图标+名称加粗+发布状态标签，
-             第二行描述缩略（hover 全文）；不设独立状态列与描述列。
-             布局照原型 L1119 `.service-summary`：34px 图标列 + 内容列，描述与名称文字对齐（缩进过图标）。 -->
-        <el-table-column label="服务" :min-width="300">
-          <template #default="{ row }">
-            <div class="mc-service">
-              <div class="mc-service-name">
-                <span v-if="row.icon" class="mc-icon">
-                  <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="mc-icon-img" />
-                  <span v-else>{{ row.icon }}</span>
-                </span>
-                <span class="mc-name">{{ row.name }}</span>
-              </div>
-              <div class="mc-service-desc" :class="{ 'is-indent': row.icon }" :title="row.description || ''">
-                {{ row.description || '—' }}
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
-        <!-- 宽度多留一枚「已回收」小标签的位置 -->
-        <el-table-column label="状态" :width="COL.STATUS + 64" class-name="col-nowrap" label-class-name="col-nowrap">
-          <template #default="{ row }">
-            <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
-            <RevokedTag v-if="stateKey(row) === 'NOT_PUBLISHED'" :info="row.revoked" />
-          </template>
-        </el-table-column>
+      <!-- 两层（产品优化需求-202611 修改点 14（R9））：服务提供系统分组 → 其下 MCP 表格；分组壳与 API 列表同款 -->
+      <div v-for="g in pagedGroups" :key="g.key" class="mc-group" :data-group="g.key">
+        <!-- 分组头：展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】。
+             系统的编辑 / 删除仍在 API 页签（待确认），这里不放；「未分组」不是真实系统，只有名称与数量 -->
+        <div class="mc-group-head">
+          <el-button
+            link
+            class="mc-collapse-btn"
+            :aria-label="isCollapsed(g.key) ? '展开分组' : '折叠分组'"
+            @click="toggleCollapse(g.key)"
+          >
+            <el-icon><component :is="isCollapsed(g.key) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
+          </el-button>
+          <span class="mc-group-name">{{ g.ps ? g.ps.name : '未分组' }}</span>
+          <span v-if="g.ps?.description" class="mc-group-desc" :title="g.ps.description">{{ g.ps.description }}</span>
+          <span class="mc-group-count">{{ groupMcpCount(g) }} 个 MCP</span>
+          <span class="mc-group-sp"></span>
+          <div v-if="g.ps" class="mc-group-actions">
+            <el-button link type="primary" @click="openCreate(g.ps.id)">
+              <el-icon><Plus /></el-icon> 在本系统下新建 MCP
+            </el-button>
+          </div>
+        </div>
 
-        <!-- 连接器类型 -->
-        <el-table-column label="连接器类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
-          <template #default="{ row }">
-            <span v-if="row.type">{{ CONNECTOR_TYPE_LABEL[row.type] || row.type }}</span>
-            <span v-else class="cell-na">—</span>
-          </template>
-        </el-table-column>
+        <!-- 组内表格：列与操作和分组前一致（R9「组内的列和操作与现有 MCP 列表一致」） -->
+        <div v-if="!isCollapsed(g.key)" class="mc-group-body">
+          <div v-if="!g.mcps.length" class="mc-group-empty">
+            该系统下暂无 MCP · 点「在本系统下新建 MCP」添加
+          </div>
+          <div v-else class="table-wrap mc-table-wrap">
+            <el-table :data="g.mcps" row-key="id">
+              <!-- 服务：合并列（PRD §二.1/原型 service-summary）——图标+名称加粗+发布状态标签，
+                   第二行描述缩略（hover 全文）；不设独立状态列与描述列。
+                   布局照原型 L1119 `.service-summary`：34px 图标列 + 内容列，描述与名称文字对齐（缩进过图标）。 -->
+              <el-table-column label="服务" :min-width="300">
+                <template #default="{ row }">
+                  <div class="mc-service">
+                    <div class="mc-service-name">
+                      <span v-if="row.icon" class="mc-icon">
+                        <img v-if="iconIsUrl(row.icon)" :src="row.icon" alt="" class="mc-icon-img" />
+                        <span v-else>{{ row.icon }}</span>
+                      </span>
+                      <span class="mc-name">{{ row.name }}</span>
+                    </div>
+                    <div class="mc-service-desc" :class="{ 'is-indent': row.icon }" :title="row.description || ''">
+                      {{ row.description || '—' }}
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <!-- 状态：2026-09-11 按《列表页UI.png》由名称列拆出独立列，紧跟名称列之后 -->
+              <!-- 宽度多留一枚「已回收」小标签的位置 -->
+              <el-table-column label="状态" :width="COL.STATUS + 64" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <StatusTag :type="stateMeta(row).type">{{ stateMeta(row).label }}</StatusTag>
+                  <RevokedTag v-if="stateKey(row) === 'NOT_PUBLISHED'" :info="row.revoked" />
+                </template>
+              </el-table-column>
 
-        <!-- 传输方式：展示完整枚举值（stdio / streamable-http / sse），无内容显示 — -->
-        <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
-          <template #default="{ row }">
-            <el-tag size="small" type="info" effect="plain">{{ row.transport || '—' }}</el-tag>
-          </template>
-        </el-table-column>
+              <!-- 连接器类型 -->
+              <el-table-column label="连接器类型" :width="COL.TAG" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <span v-if="row.type">{{ CONNECTOR_TYPE_LABEL[row.type] || row.type }}</span>
+                  <span v-else class="cell-na">—</span>
+                </template>
+              </el-table-column>
 
-        <el-table-column label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
-          <template #default="{ row }">
-            <span v-if="row.toolCount">{{ row.toolCount }}</span>
-            <el-tooltip v-else content="尚未拉取到工具，请在编辑器内「拉取工具」" placement="top" effect="dark">
-              <span class="cell-na">—</span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+              <!-- 传输方式：展示完整枚举值（stdio / streamable-http / sse），无内容显示 — -->
+              <el-table-column label="传输方式" :width="COL.TAG + 24" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info" effect="plain">{{ row.transport || '—' }}</el-tag>
+                </template>
+              </el-table-column>
 
-        <!-- 引用情况（PRD §二.1）：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 —；
-             点击弹引用清单（标题按引用方类型：被岗位引用 / 被技能引用；原型 L171/L189，批次 2C · M2） -->
-        <el-table-column label="引用情况" :width="135">
-          <template #default="{ row }">
-            <template v-if="row.type === CONNECTOR_TYPE.POSITION">
-              <span v-if="!row.positionCount" class="cell-na">暂无引用</span>
-              <el-button
-                v-else
-                link
-                type="primary"
-                class="mc-refs"
-                @click="openRefs(row)"
-              >{{ row.positionCount }}个岗位引用</el-button>
-            </template>
-            <template v-else-if="row.type === CONNECTOR_TYPE.PLATFORM">
-              <span v-if="!row.referencedBySkillCount" class="cell-na">暂无引用</span>
-              <el-button
-                v-else
-                link
-                type="primary"
-                class="mc-refs"
-                :title="refsTip(row)"
-                @click="openRefs(row)"
-              >{{ row.referencedBySkillCount }} 个技能引用</el-button>
-            </template>
-            <template v-else>
-              <span class="cell-na">—</span>
-            </template>
-          </template>
-        </el-table-column>
+              <el-table-column label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #default="{ row }">
+                  <span v-if="row.toolCount">{{ row.toolCount }}</span>
+                  <el-tooltip v-else content="尚未拉取到工具，请在编辑器内「拉取工具」" placement="top" effect="dark">
+                    <span class="cell-na">—</span>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
 
-        <!-- 最近更新时间（PRD §二.1）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远 -->
-        <el-table-column label="最近更新时间" :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
-          <template #header>
-            <button type="button" class="time-sort" @click="toggleSort">
-              最近更新时间 <span class="time-sort-arrow">{{ sortArrow }}</span>
-            </button>
-          </template>
-          <template #default="{ row }">
-            <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
-            <span v-else class="cell-na">—</span>
-          </template>
-        </el-table-column>
+              <!-- 引用情况（PRD §二.1）：岗位私有展示岗位引用，市场连接器展示技能引用，通用连接器显示 —；
+                   点击弹引用清单（标题按引用方类型：被岗位引用 / 被技能引用；原型 L171/L189，批次 2C · M2） -->
+              <el-table-column label="引用情况" :width="135">
+                <template #default="{ row }">
+                  <template v-if="row.type === CONNECTOR_TYPE.POSITION">
+                    <span v-if="!row.positionCount" class="cell-na">暂无引用</span>
+                    <el-button
+                      v-else
+                      link
+                      type="primary"
+                      class="mc-refs"
+                      @click="openRefs(row)"
+                    >{{ row.positionCount }}个岗位引用</el-button>
+                  </template>
+                  <template v-else-if="row.type === CONNECTOR_TYPE.PLATFORM">
+                    <span v-if="!row.referencedBySkillCount" class="cell-na">暂无引用</span>
+                    <el-button
+                      v-else
+                      link
+                      type="primary"
+                      class="mc-refs"
+                      :title="refsTip(row)"
+                      @click="openRefs(row)"
+                    >{{ row.referencedBySkillCount }} 个技能引用</el-button>
+                  </template>
+                  <template v-else>
+                    <span class="cell-na">—</span>
+                  </template>
+                </template>
+              </el-table-column>
 
-        <!--
-          验证列（外观与交互对齐模型页 AdminModels 的验证列）：
-            结果标签 + 最近验证时间 + 刷新图标（点击即发起，图标旋转表达进行中）。
-          悬浮提示承载精确信息（最近检测时间 / 失败原因）。
+              <!-- 最近更新时间（PRD §二.1）：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认由近到远 -->
+              <el-table-column label="最近更新时间" :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
+                <template #header>
+                  <button type="button" class="time-sort" @click="toggleGroupSort(g.key)">
+                    最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.key) }}</span>
+                  </button>
+                </template>
+                <template #default="{ row }">
+                  <span v-if="row.updatedAt">{{ fmtTime(row.updatedAt) }}</span>
+                  <span v-else class="cell-na">—</span>
+                </template>
+              </el-table-column>
 
-          【数据口径】MCP 复用既有「检活」链路（check_status / lastCheckAt / lastCheckError），
-          不新建一套 verify_* 字段——两套连通性数据并存只会让 FDE 困惑「该信哪个」。
-          故这里是「模型页验证列的外观与交互」+「MCP 既有检活的数据与端点」。
+              <!--
+                验证列（外观与交互对齐模型页 AdminModels 的验证列）：
+                  结果标签 + 最近验证时间 + 刷新图标（点击即发起，图标旋转表达进行中）。
+                悬浮提示承载精确信息（最近检测时间 / 失败原因）。
 
-          时间用相对值（「27 天前」）：「正常」是关于现在的断言、数据却是关于过去的记录，
-          不显示新旧，一个 30 天前的绿标签会被读成「现在没问题」。
-        -->
-        <el-table-column label="验证" :min-width="200">
-          <template #default="{ row }">
-            <div class="mc-vc">
-              <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标旋转表达「正在重测」 -->
-              <!-- 三态（A13）：DISABLED 已在 mcpConnStatus 折回 UNKNOWN，md §二.2 L57 无「已停用」态 -->
-              <HealthTag :status="mcpConnStatus(row)" />
+                【数据口径】MCP 复用既有「检活」链路（check_status / lastCheckAt / lastCheckError），
+                不新建一套 verify_* 字段——两套连通性数据并存只会让 FDE 困惑「该信哪个」。
+                故这里是「模型页验证列的外观与交互」+「MCP 既有检活的数据与端点」。
 
-              <!-- 最近验证时间（PRD §二.2：MM-DD HH:mm；从未验证不展示，完整时间收进悬浮） -->
-              <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>
-              <span v-else-if="row.lastCheckAt || row.lastCheckedAt" class="mc-vc-time">
-                {{ fmtShortTime(row.lastCheckAt || row.lastCheckedAt) }}
-              </span>
+                时间用相对值（「27 天前」）：「正常」是关于现在的断言、数据却是关于过去的记录，
+                不显示新旧，一个 30 天前的绿标签会被读成「现在没问题」。
+              -->
+              <el-table-column label="验证" :min-width="200">
+                <template #default="{ row }">
+                  <div class="mc-vc">
+                    <!-- 结果标签：验证中沿用上一次结果（不闪成未知），由图标旋转表达「正在重测」 -->
+                    <!-- 三态（A13）：DISABLED 已在 mcpConnStatus 折回 UNKNOWN，md §二.2 L57 无「已停用」态 -->
+                    <HealthTag :status="mcpConnStatus(row)" />
 
-              <!-- 刷新图标 = 验证入口。验证中转圈并禁用点击，转完即结果刷新。 -->
-              <el-tooltip
-                :content="verifyTip(row)"
-                placement="top"
-                effect="dark"
-                popper-class="mc-vc-tip"
-              >
-                <el-icon
-                  class="mc-vc-refresh"
-                  :class="{ 'is-spinning': checkBusy === row.id }"
-                  role="button"
-                  :aria-label="checkBusy === row.id ? '正在验证' : '重新验证连通性'"
-                  @click.stop="checkBusy !== row.id && checkNow(row)"
-                >
-                  <Refresh />
-                </el-icon>
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
+                    <!-- 最近验证时间（PRD §二.2：MM-DD HH:mm；从未验证不展示，完整时间收进悬浮） -->
+                    <span v-if="checkBusy === row.id" class="mc-vc-time">正在验证…</span>
+                    <span v-else-if="row.lastCheckAt || row.lastCheckedAt" class="mc-vc-time">
+                      {{ fmtShortTime(row.lastCheckAt || row.lastCheckedAt) }}
+                    </span>
 
-        <!--
-          操作列配色：对齐「模型」/「平台技能」页口径——
-            常规操作（查看/编辑）= primary；正向状态操作（发布）= success；
-            负向状态操作（撤回/停用）= warning；危险操作（删除）= danger，置末。
-        -->
-        <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
-          <template #default="{ row }">
-            <div class="tbl-ops">
-              <!-- ① 主操作组：查看（只读）/ 编辑，与模型页同构 -->
-              <el-button link type="primary" @click="openView(row)">查看</el-button>
-              <!-- 审核中锁编辑：待审期间改配置会让「审核对象」与「提交内容」不一致——
-                   审核员批的是提交那一刻的版本。禁用 + 悬浮说明如何解锁，而非静默不给点；
-                   要看内容仍可走「查看」。 -->
-              <el-tooltip v-if="isLocked(row)" content="审核中不可编辑，如需修改请先撤回" placement="top">
-                <span class="tbl-ops-wrap">
-                  <el-button link type="primary" disabled>编辑</el-button>
-                </span>
-              </el-tooltip>
-              <el-button v-else link type="primary" @click="openEdit(row)">编辑</el-button>
+                    <!-- 刷新图标 = 验证入口。验证中转圈并禁用点击，转完即结果刷新。 -->
+                    <el-tooltip
+                      :content="verifyTip(row)"
+                      placement="top"
+                      effect="dark"
+                      popper-class="mc-vc-tip"
+                    >
+                      <el-icon
+                        class="mc-vc-refresh"
+                        :class="{ 'is-spinning': checkBusy === row.id }"
+                        role="button"
+                        :aria-label="checkBusy === row.id ? '正在验证' : '重新验证连通性'"
+                        @click.stop="checkBusy !== row.id && checkNow(row)"
+                      >
+                        <Refresh />
+                      </el-icon>
+                    </el-tooltip>
+                  </div>
+                </template>
+              </el-table-column>
 
-              <!-- ② 分隔线：主操作 ↔ 状态/危险操作 -->
-              <span class="tbl-ops-sep" aria-hidden="true"></span>
+              <!--
+                操作列配色：对齐「模型」/「平台技能」页口径——
+                  常规操作（查看/编辑）= primary；正向状态操作（发布）= success；
+                  负向状态操作（撤回/停用）= warning；危险操作（删除）= danger，置末。
+              -->
+              <el-table-column label="操作" :width="opsWidth(4)" fixed="right">
+                <template #default="{ row }">
+                  <div class="tbl-ops">
+                    <!-- ① 主操作组：查看（只读）/ 编辑，与模型页同构 -->
+                    <el-button link type="primary" @click="openView(row)">查看</el-button>
+                    <!-- 审核中锁编辑：待审期间改配置会让「审核对象」与「提交内容」不一致——
+                         审核员批的是提交那一刻的版本。禁用 + 悬浮说明如何解锁，而非静默不给点；
+                         要看内容仍可走「查看」。 -->
+                    <el-tooltip v-if="isLocked(row)" content="审核中不可编辑，如需修改请先撤回" placement="top">
+                      <span class="tbl-ops-wrap">
+                        <el-button link type="primary" disabled>编辑</el-button>
+                      </span>
+                    </el-tooltip>
+                    <el-button v-else link type="primary" @click="openEdit(row)">编辑</el-button>
 
-              <!-- ③ 发布 / 撤回 / 停用（同一位置随状态切换，与模型页同为 if/else-if 链：
-                   三者互斥，链式表达比三个独立 v-if 更贴合「同一按位随状态切换」的语义，
-                   也杜绝状态判定万一重叠时同时冒出两个按钮）。
-                   发布前置：验证通过才可提交（未过则禁用并说明原因，同模型页）。 -->
-              <el-button
-                v-if="canWithdraw(row)"
-                link
-                type="warning"
-                :loading="busy[row.id] === 'withdraw'"
-                @click="withdraw(row)"
-              >
-                撤回
-              </el-button>
-              <template v-else-if="canPublish(row)">
-                <el-tooltip
-                  v-if="!verifyPassed(row)"
-                  content="连通性验证通过后才可提交发布（改过连接配置需重新验证）"
-                  placement="top"
-                >
-                  <span class="tbl-ops-wrap">
-                    <el-button link type="success" disabled>发布</el-button>
-                  </span>
-                </el-tooltip>
-                <el-button
-                  v-else
-                  link
-                  type="success"
-                  :loading="busy[row.id] === 'publish'"
-                  @click="publish(row)"
-                >
-                  发布
-                </el-button>
-              </template>
-              <el-button
-                v-else-if="canDelist(row)"
-                link
-                type="warning"
-                :loading="busy[row.id] === 'delist'"
-                @click="delist(row)"
-              >
-                停用
-              </el-button>
-              <!-- ④ 危险操作置末：仅未发布可删 -->
-              <el-button
-                v-if="canDelete(row)"
-                link
-                type="danger"
-               
-                :loading="busy[row.id] === 'delete'"
-                @click="remove(row)"
-              >
-                删除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+                    <!-- ② 分隔线：主操作 ↔ 状态/危险操作 -->
+                    <span class="tbl-ops-sep" aria-hidden="true"></span>
+
+                    <!-- ③ 发布 / 撤回 / 停用（同一位置随状态切换，与模型页同为 if/else-if 链：
+                         三者互斥，链式表达比三个独立 v-if 更贴合「同一按位随状态切换」的语义，
+                         也杜绝状态判定万一重叠时同时冒出两个按钮）。
+                         发布前置：验证通过才可提交（未过则禁用并说明原因，同模型页）。 -->
+                    <el-button
+                      v-if="canWithdraw(row)"
+                      link
+                      type="warning"
+                      :loading="busy[row.id] === 'withdraw'"
+                      @click="withdraw(row)"
+                    >
+                      撤回
+                    </el-button>
+                    <template v-else-if="canPublish(row)">
+                      <el-tooltip
+                        v-if="!verifyPassed(row)"
+                        content="连通性验证通过后才可提交发布（改过连接配置需重新验证）"
+                        placement="top"
+                      >
+                        <span class="tbl-ops-wrap">
+                          <el-button link type="success" disabled>发布</el-button>
+                        </span>
+                      </el-tooltip>
+                      <el-button
+                        v-else
+                        link
+                        type="success"
+                        :loading="busy[row.id] === 'publish'"
+                        @click="publish(row)"
+                      >
+                        发布
+                      </el-button>
+                    </template>
+                    <el-button
+                      v-else-if="canDelist(row)"
+                      link
+                      type="warning"
+                      :loading="busy[row.id] === 'delist'"
+                      @click="delist(row)"
+                    >
+                      停用
+                    </el-button>
+                    <!-- ④ 危险操作置末：仅未发布可删 -->
+                    <el-button
+                      v-if="canDelete(row)"
+                      link
+                      type="danger"
+                     
+                      :loading="busy[row.id] === 'delete'"
+                      @click="remove(row)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+      </div>
     </ListStates>
     </div>
 
-    <!-- 统一分页条（恒显，每页条数按窗口高度动态；2026-09-08 原型复刻批次 1） -->
+    <!-- 按服务提供系统分页（R9，规则同 API 列表）：单位「个」（系统）而非「条」，避免读成 MCP 总数；
+         每页个数按窗口高度动态（2026-09-08 原型复刻批次 1） -->
     <ListPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-      @change="fetchList"
+      v-model:page="psPage"
+      v-model:page-size="psPageSize"
+      :total="groups.length"
+      unit="个"
     />
 
     <!-- 停用确认弹窗：普通停用 / 勾选「强制回收」同走审核（PRD §3.6 / §3.6.1） -->
@@ -791,6 +931,7 @@ async function remove(row) {
       v-model:visible="editorVisible"
       :mcp-id="editingId"
       :readonly="editorReadonly"
+      :default-provider-system-id="editorDefaultPsId"
       @saved="onSaved"
       @probed="onProbed"
     />
@@ -812,6 +953,70 @@ async function remove(row) {
 </template>
 
 <style scoped>
+/* ===== 服务提供系统分组壳（R9）：与 API 列表 AdminApis 的 .aps-group 同款（原型 L727 .connector-group），仅前缀不同 =====
+   卡片描边圆角 + 灰底卡头；组体内表格白卡去描边圆角；折叠时卡头去下边线。 */
+.mc-group {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-admin-table);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.mc-group-head {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-admin-card-head);
+  border-bottom: 1px solid var(--border-admin-table);
+}
+.mc-group-head:last-child {
+  border-bottom: 0;
+}
+.mc-collapse-btn {
+  padding: 0;
+  width: 26px;
+  height: 26px;
+  color: var(--c-text-muted);
+}
+.mc-group-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+}
+.mc-group-desc {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.mc-group-count {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.mc-group-sp {
+  flex: 1;
+}
+.mc-group-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.mc-group .mc-table-wrap {
+  border: 0;
+  border-radius: 0;
+}
+/* 空分组（原型 L727 .connector-group-empty{padding:30px;text-align:center}） */
+.mc-group-empty {
+  padding: 30px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
 
 /* 服务合并列（PRD §二.1）：首行 图标+名称加粗+状态标签，次行描述缩略。
    照原型 L1119 `.service-summary{display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:8px;row-gap:4px}`

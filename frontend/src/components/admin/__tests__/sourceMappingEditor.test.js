@@ -13,6 +13,7 @@ import { createApp, h, ref, nextTick } from 'vue'
  * - 响应字段映射（variant='api' 默认 / 'mcp'）：参数名固定 + 可编辑「接口返回字段名」+ 描述 + 变量类型，四列同构；
  *   API 预设 content/source/score（md §六.3）、MCP 预设 title/content/sourceName 外加卡内「结果数组路径」必填输入
  *   （md §七.5）；预设行不可删除、变量类型可改；【添加字段】新增自定义行。
+ * 2026-11-10 产品优化需求-202611 修改点 9（R6）：结果数组路径占位示例从结果数据写起、输入框下方常驻字段说明。
  * Element 组件按仓内范式桩化（同 paramRowsEditor.test.js）。
  */
 
@@ -253,10 +254,10 @@ describe('SourceMappingEditor（2026-09-18 口径：API / MCP 同一套显式改
     const pathInput = respCard.querySelector('.el-form-item input')
     expect(pathInput).toBeTruthy()
     expect(respCard.querySelector('.el-form-item label').textContent).toBe('结果数组路径')
-    pathInput.value = '$.content[0].items[*]'
+    pathInput.value = '$.items[*]'
     pathInput.dispatchEvent(new Event('input'))
     await nextTick()
-    expect(resultArrayPath.value).toBe('$.content[0].items[*]')
+    expect(resultArrayPath.value).toBe('$.items[*]')
     // 预设三行固定不可删，接口返回字段名默认留空（由管理员按工具实测结果填写）
     const fixed = [...respCard.querySelectorAll('.sme-fixed-name')].map((el) => el.textContent)
     expect(fixed).toEqual(['title', 'content', 'sourceName'])
@@ -265,5 +266,18 @@ describe('SourceMappingEditor（2026-09-18 口径：API / MCP 同一套显式改
     // 副注提示 title/content 必填、sourceName 可留空
     expect(respCard.textContent).toContain('title / content 必填，sourceName 留空则取数据源名称')
     expect(respCard.textContent).not.toContain('content / source / score')
+  })
+
+  // 产品优化需求-202611 修改点 9（R6）：「示例随口径改正，字段说明补一句"从工具返回的结果数据写起，不包含 content、text 等协议层结构"」
+  it("variant='mcp' 结果数组路径的占位示例从结果数据写起（$.items[*]、$.data.list[*]），不再写进 content 协议层（R6）", async () => {
+    await mountEditor({ variant: 'mcp' }, mkRequestMapRows(), mkMcpResponseMapRows(), '')
+    const pathInput = cards()[1].querySelector('.el-form-item input')
+    expect(pathInput.placeholder).toBe('JSONPath，如 $.items[*]、$.data.list[*]')
+    expect(pathInput.value).toBe('')
+  })
+
+  it("variant='mcp' 结果数组路径下方常驻字段说明「从工具返回的结果数据写起，不包含 content、text 等协议层结构」（R6）", async () => {
+    await mountEditor({ variant: 'mcp' }, mkRequestMapRows(), mkMcpResponseMapRows(), '')
+    expect(cards()[1].querySelector('.el-form-item .sme-help').textContent.trim()).toBe('从工具返回的结果数据写起，不包含 content、text 等协议层结构')
   })
 })

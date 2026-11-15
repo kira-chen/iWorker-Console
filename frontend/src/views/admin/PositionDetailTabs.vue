@@ -2,7 +2,7 @@
 /**
  * 白板工作台（交互规格全篇 13 项决议）。
  *
- * 沉浸式编排页：顶部条 + 白板（总览态：身份卡 + Agent 泳道 + 技能卡）+ 数据底座弹窗。
+ * 沉浸式编排页：顶部条 + 页签（人格 / 采集字段 / 工作档案 / 知识 / 技能 / 专家与专家团 / 自动化任务 / 连接器）+ 数据底座弹窗。
  *
  * 技能编辑（设计 §5 改造）：点技能卡 / 新建技能 → 新标签打开整页编辑器（AdminSkillEdit），
  * 白板内不再有聚焦浮层（SkillFocusEditor 已退役）；回到白板标签（window focus）时轻量 refetch 同步。
@@ -27,12 +27,12 @@
  *   （当时口径：图标、领用页文案、采集字段不参与发布阻断；2026-09-21 起三项均改必填并入发布阻断，见下方完整性校验九项。）
  * - 「岗位认领说明」→「领用页文案」（md §2.4：可选、≤6 条 × 100 字，底层字段仍 claimDescriptions）。
  * - 岗位描述上限统一 500（2026-09-08 决议第 5 项）；采集字段达 10 置灰新增、单/多选选项全空阻断保存；
- *   每个 Agent 技能达 100【勾选】置灰；Agent 名称 64 / 职责必填 ≤500（md §6.2）。
+ *   技能勾选达 100 置灰（2026-11-09 R1 起为每个岗位 100 个）。
  * - 知识页签：列 知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作，行内仅【查看】【检索测试】，
  *   无新建 / 编辑入口（md §5.1–§5.3）。
  *
  * 2026-09-09 PRD 复核（G1 · Q11/Q455）：
- * - 完整性校验统一为 md §9.1 九项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 3 条 / SOP / 采集字段 / Agent 与技能 / 自动化任务）：
+ * - 完整性校验统一为 md §9.1 九项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 3 条 / SOP / 采集字段 / 技能 / 自动化任务）：
  *   【发布岗位】任一缺失即阻断并定位到缺失项所在页签；【保存】执行同一套校验但**不阻断**，
  *   改以顶部提示条（.pd-complete-banner）列出未完成项。口径实现在 utils/positionModel.js
  *   的 computeCompletenessMissing / computePublishCheck，两处共用同一份。
@@ -40,11 +40,16 @@
  *   【查看】仍按 md 跳转。
  *
  * 2026-09-10 病 A 拆分（冗余治理第二批方案第 5 项）：
- * - 人格 / 采集字段 / 知识 / Agent 与技能 四页签抽为 components/position/Position*Tab.vue 子组件
+ * - 人格 / 采集字段 / 知识 / 技能 四页签抽为 components/position/Position*Tab.vue 子组件
  *   （DOM 与交互零变更）；子组件直接用 usePositionStore，只接 isReadonly 一个 prop。
  * - 本文件保留壳层（顶栏 / 页签切换 / ?tab= 深链）、保存与脏检查、发布编排与完整性校验、只读态推导；
  *   跨层接线走 provide：pdActiveTab（知识页签懒加载）/ pdEqShowErrors（示例问题标红）/
  *   pdEnsurePersisted（新建态先落库）。
+ *
+ * 2026-11-09 产品优化需求-202611：
+ * - R1 取消 Agent：「Agent 与技能」页签改为「技能」（PositionSkillTab.vue，?tab=skills），技能直接引用到岗位；
+ * - R13 新增「专家与专家团」页签（PositionExpertTab.vue，?tab=experts），排在技能之后，页签 7 → 8 个；
+ *   引用的专家 / 专家团不可用时进发布前检查的动态阻断项（store.checkInput 带 experts / teams）。
  */
 import { ref, computed, watch, provide, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
@@ -74,7 +79,8 @@ import AdminRail from '@/components/admin/AdminRail.vue'
 import PositionPersonaTab from '@/components/position/PositionPersonaTab.vue'
 import PositionIntakeTab from '@/components/position/PositionIntakeTab.vue'
 import PositionKnowledgeTab from '@/components/position/PositionKnowledgeTab.vue'
-import PositionAgentSkillTab from '@/components/position/PositionAgentSkillTab.vue'
+import PositionSkillTab from '@/components/position/PositionSkillTab.vue'
+import PositionExpertTab from '@/components/position/PositionExpertTab.vue'
 import PositionBusinessSystemTab from '@/components/position/PositionBusinessSystemTab.vue'
 
 const route = useRoute()
@@ -83,19 +89,19 @@ const store = usePositionStore()
 
 const isNew = computed(() => route.params.id === 'new')
 
-/* ---------- Tab 切换（9 个 sheet 页；改造：白板+弹窗 → Tab 内联） ---------- */
+/* ---------- Tab 切换（8 个页签，见 VALID_TABS；改造：白板+弹窗 → Tab 内联） ---------- */
 // 初值可由 ?tab= 指定：技能整页编辑器「← 返回」据此回到来源页签（#15，2026-09-09 批次 4C）。
-// 七个页签见下方 el-tabs 定义；?tab= 传非法值（如旧深链 sampleTasks，见 L589 注）时 el-tabs
+// 八个页签见下方 el-tabs 定义；?tab= 传非法值（如旧深链 sampleTasks，见 L589 注）时 el-tabs
 // 找不到匹配的 el-tab-pane，内容区整块空白——按站内「非法输入回落默认值」口径兜底到 persona
 // （2026-09-18 待办 yuepu#13·岗位 P6）。
-const VALID_TABS = ['persona', 'intake', 'workProfile', 'knowledge', 'agents', 'tasks', 'businessSystems']
+const VALID_TABS = ['persona', 'intake', 'workProfile', 'knowledge', 'skills', 'experts', 'tasks', 'businessSystems']
 const activeTab = ref(VALID_TABS.includes(route.query.tab) ? route.query.tab : 'persona')
 
 /* ---------- 页签子组件接线（2026-09-10 病 A 拆分） ----------
  * 子组件数据都直接走 usePositionStore、只接 isReadonly 一个 prop；仅以下三条跨层状态经 provide 注入：
  * - pdActiveTab：知识页签懒加载 watch 的目标（拆分前为同文件闭包引用）；
  * - pdEqShowErrors：发布阻断时示例问题标红（openPublish 置位，人格页签消费）；
- * - pdEnsurePersisted：新建态先落库编排（Agent 页签「＋ 新增 Agent」前置调用；函数声明有提升，此处引用安全）。 */
+ * - pdEnsurePersisted：新建态先落库编排（技能 / 专家页签【添加】前置调用；函数声明有提升，此处引用安全）。 */
 const eqShowErrors = ref(false)
 provide('pdActiveTab', activeTab)
 provide('pdEqShowErrors', eqShowErrors)
@@ -245,6 +251,7 @@ function buildBasicPayload() {
     claimDescriptions: Array.isArray(b.claimDescriptions) ? b.claimDescriptions : [],
     exampleQuestions: normalizeExampleQuestions(b.exampleQuestions),
     positionSop: b.positionSop || '',
+    positionSopBrief: b.positionSopBrief || '', // SOP 简版（产品优化需求-202611 修改点 18）
     businessSystemIds: Array.isArray(b.businessSystemIds) ? b.businessSystemIds : [],
     // md 岗位 §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，此前只写 store 未透传进
     // 保存 payload，toast「绑定成功」→ 保存 → 刷新即丢（2026-09-23 待办 yuepu#7①④）
@@ -306,8 +313,6 @@ async function ensurePersisted() {
   }
 }
 
-/* Agent 增删改 / 二维表 / Agent 抽屉已随拆分下沉 PositionAgentSkillTab.vue（2026-09-10 病 A 拆分） */
-
 /* ---------- 数据底座：三栏聚焦弹窗（身份卡入口打开） ---------- */
 const dtStageOpen = ref(false)
 const dtTableCount = ref(0)
@@ -330,7 +335,7 @@ async function prefetchDtCount() {
   }
 }
 
-// 点身份卡「数据底座」入口：若岗位未落库先 ensurePersisted（与 addAgent 同款，岗位名空则提示先填名），
+// 点身份卡「数据底座」入口：若岗位未落库先 ensurePersisted（岗位名空则提示先填名），
 // 落库成功后打开三栏弹窗（此时 positionId 已就绪，避免越权/报错）。
 async function onOpenDataTable() {
   if (!(await ensurePersisted())) return
@@ -390,15 +395,14 @@ onBeforeRouteLeave(async () => {
   publishDialogVisible.value = false
 })
 
-/* 技能从 Agent 移除（onDeleteSkill）已随拆分下沉 PositionAgentSkillTab.vue（2026-09-10 病 A 拆分） */
-
 /* ============================ 顶部条：保存 / 发布 / 下架 ============================ */
 const publishDialogVisible = ref(false)
 const publishing = ref(false)
-// 2026-09-09 PRD 复核（A1 / Q11）：完整性校验入参 = store.checkInput（名称/描述/示例问题/SOP/agents）
+// 2026-09-09 PRD 复核（A1 / Q11）：完整性校验入参 = store.checkInput（名称/描述/示例问题/SOP/skills/experts/teams）
 // + 详情页侧的自动化任务条数（store 不持有样例任务，见 refreshSampleTaskCount）。
 // 已被强制回收的连接器名（岗位 PRD §8 / §9.1 发布阻断）：按当前页面上的引用清单实时取（含未保存的绑定 / 移除），
-// 与「连接器」页签所见一致；已回收的技能在 store.checkInput.agents[].skills[].revoked 里，由 computePublishCheck 自行取用。
+// 与「连接器」页签所见一致；已回收的技能在 store.checkInput.skills[].revoked 里、不可用的专家 / 团在 experts / teams 里，
+// 由 computePublishCheck 自行取用。
 const completenessInput = computed(() => ({
   ...store.checkInput,
   sampleTaskCount: sampleTaskCount.value,
@@ -452,9 +456,9 @@ async function openPublish() {
     ElMessage.error('岗位配置保存失败，请稍后重试后再发布')
     return
   }
-  await refreshSampleTaskCount()
-  // 阻断校验六项（md §9.1，2026-09-09 Q11 负责人决策，推翻此前「阻断四项」口径）：
-  // 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP / Agent 与技能（≥1 个 Agent 且该 Agent ≥1 个技能）/
+  await Promise.all([refreshSampleTaskCount(), store.refreshExpertRefs()])
+  // 阻断校验九项（md §9.1；清单见 utils/positionModel.js COMPLETENESS_ITEMS）：
+  // 岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 3 条示例问题 / 岗位 SOP / 采集字段 / 技能（≥1 个，R1 改后）/
   // 自动化任务（≥1 条）。任一缺失 → toast「请先填写：X、Y」+ 自动定位到第一个缺失项所在页签。
   const missingItems = completenessMissing.value
   if (missingItems.length) {
@@ -558,7 +562,7 @@ function backToList() {
         <span class="pd-cb-close" title="关闭提示" @click="showCompletenessBanner = false">×</span>
       </div>
 
-      <!-- Tab 主体（9 个 sheet 页；已有功能内联填充，未实现的占位「开发中」） -->
+      <!-- Tab 主体（8 个页签；已有功能内联填充，未实现的占位「开发中」） -->
       <div class="wb-body tabs-body">
         <!-- 加载 / 错误态 -->
         <div v-if="showSkeleton" class="board-state">
@@ -608,15 +612,17 @@ function backToList() {
             <PositionKnowledgeTab :is-readonly="isReadonly" />
           </el-tab-pane>
 
-          <!-- ⑤ Agent 与技能（2026-09-09 原型复刻批次 4C）
-               形态按负责人 Q383 决议 + 补充说明第 5 条「采纳 A」：二维表（两级），不做泳道、也不做
-               ◆ 技能分类分组的三级结构——行维度 = Agent（◆）与其下技能（·），列维度 = 名称 /
-               职责描述·分类 / 工具 / 操作，同一列在两级上承载各自语义。 -->
-          <el-tab-pane label="Agent 与技能" name="agents">
-            <PositionAgentSkillTab :is-readonly="isReadonly" />
+          <!-- ⑤ 技能（产品优化需求-202611 R1：取消 Agent，单层表格，一行一个技能） -->
+          <el-tab-pane label="技能" name="skills">
+            <PositionSkillTab :is-readonly="isReadonly" />
           </el-tab-pane>
 
-          <!-- ⑥ 自动化任务（样例定时任务承载；只读态由 Stage / 编辑器的 readonly 入参真正禁用，J20）
+          <!-- ⑥ 专家与专家团（产品优化需求-202611 R13：引用岗位私有专家 / 专家团） -->
+          <el-tab-pane label="专家与专家团" name="experts">
+            <PositionExpertTab :is-readonly="isReadonly" />
+          </el-tab-pane>
+
+          <!-- ⑦ 自动化任务（样例定时任务承载；只读态由 Stage / 编辑器的 readonly 入参真正禁用，J20）
                页签标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③，原 `sampleTasks`；深链 ?tab= 旧值不兼容）；
                PositionSampleTaskStage 的 embedded 开关已退役（审计 J5），只剩页签内联形态。 -->
           <el-tab-pane label="自动化任务" name="tasks">
@@ -632,7 +638,7 @@ function backToList() {
             </div>
           </el-tab-pane>
 
-          <!-- ⑦ 连接器（展示岗位绑定的私有 MCP / 私有 API / 业务系统） -->
+          <!-- ⑧ 连接器（展示岗位绑定的私有 MCP / 私有 API / 业务系统） -->
           <el-tab-pane label="连接器" name="businessSystems">
             <PositionBusinessSystemTab :is-readonly="isReadonly" />
           </el-tab-pane>
@@ -640,10 +646,6 @@ function backToList() {
         </el-tabs>
       </div>
     </div>
-
-    <!-- 技能引用弹窗（SkillPickerDialog）已随 2026-09-09 批次 4C 退役：技能改在 Agent 抽屉内勾选
-         （负责人 Q383 决议 + 原型 L4025 删 Agent 行「＋技能」）。组件文件已于 2026-09-09
-         代码冗余清理中作为零引用死文件删除，如需查阅见 git 历史。 -->
 
     <!-- 人格 / 采集编辑弹窗已随 2026-09-04 PRD-20260903 对齐退役（内容全部内联进人格 / 采集字段页签）。
          PersonaEditDialog / IntakeEditDialog 组件文件同批删除，如需查阅见 git 历史。 -->
@@ -958,10 +960,10 @@ function backToList() {
 }
 /* .pd-sec / .pd-list-head / .pd-table / .pd-drawer-form 等岗位详情通用段落与列表类已上收为全局 assets/position-detail.css（2026-08-28），
    供各 Tab 内嵌组件（如工作档案 PositionDataTableStage）复用，不再各自复制。 */
-/* Agent 与技能页签样式段（层级列表 / 表格包卡 / 抽屉勾选区）随拆分搬入 PositionAgentSkillTab.vue */
+/* 技能页签样式段（表格包卡 / 抽屉勾选区）随拆分搬入 PositionSkillTab.vue */
 
 /* 人格页签样式段（必填星 / .pd-card 卡片家族 / 示例问题 3 格）随拆分搬入 PositionPersonaTab.vue
-   （.pd-card 家族在人格与 Agent 两子组件各持一份：scoped 样式不穿子组件内层 DOM，也罩不住 append-to-body 抽屉） */
+   （.pd-card 家族在各页签子组件各持一份：scoped 样式不穿子组件内层 DOM，也罩不住 append-to-body 抽屉） */
 /* 知识页签样式段（名称高亮 / 工具栏）随拆分搬入 PositionKnowledgeTab.vue */
 /* 只读冻结兜底：仅工作档案页签仍保留（该 Stage 已有 readonly 入参，此处为兜底）；自动化任务页签已改由 readonly 入参真正禁用（J20）。
    查看态 / 审核中用 pointer-events 冻结（demo 口径，正式实现由后续批次下沉 readonly）。 */

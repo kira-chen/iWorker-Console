@@ -12,7 +12,7 @@ import { mountReal, flushAll } from './helpers/smokeMount'
  *  - mount 不抛、console.error 零调用；
  *  - 搜索占位「搜索服务名称或描述」+【新建 MCP】（md §一.1 L13 / L17）；
  *  - el-table 行数正确，状态列三态文案（§二.1 L47）、验证列连接状态文案（§二.2 L60）；
- *  - 分页条（站内统一 .list-pager）「共 N 条数据」（§二.5 L170-172）。
+ *  - 分页条（站内统一 .list-pager）；产品优化需求-202611 修改点 14（R9）起按服务提供系统分组、按系统分页，计「共 N 个数据」。
  */
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
@@ -30,6 +30,11 @@ vi.mock('@/api/admin', () => ({
   fetchMcpToolsDraft: vi.fn()
 }))
 
+// 服务提供系统（R9，与 API 共用）：一个系统挂报销系统 MCP，其余两条没选系统 → 落「未分组」
+vi.mock('@/api/apiConnector', () => ({
+  listProviderSystems: vi.fn(() => Promise.resolve({ list: [{ id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口', mcpCount: 1 }] }))
+}))
+
 const AGG = { mcp_1: 'PUBLISHED', mcp_2: 'PENDING_REVIEW', mcp_3: 'NOT_PUBLISHED' }
 vi.mock('@/api/market', () => ({
   getMcpServicePublishStatus: vi.fn((id) => Promise.resolve({ targets: [{ target: 'USER_END', aggregateStatus: AGG[id], pendingAction: null }] })),
@@ -41,7 +46,7 @@ vi.mock('@/api/market', () => ({
 const AdminMcp = (await import('@/views/admin/AdminMcp.vue')).default
 
 const ROWS = [
-  { id: 'mcp_1', name: '报销系统 MCP', icon: '¥', description: '查询和提交员工报销单', type: 'PLATFORM', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 2, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-24T16:10:00+08:00', updatedAt: '2026-08-24T16:10:00+08:00' },
+  { id: 'mcp_1', name: '报销系统 MCP', icon: '¥', description: '查询和提交员工报销单', type: 'PLATFORM', providerSystemId: 'pv_1', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 2, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-24T16:10:00+08:00', updatedAt: '2026-08-24T16:10:00+08:00' },
   { id: 'mcp_2', name: '本地文件 MCP', icon: '▱', description: '读取工作区文件', type: 'SYSTEM_DEFAULT', transport: 'stdio', toolCount: 1, referencedBySkillCount: 0, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-23T10:00:00+08:00', updatedAt: '2026-08-23T10:00:00+08:00' },
   { id: 'mcp_3', name: '天气查询 MCP', icon: '', description: '', type: 'POSITION', transport: 'sse', toolCount: 0, positionCount: 0, referencedByPositions: [], displayStatus: 'UNKNOWN', lastCheckedAt: null, updatedAt: '2026-08-20T09:00:00+08:00' }
 ]
@@ -71,7 +76,10 @@ describe('AdminMcp · 真实 Element Plus 挂载冒烟', () => {
     expect([...el.querySelectorAll('.el-button')].some((b) => b.textContent.trim() === '新建 MCP')).toBe(true)
     expect(listMcp).toHaveBeenCalledTimes(1)
 
-    // 行数据真的进了 el-table
+    // 分组头（R9）：财务服务系统在前、未分组垫底
+    expect([...el.querySelectorAll('.mc-group-name')].map((n) => n.textContent.trim())).toEqual(['财务服务系统', '未分组'])
+
+    // 行数据真的进了 el-table（两组表格的行按 DOM 顺序拼起来）
     const rows = [...el.querySelectorAll('.el-table__body .el-table__row')]
     expect(rows.length).toBe(3)
     expect(rows[0].textContent).toContain('报销系统 MCP')
@@ -83,6 +91,6 @@ describe('AdminMcp · 真实 Element Plus 挂载冒烟', () => {
 
     // 分页条（站内统一 ListPagination → .list-pager）
     expect(el.querySelector('.list-pager')).toBeTruthy()
-    expect(el.querySelector('.list-pager').textContent).toContain('共 3 条数据')
+    expect(el.querySelector('.list-pager').textContent).toContain('共 2 个数据')
   })
 })

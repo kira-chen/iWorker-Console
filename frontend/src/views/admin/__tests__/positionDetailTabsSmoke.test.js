@@ -6,11 +6,12 @@ import { mountReal, flushAll } from './helpers/smokeMount'
 /**
  * PositionDetailTabs.vue 真实挂载冒烟（2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §1.2 / §1.3 / §2.1）。
  *
- * positionDetailTabs / positionCompletenessG1 两份页面级单测把七个页签子组件与 el-* 全桩，拦不住子组件 setup 期报错
+ * positionDetailTabs / positionCompletenessG1 两份页面级单测把页签子组件与 el-* 大量桩掉，拦不住子组件 setup 期报错
  * （2026-09-11 分页条 TDZ 白屏同类）。本文件用 helpers/smokeMount 的 mountReal：真 Element Plus + 真 Pinia 岗位 store，
  * 不桩任何子组件，只 mock api 层与路由，断言：
  *  - 挂载不抛、console.error 零调用；
- *  - md §1.3 七个页签文案（人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 连接器）都在；
+ *  - 八个页签文案（人格 / 采集字段 / 工作档案 / 知识 / 技能 / 专家与专家团 / 自动化任务 / 连接器）都在
+ *    （产品优化需求-202611 修改点 1 R1 取消 Agent、「Agent 与技能」改名「技能」；修改点 2 R13 新增「专家与专家团」）；
  *  - 默认人格页签探针：「岗位名称」卡在、名称输入框回显种子岗位名（md §2.1）。
  */
 const routeMock = vi.hoisted(() => ({ params: { id: '5' }, query: {}, meta: {} }))
@@ -39,7 +40,7 @@ const DETAIL = {
   businessSystemIds: [],
   connectorMcpIds: [],
   connectorApiIds: [],
-  agents: []
+  skills: [] // R1：技能直接引用到岗位（不再有 agents[]）
 }
 const getPosition = vi.fn()
 const getNextVersionLabel = vi.fn()
@@ -52,16 +53,22 @@ vi.mock('@/api/position', () => ({
   publishPosition: vi.fn(() => Promise.resolve({})),
   getNextVersionLabel: (...a) => getNextVersionLabel(...a),
   listPositionPublications: vi.fn(() => Promise.resolve([])),
-  createAgent: vi.fn(),
-  updateAgent: vi.fn(),
-  deleteAgent: vi.fn(),
+  // 技能页签（R1）：技能直接引用到岗位
   updateSkill: vi.fn(),
-  assignSkill: vi.fn(),
   getSkill: vi.fn(),
-  detachSkill: vi.fn(),
+  attachPositionSkill: vi.fn(),
+  detachPositionSkill: vi.fn(),
+  listPositionSkillCandidates: vi.fn(() => Promise.resolve([])),
+  checkDetachPositionSkill: vi.fn(() => Promise.resolve('')),
+  // 专家与专家团页签（R13）：详情加载与发布前都会拉一次引用
+  getPositionExperts: vi.fn(() => Promise.resolve({ experts: [], teams: [], execTargetIssues: [] })),
+  listPositionExpertCandidates: vi.fn(() => Promise.resolve({ experts: [], teams: [] })),
+  checkUnbindPositionExpert: vi.fn(() => Promise.resolve('')),
+  checkUnbindPositionTeam: vi.fn(() => Promise.resolve('')),
   listSkills: vi.fn(() => Promise.resolve({ list: [], total: 0 })),
   listToolPicker: vi.fn(() => Promise.resolve({ list: [] })),
-  listPlatformSkillCandidates: vi.fn(() => Promise.resolve([])),
+  listTaskSkillCandidates: vi.fn(() => Promise.resolve([])),
+  listTaskExecTargetCandidates: vi.fn(() => Promise.resolve({ experts: [], teams: [] })),
   getIconLibrary: vi.fn(() => Promise.resolve([])),
   aiGenerateIcon: vi.fn(),
   probeAiIconAvailability: vi.fn(() => Promise.resolve(false)),
@@ -114,7 +121,7 @@ afterEach(() => {
 })
 
 describe('PositionDetailTabs · 真实 Element Plus + Pinia 挂载冒烟', () => {
-  it('整页真挂载不抛、console.error 零调用；七个页签文案齐全；默认人格页签「岗位名称」卡在且回显岗位名（md §1.3 / §2.1）', async () => {
+  it('整页真挂载不抛、console.error 零调用；八个页签文案齐全（产品优化需求-202611 修改点 1 / 2）；默认人格页签「岗位名称」卡在且回显岗位名（md §2.1）', async () => {
     expect(() => { mounted = mountReal(PositionDetailTabs, {}, { plugins: [createPinia()] }) }).not.toThrow()
     await flushAll(12)
     expect(getPosition).toHaveBeenCalledWith('5')
@@ -122,7 +129,7 @@ describe('PositionDetailTabs · 真实 Element Plus + Pinia 挂载冒烟', () =>
 
     const { container } = mounted
     const tabLabels = [...container.querySelectorAll('.el-tabs__item')].map((t) => t.textContent.trim())
-    expect(tabLabels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '连接器'])
+    expect(tabLabels).toEqual(['人格', '采集字段', '工作档案', '知识', '技能', '专家与专家团', '自动化任务', '连接器'])
 
     // 人格页签探针：岗位名称卡 + 输入框回显
     const nameCard = [...container.querySelectorAll('.pd-card')].find((c) => c.querySelector('.pd-card-title')?.textContent.startsWith('岗位名称'))
@@ -137,7 +144,8 @@ describe('PositionDetailTabs · 真实 Element Plus + Pinia 挂载冒烟', () =>
 // 页面须把 useVersionPublish 的 loadFailed / loadNextVersionLabel 接到 PublishCheckDialog 的 :load-failed / @retry（删掉任一接线本组变红）。
 describe('PositionDetailTabs · 发布弹窗版本号获取失败可重试（J36）', () => {
   it('getNextVersionLabel 拒绝 → 弹窗显「版本号获取失败」；点【重试】再次取号并显示版本号', async () => {
-    const full = { ...JSON.parse(JSON.stringify(DETAIL)), agents: [{ agentId: 1, name: 'A1', skills: [{ skillId: 1, name: 's' }] }] }
+    // 九项完整性校验第 8 项（R1 改后）：岗位至少引用 1 个技能
+    const full = { ...JSON.parse(JSON.stringify(DETAIL)), skills: [{ skillId: 1, name: 's' }] }
     getPosition.mockResolvedValue(full)
     updatePosition.mockResolvedValue(full) // 发布前先自动保存，store 以保存回包为准，回包须是完整详情
     listSampleTasks.mockResolvedValue({ list: [{ id: 1 }] }) // 九项完整性校验要 ≥1 条自动化任务

@@ -7,7 +7,7 @@ import { mountReal, flushAll } from '../../../views/admin/__tests__/helpers/smok
  * PositionKnowledgeTab（岗位详情「知识」页签）—— 2026-10-08 补测（此前零测试）。
  * 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md：
  *   §三.1.3 页签结构（「知识」页签 knowledge）；
- *   §三.5.1 知识库列表：只展示当前岗位已关联的知识库；列「知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作」；
+ *   §三.5.1 知识库列表：只展示可见范围包含当前岗位的知识库（产品优化需求-202611 R3：可见范围多选，一个库可给多个岗位）；列「知识库名称 / 描述 / 数据源 / 文档数量 / 状态 / 操作」；
  *           空列表文案「暂无该岗位可见的知识库」；
  *   §三.5.2 行内【查看】【检索测试】：【查看】跳知识库模块并打开查看抽屉；【检索测试】仅已发布知识库可用、打开检索测试弹窗；
  *   §三.11  跨模块跳转：知识页签可跳知识库模块；
@@ -40,16 +40,17 @@ vi.mock('@/components/admin/KnowledgeSearchDialog.vue', () => ({
 
 const PositionKnowledgeTab = (await import('@/components/position/PositionKnowledgeTab.vue')).default
 
-const kb = (over) => ({ id: 0, name: '', description: '', status: 'DRAFT', scopeRefId: 7, sources: [], docCount: 0, ...over })
+const kb = (over) => ({ id: 0, name: '', description: '', status: 'DRAFT', scopeRefIds: [7], sources: [], docCount: 0, ...over })
 const ROWS = [
+  // R3：经营制度库同时给 99 号岗位和本岗位（7）用，本岗位排在第二个
   kb({
-    id: 1, name: '经营制度库', description: '公司经营制度汇编', status: 'PUBLISHED', docCount: 12345,
+    id: 1, name: '经营制度库', description: '公司经营制度汇编', status: 'PUBLISHED', docCount: 12345, scopeRefIds: [99, 7],
     sources: [{ sourceType: 'UPLOAD' }, { sourceType: 'UPLOAD' }, { sourceType: 'API' }, { sourceType: 'MCP', status: 'DISABLED' }]
   }),
   kb({ id: 2, name: '财务口径库', description: '', status: 'DRAFT', sources: [{ sourceType: 'API' }] }),
   kb({ id: 3, name: '审批中库', status: 'PUBLISHED', pendingAction: 'DELIST', sources: [] }),
   // 其它岗位的知识库：不应出现在本岗位页签
-  kb({ id: 9, name: '别岗知识库', status: 'PUBLISHED', scopeRefId: 99 })
+  kb({ id: 9, name: '别岗知识库', status: 'PUBLISHED', scopeRefIds: [99] })
 ]
 
 let mounted
@@ -85,12 +86,21 @@ afterEach(() => {
 })
 
 describe('知识页签 · 列表展示（md §三.5.1）', () => {
-  it('落在知识页签 → 取岗位知识库（kbType=POSITION），只展示 scopeRefId = 当前岗位 id 的知识库', async () => {
+  it('落在知识页签 → 取岗位知识库（kbType=POSITION），只展示可见范围包含当前岗位 id 的知识库', async () => {
     await mount()
     expect(listKnowledgeBases).toHaveBeenCalledTimes(1)
     expect(listKnowledgeBases.mock.calls[0][0]).toMatchObject({ kbType: 'POSITION' })
     expect(rows()).toHaveLength(3)
     expect(rowByName('别岗知识库')).toBeUndefined()
+  })
+
+  it('R3 一个知识库给多个岗位用：可见范围含 99 与 7 的「经营制度库」在两个岗位的知识页签里都列出', async () => {
+    await mount()
+    expect(rowByName('经营制度库')).toBeTruthy()
+    mounted.unmount()
+    store.positionId = 99
+    await mount()
+    expect(rows().map((r) => cellTexts(r)[0]).sort()).toEqual(['别岗知识库', '经营制度库'])
   })
 
   it('区块头「知识库 / 该岗位可见范围内的知识库」，表头为 知识库名称 / 知识库描述 / 数据源 / 文档数量 / 状态 / 操作；无新建入口', async () => {
@@ -114,7 +124,7 @@ describe('知识页签 · 列表展示（md §三.5.1）', () => {
   })
 
   it('边界：本岗位无关联知识库 → 表格空态「暂无该岗位可见的知识库」', async () => {
-    listKnowledgeBases.mockResolvedValue({ list: [kb({ id: 9, name: '别岗', scopeRefId: 99 })], total: 1 })
+    listKnowledgeBases.mockResolvedValue({ list: [kb({ id: 9, name: '别岗', scopeRefIds: [99] })], total: 1 })
     await mount()
     expect(rows()).toHaveLength(0)
     expect(root().querySelector('.el-table__empty-text').textContent.trim()).toBe('暂无该岗位可见的知识库')
