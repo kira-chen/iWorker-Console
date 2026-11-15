@@ -208,10 +208,10 @@ const adminChildren = [
     meta: { title: '存储空间', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
-    // 04 运行 → 配额与限流（规划中）。
+    // 04 运行 → 配额与限流（PRD prd.配额与限流.md；本期只有 IM 消息合并等待时长）。
     path: 'quota-throttle',
     name: 'AdminQuotaThrottle',
-    component: () => import('@/views/admin/AdminComingSoonPlaceholder.vue'),
+    component: () => import('@/views/admin/AdminQuotaThrottle.vue'),
     meta: { title: '配额与限流', roles: ['ADMIN'], module: 'SYSCONFIG' }
   }
 ]

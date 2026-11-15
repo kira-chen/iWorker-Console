@@ -45,6 +45,7 @@ const FINGERPRINTS = {
   mcpConnector: { version: 13, fp: '7b5fd33d' },
   myApplications: { version: 8, fp: 'b8042447' },
   position: { version: 14, fp: '76dc7922' },
+  quotaThrottle: { version: 1, fp: 'fc17ac94' },
   positionApplications: { version: 4, fp: 'bf5160f2' },
   positionAssignment: { version: 2, fp: 'a3b870be' },
   reviews: { version: 9, fp: 'ffc05ceb' },
