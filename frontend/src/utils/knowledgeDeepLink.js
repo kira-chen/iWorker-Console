@@ -46,15 +46,25 @@ export function kbRouteLocation(params) {
 }
 
 /**
+ * 地址栏里的岗位 id 一律是字符串，岗位数据（positionMock.positionId / 知识库可见范围候选）的 id 是数字：
+ * 纯数字串还原成数字，类型与候选项一致，下拉才认得出、能打勾（产品优化需求-202611 修改点 8）。
+ * 非纯数字的 id（如真实后端的字符串 id）原样保留。
+ */
+function positionIdFromQuery(v) {
+  const s = String(v)
+  return /^\d+$/.test(s) ? Number(s) : s
+}
+
+/**
  * 消费端解析：从 route.query 取出深链参数（键名单一来源）。
- * @returns {{ action: string|null, kbId: string|null, positionId: string|null, positionName: string }}
+ * @returns {{ action: string|null, kbId: string|null, positionId: number|string|null, positionName: string }}
  */
 export function parseKbQuery(query = {}) {
   const q = query || {}
   return {
     action: q[KB_QUERY.ACTION] ? String(q[KB_QUERY.ACTION]) : null,
     kbId: q[KB_QUERY.KB_ID] ? String(q[KB_QUERY.KB_ID]) : null,
-    positionId: q[KB_QUERY.POSITION_ID] ? String(q[KB_QUERY.POSITION_ID]) : null,
+    positionId: q[KB_QUERY.POSITION_ID] ? positionIdFromQuery(q[KB_QUERY.POSITION_ID]) : null,
     positionName: q[KB_QUERY.POSITION_NAME] ? String(q[KB_QUERY.POSITION_NAME]) : ''
   }
 }

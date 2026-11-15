@@ -29,12 +29,19 @@
  *      （原型 drawerShell 第二参为空，启停状态已在正文 radio 体现）；类型 / 状态 hint 改控件下方块级；
  *      类型说明改 .ksrc-note 灰底圆角块（原型 .pd2-mini-note）；行式栅格 label-width 90（原型 .proto2-ref-group{90px 1fr}）。
  *   D2 预处理首行改灰底块；Embedding select 全宽 + help 下置；检索策略 2 列网格 + 绿底阈值提示（.proto2-client-threshold）。
- *   D3 请求配置改 .ksrc-req-grid（原型 .api-src-req-grid{160px minmax(0,1fr)}，检索地址跨列），标签顶置、help 下置。
+ *   D3 请求配置改 .ksrc-req-grid（原型 .api-src-req-grid{160px minmax(0,1fr)}，请求地址跨列），标签顶置、help 下置。
  *   D8 MCP 段套卡壳（原型 kmcpMarkup 的意图；L1985 该行 class 用中文弯引号致样式失效，属原型缺陷不搬）；
  *      传输方式 radio → el-select（原型 kmcpOptions select）；Header 名 / 访问凭证同行两列；超时 help 下置。
  *   D11 测试连接移到正文最底部裸放（不套卡）、按钮改常规尺寸、成功后文案转「重新测试」；失败态与相对时间按 md 保留。
  * 跳过并记录：D4 鉴权区按 md 多参数表（Q56/Q57，现状即 md）；D9 检索工具保持平铺复选框（md §七.3 字面「多选复选框形式」）、
  *   不加原型「拉取工具」按钮（清单由测试连接返回，md §七.3）。
+ *
+ * 【2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）】
+ *   R7 方案 A：检索工具仍多选（≥1），但映射改为每个已勾选工具一张可折叠配置卡（卡片标题 = 工具名），卡内是该工具自己的
+ *     请求参数映射 + 结果数组路径 + 响应字段（mcpToolConfigs）；新勾选的工具默认展开；取消勾选先确认「映射配置将清空」；
+ *     配置不全的卡片标题旁标「未配置完成」；保存逐个工具校验，展开并滚到第一张出错的卡片；连接测试结果按工具分别展示。
+ *   R6：新建时结果数组路径留空（示例只作占位）；路径的取值口径见 knowledgeBaseMeta.evalMcpResultArray。
+ *   R8：API 字段名统一为「请求地址」，输入框下方常驻说明「仅支持返回 JSON 的检索接口」。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -62,9 +69,10 @@ import {
   mkRequestMapExampleRows,
   mkResponseMapRows,
   mkMcpResponseMapRows,
+  mkMcpToolConfig,
   validateRequestMap,
   validateResponseMap,
-  validateMcpResponseMap
+  validateMcpToolConfig
 } from '@/utils/knowledgeBaseMeta'
 import {
   API_AUTH_IN_OPTIONS,
@@ -132,9 +140,13 @@ const mcpCredentialMasked = ref('')
 const loadedMcpAuthType = ref('none')
 const mcpArgsText = ref('')
 const mcpEnvRows = ref([])
-const mcpToolsSelected = ref([])
-const mcpRequestRows = ref(mkRequestMapRows())
-const mcpResponseRows = ref(mkMcpResponseMapRows())
+const mcpToolsSelected = ref([]) // 已勾选的检索工具（勾选顺序；列表概要按它展示）
+// 每个已勾选工具一份映射配置（修改点 10 方案 A）：{ [工具名]: { requestRows, responseRows, resultArrayPath } }，
+// 与 mcpToolsSelected 同进同出——勾选时建、确认取消勾选时删
+const mcpToolConfigs = ref({})
+const expandedTools = ref([]) // 展开中的工具配置卡（el-collapse 的 v-model）
+const toolErrors = reactive({}) // 保存校验时按工具记下的错误：{ [工具名]: { request, response } }
+const toolSectionRef = ref(null)
 const availableTools = ref([]) // 连接测试成功返回的工具清单（md §七.3）
 
 const fieldErrors = reactive({})
@@ -191,6 +203,7 @@ const keepMcpCredential = computed(
 
 function clearErrors() {
   Object.keys(fieldErrors).forEach((k) => delete fieldErrors[k])
+  Object.keys(toolErrors).forEach((k) => delete toolErrors[k])
 }
 const emptyAuthRow = () => ({ in: 'HEADER', key: '', description: '', clientFill: false, value: '', configured: false })
 // 类型切到 API 或鉴权切到 API KEY 且无行 → 预置一行（md §六.1.1：至少保留一行有效参数）。
@@ -252,6 +265,79 @@ function normalizeResponseRows(rows, mkDefaults = mkResponseMapRows) {
   }))
   return out.filter((r) => r.preset).length >= 3 ? out : [...mkDefaults(), ...out.filter((r) => !r.preset)]
 }
+
+/* ---------- MCP 检索工具配置卡（修改点 10 方案 A：每个已勾选工具一张卡） ---------- */
+/** 一个工具的编辑态配置：编辑时回填已存配置；新勾选时用空白配置（结果数组路径留空，示例只作占位，修改点 9）。 */
+function mkToolDraft(saved = mkMcpToolConfig()) {
+  return {
+    requestRows: normalizeRequestRows(saved.requestMap),
+    responseRows: normalizeResponseRows(saved.responseMap, mkMcpResponseMapRows),
+    resultArrayPath: saved.resultArrayPath || ''
+  }
+}
+/** 一个工具提交给接口的配置（行已清洗）；键顺序与 mock 种子一致，原样保存不会被当成改了连接配置。 */
+function toolConfigOut(tool) {
+  const d = mcpToolConfigs.value[tool] || mkToolDraft()
+  return {
+    requestMap: cleanRequestRows(d.requestRows),
+    resultArrayPath: (d.resultArrayPath || '').trim(),
+    responseMap: cleanResponseRows(d.responseRows)
+  }
+}
+const toolConfigErrors = (tool) => validateMcpToolConfig(toolConfigOut(tool))
+/** 配置不全的工具（卡片标题旁标「未配置完成」）：边填边算，不等点保存。 */
+const incompleteTools = computed(
+  () =>
+    new Set(
+      mcpToolsSelected.value.filter((tool) => {
+        const e = toolConfigErrors(tool)
+        return e.request || e.response
+      })
+    )
+)
+function removeToolConfig(tool) {
+  delete mcpToolConfigs.value[tool]
+  delete toolErrors[tool]
+  expandedTools.value = expandedTools.value.filter((t) => t !== tool)
+}
+/**
+ * 勾选 / 取消勾选检索工具（复选框组不直接 v-model，由这里决定改不改）：
+ * - 新勾选：建一份空白映射配置，卡片默认展开；
+ * - 取消勾选：先确认「取消后该工具的映射配置将清空」，确认后才取消勾选并清空配置；选「保留」则勾选与配置都不动。
+ */
+async function onToolsPicked(next) {
+  delete fieldErrors.mcpTools
+  const unchecked = mcpToolsSelected.value.filter((tool) => !next.includes(tool))
+  if (!unchecked.length) {
+    for (const tool of next) {
+      if (mcpToolConfigs.value[tool]) continue
+      mcpToolConfigs.value[tool] = mkToolDraft()
+      expandedTools.value = [...expandedTools.value, tool]
+    }
+    mcpToolsSelected.value = next
+    return
+  }
+  try {
+    await ElMessageBox.confirm('取消后该工具的映射配置将清空，确认取消？', '取消勾选检索工具', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '保留'
+    })
+  } catch (e) {
+    // 原生复选框此刻已被点成未勾选，换一个同内容的新数组让它按数据重新渲染回勾选态
+    mcpToolsSelected.value = [...mcpToolsSelected.value]
+    return
+  }
+  unchecked.forEach(removeToolConfig)
+  mcpToolsSelected.value = next
+}
+/** 保存校验后把视线带到第一张出错的工具卡（卡片已展开；scrollIntoView 在测试环境里不存在，故可选调用）。 */
+async function focusToolCard(tool) {
+  await nextTick()
+  const card = [...(toolSectionRef.value?.querySelectorAll('[data-tool]') || [])].find((el) => el.dataset.tool === tool)
+  card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+}
+
 function resetForm() {
   Object.assign(form, { sourceType: 'UPLOAD', name: '', status: 'ENABLED', ...UPLOAD_DEFAULTS })
   form.api = { ...API_DEFAULTS }
@@ -270,8 +356,8 @@ function resetForm() {
   mcpArgsText.value = ''
   mcpEnvRows.value = []
   mcpToolsSelected.value = []
-  mcpRequestRows.value = mkRequestMapRows()
-  mcpResponseRows.value = mkMcpResponseMapRows()
+  mcpToolConfigs.value = {}
+  expandedTools.value = []
   availableTools.value = []
   verify.value = null
   verifiedSig = ''
@@ -303,16 +389,16 @@ function hydrate(d) {
       authType: ['none', 'bearer', 'header'].includes(cfg.authType) ? cfg.authType : 'none',
       authHeaderName: cfg.authHeaderName || '',
       command: cfg.command || 'npx',
-      timeoutMs: cfg.timeoutMs || 10000,
-      resultArrayPath: cfg.resultArrayPath || ''
+      timeoutMs: cfg.timeoutMs || 10000
     }
     loadedMcpAuthType.value = form.mcp.authType
     mcpCredentialMasked.value = cfg.credentialMasked || ''
     mcpArgsText.value = (cfg.args || []).join('\n')
     mcpEnvRows.value = toParamRows(cfg.envVars, false)
     mcpToolsSelected.value = [...(cfg.tools || [])]
-    mcpRequestRows.value = normalizeRequestRows(cfg.requestMap)
-    mcpResponseRows.value = normalizeResponseRows(cfg.responseMap, mkMcpResponseMapRows)
+    // 每个已选工具回填自己的映射配置（修改点 10）；已有工具的卡片默认收起，点标题展开
+    mcpToolConfigs.value = Object.fromEntries(mcpToolsSelected.value.map((tool) => [tool, mkToolDraft(cfg.toolConfigs?.[tool])]))
+    expandedTools.value = []
     // 已保存的选中工具先作为可选清单展示；重新测试后以测试返回清单为准（md §七.3）
     availableTools.value = [...(cfg.tools || [])]
   }
@@ -372,9 +458,7 @@ const connSig = computed(() => {
       mcpArgsText.value,
       mcpEnvRows.value.map((r) => [r.key, r.clientFill, r.value]),
       mcpToolsSelected.value,
-      mcpRequestRows.value,
-      mcpResponseRows.value,
-      form.mcp.resultArrayPath
+      mcpToolsSelected.value.map((tool) => mcpToolConfigs.value[tool]) // 各工具的映射（修改点 10）
     ])
   }
   return ''
@@ -396,12 +480,11 @@ async function doTest() {
       return
     }
     verify.value = r
-    if (r.verifyStatus === 'SUCCESS') {
-      if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
-        // 测试成功获得工具清单；已选工具保留清单内的（md §七.3）
-        availableTools.value = [...r.tools]
-        mcpToolsSelected.value = mcpToolsSelected.value.filter((t) => r.tools.includes(t))
-      }
+    if (form.sourceType === 'MCP' && Array.isArray(r.tools)) {
+      // 连上服务就拿到工具清单（检索工具没测通也会返回）；已选工具只保留清单内的，清单外的连同映射配置一并移除（md §七.3）
+      availableTools.value = [...r.tools]
+      mcpToolsSelected.value.filter((t) => !r.tools.includes(t)).forEach(removeToolConfig)
+      mcpToolsSelected.value = mcpToolsSelected.value.filter((t) => r.tools.includes(t))
     }
     // 基线须在弹 toast 之前记：ElMessage 挂载会顺带冲刷待执行的 connSig 监听，晚记会把精简已选工具误判成「用户改了配置」
     verifiedSig = connSig.value
@@ -422,6 +505,8 @@ const verifyLine = computed(() => {
   }
   return `连接失败：${v.verifyError || '未知原因'}`
 })
+/** MCP 连接测试逐个检索工具执行，结果按工具分别展示（修改点 10）；改了连接配置后随验证状态一起清掉。 */
+const toolResults = computed(() => (form.sourceType === 'MCP' && verify.value?.toolResults) || [])
 
 /* ---------- 组装 config / 保存 ---------- */
 const outParamRows = (rows, withIn) =>
@@ -498,9 +583,8 @@ function buildConfig() {
     args: mcpArgsText.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     envVars: form.mcp.transport === 'stdio' ? outParamRows(mcpEnvRows.value, false) : [],
     tools: [...mcpToolsSelected.value],
-    requestMap: cleanRequestRows(mcpRequestRows.value),
-    responseMap: cleanResponseRows(mcpResponseRows.value),
-    resultArrayPath: (form.mcp.resultArrayPath || '').trim(),
+    // 每个已选工具一份请求参数映射 / 结果数组路径 / 响应字段（修改点 10 方案 A）
+    toolConfigs: Object.fromEntries(mcpToolsSelected.value.map((tool) => [tool, toolConfigOut(tool)])),
     timeoutMs: form.mcp.timeoutMs
   }
 }
@@ -510,10 +594,11 @@ function authValueOut() {
   if (form.sourceType === 'MCP') return isHttpTransport(form.mcp.transport) && form.mcp.authType !== 'none' ? mcpCredential.value.trim() || null : null
   return null
 }
-/** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.4），一次性标红全部问题项。 */
+/** 类型化保存校验（md §六.1～§六.3 / §七.2～§七.5），一次性标红全部问题项。 */
 function validateTyped() {
   clearErrors()
   const errors = {}
+  let badTools = []
   if (form.sourceType === 'API') {
     if (form.api.authType === 'API_KEY') {
       const err = validateApiAuthParams(apiAuthRows.value)
@@ -542,13 +627,19 @@ function validateTyped() {
       if (envErr) errors.mcpEnv = envErr
     }
     if (!mcpToolsSelected.value.length) errors.mcpTools = '至少选择一个检索工具'
-    const mcpReqErr = validateRequestMap(cleanRequestRows(mcpRequestRows.value))
-    if (mcpReqErr) errors.mcpRequestMap = mcpReqErr
-    const mcpRespErr = validateMcpResponseMap(cleanResponseRows(mcpResponseRows.value), form.mcp.resultArrayPath)
-    if (mcpRespErr) errors.mcpResponseMap = mcpRespErr
+    // 逐个工具校验（修改点 10）：错误标在各自卡片里，出错的卡片全部展开，并滚到第一张
+    badTools = mcpToolsSelected.value.filter((tool) => {
+      const e = toolConfigErrors(tool)
+      if (e.request || e.response) toolErrors[tool] = e
+      return e.request || e.response
+    })
+    if (badTools.length) {
+      expandedTools.value = [...new Set([...expandedTools.value, ...badTools])]
+      focusToolCard(badTools[0])
+    }
   }
   Object.assign(fieldErrors, errors)
-  return Object.keys(errors).length === 0
+  return Object.keys(errors).length === 0 && !badTools.length
 }
 async function save() {
   const valid = await formRef.value.validate().catch(() => false)
@@ -706,8 +797,10 @@ function close() {
                 <el-option v-for="m in API_METHOD_OPTIONS" :key="m" :label="m" :value="m" />
               </el-select>
             </el-form-item>
-            <el-form-item label="检索地址" prop="api.url" class="ksrc-req-full" required>
+            <!-- 字段名统一为「请求地址」，只支持返回 JSON 的检索接口（产品优化需求-202611 修改点 11（R8）） -->
+            <el-form-item label="请求地址" prop="api.url" class="ksrc-req-full" required>
               <el-input v-model="form.api.url" maxlength="500" placeholder="如 https://rag.example.com/api/v1/search" />
+              <div class="ksrc-help">仅支持返回 JSON 的检索接口</div>
             </el-form-item>
             <el-form-item label="超时时间" prop="api.timeoutMs" required>
               <el-input-number v-model="form.api.timeoutMs" :min="1000" :max="60000" :step="1000" controls-position="right" class="ksrc-full" />
@@ -899,10 +992,11 @@ function close() {
               <span>从该 MCP 服务暴露的全部工具中，选择用于知识检索的工具（可多选）</span>
             </div>
             <template v-if="availableTools.length">
-              <el-checkbox-group v-model="mcpToolsSelected" @change="delete fieldErrors.mcpTools">
+              <!-- 不直接 v-model：取消勾选要先确认清空该工具的映射配置（修改点 10），见 onToolsPicked -->
+              <el-checkbox-group :model-value="mcpToolsSelected" @update:model-value="onToolsPicked">
                 <el-checkbox v-for="t in availableTools" :key="t" :value="t">{{ t }}</el-checkbox>
               </el-checkbox-group>
-              <div class="ksrc-help">至少选择一个检索工具</div>
+              <div class="ksrc-help">至少选择一个检索工具；每个工具在下方单独配置映射</div>
             </template>
             <div v-else class="ksrc-note">请先完成连接测试以获取工具列表</div>
             <div v-if="fieldErrors.mcpTools" class="ksrc-err">{{ fieldErrors.mcpTools }}</div>
@@ -911,21 +1005,36 @@ function close() {
           <!-- 文案照原型 L1985 kmcp-test-note（该行 class 弯引号为原型缺陷，不搬） -->
           <div class="ksrc-note ksrc-test-note">保存前可使用下方“测试连接”验证连接与工具调用。</div>
         </section>
-        <!-- 映射两卡（md §七.4 / §七.5，与 API §六.2 / §六.3 同一套机制，结果数组路径为 MCP 特有） -->
-        <section class="ksrc-plain-sec">
-          <SourceMappingEditor
-            variant="mcp"
-            :request-rows="mcpRequestRows"
-            :response-rows="mcpResponseRows"
-            :result-array-path="form.mcp.resultArrayPath"
-            :readonly="viewMode"
-            :request-error="fieldErrors.mcpRequestMap"
-            :response-error="fieldErrors.mcpResponseMap"
-            @update:request-rows="mcpRequestRows = $event"
-            @update:response-rows="mcpResponseRows = $event"
-            @update:result-array-path="form.mcp.resultArrayPath = $event"
-            @interact="delete fieldErrors.mcpRequestMap; delete fieldErrors.mcpResponseMap"
-          />
+        <!-- 检索工具配置（产品优化需求-202611 修改点 10（R7）方案 A）：每个已勾选工具一张可折叠卡，标题为工具名，
+             卡内是该工具自己的请求参数映射 + 结果数组路径 + 响应字段（md §七.4 / §七.5，与 API §六.2 / §六.3 同一套机制） -->
+        <section ref="toolSectionRef" class="section-card">
+          <div class="section-title">
+            检索工具配置
+            <span class="section-sub">每个检索工具单独配置请求参数映射、结果数组路径和响应字段</span>
+          </div>
+          <div v-if="!mcpToolsSelected.length" class="ksrc-note">勾选检索工具后，在这里按工具分别配置映射</div>
+          <el-collapse v-else v-model="expandedTools" class="ksrc-tool-collapse">
+            <el-collapse-item v-for="tool in mcpToolsSelected" :key="tool" :name="tool" :data-tool="tool" class="ksrc-tool-card">
+              <template #title>
+                <code class="ksrc-tool-name">{{ tool }}</code>
+                <el-tag v-if="incompleteTools.has(tool)" type="warning" size="small" effect="plain" class="ksrc-tool-incomplete">未配置完成</el-tag>
+              </template>
+              <SourceMappingEditor
+                v-if="mcpToolConfigs[tool]"
+                variant="mcp"
+                :request-rows="mcpToolConfigs[tool].requestRows"
+                :response-rows="mcpToolConfigs[tool].responseRows"
+                :result-array-path="mcpToolConfigs[tool].resultArrayPath"
+                :readonly="viewMode"
+                :request-error="toolErrors[tool]?.request"
+                :response-error="toolErrors[tool]?.response"
+                @update:request-rows="mcpToolConfigs[tool].requestRows = $event"
+                @update:response-rows="mcpToolConfigs[tool].responseRows = $event"
+                @update:result-array-path="mcpToolConfigs[tool].resultArrayPath = $event"
+                @interact="delete toolErrors[tool]"
+              />
+            </el-collapse-item>
+          </el-collapse>
         </section>
       </template>
 
@@ -936,6 +1045,13 @@ function close() {
         <el-button :loading="testing" @click="doTest">{{ verify?.verifyStatus === 'SUCCESS' ? '重新测试' : '测试连接' }}</el-button>
         <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
         <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
+        <!-- MCP：逐个检索工具的测试结果（修改点 9 / 10） -->
+        <ul v-if="toolResults.length" class="ksrc-tool-results">
+          <li v-for="r in toolResults" :key="r.tool" :class="r.ok ? 'ok' : 'bad'">
+            <code>{{ r.tool }}</code>
+            <span>{{ r.ok ? `按结果数组路径取到 ${r.itemCount} 条结果` : r.error }}</span>
+          </li>
+        </ul>
       </section>
     </el-form>
   </DrawerEditor>
@@ -1184,5 +1300,64 @@ function close() {
 }
 .ksrc-verify.bad {
   color: var(--c-danger);
+}
+/* 检索工具配置卡（修改点 10）：每个工具一张细边框圆角卡（与 .ksrc-card 同款），标题行 = 工具名 +「未配置完成」 */
+.ksrc-tool-collapse {
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ksrc-tool-card {
+  border: 1px solid var(--border-admin-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ksrc-tool-card :deep(.el-collapse-item__header) {
+  height: 44px;
+  padding: 0 var(--space-4);
+  gap: var(--space-2);
+  background: var(--bg-admin-table-head);
+  border-bottom-color: var(--border-admin-card);
+}
+.ksrc-tool-card:not(.is-active) :deep(.el-collapse-item__header) {
+  border-bottom-color: transparent;
+}
+.ksrc-tool-card :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+.ksrc-tool-card :deep(.el-collapse-item__content) {
+  padding: var(--space-3);
+}
+.ksrc-tool-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--c-text-strong);
+}
+.ksrc-tool-incomplete {
+  margin-left: var(--space-2);
+}
+/* 逐个工具的测试结果：测试按钮下方整行，成功绿、失败红（同 .ksrc-verify） */
+.ksrc-tool-results {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  line-height: 1.8;
+}
+.ksrc-tool-results li {
+  display: flex;
+  gap: var(--space-2);
+}
+.ksrc-tool-results li.ok {
+  color: var(--c-success);
+}
+.ksrc-tool-results li.bad {
+  color: var(--c-danger);
+}
+.ksrc-tool-results code {
+  font-family: var(--font-mono);
+  color: var(--c-text-strong);
 }
 </style>

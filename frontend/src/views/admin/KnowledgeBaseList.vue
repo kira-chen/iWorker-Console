@@ -45,6 +45,7 @@ import {
   isOffline,
   isOnline,
   scopeText,
+  scopeFullText,
   sourcesText,
   hasUploadSource
 } from '@/utils/knowledgeBaseMeta'
@@ -287,8 +288,9 @@ onActivated(reload)
             </template>
           </el-table-column>
 
+          <!-- 可见范围（R3 多选）：前 2 个名称 +「等 N 位 / 个」，悬停（title）看全部 -->
           <el-table-column label="可见范围" :min-width="140" show-overflow-tooltip>
-            <template #default="{ row }">{{ scopeText(row) }}</template>
+            <template #default="{ row }"><span :title="scopeFullText(row)">{{ scopeText(row) }}</span></template>
           </el-table-column>
 
           <el-table-column label="状态" :width="COL.STATUS" class-name="col-nowrap" label-class-name="col-nowrap">

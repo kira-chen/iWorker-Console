@@ -21,6 +21,7 @@ import {
   uploadDoc,
   deleteDoc,
   applyKnowledgeBaseReviewResult,
+  experts,
   MCP_TEST_TOOLS
 } from '../knowledgeBaseMock'
 import { listReviews } from '../reviewsMock'
@@ -39,7 +40,7 @@ import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResp
  *   §六.1.1 API KEY 多参数表 / Bearer、§六.2-§六.3 映射预设行与递归子字段、§六.4 改配置重置未验证、
  *   §七.2 MCP 传输方式（endpoint / 鉴权 Header 名 / stdio Command 枚举与 envVars）、§七.3 工具 ≥1、§七.4 超时 1000～120000、
  *   §七.5 改工具重置、§八.1 列表概要（未验证 / 已连通 / 连接失败）、§五.3 文档解析流转。
- * - 持久化（mockPersist v9，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
+ * - 持久化（mockPersist v11，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
  * K40（2026-09-12 闭环）：引用已停用数据源被数据层拒绝（md §三.3.2 L94）；UPLOAD 源三必填 + 文档类型校验（md §五.1）。
  * 2026-10-08 对齐同一 md §三.4（审核结果落地：发布通过→已发布、停用通过→未发布、驳回保持原状、申请方向不符拒绝落地）、
  *   §三.2 / §八.1（「已发布」筛选不含待停用行）、§四.2（删上传源连带删文档与索引）、§五.3（删文档后计数下降）、
@@ -59,6 +60,12 @@ const apiConfig = (over = {}) => ({
   ...over
 })
 const mcpResponseMap = () => mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
+// 一个检索工具的映射配置（产品优化需求-202611 R7 方案 A：每个已选工具一份）；路径按 R6 口径从结果数据写起
+const mcpToolConfig = (over = {}) => ({ requestMap: mkRequestMapRows(), resultArrayPath: '$.items[*]', responseMap: mcpResponseMap(), ...over })
+// 演示 MCP 服务三个工具各自的返回结构对应的结果数组路径（knowledgeBaseMock.mockMcpToolResult），连接测试才能取到数组
+const TOOL_PATHS = { search_documents: '$.items[*]', search_chunks: '$.data.list[*]', hybrid_search: '$.results[*]' }
+/** 勾选若干检索工具：tools + 每个工具一份路径正确的映射配置 */
+const withTools = (...tools) => ({ tools, toolConfigs: Object.fromEntries(tools.map((t) => [t, mcpToolConfig({ resultArrayPath: TOOL_PATHS[t] })])) })
 const mcpConfig = (over = {}) => ({
   transport: 'streamable-http',
   endpoint: 'https://mcp.example.com/mcp',
@@ -68,9 +75,7 @@ const mcpConfig = (over = {}) => ({
   args: [],
   envVars: [],
   tools: ['search_documents'],
-  requestMap: mkRequestMapRows(),
-  responseMap: mcpResponseMap(),
-  resultArrayPath: '$.content[0].items[*]',
+  toolConfigs: { search_documents: mcpToolConfig() },
   timeoutMs: 10000,
   ...over
 })
@@ -92,12 +97,31 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     expect(again.status).toBe('DRAFT')
   })
 
-  it('yuepu#62⑧ 发布完整校验：专家库的可见对象已不存在（scopeRefId 查无此专家）被拦、不进审核中；换成存在的专家后放行', async () => {
-    const kb = await create({ name: uniq('失效可见对象库'), kbType: 'EXPERT', scopeRefId: 'ex_gone', description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
-    await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '所选可见范围专家已不存在，请重新选择' })
+  it('yuepu#62⑧ 发布完整校验：专家库所选专家全都不存在（查无此专家）被拦、不进审核中；换成存在的专家后放行', async () => {
+    const kb = await create({ name: uniq('失效可见对象库'), kbType: 'EXPERT', scopeRefIds: [9991, 9992], description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '可见范围无有效专家，请重新选择后再发布' })
     expect((await list({ keyword: kb.name })).list[0].pendingAction).toBe(null)
-    const ok = await create({ name: uniq('有效可见对象库'), kbType: 'EXPERT', scopeRefId: 'ex_1', description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    // 专家候选是专家模块真实数据（201 = domainExpertMock 种子「经营分析专家」）
+    const ok = await create({ name: uniq('有效可见对象库'), kbType: 'EXPERT', scopeRefIds: [201], description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
     expect((await transition(ok.id, 'publish')).pendingAction).toBe('PUBLISH')
+  })
+
+  it('R3 发布完整校验「至少有 1 位有效专家」：所选专家部分已不存在、仍有 1 位存在 → 可提交发布', async () => {
+    const kb = await create({ name: uniq('部分失效库'), kbType: 'EXPERT', scopeRefIds: [9991, 204], description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    expect((await transition(kb.id, 'publish')).pendingAction).toBe('PUBLISH')
+  })
+
+  it('R3 VO：可见范围只解析仍存在的对象（scopeRefs / scopeRefNames），查无此对象的 id 不出名称', async () => {
+    const kb = await create({ name: uniq('解析库'), kbType: 'EXPERT', scopeRefIds: [204, 9991, 201], description: '测试用', icon: '🧪', sourceIds: [] })
+    expect(kb.scopeRefs).toEqual([{ id: 204, name: '研究报告专家' }, { id: 201, name: '经营分析专家' }])
+    expect(kb.scopeRefNames).toEqual(['研究报告专家', '经营分析专家'])
+  })
+
+  it('R3 岗位知识库可多选：一个库存 2 个岗位，读回 VO 两个岗位名都在', async () => {
+    const kb = await create({ name: uniq('共用制度库'), kbType: 'POSITION', scopeRefIds: [401, 403], description: '测试用', icon: '🧪', sourceIds: [] })
+    const again = await get(kb.id)
+    expect(again.scopeRefIds).toEqual([401, 403])
+    expect(again.scopeRefNames).toEqual(['经营分析岗', '财务审核岗'])
   })
 
   it('发布完整校验：引用连接失败的 API 源被拦，换成验证成功的源后可提交', async () => {
@@ -164,22 +188,27 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
   })
 
   it('已发布改可见范围 → 回未发布重审（md §三.5）；名称描述照常保存不回退', async () => {
-    // 种子 kb_4：岗位知识库（positionMock 401 经营分析岗）已发布。
-    // 2026-09-23 待办 yuepu#9④：scopeRefId 改用 positionMock 真实 positionId（401/403），
-    // 不再是脱节的 'ps_1'/'ps_2'。
-    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefId: 401 })
+    // 种子 kb_4：岗位知识库，已发布，可见范围 [401 经营分析岗, 404 市场研究岗]（R3 多选）。
+    // 2026-09-23 待办 yuepu#9④：可见范围用 positionMock 真实 positionId，不再是脱节的 'ps_1'/'ps_2'。
+    // 可见范围按集合比较：同一组岗位换个顺序不算变更
+    let r = await update('kb_4', { name: '经营分析指标口径库', description: '仅改描述不回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefIds: [404, 401] })
     expect(r.status).toBe('PUBLISHED')
-    r = await update('kb_4', { name: '经营分析指标口径库', description: '换岗位要回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefId: 403 })
+    r = await update('kb_4', { name: '经营分析指标口径库', description: '加岗位要回退', icon: '🧪', sourceIds: ['ks_4a'], scopeRefIds: [401, 404, 403] })
     expect(r.status).toBe('DRAFT')
-    expect(r.scopeRefName).toBe('财务审核岗')
+    expect(r.scopeRefNames).toEqual(['经营分析岗', '市场研究岗', '财务审核岗'])
   })
 
-  it('专家知识库的可见范围创建后不可更改（md §三.3.1 L86，2026-09-18 待办 yuepu#13·连接器 C4：此前只有 UI 置灰）；传相同值放行', async () => {
-    // 种子 kb_6：专家知识库（ex_1），未发布
-    await expect(update('kb_6', { name: '2026 产品白皮书库', description: '换专家', icon: '🧪', sourceIds: ['ks_6a'], scopeRefId: 'ex_2' }))
-      .rejects.toMatchObject({ field: 'scopeRefId', message: '专家知识库的可见范围创建后不可更改' })
-    const r = await update('kb_6', { name: '2026 产品白皮书库', description: '范围不变', icon: '🧪', sourceIds: ['ks_6a'], scopeRefId: 'ex_1' })
-    expect(r.scopeRefId).toBe('ex_1')
+  it('R3 专家知识库的可见范围创建后可以增减（原「创建后不可更改」取消）', async () => {
+    const kb = await create({ name: uniq('可改专家库'), kbType: 'EXPERT', scopeRefIds: [201], description: '测试用', icon: '🧪', sourceIds: [] })
+    const r = await update(kb.id, { name: kb.name, description: '换专家', icon: '🧪', sourceIds: [], scopeRefIds: [204, 203] })
+    expect(r.scopeRefIds).toEqual([204, 203])
+    expect((await get(kb.id)).scopeRefNames).toEqual(['研究报告专家', '法务审阅专家'])
+  })
+
+  it('R3 编辑时不传 scopeRefIds（部分更新）→ 沿用原可见范围，不被清空', async () => {
+    const kb = await create({ name: uniq('部分更新库'), kbType: 'POSITION', scopeRefIds: [401, 402], description: '测试用', icon: '🧪', sourceIds: [] })
+    const r = await update(kb.id, { name: kb.name, description: '只改描述', icon: '🧪', sourceIds: [] })
+    expect(r.scopeRefIds).toEqual([401, 402])
   })
 })
 
@@ -368,45 +397,50 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
-  it('MCP config 请求 / 响应映射（2026-09-18 推翻 09-08 决议重新加回，md §七.4 / §七.5）：种子自带、与 API 同一套机制校验', async () => {
+  it('MCP 种子：每个已选检索工具各带一份请求 / 响应映射与结果数组路径（R7 方案 A；md §七.4 / §七.5）', async () => {
     const seeded = (await listSources({ sourceType: 'MCP' })).list
     expect(seeded.length).toBeGreaterThan(0)
     for (const s of seeded) {
-      expect(s.config.requestMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['query', 'topK'])
-      expect(s.config.responseMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['title', 'content', 'sourceName'])
-      expect(s.config.resultArrayPath).toBeTruthy()
+      expect(Object.keys(s.config.toolConfigs)).toEqual(s.config.tools)
+      for (const tool of s.config.tools) {
+        const tc = s.config.toolConfigs[tool]
+        expect(tc.requestMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['query', 'topK'])
+        expect(tc.responseMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['title', 'content', 'sourceName'])
+        expect(tc.resultArrayPath).toBeTruthy()
+      }
     }
     const s = await createSource({ sourceType: 'MCP', name: uniq('带映射MCP'), config: mcpConfig() })
-    expect(s.config.requestMap.length).toBe(2)
     expect(s.config.tools).toEqual(['search_documents'])
+    expect(s.config.toolConfigs.search_documents.requestMap.length).toBe(2)
   })
 
-  it('MCP 请求参数映射校验（md §七.4，规则同 API §六.2）：缺预设行 query/topK 报错', async () => {
+  it('MCP 请求参数映射校验（md §七.4，规则同 API §六.2）：某个工具缺预设行 query/topK → 报错并指明是哪个工具', async () => {
     await expect(
-      createSource({ sourceType: 'MCP', name: uniq('MCP无预设请求'), config: mcpConfig({ requestMap: [] }) })
-    ).rejects.toMatchObject({ field: 'requestMap' })
+      createSource({ sourceType: 'MCP', name: uniq('MCP无预设请求'), config: mcpConfig({ toolConfigs: { search_documents: mcpToolConfig({ requestMap: [] }) } }) })
+    ).rejects.toMatchObject({ field: 'toolConfigs', message: '检索工具 search_documents：请求参数映射缺少预设参数 query / topK' })
   })
 
   it('MCP 响应字段校验（md §七.5）：结果数组路径必填；title/content 需填接口返回字段名；sourceName 可留空', async () => {
+    const withTool = (over) => mcpConfig({ toolConfigs: { search_documents: mcpToolConfig(over) } })
     await expect(
-      createSource({ sourceType: 'MCP', name: uniq('MCP无数组路径'), config: mcpConfig({ resultArrayPath: '' }) })
-    ).rejects.toMatchObject({ field: 'responseMap' })
+      createSource({ sourceType: 'MCP', name: uniq('MCP无数组路径'), config: withTool({ resultArrayPath: '' }) })
+    ).rejects.toMatchObject({ field: 'toolConfigs', message: '检索工具 search_documents：请填写结果数组路径' })
     const badMap = mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'title' ? '' : 'text' }))
     await expect(
-      createSource({ sourceType: 'MCP', name: uniq('MCP缺title映射'), config: mcpConfig({ responseMap: badMap }) })
-    ).rejects.toMatchObject({ field: 'responseMap' })
+      createSource({ sourceType: 'MCP', name: uniq('MCP缺title映射'), config: withTool({ responseMap: badMap }) })
+    ).rejects.toMatchObject({ field: 'toolConfigs', message: '检索工具 search_documents：响应字段：title 需填写接口返回字段名' })
     // sourceName 留空可直接保存（留空则取数据源名称）
     const okMap = mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
-    const s = await createSource({ sourceType: 'MCP', name: uniq('MCP留空来源名'), config: mcpConfig({ responseMap: okMap }) })
-    expect(s.config.responseMap.find((r) => r.name === 'sourceName').sourceField).toBe('')
+    const s = await createSource({ sourceType: 'MCP', name: uniq('MCP留空来源名'), config: withTool({ responseMap: okMap }) })
+    expect(s.config.toolConfigs.search_documents.responseMap.find((r) => r.name === 'sourceName').sourceField).toBe('')
   })
 
-  it('修改 MCP 映射后保存 → 验证状态重置未验证（md §七.7，规则同 API §六.4）', async () => {
+  it('修改某个工具的映射后保存 → 验证状态重置未验证（md §七.7，规则同 API §六.4）', async () => {
     const s = await createSource({ sourceType: 'MCP', name: uniq('重测MCP'), config: mcpConfig() })
     await testSource('MCP', { sourceId: s.id, config: mcpConfig() })
     let cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('SUCCESS')
-    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ resultArrayPath: '$.items[*]' }) })
+    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.items' }) } }) })
     cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
@@ -473,18 +507,18 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     await testSource('MCP', { sourceId: s.id, config: mcpConfig() })
     let cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('SUCCESS')
-    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
+    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ ...withTools('search_documents', 'hybrid_search') }) })
     cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
   it('列表概要（2026-09-08 决议第 9 项 md §八.1 L417）：新建未测试「未验证」→ 测试通过「已连通」(MCP 附工具名) → 保存刚测试失败的草稿「连接失败」→ 改配置重置「未验证」', async () => {
     // 新建保存未测试前 → 未验证
-    const s = await createSource({ sourceType: 'MCP', name: uniq('概要MCP'), config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
+    const s = await createSource({ sourceType: 'MCP', name: uniq('概要MCP'), config: mcpConfig({ ...withTools('search_documents', 'hybrid_search') }) })
     expect(s.verifyStatus).toBe('UNVERIFIED')
     expect(s.summary).toBe('未验证')
     // 连接测试通过（测的就是已保存的这份配置）→ 立即回写列表概要「已连通 · 所选工具名」
-    await testSource('MCP', { sourceId: s.id, config: mcpConfig({ tools: ['search_documents', 'hybrid_search'] }) })
+    await testSource('MCP', { sourceId: s.id, config: mcpConfig({ ...withTools('search_documents', 'hybrid_search') }) })
     let cur = (await listSources({ sourceType: 'MCP' })).list.find((x) => x.id === s.id)
     expect(cur.verifyStatus).toBe('SUCCESS')
     expect(cur.summary).toBe('已连通 · search_documents、hybrid_search')
@@ -554,6 +588,98 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
 })
 
 /**
+ * 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）的数据层行为：
+ * - R6「连接测试按路径取不到数组时，提示"按结果数组路径未取到数组，请检查路径"；text 不是合法 JSON 时，提示"工具返回内容不是 JSON，
+ *   无法按路径取值"」——mock 用模拟的工具原始返回（{ content: [{ type: 'text', text }], structuredContent? }）真实按路径取值；
+ * - R7 方案 A「连接测试逐个工具执行，结果按工具分别展示」「保存时逐个工具校验」「检索时调用全部已选工具，结果合并后……取前 topK 条」；
+ * - R8「连接测试时接口返回的不是 JSON，提示"接口返回的不是 JSON，暂不支持该接口"」（演示约定：请求地址里带 html）。
+ * 草稿态 testSource 会记 lastTest（审计 T17），本组每条都用独占的服务地址，不与别的用例的配置撞签名。
+ */
+describe('knowledgeBaseMock —— MCP 按工具配置与结果数组路径 / API 只支持 JSON（R6 / R7 / R8）', () => {
+  beforeEach(() => vi.stubGlobal('setTimeout', (fn) => { queueMicrotask(fn); return 0 }))
+  afterEach(() => vi.unstubAllGlobals())
+  const probe = (name, over = {}) => mcpConfig({ endpoint: `https://mcp-${name}.example.com/mcp`, ...over })
+
+  it('R6 种子 MCP 数据源按新取值口径配的路径：连接测试两个工具都取到数组、整体通过', async () => {
+    const seed = await getSource('ks_1c')
+    const r = await testSource('MCP', { config: { ...seed.config, endpoint: 'https://mcp-seed-probe.example.com/mcp' } })
+    expect(r.verifyStatus).toBe('SUCCESS')
+    expect(r.toolResults).toEqual([
+      { tool: 'search_documents', ok: true, itemCount: 2 },
+      { tool: 'hybrid_search', ok: true, itemCount: 2 }
+    ])
+  })
+
+  it('R6 路径写进协议层（$.content[0].items[*]）→ 该工具「按结果数组路径未取到数组，请检查路径」，测试未通过', async () => {
+    const cfg = probe('protocol-path', { toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.content[0].items[*]' }) } })
+    const r = await testSource('MCP', { config: cfg })
+    expect(r.verifyStatus).toBe('FAILED')
+    expect(r.toolResults).toEqual([{ tool: 'search_documents', ok: false, error: '按结果数组路径未取到数组，请检查路径' }])
+  })
+
+  it('R6 工具返回带 structuredContent（hybrid_search）：从它写起的 $.results[*] 取到数组，text 是摘要也不影响', async () => {
+    const r = await testSource('MCP', { config: probe('structured', withTools('hybrid_search')) })
+    expect(r.toolResults).toEqual([{ tool: 'hybrid_search', ok: true, itemCount: 2 }])
+  })
+
+  it('R6 服务只回纯文本（演示地址带 plain）→「工具返回内容不是 JSON，无法按路径取值」', async () => {
+    const r = await testSource('MCP', { config: probe('plain-text') })
+    expect(r.verifyStatus).toBe('FAILED')
+    expect(r.toolResults).toEqual([{ tool: 'search_documents', ok: false, error: '工具返回内容不是 JSON，无法按路径取值' }])
+  })
+
+  it('R7 连接测试逐个工具执行：一个通过一个没通过 → 结果按工具分别返回，整体未通过并点名没通过的工具', async () => {
+    const cfg = probe('per-tool', withTools('search_documents', 'search_chunks'))
+    cfg.toolConfigs.search_chunks.resultArrayPath = '$.list[*]' // 实际在 data.list 下
+    const r = await testSource('MCP', { config: cfg })
+    expect(r.toolResults).toEqual([
+      { tool: 'search_documents', ok: true, itemCount: 2 },
+      { tool: 'search_chunks', ok: false, error: '按结果数组路径未取到数组，请检查路径' }
+    ])
+    expect(r.verifyStatus).toBe('FAILED')
+    expect(r.verifyError).toBe('检索工具「search_chunks」测试未通过') // 修改点 10 文案：工具名带书名号
+    expect(r.tools).toEqual(MCP_TEST_TOOLS) // 服务连上了，工具清单照样返回
+  })
+
+  it('R7 刚连上、还没勾选工具时只拿工具清单，测试通过且没有逐工具结果', async () => {
+    const r = await testSource('MCP', { config: probe('no-tool', { tools: [], toolConfigs: {} }) })
+    expect(r.verifyStatus).toBe('SUCCESS')
+    expect(r.toolResults).toEqual([])
+    expect(r.tools).toEqual(MCP_TEST_TOOLS)
+  })
+
+  it('R7 保存时逐个工具校验：第一个工具配好了、第二个缺结果数组路径 → 拒绝并点名第二个工具', async () => {
+    const cfg = mcpConfig(withTools('search_documents', 'hybrid_search'))
+    cfg.toolConfigs.hybrid_search.resultArrayPath = ''
+    await expect(createSource({ sourceType: 'MCP', name: uniq('缺第二个工具路径'), config: cfg })).rejects.toMatchObject({
+      field: 'toolConfigs',
+      message: '检索工具 hybrid_search：请填写结果数组路径'
+    })
+  })
+
+  it('R7 保存时只留已勾选工具的映射配置：载荷里多带的未勾选工具配置不落库', async () => {
+    const cfg = mcpConfig({ toolConfigs: { search_documents: mcpToolConfig(), hybrid_search: mcpToolConfig({ resultArrayPath: '$.results[*]' }) } })
+    const s = await createSource({ sourceType: 'MCP', name: uniq('多带配置'), config: cfg })
+    expect(Object.keys(s.config.toolConfigs)).toEqual(['search_documents'])
+  })
+
+  it('R7 检索测试调用全部已选工具：种子 MCP 源 ks_1c 的两个工具各回一条，与其他源合并后按相关度排序取前 topK', async () => {
+    const r = await search('kb_1', { query: '方案', topK: 10 })
+    const mcpSources = r.items.filter((it) => it.sourceId === 'ks_1c').map((it) => it.source)
+    expect(mcpSources.sort()).toEqual(['MCP 工具返回 · hybrid_search', 'MCP 工具返回 · search_documents'])
+    expect(r.items.map((it) => it.score)).toEqual([...r.items.map((it) => it.score)].sort((a, b) => b - a))
+    const top2 = await search('kb_1', { query: '方案', topK: 2 })
+    expect(top2.items).toHaveLength(2)
+  })
+
+  it('R8 API 接口返回的不是 JSON（演示地址带 html）→ 测试失败「接口返回的不是 JSON，暂不支持该接口」', async () => {
+    const r = await testSource('API', { config: apiConfig({ url: 'https://rag-html-probe.example.com/search.html' }) })
+    expect(r.verifyStatus).toBe('FAILED')
+    expect(r.verifyError).toBe('接口返回的不是 JSON，暂不支持该接口')
+  })
+})
+
+/**
  * 2026-09-12 测试审计补缺口（E4 / A7 / A8 / A9 / A12）：沿用本文件约定——共享模块 + uniq 名字自建专属行，
  * 只读种子行（kb_1 / kb_3 / kb_5 / kb_7）不改写。
  */
@@ -609,14 +735,28 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
     expect(ok.description.length).toBe(2000)
   })
 
-  it('A7 专家 / 岗位知识库缺可见范围 → field=scopeRefId「请选择可见范围」；企业库不需要（md §三.3.1 可见范围必填）', async () => {
-    await expect(create({ name: uniq('无专家'), kbType: 'EXPERT', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId', message: '请选择可见范围' })
-    await expect(create({ name: uniq('无岗位'), kbType: 'POSITION', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefId' })
-    const ent = await create({ name: uniq('企业库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
-    expect(ent.scopeRefId).toBeNull()
-    expect(ent.scopeRefName).toBe('')
-    const ex = await create({ name: uniq('专家库'), kbType: 'EXPERT', scopeRefId: 'ex_2', description: '测试用', icon: '🧪', sourceIds: [] })
-    expect(ex.scopeRefName).toBe('售后专家')
+  it('A7 专家 / 岗位知识库缺可见范围（不传 / 空数组）→ field=scopeRefIds「请选择可见范围」（R3：至少 1 个）', async () => {
+    await expect(create({ name: uniq('无专家'), kbType: 'EXPERT', description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefIds', message: '请选择可见范围' })
+    await expect(create({ name: uniq('空岗位'), kbType: 'POSITION', scopeRefIds: [], description: '测试用', icon: '🧪', sourceIds: [] })).rejects.toMatchObject({ field: 'scopeRefIds', message: '请选择可见范围' })
+  })
+
+  it('A7 企业知识库不需要选可见范围：可见范围恒为空数组、不解析名称（列表显「全员」）', async () => {
+    const ent = await create({ name: uniq('企业库'), kbType: 'ENTERPRISE', scopeRefIds: [401], description: '测试用', icon: '🧪', sourceIds: [] })
+    expect(ent.scopeRefIds).toEqual([])
+    expect(ent.scopeRefNames).toEqual([])
+  })
+
+  it('A7 专家知识库的可见范围候选是专家模块真实数据：选 202 → 解析出「企业知识助手」', async () => {
+    const ex = await create({ name: uniq('专家库'), kbType: 'EXPERT', scopeRefIds: [202], description: '测试用', icon: '🧪', sourceIds: [] })
+    expect(ex.scopeRefNames).toEqual(['企业知识助手'])
+  })
+
+  it('R3 专家候选 experts()：平台全部专家（含未发布），带专家类型名供下拉展示', async () => {
+    const opts = await experts()
+    expect(opts.map((o) => o.id)).toEqual(expect.arrayContaining([201, 202, 203, 204]))
+    expect(opts.find((o) => o.id === 201)).toEqual({ id: 201, name: '经营分析专家', type: 'PLATFORM', typeLabel: '市场专家' })
+    // 203「法务审阅专家」是草稿样本（未发布），也在候选里（R3：方便先建知识库再发布专家）
+    expect(opts.find((o) => o.id === 203)).toMatchObject({ name: '法务审阅专家', typeLabel: '岗位私有' })
   })
 
   it('A7 同类数据源引用第 6 个 → 「上传 数据源最多引用 5 个」；5 个放行（md §三.3.2 每一类最多引用 5 个）', async () => {
@@ -633,9 +773,9 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 
   it('A7 知识库类型创建后不可修改：update 传 kbType 被忽略（md §三.3.1「创建后不可修改」）', async () => {
     const kb = await create({ name: uniq('类型固定库'), kbType: 'ENTERPRISE', description: '测试用', icon: '🧪', sourceIds: [] })
-    const r = await update(kb.id, { name: kb.name, description: '测试用', kbType: 'EXPERT', scopeRefId: 'ex_1', icon: '🧪', sourceIds: [] })
+    const r = await update(kb.id, { name: kb.name, description: '测试用', kbType: 'EXPERT', scopeRefIds: [201], icon: '🧪', sourceIds: [] })
     expect(r.kbType).toBe('ENTERPRISE')
-    expect(r.scopeRefId).toBeNull() // 企业库可见范围恒为全员，不吃入参
+    expect(r.scopeRefIds).toEqual([]) // 企业库可见范围恒为全员，不吃入参
     expect((await get(kb.id)).kbType).toBe('ENTERPRISE')
   })
 
@@ -653,7 +793,7 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
   })
 
   it('A8 专家库已选可见对象 + 无数据源 → 被第 ② 条拦「至少引用 1 个已启用数据源」（md §三.6）', async () => {
-    const kb = await create({ name: uniq('专家空源库'), kbType: 'EXPERT', scopeRefId: 'ex_1', description: '测试用', icon: '🧪', sourceIds: [] })
+    const kb = await create({ name: uniq('专家空源库'), kbType: 'EXPERT', scopeRefIds: [201], description: '测试用', icon: '🧪', sourceIds: [] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '至少引用 1 个已启用数据源才能提交发布' })
   })
 
@@ -751,13 +891,13 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（当前 mockPersist v9；11 个写点：
+ * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（当前 mockPersist v11；11 个写点：
  * create / update / remove / transition / createSource / updateSource / removeSource / testSource(带 sourceId) /
  * listDocs(状态流转时) / uploadDoc / deleteDoc）。
  * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import；
  * mock 接口都 `await delay()`，把 setTimeout 桩成立即回调免真等。
  */
-describe('knowledgeBaseMock · 持久化（mockPersist v9）', () => {
+describe('knowledgeBaseMock · 持久化（mockPersist v11）', () => {
   const KEY = 'iworker-demo-mock:knowledgeBase'
   const makeStorage = () => {
     const map = new Map()
@@ -854,11 +994,11 @@ describe('knowledgeBaseMock · 持久化（mockPersist v9）', () => {
     expect(done.pendingAction).toBe('PUBLISH')
   })
 
-  it('新建知识库落盘（v=9，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
+  it('新建知识库落盘（v=11，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(9) // v9：POSITION 型 scopeRefId 改真实 positionId（待办 yuepu#9④）+ kb_7 补 icon/description
+    expect(snap.v).toBe(11) // v11：MCP 数据源映射改为每个检索工具一份 toolConfigs（产品优化需求-202611 R7）
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')
@@ -870,8 +1010,17 @@ describe('knowledgeBaseMock · 持久化（mockPersist v9）', () => {
     expect(another.id).not.toBe(kb.id)
   })
 
-  it('旧版本快照（v=8，上一版）→ 丢弃并回种子（7 个知识库 / 12 个数据源，不带入旧行）', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 8, data: { seq: 1, sources: [], rows: [{ id: 'kb_old', name: '旧库', sourceIds: [] }], docsBySource: {}, seedDocCount: {} } }))
+  it('R3 多选可见范围落盘（scopeRefIds 数组）→ 重新 import（模拟刷新）→ 仍是同一组岗位', async () => {
+    const first = await import('../knowledgeBaseMock')
+    const kb = await first.create({ name: '多岗共用库', kbType: 'POSITION', scopeRefIds: [402, 403], description: 'd', icon: '🧪', sourceIds: [] })
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).data.rows.find((r) => r.id === kb.id).scopeRefIds).toEqual([402, 403])
+    vi.resetModules()
+    const fresh = await import('../knowledgeBaseMock')
+    expect((await fresh.get(kb.id)).scopeRefNames).toEqual(['客户成功岗', '财务审核岗'])
+  })
+
+  it('旧版本快照（v=10，上一版）→ 丢弃并回种子（7 个知识库 / 12 个数据源，不带入旧行）', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 10, data: { seq: 1, sources: [], rows: [{ id: 'kb_old', name: '旧库', sourceIds: [] }], docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     const { list: rows, total } = await m.list()
     expect(total).toBe(7)
@@ -881,7 +1030,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v9）', () => {
 
   it('坏形状快照（rows 不是数组）→ restore 抛「knowledgeBase 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 9, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 11, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     expect((await m.list()).total).toBe(7)
     const call = warn.mock.calls.find((c) => String(c[0]).includes('knowledgeBase'))
@@ -994,7 +1143,7 @@ describe('knowledgeBaseMock —— 补缺口（2026-10-08）隔离组：删源�
     const seeds = (await m.list({ size: 200 })).list.filter((r) => !r.pendingAction)
     expect(seeds.length).toBeGreaterThanOrEqual(6)
     for (const r of seeds) {
-      const payload = { name: r.name, icon: r.icon, description: r.description, scopeRefId: r.scopeRefId, sourceIds: r.sourceIds }
+      const payload = { name: r.name, icon: r.icon, description: r.description, scopeRefIds: r.scopeRefIds, sourceIds: r.sourceIds }
       const saved = await m.update(r.id, payload).catch((e) => ({ error: `${r.id}：${e.message}` }))
       expect(saved.error).toBeUndefined()
       expect(saved.status).toBe(r.status)

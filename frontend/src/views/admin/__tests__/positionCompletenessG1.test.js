@@ -87,9 +87,9 @@ const listSampleTasksSpy = vi.fn(() => Promise.resolve({ list: [{ id: 1 }] }))
 vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasksSpy(...a) }))
 // 知识页签一条已发布知识库，供 A19【检索测试】用例点
 vi.mock('@/api/knowledgeBase', () => ({
-  // scopeRefId 与本文件其它 positionId:5 的夹具同源（2026-09-23 待办 yuepu#9④：知识页签改按
-  // scopeRefId 联查岗位 id，不再按 scopeRefName 字符串匹配岗位名）
-  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefId: 5, scopeRefName: '销售', status: 'PUBLISHED' }], total: 1 }))
+  // scopeRefIds 与本文件其它 positionId:5 的夹具同源（2026-09-23 待办 yuepu#9④：知识页签改按
+  // 岗位 id 联查，不再按名称字符串匹配；2026-11-09 R3 起可见范围多选，字段改为 scopeRefIds 数组）
+  listKnowledgeBases: vi.fn(() => Promise.resolve({ list: [{ id: 'kb_1', name: '销售知识库', scopeRefIds: [5], scopeRefNames: ['销售'], status: 'PUBLISHED' }], total: 1 }))
 }))
 vi.mock('@/composables/useVersionPublish', () => ({
   useVersionPublish: () => ({

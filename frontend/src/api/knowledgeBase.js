@@ -29,7 +29,7 @@ export function getKnowledgeBase(id) {
   if (USE_MOCK) return mock.get(id)
   return request.get(`${KB}/${id}`)
 }
-// body: { name, kbType, scopeRefId, description, sourceIds: [] }
+// body: { name, kbType, scopeRefIds: []（专家 / 岗位可见范围，多选；企业类型为空，R3）, description, sourceIds: [] }
 // sourceIds 引用数据源管理里的数据源，每类（上传 / API / MCP）上限 MAX_SOURCES_PER_TYPE=5。
 export function createKnowledgeBase(payload) {
   if (USE_MOCK) return mock.create(payload)
@@ -77,7 +77,8 @@ export function getKnowledgeSource(id) {
 }
 // body: { sourceType(建后不可改), name, status(ENABLED|DISABLED), config, authValue? }
 // config 按类型：UPLOAD=内置 RAG 配置；API=url/method/authType/authParams/requestMap/responseMap/timeoutMs（md §六）；
-// MCP=transport/endpoint/authType/authHeaderName/command/args/envVars/tools/timeoutMs（md §七；2026-09-08 起无 requestMap/responseMap）
+// MCP=transport/endpoint/authType/authHeaderName/command/args/envVars/tools/toolConfigs/timeoutMs（md §七；2026-11-10 产品优化需求-202611 R7 起
+// 映射按工具分别配置：toolConfigs = { [工具名]: { requestMap, resultArrayPath, responseMap } }）
 export function createKnowledgeSource(payload) {
   if (USE_MOCK) return mock.createSource(payload)
   return request.post(KS, payload, W)
