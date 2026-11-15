@@ -42,7 +42,7 @@ const FINGERPRINTS = {
   fieldDict: { version: 4, fp: '40d8527d' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
   knowledgeBase: { version: 9, fp: '04ba3a72' },
-  mcpConnector: { version: 12, fp: '56488c87' },
+  mcpConnector: { version: 13, fp: '7b5fd33d' },
   myApplications: { version: 8, fp: 'b8042447' },
   position: { version: 12, fp: 'adcd2c25' },
   positionApplications: { version: 4, fp: 'bf5160f2' },

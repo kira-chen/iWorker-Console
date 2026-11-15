@@ -3,6 +3,7 @@
  *
  * 模型与状态机对齐 PRD-20260828《03能力/连接器/API/prd-API.md》：
  * - 服务提供系统：纯聚合容器（名称≤64 平台内唯一 + 描述），不设启用/停用；空系统才可删。
+ *   产品优化需求-202611 修改点 14（R9）起与 MCP 共用：「空」= 其下既无 API 也无 MCP（MCP 归属见 mcpConnectorMock.providerSystemId）。
  * - API 三态：未发布 NOT_PUBLISHED / 审核中 PENDING_REVIEW / 已发布 PUBLISHED；
  *   pendingAction 区分待审类型（PUBLISH 发布审核 / DEACTIVATE 停用审核），撤回按其恢复：
  *   待审发布撤回 → 未发布；待审停用撤回 → 已发布（PRD §二.4）。
@@ -27,6 +28,7 @@ import { attachPersist } from './mockPersist'
 import { removeRefs, renameRefs, syncRefs } from './positionRefs'
 import { ensureSkillRefs } from './skillRefsLoader'
 import { CONNECTOR_TYPE } from './connectorTypes'
+import { providerSystemDeleteBlockReason } from '@/utils/providerSystemMeta'
 // 2026-09-18 R1：发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型
 import { enrollReview, unenrollReview, reviewActionMatches } from './reviewEnroll'
 
@@ -546,12 +548,31 @@ function toRow(a) {
 }
 
 /* ================= 服务提供系统 ================= */
+/**
+ * 各服务提供系统下的 MCP 名称：{ [系统 id]: [MCP 名称, …] }。
+ * 产品优化需求-202611 修改点 14（R9）：服务提供系统由 API 与 MCP 共用，删除系统时除 API 外也要看其下 MCP。
+ * MCP 数据在 mcpConnectorMock，它保存时也要反查本模块校验系统是否存在 —— 两个模块互相要读对方，
+ * 故这里用动态 import，不形成静态循环依赖（同 skillRefsLoader 的做法）。
+ */
+async function mcpNamesByProviderSystem() {
+  const { listMcpSync } = await import('./mcpConnectorMock')
+  const byPs = {}
+  for (const m of listMcpSync()) {
+    if (m.providerSystemId) (byPs[m.providerSystemId] ||= []).push(m.name)
+  }
+  return byPs
+}
+
 export async function listProviderSystems() {
   await delay(150)
+  const mcpNames = await mcpNamesByProviderSystem()
   return {
     list: providerSystems.map((p) => ({
       ...p,
-      apiCount: apis.filter((a) => a.providerSystemId === p.id).length
+      apiCount: apis.filter((a) => a.providerSystemId === p.id).length,
+      // R9：其下 MCP 数与名称 —— MCP 列表分组头的「N 个 MCP」、API 列表【删除系统】置灰提示都用它
+      mcpCount: (mcpNames[p.id] || []).length,
+      mcpNames: mcpNames[p.id] || []
     }))
   }
 }
@@ -596,8 +617,12 @@ export async function updateProviderSystem(id, payload) {
 
 export async function deleteProviderSystem(id) {
   await delay(200)
-  const count = apis.filter((a) => a.providerSystemId === id).length
-  if (count > 0) throw err(`该系统下有 ${count} 个 API，需先迁移或删除后才能删除系统`)
+  // 系统下有 API 或 MCP 都不能删（R9：除 API 外也要检查 MCP）；文案与 API 列表【删除系统】置灰提示同源
+  const blocked = providerSystemDeleteBlockReason({
+    apiCount: apis.filter((a) => a.providerSystemId === id).length,
+    mcpNames: (await mcpNamesByProviderSystem())[id] || []
+  })
+  if (blocked) throw err(blocked)
   providerSystems = providerSystems.filter((p) => p.id !== id)
   persist()
   return {}

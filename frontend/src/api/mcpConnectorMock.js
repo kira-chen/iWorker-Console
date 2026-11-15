@@ -5,6 +5,8 @@
  * - 列表 / 详情 / 新建 / 编辑 / 删除；
  * - 测试连接（仅 initialize 握手回显版本与延迟）与拉取工具（tools/list 全集回填，writeClass 启发式）；
  * - 工具检活（healthCheckTool type=MCP）；
+ * - 所属服务提供系统 providerSystemId（产品优化需求-202611 修改点 14（R9）：与 API 共用 apiConnectorMock 的系统，
+ *   选填；MCP 列表按它分组，未选的归「未分组」；删除系统时 apiConnectorMock 会反查这里的 MCP）；
  * - 服务级发布状态机（market.js /fde/market/mcp-services/*；2026-09-12 对齐 md §二.3.6 L135 · 审计 K34，
  *   照 adminModelMock 的 pendingAction 范式）：
  *   NOT_PUBLISHED --publish--> PENDING_REVIEW(pendingAction=PUBLISH) --review(approve)--> PUBLISHED；
@@ -102,6 +104,9 @@ const mkMcp = (over) => ({
   // 被哪些岗位引用（反向引用清单 [{ positionId, positionName }]，仅 POSITION 类型有意义）：
   // 引用关系在岗位侧产生，连接器侧只读展示（列表「N 个岗位引用」）；新建默认无引用。
   referencedByPositions: [],
+  // 服务提供系统 id（产品优化需求-202611 修改点 14（R9））：与 API 共用 apiConnectorMock 那一份系统；
+  // 选填（必填还是选填待确认，暂按选填），null=未选 → MCP 列表归入末尾「未分组」。
+  providerSystemId: null,
   description: '',
   transport: 'streamable-http',
   endpoint: '',
@@ -179,10 +184,13 @@ const iso = (s) => `${s.replace(' ', 'T')}:00+08:00`
 
 // type/posRefs：POSITION 行用 posRefs 给出「被哪些岗位引用」（401=经营分析岗 / 402=客户成功岗，
 // 取自 positionMock.js 已发布岗位种子）；不给 type 的行按 seedToMcp 兜底落 PLATFORM。
+// ps：所属服务提供系统 id（产品优化需求-202611 修改点 14（R9）），取自 apiConnectorMock 的系统种子
+// （pv_1 财务服务系统 / pv_2 客户数据平台 / pv_4 星火智能体平台）；不给的行落「未分组」，演示分组 + 未分组两种形态。
+// pv_3 内容服务中心特意不挂 MCP：它是 API 页签里「空系统可删」的样例，挂上就删不掉了。
 const POS_401 = { positionId: 401, positionName: '经营分析岗' }
 const PROTO_SEEDS = [
   { code: 'knowledge_hub', icon: '▤', name: '企业知识库 MCP', transport: 'streamable-http', desc: '连接企业知识库，提供文档检索与内容读取能力', tools: 6, updated: '2026-08-23 11:02', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://knowledge.intra/mcp', type: 'PLATFORM' },
-  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posRefs: [POS_401] },
+  { code: 'expense_mcp', icon: '¥', name: '报销系统 MCP', transport: 'streamable-http', desc: '查询和提交员工报销单', tools: 4, updated: '2026-08-23 09:48', agg: 'PUBLISHED', health: 'bad', error: '服务端返回错误', endpoint: 'https://expense.intra/mcp', type: 'POSITION', posRefs: [POS_401], ps: 'pv_1' },
   // env 两条样例（一条平台值 + 一条客户端填写）：让 stdio 环境变量的「改值 / 待删除 / 撤销」
   // 三步式交互开箱即可点到，否则种子全是 env:[]，演示时会被误判为功能没做（2026-09-09 收口回归 P2）
   { code: 'local_files', icon: '▱', name: '本地文件 MCP', transport: 'stdio', desc: '读取工作区文件并执行受限文件操作', tools: 8, updated: '2026-08-22 17:36', agg: 'PENDING_REVIEW', health: 'ok', command: 'npx', env: [
@@ -193,8 +201,8 @@ const PROTO_SEEDS = [
   { code: 'data_lab', icon: '⌁', name: '数据分析 MCP', transport: 'stdio', desc: '运行数据查询并生成结构化分析结果', tools: 0, updated: '2026-08-19 16:11', agg: 'NOT_PUBLISHED', health: 'ok', command: 'uvx', type: 'SYSTEM_DEFAULT' },
   { code: 'mail_center', icon: '✉', name: '邮件中心 MCP', transport: 'streamable-http', desc: '查询邮件并创建发送任务', tools: 3, updated: '2026-08-18 09:32', agg: 'NOT_PUBLISHED', health: 'ok', endpoint: 'https://mail.intra/mcp', type: 'POSITION' },
   { code: 'calendar', icon: '▦', name: '日历 MCP', transport: 'streamable-http', desc: '查询团队日程并创建会议', tools: 4, updated: '2026-08-16 17:08', agg: 'PUBLISHED', health: 'ok', endpoint: 'https://calendar.intra/mcp', type: 'SYSTEM_DEFAULT' },
-  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION' },
-  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM' },
+  { code: 'crm', icon: '♙', name: 'CRM MCP', transport: 'streamable-http', desc: '查询客户资料及商机状态', tools: 7, updated: '2026-08-15 14:26', agg: 'PENDING_REVIEW', health: 'ok', endpoint: 'https://crm.intra/mcp', type: 'POSITION', ps: 'pv_2' },
+  { code: 'contract', icon: '▧', name: '合同系统 MCP', transport: 'stdio', desc: '检索合同并读取审批状态', tools: 2, updated: '2026-08-13 10:05', agg: 'NOT_PUBLISHED', health: 'unknown', command: 'node', type: 'PLATFORM', ps: 'pv_1' },
   { code: 'assets', icon: '⌂', name: '资产管理 MCP', transport: 'streamable-http', desc: '查询办公资产和领用记录', tools: 4, updated: '2026-08-11 16:44', agg: 'NOT_PUBLISHED', health: 'bad', error: '连接超时', endpoint: 'https://assets.intra/mcp', type: 'SYSTEM_DEFAULT' }
 ]
 
@@ -206,6 +214,7 @@ function seedToMcp(s) {
     code: s.code,
     type: s.type || 'PLATFORM',
     referencedByPositions: s.type === 'POSITION' ? (s.posRefs || []).map((p) => ({ ...p })) : [],
+    providerSystemId: s.ps || null,
     name: s.name,
     icon: s.icon,
     description: s.desc,
@@ -241,6 +250,8 @@ function seedToMcp(s) {
 let mcps = [
   mkMcp({
     code: 'spark_bridge_mcp',
+    // 产品优化需求-202611 修改点 14（R9）：归属「星火智能体平台」（与同系统下的星火系列 API 同组）
+    providerSystemId: 'pv_4',
     name: '星火智能体桥接 MCP',
     icon: '🔥',
     description:
@@ -308,7 +319,9 @@ const persist = attachPersist('mcpConnector', {
   // v10（2026-10-12 强制回收并入停用）：行新增 `pendingRevokeReason`（待审强制回收原因），旧快照缺该字段 → 丢弃重播种
   // v11（2026-10-15 合并 main）：上面两条 v10 在两条分支上各自独立占用（种子岗位引用清空 / 行新增 pendingRevokeReason），合并后统一升 v11，使两侧旧快照都被丢弃重播种
   // v12（2026-10-19 待办 yuepu#77）：种子里虚构的 referencedBySkills 清空，改由技能模块按 SKILL.md 引用实时反向派生，旧快照弃用回种子。
-  version: 12,
+  // v13（2026-11-10 产品优化需求-202611 R9）：行新增 `providerSystemId`（所属服务提供系统，与 API 共用），种子里 4 条 MCP 挂上系统；
+  //    旧快照缺该字段，MCP 列表会全挤进「未分组」→ 丢弃重播种
+  version: 13,
   snapshot: () => ({ mcpSeq, mcps, pubAgg }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.mcpSeq) || !Array.isArray(d.mcps) || typeof d.pubAgg !== 'object' || d.pubAgg === null) {
@@ -404,11 +417,15 @@ export async function listMcp(params = {}) {
   const dir = params.sort === 'asc' ? 1 : -1
   list = [...list].sort((a, b) => dir * compareTimeText(a.updatedAt, b.updatedAt))
   const total = list.length
+  // 「未分组」MCP 总数（不随搜索 / 筛选变化）：MCP 列表按服务提供系统分组后，分组头展示「该系统下 MCP 数量」，
+  // 真实系统的总数由 listProviderSystems 的 mcpCount 聚合给出，「未分组」不是真实系统，总数只能从这里带
+  // （产品优化需求-202611 修改点 14（R9））
+  const ungroupedTotal = mcps.filter((m) => !m.providerSystemId).length
   if (params.page && params.size) {
     const start = (Number(params.page) - 1) * Number(params.size)
     list = list.slice(start, start + Number(params.size))
   }
-  return { list: list.map(toRow), total }
+  return { list: list.map(toRow), total, ungroupedTotal }
 }
 
 export async function getMcp(id) {
@@ -423,6 +440,8 @@ export async function getMcp(id) {
 function applyMcpPayload(m, payload) {
   if (payload.name != null) m.name = String(payload.name).trim()
   if (payload.icon != null) m.icon = payload.icon
+  // 服务提供系统（R9，选填）：带了该键才改；空串 / null 都归 null（= 未分组）。是否存在由 assertProviderSystem 先校验
+  if ('providerSystemId' in payload) m.providerSystemId = payload.providerSystemId || null
   if (payload.description != null) m.description = String(payload.description).trim()
   if (payload.transport) m.transport = payload.transport
   if (payload.endpoint != null) m.endpoint = String(payload.endpoint).trim()
@@ -494,12 +513,29 @@ function assertMcpTextLimits(payload) {
   }
 }
 
+/**
+ * 服务提供系统校验（产品优化需求-202611 修改点 14（R9））：选填，不带 / 空值放行；带了就必须是已有系统
+ * （系统与 API 共用，数据在 apiConnectorMock）。
+ * apiConnectorMock 删除系统时也要反查本模块的 MCP，两个模块互相要读对方 → 两边都走动态 import，
+ * 不形成静态循环依赖（同 skillRefsLoader 的做法）。
+ */
+async function assertProviderSystem(payload) {
+  if (!('providerSystemId' in payload) || !payload.providerSystemId) return
+  const { getProviderSystem } = await import('./apiConnectorMock')
+  try {
+    await getProviderSystem(payload.providerSystemId)
+  } catch {
+    throw err('所选服务提供系统不存在，请重新选择', 'providerSystemId')
+  }
+}
+
 export async function createMcp(payload) {
   await delay(250)
   // 连接器类型必选（md MCP §三.3 L262「新建时必须选择」；待办 yuepu#57⑥：此前缺省静默落成市场连接器）
   if (!Object.values(CONNECTOR_TYPE).includes(payload.type)) throw err('请选择连接器类型', 'type')
   assertMcpTextLimits(payload)
   assertExampleQuestions(payload.exampleQuestions)
+  await assertProviderSystem(payload)
   const code = (payload.code || '').trim() || `mcp_${mcpSeq}`
   if (findMcp(code)) throw err('code 已存在', 'code')
   mcpSeq += 1
@@ -543,6 +579,7 @@ export async function updateMcp(id, payload) {
   // 让「地址填错 → 探测失败 → 改对 → 再探测就正常」这条 demo 路径能走通，而不是永远红着。
   assertMcpTextLimits(payload)
   if ('exampleQuestions' in payload) assertExampleQuestions(payload.exampleQuestions)
+  await assertProviderSystem(payload)
   // 校验都过了才清失败标记：校验抛错时这次保存没生效，标记不该先被清掉（yuepu#98）
   if (mcpConnChanged(m, payload)) m._mockUnhealthy = false
   applyMcpPayload(m, payload)

@@ -516,6 +516,19 @@ describe('AdminApis · 服务提供系统分组头（md §二.1「分组头」/ 
     expect(del.disabled).toBe(true)
     expect(tipsOf(g1)).toContain('该系统下有 2 个 API，需先迁移或删除后才能删除系统')
   })
+  it('系统下没有 API、但挂着 MCP（产品优化需求-202611 修改点 14（R9）：服务提供系统与 MCP 共用）：【删除系统】同样置灰，提示点名 MCP 数量与名称', async () => {
+    conn.listProviderSystems.mockImplementation(async () => ({
+      list: psWithCounts().map((p) => (p.id === 'ps_3' ? { ...p, mcpCount: 1, mcpNames: ['报销系统 MCP'] } : p))
+    }))
+    await mount()
+    const g3 = groupByName('系统3号')
+    const del = [...g3.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '删除系统')
+    expect(del.disabled).toBe(true)
+    expect(tipsOf(g3)).toContain('该系统下有 1 个 MCP（报销系统 MCP），需先迁移或删除后才能删除系统')
+    del.click()
+    await flush()
+    expect(conn.deleteProviderSystem).not.toHaveBeenCalled()
+  })
 
   it('空系统删除：二次确认「删除后该 API 分组不可恢复，确认删除？」→ deleteProviderSystem + 「已删除」', async () => {
     await mount()

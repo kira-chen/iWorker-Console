@@ -48,6 +48,7 @@ import ListStates from '@/components/admin/ListStates.vue'
 import { useDynPageSize } from '@/composables/useDynPageSize'
 import { iconIsUrl } from '@/utils/iconDisplay'
 import { compareTimeText } from '@/utils/datetime'
+import { providerSystemDeleteBlockReason } from '@/utils/providerSystemMeta'
 
 const loading = ref(true)
 const loadError = ref(false)
@@ -198,6 +199,12 @@ function groupApiCount(g) {
   return g.ps.apiCount ?? g.apis.length
 }
 
+// 【删除系统】置灰原因：系统下有 API 或 MCP 都不可删（产品优化需求-202611 修改点 14（R9）：服务提供系统与 MCP 共用，
+// 除 API 外也要看其下 MCP；mcpNames 由 listProviderSystems 聚合）。空串 = 可删。文案与 mock 兜底拒绝同源。
+function psDeleteBlockReason(g) {
+  return providerSystemDeleteBlockReason({ apiCount: groupApiCount(g), mcpNames: g.ps.mcpNames || [] })
+}
+
 /* ---------------- 分页：按「服务提供系统」分页（2026-09-09 负责人裁决） ----------------
  * 全站列表统一分页（09-08 拍板），但本页是「服务提供系统分组 + 组内 API 表」的双层结构。
  * 负责人明确：**按业务系统（= 服务提供系统）分页，不按 API 分页** —— 即一页放 N 个系统，
@@ -331,7 +338,7 @@ function onPsSaved() {
 
 async function removePs(g) {
   const ps = g.ps
-  if (groupApiCount(g) > 0) return // 按钮已置灰，双保险
+  if (psDeleteBlockReason(g)) return // 按钮已置灰，双保险
   try {
     // PRD §二.5：空系统删除前二次确认
     await ElMessageBox.confirm('删除后该 API 分组不可恢复，确认删除？', '删除服务提供系统', {
@@ -542,15 +549,15 @@ async function removeApi(row) {
               <el-button link type="primary" @click="openEditPs(g.ps)">编辑系统</el-button>
               <el-tooltip
                 placement="top"
-                :disabled="groupApiCount(g) === 0"
-                :content="`该系统下有 ${groupApiCount(g)} 个 API，需先迁移或删除后才能删除系统`"
+                :disabled="!psDeleteBlockReason(g)"
+                :content="psDeleteBlockReason(g)"
               >
                 <span class="aps-del-wrap">
                   <el-button
                     link
                     type="danger"
                     :loading="psDelBusy === g.ps.id"
-                    :disabled="groupApiCount(g) > 0"
+                    :disabled="!!psDeleteBlockReason(g)"
                     @click="removePs(g)"
                   >删除系统</el-button>
                 </span>
