@@ -14,6 +14,7 @@
  */
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Search } from '@element-plus/icons-vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { terminalLabel } from '@/utils/versionMeta'
 import { fmtCount, fmtLatency, fmtPct, fmtTokens } from '@/utils/usageFormat'
@@ -165,17 +166,19 @@ function viewModel(row) {
       </el-radio-group>
     </div>
 
-    <!-- 工具栏：左侧名称搜索四个维度都有，右侧随维度变化 -->
+    <!-- 工具栏：左侧名称搜索四个维度都有（写法同列表页：放大镜前缀 + .lt-search 宽 + 标准【查询】按钮），右侧随维度变化 -->
     <div class="ux-toolbar">
       <el-input
         v-model="keywords[dim]"
-        class="ux-search"
+        class="ux-search lt-search"
         :placeholder="SEARCH_PLACEHOLDER[dim]"
         clearable
         @keyup.enter="applyKeyword"
         @clear="applyKeyword"
-      />
-      <button class="mini-btn" @click="applyKeyword">查询</button>
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <el-button @click="applyKeyword">查询</el-button>
       <span class="spacer"></span>
       <template v-if="dim === 'user'">
         <el-switch v-model="onlySilent" size="small" @change="pages.user = 1" />
@@ -301,35 +304,34 @@ function viewModel(row) {
 .ux-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 8px 18px;
-  border-bottom: 1px solid var(--border-soft);
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border-admin-row);
 }
-.ux-search { width: 220px; }
-.ux-switch-label { color: #4a5650; font-size: 12px; }
-.ux-hint { color: #7f8984; font-size: 12px; }
+.ux-switch-label { color: var(--c-text); font-size: 13px; }
+.ux-hint { color: var(--c-admin-sub); font-size: 12px; }
 .ux-table-wrap { overflow-x: auto; }
 .ux-table { min-width: 1000px; }
 .ux-table th.sortable { cursor: pointer; user-select: none; }
 .ux-table th.sortable:hover { color: var(--c-accent); }
 .ux-table th.dash-num { text-align: right; }
-.ux-empty { text-align: center; color: #94a09a; height: 96px; }
-.ux-time { color: #4a5650; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
-.is-muted { color: #94a09a; }
+.ux-empty { text-align: center; color: var(--c-text-faint); height: 96px; }
+.ux-time { color: var(--c-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.is-muted { color: var(--c-text-faint); }
 .ux-name-row { display: flex; align-items: center; gap: 6px; }
 .ux-default { flex: none; }
 .is-warn { color: var(--c-warning, #e6921e); font-weight: 650; }
 .is-danger { color: var(--c-danger); font-weight: 650; }
 .is-zero .dash-name-main,
-.is-zero .dash-num { color: #94a09a; }
+.is-zero .dash-num { color: var(--c-text-faint); }
 .ux-foot {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  border-top: 1px solid var(--border-soft);
-  color: #7a8580;
-  font-size: 12px;
+  border-top: 1px solid var(--border-admin-row);
+  color: var(--c-admin-sub);
+  font-size: 13px;
 }
 </style>

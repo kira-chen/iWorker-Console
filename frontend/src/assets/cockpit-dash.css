@@ -5,15 +5,19 @@
  * UsageDetailTables）与概览共用同一套面板 / 表格 / 小按钮样式，而点踩明细弹窗被 teleport 到 body，
  * 不在任何 scoped 祖先之内，所以这些共用类放在这份非 scoped 文件里。类名一律 dash- 前缀，
  * 唯二的短名 .spacer / .mini-btn 全站只有驾驶舱在用。
+ *
+ * 2026-11-11 视觉对齐：原型的绿灰色值改走 tokens.css 后台令牌，与列表页（《列表页UI.png》）一致——
+ * 面板描边同列表白卡、表头 / 行线 / 副文字同列表表格；表格内数字改正文字体（等宽数位），
+ * 看板大数字（概览卡、版本号）仍用等宽字体。
  */
 
 /* ---- 面板 ---- */
 .dash-panel {
   margin-top: 18px;
-  border: 1px solid var(--border-base);
+  border: 1px solid var(--border-admin-table);
   border-radius: var(--radius-lg, 8px);
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-admin-card);
   overflow: hidden;
 }
 .dash-panel-head {
@@ -22,17 +26,17 @@
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  border-bottom: 1px solid var(--border-base);
-  background: #fbfcfb;
+  border-bottom: 1px solid var(--border-admin-row);
+  background: var(--bg-admin-page);
 }
 .dash-panel-title {
   margin: 0;
-  color: #26312b;
+  color: var(--c-text-strong);
   font-size: 16px;
-  font-weight: 650;
+  font-weight: var(--fw-semibold);
 }
 .dash-panel-count {
-  color: #7f8984;
+  color: var(--c-admin-sub);
   font-size: 12px;
 }
 .spacer { flex: 1; }
@@ -43,43 +47,45 @@
   border-collapse: collapse;
   table-layout: fixed;
 }
+/* 表头 / 单元格取值同列表页 el-table 实测：表头 13px、#6a6a6a、#f7f7f7 底、高 48；单元格 14px、行线 #ebedf0 */
 .dash-table th {
-  height: 42px;
+  height: 48px;
   padding: 0 16px;
-  background: #f4f6f5;
-  color: #69746e;
+  border-bottom: 1px solid var(--border-admin-row);
+  background: var(--bg-admin-head);
+  color: var(--c-admin-head);
   text-align: left;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 .dash-table td {
   height: 48px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-admin-row);
+  color: var(--c-text);
   vertical-align: middle;
 }
 .dash-table tbody tr:last-child td { border-bottom: 0; }
-.dash-table tbody tr:hover td { background: #fbfcfb; }
+.dash-table tbody tr:hover td { background: var(--bg-admin-row-hover); }
 .dash-num {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .dash-name-main {
   display: block;
   overflow: hidden;
-  color: #354039;
-  font-weight: 600;
+  color: var(--c-text-strong);
+  font-weight: var(--fw-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dash-name-sub {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   overflow: hidden;
-  color: #87918c;
-  font-size: 11px;
+  color: var(--c-admin-sub);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -102,7 +108,8 @@
   background: var(--c-accent);
 }
 .dash-bar-number {
-  font: 600 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -112,7 +119,7 @@
   padding: 0 11px;
   border: 1px solid var(--border-base);
   border-radius: 5px;
-  background: #fff;
+  background: var(--bg-surface);
   color: var(--c-text);
   font-size: 12px;
   cursor: pointer;
@@ -125,7 +132,7 @@
   background: var(--c-accent-soft, #eaf6f1);
 }
 .mini-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.mini-btn:disabled:hover { color: var(--c-text); border-color: var(--border-base); background: #fff; }
+.mini-btn:disabled:hover { color: var(--c-text); border-color: var(--border-base); background: var(--bg-surface); }
 
 /* ---- 骨架屏动效（刷新 / 重新取数时套在内容上） ---- */
 @keyframes shimmer { to { background-position: -200% 0; } }

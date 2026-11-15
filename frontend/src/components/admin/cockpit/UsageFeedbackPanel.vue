@@ -261,23 +261,23 @@ function backToDislikeModal() {
   overflow: hidden;
 }
 .fb-stat {
-  background: #fff;
+  background: var(--bg-surface);
   padding: 14px 16px;
 }
-.fb-stat-label { color: #68736d; font-size: 12px; margin-bottom: 5px; }
+.fb-stat-label { color: var(--c-text-muted); font-size: 12px; margin-bottom: 5px; }
 .fb-stat-val {
   font: 700 26px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
-  color: #26312b;
+  color: var(--c-text-strong);
   letter-spacing: -0.03em;
 }
-.fb-stat-val small { margin-left: 3px; color: #7a8580; font: 500 13px system-ui, sans-serif; letter-spacing: 0; }
+.fb-stat-val small { margin-left: 3px; color: var(--c-text-muted); font: 500 13px system-ui, sans-serif; letter-spacing: 0; }
 .fb-stat.dislike .fb-stat-val { color: var(--c-danger); }
-.fb-stat-val.trend { color: #197b59; font-size: 22px; }
+.fb-stat-val.trend { color: var(--c-success); font-size: 22px; }
 .fb-stat-val.trend.up { color: var(--c-danger); }
-.fb-stat-val.trend.none { color: #94a09a; }
+.fb-stat-val.trend.none { color: var(--c-text-faint); }
 /* 中文单位不走等宽字体（等宽字体没有中文字形，会回退成宋体） */
 .trend-unit { font: 600 16px system-ui, sans-serif; letter-spacing: 0; }
-.fb-stat-sub { margin-top: 5px; color: #76817b; font-size: 12px; }
+.fb-stat-sub { margin-top: 5px; color: var(--c-text-muted); font-size: 12px; }
 .fb-stat-sub strong { color: var(--c-accent); font-weight: 650; }
 .fb-stat-sub .warn { color: var(--c-warning, #e6921e); font-weight: 650; }
 .like-bar-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
@@ -301,40 +301,40 @@ function backToDislikeModal() {
   flex-wrap: wrap;
   margin: -4px 0 14px;
 }
-.dl-filter-label { color: #68736d; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dl-filter-label { color: var(--c-text-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .dl-table { border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
-.dl-user { color: #617069; font-size: 12px; }
+.dl-user { color: var(--c-text-muted); font-size: 12px; }
 .dl-snippet {
   display: block;
   overflow: hidden;
-  color: #455049;
+  color: var(--c-text);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dl-foot { display: flex; align-items: center; gap: 8px; width: 100%; color: #7a8580; font-size: 12px; }
+.dl-foot { display: flex; align-items: center; gap: 8px; width: 100%; color: var(--c-text-muted); font-size: 12px; }
 
 /* ---- 对话明细弹窗 ---- */
 .cv-dialog-head { display: flex; align-items: baseline; gap: 10px; }
 .cv-dialog-title { font-size: 17px; font-weight: var(--fw-semibold); color: var(--c-text-strong); }
 .cv-dialog-id {
-  color: #94a09a;
+  color: var(--c-text-faint);
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
-.cv-meta { display: flex; gap: 18px; margin-bottom: 14px; color: #68736d; font-size: 12px; }
-.cv-meta-item b { color: #26312b; font-weight: 600; margin-left: 3px; }
+.cv-meta { display: flex; gap: 18px; margin-bottom: 14px; color: var(--c-text-muted); font-size: 12px; }
+.cv-meta-item b { color: var(--c-text-strong); font-weight: 600; margin-left: 3px; }
 .cv-body { display: flex; flex-direction: column; gap: 14px; max-height: 50vh; overflow: auto; }
 .cv-msg { display: flex; flex-direction: column; gap: 3px; max-width: 88%; }
 .cv-msg.user { align-self: flex-end; align-items: flex-end; }
 .cv-msg.asst { align-self: flex-start; align-items: flex-start; }
-.cv-who { font-size: 11px; font-weight: 600; color: #8d9590; }
+.cv-who { font-size: 11px; font-weight: 600; color: var(--c-text-faint); }
 .cv-bubble { padding: 10px 14px; line-height: 1.65; word-break: break-word; font-size: 14px; }
 .cv-msg.user .cv-bubble { background: var(--c-accent); color: #fff; border-radius: 10px 10px 2px 10px; }
 .cv-msg.asst .cv-bubble {
-  background: #fff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-base);
-  color: #354039;
+  color: var(--c-text-strong);
   border-radius: 10px 10px 10px 2px;
 }
 .cv-msg.asst.disliked .cv-bubble { border-color: #f0c7c4; background: #fff8f7; }
@@ -343,7 +343,7 @@ function backToDislikeModal() {
   align-items: center;
   gap: 7px;
   font-size: 11px;
-  color: #94a09a;
+  color: var(--c-text-faint);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .cv-disliked-tag {

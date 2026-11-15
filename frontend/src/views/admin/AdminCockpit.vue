@@ -269,7 +269,7 @@ function openAlertAction(item) {
   border: 1px solid var(--border-base);
   border-left: 4px solid var(--c-warning, #e6921e);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
 }
@@ -280,18 +280,18 @@ function openAlertAction(item) {
   justify-content: space-between;
   gap: 10px;
 }
-.dash-todo-source { color: #65716b; font-size: 12px; font-weight: 600; }
+.dash-todo-source { color: var(--c-text-muted); font-size: 12px; font-weight: 600; }
 .dash-todo-number {
   margin-top: 11px;
-  color: #26312b;
+  color: var(--c-text-strong);
   font: 700 28px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .dash-todo-number small {
   margin-left: 4px;
-  color: #77827c;
+  color: var(--c-text-muted);
   font: 500 12px system-ui, sans-serif;
 }
-.dash-todo-meta { min-height: 35px; margin-top: 5px; color: #76817b; font-size: 12px; line-height: 1.5; flex: 1; }
+.dash-todo-meta { min-height: 35px; margin-top: 5px; color: var(--c-text-muted); font-size: 12px; line-height: 1.5; flex: 1; }
 .dash-todo-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
 .dash-severity {
   display: inline-flex;
@@ -318,7 +318,7 @@ function openAlertAction(item) {
   justify-content: flex-end;
   gap: 16px;
   margin-bottom: 10px;
-  color: #727d77;
+  color: var(--c-text-muted);
   font-size: 12px;
 }
 .dash-asset-rows {
@@ -338,8 +338,8 @@ function openAlertAction(item) {
   gap: 12px;
   min-height: 39px;
 }
-.dash-asset-name { font-weight: 600; color: #414a45; }
-.dash-asset-total { color: #6f7a74; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+.dash-asset-name { font-weight: 600; color: var(--c-text-strong); }
+.dash-asset-total { color: var(--c-text-muted); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
 .dash-stack {
   height: 10px;
   display: flex;
@@ -355,11 +355,11 @@ function openAlertAction(item) {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  color: #7a8580;
+  color: var(--c-text-muted);
   font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
   white-space: nowrap;
 }
-.dash-asset-detail b { color: #3e4a44; font-weight: 600; }
+.dash-asset-detail b { color: var(--c-text-strong); font-weight: 600; }
 
 /* 用户端当前下发版本 */
 .ver-grid {
@@ -374,17 +374,17 @@ function openAlertAction(item) {
   border: 1px solid var(--border-base);
   border-left: 4px solid var(--c-accent);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 .ver-line { display: flex; align-items: baseline; gap: 10px; margin-top: 11px; }
 .ver-version {
-  color: #26312b;
+  color: var(--c-text-strong);
   font: 700 24px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
-.ver-time { color: #7f8984; font-size: 12px; }
+.ver-time { color: var(--c-text-muted); font-size: 12px; }
 .ver-adopt { width: 100%; margin-top: 10px; }
 .ver-adopt-text {
   display: flex;
@@ -392,23 +392,23 @@ function openAlertAction(item) {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 5px;
-  color: #5b6760;
+  color: var(--c-text);
   font-size: 12px;
 }
-.ver-adopt-text b { color: #26312b; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ver-adopt-text b { color: var(--c-text-strong); font-weight: 650; font-variant-numeric: tabular-nums; }
 .ver-adopt-rate { color: var(--c-accent); font-weight: 650; white-space: nowrap; }
-.ver-notes-label { margin-top: 10px; color: #68736d; font-size: 12px; font-weight: 600; }
+.ver-notes-label { margin-top: 10px; color: var(--c-text-muted); font-size: 12px; font-weight: 600; }
 .ver-notes {
   width: 100%;
   max-height: 132px;
   margin-top: 4px;
   overflow: auto;
-  color: #455049;
+  color: var(--c-text);
   font-size: 13px;
   line-height: 1.65;
   white-space: pre-line; /* 更新说明保留换行 */
 }
-.ver-empty { margin-top: 11px; color: #94a09a; font-size: 13px; line-height: 32px; }
+.ver-empty { margin-top: 11px; color: var(--c-text-faint); font-size: 13px; line-height: 32px; }
 .ver-skeleton {
   width: 100%;
   height: 88px;
@@ -418,7 +418,7 @@ function openAlertAction(item) {
   background-size: 200% 100%;
   animation: shimmer 1s linear infinite;
 }
-.ver-error { padding: 14px 18px; color: #68736d; font-size: 13px; }
+.ver-error { padding: 14px 18px; color: var(--c-text-muted); font-size: 13px; }
 
 /* shimmer loading */
 .loading .dash-alert-list,
