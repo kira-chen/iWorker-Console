@@ -1,5 +1,6 @@
 // 2026-09-12 测试审计 T35：自 positionModel.test.js 拆出「采集字段」主题（对齐 md 岗位 §3 采集字段页签：
 // 类型常量 / key 生成与校验 / {{intake.key}} 占位符 / 提交归一 / 行校验）。条目原样迁移，断言不改。
+// key 生成一组 2026-11-10 按产品优化需求-202611 修改点 5（R10）重写，见该 describe 头注。
 import { describe, it, expect } from 'vitest'
 import {
   INTAKE_TYPES,
@@ -23,24 +24,52 @@ describe('采集类型常量', () => {
   })
 })
 
-describe('genKeyFromLabel（中文→英文 key）', () => {
-  it('常见中文字段名生成拼音 key', () => {
-    expect(genKeyFromLabel('负责区域')).toBe('fuzequyu')
-    expect(genKeyFromLabel('负责行业')).toBe('fuzehangye')
-  })
-  it('ASCII 原样小写 + 空格转下划线', () => {
+// 2026-11-10 产品优化需求-202611 修改点 5（R10）：key 改按完整拼音生成，一条用例守一条生成规则。
+// 原「负责行业→fuzehangye」靠旧 80 字小表把 行 写死成 hang；R10 规则是按字取常用读音（行→xing），改为 fuzexingye。
+describe('genKeyFromLabel（字段名 → 字段 key 建议值，R10）', () => {
+  it('PRD 示例四条：分管专业 / 客户公司名称 / Region / user name', () => {
+    expect(genKeyFromLabel('分管专业')).toBe('fenguanzhuanye')
+    expect(genKeyFromLabel('客户公司名称')).toBe('kehugongsimingcheng')
     expect(genKeyFromLabel('Region')).toBe('region')
     expect(genKeyFromLabel('user name')).toBe('user_name')
   })
-  it('非字母开头补前缀 f_；空兜底 field', () => {
-    expect(genKeyFromLabel('123')).toBe('f_123')
-    expect(genKeyFromLabel('')).toBe('')
-    expect(genKeyFromLabel('！@#')).toBe('field')
+  it('规则 1：汉字转不带声调的全拼直接连写（不限旧小表里的字），ü 写作 v', () => {
+    expect(genKeyFromLabel('负责区域')).toBe('fuzequyu')
+    expect(genKeyFromLabel('邮箱地址')).toBe('youxiangdizhi')
+    expect(genKeyFromLabel('绿色通道')).toBe('lvsetongdao')
   })
-  it('生成结果符合 key 正则', () => {
-    expect(isValidKey(genKeyFromLabel('负责区域'))).toBe(true)
-    expect(isValidKey(genKeyFromLabel('Region'))).toBe(true)
-    expect(isValidKey(genKeyFromLabel('123'))).toBe(true)
+  it('规则 1：多音字按字取常用读音（不识别词组）', () => {
+    expect(genKeyFromLabel('负责行业')).toBe('fuzexingye')
+    expect(genKeyFromLabel('重要程度')).toBe('zhongyaochengdu')
+    expect(genKeyFromLabel('长期合同')).toBe('changqihetong')
+  })
+  it('规则 2：英文字母转小写、数字原样保留，与汉字直接连写', () => {
+    expect(genKeyFromLabel('ABC123')).toBe('abc123')
+    expect(genKeyFromLabel('客户ID')).toBe('kehuid')
+    expect(genKeyFromLabel('第2联系人')).toBe('di2lianxiren')
+  })
+  it('规则 3：空格、连字符转下划线（连续的合并），其他符号去掉', () => {
+    expect(genKeyFromLabel('合同-编号')).toBe('hetong_bianhao')
+    expect(genKeyFromLabel('客户 - 名称')).toBe('kehu_mingcheng')
+    expect(genKeyFromLabel('备注（选填）')).toBe('beizhuxuantian')
+    expect(genKeyFromLabel('金额/元')).toBe('jineyuan')
+  })
+  it('规则 4：结果以数字开头加前缀 f_', () => {
+    expect(genKeyFromLabel('123')).toBe('f_123')
+    expect(genKeyFromLabel('2024年度预算')).toBe('f_2024nianduyusuan')
+  })
+  it('规则 4：结果为空（全是符号）用 field；字段名本身为空返回空串（抽屉占位回落 auto）', () => {
+    expect(genKeyFromLabel('！@#')).toBe('field')
+    expect(genKeyFromLabel('')).toBe('')
+    expect(genKeyFromLabel('   ')).toBe('')
+  })
+  it('全角字母 / 数字按半角处理', () => {
+    expect(genKeyFromLabel('ＩＤ１')).toBe('id1')
+  })
+  it('生成结果都符合 key 格式（小写字母开头，仅小写字母 / 数字 / 下划线）', () => {
+    for (const l of ['分管专业', 'Region', '123', '！@#', '客户 - 名称', '2024年度预算']) {
+      expect(isValidKey(genKeyFromLabel(l))).toBe(true)
+    }
   })
 })
 

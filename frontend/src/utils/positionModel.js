@@ -9,6 +9,7 @@
  */
 
 import { BIZ_QUESTION_MAX } from './defValidate'
+import { pinyinOf } from './pinyinTable'
 
 /* ============================ 上限 / 软上限（交互规格 §12） ============================ */
 export const LIMITS = {
@@ -49,43 +50,37 @@ export function isValidIntakeType(type) {
   return INTAKE_TYPE_VALUES.includes(type)
 }
 
-/* ============================ 中文 → 英文 key 自动生成（决议：采集 key 自动生成折叠） ============================ */
-// 极简拼音首段映射：覆盖常见业务字段中文，命中即拼接；未命中字符回退为 'f'。
-// 不引入重型 pinyin 依赖（约束：不擅自新增技术栈）；仅做「建议值」，FDE 可在展开 key 列手改。
-const PINYIN_MAP = {
-  负: 'fu', 责: 'ze', 区: 'qu', 域: 'yu', 行: 'hang', 业: 'ye', 客: 'ke', 户: 'hu',
-  姓: 'xing', 名: 'ming', 部: 'bu', 门: 'men', 电: 'dian', 话: 'hua', 地: 'di', 址: 'zhi',
-  金: 'jin', 额: 'e', 日: 'ri', 期: 'qi', 时: 'shi', 间: 'jian', 类: 'lei', 型: 'xing',
-  状: 'zhuang', 态: 'tai', 备: 'bei', 注: 'zhu', 联: 'lian', 系: 'xi', 人: 'ren', 公: 'gong',
-  司: 'si', 编: 'bian', 号: 'hao', 等: 'deng', 级: 'ji', 数: 'shu', 量: 'liang', 单: 'dan',
-  价: 'jia', 总: 'zong', 项: 'xiang', 目: 'mu', 标: 'biao', 题: 'ti', 内: 'nei', 容: 'rong',
-  来: 'lai', 源: 'yuan', 渠: 'qu', 道: 'dao', 优: 'you', 先: 'xian', 城: 'cheng', 市: 'shi',
-  省: 'sheng', 国: 'guo', 家: 'jia', 产: 'chan', 品: 'pin', 价格: 'price'
-}
+/* ============================ 字段名 → 字段 key 建议值（产品优化需求-202611 修改点 5（R10）） ============================ */
+// 原先只认约 80 个常用字（PINYIN_MAP），表外的字直接跳过，「分管专业」只剩「ye」。R10 改为完整全拼：
+// 汉字查 utils/pinyinTable.js（GB2312 一级常用字 3755 个，离线由 pinyin-pro 生成，demo 不装运行时拼音库）。
+// 用法：采集字段抽屉里 key 输入框的占位实时显示本函数结果；保存时 key 留空才取它，之后改字段名不再重新生成。
 
 /**
- * 由中文显示名生成英文字段 key 建议值。
- * - ASCII（字母/数字/下划线）原样保留并小写；
- * - 中文按 PINYIN_MAP 逐字转拼音段；未命中的字符跳过；
- * - 结果须符合 ^[a-z][a-z0-9_]*$：非字母开头补前缀 f_；空串兜底 field。
+ * 由字段名生成字段 key 建议值（PRD 生成规则 4 条，示例：分管专业→fenguanzhuanye、user name→user_name）：
+ * 1. 汉字转不带声调的全拼，字与字直接连写；多音字取常用读音（行→xing，按字查表，不识别词组）；
+ * 2. 英文字母转小写，数字原样保留；
+ * 3. 空格、连字符转下划线（下划线本身保留），其他符号去掉；查不到拼音的生僻字按符号处理；
+ * 4. 结果以数字开头加前缀 f_，结果为空（如全是符号）用 field。
+ * 连续下划线合并为一个、首尾下划线去掉，保证结果符合 ^[a-z][a-z0-9_]*$（isValidKey）。
+ * 字段名本身为空时返回空串（抽屉占位回落「auto」）。
  */
 export function genKeyFromLabel(label) {
-  const raw = String(label || '').trim()
+  // NFKC：全角字母 / 数字 / 空格先转半角，「ＩＤ」「１号」与半角同样处理
+  const raw = String(label || '').normalize('NFKC').trim()
   if (!raw) return ''
   let out = ''
   for (const ch of raw) {
     if (/[A-Za-z0-9]/.test(ch)) {
       out += ch.toLowerCase()
-    } else if (ch === '_' || ch === ' ' || ch === '-') {
+    } else if (ch === '_' || ch === '-' || /\s/.test(ch)) {
       out += '_'
-    } else if (PINYIN_MAP[ch]) {
-      out += (out && !out.endsWith('_') ? '' : '') + PINYIN_MAP[ch]
+    } else {
+      out += pinyinOf(ch) // 非汉字、表外生僻字返回空串，即去掉
     }
-    // 未命中的中文/符号：跳过
   }
   out = out.replace(/_+/g, '_').replace(/^_+|_+$/g, '')
   if (!out) return 'field'
-  if (!/^[a-z]/.test(out)) out = 'f_' + out
+  if (/^[0-9]/.test(out)) out = 'f_' + out
   return out
 }
 
