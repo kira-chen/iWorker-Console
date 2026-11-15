@@ -39,6 +39,10 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
   it('岗位：已发布岗位提交新版本 → 驳回 → 仍是已发布、线上版本不变（不再被打回未发布）；再提交 → 通过 → 版本推进', async () => {
     const pos = await import('../positionMock')
     pos.__resetPositionMock()
+    // 专家 / 专家团也回种子：本文件「专家」用例会把 201 停用，它是 401 引用的「经营复盘团」成员，
+    // 乱序跑在前面时团缺员、岗位发布被拦（与本用例测的审核联动无关）
+    ;(await import('../domainExpertMock')).__resetExpertMock()
+    ;(await import('../expertTeamMock')).__resetTeamMock()
     // 种子 401 引用了未发布的「法务审阅专家」(203) 与「岗位协同团」(303)（存量数据样例），发布前检查会阻断
     // （产品优化需求-202611 修改点 2）；本用例测的是审核联动，不是引用校验，先解除这两个引用
     ;(await import('../domainExpertMock')).unbindExpertFromPosition(203, 401)
