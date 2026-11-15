@@ -38,6 +38,17 @@ function statusOf(row) {
   return { type: 'warning', label: row.unavailable }
 }
 
+/**
+ * 不可用状态的悬停说明：存量数据里会有「未发布」「已停用」的引用（R13 之前专家侧绑岗位不看发布状态），
+ * 添加抽屉的候选里不会有它们；悬停说明发布时会被拦下，避免误以为未发布的也能加进来。
+ * @param {'专家'|'专家团'} kind
+ */
+function statusTipOf(row, kind) {
+  if (row.unavailable === '未发布') return '该' + kind + '还没发布，岗位发布时会被拦下。请移除，或等' + kind + '发布后再发布岗位'
+  if (row.unavailable === '已停用') return '该' + kind + '已停用，岗位发布时会被拦下，请移除'
+  return ''
+}
+
 /* ---------- 查看：复用专家 / 专家团页的只读抽屉，不跳转 ---------- */
 const viewExpertId = ref(null)
 const viewExpertOpen = ref(false)
@@ -234,7 +245,10 @@ async function removeTeam(row) {
           </el-table-column>
           <el-table-column label="状态" width="180">
             <template #default="{ row }">
-              <StatusTag v-if="statusOf(row)" :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
+              <el-tooltip v-if="statusTipOf(row, '专家')" :content="statusTipOf(row, '专家')" placement="top">
+                <StatusTag :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
+              </el-tooltip>
+              <StatusTag v-else-if="statusOf(row)" :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
               <RevokedTag :info="row.revoked" />
             </template>
           </el-table-column>
@@ -284,7 +298,10 @@ async function removeTeam(row) {
           </el-table-column>
           <el-table-column label="状态" min-width="220">
             <template #default="{ row }">
-              <StatusTag v-if="statusOf(row)" :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
+              <el-tooltip v-if="statusTipOf(row, '专家团')" :content="statusTipOf(row, '专家团')" placement="top">
+                <StatusTag :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
+              </el-tooltip>
+              <StatusTag v-else-if="statusOf(row)" :type="statusOf(row).type">{{ statusOf(row).label }}</StatusTag>
               <RevokedTag :info="row.revoked" />
               <el-tooltip v-if="row.missingCount > 0" :content="row.missing.map((m) => m.name + '（' + m.reason + '）').join('、')" placement="top">
                 <span class="pd-warn-tag">缺员 {{ row.missingCount }}</span>
