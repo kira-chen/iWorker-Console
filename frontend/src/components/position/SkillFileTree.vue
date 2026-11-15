@@ -10,6 +10,7 @@
  *   文件夹=在此新建文件/子文件夹 + 移动到… + 重命名文件夹 + 删除文件夹（深度上限 disabled）；
  * - 拖拽移动（F7 文件入夹/回根、F8 文件夹连带子项）：el-tree draggable + allow-drop 本地预判（后端为权威）；
  * - 「移动到…」（F9）：点击式目录选择器（只含目录的树 + 「根目录」），非法目标置灰；
+ * - 头部【上传技能包】（产品优化需求-202611 R5 草案）：选 .zip → 确认覆盖 → 整包替换文件目录；审核中锁定时置灰，只读态不展示；
  * - 底部仅「⬇ 导出压缩包」。
  *
  * 空目录持久化（架构 §1/§2，用户已拍板 is_dir 落库）：新建文件夹直接调后端端点9 落库，
@@ -26,6 +27,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   MoreFilled,
   Download,
+  Upload,
   Document,
   DataLine,
   Memo,
@@ -43,6 +45,7 @@ import {
   deleteSkillFile,
   renameSkillFile,
   exportSkillZip,
+  importZipToSkill,
   createSkillFolder,
   renameSkillFolder,
   deleteSkillFolder,
@@ -89,7 +92,9 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   loadError: { type: Boolean, default: false },
   // 只读态（平台技能 Tab 只读详情）：写入口 v-if 不渲染、拖拽禁用，仅保留浏览/点击查看。
-  readonly: { type: Boolean, default: false }
+  readonly: { type: Boolean, default: false },
+  // 审核中锁定（readonly 已含锁定；单独传它只为让【上传技能包】置灰并提示原因，而不是直接不展示）
+  locked: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -99,7 +104,8 @@ const emit = defineEmits([
   'file-deleted',
   'tree-changed',
   'retry',
-  'search-jump' // 组③：跨文件查找命中 → (path, lineNo, keyword) 切到该文件并定位
+  'search-jump', // 组③：跨文件查找命中 → (path, lineNo, keyword) 切到该文件并定位
+  'package-uploaded' // (saveVO) 上传技能包整包替换成功，页面重拉详情与目录树
 ])
 
 const ICONS = { Document, DataLine, Memo, Picture, Files, Folder, FolderOpened, House }
@@ -824,6 +830,38 @@ function onMenuCommand(cmd, node) {
   }
 }
 
+/* ============================ 上传技能包（端点2，产品优化需求-202611 R5 草案） ============================
+ * 先选文件再确认覆盖；成功后交给页面重拉（SKILL.md 正文镜像在技能详情里，树组件刷不到），失败保留原有文件。 */
+const packageInput = ref(null)
+const uploading = ref(false)
+function pickPackage() {
+  if (uploading.value || props.locked || !props.skillId) return
+  packageInput.value?.click()
+}
+async function onPackagePicked(e) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // 同一个文件改完再选也能触发 change
+  if (!file) return
+  try {
+    await ElMessageBox.confirm('上传后将用技能包替换当前草稿的全部文件，未保存的修改会丢失。确认上传？', '上传技能包', {
+      type: 'warning',
+      confirmButtonText: '确认上传',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  uploading.value = true
+  try {
+    const vo = await importZipToSkill(props.skillId, file, { source: props.source })
+    emit('package-uploaded', vo)
+  } catch (err) {
+    ElMessage.error(err?.message || '技能包上传失败，请稍后重试')
+  } finally {
+    uploading.value = false
+  }
+}
+
 /* ============================ 导出压缩包（端点8，切片4） ============================ */
 const exporting = ref(false)
 async function onExport() {
@@ -845,6 +883,22 @@ async function onExport() {
     <!-- 头部工具条：标题 + 组③查找/过滤框（按名即时过滤 / 按内容跨文件查找）。 -->
     <div class="ft-head">
       <span class="ft-head-title">文件</span>
+      <!-- 上传技能包（R5 草案）：只读态不展示；审核中锁定置灰并悬停说明 -->
+      <el-tooltip v-if="!readonly || locked" :disabled="!locked" content="审核中不可编辑，如需修改请先撤回" placement="top">
+        <span class="ft-head-act">
+          <button
+            type="button"
+            class="ft-upload-btn"
+            data-testid="upload-package"
+            :disabled="locked || uploading || !skillId"
+            @click="pickPackage"
+          >
+            <el-icon :class="{ 'is-spin': uploading }"><Upload /></el-icon>
+            {{ uploading ? '上传中…' : '上传技能包' }}
+          </button>
+        </span>
+      </el-tooltip>
+      <input ref="packageInput" type="file" accept=".zip" class="ft-upload-input" @change="onPackagePicked" />
     </div>
     <div class="ft-search">
       <div class="ft-search-box">
@@ -1136,6 +1190,36 @@ async function onExport() {
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   color: var(--c-text-muted);
+}
+/* 上传技能包：头部右侧的小号文字按钮（视觉同底部 .ft-foot-btn） */
+.ft-head-act {
+  margin-left: auto;
+}
+.ft-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+}
+.ft-upload-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--c-text);
+}
+.ft-upload-btn:disabled {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+.ft-upload-btn .is-spin {
+  animation: ftSpin 0.9s linear infinite;
+}
+.ft-upload-input {
+  display: none;
 }
 /* 组③：查找/过滤框 */
 .ft-search {

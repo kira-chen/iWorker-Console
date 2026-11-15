@@ -74,9 +74,11 @@ export function importSkillZip(file, { agentId, source, displayCategoryId } = {}
 }
 
 /**
- * 端点2：zip 上传到已有技能（整包替换/合并）。本切片创建流程不用，提供完整封装备用。
+ * 端点2：zip 上传到已有技能，整包替换文件目录（产品优化需求-202611 R5：技能编辑页文件目录顶部【上传技能包】）。
+ * @returns {Promise<FileSaveVO>} { tree, referencedTools, ... }，与其它文件写操作同形
  */
 export function importZipToSkill(skillId, file, { source } = {}) {
+  if (USE_MOCK) return skillMock().then((m) => m.importZipToSkill(skillId, { fileName: file?.name || '' }))
   const fd = new FormData()
   fd.append('file', file)
   return request.post(`${base(source)}/${skillId}/import-zip`, fd, {

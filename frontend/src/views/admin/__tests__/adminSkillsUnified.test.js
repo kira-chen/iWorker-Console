@@ -171,11 +171,31 @@ async function mkSkill(name, type) {
   const { skillId } = await skillMock.createSkill({ name, type, categoryName: '办公效率' })
   return skillId
 }
+/**
+ * 自建一行「已发布 · 无引用」技能（提交首发 → 审核通过）。2026-11-10 起种子 303 会议纪要整理被通用专家「企业知识助手」引用，
+ * 普通停用会被引用拦截，「停用成功」类用例不再借种子 303。
+ * 建出的行删不掉（已发布不可删），用例结束后把它的更新时间沉到最早（见下方 afterEach）：jsdom 下每页只有 7 条，
+ * 不沉底的话会把按 id 取首屏种子行的其它用例（302 / 303 / 308 / 309）挤到第 2 页。
+ */
+const sinkAfterTest = []
+async function mkPublishedSkill(name, type = 'SYSTEM_DEFAULT') {
+  const id = await mkSkill(name, type)
+  sinkAfterTest.push(id)
+  await skillMock.updateSkill(id, { icon: '🧪', skillMd: '# 正文\n\n最小可发布内容。' })
+  await skillMock.publishSkill(id, { releaseNotes: '首发' })
+  expect(skillMock.applySkillReviewResult(id, 'FIRST_PUBLISH', true)).toBe(true)
+  return id
+}
+afterEach(() => {
+  sinkAfterTest.splice(0).forEach((id) => skillMock._reset(id, { updatedAt: '2000-01-01 00:00' }))
+})
 const rowById = (vm, id) => vm.rows.find((r) => r.id === id)
 
-const rowPosition = { id: 'sk_p', type: 'POSITION', name: '岗位技能A', status: 'draft', refCount: 0, refNames: [], publications: [], toolCount: 1 }
-const rowPlatform = { id: 'sk_m', type: 'PLATFORM', name: '平台技能B', status: 'draft', refCount: 0, refNames: [], publications: [], toolCount: 2 }
-const rowSystem = { id: 'sk_s', type: 'SYSTEM_DEFAULT', name: '内置技能C', status: 'draft', refCount: 0, refNames: [], publications: [], toolCount: 3 }
+// 行 VO 的引用字段（2026-11-10 起分组）：positionRefNames = 引用它的岗位，expertRefNames = 引用它的专家；refCount / refNames 为两组合计
+const noRefs = { refCount: 0, refNames: [], positionRefNames: [], expertRefNames: [] }
+const rowPosition = { id: 'sk_p', type: 'POSITION', name: '岗位技能A', status: 'draft', ...noRefs, publications: [], toolCount: 1 }
+const rowPlatform = { id: 'sk_m', type: 'PLATFORM', name: '平台技能B', status: 'draft', ...noRefs, publications: [], toolCount: 2 }
+const rowSystem = { id: 'sk_s', type: 'SYSTEM_DEFAULT', name: '内置技能C', status: 'draft', ...noRefs, publications: [], toolCount: 3 }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -268,25 +288,27 @@ describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户�
   })
 
   it('停用（提交停用审核）：确认文案对齐 md §二.3.5「停用「技能名」需提交停用审核。审核通过前客户端仍可使用。」（历史出处：原型） → 状态列「审核中」+ toast「已提交停用审核」；撤回 → 恢复「已发布」+ toast「已撤回」（md §二.3.4「待审停用撤回后回到已发布」「撤回成功提示已撤回」/ §二.3.5）', async () => {
+    // 自建已发布、无引用的通用技能（种子 303 自 2026-11-10 起被通用专家引用，普通停用会被拦）
+    const id = await mkPublishedSkill('J4停用·通用技能')
     const vm = await mountLoaded()
-    const row = rowById(vm, 'sk_303') // 种子 303：通用技能 · 已发布 · 无引用
+    const row = rowById(vm, id)
     expect(vm.displayStateLabel(row)).toBe('已发布')
     vm.stopSkill(row) // 打开停用确认弹窗（DeactivateDialog），正文即 PRD 文案
     await nextTick()
-    expect(document.querySelector('[data-test="dd-plain"]').textContent).toBe('停用「会议纪要整理」需提交停用审核。审核通过前客户端仍可使用。')
+    expect(document.querySelector('[data-test="dd-plain"]').textContent).toBe('停用「J4停用·通用技能」需提交停用审核。审核通过前客户端仍可使用。')
     await vm.confirmStop({ forceRevoke: false, reason: '' })
     await settle()
-    expect(delistSpy).toHaveBeenCalledWith('sk_303', { forceRevoke: false, reason: '' })
+    expect(delistSpy).toHaveBeenCalledWith(id, { forceRevoke: false, reason: '' })
     const { ElMessage } = await import('element-plus')
     expect(ElMessage.success).toHaveBeenLastCalledWith('已提交停用审核')
-    expect(vm.displayStateLabel(rowById(vm, 'sk_303'))).toBe('审核中')
-    expect(skillMock._getRaw('sk_303').pendingAction).toBe('stop')
+    expect(vm.displayStateLabel(rowById(vm, id))).toBe('审核中')
+    expect(skillMock._getRaw(id).pendingAction).toBe('stop')
 
-    await vm.withdraw(rowById(vm, 'sk_303'))
+    await vm.withdraw(rowById(vm, id))
     await settle()
     expect(confirmSpy.mock.calls.at(-1)[0]).toBe('撤回本次提交后将回到修改前状态。确认撤回？')
     expect(ElMessage.success).toHaveBeenLastCalledWith('已撤回')
-    expect(vm.displayStateLabel(rowById(vm, 'sk_303'))).toBe('已发布')
+    expect(vm.displayStateLabel(rowById(vm, id))).toBe('已发布')
     expect(realPost).not.toHaveBeenCalled()
     expect(realDelete).not.toHaveBeenCalled()
   })
@@ -311,9 +333,9 @@ describe('写：三类行的删除 / 停用 / 撤回都落到真 mock（用户�
 describe('文案：删除确认统一、被引用拦截按主体措辞', () => {
   it('删除失败（mock 拒绝：被引用的种子 307）→ alert「无法删除」携 mock 文案，技能仍在', async () => {
     const vm = await mountLoaded()
-    // 种子 307（市场技能，被 1 个专家引用）：页面前置拦截看的是行上的 refCount 字段，这里模拟列表字段缺失
+    // 种子 307（市场技能，被 1 个专家引用）：页面前置拦截看的是行上的引用分组字段（positionRefNames / expertRefNames），这里模拟列表字段缺失
     // 绕过前置门，由真 mock 的引用保护兜底拒绝（307 更新时间最早、不在首页，直接构造行）
-    const row = { id: 'sk_307', type: 'PLATFORM', name: '竞品信息汇总', refCount: 0, refNames: [], publications: [] }
+    const row = { id: 'sk_307', type: 'PLATFORM', name: '竞品信息汇总', ...noRefs, publications: [] }
     await vm.remove(row)
     await settle()
     expect(alertSpy.mock.calls.at(-1)[1]).toBe('无法删除')
@@ -321,26 +343,46 @@ describe('文案：删除确认统一、被引用拦截按主体措辞', () => {
     expect((await skillMock.getSkillDetail('sk_307')).name).toBe('竞品信息汇总')
   })
 
-  it('岗位私有被引用 → 拦截 alert 提示岗位数与清单，不发删除请求', async () => {
+  // 拦截文案同 utils/skillRefs.skillRefBlockMessage：按引用方分组列数量与清单（2026-11-10 起岗位私有技能也可能被专家引用）
+  it('岗位私有只被岗位引用 → 拦截 alert「该技能被 N 个岗位引用（清单）…」，不出「专家」，不发删除请求', async () => {
     const vm = await mountPage()
-    await vm.remove({ ...rowPosition, refCount: 8, refNames: ['销售顾问岗位'] })
+    await vm.remove({ ...rowPosition, refCount: 2, positionRefNames: ['销售顾问岗位', '财务运营岗位'], refNames: ['销售顾问岗位', '财务运营岗位'] })
     expect(realDelete).not.toHaveBeenCalled()
-    const msg = alertSpy.mock.calls.at(-1)[0]
-    expect(msg).toContain('8 个岗位引用')
-    expect(msg).toContain('销售顾问岗位')
-    expect(msg).toContain('需先解除引用后再删除')
-    expect(msg).not.toContain('专家')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(alertSpy.mock.calls.at(-1)[1]).toBe('删除技能')
+    expect(alertSpy.mock.calls.at(-1)[0]).toBe('该技能被 2 个岗位引用（销售顾问岗位、财务运营岗位），需先解除引用后再删除。')
   })
 
-  it('市场技能被专家引用 → 拦截 alert 提示专家数，不发删除请求', async () => {
+  it('市场技能被专家引用 → 拦截 alert 提示专家数与清单，不发删除请求', async () => {
     const vm = await mountPage()
-    await vm.remove({ ...rowPlatform, refCount: 2, refNames: [] })
+    await vm.remove({ ...rowPlatform, refCount: 2, expertRefNames: ['经营分析专家', '法务审阅专家'], refNames: ['经营分析专家', '法务审阅专家'] })
     expect(realDelete).not.toHaveBeenCalled()
-    expect(alertSpy.mock.calls.at(-1)[0]).toContain('2 个专家引用')
+    expect(alertSpy.mock.calls.at(-1)[0]).toBe('该技能被 2 个专家引用（经营分析专家、法务审阅专家），需先解除引用后再删除。')
+  })
+
+  it('岗位私有同时被岗位和专家引用 → 拦截文案两组都列（岗位在前，清单以分号分组）', async () => {
+    const vm = await mountPage()
+    await vm.remove({
+      ...rowPosition,
+      refCount: 3,
+      positionRefNames: ['经营分析岗', '财务审核岗'],
+      expertRefNames: ['经营数据核查专家'],
+      refNames: ['经营分析岗', '财务审核岗', '经营数据核查专家']
+    })
+    expect(realDelete).not.toHaveBeenCalled()
+    expect(alertSpy.mock.calls.at(-1)[0]).toBe('该技能被 2 个岗位、1 个专家引用（经营分析岗、财务审核岗；经营数据核查专家），需先解除引用后再删除。')
+  })
+
+  it('通用技能被专家引用 → 同样拦截删除（此前通用技能不参与引用、从不拦）', async () => {
+    const vm = await mountPage()
+    await vm.remove({ ...rowSystem, refCount: 1, expertRefNames: ['企业知识助手'], refNames: ['企业知识助手'] })
+    expect(realDelete).not.toHaveBeenCalled()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(alertSpy.mock.calls.at(-1)[0]).toBe('该技能被 1 个专家引用（企业知识助手），需先解除引用后再删除。')
   })
 })
 
-// 查看/编辑同标签路由跳转；引用情况列「N 个{岗位|专家}引用」（refSubject/refCountOf 派生，点开引用清单弹窗）。
+// 查看/编辑同标签路由跳转；引用情况（2026-11-10 起按岗位 / 专家分组，口径见 utils/skillRefs；点开引用清单弹窗）。
 describe('查看/编辑跳转与引用情况派生', () => {
   it('三类各跳各自的编辑路由（同标签 router.push，绝不 window.open）', async () => {
     const vm = await mountPage()
@@ -368,33 +410,38 @@ describe('查看/编辑跳转与引用情况派生', () => {
     expect(pushSpy).not.toHaveBeenCalled()
   })
 
-  it('引用主体按类型：岗位私有→岗位、市场技能→专家；计数优先 refCount 新字段', async () => {
+  it('引用计数 = 岗位引用 + 专家引用（三类技能都按名单分组计数，岗位私有技能也可能被专家引用）', async () => {
     const vm = await mountPage()
-    expect(vm.refSubject({ type: 'POSITION' })).toBe('岗位')
-    expect(vm.refSubject({ type: 'PLATFORM' })).toBe('专家')
-    expect(vm.refCountOf({ type: 'POSITION', refCount: 3 })).toBe(3)
-    expect(vm.refCountOf({ type: 'POSITION', referencedByPositionCount: 8 })).toBe(8)
-    expect(vm.refCountOf({ type: 'PLATFORM', referencedByExpertCount: 2 })).toBe(2)
+    expect(vm.refCountOf({ type: 'POSITION', positionRefNames: ['经营分析岗', '财务审核岗'], expertRefNames: ['经营数据核查专家'] })).toBe(3)
+    expect(vm.refCountOf({ type: 'PLATFORM', positionRefNames: [], expertRefNames: ['经营分析专家', '法务审阅专家'] })).toBe(2)
+    expect(vm.refCountOf({ type: 'SYSTEM_DEFAULT', positionRefNames: [], expertRefNames: ['企业知识助手'] })).toBe(1)
+    expect(vm.refCountOf(rowSystem)).toBe(0)
   })
 
-  // 回归守护（2026-08-23 实库对账查出）：expert_skill 是 V21 弃用表，新模型不写，
-  // 存量残留不得让岗位私有技能凭空算出「专家」引用。
-  it('岗位私有绝不按「专家」计数——弃用表 expert_skill 的残值不得回流 UI', async () => {
+  // 回归守护（2026-08-23 实库对账查出 expert_skill 弃用表残值）：计数只认引用名分组，
+  // 旧计数字段（referencedBy*Count / refCount）上的残值不得让行凭空算出引用。
+  it('计数只按引用名分组——旧计数字段残值不回流 UI', async () => {
     const vm = await mountPage()
-    expect(vm.refSubject({ type: 'POSITION' })).toBe('岗位')
-    expect(
-      vm.refCountOf({ type: 'POSITION', referencedByPositionCount: 0, referencedByExpertCount: 7 })
-    ).toBe(0)
+    expect(vm.refCountOf({ type: 'POSITION', referencedByPositionCount: 0, referencedByExpertCount: 7 })).toBe(0)
+    expect(vm.refCountOf({ type: 'PLATFORM', refCount: 5, referencedByExpertCount: 5 })).toBe(0)
   })
 
-  it('引用清单弹窗：标题按主体切换，正文名称顿号连接', async () => {
+  it('引用清单弹窗：标题按实际有的引用方切换（被岗位 / 被专家 / 被岗位和专家引用），正文一组一行、名称顿号连接', async () => {
     const vm = await mountPage()
-    vm.openRefs({ type: 'POSITION', refCount: 2, refNames: ['销售顾问岗位', '财务运营岗位'] })
+    const bodyLines = () => [...mountedHost.querySelectorAll('.sk-refs-body')].map((p) => p.textContent.trim())
+    vm.openRefs({ type: 'POSITION', positionRefNames: ['销售顾问岗位', '财务运营岗位'], expertRefNames: [] })
+    await nextTick()
     expect(vm.refsVisible).toBe(true)
     expect(vm.refsTitle).toBe('被岗位引用')
-    expect(vm.refsText).toBe('销售顾问岗位、财务运营岗位')
-    vm.openRefs({ type: 'PLATFORM', refCount: 1, refNames: ['法务合规专家'] })
+    expect(bodyLines()).toEqual(['岗位：销售顾问岗位、财务运营岗位'])
+    vm.openRefs({ type: 'SYSTEM_DEFAULT', positionRefNames: [], expertRefNames: ['企业知识助手'] })
+    await nextTick()
     expect(vm.refsTitle).toBe('被专家引用')
+    expect(bodyLines()).toEqual(['专家：企业知识助手'])
+    vm.openRefs({ type: 'POSITION', positionRefNames: ['经营分析岗', '财务审核岗'], expertRefNames: ['经营数据核查专家'] })
+    await nextTick()
+    expect(vm.refsTitle).toBe('被岗位和专家引用')
+    expect(bodyLines()).toEqual(['岗位：经营分析岗、财务审核岗', '专家：经营数据核查专家'])
   })
 })
 
@@ -531,9 +578,9 @@ describe('操作列：三态判定 + 发布就绪门（md §二.3.1 按钮展示
     const vm = await mountLoaded()
     expect(vm.isReviewing(rowById(vm, 'sk_309'))).toBe(true)
     const before = skillMock._getRaw('sk_302').pendingAction
-    vm.stopSkill(rowById(vm, 'sk_302')) // 302 被 3 个专家引用 → 弹窗内拦截文案
+    vm.stopSkill(rowById(vm, 'sk_302')) // 302 被 4 个专家引用（2026-11-09 补种子专家 205）→ 弹窗内拦截文案
     await nextTick()
-    expect(document.querySelector('[data-test="dd-blocked"]').textContent).toContain('3 个专家引用')
+    expect(document.querySelector('[data-test="dd-blocked"]').textContent).toContain('4 个专家引用')
     expect(delistSpy).not.toHaveBeenCalled()
     expect(skillMock._getRaw('sk_302').pendingAction).toBe(before)
   })
@@ -543,15 +590,14 @@ describe('操作列：三态判定 + 发布就绪门（md §二.3.1 按钮展示
     vm.stopSkill({
       ...rowPlatform,
       refCount: 2,
+      expertRefNames: ['经营分析专家', '法务合规专家'],
       refNames: ['经营分析专家', '法务合规专家'],
       publications: [{ target: 'USER_END', status: 'PUBLISHED' }]
     })
     await nextTick()
     expect(realPost).not.toHaveBeenCalled()
-    const msg = document.querySelector('[data-test="dd-blocked"]').textContent
-    expect(msg).toContain('2 个专家引用')
-    expect(msg).toContain('经营分析专家、法务合规专家')
-    expect(msg).toContain('需先解除引用后再停用')
+    expect(delistSpy).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-test="dd-blocked"]').textContent).toBe('该技能被 2 个专家引用（经营分析专家、法务合规专家），需先解除引用后再停用。')
   })
 })
 
@@ -793,6 +839,124 @@ describe('操作列行渲染：三态按钮组合 + 置灰 title（md §二.3.1�
 })
 
 /* ====================================================================================== */
+// 2026-11-10 专家按类型引用技能：「引用情况」列按引用方分组、一组一行（「2 个岗位引用」「1 个专家引用」，单元格里不加「·」）；
+// 三类技能都可能被专家引用，通用技能不再显「—」，无引用一律「暂无引用」；点开引用清单弹窗。行数据直接注入 rows。
+describe('引用情况列渲染：按岗位 / 专家分组一组一行，点开引用清单弹窗', () => {
+  const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
+  const rowStubs = {
+    ...stubs,
+    'el-table': tableStub,
+    'el-table-column': tableColStub,
+    // 弹窗随 v-model 显隐，标题落 data-title 便于断言
+    'el-dialog': { name: 'el-dialog', props: ['modelValue', 'title'], template: '<div v-if="modelValue" class="dlg" :data-title="title"><slot /></div>' }
+  }
+  async function mountRows(rowsData) {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp(Page)
+    Object.entries(rowStubs).forEach(([k, v]) => app.component(k, v))
+    app.mount(host)
+    mountedApp = app
+    mountedHost = host
+    await settle() // 等真 mock 首屏列表回来，免得稍后返回的列表盖掉注入的行
+    const vm = app._instance.setupState
+    vm.rows = rowsData
+    await nextTick()
+    await nextTick()
+    return { vm, host }
+  }
+  const refCell = (host, name) =>
+    [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name)).querySelector('.el-table-column[data-label="引用情况"]')
+  const refLines = (cell) => [...cell.querySelectorAll('.sk-ref-lines > span')].map((s) => s.textContent.trim())
+  const both = {
+    ...rowPosition,
+    id: 'r_both',
+    name: '岗位和专家都引用',
+    refCount: 3,
+    positionRefNames: ['经营分析岗', '财务审核岗'],
+    expertRefNames: ['经营数据核查专家'],
+    refNames: ['经营分析岗', '财务审核岗', '经营数据核查专家']
+  }
+  const systemByExpert = { ...rowSystem, id: 'r_sys_ref', name: '被专家引用的通用技能', refCount: 1, expertRefNames: ['企业知识助手'], refNames: ['企业知识助手'] }
+
+  it('岗位私有技能同时被岗位和专家引用 → 两行「2 个岗位引用」「1 个专家引用」，单元格不加「·」', async () => {
+    const { host } = await mountRows([both])
+    const cell = refCell(host, '岗位和专家都引用')
+    expect(refLines(cell)).toEqual(['2 个岗位引用', '1 个专家引用'])
+    expect(cell.textContent).not.toContain('·')
+  })
+
+  it('市场技能「不在市场展示」→ 技能名旁标「不在市场展示」；没打开的不标（产品优化需求-202611 R14）', async () => {
+    const hidden = { ...rowPlatform, id: 'r_hidden', name: '只给专家用的技能', hideFromMarket: true }
+    const shown = { ...rowPlatform, id: 'r_shown', name: '市场里能看到的技能', hideFromMarket: false }
+    const { host } = await mountRows([hidden, shown])
+    const nameCell = (name) =>
+      [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name)).querySelector('.el-table-column[data-label="技能名"]')
+    expect(nameCell('只给专家用的技能').querySelector('.sk-hide-tag')?.textContent.trim()).toBe('不在市场展示')
+    expect(nameCell('市场里能看到的技能').querySelector('.sk-hide-tag')).toBeNull()
+  })
+
+  it('通用技能被专家引用 → 「1 个专家引用」，不再显「—」', async () => {
+    const { host } = await mountRows([systemByExpert])
+    const cell = refCell(host, '被专家引用的通用技能')
+    expect(refLines(cell)).toEqual(['1 个专家引用'])
+    expect(cell.textContent).not.toContain('—')
+  })
+
+  it('三类技能无引用 → 一律「暂无引用」（通用技能也不再显「—」），没有可点开的引用按钮', async () => {
+    const { host } = await mountRows([rowPosition, rowPlatform, rowSystem])
+    for (const name of ['岗位技能A', '平台技能B', '内置技能C']) {
+      const cell = refCell(host, name)
+      expect(cell.textContent.trim()).toBe('暂无引用')
+      expect(cell.querySelector('.sk-ref-btn')).toBeNull()
+    }
+  })
+
+  it('点「引用情况」→ 弹窗标题「被岗位和专家引用」，正文一组一行「岗位：…」「专家：…」', async () => {
+    const { host } = await mountRows([both])
+    expect(host.querySelector('.dlg')).toBeNull()
+    refCell(host, '岗位和专家都引用').querySelector('.sk-ref-btn').click()
+    await nextTick()
+    expect(host.querySelector('.dlg').getAttribute('data-title')).toBe('被岗位和专家引用')
+    expect([...host.querySelectorAll('.dlg .sk-refs-body')].map((p) => p.textContent.trim())).toEqual([
+      '岗位：经营分析岗、财务审核岗',
+      '专家：经营数据核查专家'
+    ])
+  })
+})
+
+// 产品优化需求-202611 修改点 15 / 字段字典 md「删除技能分类后，使用该分类的存量技能显示为"未分类"」：
+// 数据层对已删的分类给空分类名（unifiedSkillMock 读时派生），列表把空分类显示成「未分类」（此前显示「—」）
+describe('技能分类列：没有有效分类 → 「未分类」（产品优化需求-202611 修改点 15）', () => {
+  const { tableStub, tableColStub } = makeElTableStubs({ renderHeader: true })
+  const rowStubs = { ...stubs, 'el-table': tableStub, 'el-table-column': tableColStub }
+  async function mountRows(rowsData) {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp(Page)
+    Object.entries(rowStubs).forEach(([k, v]) => app.component(k, v))
+    app.mount(host)
+    mountedApp = app
+    mountedHost = host
+    await settle() // 等真 mock 首屏列表回来，免得稍后返回的列表盖掉注入的行
+    app._instance.setupState.rows = rowsData
+    await nextTick()
+    await nextTick()
+    return host
+  }
+  const catCell = (host, name) =>
+    [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name)).querySelector('.el-table-column[data-label="技能分类"]')
+
+  it('分类名为空（分类已在字段字典删掉）→ 显示「未分类」；有分类的照常显示分类名', async () => {
+    const orphan = { ...rowPlatform, id: 'r_orphan', name: '分类被删的技能', displayCategoryId: '设计多媒体', displayCategoryName: '' }
+    const normal = { ...rowPlatform, id: 'r_normal', name: '有分类的技能', displayCategoryId: '数据分析', displayCategoryName: '数据分析' }
+    const host = await mountRows([orphan, normal])
+    expect(catCell(host, '分类被删的技能').textContent.trim()).toBe('未分类')
+    expect(catCell(host, '有分类的技能').textContent.trim()).toBe('数据分析')
+  })
+})
+
+/* ====================================================================================== */
 // 2026-09-12 审计 T54：版本管理适配器（VersionDrawer 在本文件为桩，此前 versionAdapter 零用例）+ 「最近更新时间」列头排序切换。
 describe('版本管理适配器（md §四）+ 最近更新时间列头排序（md §二.1「最近更新时间…支持点击列头排序」/ §二.2 排序规则）', () => {
   it('打开版本管理 → 适配器 title「版本管理」、用词 禁用/启用/已启用、最后启用版守卫 tip 逐字（md §四.3「已启用版本展示【禁用】，已禁用版本展示【启用】」「最后一个启用版本不可禁用，提示…」）', async () => {
@@ -824,6 +988,38 @@ describe('版本管理适配器（md §四）+ 最近更新时间列头排序（
     vm.openVersionManage({ ...rowSystem, displayCategoryId: null })
     expect(vm.versionAdapter.submitGate()).toBe('')
     vm.openVersionManage({ ...rowPosition, displayCategoryId: null })
+    expect(vm.versionAdapter.submitGate()).toBe('')
+  })
+
+  // 产品优化需求-202611 修改点 13（R4）：引用了未发布 / 审核中的连接器 → 版本管理弹窗展示阻断提示、【提交发布】不可点（阻断，R4-3 暂按）。
+  // 行数据取真 mock 的列表行（unpublishedTools 由 mock 按连接器实时发布态给出），不手拼。
+  it('R4：未发布行引用了未发布的连接器 → 【发布】不因此置灰、照常打开版本管理弹窗，前置门给出「引用的「名称」尚未发布…」', async () => {
+    const vm = await mountPage()
+    const { skillId } = await skillMock.createSkill({ name: 'R4列表首发校验', type: 'PLATFORM', categoryName: '办公效率' })
+    sinkAfterTest.push(skillId) // 自建行用完沉底，不把首屏种子行挤到第 2 页
+    await skillMock.updateSkill(skillId, { icon: '🧪', description: 'd', exampleQuestion: 'q', skillMd: '# 正文\n\n@tool[mcp__mail_center]\n@tool[mcp__knowledge_hub]\n' })
+    const row = (await skillMock.listUnifiedSkills({ keyword: 'R4列表首发校验', size: 10 })).list[0]
+    expect(vm.readinessOf(row).ready).toBe(true) // 必填项齐全：【发布】可点
+    vm.openPublish(row)
+    expect(vm.verMgrVisible).toBe(true)
+    expect(vm.versionAdapter.submitGate()).toBe('引用的「邮件中心 MCP」尚未发布，请先发布该连接器或移除引用')
+  })
+
+  it('R4：已发布行【版本管理】同样校验——种子 sk_305 引用了从未发布的邮件中心 MCP，前置门拦下新版本提交', async () => {
+    const vm = await mountPage()
+    const row = (await skillMock.listUnifiedSkills({ keyword: '客户拜访准备', size: 10 })).list.find((r) => r.id === 'sk_305')
+    expect(vm.isPublished(row)).toBe(true) // 前提：已发布，走【版本管理】入口
+    vm.openVersionManage(row)
+    expect(vm.versionAdapter.submitGate()).toBe('引用的「邮件中心 MCP」尚未发布，请先发布该连接器或移除引用')
+  })
+
+  it('R4：引用的连接器都已发布 → 不因工具设门（市场技能已选分类时前置门为空）', async () => {
+    const vm = await mountPage()
+    const { skillId } = await skillMock.createSkill({ name: 'R4列表放行', type: 'PLATFORM', categoryName: '办公效率' })
+    sinkAfterTest.push(skillId)
+    await skillMock.updateSkill(skillId, { icon: '🧪', description: 'd', exampleQuestion: 'q', skillMd: '# 正文\n\n@tool[mcp__knowledge_hub]\n' })
+    const row = (await skillMock.listUnifiedSkills({ keyword: 'R4列表放行', size: 10 })).list[0]
+    vm.openPublish(row)
     expect(vm.versionAdapter.submitGate()).toBe('')
   })
 
@@ -914,7 +1110,8 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
     return { vm, host }
   }
   const ready = { displayCategoryId: '办公效率', icon: '▤', description: 'd', exampleQuestion: 'q', hasSkillMd: true }
-  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, refNames: ['经营分析专家', '法务合规专家', '投研助理专家'], publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
+  const expertNames = ['经营分析专家', '法务合规专家', '投研助理专家']
+  const publishedRow = { ...rowPlatform, ...ready, id: 'r_pub', name: '已发布技能', versionLabel: 'v1.0.0', refCount: 3, expertRefNames: expertNames, refNames: expertNames, publications: [{ target: 'USER_END', status: 'PUBLISHED' }] }
   const draftRow = { ...rowPlatform, ...ready, id: 'r_draft', name: '未发布技能' }
   const rowOf = (host, name) => [...host.querySelectorAll('.el-row')].find((r) => r.textContent.includes(name))
   const opBtn = (host, name, text) =>
@@ -936,6 +1133,8 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
   }
 
   it('端到端：会议纪要整理点【停用】→ 勾选强制回收 → 填原因 → 提交；toast「已提交强制回收审核」、接口带 {forceRevoke, reason}，该行进入「审核中」（审核通过前无「已回收」）；审核通过后才变「未发布」并带回收信息', async () => {
+    // 按名称搜出 303：jsdom 下每页 7 条，其它用例自建的技能（更新时间更近）会把 303 挤出首屏
+    routeQuery = { keyword: '会议纪要整理' }
     const { vm, host } = await mountAndInject()
     expect(stateCell(host, '会议纪要整理').textContent).toContain('已发布')
     const before = listSpy.mock.calls.length
@@ -966,18 +1165,33 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
   })
 
   it('普通停用（不勾选）→ 正文 PRD 文案 + 确认按钮【提交停用审核】；提交后 toast「已提交停用审核」、接口不带回收原因', async () => {
+    // 自建已发布、无引用的通用技能（种子 303 自 2026-11-10 起被通用专家引用，普通停用会被拦）
+    const id = await mkPublishedSkill('普通停用·通用技能')
     const { host } = await mountAndInject()
-    opBtn(host, '会议纪要整理', '停用').click()
+    opBtn(host, '普通停用·通用技能', '停用').click()
     await nextTick()
     expect(dd(host, '.dlg').getAttribute('data-title')).toBe('停用技能')
-    expect(dd(host, '[data-test="dd-plain"]').textContent).toBe('停用「会议纪要整理」需提交停用审核。审核通过前客户端仍可使用。')
+    expect(dd(host, '[data-test="dd-plain"]').textContent).toBe('停用「普通停用·通用技能」需提交停用审核。审核通过前客户端仍可使用。')
+    expect(dd(host, '[data-test="dd-blocked"]')).toBeNull()
     expect(dd(host, '[data-test="dd-confirm"]').textContent).toBe('提交停用审核')
     dd(host, '[data-test="dd-confirm"]').click()
     await settle(450)
-    expect(delistSpy).toHaveBeenCalledWith('sk_303', { forceRevoke: false, reason: '' })
+    expect(delistSpy).toHaveBeenCalledWith(id, { forceRevoke: false, reason: '' })
     const { ElMessage } = await import('element-plus')
     expect(ElMessage.success).toHaveBeenCalledWith('已提交停用审核')
-    expect(skillMock._getRaw('sk_303').pendingRevokeReason || '').toBe('')
+    expect(skillMock._getRaw(id).pendingRevokeReason || '').toBe('')
+  })
+
+  // 2026-11-10：通用技能被专家引用后，普通停用同样被拦（此前通用技能不参与引用，从不拦）；强制回收仍放行（端到端见上一条）
+  it('种子 303 会议纪要整理（通用技能，被企业知识助手引用）→ 停用弹窗显示拦截文案、【提交停用审核】禁用，不调接口', async () => {
+    // 取真 mock 的行 VO 注入（不靠首屏分页：jsdom 下每页 7 条，其它用例自建的行会把 303 挤到第 2 页）
+    const row303 = (await skillMock.listUnifiedSkills({ size: 1000 })).list.find((r) => r.id === 'sk_303')
+    const { host } = await mountAndInject([row303])
+    opBtn(host, '会议纪要整理', '停用').click()
+    await nextTick()
+    expect(dd(host, '[data-test="dd-blocked"]').textContent).toBe('该技能被 1 个专家引用（企业知识助手），需先解除引用后再停用。')
+    expect(dd(host, '[data-test="dd-confirm"]').disabled).toBe(true)
+    expect(delistSpy).not.toHaveBeenCalled()
   })
 
   it('被引用的技能：弹窗默认显示拦截文案且【提交停用审核】禁用；勾选强制回收后放行（按钮变【提交强制回收审核】，影响范围「已被 3 个专家引用」），不受引用拦截', async () => {
@@ -993,18 +1207,38 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
     expect(dd(host, '[data-test="dd-confirm"]').textContent).toBe('提交强制回收审核')
   })
 
-  it('岗位私有技能的停用弹窗：引用方描述为「岗位」，不是写死的「岗位 / 专家」（/prd-import Q6，口径同列表「引用情况」）', async () => {
-    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2 }
+  it('岗位私有技能只被岗位引用：停用弹窗引用方描述为「岗位」，不是写死的「岗位 / 专家」（/prd-import Q6，口径同列表「引用情况」）', async () => {
+    const positions = ['经营分析岗', '财务审核岗']
+    const positionPublished = { ...publishedRow, id: 'r_pos_pub', name: '岗位私有已发布技能', type: 'POSITION', refCount: 2, positionRefNames: positions, expertRefNames: [], refNames: positions }
     const { host } = await mountAndInject([positionPublished])
     opBtn(host, '岗位私有已发布技能', '停用').click()
     await nextTick()
-    expect(dd(host, '[data-test="dd-blocked"]').textContent).toContain('2 个岗位引用')
+    expect(dd(host, '[data-test="dd-blocked"]').textContent).toBe('该技能被 2 个岗位引用（经营分析岗、财务审核岗），需先解除引用后再停用。')
     await tickForceCheck(host)
     expect(dd(host, '.dlg').textContent).toContain('已被 2 个岗位引用')
   })
 
+  it('岗位私有技能同时被岗位和专家引用：停用拦截文案两组都列；勾选强制回收后影响范围「已被 3 个岗位 / 专家引用」', async () => {
+    const both = {
+      ...publishedRow,
+      id: 'r_pos_both',
+      name: '岗位和专家都引用的技能',
+      type: 'POSITION',
+      refCount: 3,
+      positionRefNames: ['经营分析岗', '财务审核岗'],
+      expertRefNames: ['经营数据核查专家'],
+      refNames: ['经营分析岗', '财务审核岗', '经营数据核查专家']
+    }
+    const { host } = await mountAndInject([both])
+    opBtn(host, '岗位和专家都引用的技能', '停用').click()
+    await nextTick()
+    expect(dd(host, '[data-test="dd-blocked"]').textContent).toBe('该技能被 2 个岗位、1 个专家引用（经营分析岗、财务审核岗；经营数据核查专家），需先解除引用后再停用。')
+    await tickForceCheck(host)
+    expect(dd(host, '.dlg').textContent).toContain('已被 3 个岗位 / 专家引用')
+  })
+
   it('勾选强制回收后出现红色警示：写明审核通过后生效且不可撤销，并点明“已获得该技能的员工将失去它”；未勾选时没有该警示', async () => {
-    const { host } = await mountAndInject([{ ...publishedRow, refCount: 0 }])
+    const { host } = await mountAndInject([{ ...publishedRow, ...noRefs }])
     opBtn(host, '已发布技能', '停用').click()
     await nextTick()
     expect(dd(host, '[data-test="dd-danger"]')).toBeNull()
@@ -1016,7 +1250,7 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
 
   // T4：岗位私有技能走 positionSkillApi.delist，必须把 { forceRevoke, reason } 透传给 mock（曾有只传 id 的包装会丢掉强制回收）
   it('岗位私有技能行：停用弹窗勾选强制回收并提交 → positionSkillApi.delist 把 { forceRevoke:true, reason } 一并交给 delistSkill', async () => {
-    const positionPublished = { ...publishedRow, id: 'r_pos_rev', name: '岗位私有回收技能', type: 'POSITION', refCount: 0 }
+    const positionPublished = { ...publishedRow, ...noRefs, id: 'r_pos_rev', name: '岗位私有回收技能', type: 'POSITION' }
     delistSpy.mockResolvedValueOnce({}) // 注入行不在 mock 里，只验证入参透传
     const { host } = await mountAndInject([positionPublished])
     opBtn(host, '岗位私有回收技能', '停用').click()
@@ -1054,7 +1288,7 @@ describe('强制回收（prd.技能.md §3.5.1：停用弹窗勾选项，同走�
   })
 
   it('接口失败（如已有在审提交）→ 错误提示取 message 原文「已有在审提交，请先撤回或等待审核结论」；无 message → 「操作失败」，不弹成功提示、弹窗保留可重试', async () => {
-    const { vm, host } = await mountAndInject([{ ...publishedRow, refCount: 0 }])
+    const { vm, host } = await mountAndInject([{ ...publishedRow, ...noRefs }])
     const { ElMessage } = await import('element-plus')
     delistSpy.mockRejectedValueOnce(new Error('已有在审提交，请先撤回或等待审核结论'))
     opBtn(host, '已发布技能', '停用').click()

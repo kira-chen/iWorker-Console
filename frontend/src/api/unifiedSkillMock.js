@@ -15,7 +15,9 @@
  *   - 撤回（withdrawPublish）→ 清 pendingAction/pendingVersion/pendingReleaseNotes，
  *       按 version 空/非空恢复 未发布/已发布（对齐原型 skill-withdraw）。
  *   - 停用（delist）→ pendingAction='stop'：PUBLISHED + pendingAction=DELIST
- *       → PUBLISHED_DELISTING（审核中·停用审核）。被引用（refNames 非空）时拒绝（勾选强制回收则不拦）。
+ *       → PUBLISHED_DELISTING（审核中·停用审核）。被岗位或专家引用时拒绝（勾选强制回收则不拦）。
+ *   - 引用名分两组（2026-11-10 起专家按类型可引用三类技能）：refNames = 引用它的岗位名（只有岗位私有技能会有，
+ *     positionMock 回写）；expertRefNames = 引用它的专家名（三类技能都可能有，domainExpertMock 回写）。
  *   - 删除（remove）→ 被引用时拒绝（ApiError 携引用清单文案）。
  *   - 强制回收（PRD 技能 §3.5.1，2026-10-12 改版）= 停用弹窗里的勾选项：delistSkill 传 { forceRevoke, reason }，
  *       与普通停用走同一条审核链路（审核中、审核通过前仍已发布），**不受引用拦截**；原因暂存 pendingRevokeReason，
@@ -25,13 +27,15 @@
  * 【三类技能一体】岗位私有（POSITION）自本轮起接入同构发布/版本状态机（PRD 对齐清单 6/29：
  * 旧「发布/撤回草稿」本体开关废弃），三类行都携带 publications 与版本快照。
  *
- * 【技能分类同源】11 类固定分类从 fieldDictMock（skillCategory 字段）取；demo 用「分类名」
+ * 【技能分类同源】分类选项从 fieldDictMock（skillCategory 字段）取；demo 用「分类名」
  * 同时充当 categoryId（displayCategoryId === displayCategoryName），保持前端交互闭环即可。
+ * 例外：分类在字段字典里被删后，displayCategoryName 读时派生为空（列表显示「未分类」，修改点 15），displayCategoryId 仍是原值。
  *
  * 【版本历史】启用某历史版本 = 互斥启用（其余启用版本自动禁用，对齐原型 toggleHistory）；
  * 最后一个启用版本禁「禁用」（VersionHistoryList guardLastActive 前置置灰，mock 兜底拦截）。
  */
 import { ApiError } from './request'
+import { skillRefCount, skillRefBlockMessage } from '@/utils/skillRefs'
 import { BIZ_QUESTION_MAX } from '@/utils/defValidate'
 import { getFieldOptionNames } from './fieldDictMock'
 import { attachPersist } from './mockPersist'
@@ -45,6 +49,8 @@ import { splitTextToToolRefNodes } from '@/utils/skillToolRef'
 import { listMcpSync, syncSkillRefs as syncMcpSkillRefs } from './mcpConnectorMock'
 import { listApisSync, syncSkillRefs as syncApiSkillRefs } from './apiConnectorMock'
 import { listBizSystemsSync, syncSkillRefs as syncBizSkillRefs } from './bizSystemMock'
+// 产品优化需求-202611 修改点 13（R4）：连接器发布态口径（工具坞候选 / 已引用标签 / 发布校验与页面同源）
+import { TOOL_PUB_STATE, unpublishedToolsMessage } from '@/utils/toolPubState'
 // 2026-09-09 收编：本地「现在→分钟文本」复制品改引 utils/datetime 单一真相（mock 引 utils 为既有范式）
 import { nowMinuteText as nowText } from '@/utils/datetime'
 // 2026-09-18 R1：提交发布 / 停用 → 审核中心 + 我的申请落行；撤回 → 摘行；审核落地前核对申请类型（见 reviewEnroll.js）
@@ -108,10 +114,12 @@ function seed(row) {
     pendingReleaseNotes: '',
     delisted: false, // 曾发布后整体下架（demo 里映射「未发布」且保留版本号）
     defaultInstall: false,
+    hideFromMarket: false, // 不在市场展示：只有市场技能有意义（2026-11-11 产品优化需求-202611 R14）
     exampleQuestion: '',
     triggers: [],
     toolRefs: [],
-    refNames: [],
+    refNames: [], // 引用它的岗位名（只有岗位私有技能会有）
+    expertRefNames: [], // 引用它的专家名（2026-11-10 起三类技能都可能有）
     files: null,
     snapshots: [],
     // SKILL.md 内 name 字段（包作者定义的技术名；与本行 name／后台可编辑的展示名各管各，见
@@ -128,6 +136,7 @@ const skills = [
     id: 'sk_301', type: 'POSITION', name: '日报周报生成', icon: '▤',
     description: '根据工作记录自动整理日报与周报', category: '办公效率',
     refNames: ['经营分析岗', '财务审核岗'], // 与 positionMock 实际引用同源（2026-09-02 种子自洽治理）
+    expertRefNames: ['经营数据核查专家'], // 岗位私有专家 205 引用（2026-11-10 起岗位私有专家可引用岗位私有技能）
     status: 'published', version: 'v1.2.0',
     createdAt: '2026-08-23 17:20', updatedAt: '2026-08-23 17:20', publishedAt: '2026-08-23 18:10',
     exampleQuestion: '帮我把这周的工作记录整理成周报',
@@ -144,7 +153,8 @@ const skills = [
   seed({
     id: 'sk_302', type: 'PLATFORM', name: '经营数据分析', icon: '⌕',
     description: '读取经营数据并生成趋势分析和异常说明', category: '数据分析',
-    refNames: ['经营分析专家', '企业知识助手', '研究报告专家'], // 与 domainExpertMock 实际引用同源
+    // 与 domainExpertMock 实际引用同源（2026-11-09 补种子专家 205「经营数据核查专家」，它也引用本技能）
+    expertRefNames: ['经营分析专家', '企业知识助手', '研究报告专家', '经营数据核查专家'],
     // 审核中心种子 id 2（VERSION_PUBLISH）指向本技能，但本体原为 pendingAction 空 → 不会补播审核
     // 快照，审核人点【查看】只能撞「无法查看」。此处置为在审，与 sk_309（停用在审）同一范式。
     // 2026-09-12 对齐 md 技能 §二.3.4 L226-229（审计 K19）：在审版本号必须由线上版本自动递增得出——
@@ -164,6 +174,7 @@ const skills = [
     id: 'sk_303', type: 'SYSTEM_DEFAULT', name: '会议纪要整理', icon: '◎',
     description: '提取会议结论、待办事项与责任人', category: '办公效率',
     status: 'published', version: 'v2.1.0',
+    expertRefNames: ['企业知识助手'], // 通用专家 202 引用（2026-11-10 起专家可引用通用技能）
     createdAt: '2026-08-22 15:36', updatedAt: '2026-08-22 15:36', publishedAt: '2026-08-22 16:05',
     exampleQuestion: '帮我整理今天例会的会议纪要',
     toolRefs: ['mcp__knowledge_hub', 'api__api_1107'],
@@ -175,7 +186,8 @@ const skills = [
   seed({
     id: 'sk_304', type: 'PLATFORM', name: '合同风险检查', icon: '§',
     description: '识别合同条款中的风险点并给出说明', category: '行业专业',
-    refNames: ['经营分析专家', '法务审阅专家'], // 与 domainExpertMock 实际引用同源
+    expertRefNames: ['经营分析专家', '法务审阅专家'], // 与 domainExpertMock 实际引用同源
+    hideFromMarket: true, // R14 演示样本：只给专家用，不在客户端市场展示
     status: 'published', version: 'v1.1.0',
     pendingAction: 'publish', pendingVersion: 'v1.1.1', pendingReleaseNotes: '补充违约条款识别规则',
     createdAt: '2026-08-20 11:08', updatedAt: '2026-08-25 10:12', publishedAt: '2026-08-20 15:30',
@@ -197,7 +209,9 @@ const skills = [
     createdAt: '2026-08-21 10:40', updatedAt: '2026-08-21 10:40', publishedAt: '2026-08-21 15:00',
     exampleQuestion: '帮我准备明天拜访这家客户的提纲',
     toolRefs: ['api__api_1103', 'mcp__expense_mcp', 'mcp__mail_center'],
-    files: { 'SKILL.md': SKILL_MD_TPL('客户拜访准备', '汇总客户资料并生成拜访提纲', ['api__api_1103', 'mcp__expense_mcp']) },
+    // 产品优化需求-202611 R4：SKILL.md 补上 toolRefs 里已有的邮件中心 MCP（从未发布）——发布校验按引用拦，
+    // 正文和「本技能已引用」区也得看得到它，否则版本管理弹窗提示「邮件中心 MCP 尚未发布」却在页面上找不到这条引用
+    files: { 'SKILL.md': SKILL_MD_TPL('客户拜访准备', '汇总客户资料并生成拜访提纲', ['api__api_1103', 'mcp__expense_mcp', 'mcp__mail_center']) },
     snapshots: [
       { version: 'v1.0.0', status: 'ACTIVE', size: '10.3 KB', publisher: '管理员', publishedAt: '2026-08-21 15:00', disabledAt: '', notes: '首个版本' }
     ]
@@ -220,7 +234,7 @@ const skills = [
   seed({
     id: 'sk_307', type: 'PLATFORM', name: '竞品信息汇总', icon: '▤',
     description: '汇总公开渠道的竞品动态', category: '数据分析',
-    refNames: ['研究报告专家'], // 与 domainExpertMock 实际引用同源
+    expertRefNames: ['研究报告专家'], // 与 domainExpertMock 实际引用同源
     status: 'draft', version: '',
     createdAt: '2026-08-19 14:26', updatedAt: '2026-08-19 14:26', publishedAt: '',
     exampleQuestion: '帮我汇总本周主要竞品的产品动态',
@@ -298,6 +312,23 @@ function displayStateOf(s) {
 
 /* ============================ 列表 VO ============================ */
 
+/** 引用情况视图（同 utils/skillRefs 入参形状）：岗位引用名 + 专家引用名。 */
+function refViewOf(s) {
+  return {
+    positionRefNames: s.type === 'POSITION' ? [...(s.refNames || [])] : [],
+    expertRefNames: [...(s.expertRefNames || [])]
+  }
+}
+
+/**
+ * 展示用分类名：按字段字典当前的技能分类选项读时派生。存的分类已被删掉（不再是有效选项）→ 空，列表显示「未分类」
+ * （产品优化需求-202611 修改点 15：删除别的分类后技能显示「未分类」，与字段字典删除确认「将显示为未分类」一致）。
+ * 存量数据不改写，s.category / displayCategoryId 仍是原值；专家分类不走这里，保留原文本。
+ */
+export function displayCategoryNameOf(s) {
+  return s.category && getFieldOptionNames('skillCategory').includes(s.category) ? s.category : ''
+}
+
 function toListItem(s) {
   const files = ensureFiles(s)
   return {
@@ -308,13 +339,19 @@ function toListItem(s) {
     icon: s.icon || '',
     description: s.description || '',
     displayCategoryId: s.category || null, // demo：分类名即 id（fieldDict 同源）
-    displayCategoryName: s.category || '',
+    displayCategoryName: displayCategoryNameOf(s), // 分类已被删 → 空（列表「未分类」），修改点 15
     toolCount: s.toolRefs.length,
-    refCount: s.type === 'SYSTEM_DEFAULT' ? 0 : s.refNames.length,
-    refNames: s.type === 'SYSTEM_DEFAULT' ? [] : [...s.refNames],
+    // 引用的未发布 / 审核中连接器（产品优化需求-202611 修改点 13（R4））：列表【发布】/【版本管理】打开的版本管理弹窗
+    // 据此拦【提交发布】，与编辑页同一句提示；列表不携完整 referencedTools，只给阻断要用的这几项
+    unpublishedTools: referencedToolsOf(s).filter((t) => t.pubState && t.pubState !== TOOL_PUB_STATE.PUBLISHED),
+    // 引用情况（2026-11-10）：岗位引用只有岗位私有技能有；专家引用三类技能都可能有。refNames 为两组合并，兼容旧读法
+    positionRefNames: refViewOf(s).positionRefNames,
+    expertRefNames: refViewOf(s).expertRefNames,
+    refCount: skillRefCount(refViewOf(s)),
+    refNames: [...refViewOf(s).positionRefNames, ...refViewOf(s).expertRefNames],
     // 兼容旧字段口径（岗位私有=岗位引用数 / 平台族=专家引用数）
-    referencedByPositionCount: s.type === 'POSITION' ? s.refNames.length : 0,
-    referencedByExpertCount: s.type === 'PLATFORM' ? s.refNames.length : 0,
+    referencedByPositionCount: refViewOf(s).positionRefNames.length,
+    referencedByExpertCount: refViewOf(s).expertRefNames.length,
     status: s.status,
     publications: publicationsOf(s),
     versionLabel: s.version || '',
@@ -323,6 +360,7 @@ function toListItem(s) {
     skillMd: undefined, // 列表不携正文
     hasSkillMd: !!String(files['SKILL.md'] || '').trim(),
     defaultInstall: !!s.defaultInstall,
+    hideFromMarket: s.type === 'PLATFORM' && !!s.hideFromMarket,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt || s.createdAt,
     lastPublishedAt: s.publishedAt || ''
@@ -373,22 +411,47 @@ export async function listUnifiedSkills(params = {}) {
  */
 // 下方 MCP `disabled/inactive`、API `enabled === false` 两个分支是防御性分支：当前 UI 无路径置位（yuepu#90⑨），
 // 保留以便研发接真实后端的状态枚举时直接可用。
+/**
+ * 连接器 → 技能侧发布态（产品优化需求-202611 修改点 13（R4））：列表三态键（PUBLISHED / PENDING_REVIEW / 其余）
+ * 映射成 TOOL_PUB_STATE；已停用、已强制回收返回 null——这两类不进工具坞候选。
+ * - 「已停用」在连接器侧没有独立状态：停用审核通过后回到「未发布」，与从未发布过的靠「最近发布时间」是否为空区分
+ *   （prd-连接器-MCP.md §四「停用审核通过后变为未发布…可通过最近发布时间是否为空区分」，API / 业务系统同口径）；
+ * - 「已强制回收」看 revoked 标记（重新发布审核通过才清，所以回收后再提交发布、审核中的也仍算已回收）；
+ * - disabled 为连接器自己的停用开关（MCP status / API enabled），见上方防御性分支说明。
+ */
+function connectorPubState(stateKey, { publishedAt, revoked, disabled }) {
+  if (disabled || revoked) return null
+  if (stateKey === 'PUBLISHED') return TOOL_PUB_STATE.PUBLISHED
+  if (stateKey === 'PENDING_REVIEW') return TOOL_PUB_STATE.REVIEWING
+  return publishedAt ? null : TOOL_PUB_STATE.UNPUBLISHED
+}
+
 function loadToolDirectory() {
-  // available = 已发布且启用（一览表「停用后技能不再可引用该 API」，yuepu#50）：只有 available 的才进工具坞候选；
-  // 已被技能引用、但如今未发布 / 已停用的工具照常回显，checkStatus 给 DISABLED（已停用），不再沿用「连接正常」。
+  // pubState 非 null（未发布 / 审核中 / 已发布）的进技能编辑页工具坞候选（R4 放开，三类连接器都放开，R4-2 暂按）；
+  // available = 已发布且启用（yuepu#50 原口径），只给不放开的消费方（自动化任务工具清单）用。
+  // 已被技能引用、但如今已停用 / 已强制回收的工具照常回显，checkStatus 给 DISABLED（已停用），不再沿用「连接正常」；
+  // 未发布 / 审核中的照常给真实连接状态，发布态由 pubState 单独标（工具卡与「本技能已引用」区的标签）。
   const dir = {}
-  const put = (key, row, available, health, type) => {
-    dir[key] = { bizName: row.name, description: row.description || '', checkStatus: available ? health : 'DISABLED', type, available }
+  const put = (key, row, pubState, health, type) => {
+    dir[key] = {
+      bizName: row.name,
+      description: row.description || '',
+      checkStatus: pubState ? health : 'DISABLED',
+      type,
+      pubState,
+      available: pubState === TOOL_PUB_STATE.PUBLISHED
+    }
   }
   for (const m of listMcpSync()) {
-    put(`mcp__${m.code}`, m, m.stateKey === 'PUBLISHED' && m.status !== 'disabled' && m.status !== 'inactive', m.displayStatus || 'UNKNOWN', 'MCP')
+    const disabled = m.status === 'disabled' || m.status === 'inactive'
+    put(`mcp__${m.code}`, m, connectorPubState(m.stateKey, { ...m, disabled }), m.displayStatus || 'UNKNOWN', 'MCP')
   }
   for (const a of listApisSync()) {
-    put(`api__${a.code}`, a, a.status === 'PUBLISHED' && a.enabled !== false, a.displayStatus || 'UNKNOWN', 'API')
+    put(`api__${a.code}`, a, connectorPubState(a.status, { ...a, disabled: a.enabled === false }), a.displayStatus || 'UNKNOWN', 'API')
   }
   for (const b of listBizSystemsSync()) {
     // 业务系统走登录态托管，无连通性验证概念（无 displayStatus），沿用旧口径 UNKNOWN
-    put(`biz__${b.id}`, b, b.status === 'PUBLISHED', 'UNKNOWN', 'BIZ_SYSTEM')
+    put(`biz__${b.id}`, b, connectorPubState(b.status, { ...b, disabled: false }), 'UNKNOWN', 'BIZ_SYSTEM')
   }
   return dir
 }
@@ -399,6 +462,8 @@ function referencedToolsOf(s) {
     code,
     bizName: dir[code]?.bizName || code,
     checkStatus: dir[code]?.checkStatus || 'UNKNOWN',
+    // 连接器发布态（R4）：「本技能已引用」区据此标未发布 / 审核中，发布校验据此阻断；已停用 / 已回收 / 已删除为 null
+    pubState: dir[code]?.pubState || null,
     requiresConfirmation: false
   }))
 }
@@ -427,6 +492,7 @@ export async function getSkillDetail(id) {
     triggers: [...(s.triggers || [])],
     exampleQuestion: s.exampleQuestion || '',
     defaultInstall: !!s.defaultInstall,
+    hideFromMarket: s.type === 'PLATFORM' && !!s.hideFromMarket,
     skillMd: files['SKILL.md'] || '',
     referencedTools: referencedToolsOf(s),
     agentId: null,
@@ -435,7 +501,7 @@ export async function getSkillDetail(id) {
     // 编辑页永远不显示标签（2026-09-23 待办 yuepu#10①）；派生口径与 positionMock.skillRefVO 一致
     category: operationCategoryOf(s),
     displayCategoryId: s.category || null,
-    displayCategoryName: s.category || '',
+    displayCategoryName: displayCategoryNameOf(s),
     publications: publicationsOf(s),
     versionLabel: s.version || '',
     revoked: s.revoked ? { ...s.revoked } : null,
@@ -505,7 +571,36 @@ export async function importSkillZip({ fileName, type, categoryName }) {
   return { skillId: row.id, id: row.id, name: row.name, skillType: type, warnings: [] }
 }
 
-/** 部分更新（name/description/exampleQuestion/defaultInstall/icon/skillMd/displayCategoryId）。 */
+/**
+ * 上传技能包更新已有技能（产品优化需求-202611 R5 草案）：整包替换文件目录里的全部文件，技能名称、类型、分类、
+ * 图标、描述、示例问题等页面配置不变；只改草稿，已发布技能的线上版本要到版本管理【发布新版本】审核通过后才更新。
+ * demo 不真正解包 zip（同 importSkillZip）：以包名近似包内 SKILL.md 的 name，与当前技能名不一致即拒绝；
+ * 包内容用模板模拟——新的 SKILL.md（沿用当前描述与工具引用）+ references/更新说明.md，原有其它文件一并替换掉。
+ */
+export async function importZipToSkill(id, { fileName } = {}) {
+  await delay(200)
+  const s = find(id)
+  assertNotReviewing(s)
+  if (!/\.zip$/i.test(String(fileName || ''))) {
+    throw new ApiError({ code: 40001, message: '仅支持 .zip 技能包' })
+  }
+  const name = String(fileName).replace(/\.zip$/i, '').trim()
+  if (name !== s.name) {
+    throw new ApiError({ code: 40001, message: `技能包名称（${name}）与当前技能不一致，请检查后重新上传` })
+  }
+  const md = SKILL_MD_TPL(s.name, s.description, s.toolRefs || [])
+  s.files = {
+    'SKILL.md': md,
+    'references/更新说明.md': `# 更新说明\n\n本技能的文件由技能包 ${fileName} 整包上传（${nowText()}）。\n`
+  }
+  s.skillMdName = name
+  s.toolRefs = deriveToolRefsFromMd(md) // 工具引用按新 SKILL.md 重新识别
+  s.updatedAt = nowText()
+  persist()
+  return saveVO(s, { treeChanged: true, refsChanged: true })
+}
+
+/** 部分更新（name/description/exampleQuestion/defaultInstall/hideFromMarket/icon/skillMd/displayCategoryId）。 */
 export async function updateSkill(id, payload = {}) {
   await delay()
   const s = find(id)
@@ -527,7 +622,18 @@ export async function updateSkill(id, payload = {}) {
     if (eq.length > BIZ_QUESTION_MAX) throw new ApiError({ code: 40001, message: `示例问题最多 ${BIZ_QUESTION_MAX} 个字符` })
     s.exampleQuestion = eq
   }
-  if ('defaultInstall' in payload) s.defaultInstall = !!payload.defaultInstall
+  // 不在市场展示（产品优化需求-202611 R14）：只有市场技能有这个开关；打开后不能再默认安装——默认安装等于装给所有员工，
+  // 和「不让员工单独拿到」相互矛盾。先处理它再处理 defaultInstall，同一次保存里两个字段一起来时口径一致。
+  if ('hideFromMarket' in payload && s.type === 'PLATFORM') {
+    s.hideFromMarket = !!payload.hideFromMarket
+    if (s.hideFromMarket) s.defaultInstall = false
+  }
+  if ('defaultInstall' in payload) {
+    if (payload.defaultInstall && s.hideFromMarket) {
+      throw new ApiError({ code: 40001, message: '不在市场展示的技能不能默认安装' })
+    }
+    s.defaultInstall = !!payload.defaultInstall
+  }
   if ('icon' in payload) {
     // 图标必填（2026-09-21 负责人拍板；页面 AdminSkillEditPage.saveConfig 已拦）：数据层同口径拦——
     // 此前 icon 是本函数里唯一不校验的字段，绕过页面的调用能把已有图标清成空串（待办 yuepu#18①）
@@ -560,11 +666,9 @@ export async function setSkillCategory(id, categoryId) {
   return { skillId: s.id, displayCategoryId: s.category || null }
 }
 
-function refBlockMessage(s, action) {
-  const subject = s.type === 'POSITION' ? '岗位' : '专家'
-  const names = s.refNames.length ? `（${s.refNames.join('、')}）` : ''
-  return `该技能被 ${s.refNames.length} 个${subject}引用${names}，需先解除引用后再${action}。`
-}
+// 被引用拦截看岗位引用 + 全部专家引用（2026-11-10 前只看「专家的市场技能引用」，通用技能不参与）
+const isReferenced = (s) => skillRefCount(refViewOf(s)) > 0
+const refBlockMessage = (s, action) => skillRefBlockMessage(refViewOf(s), action)
 
 /** 删除（状态守卫 + 引用拦截；md §二.4 L122「删除仅适用于未发布且不在审核中的技能」）。 */
 export async function removeSkill(id) {
@@ -573,7 +677,7 @@ export async function removeSkill(id) {
   if (displayStateOf(s) !== 'UNPUBLISHED') {
     throw new ApiError({ code: 40907, message: '删除仅适用于未发布且不在审核中的技能' })
   }
-  if (s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
+  if (isReferenced(s)) {
     throw new ApiError({ code: 40901, message: refBlockMessage(s, '删除') })
   }
   const i = skills.indexOf(s)
@@ -614,6 +718,7 @@ function skillSnapshotDetail(s) {
     triggers: [...(s.triggers || [])],
     exampleQuestion: s.exampleQuestion || '',
     defaultInstall: !!s.defaultInstall,
+    hideFromMarket: s.type === 'PLATFORM' && !!s.hideFromMarket,
     skillMd: files['SKILL.md'] || '',
     referencedTools: referencedToolsOf(s),
     displayCategoryId: s.category || null,
@@ -663,6 +768,10 @@ export async function publishSkill(id, { bump = 'NONE', releaseNotes = '' } = {}
   if (!String(ensureFiles(s)['SKILL.md'] || '').trim()) {
     throw new ApiError({ code: 40001, message: 'SKILL.md 正文不能为空，请先完善技能包内容再发布' })
   }
+  // 产品优化需求-202611 修改点 13（R4）：引用了未发布 / 审核中的连接器不能提交发布（阻断，R4-3 暂按）。
+  // 版本管理弹窗已按同一句提示拦下【提交发布】，这里兜底，不留绕过弹窗的后门（同 K20 范式）
+  const toolBlock = unpublishedToolsMessage(referencedToolsOf(s))
+  if (toolBlock) throw new ApiError({ code: 40001, message: toolBlock })
   s.pendingAction = 'publish'
   s.pendingVersion = s.version ? bumpVersion(s.version, bump) : 'v1.0.0'
   s.pendingReleaseNotes = String(releaseNotes).trim()
@@ -713,7 +822,7 @@ export async function delistSkill(id, { forceRevoke = false, reason = '' } = {})
   if (s.status !== 'published' || s.delisted) {
     throw new ApiError({ code: 40908, message: '停用仅适用于已发布状态的技能' })
   }
-  if (!forceRevoke && s.type !== 'SYSTEM_DEFAULT' && s.refNames.length) {
+  if (!forceRevoke && isReferenced(s)) {
     throw new ApiError({ code: 40901, message: refBlockMessage(s, '停用') })
   }
   if (s.pendingAction) throw new ApiError({ code: 40902, message: '已有在审提交，请先撤回或等待审核结论' })
@@ -884,12 +993,17 @@ export async function relistSnapshot(id, version) {
 
 /* ============================ 工具坞 tool-picker ============================ */
 
+/**
+ * includeUnpublished：技能编辑页工具坞传 true——候选放开到未发布 / 审核中 / 已发布的连接器，已停用、已强制回收的不出现
+ * （产品优化需求-202611 修改点 13（R4））。不传的消费方（自动化任务编辑器的工具清单，同走本端点）仍只列已发布的，
+ * 保持 yuepu#50 原口径——草案只改技能编辑页。
+ */
 export async function toolPicker(params = {}) {
   await delay(80)
-  const { type = 'MCP', keyword = '' } = params
+  const { type = 'MCP', keyword = '', includeUnpublished = false } = params
   const q = String(keyword).trim().toLowerCase()
   return Object.entries(loadToolDirectory())
-    .filter(([, t]) => t.type === type && t.available)
+    .filter(([, t]) => t.type === type && (includeUnpublished ? !!t.pubState : t.available))
     .map(([code, t]) => ({
       code,
       bizName: t.bizName,
@@ -897,6 +1011,7 @@ export async function toolPicker(params = {}) {
       description: t.description,
       checkStatus: t.checkStatus,
       displayStatus: t.checkStatus,
+      pubState: t.pubState, // R4：工具卡名称旁的发布态标签（未发布 / 审核中；已发布不标）
       requiresConfirmation: false
     }))
     .filter((t) => !q || [t.code, t.bizName, t.description].some((v) => String(v).toLowerCase().includes(q)))
@@ -1068,7 +1183,13 @@ let snapshotArchive = {}
 const persistRaw = attachPersist('unifiedSkill', {
   // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃回种子。
   // v9（2026-10-19 待办 yuepu#77）：sk_301 / sk_305 / sk_308 的工具引用补 api_1101 / mail_center / biz_2101，让连接器侧「被技能引用」派生后有样例，旧快照弃用回种子。
-  version: 9,
+  // v10（2026-11-09 产品优化需求-202611 R13）：sk_302 的 refNames 补新种子专家 205「经营数据核查专家」（它引用了本技能），旧快照弃用回种子。
+  // v11（2026-11-10 专家按类型引用技能）：专家引用名从 refNames 拆到 expertRefNames；sk_301 / sk_303 补专家引用种子，旧快照弃用回种子。
+  // v12（2026-11-10 产品优化需求-202611 R4）：审核快照里的引用工具新增 pubState（连接器发布态），未发布 / 审核中连接器的
+  //    checkStatus 由 DISABLED 改为真实连接状态（种子在审的 sk_302 / sk_308 引用了审核中的人力资源系统）；
+  //    sk_305 的 SKILL.md 补上邮件中心 MCP 引用（与 toolRefs 对齐）。旧快照弃用回种子。
+  // v13（2026-11-11 产品优化需求-202611 R14）：技能行新增 hideFromMarket（不在市场展示），sk_304 作演示样本打开，旧快照弃用回种子。
+  version: 13,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (

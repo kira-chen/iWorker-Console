@@ -37,8 +37,10 @@ import {
 // ↑ 三态映射同源 api 层（2026-09-09 批 2-2 收编：此前三块本地复制品逐字重复，删除改引；
 //   别名保留本页原名，调用点零改动）
 import { getSkill } from '@/api/position'
+// 产品优化需求-202611 修改点 13（R4）：引用了未发布 / 审核中连接器时版本管理弹窗的阻断提示（与编辑页、mock 同源）
+import { unpublishedToolsMessage } from '@/utils/toolPubState'
 import { EFFECT_TEST_ENABLED } from '@/utils/featureFlags'
-// 技能分类选项统一同源 fieldDict（固定 11 类，2026-09-01 疑点8 处置），不再调 skillCategory.js 后端接口。
+// 技能分类选项统一同源 fieldDict（2026-09-01 疑点8 处置），不再调 skillCategory.js 后端接口。
 import { listFieldDict } from '@/api/fieldDict'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
@@ -47,6 +49,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/admin/ListToolbar.vue'
 import SkillCreateDialog from '@/components/skill/SkillCreateDialog.vue'
 import VersionDrawer from '@/components/admin/VersionDrawer.vue'
+import { skillRefGroups, skillRefCount, skillRefSubjects, skillRefBlockMessage } from '@/utils/skillRefs'
 import { derivePlatformState, stateActions } from '@/utils/skillPublication'
 import { COL, opsWidth, NA } from '@/utils/tableLayout'
 import { useAdminList } from '@/composables/useAdminList'
@@ -128,28 +131,15 @@ function latestVersion(row) {
   return row.versionLabel || ''
 }
 
-/* ---------- 引用情况（原型 skillReferenceNames 口径） ---------- */
+/* ---------- 引用情况（2026-11-10 起分岗位 / 专家两组，口径见 utils/skillRefs） ----------
+ * 岗位私有技能可能同时被岗位和专家引用，展示「N 个岗位引用 · M 个专家引用」；市场、通用技能只会被专家引用。 */
+const refCountOf = (row) => skillRefCount(row)
 
-/** 引用主体：岗位私有被岗位引用，市场技能被专家引用；通用技能不参与引用。 */
-function refSubject(row) {
-  return row.type === SKILL_TYPE.POSITION ? '岗位' : '专家'
-}
-function refCountOf(row) {
-  if (row.refCount != null) return row.refCount
-  // 兼容旧 VO 字段
-  return row.type === SKILL_TYPE.POSITION
-    ? row.referencedByPositionCount || 0
-    : row.referencedByExpertCount || 0
-}
-function refNamesOf(row) {
-  return Array.isArray(row.refNames) ? row.refNames : []
-}
-
-// 引用清单弹窗：标题「被岗位引用 / 被专家引用」，正文名称顿号连接。
+// 引用清单弹窗：标题「被岗位引用」「被专家引用」或「被岗位和专家引用」，正文按组分行
 const refsVisible = ref(false)
 const refsRow = ref(null)
-const refsTitle = computed(() => (refsRow.value ? `被${refSubject(refsRow.value)}引用` : ''))
-const refsText = computed(() => refNamesOf(refsRow.value || {}).join('、'))
+const refsGroups = computed(() => skillRefGroups(refsRow.value || {}))
+const refsTitle = computed(() => (refsGroups.value.length ? `被${refsGroups.value.map((g) => g.subject).join('和')}引用` : ''))
 function openRefs(row) {
   refsRow.value = row
   refsVisible.value = true
@@ -195,13 +185,7 @@ function openView(row) {
 
 /** 引用拦截弹窗（删除用；停用的拦截在停用弹窗内）：正文携引用清单，仅【知道了】。 */
 function alertRefBlocked(row, action, title) {
-  const names = refNamesOf(row)
-  const listText = names.length ? `（${names.join('、')}）` : ''
-  return ElMessageBox.alert(
-    `该技能被 ${refCountOf(row)} 个${refSubject(row)}引用${listText}，需先解除引用后再${action}。`,
-    title,
-    { confirmButtonText: '知道了', type: 'warning' }
-  ).catch(() => {})
+  return ElMessageBox.alert(skillRefBlockMessage(row, action), title, { confirmButtonText: '知道了', type: 'warning' }).catch(() => {})
 }
 
 /**
@@ -214,13 +198,7 @@ const stopDialogVisible = computed({
   get: () => stopTarget.value != null,
   set: (v) => { if (!v) stopTarget.value = null }
 })
-const stopBlockedMessage = computed(() => {
-  const row = stopTarget.value
-  if (!row || refCountOf(row) <= 0) return ''
-  const names = refNamesOf(row)
-  const listText = names.length ? `（${names.join('、')}）` : ''
-  return `该技能被 ${refCountOf(row)} 个${refSubject(row)}引用${listText}，需先解除引用后再停用。`
-})
+const stopBlockedMessage = computed(() => (stopTarget.value ? skillRefBlockMessage(stopTarget.value, '停用') : ''))
 
 function stopSkill(row) {
   if (actionBusy.value != null) return
@@ -394,10 +372,12 @@ const versionAdapter = computed(() => {
     lastActiveTip: '当前版本是该技能最后一个启用版本。如需停止对外提供，请先整体下架技能',
     exclusiveActive: true, // 启用某历史版本 → 其余启用版本自动禁用（原型 toggleHistory 口径）
     // 2026-09-12 对齐 md 技能 §二.3.4 L231（审计 K18，Q216）：拦截提示逐字 md，去掉多出的「请到技能编辑页…」一句
+    // 其后接 R4 发布校验：引用了未发布 / 审核中的连接器（行上的 unpublishedTools）→ 弹窗展示提示并禁用【提交发布】；
+    // 【发布】按钮不因此置灰（与编辑页一致：草案要求提示在版本管理弹窗里展示，置灰就打不开弹窗）
     submitGate: () =>
-      row.type === SKILL_TYPE.PLATFORM && !(row.displayCategoryId ?? null)
+      (row.type === SKILL_TYPE.PLATFORM && !(row.displayCategoryId ?? null)
         ? '该技能还未选择「技能分类」，按规则不可提交发布'
-        : '',
+        : '') || unpublishedToolsMessage(row.unpublishedTools),
     // 疑点10：撤回确认保留现状分场景文案
     withdrawText: (state) =>
       state === 'REVIEWING'
@@ -515,7 +495,7 @@ onBeforeUnmount(() => {
       <el-select v-model="query.type" placeholder="全部技能类型" clearable class="lt-filter">
         <el-option v-for="t in SKILL_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
-      <!-- 分类筛选：固定 11 类（fieldDict 同源），对全部技能类型开放 -->
+      <!-- 分类筛选：选项 fieldDict 同源，对全部技能类型开放 -->
       <el-select
         v-model="query.categoryId"
         placeholder="全部技能分类"
@@ -567,6 +547,8 @@ onBeforeUnmount(() => {
                   <span v-else>{{ row.icon }}</span>
                 </span>
                 <span class="sk-name">{{ row.name }}</span>
+                <!-- 不在市场展示（R14，仅市场技能）：员工端市场看不到，专家仍可引用 -->
+                <span v-if="row.hideFromMarket" class="sk-hide-tag" title="客户端市场不展示，员工不能单独安装；专家仍可引用">不在市场展示</span>
               </div>
             </template>
           </el-table-column>
@@ -589,14 +571,16 @@ onBeforeUnmount(() => {
               <span class="sk-type-text">{{ SKILL_TYPE_LABEL[row.type] }}</span>
             </template>
           </el-table-column>
+          <!-- 没有分类 / 分类已在字段字典删掉 → 「未分类」（字段字典 md「删除技能分类后…显示为"未分类"」，产品优化需求-202611 修改点 15） -->
           <el-table-column label="技能分类" :width="104">
             <template #default="{ row }">
               <span v-if="row.displayCategoryName">{{ row.displayCategoryName }}</span>
-              <span v-else class="cell-na">{{ NA }}</span>
+              <span v-else class="cell-na">未分类</span>
             </template>
           </el-table-column>
           <el-table-column prop="toolCount" label="工具数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap" />
-          <!-- 引用情况：可点击弹引用清单弹窗；通用技能不参与引用（占位符） -->
+          <!-- 引用情况：可点击弹引用清单弹窗；「N 个岗位引用」「M 个专家引用」按实际有的组展示，三类技能都可能被专家引用。
+               列宽维持 116（本表列宽已排满，加宽会挤占其它列）：两组都有时一组一行，不再加「·」（放不下会被截断） -->
           <el-table-column label="引用情况" :width="116">
             <template #default="{ row }">
               <el-button
@@ -604,12 +588,13 @@ onBeforeUnmount(() => {
                 link
                 type="primary"
                 class="sk-ref-btn"
-                :title="refNamesOf(row).join('、')"
+                :title="skillRefGroups(row).map((g) => g.subject + '：' + g.names.join('、')).join('；')"
                 @click="openRefs(row)"
               >
-                {{ refCountOf(row) }} 个{{ refSubject(row) }}引用
+                <span class="sk-ref-lines">
+                  <span v-for="g in skillRefGroups(row)" :key="g.subject">{{ g.names.length }} 个{{ g.subject }}引用</span>
+                </span>
               </el-button>
-              <span v-else-if="row.type === SKILL_TYPE.SYSTEM_DEFAULT" class="cell-na">{{ NA }}</span>
               <span v-else class="cell-na">暂无引用</span>
             </template>
           </el-table-column>
@@ -712,7 +697,8 @@ onBeforeUnmount(() => {
 
     <!-- 引用清单弹窗：标题按引用主体切换，正文名称顿号连接 -->
     <el-dialog v-model="refsVisible" :title="refsTitle" width="420px" append-to-body>
-      <p class="sk-refs-body">{{ refsText || NA }}</p>
+      <p v-for="g in refsGroups" :key="g.subject" class="sk-refs-body">{{ g.subject }}：{{ g.names.join('、') }}</p>
+      <p v-if="!refsGroups.length" class="sk-refs-body">{{ NA }}</p>
       <template #footer>
         <el-button @click="refsVisible = false">关闭</el-button>
       </template>
@@ -748,7 +734,7 @@ onBeforeUnmount(() => {
       :plain-message="`停用「${stopTarget?.name || ''}」需提交停用审核。审核通过前客户端仍可使用。`"
       confirm-text="提交停用审核"
       :ref-count="stopTarget ? refCountOf(stopTarget) : 0"
-      :ref-text="stopTarget ? refSubject(stopTarget) : '专家'"
+      :ref-text="stopTarget ? skillRefSubjects(stopTarget) : '专家'"
       :blocked-message="stopBlockedMessage"
       :submitting="actionBusy != null && actionBusy === stopTarget?.id"
       @confirm="confirmStop"
@@ -802,8 +788,26 @@ onBeforeUnmount(() => {
 .sk-type-text {
   color: var(--c-text-muted);
 }
+/* 不在市场展示标签（R14）：样式同专家编辑页的类型标签 */
+.sk-hide-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  line-height: 18px;
+  white-space: nowrap;
+}
 .sk-ref-btn {
   padding: 0;
+  height: auto;
+}
+.sk-ref-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.5;
 }
 .sk-refs-body {
   margin: 0;
