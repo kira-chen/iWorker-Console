@@ -22,8 +22,13 @@ const api = {
 }
 vi.mock('@/api/expertTeam', () => api)
 const ElMessage = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }))
-const ElMessageBox = vi.hoisted(() => ({ confirm: vi.fn() }))
+const ElMessageBox = vi.hoisted(() => ({ confirm: vi.fn(), alert: vi.fn(() => Promise.resolve()) }))
 vi.mock('element-plus', async (orig) => ({ ...(await orig()), ElMessage, ElMessageBox }))
+// 岗位名解析（删除前的引用拦截）与停用影响范围：面板里动态 import 的 api/position，桩成固定岗位表 + 无影响
+vi.mock('@/api/position', () => ({
+  listPositions: vi.fn(async () => ({ list: [{ positionId: 401, name: '经营分析岗' }, { positionId: 402, name: '客户成功岗' }], total: 2 })),
+  getExpertUsage: vi.fn(async () => ({ positionCount: 0, taskCount: 0 }))
+}))
 vi.mock('@/components/admin/ExpertTeamEditor.vue', () => ({
   default: { name: 'ExpertTeamEditor', props: ['visible', 'teamId', 'readonly'], template: '<i class="editor-stub" :data-visible="visible" :data-team="teamId" />' }
 }))
@@ -56,8 +61,8 @@ afterEach(() => {
   vi.clearAllMocks()
   api.checkTeamPublishable.mockImplementation(() => null)
 })
-async function mountPanel() {
-  api.listTeams.mockResolvedValue({ list: ROWS, total: 2 })
+async function mountPanel(rows = ROWS) {
+  api.listTeams.mockResolvedValue({ list: rows, total: rows.length })
   mounted = mountReal(Panel)
   await flushAll(14)
   return mounted.container
@@ -122,8 +127,24 @@ describe('ExpertTeamPanel · 专家团列表（真实挂载）', () => {
     expect(c.querySelector('.version-stub').dataset.entity).toBe('专家团')
   })
 
-  it('删除确认文案带成员数；停用文案同专家（md §二.3.5 / §二.3.8）', async () => {
+  // 产品优化需求-202611 修改点 2「删除：被岗位引用时不执行删除，提示…（专家团同理）」：此前先弹「确认删除？」，确认后才由数据层拦下
+  it('修改点 2 删除被岗位引用的专家团 → 直接提示「该专家团被 1 个岗位引用（经营分析岗），需先从岗位中移除后再删除」，不弹确认、不调删除接口', async () => {
     const c = await mountPanel()
+    btn(rowOf(c, '岗位协同团'), '删除').click()
+    // 岗位名经动态 import 的 api/position 解析，跨了模块加载的异步，按结果等而不是数微任务
+    await vi.waitFor(() => expect(ElMessageBox.alert).toHaveBeenCalled())
+    expect(ElMessageBox.alert).toHaveBeenCalledWith(
+      '该专家团被 1 个岗位引用（经营分析岗），需先从岗位中移除后再删除',
+      '删除专家团',
+      expect.objectContaining({ confirmButtonText: '知道了' })
+    )
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(api.deleteTeam).not.toHaveBeenCalled()
+  })
+
+  it('删除确认文案带成员数；停用文案同专家（md §二.3.5 / §二.3.8）', async () => {
+    // 删除走确认的前提是没有岗位引用（被引用的直接拦，见上一条），这里把岗位协同团的引用清掉
+    const c = await mountPanel([ROWS[0], { ...ROWS[1], positionIds: [], positionCount: 0 }])
     ElMessageBox.confirm.mockResolvedValueOnce()
     api.deleteTeam.mockResolvedValueOnce(2)
     btn(rowOf(c, '岗位协同团'), '删除').click()

@@ -371,10 +371,24 @@ describe('保存（md §三.3【保存】配置手动保存 + 一览表 §三 �
     expect(payload).not.toHaveProperty('triggers')
     expect(payload).toHaveProperty('exampleQuestion', '帮我回访一下今天的客户')
     expect(payload).toHaveProperty('defaultInstall')
+    expect(payload).toHaveProperty('hideFromMarket')
     expect(payload).not.toHaveProperty('skillMd')
     // 用户可见结果：成功 toast 逐字 + 脏标归零
     expect(ElMessage.success).toHaveBeenCalledWith('技能配置已保存')
     expect(container.querySelector('.stub-focus').getAttribute('data-configdirty')).toBe('false')
+  })
+
+  it('「不在市场展示」改动只标脏不自动保存；点【保存】随配置提交 hideFromMarket=true（产品优化需求-202611 R14）', async () => {
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    focus.updateSkill({ hideFromMarket: true, defaultInstall: false })
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+    expect(container.querySelector('.stub-focus').getAttribute('data-configdirty')).toBe('true')
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    const [, payload] = patchSkillSpy.mock.calls.at(-1)
+    expect(payload).toMatchObject({ hideFromMarket: true, defaultInstall: false })
   })
 
   it('改 SKILL.md 正文 → 2s debounce 自动保存，PUT 只带 skillMd', async () => {
@@ -819,5 +833,29 @@ describe('发布就绪门接线（真 skillPublishReadiness；md 技能 §三.3 
     await vi.runOnlyPendingTimersAsync()
     expect(focus.props.publishReadiness.ready).toBe(false)
     expect(focus.props.publishReadiness.missing).toContain('SKILL.md')
+  })
+})
+
+// 产品优化需求-202611 修改点 15：删除分类后技能显示「未分类」。详情 displayCategoryName 为空 = 分类已在字段字典删掉，
+// 编辑页分类下拉不再回填旧分类名（回到未选），保存走既有「请选择技能分类」门。
+describe('分类已在字段字典删掉（产品优化需求-202611 修改点 15）', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  it('详情 displayCategoryName 为空 → 分类下拉回到未选（不回填旧分类名），点【保存】按「请选择技能分类」拦下', async () => {
+    fetchSkillDetailSpy.mockImplementation(() => Promise.resolve({ ...FDE_DETAIL(), displayCategoryId: '设计多媒体', displayCategoryName: '' }))
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    expect(focus.props.skill.displayCategoryId).toBeNull()
+    focus.saveConfig()
+    await vi.runOnlyPendingTimersAsync()
+    expect(ElMessage.warning).toHaveBeenCalledWith('请选择技能分类')
+    expect(patchSkillSpy).not.toHaveBeenCalled()
+  })
+
+  it('分类仍有效（displayCategoryName 有值）→ 分类下拉照常回填', async () => {
+    fetchSkillDetailSpy.mockImplementation(() => Promise.resolve({ ...FDE_DETAIL(), displayCategoryName: '数据分析' }))
+    mount()
+    await vi.runOnlyPendingTimersAsync()
+    expect(focus.props.skill.displayCategoryId).toBe('数据分析')
   })
 })

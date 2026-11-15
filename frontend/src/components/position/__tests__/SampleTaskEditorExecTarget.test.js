@@ -1,0 +1,206 @@
+// @vitest-environment jsdom
+/**
+ * SampleTaskEditor「执行动作」选专家 / 专家团 + 脏检查（产品优化需求-202611 修改点 3，2026-11-12 原型走查补齐）。
+ *
+ * 口径（docs/PRD/数字员工管理端PRD/产品优化需求-202611.md §3「校验与失效」）：
+ * - 选了「专家」或「专家团」却没选具体对象，与「缺指令」同样处理：保存时拦截，提示「请选择要执行的专家」/「请选择要执行的专家团」；
+ * - 执行对象被停用、回收、缺员或删除后，下拉框里仍显示该对象的名称并标「（不可用）」，下方红字提示重新选择；
+ * - 脏检查：切换任务时「有未保存的修改」只在真改过时出现——md-editor-v3 回填后会把同一段提示词原样回抛一次
+ *   update:modelValue，不能因此算作修改（下方 MarkdownEditor 桩模拟了这个回抛）。
+ *
+ * el-select / el-option 用透明桩：选项渲染成 .stub-opt（data-value / data-disabled + label 文本），断言下拉里有什么。
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createApp, h, nextTick, watch } from 'vue'
+import { createSampleTask, updateSampleTask } from '@/api/sampleTask'
+import { listTaskExecTargetCandidates } from '@/api/position'
+import { ElMessage } from 'element-plus'
+
+async function flush(n = 8) {
+  for (let i = 0; i < n; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
+vi.mock('@/api/sampleTask', () => ({
+  createSampleTask: vi.fn(() => Promise.resolve({ id: 't1' })),
+  updateSampleTask: vi.fn(() => Promise.resolve({ id: 't1' })),
+  previewSampleSchedule: vi.fn(() => Promise.resolve({ summary: '每天 09:00', nextRunTimes: [] }))
+}))
+// 执行对象候选：专家 205 / 团 304 可选；团 303（未发布）不在候选里，名称表里能查到
+const CANDIDATES = {
+  experts: [{ expertId: 205, name: '经营数据核查专家', typeLabel: '岗位私有' }],
+  teams: [{ teamId: 304, name: '经营复盘团', typeLabel: '岗位私有', leaderId: 205, leaderName: '经营数据核查专家' }],
+  names: { EXPERT: { 205: '经营数据核查专家' }, TEAM: { 303: '岗位协同团', 304: '经营复盘团' } }
+}
+vi.mock('@/api/position', () => ({
+  listToolPicker: vi.fn(() => Promise.resolve([])),
+  listTaskSkillCandidates: vi.fn(() => Promise.resolve([])),
+  listTaskExecTargetCandidates: vi.fn(() => Promise.resolve(CANDIDATES))
+}))
+vi.mock('@/api/request', () => ({ ApiError: class ApiError extends Error {} }))
+vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ positionId: 401 }) }))
+vi.mock('element-plus', () => ({
+  ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  ElMessageBox: { confirm: vi.fn(() => Promise.resolve()) }
+}))
+// 模拟 md-editor-v3：父组件程序赋值后，把同一段文本原样回抛一次 update:modelValue（真实组件的行为，脏检查误报的根因）
+let sopEmit = null
+vi.mock('@/components/admin/MarkdownEditor.vue', () => ({
+  default: {
+    name: 'MarkdownEditor',
+    props: ['modelValue', 'error'],
+    emits: ['update:modelValue'],
+    setup(p, { emit }) {
+      sopEmit = (v) => emit('update:modelValue', v)
+      watch(() => p.modelValue, (v) => Promise.resolve().then(() => emit('update:modelValue', v)))
+      return () => h('div', { class: 'stub-md' }, p.modelValue ?? '')
+    }
+  }
+}))
+vi.mock('@/components/admin/ToolPicker.vue', () => ({ default: { name: 'ToolPicker', setup: () => () => h('div') } }))
+vi.mock('@/components/task/SchedulePicker.vue', () => ({ default: { name: 'SchedulePicker', setup: () => () => h('div') } }))
+vi.mock('@/components/StatusTag.vue', () => ({
+  default: { name: 'StatusTag', setup: (_, { slots }) => () => h('span', slots.default?.()) }
+}))
+
+const stubs = {
+  'el-input': {
+    props: { modelValue: { default: '' }, placeholder: { default: '' } },
+    emits: ['update:modelValue', 'input'],
+    template: '<input class="stub-el-input" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\')" />'
+  },
+  'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
+  'el-icon': { template: '<i><slot /></i>' },
+  'el-checkbox': { template: '<span />' },
+  'el-radio-group': { props: ['modelValue'], template: '<div class="stub-radio-group" :data-value="modelValue"><slot /></div>' },
+  'el-radio': { template: '<label><slot /></label>' },
+  'el-tooltip': { template: '<span><slot /></span>' },
+  'el-switch': { template: '<span />' },
+  'el-select': {
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue', 'change'],
+    template: '<div class="stub-select" :data-value="String(modelValue)" :data-placeholder="placeholder"><slot /></div>'
+  },
+  'el-option': {
+    // disabled 声明成 Boolean（同 Element Plus）：模板里裸写的 disabled 才会被当成 true
+    props: { label: null, value: null, disabled: Boolean },
+    template: '<div class="stub-opt" :data-value="String(value)" :data-disabled="String(!!disabled)">{{ label }}</div>'
+  },
+  'el-dialog': { template: '<div />' }
+}
+
+let app, container
+function mount(props) {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  app = createApp({ render: () => h(Editor, props) })
+  for (const [n, c] of Object.entries(stubs)) app.component(n, c)
+  app.directive('loading', {})
+  app.mount(container)
+}
+beforeEach(() => vi.clearAllMocks())
+afterEach(() => {
+  app?.unmount()
+  container?.remove()
+})
+const Editor = (await import('@/components/position/SampleTaskEditor.vue')).default
+
+const sample = (over = {}) => ({
+  id: 7002,
+  name: '周度经营复盘提醒',
+  prompt: '整理上周经营数据形成复盘要点',
+  status: 'ENABLED',
+  schedule: { scheduleType: 'DAILY', times: ['09:00'] },
+  sopDoc: '1. 汇总上周核心指标\n2. 输出待跟进事项',
+  toolRefs: [{ type: 'MCP', code: 'mcp__zhishiku', bizName: '知识库 MCP' }],
+  skillRefs: [],
+  execType: 'TEAM',
+  execTargetId: 304,
+  ...over
+})
+const save = async () => {
+  container.querySelector('.meta-actions button').click()
+  await flush()
+}
+const optionsOf = (testid) =>
+  [...container.querySelectorAll(`[data-testid="${testid}"] .stub-opt`)].map((o) => ({
+    value: o.dataset.value,
+    label: o.textContent.trim(),
+    disabled: o.dataset.disabled === 'true'
+  }))
+
+describe('缺执行对象：保存时拦截（修改点 3，与「缺指令」同样处理）', () => {
+  it('存量任务「专家团」没选对象 → 保存被拦：不落 update，下拉下方「请选择要执行的专家团」，toast「请检查表单中标红的项」', async () => {
+    mount({ positionId: 401, sample: sample({ execTargetId: null }) })
+    await flush()
+    await save()
+    expect(updateSampleTask).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="exec-team"] .te-err')?.textContent.trim()).toBe('请选择要执行的专家团')
+    expect(ElMessage.warning).toHaveBeenCalledWith('请检查表单中标红的项')
+  })
+
+  it('「专家」没选对象 → 保存被拦，提示「请选择要执行的专家」；选了对象放行，payload 带 execTargetId', async () => {
+    mount({ positionId: 401, sample: sample({ execType: 'EXPERT', execTargetId: null }) })
+    await flush()
+    await save()
+    expect(updateSampleTask).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="exec-expert"] .te-err')?.textContent.trim()).toBe('请选择要执行的专家')
+
+    app.unmount()
+    container.remove()
+    mount({ positionId: 401, sample: sample({ execType: 'EXPERT', execTargetId: 205 }) })
+    await flush()
+    await save()
+    expect(container.querySelector('[data-testid="exec-expert"] .te-err')).toBeNull()
+    expect(updateSampleTask.mock.calls[0][2]).toMatchObject({ execType: 'EXPERT', execTargetId: 205 })
+  })
+})
+
+describe('所选执行对象已不可用：下拉显示「名称（不可用）」而不是裸 id（修改点 3）', () => {
+  it('团 303 已不在候选里 → 下拉补一个置灰项「岗位协同团（不可用）」，红字提示仍在', async () => {
+    mount({ positionId: 401, sample: sample({ execTargetId: 303 }) })
+    await flush()
+    expect(listTaskExecTargetCandidates).toHaveBeenCalledWith(401)
+    expect(optionsOf('exec-team')).toContainEqual({ value: '303', label: '岗位协同团（不可用）', disabled: true })
+    expect(optionsOf('exec-team').map((o) => o.label)).not.toContain('303')
+    expect(container.querySelector('[data-testid="exec-target-lost"]')?.textContent).toContain('所选对象已停用、被回收、缺员或已从本岗位移除')
+  })
+
+  it('对象已被删除（名称表里也查不到）→「已删除的专家团（不可用）」；所选对象可用时不补置灰项', async () => {
+    mount({ positionId: 401, sample: sample({ execTargetId: 999 }) })
+    await flush()
+    expect(optionsOf('exec-team')).toContainEqual({ value: '999', label: '已删除的专家团（不可用）', disabled: true })
+
+    app.unmount()
+    container.remove()
+    mount({ positionId: 401, sample: sample({ execTargetId: 304 }) })
+    await flush()
+    expect(optionsOf('exec-team')).toEqual([{ value: '304', label: '经营复盘团', disabled: false }])
+    expect(container.querySelector('[data-testid="exec-target-lost"]')).toBeNull()
+  })
+})
+
+describe('脏检查只认值变化：回填后提示词被原样回抛不算修改', () => {
+  it('打开任务不改任何东西 → 不上报 dirty；改了提示词 → 上报 true；改回原值 → 回到 false', async () => {
+    const onDirty = vi.fn()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    app = createApp({ render: () => h(Editor, { positionId: 401, sample: sample(), onDirtyChange: onDirty }) })
+    for (const [n, c] of Object.entries(stubs)) app.component(n, c)
+    app.directive('loading', {})
+    app.mount(container)
+    await flush()
+    expect(onDirty).not.toHaveBeenCalledWith(true)
+
+    sopEmit('1. 汇总上周核心指标\n2. 输出待跟进事项\n3. 发给管理层')
+    await flush()
+    expect(onDirty).toHaveBeenLastCalledWith(true)
+
+    sopEmit(sample().sopDoc)
+    await flush()
+    expect(onDirty).toHaveBeenLastCalledWith(false)
+    expect(createSampleTask).not.toHaveBeenCalled()
+  })
+})

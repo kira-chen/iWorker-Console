@@ -19,11 +19,12 @@ import { derivePlatformState } from '@/utils/skillPublication'
 // 静态顶层导入（不用 await import()）：本文件末尾的「持久化读回」块会 vi.resetModules()，
 // 动态 import 在那之后拿到的会是另一个模块实例，跟 unifiedSkillMock 内部静态 import 的
 // mcpConnectorMock 对不上（同 positionMock.test.js 排查过的同一类坑，2026-09-23 待办 yuepu#10②）
-import { createMcp, deleteMcp, publishMcpService, applyMcpReviewResult } from '@/api/mcpConnectorMock'
+import { createMcp, deleteMcp, publishMcpService, delistMcpService, applyMcpReviewResult } from '@/api/mcpConnectorMock'
 import { listApisSync, getApi, updateApi, deactivateApi, applyApiReviewResult, __resetApiMock } from '@/api/apiConnectorMock'
 import { deactivateBizSystem, approveBizSystem, __resetBizSystemMock } from '@/api/bizSystemMock'
 import { opsRecords, resetAccessAuditMock } from '@/api/accessAuditMock'
 import { listReviews } from '@/api/reviewsMock'
+import { getFieldOptionNames, saveFieldOptions } from '@/api/fieldDictMock'
 
 const CAT = '办公效率'
 const pubState = (d) => derivePlatformState(d.publications)
@@ -33,6 +34,15 @@ async function mkSkill(over = {}) {
   // 图标必填、发布前须已选（待办 yuepu#18①）：createSkill 建的是无图标草稿，默认补一个；无图标场景传 icon: null
   if (over.icon !== null) await mock.updateSkill(skillId, { icon: over.icon || '🧪' })
   return skillId
+}
+
+/** 自建一条「已发布」技能：提交首发 → 审核通过落地（不依赖种子行的可变状态；种子 303 被专家引用、309 停用在审）。 */
+async function mkLiveSkill(over = {}) {
+  const id = await mkSkill(over)
+  await mock.updateSkill(id, { skillMd: '# 已发布测试\n\n正文' })
+  await mock.publishSkill(id, { releaseNotes: '首发' })
+  expect(mock.applySkillReviewResult(id, 'FIRST_PUBLISH', true)).toBe(true)
+  return id
 }
 
 describe('创建 / 导入（分类必选，fieldDict 同源校验）', () => {
@@ -128,25 +138,25 @@ describe('三态 + pendingAction 状态机', () => {
   })
 
   it('已发布提新版 → PUBLISHED_REVIEWING；撤回 → 恢复已发布（version 非空）', async () => {
-    // 用种子 302（已发布 v1.4.0）：先确保无 pending，再提交新版
-    mock._reset('sk_302', { pendingAction: null, pendingVersion: '', pendingReleaseNotes: '' })
-    await mock.publishSkill('sk_302', { bump: 'MINOR', releaseNotes: '新增能力' })
-    let pubs = (await mock.getSkillDetail('sk_302')).publications
+    // 自建已发布技能（v1.0.0）。原借种子 302：它引用了审核中的人力资源系统，按产品优化需求-202611 R4 不能再提交发布
+    const id = await mkLiveSkill({ name: '新版在审' })
+    await mock.publishSkill(id, { bump: 'MINOR', releaseNotes: '新增能力' })
+    let pubs = (await mock.getSkillDetail(id)).publications
     expect(derivePlatformState(pubs)).toBe('PUBLISHED_REVIEWING')
-    expect(mock._getRaw('sk_302').pendingVersion).toBe('v1.5.0') // MINOR 进位
-    await mock.withdrawPublish('sk_302')
-    pubs = (await mock.getSkillDetail('sk_302')).publications
+    expect(mock._getRaw(id).pendingVersion).toBe('v1.1.0') // MINOR 进位
+    await mock.withdrawPublish(id)
+    pubs = (await mock.getSkillDetail(id)).publications
     expect(derivePlatformState(pubs)).toBe('PUBLISHED')
   })
 
   it('停用 → 停用审核（PUBLISHED_DELISTING，归「审核中」）；撤回恢复已发布', async () => {
-    // 种子 303 已发布且无引用
-    mock._reset('sk_303', { pendingAction: null })
-    await mock.delistSkill('sk_303')
-    let pubs = (await mock.getSkillDetail('sk_303')).publications
+    // 自建已发布、无引用的技能（2026-11-10 起种子 303 被通用专家引用、停用会被拦，不再借种子）
+    const id = await mkLiveSkill({ name: '停用撤回技能' })
+    await mock.delistSkill(id)
+    let pubs = (await mock.getSkillDetail(id)).publications
     expect(derivePlatformState(pubs)).toBe('PUBLISHED_DELISTING')
-    await mock.withdrawPublish('sk_303')
-    pubs = (await mock.getSkillDetail('sk_303')).publications
+    await mock.withdrawPublish(id)
+    pubs = (await mock.getSkillDetail(id)).publications
     expect(derivePlatformState(pubs)).toBe('PUBLISHED')
   })
 
@@ -308,13 +318,13 @@ describe('强制回收（PRD 技能 §3.5.1，2026-10-12 改版：停用弹窗�
   })
 
   it('被引用也能提交强制回收（不受停用的引用拦截），引用关系保持不动', async () => {
-    const id = await mkPublished('被引用技能')
-    mock._reset(id, { refNames: ['客户成功岗', '经营分析专家'] })
-    await expect(mock.delistSkill(id)).rejects.toThrow('引用') // 普通停用被拦
+    const id = await mkPublished('被引用技能') // 市场技能：只会被专家引用（2026-11-10 起专家引用名存 expertRefNames）
+    mock._reset(id, { expertRefNames: ['经营分析专家', '研究报告专家'] })
+    await expect(mock.delistSkill(id)).rejects.toThrow('该技能被 2 个专家引用（经营分析专家、研究报告专家），需先解除引用后再停用。') // 普通停用被拦
     await expect(revokeSubmit(id, '安全风险')).resolves.toBeTruthy()
     mock.applySkillReviewResult(id, 'DELIST', true)
     const raw = mock._getRaw(id)
-    expect(raw.refNames).toEqual(['客户成功岗', '经营分析专家'])
+    expect(raw.expertRefNames).toEqual(['经营分析专家', '研究报告专家'])
     expect(raw.status).toBe('draft')
     expect(raw.revoked).toMatchObject({ reason: '安全风险' })
   })
@@ -380,9 +390,9 @@ describe('引用拦截（删除 / 停用）', () => {
     mock._reset(id, { refNames: ['经营分析岗', '财务审核岗'] })
     await expect(mock.removeSkill(id)).rejects.toThrow(/2 个岗位引用/)
     await expect(mock.removeSkill(id)).rejects.toThrow(/经营分析岗/)
-    // 种子 302：市场技能，已发布，被 3 个专家引用 → 停用同拦
+    // 种子 302：市场技能，已发布，被 4 个专家引用（2026-11-09 补种子专家 205）→ 停用同拦
     mock._reset('sk_302', { pendingAction: null })
-    await expect(mock.delistSkill('sk_302')).rejects.toThrow(/3 个专家引用.*停用/)
+    await expect(mock.delistSkill('sk_302')).rejects.toThrow(/4 个专家引用.*停用/)
   })
 
   it('无引用技能可删除；删除后详情 404', async () => {
@@ -392,11 +402,79 @@ describe('引用拦截（删除 / 停用）', () => {
   })
 })
 
+/* 2026-11-10 专家按类型引用技能：引用名分两组——refNames = 引用它的岗位（只有岗位私有技能有），expertRefNames = 引用它的专家
+ * （三类技能都可能有）。列表 VO 同时给分组字段与合并字段；停用 / 删除拦截看岗位 + 全部专家引用（此前通用技能从不拦）。 */
+describe('引用分组（岗位 / 专家）与通用技能的引用拦截', () => {
+  const listRow = async (id) => (await mock.listUnifiedSkills({ size: 1000 })).list.find((r) => r.id === id)
+
+  it('列表 VO · 种子 sk_301（岗位私有）：2 个岗位 + 1 个专家引用，refCount = 3，合并清单岗位在前', async () => {
+    expect(await listRow('sk_301')).toMatchObject({
+      positionRefNames: ['经营分析岗', '财务审核岗'],
+      expertRefNames: ['经营数据核查专家'],
+      refCount: 3,
+      refNames: ['经营分析岗', '财务审核岗', '经营数据核查专家'],
+      referencedByPositionCount: 2,
+      referencedByExpertCount: 1
+    })
+  })
+
+  it('列表 VO · 种子 sk_303（通用技能）被通用专家「企业知识助手」引用：refCount = 1（此前通用技能恒为 0）', async () => {
+    expect(await listRow('sk_303')).toMatchObject({
+      positionRefNames: [],
+      expertRefNames: ['企业知识助手'],
+      refCount: 1,
+      refNames: ['企业知识助手'],
+      referencedByPositionCount: 0,
+      referencedByExpertCount: 1
+    })
+  })
+
+  it('通用技能被专家引用 → 停用被拦，提示专家数与清单，状态不变', async () => {
+    mock._reset('sk_303', { pendingAction: null, expertRefNames: ['企业知识助手'] })
+    await expect(mock.delistSkill('sk_303')).rejects.toMatchObject({
+      code: 40901,
+      message: '该技能被 1 个专家引用（企业知识助手），需先解除引用后再停用。'
+    })
+    expect(mock._getRaw('sk_303').pendingAction).toBeNull()
+  })
+
+  it('通用技能被专家引用 → 删除被拦（未发布的通用技能），技能仍在', async () => {
+    const id = await mkSkill({ name: '被专家引用的通用草稿', type: 'SYSTEM_DEFAULT' })
+    mock._reset(id, { expertRefNames: ['企业知识助手', '经营分析专家'] })
+    await expect(mock.removeSkill(id)).rejects.toMatchObject({
+      code: 40901,
+      message: '该技能被 2 个专家引用（企业知识助手、经营分析专家），需先解除引用后再删除。'
+    })
+    expect(await mock.getSkillDetail(id)).toBeTruthy()
+  })
+
+  it('无引用的通用技能不拦：已发布的可提交停用审核，未发布的可删除', async () => {
+    const live = await mkLiveSkill({ name: '无引用的通用技能', type: 'SYSTEM_DEFAULT' })
+    await mock.delistSkill(live)
+    expect(pubState(await mock.getSkillDetail(live))).toBe('PUBLISHED_DELISTING')
+    const draft = await mkSkill({ name: '无引用的通用草稿', type: 'SYSTEM_DEFAULT' })
+    await mock.removeSkill(draft)
+    await expect(mock.getSkillDetail(draft)).rejects.toThrow('技能不存在')
+  })
+
+  it('岗位私有技能同时被岗位和专家引用 → 拦截文案两组都列（岗位在前，组间分号）', async () => {
+    const id = await mkSkill({ name: '岗位和专家都引用的草稿', type: 'POSITION' })
+    mock._reset(id, { refNames: ['经营分析岗', '财务审核岗'], expertRefNames: ['经营数据核查专家'] })
+    await expect(mock.removeSkill(id)).rejects.toThrow(
+      '该技能被 2 个岗位、1 个专家引用（经营分析岗、财务审核岗；经营数据核查专家），需先解除引用后再删除。'
+    )
+    // 只剩专家引用也照样拦（岗位私有技能不再只看岗位引用）
+    mock._reset(id, { refNames: [] })
+    await expect(mock.removeSkill(id)).rejects.toThrow('该技能被 1 个专家引用（经营数据核查专家），需先解除引用后再删除。')
+  })
+})
+
 describe('删除/停用状态守卫（md §二.4 L122 / §三.5 L94，2026-09-23 待办 yuepu#7①）', () => {
   it('已发布技能不可删除，即使无引用（此前无守卫会连版本快照一起删没）', async () => {
-    // 种子 303：已发布、SYSTEM_DEFAULT、无引用
-    await expect(mock.removeSkill('sk_303')).rejects.toMatchObject({ code: 40907 })
-    expect(await mock.getSkillDetail('sk_303')).toBeTruthy() // 未被误删
+    // 自建已发布、无引用的技能（2026-11-10 起种子 303 被专家引用，不再适合做「无引用」样本）
+    const id = await mkLiveSkill({ name: '已发布无引用技能' })
+    await expect(mock.removeSkill(id)).rejects.toMatchObject({ code: 40907 })
+    expect(await mock.getSkillDetail(id)).toBeTruthy() // 未被误删
   })
 
   it('审核中技能不可删除', async () => {
@@ -451,6 +529,26 @@ describe('列表：筛选 + 三态 + 默认按最近更新时间由近到远', (
     const ascPage1 = await mock.listUnifiedSkills({ sort: 'asc', size: 2, page: 1 })
     expect(ascPage1.list[0].updatedAt).toBe(times[0])
     expect(ascPage1.list[0].updatedAt <= desc.list[0].updatedAt).toBe(true)
+  })
+})
+
+// 产品优化需求-202611 修改点 15「删除别的分类后，存量数据的处理不变：技能显示"未分类"」（字段字典 md 同口径）：
+// 此前列表 VO 直接用存的分类名，删掉的分类照样显示。改为按字段字典当前选项读时派生，存的原值不动。
+describe('技能分类在字段字典里被删后显示「未分类」（产品优化需求-202611 修改点 15）', () => {
+  it('删掉「设计多媒体」→ 用它的技能列表行 / 详情 displayCategoryName 为空（页面显示「未分类」），存的分类原值不改写；分类加回后照常显示', async () => {
+    const before = getFieldOptionNames('skillCategory')
+    expect(before).toContain('设计多媒体')
+    const { skillId } = await mock.createSkill({ name: '分类被删的技能', type: 'PLATFORM', categoryName: '设计多媒体' })
+    const rowOf = async () => (await mock.listUnifiedSkills({ keyword: '分类被删的技能', size: 100 })).list.find((r) => r.id === skillId)
+    try {
+      await saveFieldOptions('skillCategory', before.filter((n) => n !== '设计多媒体'))
+      expect((await rowOf()).displayCategoryName).toBe('')
+      expect((await mock.getSkillDetail(skillId)).displayCategoryName).toBe('')
+      expect(mock._getRaw(skillId).category).toBe('设计多媒体') // 存量数据不改写
+    } finally {
+      await saveFieldOptions('skillCategory', before)
+    }
+    expect((await rowOf()).displayCategoryName).toBe('设计多媒体')
   })
 })
 
@@ -555,24 +653,27 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
     expect(row.toolCount).toBe(0)
   })
 
-  it('新建的 MCP 未发布时不进工具坞候选、已引用则显示「已停用」；发布通过后才进候选（yuepu#50）；连接器被删除后已引用工具侧回落显示 code', async () => {
+  // 2026-11-10 产品优化需求-202611 修改点 13（R4）：技能编辑页的候选放开到未发布 / 审核中（见下方 R4 describe）；
+  // 不传 includeUnpublished 的默认候选（自动化任务工具清单同走本端点）仍按 yuepu#50 只列已发布的。
+  // 已引用的未发布连接器不再标「已停用」：给真实连接状态 + pubState=UNPUBLISHED（「本技能已引用」区标「未发布」）。
+  it('新建的 MCP 未发布时不进默认候选（yuepu#50）、已引用则回显真实连接状态并标未发布（R4）；发布通过后进默认候选、发布态变已发布', async () => {
     const created = await createMcp({ type: 'PLATFORM', name: '测试专用 MCP', description: '仅供本用例验证候选实时性', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     const pick = async () => (await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })).map((t) => t.code)
-    expect(await pick()).not.toContain(`mcp__${created.code}`) // 未发布：不可被技能新引用
+    expect(await pick()).not.toContain(`mcp__${created.code}`) // 默认候选：未发布不列
 
     const id = await mkSkill({ name: '健康度联动' })
     await mock.updateSkill(id, { skillMd: `# 正文\n\n@tool[mcp__${created.code}]\n` })
     let detail = await mock.getSkillDetail(id)
     expect(detail.referencedTools[0].bizName).toBe('测试专用 MCP') // 已引用的仍回显名称
-    expect(detail.referencedTools[0].checkStatus).toBe('DISABLED') // 但给明确状态，不再「连接正常」
+    expect(detail.referencedTools[0]).toMatchObject({ checkStatus: 'UNKNOWN', pubState: 'UNPUBLISHED' }) // 新建未探测 → 未检测；发布态未发布
 
-    // 提交发布 + 审核通过 → 已发布，进入候选
+    // 提交发布 + 审核通过 → 已发布，进入默认候选
     await publishMcpService(created.code)
     expect(applyMcpReviewResult(created.code, 'FIRST_PUBLISH', true)).toBe(true)
     const candidates = await mock.toolPicker({ type: 'MCP', keyword: '测试专用' })
     expect(candidates.find((t) => t.code === `mcp__${created.code}`)).toMatchObject({ bizName: '测试专用 MCP' })
     detail = await mock.getSkillDetail(id)
-    expect(detail.referencedTools[0].checkStatus).toBe('UNKNOWN') // 新建未探测 → 未检测，而非已停用
+    expect(detail.referencedTools[0]).toMatchObject({ checkStatus: 'UNKNOWN', pubState: 'PUBLISHED' })
   })
 
   it('连接器被删除后已引用工具侧回落显示 code，不再假装「连接正常」', async () => {
@@ -586,7 +687,7 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
     expect(detail.referencedTools[0].checkStatus).toBe('UNKNOWN')
   })
 
-  it('API / 业务系统同样只列已发布的：候选与连接器发布态一致（yuepu#50）', async () => {
+  it('默认候选（不传 includeUnpublished）：API / 业务系统同样只列已发布的，与连接器发布态一致（yuepu#50）', async () => {
     const bizNames = (await mock.toolPicker({ type: 'BIZ_SYSTEM' })).map((t) => t.bizName)
     expect(bizNames).toContain('客户管理系统 CRM')
     expect(bizNames).not.toContain('人力资源系统') // 种子：审核中
@@ -648,6 +749,127 @@ describe('工具引用与类别标签实时联动（md §二.1 L45 / §三.3 L17
       __resetBizSystemMock()
       resetAccessAuditMock()
     }
+  })
+})
+
+/**
+ * 产品优化需求-202611 修改点 13（R4）：技能编辑页工具候选含未发布 / 审核中的连接器（三类都放开，R4-2 暂按），
+ * 已停用、已强制回收的不出现；技能提交发布时引用了未发布 / 审核中的连接器 → 阻断（R4-3 暂按），提示
+ * 「引用的「名称」尚未发布，请先发布该连接器或移除引用」。
+ * MCP 三态用自建行（名称带唯一关键词，按关键词取候选），不碰会被别的用例改写的种子；API / 业务系统用本文件从不改写的种子行。
+ */
+describe('技能工具候选含未发布的连接器 + 发布校验（产品优化需求-202611 修改点 13（R4））', () => {
+  const pickAll = (type, keyword) => mock.toolPicker({ type, includeUnpublished: true, ...(keyword ? { keyword } : {}) })
+  const pubStateOf = (list, code) => list.find((t) => t.code === code)?.pubState
+  const mkMcp = (name) => createMcp({ type: 'PLATFORM', name, description: 'R4 用例自建', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
+  /** 自建 MCP 并走到已发布（提交发布 → 审核通过）。 */
+  async function mkLiveMcp(name) {
+    const m = await mkMcp(name)
+    await publishMcpService(m.code)
+    expect(applyMcpReviewResult(m.code, 'FIRST_PUBLISH', true)).toBe(true)
+    return m
+  }
+  /** 自建一条发布必填项齐全、正文引用给定工具的草稿技能。 */
+  async function mkDraftReferencing(name, codes) {
+    const id = await mkSkill({ name })
+    await mock.updateSkill(id, { skillMd: `# ${name}\n\n${codes.map((c) => `@tool[${c}]`).join('\n')}\n` })
+    return id
+  }
+
+  it('MCP 页签候选含未发布、审核中、已发布三态的连接器，各带发布态', async () => {
+    const draft = await mkMcp('R4三态 未发布 MCP')
+    const reviewing = await mkMcp('R4三态 审核中 MCP')
+    await publishMcpService(reviewing.code)
+    const live = await mkLiveMcp('R4三态 已发布 MCP')
+    const list = await pickAll('MCP', 'R4三态')
+    expect(pubStateOf(list, `mcp__${draft.code}`)).toBe('UNPUBLISHED')
+    expect(pubStateOf(list, `mcp__${reviewing.code}`)).toBe('REVIEWING')
+    expect(pubStateOf(list, `mcp__${live.code}`)).toBe('PUBLISHED')
+  })
+
+  it('API、业务系统页签同样放开：含审核中与未发布的连接器（三类都放开）', async () => {
+    const api = await pickAll('API')
+    expect(pubStateOf(api, 'api__api_1102')).toBe('REVIEWING') // 种子：提交付款申请，审核中
+    expect(pubStateOf(api, 'api__api_1106')).toBe('UNPUBLISHED') // 种子：星火任务链执行，从未发布
+    const biz = await pickAll('BIZ_SYSTEM')
+    expect(pubStateOf(biz, 'biz__biz_2102')).toBe('REVIEWING') // 种子：人力资源系统
+    expect(pubStateOf(biz, 'biz__biz_2103')).toBe('UNPUBLISHED') // 种子：合同管理系统
+  })
+
+  it('已停用（停用审核通过、回到未发布但有最近发布时间）的连接器不出现在候选里', async () => {
+    const m = await mkLiveMcp('R4停用 MCP')
+    expect((await pickAll('MCP', 'R4停用')).map((t) => t.code)).toContain(`mcp__${m.code}`) // 前提：停用前在候选里
+    await delistMcpService(m.code)
+    expect(applyMcpReviewResult(m.code, 'DELIST', true)).toBe(true)
+    expect((await pickAll('MCP', 'R4停用')).map((t) => t.code)).not.toContain(`mcp__${m.code}`)
+  })
+
+  it('已强制回收的连接器不出现在候选里——回收后重新提交发布、仍在审核中的也不出现', async () => {
+    expect((await pickAll('API')).map((t) => t.code)).not.toContain('api__api_1104') // 种子：新增客户跟进，已回收
+    const m = await mkLiveMcp('R4回收 MCP')
+    await delistMcpService(m.code, { forceRevoke: true, reason: 'R4 用例' })
+    expect(applyMcpReviewResult(m.code, 'DELIST', true)).toBe(true)
+    expect((await pickAll('MCP', 'R4回收')).map((t) => t.code)).not.toContain(`mcp__${m.code}`)
+    await publishMcpService(m.code) // 重新提交发布：审核中，但「已回收」标记要审核通过才清
+    expect((await pickAll('MCP', 'R4回收')).map((t) => t.code)).not.toContain(`mcp__${m.code}`)
+  })
+
+  it('「本技能已引用」回显带发布态：审核中的为 REVIEWING 且给真实连接状态（不再标已停用），已发布的为 PUBLISHED', async () => {
+    const id = await mkDraftReferencing('R4已引用回显', ['biz__biz_2102', 'mcp__knowledge_hub'])
+    const refs = (await mock.getSkillDetail(id)).referencedTools
+    expect(refs.find((t) => t.code === 'biz__biz_2102')).toMatchObject({ bizName: '人力资源系统', pubState: 'REVIEWING', checkStatus: 'UNKNOWN' })
+    expect(refs.find((t) => t.code === 'mcp__knowledge_hub')).toMatchObject({ pubState: 'PUBLISHED' })
+  })
+
+  it('提交发布：引用了未发布的连接器 → 拒绝并提示「引用的「名称」尚未发布…」，技能仍是未发布、不进审核', async () => {
+    const m = await mkMcp('R4阻断 未发布 MCP')
+    const id = await mkDraftReferencing('R4阻断未发布', [`mcp__${m.code}`])
+    await expect(mock.publishSkill(id, { releaseNotes: '首发' })).rejects.toThrow('引用的「R4阻断 未发布 MCP」尚未发布，请先发布该连接器或移除引用')
+    expect(mock._getRaw(id).pendingAction).toBeFalsy()
+    expect(pubState(await mock.getSkillDetail(id))).toBe('INITIAL')
+  })
+
+  it('提交发布：引用了审核中的连接器同样拒绝', async () => {
+    const id = await mkDraftReferencing('R4阻断审核中', ['biz__biz_2102'])
+    await expect(mock.publishSkill(id, { releaseNotes: '首发' })).rejects.toThrow('引用的「人力资源系统」尚未发布，请先发布该连接器或移除引用')
+    expect(mock._getRaw(id).pendingAction).toBeFalsy()
+  })
+
+  it('已发布技能提交新版本同样校验：新版正文引用了未发布的连接器 → 拒绝，线上版本不受影响', async () => {
+    const id = await mkLiveSkill({ name: 'R4新版校验' })
+    const m = await mkMcp('R4新版 未发布 MCP')
+    await mock.updateSkill(id, { skillMd: `# 新版\n\n@tool[mcp__${m.code}]\n` })
+    await expect(mock.publishSkill(id, { bump: 'MINOR', releaseNotes: '迭代' })).rejects.toThrow('引用的「R4新版 未发布 MCP」尚未发布')
+    expect(pubState(await mock.getSkillDetail(id))).toBe('PUBLISHED') // 仍是已发布、无在审新版
+  })
+
+  it('连接器发布通过后阻断随之解除：同一技能可以提交发布', async () => {
+    const m = await mkMcp('R4解除 MCP')
+    const id = await mkDraftReferencing('R4阻断解除', [`mcp__${m.code}`])
+    await expect(mock.publishSkill(id, { releaseNotes: '首发' })).rejects.toThrow('尚未发布') // 前提：发布前被拦
+    await publishMcpService(m.code)
+    expect(applyMcpReviewResult(m.code, 'FIRST_PUBLISH', true)).toBe(true)
+    await expect(mock.publishSkill(id, { releaseNotes: '首发' })).resolves.toMatchObject({ pendingVersion: 'v1.0.0' })
+  })
+
+  it('引用已停用的连接器不在本条阻断范围（只拦未发布 / 审核中；已停用按软引用口径，「本技能已引用」标已停用）', async () => {
+    const m = await mkLiveMcp('R4软引用 MCP')
+    const id = await mkDraftReferencing('R4软引用', [`mcp__${m.code}`])
+    await delistMcpService(m.code)
+    expect(applyMcpReviewResult(m.code, 'DELIST', true)).toBe(true)
+    expect((await mock.getSkillDetail(id)).referencedTools[0]).toMatchObject({ checkStatus: 'DISABLED', pubState: null }) // 前提：已停用
+    await expect(mock.publishSkill(id, { releaseNotes: '首发' })).resolves.toMatchObject({ pendingVersion: 'v1.0.0' })
+  })
+
+  it('列表行携带 unpublishedTools：只含引用的未发布 / 审核中连接器（版本管理弹窗据此拦【提交发布】）', async () => {
+    const m = await mkMcp('R4列表 未发布 MCP')
+    await mkDraftReferencing('R4列表行', [`mcp__${m.code}`, 'biz__biz_2102', 'mcp__knowledge_hub'])
+    const row = (await mock.listUnifiedSkills({ keyword: 'R4列表行', size: 10 })).list[0]
+    expect(row.toolCount).toBe(3) // 前提：三个引用都识别到
+    expect(row.unpublishedTools.map((t) => [t.bizName, t.pubState])).toEqual([
+      ['R4列表 未发布 MCP', 'UNPUBLISHED'],
+      ['人力资源系统', 'REVIEWING']
+    ])
   })
 })
 
@@ -716,7 +938,97 @@ describe('编辑保存门（mock 兜底校验）与示例问题 AI 生成', () =
   })
 })
 
-describe('unifiedSkillMock · 持久化读回（mockPersist v7，2026-10-09 待办 yuepu#53 + #83 bump；key iworker-demo-mock:unifiedSkill）', () => {
+describe('上传技能包更新已有技能（产品优化需求-202611 R5 草案）', () => {
+  const CONFIG_KEYS = ['name', 'description', 'exampleQuestion', 'icon', 'displayCategoryId']
+  const pathsOf = async (id) => (await mock.listSkillFiles(id)).files.map((f) => f.path)
+
+  it('包名与当前技能名不一致 → 拒绝并说明原因，原有文件不变', async () => {
+    const id = await mkSkill({ name: 'R5 名称校验' })
+    await mock.saveSkillFile(id, { path: 'references/旧文件.md', content: '旧' })
+    await expect(mock.importZipToSkill(id, { fileName: '别的技能.zip' })).rejects.toThrow(
+      '技能包名称（别的技能）与当前技能不一致，请检查后重新上传'
+    )
+    expect(await pathsOf(id)).toContain('references/旧文件.md')
+  })
+
+  it('不是 .zip → 拒绝', async () => {
+    const id = await mkSkill({ name: 'R5 后缀校验' })
+    await expect(mock.importZipToSkill(id, { fileName: 'R5 后缀校验.rar' })).rejects.toThrow('仅支持 .zip 技能包')
+  })
+
+  it('包名一致 → 整包替换全部文件，名称 / 描述 / 示例问题 / 图标 / 分类不变', async () => {
+    const id = await mkSkill({ name: 'R5 整包替换' })
+    await mock.updateSkill(id, { description: '原描述', exampleQuestion: '原示例问题' })
+    await mock.saveSkillFile(id, { path: 'references/旧文件.md', content: '旧' })
+    const before = await mock.getSkillDetail(id)
+    await mock.importZipToSkill(id, { fileName: 'R5 整包替换.zip' })
+    const after = await mock.getSkillDetail(id)
+    const paths = await pathsOf(id)
+    expect(paths).toContain('SKILL.md')
+    expect(paths).not.toContain('references/旧文件.md')
+    for (const k of CONFIG_KEYS) expect(after[k]).toEqual(before[k])
+    expect(after.skillMd).toContain('# R5 整包替换')
+  })
+
+  it('已发布技能上传后只改草稿：状态与线上版本号不变', async () => {
+    const id = await mkSkill({ name: 'R5 已发布' })
+    mock._reset(id, { status: 'published', version: 'v1.0.0' })
+    await mock.importZipToSkill(id, { fileName: 'R5 已发布.zip' })
+    const d = await mock.getSkillDetail(id)
+    expect(d.versionLabel).toBe('v1.0.0')
+    expect(pubState(d)).toBe('PUBLISHED')
+  })
+
+  it('审核中 → 拒绝（锁定不可修改）', async () => {
+    const id = await mkSkill({ name: 'R5 审核中' })
+    mock._reset(id, { pendingAction: 'publish' })
+    await expect(mock.importZipToSkill(id, { fileName: 'R5 审核中.zip' })).rejects.toThrow('技能审核中，已锁定不可修改')
+  })
+})
+
+describe('市场技能「不在市场展示」（产品优化需求-202611 R14）', () => {
+  it('市场技能打开后：详情和列表都带 hideFromMarket，默认安装随之关掉', async () => {
+    const id = await mkSkill({ name: 'R14 市场技能隐藏' })
+    await mock.updateSkill(id, { defaultInstall: true })
+    await mock.updateSkill(id, { hideFromMarket: true })
+    const d = await mock.getSkillDetail(id)
+    expect(d.hideFromMarket).toBe(true)
+    expect(d.defaultInstall).toBe(false)
+    const row = (await mock.listUnifiedSkills({ keyword: 'R14 市场技能隐藏', size: 50 })).list.find((r) => r.id === id)
+    expect(row.hideFromMarket).toBe(true)
+  })
+
+  it('不在市场展示的技能不能再打开默认安装', async () => {
+    const id = await mkSkill({ name: 'R14 互斥' })
+    await mock.updateSkill(id, { hideFromMarket: true })
+    await expect(mock.updateSkill(id, { defaultInstall: true })).rejects.toThrow('不在市场展示的技能不能默认安装')
+    expect((await mock.getSkillDetail(id)).defaultInstall).toBe(false)
+  })
+
+  it('关掉后恢复在市场展示，默认安装可以再打开', async () => {
+    const id = await mkSkill({ name: 'R14 恢复展示' })
+    await mock.updateSkill(id, { hideFromMarket: true })
+    await mock.updateSkill(id, { hideFromMarket: false })
+    await mock.updateSkill(id, { defaultInstall: true })
+    const d = await mock.getSkillDetail(id)
+    expect(d.hideFromMarket).toBe(false)
+    expect(d.defaultInstall).toBe(true)
+  })
+
+  it('岗位私有、通用技能没有这个开关：传了也不生效', async () => {
+    for (const type of ['POSITION', 'SYSTEM_DEFAULT']) {
+      const id = await mkSkill({ name: 'R14 非市场 ' + type, type })
+      await mock.updateSkill(id, { hideFromMarket: true })
+      expect((await mock.getSkillDetail(id)).hideFromMarket).toBe(false)
+    }
+  })
+
+  it('演示种子：合同风险检查（sk_304）不在市场展示', async () => {
+    expect((await mock.getSkillDetail('sk_304')).hideFromMarket).toBe(true)
+  })
+})
+
+describe('unifiedSkillMock · 持久化读回（mockPersist v12，2026-11-10 产品优化需求-202611 R4 bump；key iworker-demo-mock:unifiedSkill）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（mockPersist 探测后走纯内存模式），
   // 故与 sampleTaskMock.test 同款注入内存版存储，用 vi.resetModules + 动态 import 模拟「写入 → 刷新 → 重载」。
   const KEY = 'iworker-demo-mock:unifiedSkill'
@@ -740,10 +1052,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v7，2026-10-09 待�
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=9）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=13）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(9)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(13)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

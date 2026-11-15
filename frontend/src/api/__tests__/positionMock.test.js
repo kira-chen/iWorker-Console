@@ -14,6 +14,7 @@ import {
   delistPositionPublication,
   relistPositionPublication,
   getPositionNameById,
+  getPosition,
   applyPositionReviewResult,
   __resetPositionMock
 } from '../positionMock'
@@ -28,7 +29,7 @@ import { __resetOrgMock } from '../adminUserMock'
 import { listSampleTasks, __resetSampleTaskMock } from '../sampleTaskMock'
 import { listDataTables, __resetDataTableMock } from '../dataTableMock'
 import { getRuntimeSpec, __resetRuntimeSpecMock } from '../runtimeSpecMock'
-import { listExperts, __resetExpertMock } from '../domainExpertMock'
+import { listExperts, unbindExpertFromPosition, __resetExpertMock } from '../domainExpertMock'
 import { listMcpSync, __resetMcpMock } from '../mcpConnectorMock'
 import { listApisSync, __resetApiMock } from '../apiConnectorMock'
 import { listBizSystemsSync, __resetBizSystemMock } from '../bizSystemMock'
@@ -63,11 +64,17 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     const [biz] = list
     // claimedUserCount 2026-09-23 待办 yuepu#9①起实时派生自 positionAssignmentMock 的分配表
     // （不再是静态种子）：401 种子绑了 2 人（zhangwei 启用 + zhouming 停用，领用关系不看账号启停）
-    expect(biz).toMatchObject({ skillCount: 1, agentCount: 3, claimedUserCount: 2, latestVersion: 'v2.1.0', status: 'published' })
+    expect(biz).toMatchObject({ skillCount: 1, claimedUserCount: 2, latestVersion: 'v2.1.0', status: 'published' })
     expect(list[3].latestVersion).toBe('')
     // 升序排序参数
     const asc = await listPositions({ sort: 'asc' })
     expect(asc.list[0].name).toBe('市场研究岗')
+  })
+
+  it('列表行不再带「Agent 数」，「技能数」照旧按岗位引用的技能计（产品优化需求-202611 修改点 1：岗位列表删除「Agent 数」列，「技能数」口径不变）', async () => {
+    const { list } = await listPositions()
+    for (const row of list) expect(row).not.toHaveProperty('agentCount')
+    expect(list.find((p) => p.positionId === 401).skillCount).toBe((await getPosition(401)).skills.length)
   })
 
   it('keyword 覆盖岗位描述；status 三态筛选按展示口径（未发布/审核中/已发布）', async () => {
@@ -108,6 +115,8 @@ describe('positionMock —— 岗位列表页 mock（2026-09-01 PRD 对齐轮）
     expect(await getNextVersionLabel(402)).toBe('v1.4.1')
     // 种子里 402 引用了已回收的 api_1104（待办 yuepu#83 样例），发布前检查会阻断；本用例测的是发布状态机，先解除该引用
     await updatePosition(402, { connectorApiIds: ['api_1103'] })
+    // 402 还引用了未发布的「法务审阅专家」(203)（存量数据样例，产品优化需求-202611 修改点 2 发布前检查会阻断），同样先解除
+    unbindExpertFromPosition(203, 402)
     await publishPosition(402, { bump: 'MINOR', releaseNotes: '新增能力' })
     let row = (await listPositions({ keyword: '客户成功岗' })).list[0]
     expect(row.pendingAction).toBe('PUBLISH')
@@ -211,7 +220,7 @@ describe('positionMock · 删岗 / 改名回写专家与连接器里的岗位引
   })
 })
 
-describe('positionMock · 持久化读回（mockPersist v10，写点 → 刷新后仍在）', () => {
+describe('positionMock · 持久化读回（mockPersist v14，写点 → 刷新后仍在）', () => {
   // 本仓 jsdom 环境下 globalThis.localStorage 为 undefined（Node 22+ 自带的实验性 localStorage 占位，
   // mockPersist 探测后走纯内存模式），故与 mockPersist.test 同款：注入内存版存储，
   // 用 vi.resetModules + 动态 import 模拟「写入 → 刷新页面 → 重新加载模块」。
@@ -236,16 +245,39 @@ describe('positionMock · 持久化读回（mockPersist v10，写点 → 刷新�
     vi.resetModules()
   })
 
-  it('deletePosition 落盘（v=12）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
+  it('deletePosition 落盘（v=14）→ 重新 import 模块（模拟刷新）→ 列表只剩 3 条、被删岗位不再出现', async () => {
     const first = await import('../positionMock')
     await first.deletePosition(404)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(12) // v12：种子技能引用补样例（yuepu#77）；v11：快照历史归档 snapshotArchive（yuepu#76）；v10：402 种子不再绑未发布 / 审核中 MCP（yuepu#57⑧）；v9：技能引用 VO 增 displayCategoryName（yuepu#61②）；v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
+    expect(snap.v).toBe(14) // v14：工作台新增 positionSopBrief（SOP 简版，产品优化需求-202611 修改点 18）；v13：取消 Agent，工作台 agents[].skills[] 改 skills[]、列表行去掉 agentCount（同上修改点 1）；v12：种子技能引用补样例（yuepu#77）；v11：快照历史归档 snapshotArchive（yuepu#76）；v10：402 种子不再绑未发布 / 审核中 MCP（yuepu#57⑧）；v9：技能引用 VO 增 displayCategoryName（yuepu#61②）；v8：技能引用 VO 增 revoked 字段（强制回收）；v7：401/402 种子补 connectorMcpIds/ApiIds（2026-09-28 待办 yuepu#42；v6 为 claimedUserCount 改派生 + 404 改引 sk_305）
     expect(snap.data.positions.map((p) => p.positionId)).toEqual([401, 402, 403])
     vi.resetModules()
     const fresh = await import('../positionMock')
     const { list, total } = await fresh.listPositions()
     expect(total).toBe(3)
     expect(list.map((p) => p.name)).not.toContain('市场研究岗')
+  })
+})
+
+describe('positionMock · SOP 简版（产品优化需求-202611 修改点 18）', () => {
+  beforeEach(() => __resetPositionMock())
+
+  it('详情带 positionSopBrief；演示种子 401 有一份简版', async () => {
+    const d = await getPosition(401)
+    expect(d.positionSopBrief).toContain('1. 确认目标和所需信息')
+  })
+
+  it('保存后读回；超过 200 字拒绝并定位到字段', async () => {
+    await updatePosition(401, { positionSopBrief: '1. 收集需求\n2. 交付结果' })
+    expect((await getPosition(401)).positionSopBrief).toBe('1. 收集需求\n2. 交付结果')
+    await expect(updatePosition(401, { positionSopBrief: '字'.repeat(201) })).rejects.toMatchObject({
+      message: 'SOP 简版最多 200 个字符',
+      field: 'positionSopBrief'
+    })
+  })
+
+  it('选填：清空也能保存', async () => {
+    await updatePosition(401, { positionSopBrief: '' })
+    expect((await getPosition(401)).positionSopBrief).toBe('')
   })
 })

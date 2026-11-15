@@ -7,7 +7,8 @@ import { explainMcpError } from '@/utils/mcpVerify'
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/API/prd-API.md：
  *   §二.3 连通性验证（连接配置变更后原验证结果失效 / 未验证不允许发布）
  *   §二.4 发布 / 撤回 / 停用 状态机（撤回按待审类型恢复）
- *   §二.5 服务提供系统（名称必填 ≤64 平台内唯一、描述必填 ≤2000；含 API 不可删）
+ *   §二.5 服务提供系统（名称必填 ≤64 平台内唯一、描述必填 ≤2000；含 API 不可删；
+ *         产品优化需求-202611 修改点 14（R9）起与 MCP 共用，含 MCP 亦不可删、列表带 mcpCount / mcpNames）
  *   §一.1 搜索按名称或描述 / 状态筛选
  *   §三.3 鉴权密钥保存后遮罩、查看态不明文（出参 valueMasked、留空保留）
  *   §4 强制回收（停用时勾选，同走审核；操作人=提交申请的管理员；旧快照缺回收字段按普通停用）
@@ -230,12 +231,33 @@ describe('④ 服务提供系统校验（md §二.5 L78）', () => {
   })
 })
 
-describe('⑤ 含 API 的系统不可删（md §二.5 L81）', () => {
-  it('pv_1 下有 2 个 API → 拒「该系统下有 2 个 API，需先迁移或删除后才能删除系统」；空系统 pv_3 可删', async () => {
-    await expect(run(m.deleteProviderSystem('pv_1'))).rejects.toThrow('该系统下有 2 个 API，需先迁移或删除后才能删除系统')
+describe('⑤ 含 API 或 MCP 的系统不可删（md §二.5 L81；产品优化需求-202611 修改点 14（R9）：除 API 外也要检查其下 MCP）', () => {
+  it('pv_1 下有 2 个 API、2 个 MCP → 拒并点名「该系统下有 2 个 API、2 个 MCP（报销系统 MCP、合同系统 MCP），需先迁移或删除后才能删除系统」；空系统 pv_3 可删', async () => {
+    await expect(run(m.deleteProviderSystem('pv_1'))).rejects.toThrow(
+      '该系统下有 2 个 API、2 个 MCP（报销系统 MCP、合同系统 MCP），需先迁移或删除后才能删除系统'
+    )
     await expect(run(m.deleteProviderSystem('pv_3'))).resolves.toEqual({})
     const { list } = await run(m.listProviderSystems())
     expect(list.some((p) => p.id === 'pv_3')).toBe(false)
+  })
+
+  it('系统下没有 API、只挂了 MCP，同样不可删：拒「该系统下有 1 个 MCP（项目管理 MCP），需先迁移或删除后才能删除系统」，系统仍在', async () => {
+    // MCP 保存时会动态 import 本模块校验系统、再走一次 delay —— 假定时器推不到那一步，本例改用真定时器（全程约 0.7s）
+    vi.useRealTimers()
+    const ps = await m.createProviderSystem({ name: '只有 MCP 的系统', description: '测试用' })
+    const mcp = await import('../mcpConnectorMock')
+    await mcp.updateMcp('project_hub', { providerSystemId: ps.id })
+    await expect(m.deleteProviderSystem(ps.id)).rejects.toThrow('该系统下有 1 个 MCP（项目管理 MCP），需先迁移或删除后才能删除系统')
+    const { list } = await m.listProviderSystems()
+    expect(list.some((p) => p.id === ps.id)).toBe(true)
+  })
+
+  it('列表带聚合 mcpCount / mcpNames（pv_1 两个：报销系统 MCP、合同系统 MCP；pv_3 零个）——API 列表【删除系统】置灰提示与 MCP 列表分组头计数都用它', async () => {
+    const { list } = await run(m.listProviderSystems())
+    const pv1 = list.find((p) => p.id === 'pv_1')
+    expect(pv1.mcpCount).toBe(2)
+    expect([...pv1.mcpNames].sort()).toEqual(['合同系统 MCP', '报销系统 MCP'].sort())
+    expect(list.find((p) => p.id === 'pv_3')).toMatchObject({ mcpCount: 0, mcpNames: [] })
   })
 })
 

@@ -8,9 +8,13 @@
  * 本组件与 ToolDock 均不持有这些 → 仅 emit('locate', ref) / emit('remove-ref', ref)，由父级
  * SkillFocusEditor 执行；referencedView 由父级用 mergeReferencedView 合并好作 prop 传入
  * （parsedRefs/refStatusMap/localInsertNames 仍在父级算，不搬进来，避免插入链路割裂）。
+ *
+ * 发布态标签（产品优化需求-202611 修改点 13（R4））：引用的连接器未发布 / 审核中时，名称旁标「未发布」「审核中」，
+ * 与工具坞候选卡同一口径（utils/toolPubState）；已发布不标。已停用 / 已回收仍走下方 DISABLED 的「会跳过」角标。
  */
 import { Close } from '@element-plus/icons-vue'
 import { healthClass } from '@/utils/positionModel'
+import { toolPubTag } from '@/utils/toolPubState'
 import {
   REF_BADGE_BROKEN,
   REF_BADGE_DEGRADED,
@@ -20,7 +24,7 @@ import {
 } from '@/utils/skillTerms'
 
 defineProps({
-  // 父级合并好的已引用视图：[{ code, count, checkStatus, requiresConfirmation, bizName, known }]
+  // 父级合并好的已引用视图：[{ code, count, checkStatus, requiresConfirmation, bizName, known, pubState }]
   referencedView: { type: Array, default: () => [] },
   // 只读态（平台技能 Tab 只读详情）：移除「移除引用」X（写入口）；空态/提示文案改为只读口径。
   readonly: { type: Boolean, default: false }
@@ -62,6 +66,12 @@ function refAlert(r) {
           :class="{ 'ref-code--name': r.bizName }"
           :title="r.bizName ? `${r.bizName}（${r.code}）` : r.code"
         >{{ r.bizName || r.code }}</span>
+        <!-- R4：连接器发布态标签（未发布 / 审核中；已发布不标），紧跟名称 -->
+        <span
+          v-if="toolPubTag(r.pubState)"
+          class="ref-pub"
+          :class="`ref-pub--${toolPubTag(r.pubState).type}`"
+        >{{ toolPubTag(r.pubState).label }}</span>
         <span v-if="r.count > 1" class="ref-count" :title="`正文引用 ${r.count} 处`">×{{ r.count }}</span>
         <span v-if="r.requiresConfirmation" class="ref-conf" title="写类操作，运行时需二次确认">⚠</span>
         <!-- 组④：断链/失效角标（红=用不了；黄=会跳过），符号化提示——具体说明鼠标悬浮展开
@@ -148,6 +158,25 @@ function refAlert(r) {
 .ref-code--name {
   font-family: inherit;
   color: var(--c-text);
+}
+/* R4 发布态标签：与角标同尺寸的小胶囊；配色取连接器列表三态（未发布=灰 / 审核中=黄） */
+.ref-pub {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  font-size: 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.ref-pub--info {
+  color: var(--c-text-muted);
+  background: var(--bg-active);
+}
+.ref-pub--warning {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
 }
 .ref-count {
   font-size: 11px;

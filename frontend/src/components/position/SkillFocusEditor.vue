@@ -131,9 +131,10 @@ const props = defineProps({
    * 审核详情页不传，现状表现零变化）。启用后：
    * - 信息区首行加「图标」必填字段（2026-09-09 批次 3C · C5 起由 IconField 渲染显式双按钮）；
    * - 描述 2000 字计数 + 新占位（疑点6）；示例问题必填 + 新占位 +【AI 生成】按钮（疑点5）；
-   * - 技能分类三类技能均显示（固定 11 类 fieldDict 同源，必选，疑点8）；
+   * - 技能分类三类技能均显示（选项 fieldDict 同源，必选，疑点8）；
    * - 顶栏按钮改【发布】+ 完整发布门（publishReadiness）；只读态顶行加「只读查看」标记；
-   * - ToolDock 页签收敛 MCP / API / 业务系统 + 空态「去连接器接入」链接；插入 toast「已插入工具引用」。
+   * - ToolDock 页签收敛 MCP / API / 业务系统 + 空态「去连接器接入」链接；插入 toast「已插入工具引用」；
+   *   候选含未发布 / 审核中的连接器并标发布态（产品优化需求-202611 修改点 13（R4））。
    */
   adminContext: { type: Boolean, default: false },
   /**
@@ -165,6 +166,7 @@ const emit = defineEmits([
   'save-config', // 配置区手动保存：顶栏「保存配置」按钮 → 父级 saveConfig 提交配置字段+展示分类
   'trial-run', // 组④：🧪 试跑此技能 → 父级先 flush 再开效果测试台
   'tree-retry',
+  'package-uploaded', // (saveVO) 文件目录【上传技能包】整包替换成功（R5 草案）
   // 'review' 已随 ReviewSkillDetailPage 退役删除（2026-09-09 G7 清理）
   'open-version' // 2026-08-14：顶栏「版本发布」按钮 → 父级壳打开版本发布弹窗
 ])
@@ -311,6 +313,12 @@ const defaultInstall = computed({
   get: () => !!props.skill?.defaultInstall,
   set: (v) => emitPatch({ defaultInstall: !!v })
 })
+// 不在市场展示（产品优化需求-202611 R14）：与默认安装同处顶栏、同样只对市场技能展示（showDefaultInstall 同口径）。
+// 打开后客户端市场不展示、员工不能单独安装，专家照样可引用；默认安装随之关闭并置灰（两者互斥）。
+const hideFromMarket = computed({
+  get: () => !!props.skill?.hideFromMarket,
+  set: (v) => emitPatch(v ? { hideFromMarket: true, defaultInstall: false } : { hideFromMarket: false })
+})
 
 // 「保存配置」点击：先让当前聚焦的输入框失焦再通知父级校验。输入法组合态（候选未上屏）的文本
 // 要等 compositionend 才回写 v-model → skill 状态；点击引发的失焦提交时序因浏览器/输入法而异，
@@ -330,7 +338,7 @@ async function onSaveConfigClick() {
 // 后续若 FDE 技能确需分类，另起一套 FDE 侧分类，不复用本控件与本端点。
 // 2026-08-24：去掉「分类选项非空才渲染」——库里一个分类都没有时选择器整个消失，用户以为控件丢了；
 // 现与「默认安装」同条件常驻，选项为空就是空下拉（Element 自带"无数据"），提示先去字段字典建分类。
-// 2026-09-01（疑点8）：技能编辑器语境三类技能均显示分类（固定 11 类 fieldDict 同源、必选，
+// 2026-09-01（疑点8）：技能编辑器语境三类技能均显示分类（选项 fieldDict 同源、必选，
 // 只读态改禁用而非隐藏）；岗位工作台等旧语境判据不变。
 const showCategorySelect = computed(() =>
   props.adminContext ? true : !ro.value && isPlatformSkill.value && !props.hideMarketFields
@@ -383,7 +391,8 @@ const parsedRefs = computed(() => parseSkillMdTools(debouncedMdText.value))
 const refStatusMap = computed(() => {
   const map = {}
   for (const t of props.skill?.referencedTools || []) {
-    map[t.code] = { checkStatus: t.checkStatus, requiresConfirmation: t.requiresConfirmation, bizName: t.bizName }
+    // pubState：引用连接器的发布态（产品优化需求-202611 修改点 13（R4）），「本技能已引用」区标未发布 / 审核中
+    map[t.code] = { checkStatus: t.checkStatus, requiresConfirmation: t.requiresConfirmation, bizName: t.bizName, pubState: t.pubState || null }
     // 存量兼容：数据表回显已归一为表级（table__X），旧文档里按操作插入的 table__X__op 引用
     // 挂展示别名（整表收敛：别名即表名，无操作后缀），徽标/状态照常显示，不退化成裸 code。
     for (const a of tableToolOpAliases(t.code, t.bizName)) {
@@ -399,8 +408,13 @@ const refStatusMap = computed(() => {
 // 让左栏列表在 referencedTools 刷新前就用刚插入的业务名即时显示。切技能时清空（隔离跨技能串扰）。
 const localInsertNames = reactive({})
 // 合并 + 优先级回落逻辑抽至纯函数 mergeReferencedView（utils/positionModel）并上单测护栏，此处仅调用，行为等价。
+// R4：合并结果再补上连接器发布态（取后端回显；刚插入、回显未到的暂无，保存回显后补齐）。
+// 只在这里补一个展示字段，不改 mergeReferencedView 的合并口径。
 const referencedView = computed(() =>
-  mergeReferencedView(parsedRefs.value, refStatusMap.value, localInsertNames)
+  mergeReferencedView(parsedRefs.value, refStatusMap.value, localInsertNames).map((r) => ({
+    ...r,
+    pubState: (refStatusMap.value[r.code] || refStatusMap.value[r.codes[0]] || {}).pubState || null
+  }))
 )
 
 // 移除工具徽标（§5.4）：单处直删；多处弹「全删 + 只读定位列表」。
@@ -812,15 +826,27 @@ onBeforeUnmount(() => {
       </template>
 
       <!-- N9 默认安装（顶栏，平台技能专属）：label + 开关同行，贴按钮组左侧。2026-08-14 由信息条还原回顶栏。 -->
+      <!-- 不在市场展示（R14，市场技能专属，与默认安装互斥） -->
       <el-tooltip
         v-if="showDefaultInstall"
-        content="打开后，客户端初始化时会默认安装该技能；关闭则由终端用户自行选择安装。"
+        content="打开后，客户端市场不展示该技能，员工不能单独安装；专家仍可引用。"
         placement="bottom"
         effect="dark"
       >
-        <span class="eh-di">
+        <span class="eh-di" data-testid="hide-from-market">
+          <span class="eh-di-l">不在市场展示</span>
+          <el-switch v-model="hideFromMarket" size="small" />
+        </span>
+      </el-tooltip>
+      <el-tooltip
+        v-if="showDefaultInstall"
+        :content="hideFromMarket ? '不在市场展示的技能不能默认安装' : '打开后，客户端初始化时会默认安装该技能；关闭则由终端用户自行选择安装。'"
+        placement="bottom"
+        effect="dark"
+      >
+        <span class="eh-di" data-testid="default-install">
           <span class="eh-di-l">默认安装</span>
-          <el-switch v-model="defaultInstall" size="small" />
+          <el-switch v-model="defaultInstall" size="small" :disabled="hideFromMarket" />
         </span>
       </el-tooltip>
 
@@ -997,12 +1023,14 @@ onBeforeUnmount(() => {
         :loading="treeLoading"
         :load-error="treeLoadError"
         :readonly="ro"
+        :locked="locked && !readonly"
         @select="(p) => emit('select-file', p)"
         @search-jump="onSearchJump"
         @file-created="(p, vo) => emit('file-created', p, vo)"
         @file-renamed="(f, t, vo) => emit('file-renamed', f, t, vo)"
         @file-deleted="(p, vo) => emit('file-deleted', p, vo)"
         @tree-changed="(vo, m) => emit('tree-changed', vo, m)"
+        @package-uploaded="(vo) => emit('package-uploaded', vo)"
         @retry="emit('tree-retry')"
       />
 
@@ -1135,6 +1163,7 @@ onBeforeUnmount(() => {
         :readonly="ro"
         :tabs="adminContext ? ADMIN_TOOL_TABS : null"
         :connector-empty-link="adminContext"
+        :include-unpublished="adminContext"
         @insert="onDockInsert"
         @locate="locateRef"
         @remove-ref="removeRef"
@@ -1162,12 +1191,14 @@ onBeforeUnmount(() => {
         :loading="treeLoading"
         :load-error="treeLoadError"
         :readonly="ro"
+        :locked="locked && !readonly"
         @select="onDrawerSelect"
         @search-jump="onSearchJump"
         @file-created="(p, vo) => emit('file-created', p, vo)"
         @file-renamed="(f, t, vo) => emit('file-renamed', f, t, vo)"
         @file-deleted="(p, vo) => emit('file-deleted', p, vo)"
         @tree-changed="(vo, m) => emit('tree-changed', vo, m)"
+        @package-uploaded="(vo) => emit('package-uploaded', vo)"
         @retry="emit('tree-retry')"
       />
     </el-drawer>

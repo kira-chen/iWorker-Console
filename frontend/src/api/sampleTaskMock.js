@@ -6,7 +6,7 @@
  * EFFECT_TEST_ENABLED=false 隐藏，mock 仍给拟真结果兜底，避免开关打开后报错）。
  *
  * 种子与 positionMock 4 条岗位同源：401 经营分析岗 2 条、402 客户成功岗 1 条、404 市场研究岗 1 条、403 空态。
- * toolRefs / skillRefs 从 unifiedSkillMock 的工具目录与平台技能同口径取名，不造第二份真相。
+ * toolRefs / skillRefs 从 unifiedSkillMock 的工具目录与技能同口径取名，不造第二份真相。
  */
 import { ApiError } from './request'
 import { attachPersist } from './mockPersist'
@@ -150,6 +150,9 @@ function buildSeed() {
         sopDoc: '# 周度经营复盘\n\n1. 汇总上周核心指标完成度\n2. 对照月度目标给出差距分析\n3. 输出待跟进事项清单\n',
         toolRefs: [{ type: 'MCP', code: 'mcp__zhishiku', bizName: '知识库 MCP' }],
         skillRefs: [],
+        // 产品优化需求-202611 R13 演示样本：整个交给岗位私有团 304「经营复盘团」（设了主理人）
+        execType: 'TEAM',
+        execTargetId: 304,
         sortOrder: 1,
         createdAt: '2026-08-18T11:00:00+08:00',
         updatedAt: '2026-08-24T09:10:00+08:00'
@@ -300,7 +303,9 @@ const persist = attachPersist('sampleTask', {
   // 存量快照里未显式带 execType 的任务会随之显示为 SKILL
   // v7（2026-10-12）：执行动作新增「专家团」（execType=TEAM + execTeamId），VO 形状变更 bump
   // v8（2026-10-13）：撤销「专家团」执行动作（自动化暂不委派专家团），VO 形状回退 bump，清掉 v7 快照里的 execTeamId
-  version: 8,
+  // v9（2026-11-09 产品优化需求-202611 R1 / R13）：取消 Agent，执行动作改为 技能 / 专家 / 专家团，
+  // execAgentId 换成 execTargetId（专家 id 或团 id，由 execType 区分），旧快照丢弃回种子
+  version: 9,
   snapshot: () => ({ sampleSeq, samplesByPosition }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.sampleSeq) || typeof d.samplesByPosition !== 'object' || d.samplesByPosition === null) {
@@ -321,6 +326,11 @@ function findSample(positionId, sampleId) {
   return listOf(positionId).find((s) => String(s.id) === String(sampleId))
 }
 
+/* 执行动作（产品优化需求-202611 R13）：SKILL=按「引用技能」执行；EXPERT / TEAM=整个交给本岗位引用的某位专家 / 某个专家团，
+ * 对象 id 存 execTargetId。其它值（含已取消的 AGENT）一律回落 SKILL。 */
+const EXEC_TARGET_TYPES = ['EXPERT', 'TEAM']
+const normExecType = (t) => (EXEC_TARGET_TYPES.includes(t) ? t : 'SKILL')
+
 function toVO(s, warnings) {
   const vo = {
     ...s,
@@ -329,8 +339,8 @@ function toVO(s, warnings) {
     skillRefs: (s.skillRefs || []).map((r) => ({ ...r })),
     scheduleType: s.schedule?.scheduleType || 'DAILY',
     scheduleSummary: summarizeSchedule(s.schedule),
-    execType: s.execType || 'SKILL',
-    execAgentId: s.execAgentId ?? null,
+    execType: normExecType(s.execType),
+    execTargetId: s.execTargetId ?? null,
     execModel: s.execModel || ''
   }
   if (warnings && warnings.length) vo.warnings = warnings
@@ -362,8 +372,11 @@ function normalizeUpsert(payload = {}) {
     sopDoc: String(payload.sopDoc || ''),
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
     skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' })),
-    execType: payload.execType || 'SKILL',
-    execAgentId: payload.execType === 'AGENT' ? (payload.execAgentId ?? null) : null,
+    execType: normExecType(payload.execType),
+    // 下拉清空可能回 '' / undefined，统一记 null（= 没选执行对象，由 assertUpsert 拦）
+    execTargetId: EXEC_TARGET_TYPES.includes(payload.execType) && payload.execTargetId != null && payload.execTargetId !== ''
+      ? payload.execTargetId
+      : null,
     execModel: payload.execModel || ''
   }
 }
@@ -381,6 +394,11 @@ function assertUpsert(data) {
   if ((sc.scheduleMode === 'ONCE' || sc.scheduleType === 'ONCE') && !sc.onceAt) throw err('请选择执行时间', 'schedule')
   if (sc.scheduleMode !== 'ONCE' && sc.startDate && sc.endDate && sc.startDate > sc.endDate) {
     throw err('结束日期不能早于开始日期', 'schedule')
+  }
+  // 执行方式选了专家 / 专家团却没选具体对象：与「缺指令」同样处理，保存时拦截（产品优化需求-202611 修改点 3）；
+  // 编辑页已先拦，这里数据层兜底，绕过 UI 也存不下
+  if (EXEC_TARGET_TYPES.includes(data.execType) && data.execTargetId == null) {
+    throw err(data.execType === 'TEAM' ? '请选择要执行的专家团' : '请选择要执行的专家', 'execTargetId')
   }
 }
 
@@ -538,18 +556,35 @@ export function deleteAllForPosition(positionId) {
 }
 
 /**
- * 删 Agent 级联：把引用该 Agent 的自动化任务的 execAgentId 清空（positionMock.deleteAgent 调用）。
- * 不清会导致「执行动作」选中 Agent 执行时，编辑页下拉框找不到匹配选项、直接显示裸 agentId
- * （md §7.6「可清空」——清空是合法态，UI 本就能正常呈现「未选择」）（2026-09-23 待办 yuepu#9⑦）。
+ * 正把某位专家 / 某个专家团选为执行对象的任务名（positionMock 移除引用前拦截用，R13「移除」）。
+ * execType: 'EXPERT' | 'TEAM'。
  */
-export function clearExecAgentRef(positionId, agentId) {
-  const list = listOf(positionId)
-  let changed = false
-  list.forEach((s) => {
-    if (s.execAgentId != null && String(s.execAgentId) === String(agentId)) {
-      s.execAgentId = null
-      changed = true
-    }
-  })
-  if (changed) persist()
+export function listTasksUsingExecTarget(positionId, execType, targetId) {
+  return listOf(positionId)
+    .filter((s) => s.execType === execType && s.execTargetId != null && String(s.execTargetId) === String(targetId))
+    .map((s) => s.name)
+}
+
+/**
+ * 正在「引用技能」里引用某个技能的任务名（positionMock 从岗位移除技能前拦截用：
+ * 岗位私有技能要被本岗位引用，才能出现在本岗位任务的「引用技能」里）。
+ */
+export function listTasksUsingSkill(positionId, skillId) {
+  return listOf(positionId)
+    .filter((s) => (s.skillRefs || []).some((r) => String(r.platformSkillId) === String(skillId)))
+    .map((s) => s.name)
+}
+
+/** 全部岗位里由某位专家 / 某个专家团执行的任务条数（停用、强制回收确认窗口的影响范围用）。 */
+export function countTasksByExecTarget(execType, targetId) {
+  return Object.values(samplesByPosition)
+    .flat()
+    .filter((s) => s.execType === execType && s.execTargetId != null && String(s.execTargetId) === String(targetId)).length
+}
+
+/** 执行方式为专家 / 专家团且选了对象的任务（positionMock 算「执行对象不可用」阻断项用）：[{ name, execType, execTargetId }] */
+export function listTasksWithExecTarget(positionId) {
+  return listOf(positionId)
+    .filter((s) => EXEC_TARGET_TYPES.includes(s.execType) && s.execTargetId != null)
+    .map((s) => ({ name: s.name, execType: s.execType, execTargetId: s.execTargetId }))
 }

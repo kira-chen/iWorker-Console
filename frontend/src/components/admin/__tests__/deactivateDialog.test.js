@@ -217,3 +217,17 @@ describe('DeactivateDialog · 普通停用被拦截（技能被引用）', () =>
     expect(onConfirm).toHaveBeenCalledWith({ forceRevoke: true, reason: '能力异常' })
   })
 })
+
+describe('DeactivateDialog · 额外影响范围（impactNote，专家 / 专家团 R13 §5）', () => {
+  const impact = () => container.querySelector('[data-test="dd-impact"]')
+  it('不传不展示', async () => {
+    await mount()
+    expect(impact()).toBeNull()
+  })
+  it('普通停用与勾选强制回收后都展示', async () => {
+    await mount({ impactNote: '已被 1 个岗位引用，这些岗位再发布前要先移除它。' })
+    expect(impact().textContent).toBe('已被 1 个岗位引用，这些岗位再发布前要先移除它。')
+    await check(true)
+    expect(impact().textContent).toBe('已被 1 个岗位引用，这些岗位再发布前要先移除它。')
+  })
+})

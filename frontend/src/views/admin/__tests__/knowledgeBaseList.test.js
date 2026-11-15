@@ -9,7 +9,8 @@ import { createApp, h, nextTick } from 'vue'
  *
  * 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/知识库/prd.知识库.md：
  * - §三.2 列表字段：知识库名称（图标 + 名称并排；点名称进入编辑或查看）/ 类型 / 数据源「上传 ×N / API ×N / MCP ×N」/
- *   文档数仅上传引用 / 可见范围派生 / 状态三态（pendingAction 优先「审核中」）/ 操作矩阵；
+ *   文档数仅上传引用 / 可见范围派生（产品优化需求-202611 R3 多选：前 2 个名称 +「等 N 位 / 个」，悬停看全部，
+ *   一个有效对象都没有标「无有效专家 / 岗位」）/ 状态三态（pendingAction 优先「审核中」）/ 操作矩阵；
  * - §三.4.3 四类确认弹窗与 toast 逐字；
  * - §三.8 跨模块 query：positionId 进入即筛岗位类型并向编辑器传岗位锁，action / kbId 一次性消费；
  * - §二.2 L42-43 刷新保留：查询条件与分页位置落 URL query（kw / kbType / st / p；28ee4b0），与数据源子页键互清。
@@ -39,7 +40,7 @@ vi.mock('@/components/admin/KnowledgeBaseEditor.vue', () => ({
   default: {
     name: 'KnowledgeBaseEditor',
     props: ['visible', 'kbId', 'mode', 'positionLock'],
-    template: '<div class="stub-editor" :data-visible="visible" :data-id="kbId" :data-mode="mode" :data-lock="positionLock?.id || \'\'" />'
+    template: '<div class="stub-editor" :data-visible="visible" :data-id="kbId" :data-mode="mode" :data-lock-type="typeof positionLock?.id" :data-lock="positionLock?.id || \'\'" />'
   }
 }))
 vi.mock('@/components/admin/KnowledgeSearchDialog.vue', () => ({
@@ -91,10 +92,11 @@ const clickOp = async (rowEl, text) => {
 }
 
 const LIST = [
-  { id: 'kb_1', name: '产品库', icon: '📦', kbType: 'ENTERPRISE', description: '全线产品资料', status: 'PUBLISHED', pendingAction: null, docCount: 1284, sources: [{ sourceType: 'MCP', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }] },
+  { id: 'kb_1', name: '产品库', icon: '📦', kbType: 'ENTERPRISE', scopeRefIds: [], scopeRefNames: [], description: '全线产品资料', status: 'PUBLISHED', pendingAction: null, docCount: 1284, sources: [{ sourceType: 'MCP', status: 'ENABLED' }, { sourceType: 'UPLOAD', status: 'ENABLED' }] },
   { id: 'kb_2', name: '法规库', icon: '/api/public/icons/law.png', kbType: 'ENTERPRISE', description: '', status: 'DRAFT', pendingAction: 'PUBLISH', docCount: 0, sources: [{ sourceType: 'API', status: 'ENABLED' }] },
-  { id: 'kb_3', name: '话术库', kbType: 'POSITION', scopeRefName: '销售顾问', description: '', status: 'PUBLISHED', pendingAction: 'DELIST', docCount: 3, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'DISABLED' }] },
-  { id: 'kb_4', name: '空库', kbType: 'EXPERT', scopeRefName: '', description: '', status: 'DRAFT', pendingAction: null, docCount: 0, sources: [] }
+  // R3：话术库给 3 个岗位用（列表只露前 2 个）；空库所选专家都已被删，解析不出名称
+  { id: 'kb_3', name: '话术库', kbType: 'POSITION', scopeRefIds: [401, 402, 403], scopeRefNames: ['销售顾问', '客服专员', '售后工程师'], description: '', status: 'PUBLISHED', pendingAction: 'DELIST', docCount: 3, sources: [{ sourceType: 'UPLOAD', status: 'ENABLED' }, { sourceType: 'API', status: 'DISABLED' }] },
+  { id: 'kb_4', name: '空库', kbType: 'EXPERT', scopeRefIds: [9991], scopeRefNames: [], description: '', status: 'DRAFT', pendingAction: null, docCount: 0, sources: [] }
 ]
 
 beforeEach(() => {
@@ -120,13 +122,23 @@ describe('KnowledgeBaseList 列表契约（md §三.2 / §三.4.3 / §三.8）',
     expect(cell(rowByName('空库'), '数据源')).toBe('—')
   })
 
-  it('文档数仅对引用上传源的库展示，其余 —；可见范围随类型派生', async () => {
+  it('文档数仅对引用上传源的库展示，其余 —', async () => {
     await mount()
     expect(cell(rowByName('产品库'), '文档数')).toBe('1,284')
     expect(cell(rowByName('法规库'), '文档数')).toBe('—')
+  })
+
+  it('R3 可见范围列：企业库「全员」；超过 2 个岗位只露前 2 个 +「等 N 个」；所选专家都已被删标「无有效专家」', async () => {
+    await mount()
     expect(cell(rowByName('产品库'), '可见范围')).toBe('全员')
-    expect(cell(rowByName('话术库'), '可见范围')).toBe('岗位：销售顾问')
-    expect(cell(rowByName('空库'), '可见范围')).toBe('专家：未指定')
+    expect(cell(rowByName('话术库'), '可见范围')).toBe('岗位：销售顾问、客服专员 等 3 个')
+    expect(cell(rowByName('空库'), '可见范围')).toBe('无有效专家')
+  })
+
+  it('R3 可见范围悬停（title）展示全部名称，不截断', async () => {
+    await mount()
+    const span = rowByName('话术库').querySelector('.t-cell[data-label="可见范围"] span[title]')
+    expect(span.getAttribute('title')).toBe('岗位：销售顾问、客服专员、售后工程师')
   })
 
   it('三态：pendingAction 优先判「审核中」（待发布与待停用统一展示审核中）', async () => {
@@ -247,6 +259,16 @@ describe('KnowledgeBaseList 列表契约（md §三.2 / §三.4.3 / §三.8）',
     const editor = container.querySelector('.stub-editor')
     expect(editor.dataset.visible).toBe('true')
     expect(editor.dataset.lock).toBe('ps_1')
+  })
+
+  // 产品优化需求-202611 修改点 8：地址栏里的岗位 id 是字符串，岗位候选的 id 是数字；类型不一致时新建抽屉的可见范围认不出当前岗位
+  it('修改点 8 从岗位「知识」页签跳来新建（positionId=401）→ 新建抽屉拿到的岗位锁 id 是数字 401，与岗位候选同类型', async () => {
+    routeMock.query = { tab: 'kb', positionId: '401', positionName: '经营分析岗', action: 'create' }
+    await mount()
+    const editor = container.querySelector('.stub-editor')
+    expect(editor.dataset.visible).toBe('true')
+    expect(editor.dataset.lock).toBe('401')
+    expect(editor.dataset.lockType).toBe('number')
   })
 
   it('query 带 action=create 时打开新建抽屉，并把一次性参数从地址栏清除', async () => {

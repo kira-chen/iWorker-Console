@@ -20,6 +20,12 @@
  *   延续改造前行为）、MCP 预设 title/content/sourceName（sourceField 默认留空，由管理员按工具实际返回填写）；
  *   validateResponseMap 收口两者校验，MCP 侧另经 validateMcpResponseMap 多校验一个「结果数组路径」必填字段
  *   （工具返回结构无统一形状，需 JSONPath 定位结果数组，API 无此概念）。
+ * 2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）：
+ * - R7 方案 A：MCP 数据源的映射改为「每个已选检索工具一份」（config.toolConfigs，见 mkMcpToolConfig），
+ *   不再整个数据源共用一套请求参数映射 / 结果数组路径 / 响应字段；
+ * - R6：写清结果数组路径从哪里写起（resolveMcpResultRoot / pickResultArray / evalMcpResultArray），
+ *   新建不再预填示例路径（MCP_DEFAULTS 去掉 resultArrayPath）；
+ * - R8：API 数据源只支持返回 JSON 的检索接口（API_NOT_JSON_ERROR）。
  *
  * 状态三态：status ∈ DRAFT / PENDING_REVIEW / PUBLISHED；待发布与待停用由
  * pendingAction（PUBLISH / DELIST）标记，列表统一展示「审核中」（md §八.1），
@@ -40,13 +46,28 @@ export const KB_TYPE_FILTER_OPTIONS = [
   { value: 'POSITION', label: '岗位知识库' }
 ]
 
-/** 可见范围文案：企业=全员；专家/岗位=「专家：X」「岗位：X」，未选则「未指定」。 */
+/**
+ * 可见范围文案（R3 多选）：企业=全员；专家/岗位展示前 2 个名称，超过时「等 N 位」（专家）/「等 N 个」（岗位）；
+ * 一个有效对象都没有（被删光）时「无有效专家 / 无有效岗位」。全部名称见 scopeFullText（悬停用）。
+ */
 export function scopeText(row) {
   if (!row) return '—'
   if (row.kbType === 'ENTERPRISE') return '全员'
   const prefix = row.kbType === 'EXPERT' ? '专家' : row.kbType === 'POSITION' ? '岗位' : ''
   if (!prefix) return '—'
-  return `${prefix}：${row.scopeRefName || '未指定'}`
+  const names = row.scopeRefNames || []
+  if (!names.length) return `无有效${prefix}`
+  const unit = row.kbType === 'EXPERT' ? '位' : '个'
+  const head = names.slice(0, 2).join('、')
+  return names.length > 2 ? `${prefix}：${head} 等 ${names.length} ${unit}` : `${prefix}：${head}`
+}
+/** 可见范围全量文案（列表悬停）：「专家：A、B、C」；企业「全员」。 */
+export function scopeFullText(row) {
+  if (!row) return ''
+  if (row.kbType === 'ENTERPRISE') return '全员'
+  const names = row.scopeRefNames || []
+  if (!names.length) return scopeText(row)
+  return `${row.kbType === 'EXPERT' ? '专家' : '岗位'}：${names.join('、')}`
 }
 
 /* ---------------- 数据源 ----------------
@@ -279,6 +300,99 @@ export function validateMcpResponseMap(rows, resultArrayPath) {
   return validateResponseMap(rows, { label: '响应字段', minPreset: 3, optionalPresetNames: ['sourceName'] })
 }
 
+/* ---------------- MCP 检索工具的映射配置（产品优化需求-202611 修改点 10（R7），按方案 A 落地） ----------------
+ * 一个 MCP 数据源可以勾选多个检索工具，而不同工具的入参、返回结构各不相同，整个数据源共用一套映射配不对
+ * （R7 反馈「一次只能配一个工具」的根因）。所以改为每个已勾选的工具单独一份配置：
+ *   config.tools       = ['search_documents', 'hybrid_search']        勾选顺序；列表概要按它用「、」连接，口径不变
+ *   config.toolConfigs = { search_documents: { requestMap, resultArrayPath, responseMap }, hybrid_search: { … } }
+ * 每份配置的三项内容与改造前整个数据源那一套完全相同（请求参数映射 §七.4、结果数组路径 + 响应字段 §七.5）。 */
+
+/** 新勾选工具的空白配置：请求参数预设 query / topK；结果数组路径留空（示例只作占位，不预填，修改点 9）；响应字段预设三行待填。 */
+export function mkMcpToolConfig() {
+  return { requestMap: mkRequestMapRows(), resultArrayPath: '', responseMap: mkMcpResponseMapRows() }
+}
+/**
+ * 校验一个检索工具的映射配置（编辑器标「未配置完成」/ 保存定位卡片、mock 保存校验共用）。
+ * 入参的行须已清洗（空白自定义行已丢弃）。返回 { request, response } 两段错误文案，都为空串表示该工具配置完整。
+ */
+export function validateMcpToolConfig(toolConfig) {
+  return {
+    request: validateRequestMap(toolConfig?.requestMap),
+    response: validateMcpResponseMap(toolConfig?.responseMap, toolConfig?.resultArrayPath)
+  }
+}
+
+/* ---------------- MCP 结果数组路径的取值口径（产品优化需求-202611 修改点 9（R6）；口径【待研发确认 R6-1～R6-3】） ----------------
+ * MCP 工具的原始返回是协议层结构：{ content: [{ type: 'text', text: '<一段 JSON 字符串>' }, …], structuredContent?: { … } }。
+ * 结果数组路径不从这一层写，而是从「结果数据」写起，根按下面的顺序取：
+ *   ① 返回带 structuredContent 时，以 structuredContent 为根；
+ *   ② 否则取第一个 type 为 text 的内容块，把它的 text 按 JSON 解析，解析结果为根（解析不了 → 工具返回内容不是 JSON）。
+ * 路径从根写起，如 $.items[*]、$.data.list[*]。本 demo 只支持「点分字段 + [下标] + [*]」这一小段写法
+ * （是否支持完整 JSONPath 待研发确认 R6-3）；多个 text 块、isError 为 true 的处理也待研发确认（R6-2），demo 只看第一个 text 块。 */
+export const MCP_PATH_ERRORS = Object.freeze({
+  NO_ARRAY: '按结果数组路径未取到数组，请检查路径',
+  NOT_JSON: '工具返回内容不是 JSON，无法按路径取值'
+})
+
+/** 取结果数据的根：成功返回 { root }；没有 structuredContent 且 text 不是合法 JSON（或根本没有 text 块）返回 { error }。 */
+export function resolveMcpResultRoot(toolResult) {
+  if (toolResult?.structuredContent != null) return { root: toolResult.structuredContent }
+  const textBlock = (toolResult?.content || []).find((c) => c?.type === 'text')
+  try {
+    return { root: JSON.parse(textBlock?.text) }
+  } catch (e) {
+    return { error: MCP_PATH_ERRORS.NOT_JSON }
+  }
+}
+
+/** 把「$.data.list[*]」拆成 ['data', 'list', '*']（下标拆成数字）；不以 $ 开头或写法不合规返回 null。 */
+function parseResultArrayPath(path) {
+  const s = String(path || '').trim()
+  if (!s.startsWith('$')) return null
+  const step = /\.([^.[\]\s]+)|\[(\d+|\*)\]/y // 一段：.字段名 / [下标] / [*]
+  const tokens = []
+  let i = 1
+  while (i < s.length) {
+    step.lastIndex = i
+    const m = step.exec(s)
+    if (!m) return null
+    tokens.push(m[1] !== undefined ? m[1] : m[2] === '*' ? '*' : Number(m[2]))
+    i = step.lastIndex
+  }
+  return tokens
+}
+
+/**
+ * 按结果数组路径从根里取结果数组：取到返回数组，取不到（写法不对 / 中途没有该字段 / 终点不是数组）返回 null。
+ * [*] 表示「这一层是数组，取出它的全部元素」；路径末尾不写 [*]、但终点本身就是数组时同样认（如 $.items）。
+ */
+export function pickResultArray(root, path) {
+  const tokens = parseResultArrayPath(path)
+  if (!tokens) return null
+  let nodes = [root]
+  let spread = false // 走过 [*] 之后，nodes 本身就是取出来的结果数组
+  for (const t of tokens) {
+    if (t === '*') {
+      if (!nodes.every(Array.isArray)) return null
+      nodes = nodes.flat()
+      spread = true
+    } else {
+      nodes = nodes.map((n) => (n !== null && typeof n === 'object' ? n[t] : undefined))
+      if (nodes.some((n) => n === undefined)) return null
+    }
+  }
+  if (spread) return nodes
+  return nodes.length === 1 && Array.isArray(nodes[0]) ? nodes[0] : null
+}
+
+/** 连接测试用：按结果数组路径从一次工具返回里取结果数组，返回 { items } 或 { error }（错误文案见 MCP_PATH_ERRORS）。 */
+export function evalMcpResultArray(toolResult, path) {
+  const { root, error } = resolveMcpResultRoot(toolResult)
+  if (error) return { error }
+  const items = pickResultArray(root, path)
+  return items ? { items } : { error: MCP_PATH_ERRORS.NO_ARRAY }
+}
+
 export const API_DEFAULTS = Object.freeze({
   url: '', // 请求地址：≤500，合法 http/https（md §六.1）
   method: 'POST', // POST | GET | PUT | DELETE | PATCH，默认 POST（md §六.1）
@@ -287,14 +401,16 @@ export const API_DEFAULTS = Object.freeze({
   authType: 'API_KEY',
   timeoutMs: 8000 // 1000～60000ms，默认 8000ms（md §六.1）
 })
+/** API 数据源只支持返回 JSON 的检索接口，连接测试遇到非 JSON 返回时的提示（产品优化需求-202611 修改点 11（R8））。 */
+export const API_NOT_JSON_ERROR = '接口返回的不是 JSON，暂不支持该接口'
 export const MCP_DEFAULTS = Object.freeze({
   transport: 'streamable-http', // streamable-http | stdio | sse（md §七.2）
   endpoint: '', // streamable-http / sse：≤500，http(s):// 开头（md §七.2.1、§七.2.3）
   authType: 'none', // none | bearer | header（md §七.2.1：无鉴权、Bearer Token、API Key，默认无鉴权）
   authHeaderName: '', // API Key 模式 Header 名：≤128，仅字母数字连字符（md §七.2.1）
   command: 'npx', // stdio：npx | uvx | node | python3 | docker（md §七.2.2）
-  timeoutMs: 10000, // 必填，使用系统默认值可直接修改；默认 10000，范围 1000～120000（md §七.6，取值维持现实现）
-  resultArrayPath: '$.content[0].items[*]' // 结果数组路径示例值，新建默认展示（md §七.5）
+  timeoutMs: 10000 // 必填，使用系统默认值可直接修改；默认 10000，范围 1000～120000（md §七.6，取值维持现实现）
+  // 结果数组路径不在这里：改为每个检索工具各配一份（mkMcpToolConfig，修改点 10），且新建留空、示例只作占位（修改点 9）
 })
 /** 各文档类型可接受的文件格式（md §五.2） */
 export const ACCEPT_BY_DOC_KIND = Object.freeze({
@@ -373,13 +489,13 @@ export const DOC_PARSE_META = {
 
 /* ---------------- 发布完整校验（md §三.6，5 条） ---------------- */
 /**
- * 提交发布前置校验，入参为知识库行（含 name / icon / description / kbType / scopeRefId / sources）。
+ * 提交发布前置校验，入参为知识库行（含 name / icon / description / kbType / scopeRefIds / sources）。
  * 返回 null 表示可发布，否则返回第一条不满足的原因（供 toast / tooltip）。
  * 校验失败时调用方须保留当前编辑内容、就地展示原因，不进入审核中（md §三.6）。
  *
- * 「有效的可见对象」（md §三.6 第 5 条，yuepu#62⑧）= 已选且对象仍存在，两路判存在：
- * - 调用方传 opts.scopeOptionIds（编辑器里已加载的专家 / 岗位候选 id 列表）→ 所选 id 不在其中即失效；
- * - 行自带 scopeRefName（mock / 后端 VO 按 scopeRefId 解析出的名称）且为空 → 对象已被删除。
+ * 「有效的可见对象」（md §三.6 第 5 条，yuepu#62⑧；R3 起可见范围多选）= 至少 1 个已选对象仍存在，两路判存在：
+ * - 调用方传 opts.scopeOptionIds（编辑器里已加载的专家 / 岗位候选 id 列表）→ 所选 id 一个都不在其中即失效；
+ * - 行自带 scopeRefNames（mock / 后端 VO 按 scopeRefIds 解析出的仍存在对象名称）且为空 → 选中的对象都已被删除。
  */
 export function publishBlockReason(row, opts = {}) {
   // ① 基本信息必填项完整
@@ -390,14 +506,15 @@ export function publishBlockReason(row, opts = {}) {
     if (!String(row.icon || '').trim()) return '请选择知识库图标'
   }
   // ⑤ 专家或岗位知识库已选择有效的可见对象（提前判，属基本信息段）
-  if (row?.kbType && row.kbType !== 'ENTERPRISE' && !row.scopeRefId) {
-    return row.kbType === 'EXPERT' ? '请选择可见范围专家' : '请选择可见范围岗位'
-  }
+  const scopeIds = Array.isArray(row?.scopeRefIds) ? row.scopeRefIds : []
+  // 已保存的专家 / 岗位知识库至少选过 1 个对象，可见范围为空只可能是对象都被删了——与列表「无有效专家 / 岗位」同一种说法
+  const noValidScope = row?.kbType === 'EXPERT' ? '可见范围无有效专家，请重新选择后再发布' : '可见范围无有效岗位，请重新选择后再发布'
+  if (row?.kbType && row.kbType !== 'ENTERPRISE' && !scopeIds.length) return noValidScope
   if (row?.kbType && row.kbType !== 'ENTERPRISE') {
     const gone = Array.isArray(opts.scopeOptionIds)
-      ? !opts.scopeOptionIds.map(String).includes(String(row.scopeRefId))
-      : 'scopeRefName' in row && !row.scopeRefName
-    if (gone) return row.kbType === 'EXPERT' ? '所选可见范围专家已不存在，请重新选择' : '所选可见范围岗位已不存在，请重新选择'
+      ? !scopeIds.some((id) => opts.scopeOptionIds.map(String).includes(String(id)))
+      : Array.isArray(row.scopeRefNames) && !row.scopeRefNames.length
+    if (gone) return noValidScope
   }
   // ② 至少引用 1 个已启用数据源
   const enabled = (row?.sources || []).filter((s) => s.status !== 'DISABLED')
@@ -418,7 +535,7 @@ export function publishBlockReason(row, opts = {}) {
 
 /**
  * 知识库侧影响使用范围 / 检索内容的关键变更 = 数据源引用集合变化（md §三.5）。
- * 可见范围变更同样视为关键变更，由调用方比对 scopeRefId。已发布库关键变更保存后回未发布重审。
+ * 可见范围变更同样视为关键变更，由调用方比对 scopeRefIds（集合比较，可复用本函数）。已发布库关键变更保存后回未发布重审。
  */
 export function sourceRefsChanged(beforeIds, afterIds) {
   return JSON.stringify([...(beforeIds || [])].sort()) !== JSON.stringify([...(afterIds || [])].sort())

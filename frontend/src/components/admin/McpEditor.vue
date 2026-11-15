@@ -25,6 +25,10 @@
  * - M5 stdio Env 照原型 `.mcp-env-title` 一行（左 Env label + hint / 右【＋ 添加变量】）+
  *   表头「变量名 / 描述（客户端可见）/ 填写方式 / 平台值」+ 行卡片 + 空态「暂无环境变量」；
  * - M6 测试连接结果改原型 `.result` 单行提示框（成功绿 / 失败红），文案照原型逐字。
+ *
+ * 产品优化需求-202611 修改点 14（R9）：基本信息新增「服务提供系统」单选下拉，选项 = 连接器里已有的服务提供系统
+ * （与 API 共用一份，取 apiConnector.listProviderSystems）。必填还是选填待确认，暂按选填（可清空 = 归入列表「未分组」）；
+ * 列表分组头【＋ 在本系统下新建 MCP】经 defaultProviderSystemId 预选该系统。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import DrawerEditor from '@/components/admin/DrawerEditor.vue'
@@ -58,6 +62,7 @@ import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
 import { nowIsoLocal } from '@/utils/datetime'
 import { CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
+import { listProviderSystems } from '@/api/apiConnector'
 
 
 const props = defineProps({
@@ -69,7 +74,9 @@ const props = defineProps({
    * <p>三个入口共用本组件：登记（mcpId=null）、编辑、只读查看。只读时表单整体禁用、
    * 底部只留「关闭」——审核中不允许改配置，但仍要能看清审的是什么。</p>
    */
-  readonly: { type: Boolean, default: false }
+  readonly: { type: Boolean, default: false },
+  /** 新建时预选的服务提供系统 id（列表分组头【＋ 在本系统下新建 MCP】传入；R9）。编辑 / 查看以详情为准，不看它。 */
+  defaultProviderSystemId: { type: [Number, String], default: null }
 })
 const emit = defineEmits(['update:visible', 'saved', 'probed'])
 
@@ -82,6 +89,7 @@ const form = reactive({
   name: '', // 必填 ≤64（PRD §三.3）
   description: '', // 服务描述（必填 ≤2000，PRD §三.3）
   type: '', // 连接器类型：岗位私有/市场连接器/通用连接器（创建后不可改；岗位私有不在此绑定岗位，由岗位侧引用）
+  providerSystemId: null, // 服务提供系统（R9，选填）：与 API 共用；null = 未选，列表归「未分组」
   icon: '', // 图标（必填，PRD §三.3）：emoji 字符 或 /api/public/icons/<文件名>
   timeoutMs: 10000, // 超时（必填，PRD §三.4）：默认 10000 ms，1000～120000
   transport: 'streamable-http',
@@ -98,6 +106,20 @@ const form = reactive({
   // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾示例问题区，固定 3 条）
   exampleQuestions: ['', '', '']
 })
+// 服务提供系统下拉选项（R9）：[{ id, name }]，与 API 编辑器同源。加载失败只是下拉为空（字段选填，不阻断保存）
+const providerSystems = ref([])
+const psLoading = ref(false)
+async function loadProviderSystems() {
+  psLoading.value = true
+  try {
+    const data = await listProviderSystems({})
+    providerSystems.value = data?.list || []
+  } catch (e) {
+    providerSystems.value = []
+  } finally {
+    psLoading.value = false
+  }
+}
 // 示例问题每条上限（与业务系统连接器同口径 300 字，一览表示例类统一规则；AI 生成器 connectorQuestionSet 同上限截断）
 const QUESTION_MAX = BIZ_QUESTION_MAX
 // 鉴权录入区开关 + 类型枚举（构建期常量）
@@ -202,6 +224,8 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.type = ''
+  // 新建：分组头入口带入该系统，顶栏【新建 MCP】为空（R9）
+  form.providerSystemId = props.defaultProviderSystemId ?? null
   form.icon = ''
   form.timeoutMs = 10000
   form.transport = 'streamable-http'
@@ -285,6 +309,7 @@ async function load() {
     form.name = d.name || ''
     form.description = d.description || ''
     form.type = d.type || ''
+    form.providerSystemId = d.providerSystemId ?? null
     form.icon = d.icon || ''
     form.timeoutMs = d.timeoutMs ?? 10000
     form.transport = d.transport || 'streamable-http'
@@ -340,7 +365,10 @@ async function load() {
 watch(
   () => [props.visible, props.mcpId],
   ([vis]) => {
-    if (vis) load()
+    if (vis) {
+      loadProviderSystems()
+      load()
+    }
   },
   { immediate: true }
 )
@@ -592,6 +620,9 @@ function buildPayload() {
   const payload = {
     // 连接器类型（创建后不可改；mock 只在 createMcp 落一次，编辑态即使传了也会被忽略）
     type: form.type,
+    // 服务提供系统（R9，选填）：未选显式传 null —— 编辑时清空即「移出原系统、归入未分组」
+    // （el-select 清空回的是空串 / undefined，统一归 null）
+    providerSystemId: form.providerSystemId || null,
     name: form.name.trim(),
     description: form.description.trim() || null, // 空串归 null，与后端 blank→null 一致
     icon: form.icon || null, // V97：空串归 null（未配置）
@@ -752,18 +783,39 @@ async function save() {
               />
             </el-form-item>
           </div>
-          <!-- 连接器类型：只选类型，不绑定具体岗位（岗位私有连接器由岗位侧「连接器」页签引用，可被多个岗位重复引用） -->
-          <el-form-item label="连接器类型" :error="fieldErrors.type" required>
-            <el-select
-              v-model="form.type"
-              placeholder="请选择连接器类型"
-              :disabled="isEdit"
-              style="width: 100%"
-            >
-              <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-            </el-select>
-            <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
-          </el-form-item>
+          <!-- 第二行：连接器类型 | 服务提供系统 同行（两个都是短下拉、关联紧密，md §三.1「可以在同一行展示」） -->
+          <div class="md-row2">
+            <!-- 连接器类型：只选类型，不绑定具体岗位（岗位私有连接器由岗位侧「连接器」页签引用，可被多个岗位重复引用） -->
+            <el-form-item label="连接器类型" :error="fieldErrors.type" required class="md-half-item">
+              <el-select
+                v-model="form.type"
+                placeholder="请选择连接器类型"
+                :disabled="isEdit"
+                style="width: 100%"
+              >
+                <el-option v-for="t in CONNECTOR_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+              </el-select>
+              <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
+            </el-form-item>
+            <!-- 服务提供系统（产品优化需求-202611 修改点 14（R9））：单选，选项与 API 共用；选填（待确认）故不标必填、可清空。
+                 系统的新建 / 编辑 / 删除仍在 API 页签维护（待确认），这里只选不建 -->
+            <el-form-item label="服务提供系统" :error="fieldErrors.providerSystemId" class="md-half-item">
+              <el-select
+                v-model="form.providerSystemId"
+                class="md-w"
+                filterable
+                clearable
+                :loading="psLoading"
+                placeholder="请选择服务提供系统（选填）"
+              >
+                <el-option v-for="ps in providerSystems" :key="ps.id" :value="ps.id" :label="ps.name" />
+              </el-select>
+              <!-- 兜底：一个系统都没有时说明去哪儿建（同 ApiEditor .ad-ps-empty；字段选填，不阻断保存） -->
+              <div v-if="!props.readonly && !psLoading && !providerSystems.length" class="md-type-hint">
+                当前没有服务提供系统，可先到 API 页签新建；不选则归入「未分组」。
+              </div>
+            </el-form-item>
+          </div>
           <el-form-item label="服务描述" :error="fieldErrors.description" required>
             <el-input
               v-model="form.description"
@@ -1230,6 +1282,11 @@ async function save() {
 }
 
 .md-name-item {
+  flex: 1;
+  min-width: 0;
+}
+/* 连接器类型 | 服务提供系统 两列等分（R9） */
+.md-half-item {
   flex: 1;
   min-width: 0;
 }

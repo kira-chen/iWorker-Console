@@ -123,7 +123,8 @@ const skillView = computed(() => {
 const positionView = computed(() => {
   const p = props.position || {}
   const basic = p.basic || p
-  const agents = Array.isArray(p.agents) ? p.agents : null
+  // 2026-11-09 产品优化需求-202611 R1：取消 Agent，岗位直接引用技能（p.skills）
+  const skills = Array.isArray(p.skills) ? p.skills : null
   return {
     name: basic.name || '人力资源助理',
     persona: basic.persona || basic.intro || '亲和、严谨的 HR 同事，回答口吻温暖、专业，主动追问关键信息。',
@@ -135,16 +136,10 @@ const positionView = computed(() => {
             { key: 'empNo', label: '工号', required: true },
             { key: 'dept', label: '部门', required: false }
           ],
-    agents:
-      agents && agents.length
-        ? agents.map((a) => ({
-            name: a.name || 'Agent',
-            skills: (a.skills || []).map((s) => s.name || '技能')
-          }))
-        : [
-            { name: '考勤休假', skills: ['查假期余额', '提交请假申请', '查考勤记录'] },
-            { name: '薪酬福利', skills: ['查工资条', '查公积金'] }
-          ],
+    skills:
+      skills && skills.length
+        ? skills.map((s) => s.name || '技能')
+        : ['查假期余额', '提交请假申请', '查考勤记录', '查工资条', '查公积金'],
     tableCount: p.tableCount ?? (Array.isArray(p.tables) ? p.tables.length : 4),
     tools: normTools(p.tools, [
       { name: '查假期余额', health: 'normal' },
@@ -541,12 +536,9 @@ onUnmounted(() => {
             <div v-else class="ctx-desc">{{ positionView.intakeCount }} 项（{{ positionView.intakeSchema.map((f) => f.label || f.key).join('、') }}）</div>
           </div>
           <div class="ctx-sec">
-            <div class="ctx-label">Agent → 技能</div>
-            <div v-for="(a, i) in positionView.agents" :key="i" class="ctx-lane">
-              <div class="lane-name">⚙️ {{ a.name }}</div>
-              <div class="chips">
-                <span v-for="(sk, j) in a.skills" :key="j" class="chip">{{ sk }}</span>
-              </div>
+            <div class="ctx-label">技能</div>
+            <div class="chips">
+              <span v-for="(sk, j) in positionView.skills" :key="j" class="chip">{{ sk }}</span>
             </div>
           </div>
           <div class="ctx-sec">

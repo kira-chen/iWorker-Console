@@ -129,6 +129,31 @@ function seedTeams() {
       createdAt: '2026-09-10T14:00:00+08:00',
       updatedAt: '2026-09-10T14:00:00+08:00',
       publishedAt: null
+    },
+    {
+      // 产品优化需求-202611 R13：「已发布 + 设了主理人」的岗位私有团样本，绑定 401，
+      // 供岗位「专家与专家团」页签与自动化任务「执行动作 → 专家团」演示（303 是草稿样本、没设主理人）
+      id: 304,
+      name: '经营复盘团',
+      type: EXPERT_TYPE.POSITION,
+      positionIds: [401],
+      avatar: '▣',
+      category: '审计',
+      intro: '服务经营分析岗的月度复盘：先核对数据口径，再形成管理建议。',
+      members: [
+        { expertId: 205, duty: '核对经营数据口径，定位异常来源' },
+        { expertId: 201, duty: '基于核对后的数据形成管理建议' }
+      ],
+      leaderId: 205,
+      leaderDuty: '先由主理人核对本期数据口径并列出异常，再交给经营分析专家形成管理建议，最后由主理人汇总成复盘报告。',
+      collab: '',
+      exampleQuestions: ['把本月经营数据交给团队复盘', '先核对营收的取数口径', '汇总成一份复盘报告'],
+      status: 'published',
+      pendingAction: null,
+      latestVersionLabel: 'v1.0.0',
+      createdAt: '2026-09-19T09:30:00+08:00',
+      updatedAt: '2026-09-20T15:00:00+08:00',
+      publishedAt: '2026-09-20T15:00:00+08:00'
     }
   ]
 }
@@ -141,7 +166,10 @@ function seedPublications() {
     302: [
       { id: 921, version: 1, versionLabel: 'v1.0.0', status: 'ACTIVE', sizeBytes: 4980, publishedBy: '管理员', publishedAt: '2026-09-09T11:00:00+08:00', delistedAt: null, releaseNotes: '首个版本' }
     ],
-    303: []
+    303: [],
+    304: [
+      { id: 941, version: 1, versionLabel: 'v1.0.0', status: 'ACTIVE', sizeBytes: 5060, publishedBy: '管理员', publishedAt: '2026-09-20T15:00:00+08:00', delistedAt: null, releaseNotes: '首个版本' }
+    ]
   }
 }
 
@@ -162,7 +190,8 @@ let snapshotArchive = {}
 // v4（2026-10-12）：撤掉用途——客户端 PRD §5.2 写明后台团的拆解依据是「团队协作关系」（后台团为协作关系，顶替自建团的用途），丢弃含 purpose 的旧快照。
 const persist = attachPersist('expertTeam', {
   // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃重播种子。
-  version: 8,
+  // v9（2026-11-09 产品优化需求-202611 R13）：新增已发布、设了主理人的岗位私有团种子 304（绑定 401），旧快照丢弃重播种子。
+  version: 9,
   snapshot: () => ({ teamSeq, teams, publications, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.teamSeq) || !Array.isArray(d.teams) || typeof d.publications !== 'object' || d.publications === null) {
@@ -293,7 +322,9 @@ export function checkTeamSavable(t) {
 }
 
 /**
- * 发布前检查（md §三.8 表，检查 1–3；试跑提醒本期不做）。
+ * 发布前检查（md §三.8 表，检查 1–2；试跑提醒本期不做）。
+ * 第 3 项「岗位私有成员须绑定团的全部所属岗位」产品优化需求-202611 R13 起挪到岗位发布前检查
+ * （positionModel.positionExpertIssues 的「成员没有加入本岗位」）：绑定关系由岗位侧引用维护，专家团这边不再拦。
  * 返回 { field?, message } 或 null。
  */
 export function checkTeamPublishable(t) {
@@ -304,17 +335,6 @@ export function checkTeamPublishable(t) {
     const x = map.get(String(m.expertId))
     const reason = unavailableReasonOf(x)
     if (reason) return { field: 'members', message: `成员「${x?.name || m.expertId}」${reason}，请移除或替换后再发布` }
-  }
-  if (t.type === EXPERT_TYPE.POSITION && normPositionIds(t.positionIds).length) {
-    for (const m of t.members) {
-      const x = map.get(String(m.expertId))
-      if (x?.type !== EXPERT_TYPE.POSITION) continue
-      const bound = new Set((x.positionIds || []).map(String))
-      const lack = normPositionIds(t.positionIds).find((pid) => !bound.has(String(pid)))
-      if (lack != null) {
-        return { field: 'members', message: `成员「${x.name}」未绑定岗位「${getPositionNameById(lack) || lack}」，该岗位员工将无法使用，请调整` }
-      }
-    }
   }
   return null
 }
@@ -399,7 +419,9 @@ export async function createTeam(payload = {}) {
     id: teamSeq++,
     name,
     type,
-    positionIds: type === EXPERT_TYPE.POSITION ? normPositionIds(payload.positionIds) : [],
+    // 所属岗位：产品优化需求-202611 R13 起新建时不再选岗位，payload.positionIds 带了也忽略——
+    // 发布后到岗位详情「专家与专家团」页签引用（bindTeamToPosition）
+    positionIds: [],
     avatar: String(payload.avatar || '').trim(),
     category: String(payload.category || '').trim(),
     intro: String(payload.intro || '').trim(),
@@ -421,7 +443,7 @@ export async function createTeam(payload = {}) {
   return toDetail(t)
 }
 
-// 部分更新：团类型创建后不可改（带了也忽略）；所属岗位仅岗位私有团可增减；审核中锁定。
+// 部分更新：团类型创建后不可改（带了也忽略）；所属岗位由岗位侧引用维护（R13），带了也忽略；审核中锁定。
 export async function updateTeam(id, payload = {}) {
   await delay()
   const t = findTeam(id)
@@ -437,7 +459,6 @@ export async function updateTeam(id, payload = {}) {
   if (payload.avatar !== undefined) t.avatar = String(payload.avatar || '').trim()
   if (payload.category !== undefined) t.category = String(payload.category || '').trim()
   if (payload.intro !== undefined) t.intro = String(payload.intro || '').trim()
-  if (payload.positionIds !== undefined && t.type === EXPERT_TYPE.POSITION) t.positionIds = normPositionIds(payload.positionIds)
   if (payload.exampleQuestions !== undefined) t.exampleQuestions = normQuestions(payload.exampleQuestions)
   if (payload.members !== undefined || payload.leaderId !== undefined) {
     const members = payload.members !== undefined ? normMembers(payload.members) : t.members
@@ -460,6 +481,12 @@ export async function deleteTeam(id) {
   if (!t) throw err('专家团不存在', null, 404)
   if (t.pendingAction) throw err('审核中的专家团不可删除，请先撤回或等待审核完成', null, 409)
   if (t.status !== 'draft') throw err('已发布的专家团不可删除，需先完成停用审核', null, 409)
+  // 被岗位引用时拦截（R13 §5，与技能被引用时同口径）
+  const boundIds = normPositionIds(t.positionIds)
+  if (boundIds.length) {
+    const names = boundIds.map((pid) => getPositionNameById(pid) || `岗位 #${pid}`)
+    throw err(`该专家团被 ${names.length} 个岗位引用（${names.join('、')}），需先从岗位中移除后再删除`, null, 409)
+  }
   const removed = t.members.length
   teams = teams.filter((x) => x !== t)
   appendOpsRecord({ operator: currentDemoUsername(), module: '专家团', action: '删除', target: t.name, version: t.latestVersionLabel })
@@ -486,6 +513,30 @@ export function listTeamsBoundToPosition(positionId) {
     .map((t) => ({ id: t.id, name: t.name, status: t.status }))
 }
 
+/** 同步取全量团详情（含成员与缺员信息）：供岗位「专家与专家团」页签解析引用，不走 delay、不暴露内存引用。 */
+export function listTeamsSync() {
+  return teams.map((t) => toDetail(t))
+}
+
+/** 岗位侧引用 / 解除岗位私有团（产品优化需求-202611 R13，口径同 domainExpertMock.bindExpertToPosition）。 */
+export function bindTeamToPosition(teamId, positionId) {
+  const t = findTeam(teamId)
+  if (!t) throw err('专家团不存在或已被删除', null, 404)
+  if (t.type !== EXPERT_TYPE.POSITION) throw err('岗位只能引用岗位私有专家团')
+  const ids = normPositionIds(t.positionIds)
+  if (ids.some((id) => String(id) === String(positionId))) return toRow(t)
+  t.positionIds = [...ids, Number(positionId)]
+  persist()
+  return toRow(t)
+}
+
+export function unbindTeamFromPosition(teamId, positionId) {
+  const t = findTeam(teamId)
+  if (!t) return
+  t.positionIds = normPositionIds(t.positionIds).filter((id) => String(id) !== String(positionId))
+  persist()
+}
+
 /** 岗位被删后把它从岗位私有团的 positionIds 摘掉（口径同 removePositionFromExperts）。 */
 export function removePositionFromTeams(positionId) {
   let changed = false
@@ -507,6 +558,12 @@ export async function getTeamNextVersionLabel(id) {
   return `v${latest[0]}.${latest[1]}.${latest[2] + 1}`
 }
 
+/** 快照内容 = 专家团详情去掉所属岗位（R13：绑定关系由岗位侧引用维护，随岗位发布生效，不随专家团版本走）。 */
+function snapshotDetailOf(t) {
+  const { positionIds, positionCount, ...rest } = toDetail(t)
+  return rest
+}
+
 /* 审核版本快照：提交模块自持（口径同 domainExpertMock，md 审核中心 §四），撤回 / 审核落地时销毁。 */
 function writeReviewSnapshot(t, requestAction, submittedAt) {
   const snap = {
@@ -516,7 +573,7 @@ function writeReviewSnapshot(t, requestAction, submittedAt) {
     requestAction,
     version: t.pendingVersion || '',
     submittedAt: submittedAt || nowIso(),
-    detail: JSON.parse(JSON.stringify(toDetail(t)))
+    detail: JSON.parse(JSON.stringify(snapshotDetailOf(t)))
   }
   reviewSnapshots[String(t.id)] = snap
   return snap

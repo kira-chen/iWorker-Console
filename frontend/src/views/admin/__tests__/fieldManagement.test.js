@@ -16,7 +16,10 @@ import { passthrough, elEmpty } from './helpers/commonStubs'
  * - §三「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除；点击【完成】后统一保存」（ad4abbe）：确认后仅从当前编辑草稿中移除，【完成】时才统一保存。
  * - 2026-10-08 对齐 §2.2 末段：分组说明「平台技能相关的可配置字段」「专家相关的可配置字段」，
  *   专家分类卡说明「专家列表与编辑页使用的业务分类」（字段卡说明在【编辑】弹窗顶部展示，同技能分类）。
- * ListStates / PageHeader 真挂载；EP 控件桩（el-dialog / el-input / el-button / el-icon）。
+ * - 2026-11-10 产品优化需求-202611 修改点 15（R11）：两字段末尾的系统保留选项「其他」（接口带 reserved: true）——
+ *   固定最后一行、输入框与删除钮置灰、悬停提示「系统保留选项，不可修改」；【＋ 添加选项】插在它前面；
+ *   专家分类说明补「「通用」指不限领域的通用能力，「其他」指不属于已列领域」。下方 SKILL / EXPERT 桩数据随之带上「其他」。
+ * ListStates / PageHeader 真挂载；EP 控件桩（el-dialog / el-input / el-button / el-icon / el-tooltip）。
  */
 
 const listFieldDict = vi.fn()
@@ -41,7 +44,7 @@ const elDialog = {
 }
 // 输入框桩：暴露 focus()（「添加选项」后页面调 optionInputs[i].focus()）
 const elInput = {
-  props: ['modelValue', 'maxlength', 'placeholder'],
+  props: ['modelValue', 'maxlength', 'placeholder', 'disabled'],
   emits: ['update:modelValue', 'input'],
   methods: {
     focus() {
@@ -49,7 +52,12 @@ const elInput = {
     }
   },
   template:
-    '<input class="el-input" :value="modelValue" :maxlength="maxlength" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
+    '<input class="el-input" :value="modelValue" :maxlength="maxlength" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />'
+}
+// tooltip 桩：只包一层，启用时把文案落到 data-tip（关闭时为空），便于断言哪一行有悬停提示
+const elTooltip = {
+  props: ['content', 'disabled', 'placement'],
+  template: '<div class="el-tooltip" :data-tip="disabled ? \'\' : content"><slot /></div>'
 }
 const elButton = {
   props: { disabled: Boolean, loading: Boolean, type: String, link: Boolean, plain: Boolean },
@@ -65,6 +73,7 @@ async function mount() {
   app.component('el-dialog', elDialog)
   app.component('el-input', elInput)
   app.component('el-button', elButton)
+  app.component('el-tooltip', elTooltip)
   app.component('el-icon', passthrough('el-icon'))
   app.component('el-empty', elEmpty)
   app.component('ArrowRight', { render: () => h('i', { class: 'arrow arrow-right' }) })
@@ -91,9 +100,11 @@ const setInput = (input, value) => {
   input.value = value
   input.dispatchEvent(new Event('input'))
 }
-const mk = (names) => names.map((n, i) => ({ id: i + 1, name: n }))
-const SKILL = ['AI Agent', 'IT 运维与安全', '办公效率', '行业专业', '教育学习', '开发编程', '内容创作', '商业运营', '设计多媒体', '数据分析', '知识管理']
-const EXPERT = ['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权']
+// 接口形状同 fieldDictMock：系统保留选项「其他」带 reserved: true（R11）
+const mk = (names) => names.map((n, i) => (n === '其他' ? { id: i + 1, name: n, reserved: true } : { id: i + 1, name: n }))
+const SKILL = ['AI Agent', 'IT 运维与安全', '办公效率', '行业专业', '教育学习', '开发编程', '内容创作', '商业运营', '设计多媒体', '数据分析', '知识管理', '其他']
+const EXPERT = ['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权', '其他']
+const EXPERT_EDITABLE = EXPERT.slice(0, -1) // 「其他」之前可编辑的 8 项
 
 beforeEach(() => {
   listFieldDict.mockReset().mockResolvedValue({ skillCategory: mk(SKILL), expertCategory: mk(EXPERT) })
@@ -122,7 +133,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
   it('字段卡片：名称、当前选项数量、选项值预览（顿号连接，md §2.2 顺序）、【编辑】（md §二）', async () => {
     await mount()
     const card = cards(groupNamed('平台技能'))[0]
-    expect(card.querySelector('.fm-count').textContent).toBe('11 个选项')
+    expect(card.querySelector('.fm-count').textContent).toBe('12 个选项')
     expect(card.querySelector('.fm-preview').textContent.trim()).toBe(SKILL.join('、'))
     expect([...card.querySelectorAll('.conn-ops .el-button')].map((b) => b.textContent.trim())).toEqual(['编辑'])
     const expertCard = cards(groupNamed('专家'))[0]
@@ -164,8 +175,8 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(dialog().dataset.title).toBe('编辑技能分类')
     expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('客户端市场技能的展示分类')
     const rows = [...dialog().querySelectorAll('.fm-opt-row')]
-    expect(rows).toHaveLength(11)
-    expect(rows.map((r) => r.querySelector('.fm-opt-idx').textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'])
+    expect(rows).toHaveLength(12)
+    expect(rows.map((r) => r.querySelector('.fm-opt-idx').textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'])
     expect(draftInputs().map((i) => i.value)).toEqual(SKILL)
     for (const i of draftInputs()) expect(i.getAttribute('maxlength')).toBe('30')
     for (const r of rows) expect(r.querySelector('.fm-opt-del')).toBeTruthy()
@@ -179,32 +190,60 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     expect(groupNamed('专家').querySelector('.aps-group-desc').textContent).toBe('专家相关的可配置字段')
   })
 
-  it('专家分类的说明为「专家列表与编辑页使用的业务分类」（【编辑】弹窗顶部展示，md §2.2）', async () => {
+  it('专家分类的说明为「专家列表与编辑页使用的业务分类。「通用」指不限领域的通用能力，「其他」指不属于已列领域」（【编辑】弹窗顶部展示，md §2.2 + R11）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
     expect(dialog().dataset.title).toBe('编辑专家分类')
-    expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('专家列表与编辑页使用的业务分类')
+    expect(dialog().querySelector('.fm-dlg-hint').textContent).toBe('专家列表与编辑页使用的业务分类。「通用」指不限领域的通用能力，「其他」指不属于已列领域')
   })
 
-  it('【＋ 添加选项】→ 末尾新增一空行并聚焦该输入框（md §三「点击列表末尾的【＋ 添加选项】新增一行并聚焦输入框」）', async () => {
+  it('【＋ 添加选项】→ 在系统保留选项「其他」之前新增一空行并聚焦，「其他」仍是最后一行（md §三 + R11「固定排在最后」）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
     dialog().querySelector('.fm-opt-add .el-button').click()
     await flush()
     const inputs = draftInputs()
-    expect(inputs).toHaveLength(9)
+    expect(inputs).toHaveLength(10)
     expect(inputs[8].value).toBe('')
     expect(document.activeElement).toBe(inputs[8])
-    expect([...dialog().querySelectorAll('.fm-opt-idx')].at(-1).textContent).toBe('9')
+    expect(inputs[9].value).toBe('其他')
+    expect([...dialog().querySelectorAll('.fm-opt-idx')].at(-1).textContent).toBe('10')
+  })
+
+  it('系统保留选项「其他」那一行：输入框与删除钮置灰，悬停提示「系统保留选项，不可修改」；其他行无此提示（R11）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    const rows = [...dialog().querySelectorAll('.fm-opt-row')]
+    const last = rows.at(-1)
+    expect(last.querySelector('.el-input').value).toBe('其他')
+    expect(last.querySelector('.el-input').disabled).toBe(true)
+    expect(last.querySelector('.fm-opt-del').disabled).toBe(true)
+    expect(last.closest('.el-tooltip').dataset.tip).toBe('系统保留选项，不可修改')
+    for (const r of rows.slice(0, -1)) {
+      expect(r.querySelector('.el-input').disabled).toBe(false)
+      expect(r.querySelector('.fm-opt-del').disabled).toBe(false)
+      expect(r.closest('.el-tooltip').dataset.tip).toBe('')
+    }
+  })
+
+  it('点系统保留选项的删除钮 → 不弹确认、草稿不变（R11「不能删除」）', async () => {
+    await mount()
+    cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
+    await flush()
+    ;[...dialog().querySelectorAll('.fm-opt-row .fm-opt-del')].at(-1).click()
+    await flush()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(draftInputs().map((i) => i.value)).toEqual(EXPERT)
   })
 
   it('点某行删除钮 → 弹确认「确认删除"法律"？…」，确认后草稿行 −1、序号重排、不调保存（md §三「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除」，2026-09-12 ad4abbe 改为需确认）', async () => {
     await mount()
     cards(groupNamed('专家'))[0].querySelector('.conn-ops .el-button').click()
     await flush()
-    expect(draftInputs()).toHaveLength(8)
+    expect(draftInputs()).toHaveLength(9)
     dialog().querySelectorAll('.fm-opt-row .fm-opt-del')[1].click() // 删第 2 行「法律」
     await flush()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
@@ -212,9 +251,9 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
       '删除选项',
       expect.objectContaining({ confirmButtonText: '删除' })
     )
-    expect(draftInputs()).toHaveLength(7)
+    expect(draftInputs()).toHaveLength(8)
     expect(draftInputs().map((i) => i.value)).toEqual(EXPERT.filter((n) => n !== '法律'))
-    expect([...dialog().querySelectorAll('.fm-opt-idx')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+    expect([...dialog().querySelectorAll('.fm-opt-idx')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8'])
     expect(saveFieldOptions).not.toHaveBeenCalled()
     expect(dialog()).toBeTruthy()
   })
@@ -226,7 +265,7 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     ElMessageBox.confirm.mockRejectedValueOnce(new Error('cancel'))
     dialog().querySelectorAll('.fm-opt-row .fm-opt-del')[1].click()
     await flush()
-    expect(draftInputs()).toHaveLength(8)
+    expect(draftInputs()).toHaveLength(9)
     expect(draftInputs().map((i) => i.value)).toEqual(EXPERT)
   })
 
@@ -268,12 +307,13 @@ describe('FieldManagement · 字段字典（md prd.字段字典.md）', () => {
     setInput(draftInputs()[8], ' 合规 ')
     dialogBtn('完成').click()
     await flush()
-    expect(saveFieldOptions).toHaveBeenCalledWith('expertCategory', [...EXPERT, '合规'])
+    // 新增行在「其他」之前（R11 保留项固定最后）
+    expect(saveFieldOptions).toHaveBeenCalledWith('expertCategory', [...EXPERT_EDITABLE, '合规', '其他'])
     expect(ElMessage.success).toHaveBeenCalledWith('字段选项已保存')
     expect(dialog()).toBeNull()
     const expertCard = cards(groupNamed('专家'))[0]
-    expect(expertCard.querySelector('.fm-count').textContent).toBe('9 个选项')
-    expect(expertCard.querySelector('.fm-preview').textContent.trim()).toBe([...EXPERT, '合规'].join('、'))
+    expect(expertCard.querySelector('.fm-count').textContent).toBe('10 个选项')
+    expect(expertCard.querySelector('.fm-preview').textContent.trim()).toBe([...EXPERT_EDITABLE, '合规', '其他'].join('、'))
     // 另一字段不受影响
     expect(cards(groupNamed('平台技能'))[0].querySelector('.fm-preview').textContent.trim()).toBe(SKILL.join('、'))
   })

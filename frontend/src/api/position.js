@@ -10,8 +10,9 @@ import * as skillMock from './unifiedSkillMock'
  * 分流范围：
  * - AdminPositions.vue 列表页与 AdminPositionAssignments.vue 所调接口
  *   （含版本管理侧栏 versionAdapter 所调的 publish/withdraw/next-label/publications/delist/relist）；
- * - 2026-09-02 起补齐 PositionDetailTabs 工作台链路：getPosition / updatePosition、Agent CRUD、
- *   技能引用 assign/detach、平台技能候选（样例任务编辑器用）。工作档案 / 样例任务见
+ * - 2026-09-02 起补齐 PositionDetailTabs 工作台链路：getPosition / updatePosition、
+ *   技能引用 attach/detach（2026-11-09 产品优化需求-202611 R1 取消 Agent，技能直接引用到岗位）、
+ *   专家与专家团引用（同上 R13）、平台技能候选（样例任务编辑器用）。工作档案 / 样例任务见
  *   dataTable.js / sampleTask.js（同一 VITE_POS_MOCK 开关）。
  *
  * 错误处理约定（沿用 admin.js 范式，契约 §0）：
@@ -36,7 +37,7 @@ export function listPositions(params = {}) {
   return request.get('/fde/positions', { params })
 }
 
-// 1.2 岗位详情（树形，含 Agent→技能）
+// 1.2 岗位详情（含 skills[] 技能引用）
 export function getPosition(id) {
   if (USE_MOCK) return mock.getPosition(id)
   return request.get(`/fde/positions/${id}`)
@@ -179,24 +180,82 @@ export function probeAiIconAvailability() {
   return request.get('/fde/positions/icon/ai-availability', W)
 }
 
-/* ============================ Agent CRUD（契约 §2） ============================ */
+/* ============================ 岗位技能引用（产品优化需求-202611 R1） ============================ */
 
-// 2.1 新建 Agent（岗位内 name 唯一 1005，≤20 1002）
-export function createAgent(positionId, payload) {
-  if (USE_MOCK) return mock.createAgent(positionId, payload)
-  return request.post(`/fde/positions/${positionId}/agents`, payload, W)
+// 引用技能（已发布的岗位私有技能；每个岗位最多 100 个，超限 1002）
+export function attachPositionSkill(positionId, skillId) {
+  if (USE_MOCK) return mock.attachPositionSkill(positionId, skillId)
+  return request.post(`/fde/positions/${positionId}/skills`, { skillId }, W)
 }
 
-// 2.2 编辑 Agent（部分更新；name/description/sortOrder）
-export function updateAgent(agentId, payload) {
-  if (USE_MOCK) return mock.updateAgent(agentId, payload)
-  return request.put(`/fde/agents/${agentId}`, payload, W)
+// 「添加技能」抽屉候选（keyword 可选）→ [{ id, skillId, name, description, category }]：已发布的岗位私有技能，排除本岗位已引用的。
+// 「已发布」按技能本体状态判，有新版本或停用在审核中的仍算（产品优化需求-202611 修改点 1 / 4 同口径）。读接口：走全局错误提示。
+export function listPositionSkillCandidates(positionId, keyword) {
+  if (USE_MOCK) return mock.listPositionSkillCandidates(positionId, keyword)
+  const params = keyword ? { keyword } : {}
+  return request.get(`/fde/positions/${positionId}/skills/candidates`, { params })
 }
 
-// 2.3 删除 Agent（新口径：其下技能彻底脱离岗位变游离技能，回 orphanedSkillCount = 受影响技能数）
-export function deleteAgent(agentId) {
-  if (USE_MOCK) return mock.deleteAgent(agentId)
-  return request.delete(`/fde/agents/${agentId}`, W)
+// 移除前预检 → 拦截文案（'' = 可以移除）：本岗位自动化任务的「引用技能」里还引用着它时，页面直接提示、不弹移除确认
+export function checkDetachPositionSkill(positionId, skillId) {
+  if (USE_MOCK) return mock.checkDetachPositionSkill(positionId, skillId)
+  return request.get(`/fde/positions/${positionId}/skills/${skillId}/detach-check`)
+}
+
+// 移除技能引用（可逆：只删引用，技能本体留库；被任务引用时同样拦截）
+export function detachPositionSkill(positionId, skillId) {
+  if (USE_MOCK) return mock.detachPositionSkill(positionId, skillId)
+  return request.delete(`/fde/positions/${positionId}/skills/${skillId}`, W)
+}
+
+/* ============================ 专家与专家团（产品优化需求-202611 R13） ============================ */
+
+// 本岗位引用的岗位私有专家 / 专家团：{ experts[], teams[] }
+export function getPositionExperts(positionId) {
+  if (USE_MOCK) return mock.getPositionExperts(positionId)
+  return request.get(`/fde/positions/${positionId}/experts`)
+}
+
+// 专家 / 专家团在岗位侧的使用情况：{ positionCount, taskCount }（停用、强制回收确认窗口的影响范围；kind: 'EXPERT' | 'TEAM'）
+export function getExpertUsage(kind, id) {
+  if (USE_MOCK) return mock.getExpertUsage(kind, id)
+  return request.get(`/fde/${kind === 'TEAM' ? 'expert-teams' : 'experts'}/${id}/position-usage`)
+}
+
+// 添加抽屉候选：已发布、未回收、不在审核中的岗位私有专家 / 专家团（排除已引用的）
+export function listPositionExpertCandidates(positionId) {
+  if (USE_MOCK) return mock.listPositionExpertCandidates(positionId)
+  return request.get(`/fde/positions/${positionId}/experts/candidates`)
+}
+
+// 引用 / 移除专家（正被本岗位自动化任务选为执行对象时移除会被拦截）。均回最新的 { experts, teams }
+export function bindPositionExpert(positionId, expertId) {
+  if (USE_MOCK) return mock.bindPositionExpert(positionId, expertId)
+  return request.post(`/fde/positions/${positionId}/experts`, { expertId }, W)
+}
+export function unbindPositionExpert(positionId, expertId) {
+  if (USE_MOCK) return mock.unbindPositionExpert(positionId, expertId)
+  return request.delete(`/fde/positions/${positionId}/experts/${expertId}`, W)
+}
+
+// 引用 / 移除专家团（同上）
+export function bindPositionTeam(positionId, teamId) {
+  if (USE_MOCK) return mock.bindPositionTeam(positionId, teamId)
+  return request.post(`/fde/positions/${positionId}/expert-teams`, { teamId }, W)
+}
+export function unbindPositionTeam(positionId, teamId) {
+  if (USE_MOCK) return mock.unbindPositionTeam(positionId, teamId)
+  return request.delete(`/fde/positions/${positionId}/expert-teams/${teamId}`, W)
+}
+
+// 移除前预检 → 拦截文案（'' = 可以移除）：正被本岗位自动化任务选为执行对象时，页面直接提示、不弹移除确认
+export function checkUnbindPositionExpert(positionId, expertId) {
+  if (USE_MOCK) return mock.checkUnbindPositionExpert(positionId, expertId)
+  return request.get(`/fde/positions/${positionId}/experts/${expertId}/unbind-check`)
+}
+export function checkUnbindPositionTeam(positionId, teamId) {
+  if (USE_MOCK) return mock.checkUnbindPositionTeam(positionId, teamId)
+  return request.get(`/fde/positions/${positionId}/expert-teams/${teamId}/unbind-check`)
 }
 
 /* ============================ 技能列表 / 状态（技能管理菜单，契约 §2） ============================ */
@@ -227,12 +286,7 @@ export function setSkillStatus(id, status) {
 
 /* ============================ 技能 CRUD（契约 §3） ============================ */
 
-// 3.1 新建技能（归属 Agent；可能回 data.warnings[]）
-export function createSkill(agentId, payload) {
-  return request.post(`/fde/agents/${agentId}/skills`, payload, W)
-}
-
-// 3.1b 新建游离技能（无岗位/无 Agent 归属，技能菜单「新建」入口）。仅 name 必填，code 自动生成。
+// 3.1b 新建游离技能（无岗位归属，技能菜单「新建」入口）。仅 name 必填，code 自动生成。
 export function createStandaloneSkill(payload) {
   if (USE_SKILL_MOCK) {
     return skillMock.createSkill({
@@ -245,17 +299,9 @@ export function createStandaloneSkill(payload) {
 }
 
 // 3.2 编辑技能（仅改 name/triggers/skillMd 等技能本体；可能回 warnings）
-// 注意：Agent 归属变更/重分配统一走 assignSkill（PUT /skills/{id}/assign），不再走此端点的 targetAgentId。
 export function updateSkill(skillId, payload) {
   if (USE_SKILL_MOCK) return skillMock.updateSkill(skillId, payload)
   return request.put(`/fde/skills/${skillId}`, payload, W)
-}
-
-// 3.2.1 分配 / 改挂 Agent（未绑定→Agent 重分配 + 已绑定跨泳道迁移统一端点）
-// 错误码：1002 该 Agent 技能数上限；1003 跨岗位非法。
-export function assignSkill(skillId, targetAgentId) {
-  if (USE_MOCK) return mock.assignSkill(skillId, targetAgentId)
-  return request.put(`/fde/skills/${skillId}/assign`, { targetAgentId }, W)
 }
 
 // 3.3 技能详情（含 referencedTools[] 白名单回显 + checkStatus 四态）
@@ -270,19 +316,6 @@ export function deleteSkill(skillId) {
   return request.delete(`/fde/skills/${skillId}`, W)
 }
 
-// 3.4.1 解绑技能（设计 §5.3 v1.2：岗位页「删除技能」实为非破坏性解绑——清 skill.agent_id、保留实体，
-// 技能转入未绑定/收纳区可重绑，不删实体）。区别于 deleteSkill（软删 deleted=true）。
-export function unbindSkill(skillId) {
-  return request.put(`/fde/skills/${skillId}/unbind`, {}, W)
-}
-
-// 3.4.2 从指定 Agent 移除对某 FDE 技能的引用（V84 引用模型，可逆：删引用行、技能本体留库可再引用）。
-// 白板技能卡「移除」走此端点（取代旧 unbindSkill 的「彻底游离、不可逆」语义）。
-export function detachSkill(agentId, skillId) {
-  if (USE_MOCK) return mock.detachSkill(agentId, skillId)
-  return request.delete(`/fde/agents/${agentId}/skills/${skillId}`, W)
-}
-
 // 3.5 工具选择面板数据源（四类 Tab + 搜索；数据表传 positionId 过滤防越权）
 // type ∈ MCP|API|TABLE|BIZ_SYSTEM
 export function listToolPicker(params = {}) {
@@ -295,28 +328,22 @@ export function listToolPicker(params = {}) {
 // （负责人定：FDE 不再复用平台技能）。本组候选端点**保留**——「样例任务」编辑器仍用它做
 // 「引用平台技能」（SampleTaskEditor.vue，后端契约 SampleTaskUpsertRequest.skillRefs），
 // 与已下线的「FDE 取材」不是同一回事，删了会连带搞挂样例任务。
+// 2026-11-09 起改为岗位维度（候选含本岗位引用的岗位私有技能），并新增执行对象候选。
 
-// 候选平台技能（已发布到 FDE_WORKBENCH 且当前 PUBLISHED；keyword 可选）→ PlatformSkillCandidateVO[]
-// 读接口：走全局错误提示。
-export function listPlatformSkillCandidates(keyword) {
-  if (USE_SKILL_MOCK) {
-    // demo：候选 = unifiedSkillMock 中已发布的平台技能（单一真相源），映射为 PlatformSkillCandidateVO
-    return skillMock
-      .listUnifiedSkills({ type: 'PLATFORM', status: 'PUBLISHED', size: 200, ...(keyword ? { keyword } : {}) })
-      .then((d) =>
-        (d?.list || []).map((s) => ({
-          id: s.id,
-          skillId: s.id,
-          code: String(s.id),
-          name: s.name,
-          description: s.description || '',
-          category: s.displayCategoryName || '',
-          updatedAt: s.updatedAt
-        }))
-      )
-  }
+// 「引用技能」候选（2026-11-09 负责人定：原只含市场技能，改为已发布的通用技能、市场技能 + 本岗位引用的岗位私有技能；
+// keyword 可选）→ [{ id, skillId, code, name, description, category, type, typeLabel }]。读接口：走全局错误提示。
+export function listTaskSkillCandidates(positionId, keyword) {
+  if (USE_MOCK) return mock.listTaskSkillCandidates(positionId, keyword)
   const params = keyword ? { keyword } : {}
-  return request.get('/fde/platform-skill-candidates', { params })
+  return request.get(`/fde/positions/${positionId}/sample-tasks/skill-candidates`, { params })
+}
+
+// 「执行动作」选专家 / 专家团时的候选：{ experts, teams, names }
+// （已发布的通用、市场专家（团）+ 本岗位引用的岗位私有专家（团），均须状态正常；没设主理人的团带 leaderId=null）；
+// names = { EXPERT: { id: 名称 }, TEAM: { id: 名称 } } 覆盖全部专家 / 团，所选对象已不可用时下拉仍显示名称
+export function listTaskExecTargetCandidates(positionId) {
+  if (USE_MOCK) return mock.listTaskExecTargetCandidates(positionId)
+  return request.get(`/fde/positions/${positionId}/sample-tasks/exec-target-candidates`)
 }
 
 /* ============================ 平台技能只读浏览 + 复制（FDE 工作台双 Tab，设计 §4.4） ============================ */

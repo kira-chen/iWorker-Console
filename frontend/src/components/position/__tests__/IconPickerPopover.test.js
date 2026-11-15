@@ -9,6 +9,8 @@ import { createApp, h } from 'vue'
  * 3. 上传类型/大小校验，逐字文案「请选择图片文件」「图片不能超过 5 MB」，校验失败不进裁剪；
  * 4. 合法图片进入方形裁剪弹窗，【使用该区域】输出 256×256 PNG dataURL 并回吐 iconSource:'upload'；
  * 5. readonly 只读态：入口置灰不可点（新增 prop，默认 false，旧消费方零改动兼容）。
+ * 6. 2026-11-10 产品优化需求-202611 修改点 16（R12）原图尺寸：短边 < 128 报错不进裁剪；128–255 进裁剪并提示偏小；
+ *    ≥ 256 不提示；SVG 不受限；popover 菜单底部提示改为统一常驻文案。
  */
 
 vi.mock('element-plus', () => ({
@@ -207,6 +209,55 @@ describe('裁剪弹窗', () => {
     await flush()
     expect(el.querySelector('.stub-dialog[data-title="裁剪图标"]')).toBeFalsy()
     expect(picked).toEqual([])
+  })
+})
+
+describe('原图尺寸（R12）', () => {
+  const cropDialog = (el) => el.querySelector('.stub-dialog[data-title="裁剪图标"]')
+
+  it('短边 < 128 → 「图片尺寸过小，请上传不小于 128×128 的图片」，不进裁剪、不回吐', async () => {
+    stubImagePipeline({ natW: 400, natH: 120 })
+    const el = mount()
+    dispatchFile(el, fakeFile())
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('图片尺寸过小，请上传不小于 128×128 的图片')
+    expect(cropDialog(el)).toBeFalsy()
+    expect(picked).toEqual([])
+  })
+
+  it('短边 128–255 → 照常进裁剪，裁剪弹窗提示「图片尺寸偏小，生成的图标可能模糊」', async () => {
+    stubImagePipeline({ natW: 200, natH: 200 })
+    const el = mount()
+    dispatchFile(el, fakeFile())
+    await flush()
+    expect(ElMessage.error).not.toHaveBeenCalled()
+    expect(cropDialog(el)).toBeTruthy()
+    expect(cropDialog(el).querySelector('.ip-hint--warn')?.textContent.trim()).toBe('图片尺寸偏小，生成的图标可能模糊')
+  })
+
+  it('短边 ≥ 256 → 裁剪弹窗无偏小提示', async () => {
+    stubImagePipeline({ natW: 512, natH: 256 })
+    const el = mount()
+    dispatchFile(el, fakeFile())
+    await flush()
+    expect(cropDialog(el)).toBeTruthy()
+    expect(cropDialog(el).querySelector('.ip-hint--warn')).toBeNull()
+  })
+
+  it('SVG 不受尺寸限制：64×64 的 SVG 也进裁剪，且无偏小提示', async () => {
+    stubImagePipeline({ natW: 64, natH: 64 })
+    const el = mount()
+    dispatchFile(el, fakeFile({ type: 'image/svg+xml', name: 'logo.svg' }))
+    await flush()
+    expect(ElMessage.error).not.toHaveBeenCalled()
+    expect(cropDialog(el)).toBeTruthy()
+    expect(cropDialog(el).querySelector('.ip-hint--warn')).toBeNull()
+  })
+
+  it('popover 菜单底部提示为统一常驻文案', () => {
+    const el = mount()
+    const hints = [...el.querySelectorAll('.ip-pop .ip-hint')].map((h) => h.textContent.trim())
+    expect(hints).toContain('支持 PNG、JPG、WebP、GIF、SVG，不超过 5 MB，建议 1:1、不小于 256×256')
   })
 })
 

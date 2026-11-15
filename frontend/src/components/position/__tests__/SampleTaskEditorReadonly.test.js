@@ -7,7 +7,7 @@
  * 本文件挂真 element-plus + 真 SampleTaskEditor / SchedulePicker（仅替换重型 MarkdownEditor 与 ToolPicker），
  * 断言落在用户可见结果：输入控件 disabled、保存按钮消失、列表无删除 / 新增 / 排序手柄但仍可点选查看。
  *
- * 刻意保留可用的控件：右栏「引用工具」「引用平台技能」两个搜索框（.tl-search / .sk-search）只做筛选、不改任务数据，
+ * 刻意保留可用的控件：右栏「引用工具」「引用技能」两个搜索框（.tl-search / .sk-search）只做筛选、不改任务数据，
  * 只读态下仍可用（便于查看时检索已引用项），所以 editorControls 把它们排除在「必须 disabled」之外，另有用例单独钉它们不被禁用。
  * 调度选择器（SchedulePicker）四种模式（按周期 / 每间隔 / 单次 / 闲时）在只读下的 disabled 由末尾一组直挂用例钉住。
  */
@@ -37,7 +37,8 @@ vi.mock('@/api/sampleTask', () => ({
 }))
 vi.mock('@/api/position', () => ({
   listToolPicker: vi.fn(() => Promise.resolve([])),
-  listPlatformSkillCandidates: vi.fn(() => Promise.resolve([]))
+  listTaskSkillCandidates: vi.fn(() => Promise.resolve([])),
+  listTaskExecTargetCandidates: vi.fn(() => Promise.resolve({ experts: [], teams: [] }))
 }))
 vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ agents: [] }) }))
 vi.mock('@/components/admin/MarkdownEditor.vue', () => ({
@@ -111,7 +112,7 @@ describe('自动化任务页 · 只读态（md §10 审核中全部页签只读�
 })
 
 describe('自动化任务页 · 只读态 · 刻意保留可用的搜索框', () => {
-  it('「引用工具」「引用平台技能」两个搜索框存在且不被禁用（只做筛选、不改任务数据）', async () => {
+  it('「引用工具」「引用技能」两个搜索框存在且不被禁用（只做筛选、不改任务数据）', async () => {
     const el = await mountStage(true)
     const searches = [...el.querySelectorAll('.st-col-edit .tl-search input, .st-col-edit .sk-search input')]
     expect(searches.length).toBe(2)

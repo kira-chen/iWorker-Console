@@ -614,7 +614,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v12；7 个业务写点：
+ * 2026-09-12 测试审计补缺口（F8）：mcpConnectorMock 持久化零用例（mockPersist v13；7 个业务写点：
  * createMcp / updateMcp / deleteMcp / fetchMcpTools / healthCheckMcpTool / publishMcpService / setAgg 系）。
  * 注入内存版存储 + vi.resetModules 动态 import。
  *
@@ -630,7 +630,7 @@ describe('mcpConnectorMock · A19 补缺口（每例全新模块）', () => {
  * 真 Storage 里已写入的 key），必须在每例前后**显式删掉本模块的持久化 key**。vitest 默认 shuffle，
  * 本组可能排在 A19 之前跑，所以 beforeEach 也要清一次，不能只清 afterEach。
  */
-describe('mcpConnectorMock · 持久化（mockPersist v12）', () => {
+describe('mcpConnectorMock · 持久化（mockPersist v13）', () => {
   const KEY = 'iworker-demo-mock:mcpConnector'
   const makeStorage = () => {
     const map = new Map()
@@ -691,12 +691,12 @@ describe('mcpConnectorMock · 持久化（mockPersist v12）', () => {
     expect(writes()).toBe(base + 7)
   })
 
-  it('新建落盘（v=12）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
+  it('新建落盘（v=13）→ 重新 import（模拟刷新）→ 新行仍在、发布态仍在、mcpSeq 延续', async () => {
     const first = await import('../mcpConnectorMock')
     const created = await first.createMcp({ code: 'mcp_reload', type: 'PLATFORM', name: '刷新后还在', transport: 'stdio', command: 'npx', exampleQuestions: ['a', 'b', 'c'] })
     await first.publishMcpService(created.id)
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(12)
+    expect(snap.v).toBe(13) // v13（2026-11-10 产品优化需求-202611 R9）：行新增 providerSystemId
     expect(snap.data.mcps.map((x) => x.code)).toContain('mcp_reload')
     expect(snap.data.pubAgg.mcp_reload).toBe('PENDING_REVIEW')
     vi.resetModules()
@@ -748,7 +748,7 @@ describe('mcpConnectorMock · 持久化（mockPersist v12）', () => {
 
   it('坏形状快照（mcps 不是数组）→ restore 抛「mcpConnector 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 12, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 13, data: { mcpSeq: 1, mcps: 'oops', pubAgg: {} } }))
     const m = await import('../mcpConnectorMock')
     expect((await m.listMcp()).total).toBe(11)
     expect(warn).toHaveBeenCalled()
@@ -939,5 +939,97 @@ describe('mcpConnectorMock · 保存校验失败不清失败标记（待办 yuep
     // expense_mcp 是 health='bad' 的种子行；被拒绝的保存不改任何数据，不污染其它随机序用例
     await expect(updateMcp('expense_mcp', { endpoint: 'https://fixed.intra/mcp', description: 'x'.repeat(2001) })).rejects.toBeTruthy()
     expect((await testMcpConn({ id: 'expense_mcp' })).ok).toBe(false)
+  })
+})
+
+/**
+ * 产品优化需求-202611 修改点 14（R9）：MCP 所属服务提供系统 providerSystemId（与 API 共用 apiConnectorMock 的系统；选填）。
+ * 每例 vi.resetModules() 拿全新种子（同 A19 组：桩立即回调的定时器 + 清掉 mock 层全部落盘 key——
+ * 校验系统是否存在会动态 import apiConnectorMock，它的落盘同样要清）。
+ */
+describe('mcpConnectorMock · 服务提供系统（产品优化需求-202611 修改点 14（R9））', () => {
+  let m
+  beforeEach(async () => {
+    vi.resetModules()
+    stubInstantTimers()
+    try {
+      const ls = globalThis.localStorage
+      const doomed = []
+      for (let i = 0; i < (ls?.length ?? 0); i++) {
+        const k = ls.key?.(i)
+        if (k && k.startsWith('iworker-demo-mock:')) doomed.push(k)
+      }
+      doomed.forEach((k) => ls.removeItem?.(k))
+    } catch {
+      /* 环境无存储时忽略 */
+    }
+    m = await import('../mcpConnectorMock')
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  const newMcp = (code, extra = {}) => ({
+    code,
+    type: 'PLATFORM',
+    name: `测试 MCP ${code}`,
+    description: '测试用',
+    transport: 'stdio',
+    command: 'npx',
+    exampleQuestions: ['问一', '问二', '问三'],
+    ...extra
+  })
+
+  it('种子：星火桥接 → 星火智能体平台（pv_4），报销 / 合同 → 财务服务系统（pv_1），CRM → 客户数据平台（pv_2），其余 7 条未选（null，列表归「未分组」）', async () => {
+    const { list } = await m.listMcp()
+    const ps = Object.fromEntries(list.map((r) => [r.code, r.providerSystemId]))
+    expect(ps).toMatchObject({ spark_bridge_mcp: 'pv_4', expense_mcp: 'pv_1', contract: 'pv_1', crm: 'pv_2' })
+    expect(list.filter((r) => r.providerSystemId == null)).toHaveLength(7)
+  })
+
+  it('listMcp 带「未分组」总数 ungroupedTotal，不随搜索 / 筛选变化（分组头计数口径同 API 列表 apiCount）', async () => {
+    expect((await m.listMcp()).ungroupedTotal).toBe(7)
+    const filtered = await m.listMcp({ keyword: '报销' })
+    expect(filtered.total).toBe(1)
+    expect(filtered.ungroupedTotal).toBe(7)
+  })
+
+  it('新建带已有系统 → 落库并回显；不带 → providerSystemId 为 null（选填）', async () => {
+    const withPs = await m.createMcp(newMcp('mcp_ps_a', { providerSystemId: 'pv_2' }))
+    expect(withPs.providerSystemId).toBe('pv_2')
+    expect((await m.getMcp('mcp_ps_a')).providerSystemId).toBe('pv_2')
+    const without = await m.createMcp(newMcp('mcp_ps_b'))
+    expect(without.providerSystemId).toBeNull()
+  })
+
+  it('新建带不存在的系统 → 拒「所选服务提供系统不存在，请重新选择」（field=providerSystemId），不落行', async () => {
+    await expect(m.createMcp(newMcp('mcp_ps_bad', { providerSystemId: 'pv_404' }))).rejects.toMatchObject({
+      message: '所选服务提供系统不存在，请重新选择',
+      field: 'providerSystemId'
+    })
+    await expect(m.getMcp('mcp_ps_bad')).rejects.toThrow('MCP 不存在')
+  })
+
+  it('编辑改成另一个已有系统 → 生效；之后只改别的字段（不带该键）→ 系统不动', async () => {
+    await m.updateMcp('expense_mcp', { providerSystemId: 'pv_2' })
+    expect((await m.getMcp('expense_mcp')).providerSystemId).toBe('pv_2')
+    await m.updateMcp('expense_mcp', { description: '只改描述' })
+    expect((await m.getMcp('expense_mcp')).providerSystemId).toBe('pv_2')
+  })
+
+  it('编辑传 null 或空串 → 移出原系统（providerSystemId=null，列表归「未分组」）', async () => {
+    await m.updateMcp('expense_mcp', { providerSystemId: null })
+    expect((await m.getMcp('expense_mcp')).providerSystemId).toBeNull()
+    await m.updateMcp('contract', { providerSystemId: '' })
+    expect((await m.getMcp('contract')).providerSystemId).toBeNull()
+  })
+
+  it('编辑改成不存在的系统 → 拒（field=providerSystemId），原系统不变', async () => {
+    await expect(m.updateMcp('expense_mcp', { providerSystemId: 'pv_404' })).rejects.toMatchObject({
+      message: '所选服务提供系统不存在，请重新选择',
+      field: 'providerSystemId'
+    })
+    expect((await m.getMcp('expense_mcp')).providerSystemId).toBe('pv_1')
   })
 })

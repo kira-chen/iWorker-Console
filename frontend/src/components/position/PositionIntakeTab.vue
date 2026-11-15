@@ -91,7 +91,7 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
 <template>
   <div class="pd-pane">
     <!-- 2026-09-10 S3（岗位详情原型对齐排查·负责人裁决）：区块头 + 表格整体并入一张白卡
-         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与 Agent 页签同款包卡） -->
+         （照原型 pd2-section 形态，用站内 .pd-card 家族实现，与技能页签同款包卡） -->
     <section class="pd-card">
       <div class="pd-card-head">
         <!-- 表头副题照原型 intakePane L1854；达 10 个【新增采集字段】置灰（md §3.1） -->
@@ -157,6 +157,8 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
       <el-form-item label="字段名" required>
         <el-input v-model="intakeDraft.label" maxlength="40" placeholder="如：客户公司名称" />
       </el-form-item>
+      <!-- 产品优化需求-202611 修改点 5（R10）：占位随字段名实时显示全拼建议值（字段名为空时显示 auto）；
+           保存时 key 留空才取建议值并写进行数据，之后再改字段名不会重新生成；手填优先，格式 / 重名校验不变 -->
       <el-form-item label="字段 key（英文，留空自动生成）">
         <el-input v-model="intakeDraft.key" :placeholder="genKeyFromLabel(intakeDraft.label) || 'auto'" />
       </el-form-item>
@@ -199,7 +201,7 @@ function removeIntakeOption(i) { intakeDraft.value.options = (intakeDraft.value.
   flex-direction: column;
   gap: var(--space-6);
 }
-/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同 Agent 页签的 scope 复制口径，
+/* ---- 白卡包裹（2026-09-10 S3）：.pd-card 家族按页签就近持有（同技能页签的 scope 复制口径，
    照原型 pd2-section：白底/描边/圆角卡，头行 + 分隔线 + 体；表格贴卡体边走 --flush） ---- */
 .pd-card {
   background: var(--bg-surface);

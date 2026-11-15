@@ -10,10 +10,17 @@ import {
   stateMeta,
   isOffline,
   isOnline,
+  scopeText,
+  scopeFullText,
   mkResponseMapRows,
   mkMcpResponseMapRows,
   validateResponseMap,
-  validateMcpResponseMap
+  validateMcpResponseMap,
+  mkMcpToolConfig,
+  validateMcpToolConfig,
+  resolveMcpResultRoot,
+  pickResultArray,
+  evalMcpResultArray
 } from '@/utils/knowledgeBaseMeta'
 
 /**
@@ -35,14 +42,14 @@ describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md 
   })
 
   it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 / §七.6）', () => {
+    // 结果数组路径不在数据源级默认值里：改为每个检索工具各配一份，且新建留空（产品优化需求-202611 修改点 9 / 10）
     expect(MCP_DEFAULTS).toEqual({
       transport: 'streamable-http',
       endpoint: '',
       authType: 'none',
       authHeaderName: '',
       command: 'npx',
-      timeoutMs: 10000,
-      resultArrayPath: '$.content[0].items[*]'
+      timeoutMs: 10000
     })
   })
 
@@ -76,7 +83,7 @@ describe('knowledgeBaseMeta · 行内操作确认弹窗文案（md §三.4.3 L12
 describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.6 五条，按顺序取第一条）', () => {
   const okUpload = { id: 's1', name: '产品资料', sourceType: 'UPLOAD', status: 'ENABLED', docCount: 3, parsedDocCount: 2 }
   const okApi = { id: 's2', name: '检索接口', sourceType: 'API', status: 'ENABLED', verifyStatus: 'SUCCESS' }
-  const base = { name: '库', icon: '📘', description: '描述', kbType: 'ENTERPRISE', scopeRefId: null, sources: [okUpload, okApi] }
+  const base = { name: '库', icon: '📘', description: '描述', kbType: 'ENTERPRISE', scopeRefIds: [], sources: [okUpload, okApi] }
 
   it('全部满足 → null（可发布）', () => {
     expect(publishBlockReason(base)).toBeNull()
@@ -94,18 +101,24 @@ describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.
     expect(publishBlockReason({ ...base, name: '', icon: '' })).toBe('请填写知识库名称')
     expect(publishBlockReason({ ...base, description: '', icon: '' })).toBe('请填写知识库描述')
   })
-  it('⑤ 专家 / 岗位库未选可见对象 → 「请选择可见范围专家」/「请选择可见范围岗位」', () => {
-    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefId: '' })).toBe('请选择可见范围专家')
-    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: null })).toBe('请选择可见范围岗位')
-    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefId: 'ex_1' })).toBeNull()
+  // 已保存的专家 / 岗位库至少选过 1 个对象，可见范围为空只可能是对象都被删了：与列表「无有效专家 / 岗位」同一种说法（R3）
+  it('⑤ 专家 / 岗位库可见范围为空（空数组 / 缺键）→ 「可见范围无有效专家 / 岗位，请重新选择后再发布」；选了即放行', () => {
+    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefIds: [] })).toBe('可见范围无有效专家，请重新选择后再发布')
+    const { scopeRefIds, ...noScopeKey } = base
+    expect(publishBlockReason({ ...noScopeKey, kbType: 'POSITION' })).toBe('可见范围无有效岗位，请重新选择后再发布')
+    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefIds: [201] })).toBeNull()
   })
-  it('⑤ yuepu#62⑧ 可见对象已不存在：候选 id 列表不含所选 id，或行上解析出的 scopeRefName 为空 → 「所选可见范围…已不存在」；仍存在则放行', () => {
-    const expertRow = { ...base, kbType: 'EXPERT', scopeRefId: 'ex_gone' }
-    expect(publishBlockReason(expertRow, { scopeOptionIds: ['ex_1'] })).toBe('所选可见范围专家已不存在，请重新选择')
-    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401 }, { scopeOptionIds: ['402'] })).toBe('所选可见范围岗位已不存在，请重新选择')
-    expect(publishBlockReason({ ...expertRow, scopeRefName: '' })).toBe('所选可见范围专家已不存在，请重新选择')
-    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401, scopeRefName: '经营分析岗' })).toBeNull()
-    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefId: 401 }, { scopeOptionIds: ['401'] })).toBeNull() // id 数字 / 字符串同视
+  it('⑤ yuepu#62⑧ 可见对象已不存在（候选路径）：所选 id 一个都不在候选 id 列表里 → 同「无有效专家 / 岗位」', () => {
+    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefIds: [999, 998] }, { scopeOptionIds: [201] })).toBe('可见范围无有效专家，请重新选择后再发布')
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefIds: [401] }, { scopeOptionIds: ['402'] })).toBe('可见范围无有效岗位，请重新选择后再发布')
+  })
+  it('⑤ R3 多选：所选对象里至少 1 个仍在候选中即放行（部分被删不拦；id 数字 / 字符串同视）', () => {
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefIds: [999, 401] }, { scopeOptionIds: ['401', '402'] })).toBeNull()
+    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefIds: [201] }, { scopeOptionIds: ['201'] })).toBeNull()
+  })
+  it('⑤ yuepu#62⑧ 可见对象已不存在（VO 路径）：行上解析出的 scopeRefNames 为空数组 → 拦；有名称则放行', () => {
+    expect(publishBlockReason({ ...base, kbType: 'EXPERT', scopeRefIds: [999], scopeRefNames: [] })).toBe('可见范围无有效专家，请重新选择后再发布')
+    expect(publishBlockReason({ ...base, kbType: 'POSITION', scopeRefIds: [401, 999], scopeRefNames: ['经营分析岗'] })).toBeNull()
   })
   it('② 无已启用数据源（空 / 全停用）→ 「至少引用 1 个已启用数据源才能提交发布」', () => {
     expect(publishBlockReason({ ...base, sources: [] })).toBe('至少引用 1 个已启用数据源才能提交发布')
@@ -119,6 +132,36 @@ describe('knowledgeBaseMeta · publishBlockReason 发布完整校验（md §三.
   it('④ API / MCP 源最近一次连接测试未成功 → 「API 数据源「X」需最近一次连接测试成功」', () => {
     expect(publishBlockReason({ ...base, sources: [{ ...okApi, verifyStatus: 'FAILED' }] })).toBe('API 数据源「检索接口」需最近一次连接测试成功')
     expect(publishBlockReason({ ...base, sources: [{ id: 's3', name: '法规 MCP', sourceType: 'MCP', status: 'ENABLED', verifyStatus: 'UNVERIFIED' }] })).toBe('MCP 数据源「法规 MCP」需最近一次连接测试成功')
+  })
+})
+
+/**
+ * 列表「可见范围」列文案（产品优化需求-202611 R3：可见范围改多选）：
+ * 「列表「可见范围」列展示前 2 个名称，超过时显示"等 N 位"（专家）或"等 N 个"（岗位），悬停展示全部」；
+ * 「某个知识库因此一个对象都没有时，可见范围标"无有效专家"或"无有效岗位"」。
+ */
+describe('knowledgeBaseMeta · scopeText / scopeFullText 可见范围文案（R3 多选）', () => {
+  it('企业知识库 → 「全员」（列表与悬停同文）', () => {
+    expect(scopeText({ kbType: 'ENTERPRISE', scopeRefNames: [] })).toBe('全员')
+    expect(scopeFullText({ kbType: 'ENTERPRISE', scopeRefNames: [] })).toBe('全员')
+  })
+  it('不超过 2 个名称 → 全部展示，顿号连接，不带「等 N」', () => {
+    expect(scopeText({ kbType: 'EXPERT', scopeRefNames: ['经营分析专家'] })).toBe('专家：经营分析专家')
+    expect(scopeText({ kbType: 'POSITION', scopeRefNames: ['经营分析岗', '市场研究岗'] })).toBe('岗位：经营分析岗、市场研究岗')
+  })
+  it('专家超过 2 位 → 前 2 个名称 +「等 N 位」', () => {
+    expect(scopeText({ kbType: 'EXPERT', scopeRefNames: ['甲专家', '乙专家', '丙专家'] })).toBe('专家：甲专家、乙专家 等 3 位')
+  })
+  it('岗位超过 2 个 → 前 2 个名称 +「等 N 个」', () => {
+    expect(scopeText({ kbType: 'POSITION', scopeRefNames: ['甲岗', '乙岗', '丙岗', '丁岗'] })).toBe('岗位：甲岗、乙岗 等 4 个')
+  })
+  it('一个有效对象都没有（被删光 / 未解析出名称）→ 「无有效专家」/「无有效岗位」', () => {
+    expect(scopeText({ kbType: 'EXPERT', scopeRefIds: [999], scopeRefNames: [] })).toBe('无有效专家')
+    expect(scopeText({ kbType: 'POSITION', scopeRefIds: [] })).toBe('无有效岗位')
+  })
+  it('scopeFullText（悬停）→ 全部名称，不截断', () => {
+    expect(scopeFullText({ kbType: 'EXPERT', scopeRefNames: ['甲专家', '乙专家', '丙专家'] })).toBe('专家：甲专家、乙专家、丙专家')
+    expect(scopeFullText({ kbType: 'POSITION', scopeRefNames: ['甲岗', '乙岗', '丙岗'] })).toBe('岗位：甲岗、乙岗、丙岗')
   })
 })
 
@@ -175,5 +218,65 @@ describe('knowledgeBaseMeta · 响应字段映射（2026-09-18 推翻 09-08 决�
     expect(validateMcpResponseMap(missingTitle, '$.content[0].items[*]')).toBe('响应字段：title 需填写接口返回字段名')
     // sourceName 留空不报错（留空则取数据源名称）
     expect(validateMcpResponseMap(mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' })), '$.a[*]')).toBe('')
+  })
+})
+
+/**
+ * MCP 检索工具的映射配置（产品优化需求-202611 修改点 10（R7）方案 A）：
+ * 「每个已勾选的工具单独一张配置卡……卡内是该工具的请求参数映射、结果数组路径和响应字段映射」；
+ * 修改点 9（R6）：「新建数据源时结果数组路径留空，示例只作占位提示，不预填」。
+ */
+describe('knowledgeBaseMeta · MCP 检索工具配置（R7 方案 A / R6）', () => {
+  it('mkMcpToolConfig：新勾选工具的空白配置——请求预设 query/topK、结果数组路径留空（不预填示例）、响应预设三行待填', () => {
+    const tc = mkMcpToolConfig()
+    expect(tc.resultArrayPath).toBe('')
+    expect(tc.requestMap.map((r) => r.name)).toEqual(['query', 'topK'])
+    expect(tc.responseMap.map((r) => [r.name, r.sourceField])).toEqual([['title', ''], ['content', ''], ['sourceName', '']])
+  })
+  it('validateMcpToolConfig：空白配置不完整（缺结果数组路径），补齐路径与 title / content 后两段错误都为空', () => {
+    expect(validateMcpToolConfig(mkMcpToolConfig())).toEqual({ request: '', response: '请填写结果数组路径' })
+    const filled = { ...mkMcpToolConfig(), resultArrayPath: '$.items[*]' }
+    filled.responseMap = filled.responseMap.map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : r.name }))
+    expect(validateMcpToolConfig(filled)).toEqual({ request: '', response: '' })
+  })
+})
+
+/**
+ * 结果数组路径的取值口径（产品优化需求-202611 修改点 9（R6），口径待研发确认，demo 按草案建议口径）：
+ * 「工具返回带 structuredContent 时以它为根；否则取第一个 type 为 text 的内容块，把 text 按 JSON 解析后作为根。
+ *  路径从根写起，如 $.items[*]、$.data.list[*]」；
+ * 「按路径取不到数组时，提示"按结果数组路径未取到数组，请检查路径"；text 不是合法 JSON 时，提示"工具返回内容不是 JSON，无法按路径取值"」。
+ */
+describe('knowledgeBaseMeta · MCP 结果数组路径取值（R6）', () => {
+  const textResult = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }] })
+
+  it('无 structuredContent：取第一个 text 块解析出的 JSON 为根，$.items[*] 取到数组', () => {
+    expect(evalMcpResultArray(textResult({ items: [{ t: 1 }, { t: 2 }] }), '$.items[*]')).toEqual({ items: [{ t: 1 }, { t: 2 }] })
+  })
+  it('多个内容块时跳过非 text 块，取第一个 type 为 text 的块', () => {
+    const r = { content: [{ type: 'image', data: 'xx' }, { type: 'text', text: '{"data":{"list":[1,2,3]}}' }, { type: 'text', text: '{"data":{"list":[9]}}' }] }
+    expect(resolveMcpResultRoot(r)).toEqual({ root: { data: { list: [1, 2, 3] } } })
+  })
+  it('带 structuredContent：以它为根，text 即使不是 JSON 也不影响取值', () => {
+    const r = { content: [{ type: 'text', text: '命中 2 条' }], structuredContent: { results: [{ a: 1 }, { a: 2 }] } }
+    expect(evalMcpResultArray(r, '$.results[*]')).toEqual({ items: [{ a: 1 }, { a: 2 }] })
+  })
+  it('路径写进协议层（$.content[0].items[*]）→ 从结果数据的根取不到 →「按结果数组路径未取到数组，请检查路径」', () => {
+    expect(evalMcpResultArray(textResult({ items: [1] }), '$.content[0].items[*]')).toEqual({ error: '按结果数组路径未取到数组，请检查路径' })
+  })
+  it('无 structuredContent 且 text 不是合法 JSON →「工具返回内容不是 JSON，无法按路径取值」', () => {
+    expect(evalMcpResultArray({ content: [{ type: 'text', text: '共找到 2 条结果' }] }, '$.items[*]')).toEqual({ error: '工具返回内容不是 JSON，无法按路径取值' })
+  })
+  it('pickResultArray：点分多层 + [下标] + [*] 都能取；终点本身是数组时不写 [*] 也认', () => {
+    const root = { data: { list: [{ id: 1 }, { id: 2 }] }, pages: [{ rows: ['a'] }, { rows: ['b', 'c'] }] }
+    expect(pickResultArray(root, '$.data.list[*]')).toEqual([{ id: 1 }, { id: 2 }])
+    expect(pickResultArray(root, '$.pages[1].rows[*]')).toEqual(['b', 'c'])
+    expect(pickResultArray(root, '$.data.list')).toEqual([{ id: 1 }, { id: 2 }])
+  })
+  it('pickResultArray：终点不是数组 / 中途字段不存在 / 不以 $ 开头 → 取不到（null）', () => {
+    const root = { total: 2, data: { list: [1, 2] } }
+    expect(pickResultArray(root, '$.total')).toBeNull()
+    expect(pickResultArray(root, '$.data.rows[*]')).toBeNull()
+    expect(pickResultArray(root, 'data.list[*]')).toBeNull()
   })
 })

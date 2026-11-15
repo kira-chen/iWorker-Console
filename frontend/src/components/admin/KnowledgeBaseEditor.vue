@@ -13,7 +13,8 @@
  *   查看：审核中=关闭·撤回；未发布=关闭·提交发布；已发布=关闭
  *
  * 【关键变更回未发布】（md §三.5）已发布库改数据源引用或可见范围 → 保存前二次确认，确认后回未发布重审。
- * 【岗位上下文】（md §三.8）positionLock 传入时类型锁「岗位知识库」、可见范围锁当前岗位，均不可更改。
+ * 【岗位上下文】（md §三.8）positionLock 传入时类型锁「岗位知识库」；可见范围默认选上当前岗位，可再加其他岗位（R3）。
+ * 【可见范围多选】（产品优化需求-202611 R3）专家、岗位类型都多选，至少 1 个；专家类型原「创建后不可更改」取消，可增减。
  *
  * 【2026-09-09 原型复刻批次 3B · C1–C5/C8】静态形态照原型 openKbEditor：
  *   C1 两段改 .section-card 卡壳（admin-shell.css，= 原型 .proto2-form-sec + .proto2-form-title 灰底标题条），
@@ -72,8 +73,8 @@ const SOURCE_DESC = {
 }
 const SCOPE_HELP = {
   ENTERPRISE: '企业知识库全员可见',
-  EXPERT: '选择可使用该知识库的专家，创建后不可更改',
-  POSITION: '选择可使用该知识库的岗位'
+  EXPERT: '选择可使用该知识库的专家，可多选',
+  POSITION: '选择可使用该知识库的岗位，可多选'
 }
 
 const formRef = ref(null)
@@ -90,7 +91,7 @@ const viewMode = computed(() => props.mode === 'view' && isEdit.value)
 const pendingLocked = computed(() => isPending(detail.value)) // 审核中：配置锁定，仅允许查看或撤回
 const readonlyAll = computed(() => viewMode.value || pendingLocked.value)
 
-const form = reactive({ name: '', icon: '', kbType: 'ENTERPRISE', scopeRefId: '', description: '' })
+const form = reactive({ name: '', icon: '', kbType: 'ENTERPRISE', scopeRefIds: [], description: '' })
 /** 每类选中的数据源 id 列表（引用）。 */
 const refs = reactive({ UPLOAD: [], API: [], MCP: [] })
 
@@ -100,12 +101,15 @@ const rules = computed(() => ({
   icon: [{ required: true, message: '请选择或上传图标', trigger: 'change' }],
   kbType: [{ required: true, message: '请选择类型', trigger: 'change' }],
   // 必填星标放在规则里（required: true + 自定义 validator），不要写在 <el-form-item required> 上：
-  // 后者会让 Element 额外塞一条内置必填规则，企业类型固定「全员」、scopeRefId 恒为空 → 永远报 `scopeRefId is required`。
+  // 后者会让 Element 额外塞一条内置必填规则，企业类型固定「全员」、scopeRefIds 恒为空 → 永远报 `scopeRefIds is required`。
   // 规则带 validator 时 async-validator 只认 validator，required 仅供 Element 画星标。
-  scopeRefId: [
+  scopeRefIds: [
     {
       required: true,
-      validator: (r, v, cb) => (form.kbType !== 'ENTERPRISE' && !v ? cb(new Error('请选择可见范围')) : cb()),
+      validator: (r, v, cb) =>
+        form.kbType !== 'ENTERPRISE' && !(v || []).length
+          ? cb(new Error(scopeEmptied.value ? `无有效${scopeLabel.value}，请重新选择` : '请选择可见范围'))
+          : cb(),
       trigger: 'change'
     }
   ],
@@ -118,12 +122,19 @@ const positions = ref([])
 const sourcePool = ref([]) // 全量数据源（数据源管理里维护；此处只引用，md §三.3.2）
 const scopeOptions = computed(() => (form.kbType === 'EXPERT' ? experts.value : form.kbType === 'POSITION' ? positions.value : []))
 const scopeLabel = computed(() => (form.kbType === 'EXPERT' ? '专家' : form.kbType === 'POSITION' ? '岗位' : ''))
+// 打开已有的专家 / 岗位知识库时可见范围为空 = 原来选的对象都被删了（保存要求至少 1 个），提示与列表「无有效专家 / 岗位」一致
+const scopeEmptied = ref(false)
+const scopeHelpText = computed(() => {
+  if (props.positionLock && !isEdit.value) return '已默认选上当前岗位，可再选其他岗位'
+  if (scopeEmptied.value && !form.scopeRefIds.length) return `原来选的${scopeLabel.value}都已被删除（无有效${scopeLabel.value}），请重新选择`
+  return SCOPE_HELP[form.kbType]
+})
 /** 类型锁：创建后不可修改（md §三.3.1）；岗位上下文新建也锁（md §三.8）。 */
 const typeLocked = computed(() => isEdit.value || readonlyAll.value || !!props.positionLock)
-/** 可见范围锁：专家类型创建后不可更改（md §三.3.1）；岗位上下文锁当前岗位（md §三.8）。 */
-const scopeLocked = computed(
-  () => readonlyAll.value || !!props.positionLock || (isEdit.value && form.kbType === 'EXPERT')
-)
+/** 可见范围只在查看 / 审核期锁定（R3：专家类型「创建后不可更改」取消；岗位上下文只做默认选中，不再锁）。 */
+const scopeLocked = computed(() => readonlyAll.value)
+/** 专家下拉项带专家类型（R3：候选为平台全部专家），岗位只展示名称。 */
+const scopeOptionLabel = (o) => (o.typeLabel ? `${o.name}（${o.typeLabel}）` : o.name)
 
 /**
  * 可引用候选：只出「启用」的数据源（2026-09-09 负责人拍板「停用的数据源不可被引用」）。
@@ -165,7 +176,7 @@ function refWarnings(type) {
 }
 
 // 注意（yuepu#90②，潜伏项不改）：下面两个候选只取默认首页；真实后端分页上限（如 size:200）下，超出的对象会在发布门
-// 「可见对象仍存在」被误判为已不存在——接真实接口时应改为按 id 查存在性。mock 的专家候选也是写死的 ex_1/ex_2。
+// 「可见对象仍存在」被误判为已不存在——接真实接口时应改为按 id 查存在性。
 async function loadOptions() {
   const [e, p, pool] = await Promise.all([
     listExpertOptions().catch(() => []),
@@ -184,17 +195,27 @@ function resetForm() {
     name: '',
     icon: '',
     kbType: lock ? 'POSITION' : 'ENTERPRISE',
-    scopeRefId: lock ? lock.id : '',
+    scopeRefIds: lock ? [lock.id] : [],
     description: ''
   })
+  scopeEmptied.value = false
   for (const t of SOURCE_TYPES) refs[t] = []
+}
+/**
+ * 已选 id 换成候选里同值的那一个（按 String 比对）：岗位上下文带来的 id 可能是字符串（地址栏），候选 id 是数字，
+ * 类型不一致时下拉认不出——标签显示裸 id、选项不打勾、再点一次还会重复加（产品优化需求-202611 修改点 8）。
+ */
+function alignScopeIds(ids) {
+  return ids.map((id) => scopeOptions.value.find((o) => String(o.id) === String(id))?.id ?? id)
 }
 function hydrate(d) {
   detail.value = d
   form.name = d.name || ''
   form.icon = d.icon || ''
   form.kbType = d.kbType || 'ENTERPRISE'
-  form.scopeRefId = d.scopeRefId || ''
+  // 只回填仍存在的对象（被删的专家 / 岗位不再出现在下拉标签里，保存即从可见范围移除）
+  form.scopeRefIds = (d.scopeRefs || []).map((x) => x.id)
+  scopeEmptied.value = form.kbType !== 'ENTERPRISE' && !form.scopeRefIds.length
   form.description = d.description || ''
   for (const t of SOURCE_TYPES) {
     refs[t] = (d.sources || []).filter((s) => s.sourceType === t).map((s) => s.id)
@@ -206,6 +227,7 @@ async function load() {
   try {
     await loadOptions()
     if (targetId.value) hydrate(await getKnowledgeBase(targetId.value))
+    else form.scopeRefIds = alignScopeIds(form.scopeRefIds) // 新建：默认选上的当前岗位对齐到候选项
   } catch (e) {
     loadError.value = e?.message || '加载失败'
   } finally {
@@ -228,7 +250,7 @@ watch(
 watch(
   () => form.kbType,
   () => {
-    if (!isEdit.value && !props.positionLock) form.scopeRefId = ''
+    if (!isEdit.value && !props.positionLock) form.scopeRefIds = []
   }
 )
 
@@ -241,7 +263,7 @@ function buildPayload() {
     name: form.name.trim(),
     icon: form.icon,
     kbType: form.kbType,
-    scopeRefId: form.kbType === 'ENTERPRISE' ? null : form.scopeRefId || null,
+    scopeRefIds: form.kbType === 'ENTERPRISE' ? [] : [...form.scopeRefIds],
     description: form.description.trim(),
     sourceIds: allRefIds()
   }
@@ -250,7 +272,7 @@ function buildPayload() {
 function criticalChange(payload) {
   if (detail.value?.status !== 'PUBLISHED' || isPending(detail.value)) return false
   const refsChanged = sourceRefsChanged((detail.value.sources || []).map((s) => s.id), payload.sourceIds)
-  const scopeChanged = (detail.value.scopeRefId || null) !== (payload.scopeRefId || null)
+  const scopeChanged = sourceRefsChanged((detail.value.scopeRefs || []).map((x) => x.id), payload.scopeRefIds)
   return refsChanged || scopeChanged
 }
 async function save({ silent = false } = {}) {
@@ -303,7 +325,7 @@ const publishBlock = computed(() =>
     icon: form.icon,
     description: form.description,
     kbType: form.kbType,
-    scopeRefId: form.kbType === 'ENTERPRISE' ? 'ALL' : form.scopeRefId,
+    scopeRefIds: form.kbType === 'ENTERPRISE' ? ['ALL'] : form.scopeRefIds,
     sources: allRefIds().map(sourceById).filter(Boolean)
     },
     // 可见对象须仍在候选里（md §三.6，yuepu#62⑧）；候选没加载出来时不据此误拦，由提交接口兜底
@@ -330,7 +352,13 @@ async function doPublish() {
     }
   } else {
     const valid = await formRef.value?.validate().catch(() => false)
-    if (!valid) return
+    if (!valid) {
+      // 原来选的对象都被删了：字段红字之外，与列表 / 查看抽屉同一句 toast 拦下（产品优化需求-202611 修改点 8）
+      if (scopeEmptied.value && form.kbType !== 'ENTERPRISE' && !form.scopeRefIds.length) {
+        ElMessage.error(publishBlockReason({ kbType: form.kbType, scopeRefIds: [] }))
+      }
+      return
+    }
     if (publishBlock.value) {
       // 校验失败：保留编辑内容、就地展示原因，不进入审核中（md §三.6）
       ElMessage.error(publishBlock.value)
@@ -420,14 +448,23 @@ function close() {
             </el-select>
             <div class="kb-help">{{ positionLock && !isEdit ? '岗位知识库不可更改' : '创建后不可更改' }}</div>
           </el-form-item>
-          <el-form-item label="可见范围" prop="scopeRefId">
+          <el-form-item label="可见范围" prop="scopeRefIds">
             <el-select v-if="form.kbType === 'ENTERPRISE'" model-value="ALL" disabled class="kb-full">
               <el-option label="全员" value="ALL" />
             </el-select>
-            <el-select v-else v-model="form.scopeRefId" filterable :disabled="scopeLocked" :placeholder="`选择${scopeLabel}`" class="kb-full">
-              <el-option v-for="o in scopeOptions" :key="o.id" :label="o.name" :value="o.id" />
+            <el-select
+              v-else
+              v-model="form.scopeRefIds"
+              multiple
+              filterable
+              :disabled="scopeLocked"
+              :placeholder="`选择${scopeLabel}，可多选`"
+              class="kb-full"
+              data-testid="kb-scope-select"
+            >
+              <el-option v-for="o in scopeOptions" :key="o.id" :label="scopeOptionLabel(o)" :value="o.id" />
             </el-select>
-            <div class="kb-help">{{ positionLock ? '可见范围锁定为当前岗位' : SCOPE_HELP[form.kbType] }}</div>
+            <div class="kb-help">{{ scopeHelpText }}</div>
           </el-form-item>
           <el-form-item label="描述" prop="description" class="kb-grid-full" required>
             <el-input v-model="form.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="必填：这个知识库放什么、给谁用" />

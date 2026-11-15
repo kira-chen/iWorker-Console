@@ -42,8 +42,8 @@ vi.mock('@/api/sampleTask', () => ({ listSampleTasks: (...a) => listSampleTasks(
 const AdminPositions = (await import('@/views/admin/AdminPositions.vue')).default
 
 const ROWS = [
-  { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总', icon: '▤', agentCount: 3, skillCount: 1, claimedUserCount: 26, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', updatedAt: '2026-08-25T16:20:00+08:00' },
-  { positionId: 404, name: '市场研究岗', description: '负责行业资料整理', icon: '⌁', agentCount: 1, skillCount: 1, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-23T09:42:00+08:00' }
+  { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总', icon: '▤', skillCount: 1, claimedUserCount: 26, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', updatedAt: '2026-08-25T16:20:00+08:00' },
+  { positionId: 404, name: '市场研究岗', description: '负责行业资料整理', icon: '⌁', skillCount: 1, claimedUserCount: 0, status: 'draft', pendingAction: null, latestVersion: '', updatedAt: '2026-08-23T09:42:00+08:00' }
 ]
 
 // jsdom 没有 ResizeObserver（el-table 布局用），补一个空实现
@@ -159,10 +159,11 @@ describe('AdminPositions · 真实 Element Plus 挂载冒烟', () => {
 // 页面须把 useVersionPublish 的 loadFailed / loadNextVersionLabel 接到 PublishCheckDialog 的 :load-failed / @retry（删掉任一接线本组变红）。
 describe('AdminPositions · 发布弹窗版本号获取失败可重试（J36）', () => {
   it('getNextVersionLabel 拒绝 → 弹窗显「版本号获取失败」；点【重试】再次取号并显示版本号', async () => {
+    // 详情须九项齐备才会开发布弹窗（md §9.1；第 8 项按 产品优化需求-202611 修改点 1 为「至少引用 1 个技能」，岗位直接带 skills[]）
     getPosition.mockResolvedValue({
       name: '市场研究岗', icon: '⌁', description: '描述', claimDescriptions: ['文案'], exampleQuestions: ['q1', 'q2', 'q3'],
       positionSop: 'sop', intakeSchema: [{ label: '区域', key: 'region', type: 'text', required: true, options: [] }],
-      agents: [{ name: 'A1', skills: [{ skillId: 1 }] }]
+      skills: [{ skillId: 1, name: '行业资料整理' }]
     })
     listSampleTasks.mockResolvedValue({ list: [{ id: 1 }] })
     getNextVersionLabel.mockRejectedValueOnce(new Error('网络错误')).mockResolvedValue('v1.0.0')

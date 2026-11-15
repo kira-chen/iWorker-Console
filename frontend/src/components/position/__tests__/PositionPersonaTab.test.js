@@ -71,7 +71,7 @@ async function mount(props = {}, provides = {}) {
   return container
 }
 const flush = async () => { await nextTick(); await Promise.resolve(); await nextTick() }
-// 两个【AI 生成】按钮：[0]=示例问题卡、[1]=岗位 SOP 卡
+// 三个【AI 生成】按钮：[0]=示例问题卡、[1]=岗位 SOP 卡、[2]=SOP 简版卡（修改点 18，来源是完整版 SOP）
 const aiBtns = () => [...container.querySelectorAll('.pd-ai-btn')]
 const cardByTitle = (title) => [...container.querySelectorAll('.pd-card')].find((c) => c.querySelector('.pd-card-title')?.textContent.startsWith(title))
 
@@ -91,8 +91,8 @@ afterEach(() => {
 describe('人格页签 · 【AI 生成】门与拟真生成（md §2.5 示例问题 / §2.6 岗位 SOP「岗位描述为空时按钮置灰禁用」「延迟 500ms 后自动生成」）', () => {
   it('岗位描述为空 → 示例问题 / 岗位 SOP 两处【AI 生成】均 disabled + title「请先填写岗位描述」', async () => {
     await mount()
-    expect(aiBtns()).toHaveLength(2)
-    for (const b of aiBtns()) {
+    expect(aiBtns()).toHaveLength(3)
+    for (const b of aiBtns().slice(0, 2)) {
       expect(b.textContent.trim()).toBe('AI 生成')
       expect(b.disabled).toBe(true)
       expect(b.getAttribute('title')).toBe('请先填写岗位描述')
@@ -106,10 +106,13 @@ describe('人格页签 · 【AI 生成】门与拟真生成（md §2.5 示例问
     desc.dispatchEvent(new Event('input'))
     await flush()
     expect(store.basic.description).toBe('负责经营数据汇总与分析')
-    for (const b of aiBtns()) {
+    for (const b of aiBtns().slice(0, 2)) {
       expect(b.disabled).toBe(false)
       expect(b.getAttribute('title')).toBeNull()
     }
+    // SOP 简版的来源是完整版 SOP，不是岗位描述：只填描述时它仍置灰（修改点 18）
+    expect(aiBtns()[2].disabled).toBe(true)
+    expect(aiBtns()[2].getAttribute('title')).toBe('请先填写岗位 SOP')
   })
 
   it('点示例问题【AI 生成】→ 按钮变「生成中…」+ loading；500ms 后 3 条示例问题填入（每条 ≤300 字，2026-09-18 待办 yuepu#5⑥，原 60）+ toast「已生成示例问题」', async () => {
@@ -267,7 +270,8 @@ describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.3 �
     expect(desc.getAttribute('placeholder')).toBe('说明该岗位负责什么、可以帮助用户完成哪些工作')
     const sop = container.querySelector('.pd-sop-input')
     expect(sop.getAttribute('maxlength')).toBe('4000')
-    expect(sop.getAttribute('placeholder')).toBe('说明岗位如何组合使用 Agent、技能、知识与工具完成工作')
+    // 产品优化需求-202611 修改点 1 取消 Agent：占位去掉「Agent」
+    expect(sop.getAttribute('placeholder')).toBe('说明岗位如何组合使用技能、知识与工具完成工作')
   })
 
   it('示例问题逐格输入 → 写回 store.basic.exampleQuestions 对应位置', async () => {
@@ -279,10 +283,11 @@ describe('人格页签 · 示例问题 / 描述 / SOP 输入约束（md §2.3 �
     expect(store.basic.exampleQuestions).toEqual(['', '帮我看看本月异常指标', ''])
   })
 
-  it('只读态 → 两处【AI 生成】仍展示但置灰不可点（md §2.6「只读态下按钮同样置灰不可点」，yuepu#60①），描述 / 示例问题 / SOP 输入框均 disabled', async () => {
+  it('只读态 → 三处【AI 生成】（含 SOP 简版）仍展示但置灰不可点（md §2.6「只读态下按钮同样置灰不可点」，yuepu#60①），描述 / 示例问题 / SOP 输入框均 disabled', async () => {
     store.basic.description = '有描述'
+    store.basic.positionSop = '有 SOP'
     await mount({ isReadonly: true })
-    expect(aiBtns()).toHaveLength(2)
+    expect(aiBtns()).toHaveLength(3)
     for (const b of aiBtns()) {
       expect(b.disabled).toBe(true)
       expect(b.getAttribute('title')).toBeNull() // 只读不是「没填描述」，不给「请先填写」引导
@@ -402,5 +407,48 @@ describe('人格页签 · 示例问题发布阻断标红（2026-10-08 对齐 md 
     eqInputs()[1].dispatchEvent(new Event('input'))
     await flush()
     expect(eqInputs()[1].classList.contains('pd-eq-err')).toBe(false)
+  })
+})
+
+describe('人格页签 · SOP 简版（产品优化需求-202611 修改点 18：客户端岗位卡片展示用，按完整版 AI 生成）', () => {
+  const briefCard = () => container.querySelector('[data-testid="sop-brief-card"]')
+  const briefBtn = () => briefCard().querySelector('.pd-ai-btn')
+
+  it('岗位 SOP 下方有「SOP 简版」卡片：选填、最多 200 字，说明客户端展示、执行仍按完整版', async () => {
+    await mount()
+    expect(briefCard().querySelector('.pd-card-title').textContent.trim()).toBe('SOP 简版')
+    expect(briefCard().querySelector('.pd-card-sub').textContent).toContain('数字员工执行时仍按完整版岗位 SOP')
+    expect(briefCard().querySelector('.pd-card-hint').textContent).toContain('选填，最多 200 个字符')
+    expect(briefCard().querySelector('textarea').getAttribute('maxlength')).toBe('200')
+  })
+
+  it('完整版岗位 SOP 为空 → 简版【AI 生成】置灰，提示「请先填写岗位 SOP」（不看岗位描述）', async () => {
+    store.basic.description = '负责经营分析'
+    await mount()
+    expect(briefBtn().disabled).toBe(true)
+    expect(briefBtn().getAttribute('title')).toBe('请先填写岗位 SOP')
+  })
+
+  it('点简版【AI 生成】→ 500ms 后按完整版生成编号步骤填入，toast「已生成 SOP 简版」', async () => {
+    const { ElMessage } = await import('element-plus')
+    vi.useFakeTimers()
+    store.basic.positionSop = '1. 理解用户意图，确认任务目标。\n2. 执行任务并核对结果。'
+    await mount()
+    briefBtn().click()
+    await flush()
+    vi.advanceTimersByTime(500)
+    await flush()
+    expect(store.basic.positionSopBrief).toBe('1. 理解用户意图\n2. 执行任务并核对结果')
+    expect(ElMessage.success).toHaveBeenCalledWith('已生成 SOP 简版')
+    expect(briefCard().querySelector('textarea').value).toBe(store.basic.positionSopBrief)
+  })
+
+  it('手动输入简版 → 写回岗位配置', async () => {
+    await mount()
+    const ta = briefCard().querySelector('textarea')
+    ta.value = '1. 收集需求\n2. 交付结果'
+    ta.dispatchEvent(new Event('input'))
+    await flush()
+    expect(store.basic.positionSopBrief).toBe('1. 收集需求\n2. 交付结果')
   })
 })

@@ -12,6 +12,7 @@ vi.mock('@/api/skillFiles', () => ({
   deleteSkillFile: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   renameSkillFile: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   exportSkillZip: vi.fn(() => Promise.resolve('skill-1.zip')),
+  importZipToSkill: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   // 目录结构能力：createSkillFolder / renameSkillFolder / deleteSkillFolder / moveSkillNode（mock 层，is_dir 持久化 + 原子文件夹/移动）。
   createSkillFolder: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
   renameSkillFolder: vi.fn(() => Promise.resolve({ tree: { files: [] } })),
@@ -49,6 +50,7 @@ const {
   renameSkillFile,
   deleteSkillFile,
   exportSkillZip,
+  importZipToSkill,
   createSkillFolder,
   renameSkillFolder,
   deleteSkillFolder,
@@ -118,7 +120,11 @@ const stubs = {
         )
     }
   },
-  'el-tooltip': { template: '<div class="el-tooltip"><slot /></div>' },
+  // content / disabled 落成 data 属性，供「上传技能包」锁定提示断言
+  'el-tooltip': {
+    props: { content: { type: String, default: '' }, disabled: { type: Boolean, default: false } },
+    template: '<div class="el-tooltip" :data-content="content" :data-disabled="String(disabled)"><slot /></div>'
+  },
   'el-skeleton': { template: '<div class="el-skeleton" />' },
   'el-button': { template: '<button><slot /></button>' },
   // 「移动到…」对话框：v-model 受控，默认隐藏；仅 modelValue=true 时渲染内容 + footer。
@@ -661,5 +667,79 @@ describe('按内容查找无结果（2026-10-08 补缺口）', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('上传技能包（产品优化需求-202611 R5 草案）', () => {
+  const CONFIRM_TEXT = '上传后将用技能包替换当前草稿的全部文件，未保存的修改会丢失。确认上传？'
+  const uploadBtn = (el) => el.querySelector('[data-testid="upload-package"]')
+  // 模拟在系统文件框里选好一个 zip
+  function pick(el, name) {
+    const input = el.querySelector('.ft-upload-input')
+    const file = new File(['PK'], name, { type: 'application/zip' })
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    input.dispatchEvent(new Event('change'))
+    return file
+  }
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+  }
+  // 别的用例可能留下没用掉的 mockRejectedValueOnce（如「无二次确认」类用例），这里清掉，免得随机顺序下串到本组
+  beforeEach(() => {
+    confirmSpy.mockReset()
+    importZipToSkill.mockReset()
+    importZipToSkill.mockImplementation(() => Promise.resolve({ tree: { files: [] } }))
+  })
+
+  it('可编辑：文件目录头部有【上传技能包】，可点', () => {
+    const el = mount({ skillId: 1, files: FILES, source: 'fde', activePath: 'SKILL.md' })
+    expect(el.querySelector('.ft-head').contains(uploadBtn(el))).toBe(true)
+    expect(uploadBtn(el).textContent.trim()).toBe('上传技能包')
+    expect(uploadBtn(el).disabled).toBe(false)
+  })
+
+  it('只读态（非审核锁定）：不展示【上传技能包】', () => {
+    const el = mount({ skillId: 1, files: FILES, source: 'fde', activePath: 'SKILL.md', readonly: true })
+    expect(uploadBtn(el)).toBeNull()
+  })
+
+  it('审核中锁定：按钮置灰，悬停提示「审核中不可编辑，如需修改请先撤回」', () => {
+    const el = mount({ skillId: 1, files: FILES, source: 'fde', activePath: 'SKILL.md', readonly: true, locked: true })
+    expect(uploadBtn(el).disabled).toBe(true)
+    const tip = uploadBtn(el).closest('.el-tooltip')
+    expect(tip.dataset.content).toBe('审核中不可编辑，如需修改请先撤回')
+    expect(tip.dataset.disabled).toBe('false')
+  })
+
+  it('选好 zip → 先确认覆盖；确认后调 importZipToSkill 并 emit package-uploaded', async () => {
+    const onPackageUploaded = vi.fn()
+    const el = mount({ skillId: 7, files: FILES, source: 'platform', activePath: 'SKILL.md', onPackageUploaded })
+    const file = pick(el, '经营数据分析.zip')
+    await flush()
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy.mock.calls[0][0]).toBe(CONFIRM_TEXT)
+    expect(confirmSpy.mock.calls[0][2]).toMatchObject({ confirmButtonText: '确认上传', cancelButtonText: '取消' })
+    expect(importZipToSkill).toHaveBeenCalledWith(7, file, { source: 'platform' })
+    expect(onPackageUploaded).toHaveBeenCalledTimes(1)
+  })
+
+  it('确认框点【取消】→ 不上传', async () => {
+    confirmSpy.mockRejectedValueOnce('cancel')
+    const onPackageUploaded = vi.fn()
+    const el = mount({ skillId: 7, files: FILES, source: 'fde', activePath: 'SKILL.md', onPackageUploaded })
+    pick(el, '经营数据分析.zip')
+    await flush()
+    expect(importZipToSkill).not.toHaveBeenCalled()
+    expect(onPackageUploaded).not.toHaveBeenCalled()
+  })
+
+  it('上传失败 → 提示失败原因，不通知页面刷新', async () => {
+    importZipToSkill.mockRejectedValueOnce(new Error('技能包名称（别的技能）与当前技能不一致，请检查后重新上传'))
+    const onPackageUploaded = vi.fn()
+    const el = mount({ skillId: 7, files: FILES, source: 'fde', activePath: 'SKILL.md', onPackageUploaded })
+    pick(el, '别的技能.zip')
+    await flush()
+    expect(ElMessage.error).toHaveBeenCalledWith('技能包名称（别的技能）与当前技能不一致，请检查后重新上传')
+    expect(onPackageUploaded).not.toHaveBeenCalled()
   })
 })

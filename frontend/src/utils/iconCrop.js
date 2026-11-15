@@ -6,6 +6,15 @@
  * - 异常文案逐字：「请选择图片文件」「图片不能超过 5 MB」；
  * - 裁剪：方形选区（拖动图片 + 缩放滑杆），输出 256×256 PNG（GIF/SVG 同样走 canvas 静态化）。
  *
+ * 产品优化需求-202611 修改点 16（R12）补原图尺寸规则（岗位、专家、专家团、技能、模型、MCP、API、业务系统、
+ * 知识库共用本文件，R12-1 暂按最小 128、建议 256）：
+ * - 原图短边 < 128 px 不可用，提示「图片尺寸过小，请上传不小于 128×128 的图片」；
+ * - 短边 128–255 px 可用，裁剪界面提示「图片尺寸偏小，生成的图标可能模糊」；
+ * - SVG 是矢量图，放大不失真，不受尺寸限制；
+ * - 【上传图标】按钮旁常驻提示见 ICON_UPLOAD_HINT；
+ * - 输出保持 256×256 PNG（R12-2 暂按）；GIF 只取第一帧、SVG 转成 PNG（R12-3 继续支持两种格式），
+ *   都由 cropToPngDataUrl 的 canvas.drawImage 完成。
+ *
  * 几何模型（avatar-cropper 范式）：正方形视口（viewport）固定，图片以 cover 比例铺满并可
  * 拖动 / 缩放；offset 为图片左上角相对视口左上角的位移（≤0），裁剪即取视口下方的源区域。
  * 全部函数为纯函数（除 cropToPngDataUrl 依赖 canvas），便于单测。
@@ -20,6 +29,13 @@ const ICON_EXT_RE = /\.(png|jpe?g|webp|gif|svg)$/i
 // 文件输入框 accept（MIME + 后缀双写，兼容不同浏览器的过滤实现）
 export const ICON_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.svg,image/png,image/jpeg,image/webp,image/gif,image/svg+xml'
 
+// 原图尺寸（R12）：短边低于 MIN 不可用；低于 RECOMMENDED 可用但提示可能模糊（输出 256，原图小于 256 就得放大）
+export const ICON_MIN_SIDE = 128
+export const ICON_RECOMMENDED_SIDE = 256
+
+// 【上传图标】按钮旁的常驻提示（R12，逐字），IconField / IconPickerPopover 共用
+export const ICON_UPLOAD_HINT = '支持 PNG、JPG、WebP、GIF、SVG，不超过 5 MB，建议 1:1、不小于 256×256'
+
 /**
  * 校验上传文件（MIME 优先，后缀兜底）。
  * @returns {string} 空串=通过；否则为 PRD 逐字错误文案。
@@ -30,6 +46,28 @@ export function validateIconFile(file) {
   if (!typeOk) return '请选择图片文件'
   if (file.size > ICON_MAX_BYTES) return '图片不能超过 5 MB'
   return ''
+}
+
+/** 是否 SVG（MIME 优先，后缀兜底，口径同 validateIconFile）：SVG 不做原图尺寸校验。 */
+export function isSvgIcon(file) {
+  return file?.type === 'image/svg+xml' || /\.svg$/i.test(file?.name || '')
+}
+
+/**
+ * 原图尺寸校验（R12）：图片读出宽高后、进裁剪界面前调用。
+ * @param {number} natW 原图宽（px）
+ * @param {number} natH 原图高（px）
+ * @param {{ svg?: boolean }} opts svg=true 时不受尺寸限制
+ * @returns {{ error: string, warning: string }} error 非空=不可用（不进裁剪）；warning 非空=可用，裁剪界面展示该提示
+ */
+export function checkIconDimensions(natW, natH, { svg = false } = {}) {
+  if (svg) return { error: '', warning: '' }
+  const side = Math.min(natW || 0, natH || 0)
+  if (side < ICON_MIN_SIDE) {
+    return { error: `图片尺寸过小，请上传不小于 ${ICON_MIN_SIDE}×${ICON_MIN_SIDE} 的图片`, warning: '' }
+  }
+  if (side < ICON_RECOMMENDED_SIDE) return { error: '', warning: '图片尺寸偏小，生成的图标可能模糊' }
+  return { error: '', warning: '' }
 }
 
 /** cover 基准缩放：短边恰好铺满正方形视口。 */

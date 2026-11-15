@@ -1,17 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// mock api/position：store 测试只验证态机/树操作，不打真实后端
+// mock api/position：store 测试只验证态机 / 引用增删，不打真实后端。
+// 2026-11-12 产品优化需求-202611 修改点 1（R1）：取消 Agent，岗位直接引用技能（detail.skills[]），
+// 技能引用走 attachPositionSkill / detachPositionSkill；修改点 2（R13）：专家与专家团引用走 getPositionExperts 单独加载。
 vi.mock('@/api/position', () => ({
   getPosition: vi.fn(),
   updatePosition: vi.fn(),
-  createAgent: vi.fn(),
-  updateAgent: vi.fn(),
-  deleteAgent: vi.fn(),
   updateSkill: vi.fn(),
-  assignSkill: vi.fn(),
+  attachPositionSkill: vi.fn(),
+  detachPositionSkill: vi.fn(),
   getSkill: vi.fn(),
-  detachSkill: vi.fn()
+  getPositionExperts: vi.fn(),
+  bindPositionExpert: vi.fn(),
+  unbindPositionExpert: vi.fn(),
+  bindPositionTeam: vi.fn(),
+  unbindPositionTeam: vi.fn()
 }))
 
 import * as api from '@/api/position'
@@ -23,9 +27,10 @@ function sampleDetail() {
     name: '销售',
     status: 'draft',
     intakeSchema: [],
-    agents: [
-      { agentId: 11, name: 'A', skills: [{ skillId: 101, name: 's1' }, { skillId: 102, name: 's2' }] },
-      { agentId: 12, name: 'B', skills: [{ skillId: 201, name: 's3' }] }
+    skills: [
+      { skillId: 101, name: 's1' },
+      { skillId: 102, name: 's2' },
+      { skillId: 201, name: 's3' }
     ]
   }
 }
@@ -36,21 +41,20 @@ describe('position store', () => {
     vi.clearAllMocks()
   })
 
-  it('load + hydrate 拆出 basic，派生 allSkills 扁平含归属', async () => {
+  it('load + hydrate 拆出 basic；skills 即岗位直接引用的技能，按详情顺序（产品优化需求-202611 修改点 1：单层表格，一行一个技能）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     const store = usePositionStore()
     await store.load(5)
     expect(store.basic.name).toBe('销售')
     expect(store.positionId).toBe(5)
-    expect(store.allSkills.length).toBe(3)
-    expect(store.allSkills[0]).toMatchObject({ agentId: 11, agentName: 'A' })
+    expect(store.skills.map((s) => s.skillId)).toEqual([101, 102, 201])
   })
 
   it('initNew 建空白草稿态', () => {
     const store = usePositionStore()
     store.initNew()
     expect(store.positionId).toBeNull()
-    expect(store.agents).toEqual([])
+    expect(store.skills).toEqual([])
     expect(store.basic.name).toBe('')
     // 连接器页签的三个引用清单都从空数组起步（待办 yuepu#42：此前只有 businessSystemIds，另两个恒 undefined）
     expect(store.basic.businessSystemIds).toEqual([])
@@ -78,10 +82,17 @@ describe('position store', () => {
   })
 
   // 2026-10-08 对齐 docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §9.1 阻断校验九项：
-  // 前 8 项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 / SOP / 采集字段 / Agent 与技能）的输入由真实 store 的
+  // 前 8 项（名称 / 图标 / 描述 / 领用页文案 / 示例问题 / SOP / 采集字段 / 技能）的输入由真实 store 的
   // checkInput 汇出；第 9 项「自动化任务」条数由详情页独立预取（不在 store），此处不涉及。
-  it('checkInput 汇出发布检查所需输入：名称、图标、描述、领用页文案、示例问题、SOP、采集字段、Agent（含技能）', async () => {
+  // 产品优化需求-202611 修改点 2：引用的专家 / 专家团不可用（未发布、停用、回收、缺员、成员没加入本岗位）与
+  // 自动化任务执行对象不可用进发布前检查的动态阻断项，所以 checkInput 同时带上 experts / teams / execTargetIssues。
+  it('checkInput 汇出发布检查所需输入：名称、图标、描述、领用页文案、示例问题、SOP、采集字段、技能，以及专家与专家团引用', async () => {
     const intake = [{ label: '负责区域', key: 'region', type: 'text', required: true, options: [] }]
+    const refs = {
+      experts: [{ expertId: 203, name: '法务审阅专家', unavailable: '未发布' }],
+      teams: [{ teamId: 304, name: '经营复盘团', unavailable: '', missingCount: 0, unboundMembers: [] }],
+      execTargetIssues: [{ taskName: '周度复盘', targetName: '已删除的专家团' }]
+    }
     api.getPosition.mockResolvedValue({
       ...sampleDetail(),
       icon: '▤',
@@ -92,8 +103,10 @@ describe('position store', () => {
       positionSop: '1. 理解意图',
       intakeSchema: intake
     })
+    api.getPositionExperts.mockResolvedValue(refs)
     const store = usePositionStore()
     await store.load(5)
+    expect(api.getPositionExperts).toHaveBeenCalledWith(5)
     expect(store.checkInput).toEqual({
       name: '销售',
       icon: '▤',
@@ -103,7 +116,10 @@ describe('position store', () => {
       positionSop: '1. 理解意图',
       intakeSchema: intake,
       exampleQuestions: ['q1', 'q2', 'q3'],
-      agents: sampleDetail().agents
+      skills: sampleDetail().skills,
+      experts: refs.experts,
+      teams: refs.teams,
+      execTargetIssues: refs.execTargetIssues
     })
   })
 
@@ -117,108 +133,56 @@ describe('position store', () => {
     expect(store.checkInput.exampleQuestions).toEqual(['q1', '', 'q3'])
   })
 
-  it('详情缺领用页文案 / 示例问题 / 采集字段 → checkInput 给空数组与 3 个空格位（发布检查按「未填」判，不因 undefined 报错）', async () => {
-    api.getPosition.mockResolvedValue({ positionId: 6, name: '空岗', status: 'draft', agents: [] })
+  it('详情缺领用页文案 / 示例问题 / 采集字段 / 技能 → checkInput 给空数组与 3 个空格位（发布检查按「未填」判，不因 undefined 报错）', async () => {
+    api.getPosition.mockResolvedValue({ positionId: 6, name: '空岗', status: 'draft' })
     const store = usePositionStore()
     await store.load(6)
     expect(store.checkInput.claimDescriptions).toEqual([])
     expect(store.checkInput.exampleQuestions).toEqual(['', '', ''])
     expect(store.checkInput.intakeSchema).toEqual([])
-    expect(store.checkInput.agents).toEqual([])
+    expect(store.checkInput.skills).toEqual([])
     expect(store.checkInput.icon).toBe('')
   })
 
-  it('addAgent 追加到泳道', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.createAgent.mockResolvedValue({ agentId: 13, name: '新 Agent', skills: [] })
-    const store = usePositionStore()
-    await store.load(5)
-    await store.addAgent({ name: '新 Agent' })
-    expect(store.agents.length).toBe(3)
-    expect(store.agents[2].agentId).toBe(13)
-  })
-
-  it('removeAgent 删 Agent 后其技能子行一并移除（新口径：不转挂、不残留在任何 Agent 行下）', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.deleteAgent.mockResolvedValue({ orphanedSkillCount: 2 })
-    const store = usePositionStore()
-    await store.load(5)
-    const res = await store.removeAgent(11)
-    // Agent 从白板移除
-    expect(store.agents.find((a) => a.agentId === 11)).toBeUndefined()
-    // 其技能（101/102）不再出现在白板任何泳道（收纳区已退役）
-    expect(store.allSkills.map((x) => x.skill.skillId)).not.toContain(101)
-    expect(store.allSkills.map((x) => x.skill.skillId)).not.toContain(102)
-    // 后端回的 orphanedSkillCount 透传给组件做提示/跳转
-    expect(res.orphanedSkillCount).toBe(2)
-  })
-
-  it('patchSkill 原地更新（无迁移）', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.updateSkill.mockResolvedValue({ skillId: 101, name: 's1-改' })
-    const store = usePositionStore()
-    await store.load(5)
-    await store.patchSkill(101, { name: 's1-改' })
-    expect(store.agents[0].skills.find((s) => s.skillId === 101).name).toBe('s1-改')
-  })
-
-  it('assignSkillToAgent 跨 Agent 迁移走 assign 端点', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.assignSkill.mockResolvedValue({ skillId: 101, name: 's1', agentId: 12 })
-    const store = usePositionStore()
-    await store.load(5)
-    await store.assignSkillToAgent(101, 12)
-    expect(api.assignSkill).toHaveBeenCalledWith(101, 12)
-    expect(store.agents.find((a) => a.agentId === 11).skills.map((s) => s.skillId)).not.toContain(101)
-    expect(store.agents.find((a) => a.agentId === 12).skills.map((s) => s.skillId)).toContain(101)
-  })
-
-  it('无游离技能：store 无 orphan 派生，allSkills 仅含挂在 Agent 行下的技能子行', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    const store = usePositionStore()
-    await store.load(5)
-    // store 的 orphan 派生 + loadUnboundSkills 均已退役（getUnboundSkills 端点亦从 api 删除，store 不再 import）。
-    expect(store.orphanSkills).toBeUndefined()
-    expect(store.orphanLoading).toBeUndefined()
-    expect(store.loadUnboundSkills).toBeUndefined()
-    // allSkills 仅含挂在 Agent 下的技能（3 个），无未绑定项。
-    expect(store.allSkills.length).toBe(3)
-    expect(store.allSkills.every((x) => x.agentId != null)).toBe(true)
-  })
-
-  it('saveBasic 的 PUT 详情 hydrate 后 Agent 行 / 技能子行正常，不引入任何 orphan 幻影', async () => {
-    api.getPosition.mockResolvedValue(sampleDetail())
-    api.updatePosition.mockResolvedValue({ ...sampleDetail(), name: '销售-改' })
-    const store = usePositionStore()
-    await store.load(5)
-    await store.saveBasic({ name: '销售-改' })
-    expect(store.basic.name).toBe('销售-改')
-    // 白板仍只含挂载技能（3 个），无 orphan 概念。
-    expect(store.allSkills.length).toBe(3)
-    expect(store.detail.orphanSkills).toBeUndefined()
-  })
-
-  it('patchSkill 不再做迁移（仅原地更新本体）', async () => {
+  it('patchSkill 走 updateSkill，回显原地合并进岗位技能行（技能【编辑】返回后行内名称即时刷新，其余行不动）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
     api.updateSkill.mockResolvedValue({ skillId: 101, name: 's1-改' })
     const store = usePositionStore()
     await store.load(5)
     await store.patchSkill(101, { name: 's1-改' })
     expect(api.updateSkill).toHaveBeenCalledWith(101, { name: 's1-改' })
-    expect(store.agents[0].skills.find((s) => s.skillId === 101).name).toBe('s1-改')
+    expect(store.skills.map((s) => [s.skillId, s.name])).toEqual([[101, 's1-改'], [102, 's2'], [201, 's3']])
   })
 
-  it('detachSkillFromAgent 从指定 Agent 移除引用 → 该 Agent 行下的技能子行消失（V84 可逆：技能本体留库，仅本地移除）', async () => {
+  it('attachSkill 走 attachPositionSkill(岗位 id, 技能 id)，引用成功后追加到岗位技能列表末尾（产品优化需求-202611 修改点 1「添加技能」）', async () => {
     api.getPosition.mockResolvedValue(sampleDetail())
-    api.detachSkill.mockResolvedValue(undefined)
+    api.attachPositionSkill.mockResolvedValue({ skillId: 301, name: 's4' })
     const store = usePositionStore()
     await store.load(5)
-    await store.detachSkillFromAgent(11, 101)
-    expect(api.detachSkill).toHaveBeenCalledWith(11, 101)
-    // 原 Agent 泳道不再有它
-    expect(store.agents.find((a) => a.agentId === 11).skills.map((s) => s.skillId)).toEqual([102])
-    // 白板本地移除：技能从白板消失（去向是技能页，本体留库可再引用）
-    expect(store.allSkills.map((x) => x.skill.skillId)).not.toContain(101)
+    await store.attachSkill(301)
+    expect(api.attachPositionSkill).toHaveBeenCalledWith(5, 301)
+    expect(store.skills.map((s) => s.skillId)).toEqual([101, 102, 201, 301])
+  })
+
+  it('saveBasic 用 PUT 回的详情 hydrate：basic 更新为新值，技能列表随详情一并刷新、不丢', async () => {
+    api.getPosition.mockResolvedValue(sampleDetail())
+    api.updatePosition.mockResolvedValue({ ...sampleDetail(), name: '销售-改' })
+    const store = usePositionStore()
+    await store.load(5)
+    await store.saveBasic({ name: '销售-改' })
+    expect(api.updatePosition).toHaveBeenCalledWith(5, { name: '销售-改' })
+    expect(store.basic.name).toBe('销售-改')
+    expect(store.skills.map((s) => s.skillId)).toEqual([101, 102, 201])
+  })
+
+  it('detachSkill 走 detachPositionSkill(岗位 id, 技能 id)，成功后该技能从岗位技能列表消失（修改点 1【移除】：仅解除与岗位的关联，技能本体留库）', async () => {
+    api.getPosition.mockResolvedValue(sampleDetail())
+    api.detachPositionSkill.mockResolvedValue({})
+    const store = usePositionStore()
+    await store.load(5)
+    await store.detachSkill(101)
+    expect(api.detachPositionSkill).toHaveBeenCalledWith(5, 101)
+    expect(store.skills.map((s) => s.skillId)).toEqual([102, 201])
   })
 
   /* ============== silent 静默刷新（window-focus refetch 闪烁修复） ============== */

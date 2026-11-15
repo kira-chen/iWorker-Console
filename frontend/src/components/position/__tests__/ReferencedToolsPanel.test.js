@@ -79,6 +79,23 @@ describe('ReferencedToolsPanel（§12.7）', () => {
     expect(container.querySelector('.ref-alert')).toBeNull()
   })
 
+  // 产品优化需求-202611 修改点 13（R4）：「本技能已引用」区与工具卡同样标连接器发布态
+  it('R4：引用的连接器未发布标「未发布」、审核中标「审核中」，已发布不标；未发布不再按已停用给「会跳过」角标', () => {
+    const { container } = mount({
+      referencedView: [
+        { code: 'mcp__d', count: 1, checkStatus: 'HEALTHY', known: true, bizName: '草稿 MCP', pubState: 'UNPUBLISHED' },
+        { code: 'biz__r', count: 1, checkStatus: 'UNKNOWN', known: true, bizName: '在审系统', pubState: 'REVIEWING' },
+        { code: 'mcp__l', count: 1, checkStatus: 'HEALTHY', known: true, bizName: '上线 MCP', pubState: 'PUBLISHED' }
+      ]
+    })
+    const rows = container.querySelectorAll('.ref-row')
+    expect(rows[0].querySelector('.ref-pub')?.textContent.trim()).toBe('未发布')
+    expect(rows[1].querySelector('.ref-pub')?.textContent.trim()).toBe('审核中')
+    expect(rows[2].querySelector('.ref-pub')).toBeNull()
+    expect(rows[0].classList.contains('ref-row--warn')).toBe(false)
+    expect(rows[0].querySelector('.ref-badge')).toBeNull()
+  })
+
   it('点击行 → emit locate(ref)（定位交父级 scrollToTool）', () => {
     const { container, events } = mount({ referencedView: VIEW })
     container.querySelector('.ref-row').click()

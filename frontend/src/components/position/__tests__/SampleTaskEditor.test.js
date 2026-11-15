@@ -2,7 +2,7 @@
 /**
  * SampleTaskEditor（岗位详情「自动化任务」页签右侧编辑器）—— 对齐 md 岗位 §7.x
  *（docs/PRD/数字员工管理端PRD/02岗位/岗位/prd.岗位.md §7.1 页签布局 / §7.2 基本信息 / §7.3 调度计划 / §7.4 提示词 /
- *  §7.5 引用工具 / §7.6 执行动作 / §7.7 执行模型 / §7.8 引用平台技能 / §7.9 保存与创建）。
+ *  §7.5 引用工具 / §7.6 执行动作 / §7.7 执行模型 / §7.8 引用技能（原「引用平台技能」，2026-11-09 改名）/ §7.9 保存与创建）。
  *
  * 覆盖：
  * - §7.1 主从容器：页签内联形态、列表项操作只剩「删除」（#16 / #17，挂 PositionSampleTaskStage）；分区卡头 + 独立卡体（#18）；
@@ -10,7 +10,7 @@
  * - §7.2 基本信息：三处占位、名称 64 / 说明 500、启停开关仅编辑态；一句话指令回填 / 必填 / 编辑态写回 payload；
  * - §7.3 SchedulePicker 四模式（按周期 / 每间隔 / 单次 / 闲时）、多时间点去重、起止日期、执行位置、执行预览；保存 payload.schedule 字段（K4）；
  * - §7.4 提示词：必填红星、引导文案、「已输入 N / 8000 字」、8001 字拦截、留空拦截；
- * - §7.5 / §7.8 引用工具 / 引用平台技能卡：搜索、平铺行、空态、卡底添加；§7.6 / §7.7 执行动作 / 执行模型；
+ * - §7.5 / §7.8 引用工具 / 引用技能卡：搜索、平铺行、空态、卡底添加；§7.6 / §7.7 执行动作 / 执行模型；
  * - §7.9 保存 / 创建 toast。
  *
  * 历史出处（仅供回溯，不作口径）：
@@ -68,11 +68,12 @@ vi.mock('@/api/position', () => ({
         : []
     )
   ),
-  listPlatformSkillCandidates: vi.fn(() => Promise.resolve([{ id: 9, name: '经营分析技能', description: '' }]))
+  listTaskSkillCandidates: vi.fn(() => Promise.resolve([{ id: 9, name: '经营分析技能', description: '' }])),
+  listTaskExecTargetCandidates: vi.fn(() => Promise.resolve({ experts: [], teams: [] }))
 }))
 vi.mock('@/api/request', () => ({ ApiError: class ApiError extends Error {} }))
-// 执行动作 · 选 Agent 下拉候选源（该岗位下已有 Agent 列表）
-vi.mock('@/stores/position', () => ({ usePositionStore: () => ({ agents: [] }) }))
+// 岗位 store：编辑器只读 positionId（取执行对象 / 引用技能候选）；本文件不给 positionId，执行对象候选不加载
+vi.mock('@/stores/position', () => ({ usePositionStore: () => ({}) }))
 vi.mock('element-plus', () => ({
   ElMessage: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
   ElMessageBox: { confirm: vi.fn(() => Promise.resolve()), prompt: vi.fn() }
@@ -123,7 +124,7 @@ const stubs = {
   // 声明 emits 避免 onClick 透传到根 <button> 造成双触发；带 $event（列表行【删除】用 @click.stop）
   'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\', $event)"><slot /></button>' },
   'el-icon': { template: '<i><slot /></i>' },
-  // 透传 v-model 的勾选框（引用平台技能候选行 sk-check 需要读勾选态与切换）
+  // 透传 v-model 的勾选框（引用技能候选行 sk-check 需要读勾选态与切换）
   'el-checkbox': {
     props: ['modelValue'],
     emits: ['update:modelValue', 'change'],
@@ -321,7 +322,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     SampleTaskEditor = (await import('@/components/position/SampleTaskEditor.vue')).default
   })
 
-  it('#18 七个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 执行动作 / 执行模型 / 引用平台技能」', async () => {
+  it('#18 七个分区卡头 + 独立卡体；卡头文案逐字对齐 md §7.1「分 N 个配置区：基本信息 / 调度计划 / 提示词 / 引用工具 / 执行动作 / 执行模型 / 引用技能」', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     const heads = [...container.querySelectorAll('.te-card-title')].map((n) => n.textContent.trim())
@@ -331,12 +332,13 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(heads[3]).toContain('引用工具')
     expect(heads[4]).toContain('执行动作')
     expect(heads[5]).toContain('执行模型')
-    expect(heads[6]).toContain('引用平台技能')
+    expect(heads[6]).toContain('引用技能')
     expect(container.querySelectorAll('.te-card-body').length).toBe(7)
   })
 
-  // md §7.6 / §7.7：执行动作、执行模型两卡紧跟引用工具、排在引用平台技能之前；引导文案关键词加粗，单选默认「技能」
-  it('执行动作 / 执行模型：引导文案与加粗词、单选「技能 / Agent」默认选「技能」且技能态无额外提示（md §7.6 / §7.7）', async () => {
+  // 执行动作按 产品优化需求-202611 修改点 3（取代 md §7.6 的「技能 / Agent」）；执行模型按 md §7.7。
+  // 两卡紧跟引用工具、排在引用技能之前；引导文案关键词加粗，单选默认「技能」
+  it('执行动作 / 执行模型：引导文案与加粗词、单选「技能 / 专家 / 专家团」默认选「技能」且技能态无额外提示（修改点 3 / md §7.7）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: null })
     await flush()
     const cards = [...container.querySelectorAll('.te-card')]
@@ -345,23 +347,24 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     const boldOf = (title) => [...guideOf(title).querySelectorAll('b')].map((b) => b.textContent)
 
     expect(guideOf('执行动作').textContent.replace(/\s+/g, ' ').trim()).toBe(
-      '触发时由谁来办：整个交给某个 Agent，或按下面指定的技能执行。'
+      '触发时由谁来办：按下面指定的技能执行，或整个交给某位专家、某个专家团。'
     )
-    expect(boldOf('执行动作')).toEqual(['Agent', '技能'])
+    expect(boldOf('执行动作')).toEqual(['技能', '专家', '专家团'])
     expect(guideOf('执行模型').textContent.replace(/\s+/g, ' ').trim()).toBe(
       '这条任务用哪个模型跑。不选 = 跟随平台默认模型；领用者后续可自行调整，不影响下次下发。'
     )
     expect(boldOf('执行模型')).toEqual(['不选 = 跟随平台默认模型'])
 
     const group = card('执行动作').querySelector('.te-exec-type-group')
-    expect([...group.querySelectorAll('.stub-radio')].map((r) => r.textContent.trim())).toEqual(['技能', 'Agent'])
+    expect([...group.querySelectorAll('.stub-radio')].map((r) => r.textContent.trim())).toEqual(['技能', '专家', '专家团'])
     expect(group.getAttribute('data-value')).toBe('SKILL')
-    // 技能态：只有引导文案一段，不出 Agent 下拉，也没有「将使用下方…」之类的追加提示
+    // 技能态：只有引导文案一段，不出专家 / 专家团下拉，也没有「任务整个交给…」之类的追加提示
     expect(card('执行动作').querySelectorAll('.te-card-guide').length).toBe(1)
-    expect(card('执行动作').querySelector('.te-exec-agent')).toBeNull()
+    expect(card('执行动作').querySelector('[data-testid="exec-expert"]')).toBeNull()
+    expect(card('执行动作').querySelector('[data-testid="exec-team"]')).toBeNull()
   })
 
-  it('执行动作默认「技能」：新建保存 payload.execType = SKILL 且不带 execAgentId；存量样例无该字段也回填「技能」', async () => {
+  it('执行动作默认「技能」：新建保存 payload.execType = SKILL 且不带执行对象 execTargetId；存量样例无该字段也回填「技能」', async () => {
     const { createSampleTask } = await import('@/api/sampleTask')
     mountComp(SampleTaskEditor, { positionId: 1, sample: null })
     await flush()
@@ -377,7 +380,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     await flush()
     const payload = createSampleTask.mock.calls[0][1]
     expect(payload.execType).toBe('SKILL')
-    expect(payload.execAgentId).toBeUndefined()
+    expect(payload.execTargetId).toBeUndefined()
 
     app.unmount()
     container.remove()
@@ -414,6 +417,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(container.querySelector('.te-card-actions')).toBeNull()
   })
 
+  // 产品优化需求-202611 修改点 1 取消 Agent：引导文案里的「Agent」改「数字员工」
   it('#20 提示词卡（md §7.4「引导文案」「字数计数：编辑器底部展示"已输入 N / 8000 字"」）：卡头带必填星号（2026-09-21 起必填）、引导文案逐字、脚部计数「已输入 N / 8000 字」（N = 原文字符数；K7）', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
@@ -421,7 +425,7 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(head.textContent.replace(/\s+/g, ' ').trim()).toBe('提示词 *')
     expect(head.querySelector('.req')?.textContent).toBe('*')
     const guide = [...container.querySelectorAll('.te-card-guide')][0]
-    expect(guide.textContent.trim()).toBe('使用自然语言描述任务目标、产出格式和推送方式。定时触发时，Agent 读取该内容作为任务指令执行业务。')
+    expect(guide.textContent.trim()).toBe('使用自然语言描述任务目标、产出格式和推送方式。定时触发时，数字员工读取该内容作为任务指令执行业务。')
     const counter = container.querySelector('.te-editor-counter')
     expect(counter.textContent.trim()).toBe(`已输入 ${SAMPLE.sopDoc.length} / 8000 字`)
   })
@@ -605,14 +609,14 @@ describe('自动化任务 · 详情分区卡（4B #18 / #20 / #21 / #22）', () 
     expect(dialog.querySelector('.stub-tool')).not.toBeNull()
   })
 
-  it('#22 引用平台技能卡：已选 chips + 搜索框，候选列表默认收起，点「+ 添加技能」才展开', async () => {
+  it('#22 引用技能卡：已选 chips + 搜索框，候选列表默认收起，点「+ 添加技能」才展开', async () => {
     mountComp(SampleTaskEditor, { positionId: 1, sample: SAMPLE })
     await flush()
     // 已选 chip
     const chip = container.querySelector('.sk-chip .sk-chip-name')
     expect(chip.textContent.trim()).toBe('经营分析技能')
-    // 搜索框占位逐字照 md §7.8「占位"搜索平台技能名称或描述"」（K8）
-    expect(container.querySelector('.stub-el-input[placeholder="搜索平台技能名称或描述"]')).not.toBeNull()
+    // 搜索框占位（2026-11-09 改名后为「搜索技能名称或描述」）
+    expect(container.querySelector('.stub-el-input[placeholder="搜索技能名称或描述"]')).not.toBeNull()
     // 候选默认收起
     expect(container.querySelector('.sk-list')).toBeNull()
     const addBtn = [...container.querySelectorAll('.te-dash-add')].find((b) => b.textContent.trim() === '+ 添加技能')

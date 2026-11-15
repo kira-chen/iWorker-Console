@@ -16,7 +16,7 @@ import { makeListProbes } from './helpers/listPageStubs'
  * - 三态展示映射（未发布/审核中/已发布）；分类列 / 最新版本「—」占位；
  * - 操作列按状态：查看+编辑恒显（审核中编辑置灰）、未发布=发布/删除、审核中=撤回、已发布=停用/版本管理（强制回收并入停用弹窗）；
  * - 删除降级普通二次确认、停用走 DeactivateDialog 弹窗（N 取行 skillCount，不再调 delete-impact）；
- * - 「查看」开只读抽屉；发布门措辞「市场技能」；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
+ * - 「查看」开只读抽屉；发布门 0 技能拦下（2026-11-10 起措辞「至少引用 1 个技能」）；版本抽屉适配器带专家词表（版本管理/启用/禁用）。
  * 2026-10-09 对齐 prd.专家.md §3.5.1「强制回收」（/test-audit 补缺口 A4/A5）：未发布行「已回收」标签。
  * 2026-10-12 强制回收改为【停用】弹窗里的勾选项（DeactivateDialog 用真组件，el-dialog/checkbox/input 用桩；
  *   弹窗自身交互另见 components/admin/__tests__/deactivateDialog.test.js），本页只验接线：开弹窗 → 勾选 → 提交 → 提示 / 关窗 / 刷新。
@@ -344,8 +344,8 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(refItems()).toEqual(['客户成功岗']) // 仍是第二个专家的清单
   })
 
-  // md §二.1 L47「技能数：展示当前引用的市场技能数量」——列表此前缺这一列（待办 yuepu#25）
-  it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的市场技能数，缺省显 0', async () => {
+  // md §二.1 L47「技能数」——列表此前缺这一列（待办 yuepu#25）；2026-11-10 起专家可引用岗位私有 / 市场 / 通用技能，数的是全部已引用技能
+  it('「技能数」列：md §二.1 L47 列序（分类 → 技能数 → 引用情况），取该专家引用的技能数（行 skillCount），缺省显 0', async () => {
     listExperts.mockResolvedValueOnce({
       list: [{ ...EXPERTS[0], id: 301, type: 'PLATFORM', skillCount: 3 }, { ...EXPERTS[1], id: 302, skillCount: undefined }],
       total: 2
@@ -394,12 +394,13 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(listExperts).toHaveBeenCalledTimes(3)
   })
 
-  it('分类下拉 8 项 = 字段字典 expertCategory，且与 md §一.1 列举逐一相等', async () => {
+  // 2026-11-10 产品优化需求-202611 修改点 15（R11）：字段字典末尾加系统保留选项「其他」，8 项变 9 项
+  it('分类下拉 9 项 = 字段字典 expertCategory（md §一.1 列举 + R11 末尾「其他」）', async () => {
     await mount()
     const [, category, status] = [...container.querySelectorAll('select.el-select')]
     const labels = [...category.querySelectorAll('option')].map((o) => o.textContent)
     expect(labels).toEqual(getFieldOptionNames('expertCategory'))
-    expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
+    expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权', '其他'])
     expect([...status.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['未发布', '审核中', '已发布'])
     expect(category.dataset.placeholder).toBe('全部专家分类')
     expect(status.dataset.placeholder).toBe('全部状态')
@@ -481,12 +482,20 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(container.querySelector('.expert-editor').textContent).toBe('null')
   })
 
-  it('未发布 0 技能点「发布」→ 「至少引用 1 个市场技能才能发布」拦下，不开侧栏', async () => {
+  it('未发布 0 技能点「发布」→ warning 拦下，不开侧栏', async () => {
     await mount()
     rowBtn(rowEls()[1], '发布').click()
     await nextTick()
-    expect(ElMessage.warning).toHaveBeenCalledWith('至少引用 1 个市场技能才能发布')
+    expect(ElMessage.warning).toHaveBeenCalledTimes(1)
     expect(container.querySelector('.version-dialog')).toBeNull()
+  })
+
+  // 2026-11-10 起专家按类型可引用岗位私有 / 市场 / 通用技能，发布门文案统一为「至少引用 1 个技能才能发布」
+  it('未发布 0 技能点「发布」→ 提示「至少引用 1 个技能才能发布」（不再说「市场技能」）', async () => {
+    await mount()
+    rowBtn(rowEls()[1], '发布').click()
+    await nextTick()
+    expect(ElMessage.warning).toHaveBeenCalledWith('至少引用 1 个技能才能发布')
   })
 
   it('已发布点「版本管理」→ 开侧栏，适配器带专家词表（版本管理/禁用/专家名称）', async () => {
@@ -525,13 +534,30 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     rowBtn(rowEls()[1], '删除').click()
     await flush()
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
-      '删除「法务审阅专家」后会解除 0 条市场技能引用，技能本体不受影响。确认删除？',
+      '删除「法务审阅专家」后会解除 0 条技能引用，技能本体不受影响。确认删除？',
       '删除专家',
       expect.objectContaining({ confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' })
     )
     expect(deleteExpert).toHaveBeenCalledWith(203)
     expect(ElMessage.success).toHaveBeenCalledWith('专家已删除')
     expect(listExperts).toHaveBeenCalledTimes(2)
+  })
+
+  // 产品优化需求-202611 修改点 2「删除：被岗位引用时不执行删除，提示"该专家被 N 个岗位引用（岗位名），需先从岗位中移除后再删除"」：
+  // 此前先弹「确认删除？」，确认后才由数据层拦下
+  it('修改点 2 删除被岗位引用的专家 → 直接提示「该专家被 2 个岗位引用（经营分析岗、客户成功岗），需先从岗位中移除后再删除」，不弹确认、不调删除接口', async () => {
+    ElMessageBox.alert.mockResolvedValue()
+    listExperts.mockResolvedValue({ list: [EXPERTS[0], { ...EXPERTS[1], type: 'POSITION', positionIds: [401, 402], positionCount: 2 }, EXPERTS[2]], total: 3 })
+    await mount()
+    rowBtn(rowEls()[1], '删除').click()
+    await flush()
+    expect(ElMessageBox.alert).toHaveBeenCalledWith(
+      '该专家被 2 个岗位引用（经营分析岗、客户成功岗），需先从岗位中移除后再删除',
+      '删除专家',
+      expect.objectContaining({ confirmButtonText: '知道了' })
+    )
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(deleteExpert).not.toHaveBeenCalled()
   })
 
   it('「专家 | 专家团」视图切换：默认专家视图；?view=team 直达专家团并换页面说明（prd.专家团.md 一）', async () => {

@@ -5,7 +5,7 @@
  *
  * 【本轮对齐要点】
  * - 措辞：全模块「平台技能」→「市场技能」；subtitle 照原型。
- * - 工具栏：搜索覆盖专家名+描述+分类（回车/【查询】触发）、专家分类筛选（8 类，选项同源字段字典）、
+ * - 工具栏：搜索覆盖专家名+描述+分类（回车/【查询】触发）、专家分类筛选（选项同源字段字典）、
  *   状态筛选三态（未发布/审核中/已发布）。
  * - 列表列：状态标签并入专家名列（图标 avatar + 名称 + 三态标签同格）；列序 专家名|专家描述|分类|
  *   技能数|最新版本(无版本「-」)|最近更新时间(排序,默认降序)|操作。
@@ -14,7 +14,8 @@
  * - 操作列（照原型 expertActions）：查看 + 编辑（审核中 disabled）恒显；按状态给
  *   发布/删除（未发布）、撤回（审核中）、停用/版本管理（已发布）。
  * - 强确认降级：删除/停用改普通二次确认（文案照原型 modal）；删除引用数 N 直接取行 skillCount
- *   （Z7 拍板：不再前置调 delete-impact，接口函数保留）。
+ *   （Z7 拍板：不再前置调 delete-impact，接口函数保留）。被岗位引用的专家点【删除】直接提示「该专家被 N 个岗位引用…」，
+ *   不弹确认（产品优化需求-202611 修改点 2）。
  * - 版本管理侧栏：统一 VersionDrawer，专家词表（启用/禁用、专家名称、historySubtitle 等）经 adapter 传入。
  * - 数据走 domainExpertMock（api 层分流，VITE_EXPERT_MOCK=0 关闭）。分页走统一 ListPagination，
  *   每页条数按窗口高度动态计算（2026-09-08 原型复刻批次 1 起全站统一，由 useAdminList 注入
@@ -30,7 +31,8 @@ import ListToolbar from '@/components/admin/ListToolbar.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import RevokedTag from '@/components/admin/RevokedTag.vue'
 import DeactivateDialog from '@/components/admin/DeactivateDialog.vue'
-import { listPositions } from '@/api/position'
+import { listPositions, getExpertUsage } from '@/api/position'
+import { expertUsageImpactText } from '@/utils/positionModel'
 import {
   listExperts,
   deleteExpert,
@@ -61,7 +63,7 @@ import { iconIsUrl } from '@/utils/iconDisplay'
 // sort：最近更新时间排序方向（原型 expertSort，默认降序）
 const query = reactive({ keyword: '', type: '', category: '', status: '', sort: 'desc' })
 
-// 专家分类筛选选项：同源字段字典（fieldDictMock.expertCategory，8 类），不本页硬编码
+// 专家分类筛选选项：同源字段字典（fieldDictMock.expertCategory），不本页硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
 
 // 状态筛选选项：三态展示口径（原型 expertStatus 下拉：全部状态/未发布/审核中/已发布）
@@ -131,7 +133,7 @@ function openCreate() {
   editorVisible.value = true
 }
 
-// 编辑：进抽屉配置本专家（基本信息 / 专家帮你做 / 市场技能引用全在里面）。专家名点击同入口。
+// 编辑：进抽屉配置本专家（基本信息 / 专家帮你做 / 技能引用全在里面）。专家名点击同入口。
 function openEdit(row) {
   if (isReviewing(row)) return
   editingId.value = row.id
@@ -157,7 +159,7 @@ function onEditorSaved(created) {
 
 /**
  * 抽屉底部【发布】：编辑器已静默自动保存并收抽屉，此处接住 detail 打开版本管理侧栏。
- * detail 为刚保存后的最新数据（含 skillCount），发布门（≥1 市场技能）由编辑器把守。
+ * detail 为刚保存后的最新数据（含 skillCount），发布门（≥1 技能）由编辑器把守。
  */
 async function onEditorPublish(detail) {
   await fetchList()
@@ -213,11 +215,11 @@ const versionAdapter = computed(() => {
   }
 })
 
-// 【发布】（未发布行）/【版本管理】（已发布行）：首发前置门（≥1 市场技能）在【发布】上把守。
+// 【发布】（未发布行）/【版本管理】（已发布行）：首发前置门（≥1 技能）在【发布】上把守。
 function openVersion(row) {
   const isDraft = row.status !== 'published' && !row.pendingAction
   if (isDraft && !(row.skillCount > 0)) {
-    ElMessage.warning('至少引用 1 个市场技能才能发布')
+    ElMessage.warning('至少引用 1 个技能才能发布')
     return
   }
   versionRow.value = row
@@ -265,16 +267,21 @@ const refsDialog = reactive({ visible: false, title: '被岗位引用', names: [
 // 注意（yuepu#90③，潜伏项不改）：这里用 size:1000 取全量岗位再映射名称；真实后端若限制 size，会退化成「岗位 #id」，
 // 弹窗也无分页——接真实接口时应改为按 positionIds 批量取名。
 let refsSeq = 0 // 请求序号：连点两个专家的引用清单时，迟到的上一个响应不能覆盖后一个（同 useAdminList）
+/** 岗位 id → 岗位名（引用清单与删除前的引用拦截共用）；岗位列表里找不到的退化成「岗位 #id」。 */
+async function positionNamesOf(ids) {
+  const { list } = await listPositions({ size: 1000 })
+  const nameOf = new Map((list || []).map((p) => [p.positionId, p.name]))
+  return ids.map((id) => nameOf.get(id) || `岗位 #${id}`)
+}
 async function openRefs(row) {
   const seq = ++refsSeq
   refsDialog.names = []
   refsDialog.loading = true
   refsDialog.visible = true
   try {
-    const { list } = await listPositions({ size: 1000 })
+    const names = await positionNamesOf(row.positionIds || [])
     if (seq !== refsSeq) return
-    const nameOf = new Map((list || []).map((p) => [p.positionId, p.name]))
-    refsDialog.names = (row.positionIds || []).map((id) => nameOf.get(id) || `岗位 #${id}`)
+    refsDialog.names = names
   } catch (e) {
     if (seq === refsSeq) ElMessage.error(e?.message || '加载引用清单失败')
   } finally {
@@ -285,9 +292,21 @@ async function openRefs(row) {
 /* ---------- 删除（强确认降级：普通二次确认；N 直接取行 skillCount，Z7 拍板） ---------- */
 async function onDelete(row) {
   if (busyId.value != null) return
+  // 被岗位引用：直接说明不能删，不再先弹「确认删除？」（产品优化需求-202611 修改点 2）；数据层 deleteExpert 仍兜底拦截
+  const posIds = row.positionIds || []
+  if (posIds.length) {
+    busyId.value = row.id
+    const names = await positionNamesOf(posIds).catch(() => posIds.map((id) => `岗位 #${id}`))
+    busyId.value = null
+    ElMessageBox.alert(`该专家被 ${names.length} 个岗位引用（${names.join('、')}），需先从岗位中移除后再删除`, '删除专家', {
+      confirmButtonText: '知道了',
+      type: 'warning'
+    }).catch(() => {})
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `删除「${row.name}」后会解除 ${row.skillCount ?? 0} 条市场技能引用，技能本体不受影响。确认删除？`,
+      `删除「${row.name}」后会解除 ${row.skillCount ?? 0} 条技能引用，技能本体不受影响。确认删除？`,
       '删除专家',
       { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' }
     )
@@ -324,10 +343,25 @@ const stopPlainMessage = computed(() => {
   return '停用「' + name + '」需提交审核。审核通过前客户端仍可使用。' + tip
 })
 
+// 岗位侧影响范围（R13 §5）：引用它的岗位数 + 由它执行的自动化任务数。弹窗先开，查到再补这句；取不到不拦停用，只是不出这句
+const stopImpact = ref('')
+let impactSeq = 0
+async function loadStopImpact(id) {
+  const seq = ++impactSeq
+  stopImpact.value = ''
+  try {
+    const text = expertUsageImpactText(await getExpertUsage('EXPERT', id))
+    if (seq === impactSeq) stopImpact.value = text
+  } catch {
+    /* 取不到不出这句 */
+  }
+}
+
 async function stopExpert(row) {
   if (busyId.value != null) return
   stopRefTeams.value = await listTeamsReferencingExpert(row.id)
   stopTarget.value = row
+  loadStopImpact(row.id)
 }
 
 async function confirmStop({ forceRevoke, reason }) {
@@ -374,7 +408,7 @@ async function confirmStop({ forceRevoke, reason }) {
       <el-select v-model="query.type" placeholder="全部专家类型" clearable class="lt-filter" @change="reload">
         <el-option v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
-      <!-- 专家分类筛选（8 类，同源字段字典）：切换立即刷新；clearable 清空 = 全部 -->
+      <!-- 专家分类筛选（同源字段字典）：切换立即刷新；clearable 清空 = 全部 -->
       <el-select v-model="query.category" placeholder="全部专家分类" clearable class="lt-filter" @change="reload">
         <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
       </el-select>
@@ -442,7 +476,7 @@ async function confirmStop({ forceRevoke, reason }) {
               <span v-else class="cell-na">—</span>
             </template>
           </el-table-column>
-          <!-- 技能数：md §二.1 L47「展示当前引用的市场技能数量」，代码此前缺这一列（待办 yuepu#25），列序照 md：分类 → 技能数 → 引用情况 -->
+          <!-- 技能数：当前引用的技能数量（2026-11-10 起含岗位私有 / 市场 / 通用三类；待办 yuepu#25 补列），列序照 md：分类 → 技能数 → 引用情况 -->
           <el-table-column label="技能数" :width="COL.COUNT" align="center" class-name="col-nowrap" label-class-name="col-nowrap">
             <template #default="{ row }">{{ row.skillCount ?? 0 }}</template>
           </el-table-column>
@@ -501,7 +535,7 @@ async function confirmStop({ forceRevoke, reason }) {
                   @click="withdrawFromList(row)"
                 >撤回</el-button>
 
-                <!-- 未发布：发布（≥1 市场技能前置门）+ 删除 -->
+                <!-- 未发布：发布（≥1 技能前置门）+ 删除 -->
                 <template v-else-if="row.status === 'draft'">
                   <el-button link type="primary" @click="openVersion(row)">发布</el-button>
                   <el-button
@@ -569,6 +603,7 @@ async function confirmStop({ forceRevoke, reason }) {
       confirm-text="提交停用审核"
       :ref-count="stopRefTeams.length"
       ref-text="专家团"
+      :impact-note="stopImpact"
       :submitting="busyId != null && busyId === stopTarget?.id"
       @confirm="confirmStop"
     />

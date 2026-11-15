@@ -6,9 +6,11 @@ import { passthrough, elTabs, elTabPane } from './helpers/commonStubs'
 /**
  * PositionDetailTabs · 页签信息架构契约（对齐 md 岗位 §1.2 顶栏 / §1.3 页签；2026-09-12 审计 T26/T53 修头注、补顶栏用例）。
  *
- * - 页签集合：md §1.3 七页签（人格 / 采集字段 / 工作档案 / 知识 / Agent 与技能 / 自动化任务 / 连接器）
- *   （2026-09-15 连接器替换业务系统，「运行」「效果测试」两占位已移除；「版本」页签已删）。
- *   md §1.3 页签 name `tasks`（2026-09-12 审计 J8③ 已由 `sampleTasks` 改齐），本组不钉 name。
+ * - 页签集合：产品优化需求-202611 修改点 1 / 2 定的八页签（人格 / 采集字段 / 工作档案 / 知识 / 技能 / 专家与专家团 / 自动化任务 / 连接器）
+ *   （R1 取消 Agent，「Agent 与技能」改名「技能」；R13 新增「专家与专家团」排在技能之后、自动化任务之前；
+ *   2026-09-15 连接器替换业务系统，「运行」「效果测试」两占位已移除；「版本」页签已删）。
+ *   md §1.3 页签 name `tasks`（2026-09-12 审计 J8③ 已由 `sampleTasks` 改齐），本组不钉 name；
+ *   ?tab= 深链用例按页签文案断言落点，深链值用代码现行标识（skills / experts）。
  * - 人格页签为 md §2 七区块（岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格）。
  * - 知识页签不再是「开发中」占位（轻量列表 + 跳知识库模块）。
  * - 顶栏（md §1.2「版本号：已发布岗位展示当前版本号（如 v2.1.0）；未发布不展示」「未保存提示：存在未保存修改时展示"有未保存的修改"」）：已发布岗位显版本号 / 未发布不显；有未保存修改显「有未保存的修改」。
@@ -26,8 +28,10 @@ const store = reactive({
   loading: false,
   error: '',
   basic: { positionId: 5, name: '销售', status: 'draft', persona: '', claimDesc: [], claimDescriptions: [], exampleQuestions: ['', '', ''], positionSop: '', businessSystemIds: [], intakeSchema: [] },
-  agents: [],
-  allSkills: [],
+  // 产品优化需求-202611：R1 技能直接引用到岗位（store.skills），R13 专家与专家团引用（store.experts / teams）
+  skills: [],
+  experts: [],
+  teams: [],
   isPublished: false,
   detail: { positionId: 5, status: 'draft', pendingAction: null },
   checkInput: {},
@@ -128,34 +132,53 @@ beforeEach(() => {
 })
 afterEach(() => { app?.unmount(); container?.remove() })
 
-describe('PositionDetailTabs · 页签结构（md 岗位 §1.3 七页签，2026-09-15 连接器替换业务系统/运行/效果测试）', () => {
+describe('PositionDetailTabs · 页签结构（产品优化需求-202611 修改点 1 / 2：八页签）', () => {
   // 页签集合的裁决沿革（改这条断言前先读完，它是历次裁决的载体）：
   // - 2026-09-09：移除「业务系统」与「版本」；「运行」「效果测试」保持空置占位。
   // - 2026-09-10 上午：负责人就页签数拍板「维持现状 8 个，页签数量上 html 原型不作准」。
   // - 2026-09-10 下午：业务系统页签带完整逻辑重新实现（引用/查看/排序，数据经
   //   store.basic.businessSystemIds 落库），负责人复核后裁决「**选 C · 9 页签全留**」。
   // - 2026-09-15 重构：「连接器」三区域页签取代「业务系统」，「运行」「效果测试」移除，共 7 页签。
-  it('渲染 md §1.3 七页签（2026-09-15 连接器替换业务系统/运行/效果测试移除），label 与顺序正确', async () => {
+  // - 2026-11 产品优化需求-202611：修改点 1（R1）取消 Agent，「Agent 与技能」改名「技能」；
+  //   修改点 2（R13）新增「专家与专家团」，排在「技能」之后、「自动化任务」之前，共 8 页签。
+  it('渲染八页签（人格 / 采集字段 / 工作档案 / 知识 / 技能 / 专家与专家团 / 自动化任务 / 连接器），label 与顺序正确，不再有「Agent 与技能」', async () => {
     await mount()
     const labels = [...container.querySelectorAll('.el-tab-pane')].map((p) => p.getAttribute('data-label'))
-    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', 'Agent 与技能', '自动化任务', '连接器'])
+    expect(labels).toEqual(['人格', '采集字段', '工作档案', '知识', '技能', '专家与专家团', '自动化任务', '连接器'])
+    expect(labels).not.toContain('Agent 与技能')
     expect(labels).not.toContain('版本')
   })
 
-  it('?tab= 深链：合法值定位到对应页签；非法值 / 旧深链（如已退役的 sampleTasks）回落默认 persona，不留空白（2026-09-18 待办 yuepu#13·岗位 P6）', async () => {
-    routeMock.query = { tab: 'agents' }
+  // 当前激活页签的文案（el-tabs 桩把激活 name 落在 data-active，各 pane 的 name / label 落在 data-*）
+  const activeLabel = () => {
+    const active = container.querySelector('.el-tabs').dataset.active
+    return [...container.querySelectorAll('.el-tab-pane')].find((p) => p.getAttribute('data-name') === active)?.getAttribute('data-label')
+  }
+
+  it('?tab= 深链：合法值定位到对应页签（技能 / 专家与专家团）；无 tab 时默认人格（2026-09-18 待办 yuepu#13·岗位 P6）', async () => {
+    routeMock.query = { tab: 'skills' }
     await mount()
-    expect(container.querySelector('.el-tabs').dataset.active).toBe('agents')
+    expect(activeLabel()).toBe('技能')
     app.unmount(); container.remove()
 
-    routeMock.query = { tab: 'sampleTasks' } // 页签标识已改名为 tasks（md §1.3「自动化任务（`tasks`）」），旧深链值不再合法
+    routeMock.query = { tab: 'experts' }
     await mount()
-    expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
+    expect(activeLabel()).toBe('专家与专家团')
     app.unmount(); container.remove()
 
     routeMock.query = {}
     await mount()
-    expect(container.querySelector('.el-tabs').dataset.active).toBe('persona')
+    expect(activeLabel()).toBe('人格')
+  })
+
+  it('?tab= 深链：非法值 / 已退役的旧标识（agents 随 R1 取消 Agent 退役，sampleTasks 已改名 tasks）回落默认人格页签，不留空白（2026-09-18 待办 yuepu#13·岗位 P6）', async () => {
+    const tabs = ['agents', 'sampleTasks', 'nope']
+    for (const [i, tab] of tabs.entries()) {
+      if (i) { app.unmount(); container.remove() } // 最后一次挂载留给 afterEach 卸载
+      routeMock.query = { tab }
+      await mount()
+      expect(activeLabel(), `?tab=${tab}`).toBe('人格')
+    }
   })
 
   it('「人格」Tab 含 md §2 七区块：岗位名称 / 岗位图标 / 岗位描述 / 领用页文案 / 示例问题 / 岗位 SOP / 岗位人格（2026-09-08 PRD-20260908 对齐：认领说明改名；岗位名称从顶栏移入）', async () => {

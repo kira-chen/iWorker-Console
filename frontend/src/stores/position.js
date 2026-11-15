@@ -3,31 +3,32 @@ import { ref, computed } from 'vue'
 import {
   getPosition,
   updatePosition,
-  createAgent,
-  updateAgent,
-  deleteAgent,
   updateSkill,
-  assignSkill,
+  attachPositionSkill,
+  detachPositionSkill,
   getSkill,
-  detachSkill as detachSkillApi
+  getPositionExperts,
+  bindPositionExpert,
+  unbindPositionExpert,
+  bindPositionTeam,
+  unbindPositionTeam
 } from '@/api/position'
 
 /**
  * 岗位白板工作台 store。
  *
- * 职责：加载岗位详情树（身份卡 + Agent 泳道 + 技能卡），维护工作台编辑态，封装 Agent/技能的增删改，
+ * 职责：加载岗位详情（身份卡 + 技能引用 + 专家与专家团引用），维护工作台编辑态，封装技能 / 专家引用的增删，
  * 向组件暴露稳定的派生视图。
+ *
+ * 2026-11-09 产品优化需求-202611：R1 取消 Agent，技能直接引用到岗位（detail.skills[]）；
+ * R13 新增「专家与专家团」引用（expertRefs，单独接口加载，见 api/positionMock.js getPositionExperts 注释）。
  *
  * 不在 store 内做 UI（聚焦/工具坞/弹窗）状态——那些是组件本地态；
  * store 只持有「数据真相 + 后端读写」，组件按需取派生数据。
- *
- * 删 Agent（新口径·用户拍板「删Agent技能脱钩」）：其下技能**彻底脱离岗位变游离技能**，不再以「未绑定 Agent」
- * 收纳泳道留在白板。白板只呈现「岗位 → Agent → 已挂载技能」；游离技能只在「技能」管理页(/admin/skills)以
- * 「未被引用」呈现。故 store 不再持有 orphanSkills / loadUnboundSkills / ORPHAN_AGENT_ID 等收纳区概念（已退役）。
  */
 
 export const usePositionStore = defineStore('position', () => {
-  const detail = ref(null) // PositionDetailVO（含 agents[].skills[]）
+  const detail = ref(null) // PositionDetailVO（含 skills[]）
   const loading = ref(false)
   const saving = ref(false)
   const error = ref('') // 加载失败信息（错误态）
@@ -40,22 +41,19 @@ export const usePositionStore = defineStore('position', () => {
   const status = computed(() => detail.value?.status || 'draft')
   const isPublished = computed(() => status.value === 'published')
 
-  // 绑定到 Agent 的泳道（agentId 非空），保持 sortOrder
-  const agents = computed(() => detail.value?.agents || [])
+  // 岗位引用的技能（保持 sortOrder）
+  const skills = computed(() => detail.value?.skills || [])
 
-  // 全岗位（已挂载）技能扁平列表（全局搜索 + 跨 Agent 跳用）：[{ skill, agentId, agentName }]。
-  // 收纳区已退役 → 仅含挂在某 Agent 下的技能（游离技能不在白板、不在此列表）。
-  const allSkills = computed(() => {
-    const out = []
-    for (const a of agents.value) {
-      for (const s of a.skills || []) out.push({ skill: s, agentId: a.agentId, agentName: a.name })
-    }
-    return out
-  })
+  // 岗位引用的岗位私有专家 / 专家团（R13）：{ experts[], teams[], execTargetIssues[] }
+  // execTargetIssues = 执行对象已不能用的自动化任务（发布前检查阻断项）
+  const expertRefs = ref({ experts: [], teams: [], execTargetIssues: [] })
+  const experts = computed(() => expertRefs.value.experts || [])
+  const teams = computed(() => expertRefs.value.teams || [])
 
   // 发布前检查所需的聚合数据（供 computePublishCheck）
   // 2026-09-04 PRD-20260903 对齐：推荐问题 4 条 → 示例问题 3 条。
-  // 2026-09-08 PRD-20260908 对齐：清单改 md §9.2 四项（名称与描述 / 示例问题 / SOP / Agent 与技能警告），补 description、positionSop。
+  // 2026-09-08 PRD-20260908 对齐：清单改 md §9.2 四项（名称与描述 / 示例问题 / SOP / 技能警告），补 description、positionSop。
+  // R13：带上专家 / 专家团引用，供「引用不可用对象」动态阻断项（computePublishCheck）。
   const checkInput = computed(() => ({
     name: basic.value?.name,
     icon: basic.value?.icon,
@@ -65,19 +63,23 @@ export const usePositionStore = defineStore('position', () => {
     positionSop: basic.value?.positionSop,
     intakeSchema: basic.value?.intakeSchema || [],
     exampleQuestions: basic.value?.exampleQuestions || [],
-    agents: agents.value
+    skills: skills.value,
+    experts: experts.value,
+    teams: teams.value,
+    execTargetIssues: expertRefs.value.execTargetIssues || []
   }))
 
   /* ---------- 加载 ---------- */
   // silent=true：后台静默刷新（不切 loading 骨架），用于「整页编辑后回白板 window-focus refetch」，
   // 避免每次切回标签都把白板闪成骨架屏（窗口聚焦/可见性回切时的闪烁修复）。
-  // req3（§4.1/§7-B2）：Agent 级引用平台技能直接引用通道已下线——load 不再并行拉 skillRefs。
+  // R13：专家与专家团引用走单独接口，与详情并行拉取。
   async function load(id, { silent = false } = {}) {
     if (!silent) loading.value = true
     error.value = ''
     try {
-      const data = await getPosition(id)
+      const [data, refs] = await Promise.all([getPosition(id), loadExpertRefs(id)])
       hydrate(data)
+      expertRefs.value = refs
       return data
     } catch (e) {
       // 静默刷新失败不打扰：保留现有详情，不置 error 态（避免回切标签时整页变错误态）。
@@ -85,6 +87,15 @@ export const usePositionStore = defineStore('position', () => {
       if (!silent) throw e
     } finally {
       if (!silent) loading.value = false
+    }
+  }
+
+  // 专家与专家团引用取失败不拖垮整页：降级为空（页签显示空态，发布前检查少了这一类动态阻断项）
+  async function loadExpertRefs(id) {
+    try {
+      return (await getPositionExperts(id)) || { experts: [], teams: [] }
+    } catch {
+      return { experts: [], teams: [] }
     }
   }
 
@@ -106,6 +117,7 @@ export const usePositionStore = defineStore('position', () => {
       claimDescriptions: Array.isArray(data.claimDescriptions) ? data.claimDescriptions : [],
       exampleQuestions: normalizeExample(data.exampleQuestions),
       positionSop: data.positionSop || '',
+      positionSopBrief: data.positionSopBrief || '', // SOP 简版（产品优化需求-202611 修改点 18）
       businessSystemIds: Array.isArray(data.businessSystemIds) ? data.businessSystemIds : [],
       // 连接器页签的岗位私有 MCP / API 引用清单（md 岗位 §8.1 L498 / §8.2 L516）。此前漏了这两个键，
       // 页签读到恒 undefined，四个种子岗位的私有 MCP / API 区域永远是空的（待办 yuepu#42）
@@ -124,7 +136,8 @@ export const usePositionStore = defineStore('position', () => {
 
   // 新建态：未落库的空白岗位（id=null），保存后由调用方 hydrate 真实详情
   function initNew() {
-    detail.value = { positionId: null, status: 'draft', agents: [] }
+    detail.value = { positionId: null, status: 'draft', skills: [] }
+    expertRefs.value = { experts: [], teams: [] }
     basic.value = {
       name: '',
       intro: '',
@@ -135,6 +148,7 @@ export const usePositionStore = defineStore('position', () => {
       claimDescriptions: [], // 领用页文案（原岗位认领说明，2026-09-08 PRD-20260908 改名）
       exampleQuestions: ['', '', ''], // 示例问题固定 3 条
       positionSop: '',
+      positionSopBrief: '',
       businessSystemIds: [],
       connectorMcpIds: [],
       connectorApiIds: [],
@@ -156,114 +170,58 @@ export const usePositionStore = defineStore('position', () => {
     }
   }
 
-  /* ---------- Agent 增删改 ---------- */
-  async function addAgent(payload) {
-    const agent = await createAgent(positionId.value, payload)
-    const a = { ...agent, skills: agent.skills || [] }
-    detail.value.agents = [...agents.value, a]
-    return a
+  /* ---------- 技能引用（R1：直接引用到岗位） ---------- */
+  async function attachSkill(skillId) {
+    const ref = await attachPositionSkill(positionId.value, skillId)
+    if (!skills.value.some((s) => s.skillId === ref.skillId)) detail.value.skills = [...skills.value, ref]
+    return ref
   }
 
-  async function patchAgent(agentId, payload) {
-    const updated = await updateAgent(agentId, payload)
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === agentId ? { ...a, ...updated, skills: a.skills } : a
-    )
-    return updated
+  // 移除引用（可逆：技能本体留库，可在「技能」管理页查看、再引用）
+  async function detachSkill(skillId) {
+    await detachPositionSkill(positionId.value, skillId)
+    detail.value.skills = skills.value.filter((s) => s.skillId !== skillId)
   }
 
-  // 删 Agent（新口径）：后端把其下技能**彻底脱离岗位变游离技能**（agent_id + position_id 一并置空，回
-  // orphanedSkillCount = 受影响技能数）。前端只需把该 Agent 从白板移除——游离技能不再出现在白板任何位置
-  // （收纳区已退役），其去向是「技能」管理页的「未被引用」。返回 res 供组件读 orphanedSkillCount 做提示/跳转。
-  async function removeAgent(agentId) {
-    const res = await deleteAgent(agentId)
-    detail.value.agents = agents.value.filter((a) => a.agentId !== agentId)
-    return res
+  /* ---------- 专家与专家团引用（R13） ---------- */
+  // 发布前重拉一次：自动化任务的执行对象可能刚在「自动化任务」页签改过，execTargetIssues 要跟着变
+  async function refreshExpertRefs() {
+    if (positionId.value == null) return
+    expertRefs.value = await loadExpertRefs(positionId.value)
   }
 
-  /* ---------- 技能增删改 ----------
-     2026-09-12 死码清理（审计 J13）：addSkill / removeSkill 零调用方已删——白板上技能的
-     创建走「技能」管理页（SkillCreateDialog），从 Agent 移除走 detachSkillFromAgent（引用模型，可逆）。 */
+  async function bindExpert(expertId) {
+    expertRefs.value = await bindPositionExpert(positionId.value, expertId)
+  }
+  async function unbindExpert(expertId) {
+    expertRefs.value = await unbindPositionExpert(positionId.value, expertId)
+  }
+  async function bindTeam(teamId) {
+    expertRefs.value = await bindPositionTeam(positionId.value, teamId)
+  }
+  async function unbindTeam(teamId) {
+    expertRefs.value = await unbindPositionTeam(positionId.value, teamId)
+  }
 
-  // 编辑技能本体（name/triggers/skillMd/sortOrder 等，不含 Agent 归属变更）。返回 { skill, warnings }。
-  // Agent 归属变更 / 重分配统一走 assignSkillToAgent（PUT /skills/{id}/assign），不再用此端点的 targetAgentId。
+  /* ---------- 技能本体编辑 ---------- */
+
+  // 编辑技能本体（name/triggers/skillMd/sortOrder 等）。返回 { skill, warnings }。
   async function patchSkill(skillId, payload) {
     const skill = await updateSkill(skillId, payload)
     applySkillUpdate(skillId, skill)
     return { skill, warnings: skill?.warnings || [] }
   }
 
-  // 把后端返回的技能本体字段原地合并回树（不改归属）。技能可能在某 Agent 或收纳区。
+  // 把后端返回的技能本体字段原地合并回岗位的技能引用。
   //
   // 形状归一（修复「关闭编辑器后技能卡工具行闪现几秒后消失」）：
-  // 技能本体编辑走 PUT /skills/{id}，回显是「detail 形状」（可能带 referencedTools），而总览态
-  // 技能卡渲染走「列表 summary 形状」。若把 detail 的 referencedTools 灌进总览卡，会让卡片瞬时
-  // 多出工具徽标行，随后任意 refetch（summary 形状）又把它覆盖 → 跳变。
-  // 这里在合并时剥离 detail-only 字段（referencedTools），让卡片在总览态始终保持 summary 形状、
-  // 关闭编辑器前后一致；referencedTools 的权威来源是列表/详情加载，不由本体编辑的 PUT 回显引入。
+  // 技能本体编辑走 PUT /skills/{id}，回显是「detail 形状」（可能带 referencedTools），而岗位页签
+  // 渲染走「列表 summary 形状」。这里在合并时剥离 detail-only 字段（referencedTools），让行在
+  // 总览态始终保持 summary 形状；referencedTools 的权威来源是列表/详情加载，不由本体编辑的 PUT 回显引入。
   function applySkillUpdate(skillId, skill) {
     const { referencedTools, ...summary } = skill || {}
-    let curAgentId = null
-    let found = false
-    for (const a of agents.value) {
-      if ((a.skills || []).some((s) => s.skillId === skillId)) {
-        curAgentId = a.agentId
-        found = true
-        break
-      }
-    }
-    if (found) {
-      detail.value.agents = agents.value.map((a) =>
-        a.agentId === curAgentId
-          ? { ...a, skills: (a.skills || []).map((s) => (s.skillId === skillId ? { ...s, ...summary } : s)) }
-          : a
-      )
-    }
-  }
-
-  // 分配 / 改挂 Agent（统一端点 PUT /skills/{id}/assign）。收纳区退役后，仅服务**白板 Agent↔Agent 跨泳道迁移**
-  // （拖拽把技能从一个 Agent 拖到另一个 Agent）。游离技能不在白板、无重绑入口（后端亦守卫游离技能不可 assign）。
-  async function assignSkillToAgent(skillId, targetAgentId) {
-    const skill = await assignSkill(skillId, targetAgentId)
-    applySkillAssign(skillId, targetAgentId, skill)
-    return { skill, warnings: skill?.warnings || [] }
-  }
-
-  // 把技能从原 Agent 移动到目标 Agent（Agent↔Agent 迁移），并合并后端回显字段。
-  function applySkillAssign(skillId, targetAgentId, skill) {
-    let curAgentId = null
-    let moved = null
-    for (const a of agents.value) {
-      const hit = (a.skills || []).find((s) => s.skillId === skillId)
-      if (hit) {
-        curAgentId = a.agentId
-        moved = hit
-        break
-      }
-    }
-    if (curAgentId === targetAgentId) {
-      // 归属未变（兜底）：仅原地合并
-      applySkillUpdate(skillId, skill || {})
-      return
-    }
-    // 从原 Agent 移除
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === curAgentId ? { ...a, skills: (a.skills || []).filter((s) => s.skillId !== skillId) } : a
-    )
-    // 落到目标 Agent（合并后端回显，置 agentId）
-    const next = { ...(moved || {}), ...(skill || {}), agentId: targetAgentId }
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === targetAgentId ? { ...a, skills: [...(a.skills || []), next] } : a
-    )
-  }
-
-  // 从指定 Agent 移除技能引用（V84 引用模型，可逆：调 detach 端点删引用行，技能本体留库可再引用）。
-  // 白板本地把该技能从该 Agent 泳道移除；技能仍在「技能」管理页可见、可再拉入任意 Agent。
-  async function detachSkillFromAgent(agentId, skillId) {
-    await detachSkillApi(agentId, skillId)
-    detail.value.agents = agents.value.map((a) =>
-      a.agentId === agentId ? { ...a, skills: (a.skills || []).filter((s) => s.skillId !== skillId) } : a
-    )
+    if (!skills.value.some((s) => s.skillId === skillId)) return
+    detail.value.skills = skills.value.map((s) => (s.skillId === skillId ? { ...s, ...summary } : s))
   }
 
   // 取某技能详情（聚焦态加载 referencedTools）
@@ -277,6 +235,7 @@ export const usePositionStore = defineStore('position', () => {
     loading.value = false
     saving.value = false
     error.value = ''
+    expertRefs.value = { experts: [], teams: [] }
   }
 
   return {
@@ -288,19 +247,22 @@ export const usePositionStore = defineStore('position', () => {
     positionId,
     status,
     isPublished,
-    agents,
-    allSkills,
+    skills,
+    experts,
+    teams,
     checkInput,
     load,
     hydrate,
     initNew,
     saveBasic,
-    addAgent,
-    patchAgent,
-    removeAgent,
+    attachSkill,
+    detachSkill,
+    refreshExpertRefs,
+    bindExpert,
+    unbindExpert,
+    bindTeam,
+    unbindTeam,
     patchSkill,
-    assignSkillToAgent,
-    detachSkillFromAgent,
     fetchSkillDetail,
     reset
   }
