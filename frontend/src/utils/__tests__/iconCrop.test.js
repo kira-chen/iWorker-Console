@@ -3,7 +3,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   ICON_MAX_BYTES,
   ICON_OUTPUT_SIZE,
+  ICON_MIN_SIDE,
+  ICON_RECOMMENDED_SIDE,
+  ICON_UPLOAD_HINT,
   validateIconFile,
+  isSvgIcon,
+  checkIconDimensions,
   coverScale,
   clampOffset,
   centerOffset,
@@ -20,6 +25,9 @@ import {
  * 1. 类型/大小校验与逐字文案：「请选择图片文件」「图片不能超过 5 MB」；
  * 2. cover 裁剪几何：铺满视口、位移夹取、缩放保持中心、源区换算；
  * 3. cropToPngDataUrl 恒输出 256×256 PNG。
+ * 4. 2026-11-10 产品优化需求-202611 修改点 16（R12）原图尺寸：短边 < 128 不可用（逐字「图片尺寸过小，请上传不小于 128×128 的图片」）、
+ *    128–255 可用但提示「图片尺寸偏小，生成的图标可能模糊」、≥ 256 无提示、SVG 不受限；常驻提示文案逐字。
+ *    尺寸判断是纯函数入参（原图宽高数字），不涉及 DOM 排版。
  */
 
 describe('validateIconFile（类型/大小校验，逐字文案）', () => {
@@ -47,6 +55,47 @@ describe('validateIconFile（类型/大小校验，逐字文案）', () => {
     expect(validateIconFile(f('image/png', 'a.png', ICON_MAX_BYTES + 1))).toBe('图片不能超过 5 MB')
     expect(validateIconFile(f('image/png', 'a.png', ICON_MAX_BYTES))).toBe('')
     expect(ICON_MAX_BYTES).toBe(5 * 1024 * 1024)
+  })
+})
+
+describe('原图尺寸校验（R12，最小 128 / 建议 256）', () => {
+  it('阈值取 PRD 值：最小 128、建议 256', () => {
+    expect(ICON_MIN_SIDE).toBe(128)
+    expect(ICON_RECOMMENDED_SIDE).toBe(256)
+  })
+
+  it('短边 < 128 → 不可用，逐字「图片尺寸过小，请上传不小于 128×128 的图片」（宽或高任一边不足都算）', () => {
+    const tooSmall = { error: '图片尺寸过小，请上传不小于 128×128 的图片', warning: '' }
+    expect(checkIconDimensions(127, 127)).toEqual(tooSmall)
+    expect(checkIconDimensions(1024, 127)).toEqual(tooSmall)
+    expect(checkIconDimensions(100, 800)).toEqual(tooSmall)
+  })
+
+  it('短边 128–255 → 可用，提示「图片尺寸偏小，生成的图标可能模糊」', () => {
+    const small = { error: '', warning: '图片尺寸偏小，生成的图标可能模糊' }
+    expect(checkIconDimensions(128, 128)).toEqual(small)
+    expect(checkIconDimensions(255, 600)).toEqual(small)
+  })
+
+  it('短边 ≥ 256 → 可用且无提示', () => {
+    expect(checkIconDimensions(256, 256)).toEqual({ error: '', warning: '' })
+    expect(checkIconDimensions(1920, 1080)).toEqual({ error: '', warning: '' })
+  })
+
+  it('SVG 不受尺寸限制：再小也不报错、不提示', () => {
+    expect(checkIconDimensions(16, 16, { svg: true })).toEqual({ error: '', warning: '' })
+    expect(checkIconDimensions(200, 200, { svg: true })).toEqual({ error: '', warning: '' })
+  })
+
+  it('isSvgIcon：MIME 为 image/svg+xml 或后缀 .svg 即 SVG，其余不是', () => {
+    expect(isSvgIcon({ type: 'image/svg+xml', name: 'a' })).toBe(true)
+    expect(isSvgIcon({ type: '', name: 'logo.SVG' })).toBe(true)
+    expect(isSvgIcon({ type: 'image/png', name: 'a.png' })).toBe(false)
+    expect(isSvgIcon(null)).toBe(false)
+  })
+
+  it('【上传图标】旁常驻提示文案逐字', () => {
+    expect(ICON_UPLOAD_HINT).toBe('支持 PNG、JPG、WebP、GIF、SVG，不超过 5 MB，建议 1:1、不小于 256×256')
   })
 })
 

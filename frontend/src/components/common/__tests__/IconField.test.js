@@ -15,6 +15,8 @@ import { createApp, h, nextTick } from 'vue'
  * 3. 预览：URL/dataURL 按图片渲染，字符按文本，空值显占位；
  * 4. readonly：两按钮 disabled，点击不开弹窗；
  * 5. 无头模式：不渲染 popover 头像触发块（.ip-avatar）。
+ * 6. 2026-11-10 产品优化需求-202611 修改点 16（R12）：【上传图标】旁常驻提示「支持 PNG、JPG、WebP、GIF、SVG，不超过 5 MB，
+ *    建议 1:1、不小于 256×256」；只读态不能上传，不显示。
  */
 
 vi.mock('element-plus', () => ({
@@ -92,6 +94,18 @@ describe('IconField · 图标行（md 图标配置统一规则）', () => {
     dlg.querySelector('.ip-cell').click()
     await flush()
     expect(picked).toEqual([{ icon: '📊', iconSource: 'library' }])
+  })
+
+  it('【上传图标】旁常驻提示：紧跟在按钮后，文案逐字（R12）', () => {
+    mount()
+    const hint = btns()[1].nextElementSibling
+    expect(hint?.classList.contains('icon-hint')).toBe(true)
+    expect(hint.textContent.trim()).toBe('支持 PNG、JPG、WebP、GIF、SVG，不超过 5 MB，建议 1:1、不小于 256×256')
+  })
+
+  it('readonly：不显示上传常驻提示（R12，只读不能上传）', () => {
+    mount({ readonly: true })
+    expect(container.querySelector('.icon-hint')).toBeNull()
   })
 
   it('readonly：两按钮 disabled，点击不开图标库', async () => {

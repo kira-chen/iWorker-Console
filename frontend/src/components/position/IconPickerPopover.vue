@@ -10,6 +10,9 @@
  *   输出 256×256 PNG dataURL（GIF/SVG 经 canvas 静态化为 PNG）——纯前端产物，不再调上传接口；
  * - 上传与图标库互斥替换：后选者整体覆盖前者（单值 commit 天然满足）；
  * - 只读态（readonly prop，新增、默认 false）：入口置灰不可点。
+ * 2026-11-10 产品优化需求-202611 修改点 16（R12）：图片读出宽高后先做原图尺寸校验（iconCrop.checkIconDimensions）——
+ *   短边 < 128 提示「图片尺寸过小，请上传不小于 128×128 的图片」且不进裁剪；128–255 照常进裁剪，裁剪弹窗多一行
+ *   「图片尺寸偏小，生成的图标可能模糊」；SVG 不校验。popover 菜单底部提示改用统一的 ICON_UPLOAD_HINT。
  *
  * 2026-09-08 原型复刻批次 1（S3/S4）：新增 headless 模式——不渲染头像触发块与 popover，只保留
  * 文件选择 input + 图标库弹窗 + 裁剪弹窗，由宿主（components/common/IconField.vue：预览块 +
@@ -26,7 +29,10 @@ import { ElMessage } from 'element-plus'
 import { getIconLibrary, aiGenerateIcon, probeAiIconAvailability } from '@/api/position'
 import {
   ICON_ACCEPT,
+  ICON_UPLOAD_HINT,
   validateIconFile,
+  isSvgIcon,
+  checkIconDimensions,
   coverScale,
   clampOffset,
   centerOffset,
@@ -103,6 +109,7 @@ const natW = ref(0)
 const natH = ref(0)
 const zoom = ref(100) // 100%~300%，基于 cover 基准缩放
 const offset = ref({ x: 0, y: 0 })
+const cropSizeWarning = ref('') // R12：原图短边 128–255 时裁剪弹窗里的「偏小」提示，够大或 SVG 为空
 let cropImgEl = null // 已加载的 Image（drawImage 源）
 
 const dispScale = computed(() => coverScale(natW.value, natH.value, VIEWPORT) * (zoom.value / 100))
@@ -125,19 +132,28 @@ function onFileChange(e) {
     ElMessage.error(err)
     return
   }
+  const svg = isSvgIcon(file)
   const reader = new FileReader()
-  reader.onload = () => loadCropImage(String(reader.result || ''))
+  reader.onload = () => loadCropImage(String(reader.result || ''), svg)
   reader.onerror = () => ElMessage.error('图片读取失败，请重新选择')
   reader.readAsDataURL(file)
 }
 
-function loadCropImage(dataUrl) {
+// svg：SVG 不受原图尺寸限制（R12）
+function loadCropImage(dataUrl, svg = false) {
   const img = new Image()
   img.onload = () => {
     if (!img.naturalWidth || !img.naturalHeight) {
       ElMessage.error('图片读取失败，请重新选择')
       return
     }
+    // R12 原图尺寸：过小直接拦下（已打开的裁剪弹窗——【重新选择图片】场景——保持原图不变）
+    const { error, warning } = checkIconDimensions(img.naturalWidth, img.naturalHeight, { svg })
+    if (error) {
+      ElMessage.error(error)
+      return
+    }
+    cropSizeWarning.value = warning
     cropImgEl = img
     cropImgUrl.value = dataUrl
     natW.value = img.naturalWidth
@@ -255,7 +271,7 @@ defineExpose({ openLibrary, triggerUpload })
           ✨ AI 生成<span v-if="aiBusy"> 中…</span>
         </span>
       </div>
-      <div class="ip-hint">上传支持 PNG / JPG / WebP / GIF / SVG，不超过 5 MB</div>
+      <div class="ip-hint">{{ ICON_UPLOAD_HINT }}</div>
     </div>
   </el-popover>
 
@@ -299,6 +315,7 @@ defineExpose({ openLibrary, triggerUpload })
       <el-slider v-model="zoom" :min="100" :max="300" :show-tooltip="false" />
     </div>
     <div class="ip-hint">拖动图片调整保留区域，将生成 256×256 图标</div>
+    <div v-if="cropSizeWarning" class="ip-hint ip-hint--warn">{{ cropSizeWarning }}</div>
     <template #footer>
       <el-button size="small" @click="triggerUpload">重新选择图片</el-button>
       <el-button size="small" @click="cancelCrop">取消</el-button>
@@ -383,6 +400,10 @@ defineExpose({ openLibrary, triggerUpload })
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   padding: var(--space-1) 0;
+}
+/* R12 原图偏小提示：可继续使用，用警示色而非报错红 */
+.ip-hint--warn {
+  color: var(--c-warning);
 }
 .ip-grid {
   display: grid;
