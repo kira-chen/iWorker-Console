@@ -52,7 +52,7 @@ const FINGERPRINTS = {
   sampleTask: { version: 9, fp: '2425da7c' },
   skillReview: { version: 3, fp: 'aa231c01' },
   storageSpace: { version: 8, fp: '8d6facf5' },
-  unifiedSkill: { version: 13, fp: '65f1eadc' },
+  unifiedSkill: { version: 14, fp: 'fd843de5' },
   userAccess: { version: 2, fp: 'b5fcbf84' },
   version: { version: 5, fp: '45a0afc5' }
 }
