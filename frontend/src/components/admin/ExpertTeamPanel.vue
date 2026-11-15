@@ -204,8 +204,31 @@ async function withdrawFromList(row) {
   }
 }
 
+/**
+ * 岗位 id → 岗位名（口径同专家页「引用情况」清单：size:1000 取全量岗位映射，找不到的退化成「岗位 #id」）。
+ * 动态 import 理由同下方 loadStopImpact：不把 api/position → positionMock 整条链带进引用本组件的单测模块图。
+ */
+async function positionNamesOf(ids) {
+  const { listPositions } = await import('@/api/position')
+  const { list } = await listPositions({ size: 1000 })
+  const nameOf = new Map((list || []).map((p) => [p.positionId, p.name]))
+  return ids.map((id) => nameOf.get(id) || `岗位 #${id}`)
+}
+
 async function onDelete(row) {
   if (busyId.value != null) return
+  // 被岗位引用：直接说明不能删，不再先弹「确认删除？」（产品优化需求-202611 修改点 2）；数据层 deleteTeam 仍兜底拦截
+  const posIds = row.positionIds || []
+  if (posIds.length) {
+    busyId.value = row.id
+    const names = await positionNamesOf(posIds).catch(() => posIds.map((id) => `岗位 #${id}`))
+    busyId.value = null
+    ElMessageBox.alert(`该专家团被 ${names.length} 个岗位引用（${names.join('、')}），需先从岗位中移除后再删除`, '删除专家团', {
+      confirmButtonText: '知道了',
+      type: 'warning'
+    }).catch(() => {})
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `删除「${row.name}」后会解除 ${row.memberCount ?? 0} 位成员专家的引用，专家本体不受影响。确认删除？`,
@@ -233,9 +256,25 @@ const stopDialogVisible = computed({
   get: () => stopTarget.value != null,
   set: (v) => { if (!v) stopTarget.value = null }
 })
+// 岗位侧影响范围（产品优化需求-202611 R13 §5）：引用它的岗位数 + 由它执行的自动化任务数。弹窗先开，查到再补这句；
+// 取不到不拦停用，只是不出这句。动态 import：避免把 api/position → positionMock 整条链带进引用本组件的单测模块图
+const stopImpact = ref('')
+let impactSeq = 0
+async function loadStopImpact(id) {
+  const seq = ++impactSeq
+  stopImpact.value = ''
+  try {
+    const [{ getExpertUsage }, { expertUsageImpactText }] = await Promise.all([import('@/api/position'), import('@/utils/positionModel')])
+    const text = expertUsageImpactText(await getExpertUsage('TEAM', id))
+    if (seq === impactSeq) stopImpact.value = text
+  } catch {
+    /* 取不到不出这句 */
+  }
+}
 function stopTeam(row) {
   if (busyId.value != null) return
   stopTarget.value = row
+  loadStopImpact(row.id)
 }
 async function confirmStop({ forceRevoke, reason }) {
   const row = stopTarget.value
@@ -407,6 +446,7 @@ async function confirmStop({ forceRevoke, reason }) {
       :plain-message="`停用「${stopTarget?.name || ''}」需提交审核。审核通过前客户端仍可使用。`"
       confirm-text="提交停用审核"
       :ref-count="0"
+      :impact-note="stopImpact"
       :submitting="busyId != null && busyId === stopTarget?.id"
       @confirm="confirmStop"
     />

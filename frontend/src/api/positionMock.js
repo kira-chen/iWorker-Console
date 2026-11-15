@@ -5,14 +5,16 @@
  * - 2026-09-01 PRD 对齐改造：AdminPositions.vue 列表页与 AdminPositionAssignments.vue 所调用的
  *   接口（含版本管理侧栏 versionAdapter 所调接口）。
  * - 2026-09-02 工作台补 mock（负责人拍板沿用 PositionDetailTabs 完整独立页）：岗位详情树
- *   getPosition / updatePosition、Agent CRUD、技能引用 assign/detach、平台技能候选。
- *   与列表页 4 条岗位种子同源联动：agentCount / skillIds(技能数) 由工作台 agents 引用推导，
+ *   getPosition / updatePosition、技能引用 attach/detach、平台技能候选。
+ *   与列表页 4 条岗位种子同源联动：skillIds(技能数) 由工作台 skills 引用推导，
  *   技能本体从 unifiedSkillMock 同源取（不造第二份真相），引用变化回写技能 refNames。
+ * - 2026-11-09 产品优化需求-202611：R1 取消 Agent，岗位直接引用技能（工作台 agents[].skills[] → skills[]）；
+ *   R13 新增「专家与专家团」页签的引用读写（绑定关系存在专家 / 团的 positionIds，见 bindPositionExpert 等）。
  * - 工作档案（数据表）与样例任务的工作台数据在 dataTableMock.js / sampleTaskMock.js（同开关）。
  *
  * 种子数据照交互原型 v2（renderPositions 区，约 L1157）：
  * 岗位 4 条 —— 经营分析岗 v2.1.0 已发布 / 客户成功岗 v1.4.0 已发布 / 财务审核岗 审核中 /
- * 市场研究岗 未发布无版本；含 agentCount / claimCount / skillIds、创建与更新时间；
+ * 市场研究岗 未发布无版本；含 claimCount / skillIds、创建与更新时间；
  * 版本历史含 大小 / 发布人 / 发布时间 / 禁用时间 / 升级说明。
  *
  * 状态口径（Q6：不改共享 publishState 语义，展示层三态映射在页面做）：
@@ -36,13 +38,25 @@ import { countAssignedUsers } from './positionAssignmentMock'
 // 2026-09-23 待办 yuepu#9⑥：删岗级联清理自动化任务 / 工作档案 / 运行规格里残留的本岗位引用，
 // 否则 posSeq 复用旧 id 时新岗位会「继承」上一轮同 id 岗位遗留的数据（runtimeSpecMock 已反向
 // import 本模块，同属有意的循环依赖，函数体内调用，安全）
-import { deleteAllForPosition as deleteAllSampleTasksForPosition, clearExecAgentRef, countSampleTasks } from './sampleTaskMock'
+import {
+  deleteAllForPosition as deleteAllSampleTasksForPosition,
+  listTasksUsingExecTarget,
+  listTasksUsingSkill,
+  listTasksWithExecTarget,
+  countTasksByExecTarget,
+  countSampleTasks
+} from './sampleTaskMock'
 // 各项字数 / 条数 / 个数上限一律引用 utils/positionModel 的常量（页面校验与本 mock 同源，避免两处各写一份而失配）
-import { computePublishCheck, LIMITS, DESCRIPTION_MAX_LEN, CLAIM_NOTE_MAX, CLAIM_NOTE_LEN, EXAMPLE_Q_MAX_LEN } from '@/utils/positionModel'
+import { computePublishCheck, LIMITS, DESCRIPTION_MAX_LEN, CLAIM_NOTE_MAX, CLAIM_NOTE_LEN, EXAMPLE_Q_MAX_LEN, SOP_BRIEF_MAX_LEN } from '@/utils/positionModel'
 import { deleteAllForPosition as deleteAllDataTablesForPosition } from './dataTableMock'
 import { unassignPositionFromAllSpecs } from './runtimeSpecMock'
 // 删岗 / 改名时回写其它模块里存的岗位引用（专家 positionIds、三个连接器的 referencedByPositions 冻结副本，待办 yuepu#23⑤⑥）
-import { removePositionFromExperts, listExpertsBoundToPosition } from './domainExpertMock'
+import { removePositionFromExperts, listExpertsBoundToPosition, listExpertsSync, bindExpertToPosition, unbindExpertFromPosition } from './domainExpertMock'
+// R13「专家与专家团」页签：团的绑定同样存在团的 positionIds。expertTeamMock 反向 import 本模块（取岗位名），
+// 属有意的循环依赖——双方都只在函数体内调用对方导出，模块顶层不触发（detailVO 在顶层 seedReviewSnapshots 里
+// 会被调用，所以专家 / 团的引用不进 detailVO，走单独的 getPositionExperts）
+import { listTeamsSync, bindTeamToPosition, unbindTeamFromPosition } from './expertTeamMock'
+import { EXPERT_TYPE, EXPERT_TYPE_LABEL } from './expertTypes'
 import { removePositionRefs as removeMcpPositionRefs, renamePositionRefs as renameMcpPositionRefs, syncPositionRefs as syncMcpPositionRefs } from './mcpConnectorMock'
 import { removePositionRefs as removeApiPositionRefs, renamePositionRefs as renameApiPositionRefs, syncPositionRefs as syncApiPositionRefs } from './apiConnectorMock'
 import { removePositionRefs as removeBizPositionRefs, renamePositionRefs as renameBizPositionRefs, syncPositionRefs as syncBizPositionRefs } from './bizSystemMock'
@@ -55,7 +69,6 @@ const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
 let posSeq = 405
-let agentSeq = 520
 
 // 口径（J61，2026-10-10 浦月批复）：水位线只升不降；只有整体重置 __resetPositionMock（含清站点数据 / resetMock=1）会把它归零，其它模块的重置不联动。
 /* ---------------- 岗位 id 水位线（待办 yuepu#52） ----------------
@@ -95,7 +108,6 @@ let positions = [
     description: '负责经营数据汇总、异常识别与经营分析报告输出',
     icon: '▤',
     skillIds: [301],
-    agentCount: 3,
     status: 'published',
     pendingAction: null,
     latestVersion: 'v2.1.0',
@@ -108,7 +120,6 @@ let positions = [
     description: '负责客户资料准备、拜访跟进与服务过程记录',
     icon: '◎',
     skillIds: [305],
-    agentCount: 2,
     status: 'published',
     pendingAction: null,
     latestVersion: 'v1.4.0',
@@ -121,7 +132,6 @@ let positions = [
     description: '负责报销材料核验、财务单据检查与风险提示',
     icon: '¥',
     skillIds: [301],
-    agentCount: 1,
     status: 'draft',
     pendingAction: 'PUBLISH',
     pendingVersion: 'v1.0.0',
@@ -140,7 +150,6 @@ let positions = [
     // skillIds 与其余种子同为数值口径（syncCounts 走 numericSkillId 归一，'sk_309'→309）
     // 2026-09-23 待办 yuepu#9⑤：303（会议纪要整理，通用技能）改 305（客户拜访准备，岗位私有）
     skillIds: [305],
-    agentCount: 1,
     status: 'draft',
     pendingAction: null,
     latestVersion: '',
@@ -166,9 +175,10 @@ let publications = {
   404: []
 }
 
-/* ---------------- 工作台详情种子（岗位树：身份卡字段 + Agent → 技能引用） ----------------
- * 与列表种子同源联动口径：agents 数量 = 列表 agentCount；全部 Agent 引用的技能并集 = 列表 skillIds。
- * 技能只存引用 { skillId, sortOrder }，本体（名称/描述/工具）渲染时从 unifiedSkillMock 同源取。 */
+/* ---------------- 工作台详情种子（身份卡字段 + 技能引用） ----------------
+ * 与列表种子同源联动口径：skills 引用的技能 = 列表 skillIds。
+ * 技能只存引用 { skillId, sortOrder }，本体（名称/描述/工具）渲染时从 unifiedSkillMock 同源取。
+ * 2026-11-09 产品优化需求-202611 R1：取消 Agent，原各 Agent 下的技能合并为岗位的 skills。 */
 function buildWorkbenchSeed() {
   return {
     401: {
@@ -183,7 +193,9 @@ function buildWorkbenchSeed() {
       // 示例问题（3 条）+ 岗位 SOP（编号步骤式）
       exampleQuestions: ['汇总昨天的经营数据', '本月营收有什么异常', '生成上周的经营周报'],
       positionSop:
-        '1. 理解用户目标并确认所需信息。\n2. 根据任务选择合适的 Agent、技能、知识库与工具。\n3. 执行任务并核对关键结果与数据口径。\n4. 向用户输出结论、依据和后续建议。',
+        '1. 理解用户目标并确认所需信息。\n2. 根据任务选择合适的技能、专家、知识库与工具。\n3. 执行任务并核对关键结果与数据口径。\n4. 向用户输出结论、依据和后续建议。',
+      // SOP 简版（修改点 18 演示样本）：客户端岗位卡片展示用
+      positionSopBrief: '1. 确认目标和所需信息\n2. 选用技能、专家、知识库与工具\n3. 执行并核对关键结果\n4. 输出结论和后续建议',
       // 引用的已发布业务系统（bizSystemMock 同源取行；仅 biz_2101 是已发布种子）
       businessSystemIds: ['biz_2101'],
       // 岗位私有 MCP / API 引用（连接器页签前两个区域）：与 mcp/apiConnectorMock 种子的
@@ -195,11 +207,7 @@ function buildWorkbenchSeed() {
         { label: '负责业务线', key: 'biz_line', type: 'text', required: true, options: [] },
         { label: '关注指标', key: 'focus_metric', type: 'single_select', required: false, options: ['营收', '毛利', '回款'] }
       ],
-      agents: [
-        { agentId: 501, name: '数据汇总', description: '按日/周/月拉取经营数据并汇总成表', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] },
-        { agentId: 502, name: '异常识别', description: '识别经营指标异常并解释原因', sortOrder: 1, skills: [] },
-        { agentId: 503, name: '报告输出', description: '组织分析结论，输出经营分析报告', sortOrder: 2, skills: [] }
-      ]
+      skills: [{ skillId: 'sk_301', sortOrder: 0 }]
     },
     402: {
       intro: '负责客户资料准备与拜访跟进的客户成功 AI 同事',
@@ -208,17 +216,14 @@ function buildWorkbenchSeed() {
       claimDescriptions: ['拜访前自动准备客户资料与提纲', '拜访后整理跟进记录并沉淀服务过程'],
       exampleQuestions: ['帮我准备明天拜访的客户资料', '整理本周的客户跟进记录', '生成客户拜访提纲'],
       positionSop:
-        '1. 确认拜访对象与目标，收集客户基础资料。\n2. 调用客户洞察 Agent 生成拜访提纲。\n3. 拜访后整理跟进记录，沉淀到工作档案。',
+        '1. 确认拜访对象与目标，收集客户基础资料。\n2. 调用客户拜访准备技能生成拜访提纲。\n3. 拜访后整理跟进记录，沉淀到工作档案。',
       businessSystemIds: ['biz_2101'],
       // md 岗位 §8「只能引用已发布」：原先绑的 mail_center（未发布）/ crm（审核中）不合规，改为暂无（yuepu#57⑧）
       connectorMcpIds: [],
       connectorApiIds: ['api_1103', 'api_1104'], // api_1104 是「已回收」样例：md 规定回收后岗位引用保留并标「已回收」（yuepu#83）
       persona: '热情、周到。拜访前主动准备资料，拜访后提醒记录跟进事项。',
       intakeSchema: [{ label: '负责客户区域', key: 'region', type: 'text', required: true, options: [] }],
-      agents: [
-        { agentId: 504, name: '拜访准备', description: '汇总客户资料并生成拜访提纲', sortOrder: 0, skills: [{ skillId: 'sk_305', sortOrder: 0 }] },
-        { agentId: 505, name: '跟进记录', description: '整理拜访记录并沉淀服务过程', sortOrder: 1, skills: [] }
-      ]
+      skills: [{ skillId: 'sk_305', sortOrder: 0 }]
     },
     403: {
       intro: '负责报销材料核验与财务单据检查的审核 AI 同事',
@@ -230,9 +235,7 @@ function buildWorkbenchSeed() {
       businessSystemIds: [],
       persona: '严谨、克制。逐项核验，结论给出依据与风险等级。',
       intakeSchema: [{ label: '所属部门', key: 'department', type: 'text', required: true, options: [] }],
-      agents: [
-        { agentId: 506, name: '单据核验', description: '核验报销材料与财务单据，输出风险提示', sortOrder: 0, skills: [{ skillId: 'sk_301', sortOrder: 0 }] }
-      ]
+      skills: [{ skillId: 'sk_301', sortOrder: 0 }]
     },
     // 2026-09-09 负责人要求补全：原为全空的「空白岗位」样本，每次发布校验都被报 4 项缺失，
     // 且新做的「发布前检查弹窗」在种子数据下永远点不到（唯一的未发布岗位恰好不完整）。
@@ -244,16 +247,14 @@ function buildWorkbenchSeed() {
       claimDescriptions: ['行业资料自动整理，竞品动态定期跟踪'],
       exampleQuestions: ['整理这个行业的最新政策变化', '汇总主要竞品上季度的动作', '生成一份行业研究摘要'],
       positionSop:
-        '1. 明确研究主题与范围，收集公开行业资料。\n2. 调用竞品跟踪 Agent 汇总竞品动作与市场变化。\n3. 区分事实与推断，标注待验证信息。\n4. 输出结构化研究结论并沉淀到工作档案。',
+        '1. 明确研究主题与范围，收集公开行业资料。\n2. 汇总竞品动作与市场变化。\n3. 区分事实与推断，标注待验证信息。\n4. 输出结构化研究结论并沉淀到工作档案。',
       businessSystemIds: [],
       persona: '客观、审慎。只写有来源的结论，推断与事实分开表述。',
       intakeSchema: [{ label: '关注行业', key: 'industry', type: 'text', required: false, options: [] }],
-      agents: [
-        // 2026-09-23 待办 yuepu#9⑤：原引用通用技能 sk_303（会议纪要整理），违反 md §6.4「Agent 只能
-        // 引用岗位私有类型的技能」；sk_305（客户拜访准备）虽主题非完全贴合，但类型正确、已发布，
-        // 同一岗位私有技能允许被多个岗位重复引用（md §6.4），能让 404 继续保持「六项齐备可发布」样本
-        { agentId: 507, name: '研究纪要整理', description: '整理调研访谈与会议纪要，沉淀研究结论', sortOrder: 0, skills: [{ skillId: 'sk_305', sortOrder: 0 }] }
-      ]
+      // 2026-09-23 待办 yuepu#9⑤：原引用通用技能 sk_303（会议纪要整理），违反 md §6.4「只能
+      // 引用岗位私有类型的技能」；sk_305（客户拜访准备）虽主题非完全贴合，但类型正确、已发布，
+      // 同一岗位私有技能允许被多个岗位重复引用（md §6.4），能让 404 继续保持「六项齐备可发布」样本
+      skills: [{ skillId: 'sk_305', sortOrder: 0 }]
     }
   }
 }
@@ -269,13 +270,14 @@ function emptyWorkbench(payload = {}) {
     claimDescriptions: Array.isArray(payload.claimDescriptions) ? payload.claimDescriptions.map(String) : [],
     exampleQuestions: normEq(payload.exampleQuestions),
     positionSop: String(payload.positionSop || ''),
+    positionSopBrief: String(payload.positionSopBrief || ''),
     businessSystemIds: Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : [],
     // md 岗位 §8.1 L506 / §8.2 L524：连接器页签「岗位私有 MCP / API」引用清单，与 businessSystemIds 同型
     connectorMcpIds: Array.isArray(payload.connectorMcpIds) ? [...payload.connectorMcpIds] : [],
     connectorApiIds: Array.isArray(payload.connectorApiIds) ? [...payload.connectorApiIds] : [],
     persona: String(payload.persona || ''),
     intakeSchema: Array.isArray(payload.intakeSchema) ? payload.intakeSchema.map((r) => ({ ...r, options: [...(r.options || [])] })) : [],
-    agents: []
+    skills: []
   }
 }
 
@@ -310,8 +312,8 @@ function parseVersion(label) {
 
 /**
  * 出参行（不带 mock 内部字段裸引用，浅拷贝防组件误改内存种子）。
- * 读前先 syncCounts 自愈 skillIds/agentCount：技能本体可能在技能模块被直接删除（不经过本模块
- * 的 assignSkill/detachSkill），那条路径不会主动回写本岗位的缓存计数，skillCount 会一直停在
+ * 读前先 syncCounts 自愈 skillIds：技能本体可能在技能模块被直接删除（不经过本模块
+ * 的 attachPositionSkill/detachPositionSkill），那条路径不会主动回写本岗位的缓存计数，skillCount 会一直停在
  * 删除前的旧值（2026-09-23 待办 yuepu#9⑤）。
  */
 function toRow(p) {
@@ -323,7 +325,6 @@ function toRow(p) {
     icon: p.icon,
     skillIds: [...p.skillIds],
     skillCount: p.skillIds.length,
-    agentCount: p.agentCount,
     claimedUserCount: countAssignedUsers(p.positionId),
     status: p.status,
     pendingAction: p.pendingAction,
@@ -373,7 +374,6 @@ export async function createPosition(payload = {}) {
     // （原 '♟' 兜底会让必填形同虚设），由配置者在人格页签自行选择；列表 / 抽屉对空图标走各自占位。
     icon: payload.icon || '',
     skillIds: [],
-    agentCount: 0,
     status: 'draft',
     pendingAction: null,
     latestVersion: '',
@@ -408,8 +408,8 @@ export async function deletePosition(id) {
   // 引用联动：删岗前把岗位名从所引用技能的 refNames 摘掉
   const wb = ensureWb(p.positionId)
   const ids = new Set()
-  wb.agents.forEach((a) => a.skills.forEach((s) => ids.add(s.skillId)))
-  wb.agents = []
+  wb.skills.forEach((s) => ids.add(s.skillId))
+  wb.skills = []
   ids.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
   positions = positions.filter((x) => x !== p)
   appendOpsRecord({ operator: currentDemoUsername(), module: '岗位', action: '删除', target: p.name, version: p.latestVersion })
@@ -429,7 +429,7 @@ export async function deletePosition(id) {
   removeMcpPositionRefs(p.positionId)
   removeApiPositionRefs(p.positionId)
   removeBizPositionRefs(p.positionId)
-  clearKnowledgeBaseScope(p.positionId) // 岗位知识库可见范围置空（待办 yuepu#52：此前 scopeRefId 悬空，id 复用时还会挂到新岗位上）
+  clearKnowledgeBaseScope(p.positionId) // 从岗位知识库可见范围里摘掉本岗位（待办 yuepu#52：此前悬空，id 复用时还会挂到新岗位上；R3 起可见范围多选）
   persist()
   return {}
 }
@@ -449,7 +449,6 @@ export async function getDeleteImpact(id) {
   if (!p) throw err('岗位不存在', null, 404)
   return {
     positionName: p.name,
-    agentCount: p.agentCount,
     skillCount: p.skillIds.length,
     claimedUserCount: countAssignedUsers(p.positionId)
   }
@@ -481,7 +480,9 @@ let reviewSnapshots = {}
 // 历史归档（yuepu#76）：审核有结论 / 撤回时在审快照移入这里，「我的申请」回看已处理申请按 snapshotKey 取回提交时的配置
 let snapshotArchive = {}
 
-function writeReviewSnapshot(p, requestAction, submittedAt) {
+// withExpertRefs：快照带上提交当时引用的专家 / 专家团（R13 §2：引用关系随岗位发布生效）。模块顶层的种子补播传 false——
+// 那时 domainExpertMock / expertTeamMock 可能还没初始化完（循环依赖），读不了，审核详情回落到当前引用。
+function writeReviewSnapshot(p, requestAction, submittedAt, { withExpertRefs = true } = {}) {
   const snap = {
     key: nextSnapshotKey(reviewSnapshots, snapshotArchive, p.positionId),
     kind: 'POSITION',
@@ -489,8 +490,8 @@ function writeReviewSnapshot(p, requestAction, submittedAt) {
     requestAction,
     version: p.pendingVersion || p.latestVersion || '',
     submittedAt: submittedAt || nowIso(), // 种子补播传对象自身时间（09-18 审查：不再显示成页面加载时刻）
-    // 提交当时的完整岗位配置（人格要素 / Agent→技能 / 采集 schema 等）
-    detail: JSON.parse(JSON.stringify(detailVO(p)))
+    // 提交当时的完整岗位配置（人格要素 / 技能 / 采集 schema 等；专家与专家团只存名称）
+    detail: JSON.parse(JSON.stringify({ ...detailVO(p), ...(withExpertRefs ? { expertRefs: snapshotExpertRefs(p.positionId) } : {}) }))
   }
   reviewSnapshots[String(p.positionId)] = snap
   return snap
@@ -511,12 +512,10 @@ export async function publishPosition(id, payload = {}) {
   const p = findPos(id)
   if (!p) throw err('岗位不存在', null, 404)
   if (p.pendingAction) throw err('该岗位已有在途审核，请先撤回')
-  // 2026-09-08 PRD-20260908 对齐：md §6.5「Agent 与技能没有填写时同样可以发布（不参与发布阻断校验）」、
-  // 原型详情页 openPub L2132 无技能数校验 → 删除原「至少关联 1 个岗位私有技能」mock 兜底；
-  // 列表页【发布】的技能数前置校验（原型 L1194 链路，底账 Q11 未决）仍由 AdminPositions.onPublish 自持。
   // 发布前完整性复核（md 岗位 §9.1）：与详情页「发布前检查」同一个 computePublishCheck，UI 拦得住的，绕过 UI 的调用也必须拦得住——
   // 否则本函数会成为「API 层可发布无图标 / 无领用页文案 / 无采集字段的岗位」的参考实现（待办 yuepu#18②）
-  const check = computePublishCheck({ ...detailVO(p), sampleTaskCount: countSampleTasks(p.positionId) })
+  // R13：引用的专家 / 专家团不可用（未发布、已回收、缺员、团里的岗位私有成员没加入本岗位）同样阻断
+  const check = computePublishCheck({ ...detailVO(p), ...positionExpertRefs(p.positionId), sampleTaskCount: countSampleTasks(p.positionId) })
   if (!check.blockingPassed) {
     const failed = check.items.filter((i) => i.blocking && !i.ok)
     throw err(`发布前检查未通过：${failed.map((i) => i.detail).join('；')}`)
@@ -692,10 +691,9 @@ export async function relistPositionPublication(positionId, version) {
   return { ...row }
 }
 
-/* ============================ 工作台：岗位详情树 + Agent/技能引用（2026-09-02 补 mock） ============================ */
+/* ============================ 工作台：岗位详情 + 技能引用（2026-09-02 补 mock；2026-11-09 R1 取消 Agent） ============================ */
 
-const AGENT_MAX = LIMITS.AGENT_MAX
-const SKILL_PER_AGENT_MAX = LIMITS.SKILL_MAX // Q378 决议（2026-09-09）：单 Agent 技能引用上限 20 → 100
+const SKILL_MAX = LIMITS.SKILL_MAX // 产品优化需求-202611 R1：每个岗位最多引用 100 个技能（原「每个 Agent 100 个」）
 
 const bySort = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
 
@@ -706,23 +704,22 @@ function numericSkillId(id) {
 }
 
 /**
- * Agent/技能引用变化后回写列表行计数（同源联动：agentCount、skillIds→skillCount）。
+ * 技能引用变化后回写列表行计数（同源联动：skillIds→skillCount）。
  * 悬空引用（技能本体已被删除）不计入 skillCount——否则删除技能后列表仍显示旧计数，
  * 跟展示层的「（技能已删除）」占位对不上（2026-09-23 待办 yuepu#9⑤）。
  */
 function syncCounts(p) {
   const wb = ensureWb(p.positionId)
-  p.agentCount = wb.agents.length
   const ids = new Set()
-  wb.agents.forEach((a) => a.skills.forEach((s) => { if (skillMock._getRaw(s.skillId)) ids.add(s.skillId) }))
+  wb.skills.forEach((s) => { if (skillMock._getRaw(s.skillId)) ids.add(s.skillId) })
   p.skillIds = [...ids].map(numericSkillId)
 }
 
 /**
- * 技能引用行 → 白板技能卡 summary VO（本体字段从 unifiedSkillMock 同源取）。
+ * 技能引用行 → 技能行 summary VO（本体字段从 unifiedSkillMock 同源取）。
  * `deleted:true` 标记悬空引用（技能本体已被删除）：展示仍走「（技能已删除）」占位提示管理员清理，
  * 但不应计入 skillCount / 发布门的「至少引用 1 个技能」判定——见 syncCounts 与
- * utils/positionModel.js agentsWithSkillOk（2026-09-23 待办 yuepu#9⑤）。
+ * utils/positionModel.js skillsRefOk（2026-09-23 待办 yuepu#9⑤）。
  */
 function skillRefVO(ref) {
   const raw = skillMock._getRaw(ref.skillId)
@@ -737,13 +734,14 @@ function skillRefVO(ref) {
     icon: raw.icon || '',
     description: raw.description || '',
     category: isOperation ? 'OPERATION' : 'QUERY',
-    // md §6.4「技能子行展示：技能名称、技能分类、工具数量」：技能分类 = 技能本体的 11 类分类名（读时同源取自
+    // md §6.4「技能行展示：技能名称、技能分类、工具数量」：技能分类 = 技能本体的分类名（选项由字段字典维护（读时同源取自
     // unifiedSkillMock，与技能 VO 的 displayCategoryName 同名同义）；上面的 category 仅是操作类 / 查询类派生值（yuepu#61②）
-    displayCategoryName: raw.category || '',
+    // 分类已在字段字典删掉 → 空，岗位「技能」页签显示「未分类」（与技能列表同口径，产品优化需求-202611 修改点 15）
+    displayCategoryName: skillMock.displayCategoryNameOf(raw),
     status: raw.status,
     versionLabel: raw.version || '',
     sortOrder: ref.sortOrder ?? 0,
-    // 2026-09-10 D1（md §6.4 技能子行「工具数量」）：summary 形状补工具数——读时派生自
+    // 2026-09-10 D1（md §6.4「工具数量」）：summary 形状补工具数——读时派生自
     // 技能本体 toolRefs（unifiedSkillMock 单一真相），非落盘字段，无需 bump persist version。
     toolCount: (raw.toolRefs || []).length,
     deleted: false,
@@ -753,13 +751,7 @@ function skillRefVO(ref) {
   }
 }
 
-function agentVO(a, { withSkills = true } = {}) {
-  const vo = { agentId: a.agentId, name: a.name, description: a.description || '', sortOrder: a.sortOrder ?? 0 }
-  if (withSkills) vo.skills = a.skills.slice().sort(bySort).map(skillRefVO)
-  return vo
-}
-
-/** 岗位详情树 VO（PositionDetailVO：身份卡字段 + agents[].skills[]）。 */
+/** 岗位详情 VO（PositionDetailVO：身份卡字段 + skills[]）。专家 / 专家团引用不在这里，见 getPositionExperts。 */
 function detailVO(p) {
   const wb = ensureWb(p.positionId)
   return {
@@ -774,6 +766,7 @@ function detailVO(p) {
     claimDescriptions: [...(wb.claimDescriptions || [])],
     exampleQuestions: normEq(wb.exampleQuestions),
     positionSop: wb.positionSop || '',
+    positionSopBrief: wb.positionSopBrief || '',
     businessSystemIds: [...(wb.businessSystemIds || [])],
     connectorMcpIds: [...(wb.connectorMcpIds || [])],
     connectorApiIds: [...(wb.connectorApiIds || [])],
@@ -787,17 +780,8 @@ function detailVO(p) {
     // 2026-09-08 原型复刻批次 2B（G-4）：治理侧岗位只读抽屉 .page-time 行「最近更新时间」取用
     createdAt: p.createdAt || '',
     updatedAt: p.updatedAt || '',
-    agents: wb.agents.slice().sort(bySort).map((a) => agentVO(a))
+    skills: wb.skills.slice().sort(bySort).map(skillRefVO)
   }
-}
-
-function findAgent(agentId) {
-  for (const p of positions) {
-    const wb = ensureWb(p.positionId)
-    const agent = wb.agents.find((a) => String(a.agentId) === String(agentId))
-    if (agent) return { p, wb, agent }
-  }
-  return null
 }
 
 /** 引用联动：把本岗位名加进技能 refNames（unifiedSkillMock 单一真相，不复制本体）。 */
@@ -807,18 +791,17 @@ function addSkillRefName(skillId, posName) {
     skillMock._reset(skillId, { refNames: [...(raw.refNames || []), posName] })
   }
 }
-/** 本岗位内已无任何 Agent 引用该技能时，把岗位名从技能 refNames 摘掉。 */
+/** 本岗位已不再引用该技能时，把岗位名从技能 refNames 摘掉。 */
 function removeSkillRefNameIfUnused(p, skillId) {
   const wb = ensureWb(p.positionId)
-  const stillUsed = wb.agents.some((a) => a.skills.some((s) => String(s.skillId) === String(skillId)))
-  if (stillUsed) return
+  if (wb.skills.some((s) => String(s.skillId) === String(skillId))) return
   const raw = skillMock._getRaw(skillId)
   if (raw && (raw.refNames || []).includes(p.name)) {
     skillMock._reset(skillId, { refNames: raw.refNames.filter((n) => n !== p.name) })
   }
 }
 
-// 1.2 岗位详情（树形，含 Agent→技能）
+// 1.2 岗位详情
 export async function getPosition(id) {
   await delay()
   const p = findPos(id)
@@ -838,9 +821,7 @@ export async function updatePosition(id, payload = {}) {
     if (positions.some((x) => x !== p && x.name === name)) throw err('已存在同名岗位', 'name', 1005)
     // 岗位改名：同步维护已引用技能的 refNames（同源联动，避免留下旧名）
     if (name !== p.name) {
-      const ids = new Set()
-      wb.agents.forEach((a) => a.skills.forEach((s) => ids.add(s.skillId)))
-      ids.forEach((skillId) => {
+      wb.skills.forEach(({ skillId }) => {
         const raw = skillMock._getRaw(skillId)
         if (raw && (raw.refNames || []).includes(p.name)) {
           skillMock._reset(skillId, { refNames: raw.refNames.map((n) => (n === p.name ? name : n)) })
@@ -884,6 +865,12 @@ export async function updatePosition(id, payload = {}) {
     if (sop.length > 4000) throw err('岗位 SOP 最多 4000 个字符', 'positionSop')
     wb.positionSop = sop
   }
+  // SOP 简版（修改点 18）：选填，最多 200 字
+  if ('positionSopBrief' in payload) {
+    const brief = String(payload.positionSopBrief || '')
+    if (brief.length > SOP_BRIEF_MAX_LEN) throw err(`SOP 简版最多 ${SOP_BRIEF_MAX_LEN} 个字符`, 'positionSopBrief')
+    wb.positionSopBrief = brief
+  }
   if ('businessSystemIds' in payload) {
     wb.businessSystemIds = Array.isArray(payload.businessSystemIds) ? [...payload.businessSystemIds] : []
   }
@@ -908,116 +895,26 @@ export async function updatePosition(id, payload = {}) {
   return { ...detailVO(p), warnings: [] }
 }
 
-/* ---------------- Agent CRUD（契约 §2） ---------------- */
+/* ---------------- 技能引用（产品优化需求-202611 R1：技能直接引用到岗位，attach 引用 / detach 可逆移除） ---------------- */
 
-const AGENT_NAME_MAX = 64
-const AGENT_DESC_MAX = 2000
-/** Agent 必填 + 长度校验（field 指向出错控件，页面按 field 回显）。 */
-function assertAgentFields(name, description) {
-  if (!name) throw err('请填写 Agent 名称', 'name')
-  if (name.length > AGENT_NAME_MAX) throw err(`Agent 名称最多 ${AGENT_NAME_MAX} 个字符`, 'name')
-  if (!description) throw err('请填写职责描述', 'description')
-  if (description.length > AGENT_DESC_MAX) throw err(`职责描述最多 ${AGENT_DESC_MAX} 个字符`, 'description')
-}
-
-// 2.1 新建 Agent（岗位内 name 唯一 1005；≤20 上限 1002）
-export async function createAgent(positionId, payload = {}) {
+// 引用技能。候选口径：已发布、未回收的岗位私有技能，同一岗位内同一技能只引用一次；每个岗位最多 100 个（1002）。
+export async function attachPositionSkill(positionId, skillId) {
   await delay()
   const p = findPos(positionId)
   if (!p) throw err('岗位不存在或已被删除', null, 404)
   const wb = ensureWb(p.positionId)
-  if (wb.agents.length >= AGENT_MAX) throw err(`单岗位最多 ${AGENT_MAX} 个 Agent`, null, 1002)
-  // md §6.2 + 一览表 #5.1 / #5.2：名称、职责描述均必填，名称 ≤64、职责描述 ≤2000（yuepu#61①，原缺省落「新 Agent」、不校验长度）
-  const name = String(payload.name || '').trim()
-  const description = String(payload.description || '').trim()
-  assertAgentFields(name, description)
-  // 新建与编辑现共用同一抽屉表单（PositionAgentSkillTab.vue saveAgentDraft），均要求用户显式填写
-  // 名称——不再是「快捷加号按钮、默认空名」的场景，故与 updateAgent 同口径拒重名，不静默改名
-  // （2026-09-18 待办 yuepu#13·岗位 P4：此前改名静默追加序号，用户不知道保存的其实不是自己填的名字，
-  // 与编辑态「Agent 名已存在」报错互相矛盾）。
-  if (wb.agents.some((a) => a.name === name)) throw err('Agent 名已存在', 'name', 1005)
-  const agent = {
-    agentId: agentSeq++,
-    name,
-    description,
-    sortOrder: payload.sortOrder ?? wb.agents.length,
-    skills: []
-  }
-  wb.agents.push(agent)
-  syncCounts(p)
-  p.updatedAt = nowIso()
-  persist()
-  return agentVO(agent)
-}
-
-// 2.2 编辑 Agent（部分更新 name/description/sortOrder；岗位内重名 1005）
-export async function updateAgent(agentId, payload = {}) {
-  await delay()
-  const hit = findAgent(agentId)
-  if (!hit) throw err('Agent 不存在或已被删除', null, 404)
-  const { p, wb, agent } = hit
-  if ('name' in payload) {
-    const name = String(payload.name || '').trim()
-    if (!name) throw err('请填写 Agent 名称', 'name')
-    if (name.length > AGENT_NAME_MAX) throw err(`Agent 名称最多 ${AGENT_NAME_MAX} 个字符`, 'name')
-    if (wb.agents.some((a) => a !== agent && a.name === name)) throw err('Agent 名已存在', 'name', 1005)
-    agent.name = name
-  }
-  if ('description' in payload) {
-    const description = String(payload.description || '').trim()
-    if (!description) throw err('请填写职责描述', 'description')
-    if (description.length > AGENT_DESC_MAX) throw err(`职责描述最多 ${AGENT_DESC_MAX} 个字符`, 'description')
-    agent.description = description
-  }
-  if ('sortOrder' in payload) agent.sortOrder = payload.sortOrder
-  p.updatedAt = nowIso()
-  persist()
-  return agentVO(agent, { withSkills: false })
-}
-
-// 2.3 删除 Agent（其下技能脱离岗位变「未被引用」，回 orphanedSkillCount）
-export async function deleteAgent(agentId) {
-  await delay()
-  const hit = findAgent(agentId)
-  if (!hit) throw err('Agent 不存在或已被删除', null, 404)
-  const { p, wb, agent } = hit
-  const orphaned = agent.skills.map((s) => s.skillId)
-  wb.agents = wb.agents.filter((a) => a !== agent)
-  orphaned.forEach((skillId) => removeSkillRefNameIfUnused(p, skillId))
-  // 删 Agent 级联（2026-09-23 待办 yuepu#9⑦）：清掉自动化任务里指向本 Agent 的 execAgentId，
-  // 不然「执行动作」选中 Agent 执行的任务，编辑页会显示裸 agentId
-  clearExecAgentRef(p.positionId, agent.agentId)
-  syncCounts(p)
-  p.updatedAt = nowIso()
-  persist()
-  return { orphanedSkillCount: orphaned.length }
-}
-
-/* ---------------- 技能引用（V84 引用模型：assign 拉入/跨泳道迁移，detach 可逆移除） ---------------- */
-
-// 3.2.1 分配 / 改挂 Agent。1002=目标 Agent 技能数上限；已在本岗位其它 Agent → 迁移（拖拽跨泳道语义）。
-export async function assignSkill(skillId, targetAgentId) {
-  await delay()
-  const hit = findAgent(targetAgentId)
-  if (!hit) throw err('目标 Agent 不存在或已被删除', null, 404)
-  const { p, wb, agent } = hit
   const raw = skillMock._getRaw(skillId)
   if (!raw) throw err('技能不存在或已被删除', null, 404)
-  // md §6.4「Agent 只能引用岗位私有类型的技能」——UI 候选弹窗已按岗位私有过滤，mock 数据层兜底
+  // md §6.4「只能引用岗位私有类型的技能」——UI 候选已按岗位私有过滤，mock 数据层兜底
   // 不留后门（2026-09-23 待办 yuepu#9⑤：种子 404 曾误引用通用技能 sk_303，即此规则此前无人校验）
-  if (raw.type !== 'POSITION') throw err('Agent 只能引用岗位私有类型的技能')
+  if (raw.type !== 'POSITION') throw err('岗位只能引用岗位私有类型的技能')
   // md 岗位 §6.4：候选为「已发布」的岗位私有技能，数据层同样兜底（yuepu#57②；已发布且有新版在审的仍是 published，放行）
-  if (raw.status !== 'published') throw err('仅已发布的岗位私有技能可被 Agent 引用')
-  // 已挂本 Agent：幂等返回
-  const existed = agent.skills.find((s) => String(s.skillId) === String(skillId))
+  if (raw.status !== 'published') throw err('仅已发布的岗位私有技能可被岗位引用')
+  const existed = wb.skills.find((s) => String(s.skillId) === String(skillId))
   if (existed) return skillRefVO(existed)
-  if (agent.skills.length >= SKILL_PER_AGENT_MAX) throw err(`该 Agent 技能数已达上限（${SKILL_PER_AGENT_MAX}）`, null, 1002)
-  // 本岗位其它 Agent 已引用 → 迁移（从原 Agent 摘除）
-  for (const a of wb.agents) {
-    a.skills = a.skills.filter((s) => String(s.skillId) !== String(skillId))
-  }
-  const ref = { skillId: raw.id, sortOrder: agent.skills.length }
-  agent.skills.push(ref)
+  if (wb.skills.length >= SKILL_MAX) throw err(`每个岗位最多引用 ${SKILL_MAX} 个技能`, null, 1002)
+  const ref = { skillId: raw.id, sortOrder: wb.skills.length }
+  wb.skills.push(ref)
   addSkillRefName(raw.id, p.name)
   syncCounts(p)
   p.updatedAt = nowIso()
@@ -1025,20 +922,316 @@ export async function assignSkill(skillId, targetAgentId) {
   return skillRefVO(ref)
 }
 
-// 3.4.2 从指定 Agent 移除技能引用（可逆：删引用行，技能本体留库）
-export async function detachSkill(agentId, skillId) {
+/**
+ * 「添加技能」抽屉候选（产品优化需求-202611 修改点 1）：已发布的岗位私有技能，排除本岗位已引用的。
+ * 「已发布」与 attachPositionSkill 同一把尺——按技能本体 status === 'published' 判：有新版本在审、停用在审的仍算已发布
+ * （修改点 4 同口径）；停用通过、强制回收后技能回 draft，自然不在候选里。不走技能列表的「已发布」筛选——
+ * 那是展示三态，审核中的技能会被算成「审核中」漏掉。
+ */
+export async function listPositionSkillCandidates(positionId, keyword) {
+  const p = findPos(positionId)
+  const ownIds = new Set(p ? ensureWb(p.positionId).skills.map((s) => String(s.skillId)) : [])
+  const res = await skillMock.listUnifiedSkills({ type: 'POSITION', size: 500, ...(keyword ? { keyword } : {}) })
+  return (res?.list || [])
+    .filter((s) => s.status === 'published' && !ownIds.has(String(s.id)))
+    .map((s) => ({ id: s.id, skillId: s.id, name: s.name, description: s.description || '', category: s.displayCategoryName || '' }))
+}
+
+/** 移除技能的拦截文案：本岗位自动化任务的「引用技能」里还引用着它时不能移除；能移除返回 ''。 */
+function skillDetachBlockMessage(positionId, skillId) {
+  const tasks = listTasksUsingSkill(positionId, skillId)
+  if (!tasks.length) return ''
+  const name = skillMock._getRaw(skillId)?.name || '该技能'
+  return `「${name}」正被自动化任务「${tasks.join('」「')}」引用，请先从任务里移除`
+}
+
+// 移除前预检（修改点 1：点【移除】先查，被任务引用时直接提示、不弹确认）：回拦截文案，'' = 可以移除
+export async function checkDetachPositionSkill(positionId, skillId) {
+  await delay(80)
+  const p = findPos(positionId)
+  if (!p) throw err('岗位不存在或已被删除', null, 404)
+  return skillDetachBlockMessage(p.positionId, skillId)
+}
+
+// 移除技能引用（可逆：删引用行，技能本体留库）
+export async function detachPositionSkill(positionId, skillId) {
   await delay()
-  const hit = findAgent(agentId)
-  if (!hit) throw err('Agent 不存在或已被删除', null, 404)
-  const { p, agent } = hit
-  const before = agent.skills.length
-  agent.skills = agent.skills.filter((s) => String(s.skillId) !== String(skillId))
-  if (agent.skills.length === before) throw err('该 Agent 未引用此技能', null, 404)
+  const p = findPos(positionId)
+  if (!p) throw err('岗位不存在或已被删除', null, 404)
+  const wb = ensureWb(p.positionId)
+  // 本岗位自动化任务的「引用技能」里还引用着它时不能移除（岗位私有技能要被本岗位引用，任务才能引用）；
+  // 页面已先预检，这里数据层再兜一次（文案与预检同源）
+  const blocked = skillDetachBlockMessage(p.positionId, skillId)
+  if (blocked) throw err(blocked)
+  const before = wb.skills.length
+  wb.skills = wb.skills.filter((s) => String(s.skillId) !== String(skillId))
+  if (wb.skills.length === before) throw err('该岗位未引用此技能', null, 404)
   removeSkillRefNameIfUnused(p, skillId)
   syncCounts(p)
   p.updatedAt = nowIso()
   persist()
   return {}
+}
+
+/**
+ * 自动化任务「引用技能」候选（2026-11-09 负责人定；原「引用平台技能」只含市场技能）：
+ * 已发布的通用技能、市场技能，加上本岗位「技能」页签引用的岗位私有技能（同样须已发布）。
+ * 「已发布」按技能本体 status 判：有新版本在审、停用在审的仍是 published（线上版本照常可用），与专家引用市场技能、
+ * 岗位引用技能同一口径；已回收的技能不是 published，自然排除。本岗位的排前面，其次市场、通用。
+ * 类型名同 unifiedSkill.SKILL_TYPE_LABEL——不能直接 import：unifiedSkill.js → position.js → 本模块成环。
+ */
+const TASK_SKILL_TYPE = {
+  POSITION: { order: 0, label: '岗位私有' },
+  PLATFORM: { order: 1, label: '市场技能' },
+  SYSTEM_DEFAULT: { order: 2, label: '通用技能' }
+}
+export async function listTaskSkillCandidates(positionId, keyword) {
+  const p = findPos(positionId)
+  const ownIds = new Set(p ? ensureWb(p.positionId).skills.map((s) => String(s.skillId)) : [])
+  const res = await skillMock.listUnifiedSkills({ size: 500, ...(keyword ? { keyword } : {}) })
+  return (res?.list || [])
+    .filter((s) => s.status === 'published' && TASK_SKILL_TYPE[s.type] && (s.type !== 'POSITION' || ownIds.has(String(s.id))))
+    .sort((a, b) => TASK_SKILL_TYPE[a.type].order - TASK_SKILL_TYPE[b.type].order)
+    .map((s) => ({
+      id: s.id,
+      skillId: s.id,
+      code: String(s.id),
+      name: s.name,
+      description: s.description || '',
+      category: s.displayCategoryName || '',
+      type: s.type,
+      typeLabel: TASK_SKILL_TYPE[s.type].label
+    }))
+}
+
+/* ---------------- 专家与专家团（产品优化需求-202611 R13） ----------------
+ * 绑定关系只存一处：专家 / 团自己的 positionIds（domainExpertMock / expertTeamMock）。
+ * 岗位页签读写的是同一份数据，专家页的「所属岗位」改为只读展示。 */
+
+/** 专家 / 团当前是否可用：已发布才可用；否则返回原因（口径同 expertTeamMock 的缺员判定）。 */
+function unavailableReasonOf(row) {
+  if (row.status === 'published') return ''
+  if (row.revoked) return '已回收'
+  return row.latestVersionLabel ? '已停用' : '未发布'
+}
+
+const boundTo = (row, positionId) => (row.positionIds || []).some((id) => String(id) === String(positionId))
+
+function expertRefVO(x) {
+  return {
+    expertId: x.id,
+    name: x.name,
+    type: x.type,
+    typeLabel: EXPERT_TYPE_LABEL[x.type] || '',
+    avatar: x.avatar || '',
+    backgroundColor: x.backgroundColor || '',
+    category: x.category || '',
+    skillCount: x.skillCount,
+    status: x.status,
+    revoked: x.revoked ? { ...x.revoked } : null,
+    unavailable: unavailableReasonOf(x)
+  }
+}
+
+const TEAM_TYPE_LABEL = {
+  [EXPERT_TYPE.POSITION]: '岗位私有',
+  [EXPERT_TYPE.PLATFORM]: '市场专家团',
+  [EXPERT_TYPE.SYSTEM_DEFAULT]: '通用专家团'
+}
+
+function teamRefVO(t, positionId) {
+  // 团里的岗位私有成员必须同样被本岗位引用，否则本岗位员工用不了这个团（原专家团发布前检查第 3 项，R13 挪到岗位侧）
+  const unboundMembers = (t.members || [])
+    .filter((m) => m.expertType === EXPERT_TYPE.POSITION && !(m.positionIds || []).some((id) => String(id) === String(positionId)))
+    .map((m) => ({ expertId: m.expertId, name: m.name }))
+  return {
+    teamId: t.id,
+    name: t.name,
+    type: t.type,
+    typeLabel: TEAM_TYPE_LABEL[t.type] || '',
+    avatar: t.avatar || '',
+    category: t.category || '',
+    memberCount: t.memberCount,
+    memberIds: (t.members || []).map((m) => m.expertId),
+    leaderId: t.leaderId,
+    leaderName: t.leaderName,
+    missingCount: t.missingCount,
+    missing: (t.missing || []).map((m) => ({ ...m })),
+    unboundMembers,
+    status: t.status,
+    revoked: t.revoked ? { ...t.revoked } : null,
+    unavailable: unavailableReasonOf(t)
+  }
+}
+
+/** 岗位审核快照里的专家与专家团：只留 id 和名称，审核详情只读展示。 */
+function snapshotExpertRefs(positionId) {
+  const { experts, teams } = boundExpertRefs(positionId)
+  return {
+    experts: experts.map((x) => ({ expertId: x.expertId, name: x.name })),
+    teams: teams.map((t) => ({ teamId: t.teamId, name: t.name }))
+  }
+}
+
+/** 引用本岗位的专家 / 团（读时派生）。 */
+function boundExpertRefs(positionId) {
+  return {
+    experts: listExpertsSync().filter((x) => x.type === EXPERT_TYPE.POSITION && boundTo(x, positionId)).map(expertRefVO),
+    teams: listTeamsSync().filter((t) => t.type === EXPERT_TYPE.POSITION && boundTo(t, positionId)).map((t) => teamRefVO(t, positionId))
+  }
+}
+
+/**
+ * 自动化任务执行对象候选（R13 §4；2026-11-09 负责人定：与「引用技能」同一范围）：
+ * 已发布、未回收的通用 / 市场专家（团），加上本岗位「专家与专家团」页签里状态正常的岗位私有专家（团）。
+ * 专家团另须不缺员、岗位私有成员都已加入本岗位；没设主理人的团照常列出（leaderId 为 null），由编辑页置灰。
+ */
+function execTargetCandidates(positionId) {
+  const open = (row) => row.type !== EXPERT_TYPE.POSITION && row.status === 'published' && !row.revoked
+  const bound = boundExpertRefs(positionId)
+  return {
+    experts: [...bound.experts, ...listExpertsSync().filter(open).map(expertRefVO)].filter((x) => !x.unavailable),
+    teams: [...bound.teams, ...listTeamsSync().filter(open).map((t) => teamRefVO(t, positionId))].filter(
+      (t) => !t.unavailable && !t.missingCount && !t.unboundMembers.length
+    )
+  }
+}
+
+/** 执行对象已不能用的任务（停用、回收、缺员、没设主理人、被删除或已从本岗位移除）：岗位发布前检查逐条阻断。 */
+function execTargetIssues(positionId) {
+  const { experts, teams } = execTargetCandidates(positionId)
+  const usable = {
+    EXPERT: new Set(experts.map((x) => String(x.expertId))),
+    TEAM: new Set(teams.filter((t) => t.leaderId != null).map((t) => String(t.teamId)))
+  }
+  return listTasksWithExecTarget(positionId)
+    .filter((s) => !usable[s.execType].has(String(s.execTargetId)))
+    .map((s) => {
+      const isExpert = s.execType === 'EXPERT'
+      const target = (isExpert ? listExpertsSync() : listTeamsSync()).find((x) => String(x.id) === String(s.execTargetId))
+      return { taskName: s.name, targetName: target?.name || (isExpert ? '已删除的专家' : '已删除的专家团') }
+    })
+}
+
+/** 岗位侧专家引用全貌：引用的专家 / 团 + 执行对象不能用的任务。页签读写与 publishPosition 的发布前复核都用它。 */
+function positionExpertRefs(positionId) {
+  return { ...boundExpertRefs(positionId), execTargetIssues: execTargetIssues(positionId) }
+}
+
+// 岗位详情「专家与专家团」页签：{ experts, teams }
+export async function getPositionExperts(positionId) {
+  await delay()
+  if (!findPos(positionId)) throw err('岗位不存在或已被删除', null, 404)
+  return positionExpertRefs(positionId)
+}
+
+// 添加抽屉候选：已发布、未回收、不在审核中的岗位私有专家 / 团，排除已引用本岗位的
+export async function listPositionExpertCandidates(positionId) {
+  await delay()
+  const usable = (row) => row.type === EXPERT_TYPE.POSITION && row.status === 'published' && !row.pendingAction && !row.revoked && !boundTo(row, positionId)
+  return {
+    experts: listExpertsSync().filter(usable).map((x) => ({ ...expertRefVO(x), intro: x.intro || '' })),
+    teams: listTeamsSync().filter(usable).map((t) => ({ ...teamRefVO(t, positionId), intro: t.intro || '' }))
+  }
+}
+
+// 专家 / 专家团在岗位侧的使用情况（R13 §5：停用、强制回收确认窗口的影响范围）：{ positionCount, taskCount }
+export async function getExpertUsage(kind, id) {
+  await delay()
+  const execType = kind === 'TEAM' ? 'TEAM' : 'EXPERT'
+  const row = (execType === 'TEAM' ? listTeamsSync() : listExpertsSync()).find((x) => String(x.id) === String(id))
+  return {
+    positionCount: (row?.positionIds || []).filter((pid) => findPos(pid)).length,
+    taskCount: countTasksByExecTarget(execType, id)
+  }
+}
+
+/** 全部专家 / 专家团的 id → 名称（不论状态）：已选对象不在候选里时，编辑页仍要显示它的名字。 */
+function execTargetNames() {
+  const toMap = (rows) => Object.fromEntries(rows.map((x) => [String(x.id), x.name]))
+  return { EXPERT: toMap(listExpertsSync()), TEAM: toMap(listTeamsSync()) }
+}
+
+// 自动化任务「执行动作」选专家 / 专家团时的下拉候选：{ experts, teams, names }（口径见 execTargetCandidates）。
+// names = { EXPERT: { id: 名称 }, TEAM: { id: 名称 } }：所选对象已停用、回收、缺员或已移除时，下拉仍显示「名称（不可用）」
+// 而不是裸 id（产品优化需求-202611 修改点 3）；查不到名称的是已被删除的对象
+export async function listTaskExecTargetCandidates(positionId) {
+  await delay()
+  if (!findPos(positionId)) throw err('岗位不存在或已被删除', null, 404)
+  return { ...execTargetCandidates(positionId), names: execTargetNames() }
+}
+
+function assertEditablePosition(positionId) {
+  const p = findPos(positionId)
+  if (!p) throw err('岗位不存在或已被删除', null, 404)
+  if (p.pendingAction) throw err('审核中不可编辑，如需修改请先撤回')
+  return p
+}
+
+export async function bindPositionExpert(positionId, expertId) {
+  await delay()
+  const p = assertEditablePosition(positionId)
+  bindExpertToPosition(expertId, p.positionId)
+  p.updatedAt = nowIso()
+  persist()
+  return positionExpertRefs(p.positionId)
+}
+
+export async function bindPositionTeam(positionId, teamId) {
+  await delay()
+  const p = assertEditablePosition(positionId)
+  bindTeamToPosition(teamId, p.positionId)
+  p.updatedAt = nowIso()
+  persist()
+  return positionExpertRefs(p.positionId)
+}
+
+/**
+ * 移除专家 / 专家团的拦截文案：正被本岗位自动化任务选为执行对象时不能移除（R13 §3「移除」）；能移除返回 ''。
+ * execType: 'EXPERT' | 'TEAM'。
+ */
+function execTargetBlockMessage(positionId, execType, id) {
+  const tasks = listTasksUsingExecTarget(positionId, execType, id)
+  if (!tasks.length) return ''
+  const name = (execType === 'TEAM' ? listTeamsSync() : listExpertsSync()).find((x) => String(x.id) === String(id))?.name || ''
+  return `「${name}」正被自动化任务「${tasks.join('」「')}」使用，请先修改任务的执行动作`
+}
+
+// 移除前预检（产品优化需求-202611 修改点 2：点【移除】先查，是执行对象时直接提示、不弹确认）：回拦截文案，'' = 可以移除
+export async function checkUnbindPositionExpert(positionId, expertId) {
+  await delay(80)
+  const p = findPos(positionId)
+  if (!p) throw err('岗位不存在或已被删除', null, 404)
+  return execTargetBlockMessage(p.positionId, 'EXPERT', expertId)
+}
+export async function checkUnbindPositionTeam(positionId, teamId) {
+  await delay(80)
+  const p = findPos(positionId)
+  if (!p) throw err('岗位不存在或已被删除', null, 404)
+  return execTargetBlockMessage(p.positionId, 'TEAM', teamId)
+}
+
+// 移除专家 / 专家团：页面已先预检，这里数据层再兜一次（文案与预检同源）
+export async function unbindPositionExpert(positionId, expertId) {
+  await delay()
+  const p = assertEditablePosition(positionId)
+  const blocked = execTargetBlockMessage(p.positionId, 'EXPERT', expertId)
+  if (blocked) throw err(blocked)
+  unbindExpertFromPosition(expertId, p.positionId)
+  p.updatedAt = nowIso()
+  persist()
+  return positionExpertRefs(p.positionId)
+}
+
+export async function unbindPositionTeam(positionId, teamId) {
+  await delay()
+  const p = assertEditablePosition(positionId)
+  const blocked = execTargetBlockMessage(p.positionId, 'TEAM', teamId)
+  if (blocked) throw err(blocked)
+  unbindTeamFromPosition(teamId, p.positionId)
+  p.updatedAt = nowIso()
+  persist()
+  return positionExpertRefs(p.positionId)
 }
 
 /* ============================ 岗位分配页联动（岗位名单一真相源，Q10） ============================ */
@@ -1071,13 +1264,12 @@ export function isPositionBindable(id) {
 export function __resetPositionMock() {
   posSeq = 405
   try { globalThis.localStorage?.removeItem(ID_FLOOR_KEY) } catch { /* ignore */ }
-  agentSeq = 520
   workbench = buildWorkbenchSeed()
   positions = [
-    { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], agentCount: 3, status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
-    { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], agentCount: 2, status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
-    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], agentCount: 1, status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
-    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [305], agentCount: 1, status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
+    { positionId: 401, name: '经营分析岗', description: '负责经营数据汇总、异常识别与经营分析报告输出', icon: '▤', skillIds: [301], status: 'published', pendingAction: null, latestVersion: 'v2.1.0', createdAt: '2026-08-12T09:30:00+08:00', updatedAt: '2026-08-25T16:20:00+08:00' },
+    { positionId: 402, name: '客户成功岗', description: '负责客户资料准备、拜访跟进与服务过程记录', icon: '◎', skillIds: [305], status: 'published', pendingAction: null, latestVersion: 'v1.4.0', createdAt: '2026-08-14T10:05:00+08:00', updatedAt: '2026-08-24T14:35:00+08:00' },
+    { positionId: 403, name: '财务审核岗', description: '负责报销材料核验、财务单据检查与风险提示', icon: '¥', skillIds: [301], status: 'draft', pendingAction: 'PUBLISH', pendingVersion: 'v1.0.0', pendingReleaseNotes: '首个版本', latestVersion: '', createdAt: '2026-08-20T15:40:00+08:00', updatedAt: '2026-08-25T10:18:00+08:00' },
+    { positionId: 404, name: '市场研究岗', description: '负责行业资料整理、竞品跟踪与研究结论沉淀', icon: '⌁', skillIds: [305], status: 'draft', pendingAction: null, latestVersion: '', createdAt: '2026-08-23T09:42:00+08:00', updatedAt: '2026-08-23T09:42:00+08:00' }
   ]
   publications = {
     401: [
@@ -1123,11 +1315,14 @@ const persist = attachPersist('position', {
   // （reviewSnapshots）里内嵌了该 VO，快照形状变了；存量快照缺这个字段 → 丢弃回种子。
   // v11（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照弃用回种子。
   // v12（2026-10-19 待办 yuepu#77）：种子技能的工具引用补了几条（api_1101 / mail_center / biz_2101），岗位在审快照里内嵌的技能引用随之变，旧快照弃用回种子。
-  version: 12,
-  snapshot: () => ({ posSeq, agentSeq, positions, publications, workbench, reviewSnapshots, snapshotArchive }),
+  // v13（2026-11-09 产品优化需求-202611 R1）：取消 Agent，工作台 agents[].skills[] 改为 skills[]，列表行去掉 agentCount；
+  // 快照结构变了，旧快照丢弃回种子。
+  // v14（2026-11-12 产品优化需求-202611 修改点 18）：工作台新增 positionSopBrief（SOP 简版），401 种子补一份，旧快照丢弃回种子。
+  version: 14,
+  snapshot: () => ({ posSeq, positions, publications, workbench, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (
-      !d || !Number.isFinite(d.posSeq) || !Number.isFinite(d.agentSeq) ||
+      !d || !Number.isFinite(d.posSeq) ||
       !Array.isArray(d.positions) || d.positions.some((r) => !r || typeof r !== 'object') ||
       typeof d.publications !== 'object' || d.publications === null ||
       typeof d.workbench !== 'object' || d.workbench === null
@@ -1135,7 +1330,6 @@ const persist = attachPersist('position', {
       throw new Error('position 快照形状不合法')
     }
     posSeq = d.posSeq
-    agentSeq = d.agentSeq
     positions = d.positions
     publications = d.publications
     workbench = d.workbench
@@ -1153,7 +1347,7 @@ function seedReviewSnapshots() {
   for (const p of positions) {
     if (!p.pendingAction) continue
     if (reviewSnapshots[String(p.positionId)]) continue
-    writeReviewSnapshot(p, p.pendingAction === 'DELIST' ? 'DELIST' : p.latestVersion ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', p.updatedAt)
+    writeReviewSnapshot(p, p.pendingAction === 'DELIST' ? 'DELIST' : p.latestVersion ? 'VERSION_PUBLISH' : 'FIRST_PUBLISH', p.updatedAt, { withExpertRefs: false })
   }
 }
 seedReviewSnapshots()

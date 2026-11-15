@@ -9,7 +9,9 @@
  *   内容按岗位 md §三.2 人格页签要素只读展示：
  *     1. 基本信息：岗位名称 / 图标（IconField 只读）/ 岗位描述
  *     2. 人格：领用页文案（列表）/ 示例问题（3 条）/ 岗位 SOP / 岗位人格
- *     3. 岗位技能（原型同名卡；由 Agent 引用的技能并集推导，空「暂无关联技能」）
+ *     3. 岗位技能（原型同名卡；岗位直接引用的技能，空「暂无关联技能」；2026-11-09 R1 取消 Agent）
+ *     4. 专家与专家团（2026-11-09 产品优化需求-202611 R13）：读快照时展示快照里提交当时的引用（snapshot.detail.expertRefs）；
+ *        快照里没有这一块（种子在审行）或不是读快照时，按 positionId 实时取当前引用，并标明「当前引用」
  * 【数据来源（2026-09-09 PRD 复核 A5 改口径）】md `prd.审核中心.md` §四 L48：
  * 「岗位、专家、技能三类业务对象由所属业务模块在提交审核时生成版本快照，审核详情读取该快照」。
  * 故本抽屉**优先读快照**（GovObjectDetail 经 utils/reviewSnapshot 从 positionMock 取回，传入 snapshot prop）——
@@ -48,10 +50,28 @@ const loadError = ref(false)
 /** 实体不存在 → 只剩申请行数据可用（既无快照也无实体） */
 const snapshotOnly = ref(false)
 
+/* 专家与专家团（R13）：快照带了就用快照（随岗位发布生效，审核看的是提交那一刻的引用）；否则实时取当前引用，失败只显示为空 */
+const expertRefs = ref({ experts: [], teams: [] })
+const refsFromSnapshot = ref(false)
+async function loadExpertRefs() {
+  expertRefs.value = { experts: [], teams: [] }
+  if (props.positionId == null) return
+  try {
+    const { getPositionExperts } = await import('@/api/position')
+    expertRefs.value = (await getPositionExperts(props.positionId)) || { experts: [], teams: [] }
+  } catch {
+    /* 岗位已删除等：区块显示为空 */
+  }
+}
+
 async function load() {
   if (!props.visible) return
   // A5：有快照就用快照，不再打业务模块的实时取数（快照即「提交审核当时」的权威副本）
   if (props.snapshot?.detail) {
+    const snapRefs = props.snapshot.detail.expertRefs
+    refsFromSnapshot.value = !!snapRefs
+    if (snapRefs) expertRefs.value = { experts: snapRefs.experts || [], teams: snapRefs.teams || [] }
+    else loadExpertRefs()
     liveDetail.value = null
     snapshotOnly.value = false
     loading.value = false
@@ -62,6 +82,8 @@ async function load() {
   loadError.value = false
   snapshotOnly.value = false
   liveDetail.value = null
+  refsFromSnapshot.value = false
+  loadExpertRefs()
   try {
     // 动态引：避免把 api/request → @/router 链条带进引用本组件页面的单测模块图（同 GovObjectDetail MODEL 分支）
     const { getPosition } = await import('@/api/position')
@@ -92,22 +114,11 @@ const exampleQuestions = computed(() => {
   return [0, 1, 2].map((i) => arr[i] || '')
 })
 const positionSop = computed(() => detail.value?.positionSop || '')
+const positionSopBrief = computed(() => detail.value?.positionSopBrief || '') // SOP 简版（修改点 18）
 const persona = computed(() => detail.value?.persona || '')
 
-// 岗位技能：Agent 引用技能并集（同列表 skillIds 口径），按名称去重
-const skillNames = computed(() => {
-  const seen = new Set()
-  const names = []
-  for (const a of detail.value?.agents || []) {
-    for (const s of a.skills || []) {
-      const key = String(s.skillId)
-      if (seen.has(key)) continue
-      seen.add(key)
-      names.push(s.name || key)
-    }
-  }
-  return names
-})
+// 岗位技能：岗位直接引用的技能（同列表 skillIds 口径；R1 取消 Agent 后不再按 Agent 分组）
+const skillNames = computed(() => (detail.value?.skills || []).map((s) => s.name || String(s.skillId)))
 
 // 状态三态展示映射（与岗位列表 displayView 同口径）：在途待审 → 审核中；published → 已发布；其余 → 未发布
 // 2026-09-09 批 2-2 收编：折叠规则改走 publishState.deriveTriView（本抽屉只消费 label）
@@ -182,6 +193,10 @@ defineExpose({ reload: load })
           <div class="pvd-label">岗位 SOP</div>
           <div class="pvd-readonly pvd-readonly--multi">{{ positionSop || '—' }}</div>
         </div>
+        <div class="pvd-field" data-testid="pvd-sop-brief">
+          <div class="pvd-label">SOP 简版</div>
+          <div class="pvd-readonly pvd-readonly--multi">{{ positionSopBrief || '—' }}</div>
+        </div>
         <div class="pvd-field">
           <div class="pvd-label">岗位人格</div>
           <div class="pvd-readonly pvd-readonly--multi">{{ persona || '—' }}</div>
@@ -196,6 +211,30 @@ defineExpose({ reload: load })
         <el-tag v-for="n in skillNames" :key="n" type="info" effect="plain" round>{{ n }}</el-tag>
       </div>
       <div v-else class="pvd-muted">暂无关联技能</div>
+    </section>
+
+    <!-- 4. 专家与专家团（R13，只读平铺；快照带了就展示提交时的引用，否则展示当前引用） -->
+    <section class="section-card" data-testid="pvd-experts">
+      <h3 class="section-title">
+        专家与专家团
+        <span class="section-sub">{{ refsFromSnapshot ? '提交审核时引用的岗位私有专家与专家团' : '当前引用的岗位私有专家与专家团' }}</span>
+      </h3>
+      <div class="pvd-stack">
+        <div class="pvd-field">
+          <div class="pvd-label">专家</div>
+          <div v-if="expertRefs.experts.length" class="pvd-skills">
+            <el-tag v-for="x in expertRefs.experts" :key="x.expertId" type="info" effect="plain" round>{{ x.name }}</el-tag>
+          </div>
+          <div v-else class="pvd-muted">暂无专家</div>
+        </div>
+        <div class="pvd-field">
+          <div class="pvd-label">专家团</div>
+          <div v-if="expertRefs.teams.length" class="pvd-skills">
+            <el-tag v-for="t in expertRefs.teams" :key="t.teamId" type="info" effect="plain" round>{{ t.name }}</el-tag>
+          </div>
+          <div v-else class="pvd-muted">暂无专家团</div>
+        </div>
+      </div>
     </section>
 
     <!-- 时间行（原型 L1207 .page-time：当前状态 / 最新版本 / 最近更新时间） -->

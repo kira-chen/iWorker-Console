@@ -6,13 +6,14 @@
  * 【三个入口共用】新建（expertId=null）、编辑、只读查看（readonly，原型 openExpertViewer 形态）。
  *
  * 【本轮对齐要点】
- * - 顶部说明条（原型 expert-editor-note）：专家由市场技能组成、引用关系同步更新。
- * - 基本信息：专家名 / 分类（必选，8 类同源字段字典）/ 图标（必填，沿用 IconPickerPopover——2026-09-02
+ * - 顶部说明条（原型 expert-editor-note）：专家由技能组成、引用关系同步更新。
+ * - 基本信息：专家名 / 分类（必选，选项同源字段字典）/ 图标（必填，沿用 IconPickerPopover——2026-09-02
  *   起组件按 PRD 图标统一规则升级 5MB/方形裁剪流，本消费方零改动）/ 简介（maxlength 2000，Z3 拍板
  *   不写「最多 200 字」）/ 职责描述（Markdown，2000 字）。
  * - 「专家帮你做（示例问题）」：必填固定 3 条（每条 300 字，一览表示例类统一规则）+ 区标题右侧【AI 生成】（Z2 拍板：
  *   一次生成填满 3 行，本地模板随机 + toast，不走接口）。
- * - 市场技能引用**内嵌**（不再弹选择器）：搜索（按名称/描述/分类）+「已选择 X 个 · 共 Y 个市场技能」+
+ * - 技能引用**内嵌**（不再弹选择器；2026-11-10 起候选按专家类型给，卡片标技能类型，新建先选类型再选技能）：
+ *   搜索（按名称/描述/分类）+「已选择 X 个 · 共 Y 个技能」+
  *   卡片勾选 + 默认收起前 2 个、【展开更多（N）】；新建态即可勾选（选择随 create/update 一次性落库，
  *   不再依赖先建后挂的 add/remove 接口——那两个接口保留在 api 层）。
  * - 底部时间条（编辑/查看）：创建时间/最近更新时间/最近发布时间/最新版本。
@@ -31,8 +32,8 @@
  * - 示例问题校验收紧：3 条必须全填，空则标红 + toast『请填写 3 条"专家帮你做"示例问题』+
  *   focus 首个空输入框；区块标题补必填红星；
  * - 技能引用区后新增只读「知识库」区块（当前专家可见范围内的知识库：搜索 + 默认露 2 行 +
- *   展开更多（N）；数据走 api/knowledgeBase.listKnowledgeBases 既有只读接口，按专家可见范围过滤——
- *   mock 侧映射种子见 domainExpertMock.getExpertKbScopeRefId；查看/检索测试跳知识库模块路由带参）。
+ *   展开更多（N）；数据走 api/knowledgeBase.listKnowledgeBases 既有只读接口，按专家可见范围过滤；
+ *   查看/检索测试跳知识库模块路由带参）。
  *
  * 【2026-09-09 原型复刻批次 3C · E1–E6（静态布局照原型 html，逻辑按 md + 代码现状）】
  * - E1 分区卡片化：四个 `.ee-sec` 换 `.section-card`（样式在 assets/admin-shell.css，本文件不重写卡样式），
@@ -50,6 +51,11 @@
  * - E6 抽屉宽 min(780px,88vw)：DrawerEditor 默认已是 780（批次 1 落地），本文件不额外传 size；
  *   遮罩点击 toast 属 DrawerEditor 共用行为 → 记「需共享层跟进」，本批不改。
  * - E7 示例问题【AI 生成】保持区级一枚（md §三.3 写"每行一个" ↔ 原型/代码区级一枚，按口径保持 md 现状不动）。
+ *
+ * 【2026-11-09 产品优化需求-202611 R2 / R13（草案，定稿后进 prd.专家.md）】
+ * - 「所属岗位」改只读：展示引用本专家的岗位名，绑定在岗位详情「专家与专家团」页签维护；新建时不再选岗位，
+ *   保存不再提交 positionIds。
+ * - 知识库区：岗位私有专家另展示可见范围为所属岗位的岗位知识库；名称旁标「企业 / 专家 / 岗位」。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -65,8 +71,7 @@ import {
   getExpert,
   createExpert,
   updateExpert,
-  listExpertSkillCandidates,
-  getExpertKbScopeRefId
+  listExpertSkillCandidates
 } from '@/api/domainExpert'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
 import { stateMeta as kbStateMeta, sourcesText as kbSourcesText, hasUploadSource as kbHasUploadSource } from '@/utils/knowledgeBaseMeta'
@@ -99,25 +104,29 @@ const loadError = ref('')
 const saving = ref(false)
 const detail = ref(null)
 
-// 专家分类选项：同源字段字典（8 类），不本组件硬编码
+// 专家分类选项：同源字段字典，不本组件硬编码
 const CATEGORY_OPTIONS = getFieldOptionNames('expertCategory')
 
-// 已发布岗位列表（用于岗位私有类型绑定，多选）
-const publishedPositions = ref([])
+/* ==================== 所属岗位（只读，产品优化需求-202611 R13） ====================
+ * 绑定关系改由岗位侧「专家与专家团」页签引用维护，这里只把引用本专家的岗位（form.positionIds）解析成岗位名展示。
+ * 引用方岗位可能是任意状态（草稿岗位也能先引用），所以取全部岗位而不只是已发布的。 */
+const positionNames = ref(new Map()) // positionId → 岗位名
 
-async function loadPublishedPositions() {
+async function loadPositionNames() {
   try {
-    // 获取已发布岗位列表
+    // 动态引：避免 api/position → positionMock 整条链进入引用本组件的单测模块图
     const { listPositions } = await import('@/api/position')
-    // 潜伏项（yuepu#89①，保留不改）：未传 size，mock 默认只回 12 条；当前岗位数在其内，demo 无触发入口。
-    // 接真实后端时应传足量 size 或改远程搜索下拉。
-    const res = await listPositions({ status: 'published' })
-    publishedPositions.value = res.list || []
+    // 同 AdminExperts 引用清单：size 取足量拿全量岗位；接真实后端时应改为按 positionIds 批量取名（yuepu#90③）
+    const res = await listPositions({ size: 1000 })
+    positionNames.value = new Map((res.list || []).map((p) => [String(p.positionId), p.name]))
   } catch (err) {
-    console.warn('加载已发布岗位失败:', err)
-    publishedPositions.value = []
+    console.warn('加载岗位名称失败:', err)
+    positionNames.value = new Map()
   }
 }
+const boundPositions = computed(() =>
+  form.positionIds.map((id) => ({ id, name: positionNames.value.get(String(id)) || `岗位 #${id}` }))
+)
 
 /* ==================== 背景色（2026-09-04 新增必填字段，原型 expert-background-color 覆写） ====================
  * 固定 7 色板单选（不提供自定义取色），默认 #DCF5E4；选色实时同步图标预览背景 +
@@ -131,7 +140,7 @@ const form = reactive({
   name: '',
   category: '',
   type: '',
-  positionIds: [], // 所属岗位（多选，仅岗位私有类型；一个专家可绑定多个不同岗位）
+  positionIds: [], // 所属岗位 = 引用本专家的岗位（仅岗位私有；只读展示，不随保存提交，R13）
   avatar: '',
   backgroundColor: BACKGROUND_FALLBACK,
   intro: '',
@@ -225,21 +234,54 @@ const view = computed(() => {
   return { label: tri.label, tagType: tri.type }
 })
 
-/* ==================== 市场技能引用（内嵌选择器） ==================== */
+/* ==================== 技能引用（内嵌选择器） ====================
+ * 2026-11-10 起候选按专家类型给：岗位私有专家 = 岗位私有 + 市场 + 通用技能；市场、通用专家 = 市场 + 通用技能。
+ * 新建时先选专家类型再选技能；切换类型时清掉超出新范围的勾选（类型建成后不可改，编辑态不会切）。 */
 const candidates = ref([])
 const candidatesLoading = ref(false)
 const skillKeyword = ref('')
 const skillExpanded = ref(false)
 
-async function loadCandidates() {
+// 技能类型标签（名称同 unifiedSkill.SKILL_TYPE_LABEL；不直接 import，免得把 api/unifiedSkill → position 整条链带进本组件）
+const SKILL_TYPE_TAG = { POSITION: '岗位私有', PLATFORM: '市场技能', SYSTEM_DEFAULT: '通用技能' }
+const SKILL_SCOPE_TEXT = {
+  [EXPERT_TYPE.POSITION]: '可引用岗位私有、市场、通用技能，至少添加 1 个',
+  [EXPERT_TYPE.PLATFORM]: '可引用市场、通用技能，至少添加 1 个',
+  [EXPERT_TYPE.SYSTEM_DEFAULT]: '可引用市场、通用技能，至少添加 1 个'
+}
+
+// 连续切换类型时先发的请求可能后回——只认最后一次，免得旧类型的候选盖掉新类型的
+let candSeq = 0
+async function loadCandidates(expertType) {
+  const seq = ++candSeq
+  if (!expertType) {
+    candidates.value = []
+    candidatesLoading.value = false
+    return []
+  }
   candidatesLoading.value = true
   try {
-    const data = await listExpertSkillCandidates()
+    const data = await listExpertSkillCandidates({ expertType })
+    if (seq !== candSeq) return null
     candidates.value = Array.isArray(data) ? data : data?.list || []
   } catch {
-    candidates.value = []
+    if (seq === candSeq) candidates.value = []
   } finally {
-    candidatesLoading.value = false
+    if (seq === candSeq) candidatesLoading.value = false
+  }
+  return seq === candSeq ? candidates.value : null
+}
+
+// 新建时切换专家类型：按新类型重取候选，并清掉超出新范围的勾选
+async function onTypeChange(type) {
+  errors.type = ''
+  const list = await loadCandidates(type)
+  if (!list) return
+  const allowed = new Set(list.map((s) => String(s.id)))
+  const dropped = form.skillIds.filter((id) => !allowed.has(String(id)))
+  if (dropped.length) {
+    form.skillIds = form.skillIds.filter((id) => allowed.has(String(id)))
+    ElMessage.info(`已取消 ${dropped.length} 个不在「${EXPERT_TYPE_LABEL[type]}」可引用范围内的技能`)
   }
 }
 
@@ -269,36 +311,52 @@ function toggleSkill(id, checked) {
   if (form.skillIds.length) errors.skills = ''
 }
 
-// 查看态：已引用技能明细（详情 skills[] 实时取市场技能本体——引用非复制）
+// 查看态：已引用技能明细（详情 skills[] 实时取技能本体——引用非复制）
 const viewSkills = computed(() => detail.value?.skills || [])
 
 /* ==================== 只读「知识库」区块（2026-09-04 原型 expert-knowledge-card-module） ====================
  * 技能引用区后；副标题「当前专家可见范围内的知识库」。数据走 api/knowledgeBase.listKnowledgeBases
- * 既有只读接口（签名不动），按专家可见范围过滤：企业级全可见 + 本专家专属（EXPERT 型且
- * scopeRefId 命中——mock 数据里知识库用自己的专家 id（ex_1/ex_2），与本模块 201-204 不同源，
- * 桥接映射种子见 domainExpertMock.getExpertKbScopeRefId）。
+ * 既有只读接口（签名不动），按专家可见范围过滤：企业级全可见 + 可见范围包含本专家的专家知识库
+ * （R3 起可见范围多选、用专家模块真实 id，原 ex_1/ex_2 桥接映射已删）。
  * 默认露 2 行 + 【展开更多（N）】（N=总数-2）；搜索时显示全部匹配、隐藏展开钮（原型 filterRows 口径）。 */
 const router = useRouter()
-const kbRows = ref([])
+const kbAll = ref([]) // 知识库全量（未按可见范围过滤）
 const kbLoading = ref(false)
 const kbKeyword = ref('')
 const kbExpanded = ref(false)
+
+// 知识库类型标签（产品优化需求-202611 R2 §3：名称旁标「企业 / 专家 / 岗位」）
+const KB_TYPE_TAG = { ENTERPRISE: '企业', EXPERT: '专家', POSITION: '岗位' }
 
 async function loadKnowledge() {
   kbLoading.value = true
   try {
     const data = await listKnowledgeBases({ page: 1, size: 200 })
-    const all = Array.isArray(data) ? data : data?.list || []
-    const scopeRefId = isEdit.value ? getExpertKbScopeRefId(props.expertId) : null
-    kbRows.value = all.filter(
-      (r) => r.kbType === 'ENTERPRISE' || (r.kbType === 'EXPERT' && scopeRefId && r.scopeRefId === scopeRefId)
-    )
+    kbAll.value = Array.isArray(data) ? data : data?.list || []
   } catch {
-    kbRows.value = []
+    kbAll.value = []
   } finally {
     kbLoading.value = false
   }
 }
+
+/**
+ * 展示范围（R2 §3 表）：全部类型 = 企业知识库 + 可见范围包含本专家的专家知识库；
+ * 岗位私有专家另加可见范围包含任一所属岗位的岗位知识库（scopeRefIds 里是 positionId，R3 起多选）。
+ * 写成 computed：所属岗位来自详情，知识库与详情并行加载，谁先回来都能对上。
+ */
+const kbRows = computed(() => {
+  const expertId = isEdit.value ? String(props.expertId) : null
+  const positionIds = new Set(form.type === EXPERT_TYPE.POSITION ? form.positionIds.map(String) : [])
+  return kbAll.value.filter((r) => {
+    const scope = (r.scopeRefIds || []).map(String)
+    return (
+      r.kbType === 'ENTERPRISE' ||
+      (r.kbType === 'EXPERT' && !!expertId && scope.includes(expertId)) ||
+      (r.kbType === 'POSITION' && scope.some((id) => positionIds.has(id)))
+    )
+  })
+})
 
 const kbFiltered = computed(() => {
   const q = kbKeyword.value.trim().toLowerCase()
@@ -347,12 +405,12 @@ function testKnowledge(row) {
 let loadSeq = 0
 async function load() {
   const seq = ++loadSeq
-  loadCandidates()
   loadKnowledge()
-  loadPublishedPositions()
+  loadPositionNames()
   if (!isEdit.value) {
     detail.value = null
     resetForm(null)
+    loadCandidates('') // 新建：先选专家类型才有候选
     return
   }
   // A5：治理侧传入审核版本快照时直接以快照渲染（提交审核当时的配置），不打实时取数
@@ -361,6 +419,7 @@ async function load() {
     loadError.value = ''
     detail.value = props.snapshotDetail
     resetForm(props.snapshotDetail)
+    loadCandidates(form.type)
     return
   }
   loading.value = true
@@ -371,6 +430,7 @@ async function load() {
     if (seq !== loadSeq) return
     detail.value = d
     resetForm(d)
+    loadCandidates(form.type)
   } catch (e) {
     if (seq !== loadSeq) return
     loadError.value = e?.message || '加载失败'
@@ -422,7 +482,7 @@ function validate() {
     errors.examples = '请填写 3 条"专家帮你做"示例问题'
     ok = false
   }
-  // 市场技能：新建态即可勾选，创建/保存均要求 ≥1（原型 validateExpert 同口径）
+  // 技能：新建态选了专家类型即可勾选，创建/保存均要求 ≥1（原型 validateExpert 同口径）
   if (!form.skillIds.length) {
     errors.skills = '请至少添加 1 个技能'
     ok = false
@@ -435,7 +495,7 @@ function buildPayload() {
     name: String(form.name).trim(),
     category: form.category,
     type: form.type,
-    positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
+    // 不提交 positionIds：所属岗位由岗位侧引用维护（R13）
     avatar: form.avatar,
     backgroundColor: safeBackground(form.backgroundColor),
     intro: form.intro,
@@ -501,7 +561,7 @@ async function publishFromEditor() {
   // 发布门先行：0 技能给发布专用文案（原型 openExpertVersion 口径），不淹没在「补齐必填项」里
   if (!form.skillIds.length) {
     errors.skills = '请至少添加 1 个技能'
-    ElMessage.warning('至少引用 1 个市场技能才能发布')
+    ElMessage.warning('至少引用 1 个技能才能发布')
     return
   }
   if (!validate()) {
@@ -594,7 +654,7 @@ const metaItems = computed(() => {
         />
 
         <!-- 顶部说明条（原型 expert-editor-note） -->
-        <div class="ee-note">专家由多个市场技能组成。技能保持引用关系，市场技能更新后专家会同步使用最新内容。</div>
+        <div class="ee-note">专家由多个技能组成。技能保持引用关系，技能更新后专家会同步使用最新内容。</div>
 
         <!-- ① 基本信息（E1 卡片化 + E2 两列栅格：专家名｜分类、图标｜背景色，简介 / 职责描述通栏；
              「专家帮你做」并入本卡末尾作子分区） -->
@@ -608,7 +668,7 @@ const metaItems = computed(() => {
                 v-model="form.type"
                 class="ee-type-seg"
                 :disabled="disabled || isEdit"
-                @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
+                @change="onTypeChange"
               >
                 <el-radio-button v-for="t in EXPERT_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</el-radio-button>
               </el-radio-group>
@@ -634,26 +694,16 @@ const metaItems = computed(() => {
                 <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
-            <!-- 所属岗位：多选，一个专家可绑定多个不同岗位；不强制必选，编辑时可增减（审核中锁定期间置灰） -->
+            <!-- 所属岗位（只读，产品优化需求-202611 R13）：标签展示引用本专家的岗位名，不能在这里增减；
+                 新建时还没有岗位引用，同样只展示提示。 -->
             <el-form-item v-if="form.type === EXPERT_TYPE.POSITION" label="所属岗位" class="ee-full">
-              <el-select
-                v-model="form.positionIds"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                placeholder="选择已发布的岗位（可多选）"
-                clearable
-                :disabled="disabled"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="pos in publishedPositions"
-                  :key="pos.positionId"
-                  :label="pos.name"
-                  :value="pos.positionId"
-                />
-              </el-select>
-              <div v-if="isEdit && !form.positionIds.length" class="ee-type-hint">未绑定岗位</div>
+              <div class="ee-pos-field" data-testid="expert-positions">
+                <div class="ee-pos-tags">
+                  <span v-for="p in boundPositions" :key="p.id" class="ee-pos-tag">{{ p.name }}</span>
+                  <span v-if="!boundPositions.length" class="ee-pos-empty">暂无岗位引用</span>
+                </div>
+                <div class="ee-type-hint">在岗位详情「专家与专家团」页签维护</div>
+              </div>
             </el-form-item>
             <el-form-item label="图标" required :error="errors.avatar">
               <!-- 图标行（E2/C5，原型 L1331 decorateEditor 后的 `.icon-row.compact-icon-row`）：
@@ -767,11 +817,11 @@ const metaItems = computed(() => {
           </div>
         </section>
 
-        <!-- ③ 市场技能引用（内嵌卡片勾选；新建态即可勾选） -->
+        <!-- ③ 技能引用（内嵌卡片勾选；候选按专家类型给，新建先选类型） -->
         <section class="section-card">
           <h3 class="section-title">
-            市场技能引用
-            <span class="section-sub">仅展示可引用的市场技能，至少添加 1 个</span>
+            技能引用
+            <span class="section-sub">{{ form.type ? SKILL_SCOPE_TEXT[form.type] : '先选择专家类型，再选择技能' }}</span>
           </h3>
           <div class="ee-sk-pickhead">
             <el-input
@@ -779,9 +829,9 @@ const metaItems = computed(() => {
               class="ee-sk-search"
               placeholder="搜索技能名称、描述或分类"
               clearable
-              :disabled="candidatesLoading"
+              :disabled="candidatesLoading || !form.type"
             />
-            <span class="ee-sk-summary">已选择 {{ form.skillIds.length }} 个 · 共 {{ candidates.length }} 个市场技能</span>
+            <span class="ee-sk-summary">已选择 {{ form.skillIds.length }} 个 · 共 {{ candidates.length }} 个技能</span>
           </div>
           <div v-loading="candidatesLoading" class="ee-sk-grid">
             <label
@@ -799,13 +849,14 @@ const metaItems = computed(() => {
               <span class="ee-skill-body">
                 <span class="ee-skill-titlerow">
                   <strong>{{ s.name }}</strong>
+                  <span v-if="SKILL_TYPE_TAG[s.type]" class="ee-skill-type">{{ SKILL_TYPE_TAG[s.type] }}</span>
                   <span class="ee-skill-cat">{{ s.category }}</span>
                 </span>
                 <small>{{ s.description || '暂无技能描述' }}</small>
               </span>
             </label>
             <div v-if="!candidatesLoading && !shownCandidates.length" class="ee-empty ee-sk-empty">
-              没有匹配的市场技能
+              {{ form.type ? '没有匹配的技能' : '请先选择专家类型' }}
             </div>
           </div>
           <!-- 【展开更多（N）】：原型 L686–L688 `.expert-skill-more` = 34px 居中 plain 按钮（非文字链） -->
@@ -822,7 +873,7 @@ const metaItems = computed(() => {
         <section class="section-card ee-kb-sec">
           <h3 class="section-title">
             知识库
-            <span class="section-sub">当前专家可见范围内的知识库</span>
+            <span class="section-sub">当前专家可见范围内的知识库；岗位私有专家另含所属岗位的岗位知识库</span>
           </h3>
           <!-- 搜索框 ⌕ 前缀（E5，原型 L4116 `.expert-kb-search:before`） -->
           <div class="ee-kb-search">
@@ -852,7 +903,11 @@ const metaItems = computed(() => {
               <tbody>
                 <tr v-for="r in kbShown" :key="r.id" class="ee-kb-row">
                   <td>
-                    <strong>{{ r.name }}</strong>
+                    <span class="ee-kb-namerow">
+                      <strong>{{ r.name }}</strong>
+                      <!-- 知识库类型标签（R2 §3）：企业 / 专家 / 岗位 -->
+                      <span v-if="KB_TYPE_TAG[r.kbType]" class="ee-kb-type">{{ KB_TYPE_TAG[r.kbType] }}</span>
+                    </span>
                     <small v-if="r.description" :title="r.description">{{ r.description }}</small>
                   </td>
                   <td><span class="ee-kb-source">{{ kbSourcesText(r) || '—' }}</span></td>
@@ -929,6 +984,31 @@ const metaItems = computed(() => {
   font-size: 12px;
   color: var(--color-text-3, #86909c);
   line-height: 18px;
+}
+
+/* 所属岗位只读标签（R13：引用本专家的岗位名，不可增减） */
+.ee-pos-field {
+  width: 100%;
+}
+.ee-pos-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: 24px;
+  align-items: center;
+}
+.ee-pos-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--c-text);
+  font-size: var(--fs-xs);
+  line-height: 20px;
+}
+.ee-pos-empty {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
 }
 /* 子分区标题（.section-title 在卡内是贴边灰底条，子分区里要退回普通标题） */
 .ee-sub-title {
@@ -1160,7 +1240,7 @@ const metaItems = computed(() => {
   font-size: var(--fs-xs);
 }
 
-/* —— 市场技能引用（内嵌选择器）——
+/* —— 技能引用（内嵌选择器）——
  * E3 照原型 L1093–L1101（抽屉 polish 层）：搜索框 42px 与摘要同行、卡两列 gap 12、
  * 卡 min-height 84 / padding 16 15 14 44、checkbox 绝对定位左上（15/14）、
  * 选中态左侧 4px 绿条 + 绿底 + 1px 绿描边、hover 上浮 2px。 */
@@ -1256,6 +1336,18 @@ const metaItems = computed(() => {
   flex: none;
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
+}
+/* 类型标签：技能卡上的「岗位私有 / 市场技能 / 通用技能」、知识库行上的「企业 / 专家 / 岗位」同一样式 */
+.ee-skill-type,
+.ee-kb-type {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular, 400);
+  line-height: 18px;
 }
 .ee-skill-body small {
   display: block;
@@ -1397,6 +1489,19 @@ const metaItems = computed(() => {
   color: var(--c-text-strong);
   font-size: 13px;
   font-weight: var(--fw-medium);
+}
+/* 名称 + 类型标签同行（R2 §3） */
+.ee-kb-namerow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ee-kb-namerow strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ee-kb-table td small {
   display: block;

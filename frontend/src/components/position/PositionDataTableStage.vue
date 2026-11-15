@@ -726,7 +726,7 @@ function cardFieldCount(t) {
   margin-bottom: var(--space-5);
   background: var(--bg-surface);
   /* 卡描边走 --border-admin-card（浅色 #dde4e0 ≈ 原型 .wp3-sec 的 #dfe5e1，
-     暗色自动落 --border-base），与采集 / 知识 / Agent 三页签同源。 */
+     暗色自动落 --border-base），与采集 / 知识 / 技能三页签同源。 */
   border: 1px solid var(--border-admin-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -744,7 +744,7 @@ function cardFieldCount(t) {
   /* 2026-09-10 像素账本 G3 附带：卡头分隔线与 .wd-sec 卡描边同浓度（原半透明淡一档） */
   border-bottom: 1px solid var(--border-admin-card);
   /* 卡头灰条走 --bg-admin-card-head（浅色 #f8faf9 = 原型 .wp3-head 同值，暗色有映射），
-     与采集 / 知识 / Agent 三页签同源。 */
+     与采集 / 知识 / 技能三页签同源。 */
   background: var(--bg-admin-card-head);
 }
 .wd-sec-head strong {

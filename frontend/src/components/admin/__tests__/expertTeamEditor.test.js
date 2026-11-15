@@ -95,6 +95,38 @@ describe('ExpertTeamEditor · 真实挂载', () => {
     expect(labels()).toEqual(['团类型', '团名称', '分类', '图标', '团介绍'])
   })
 
+  // 产品优化需求-202611 R13 §2：所属岗位由岗位侧「专家与专家团」页签引用维护，团编辑页只读展示、新建不选岗位
+  it('岗位团「所属岗位」只读：标签展示引用本团的岗位名 + 灰字「在岗位详情「专家与专家团」页签维护」，没有下拉；保存 payload 不带 positionIds（R13）', async () => {
+    const { listPositions } = await import('@/api/position')
+    listPositions.mockResolvedValueOnce({ list: [{ positionId: 401, name: '经营分析岗' }, { positionId: 402, name: '客户成功岗' }] })
+    api.getTeam.mockResolvedValue(detail({ id: 304, type: 'POSITION', positionIds: [401] }))
+    api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)
+    api.updateTeam.mockResolvedValue(detail())
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: 304 })
+    await flushAll(14)
+    const field = drawerOf().querySelector('[data-testid="team-positions"]')
+    expect([...field.querySelectorAll('.et-pos-tag')].map((t) => t.textContent.trim())).toEqual(['经营分析岗'])
+    expect(field.querySelector('.el-select')).toBeNull()
+    expect(field.textContent).toContain('在岗位详情「专家与专家团」页签维护')
+    const save = [...drawerOf().querySelectorAll('.el-drawer__footer .el-button')].find((b) => b.textContent.trim() === '保存')
+    save.click()
+    await flushAll(8)
+    expect(api.updateTeam).toHaveBeenCalledWith(304, expect.objectContaining({ type: 'POSITION' }))
+    expect(api.updateTeam.mock.calls[0][1]).not.toHaveProperty('positionIds')
+  })
+
+  it('新建岗位团不选岗位：所属岗位显示「暂无岗位引用」+ 维护入口提示，没有下拉（R13）', async () => {
+    mounted = mountReal(ExpertTeamEditor, { visible: true, teamId: null })
+    await flushAll(12)
+    const seg = drawerOf().querySelector('[data-testid="team-type-seg"]')
+    ;[...seg.querySelectorAll('.el-radio-button')].find((b) => b.textContent.trim() === '岗位团').click()
+    await flushAll(6)
+    const field = drawerOf().querySelector('[data-testid="team-positions"]')
+    expect(field.textContent).toContain('暂无岗位引用')
+    expect(field.textContent).toContain('在岗位详情「专家与专家团」页签维护')
+    expect(field.querySelector('.el-select')).toBeNull()
+  })
+
   it('团内负责什么选填：占位写明「不填则使用该专家的简介」；全空也能通过校验（md §三.3.1）', async () => {
     api.getTeam.mockResolvedValue(detail({ members: detail().members.map((m) => ({ ...m, duty: '', intro: '该专家的简介内容' })) }))
     api.listTeamMemberCandidates.mockResolvedValue(CANDIDATES)

@@ -11,8 +11,12 @@
  * 团类型未选时成员区块置灰；候选实时读专家模块（已发布才算），已选成员即使后来被停用 / 回收也仍显示在已选列表里，
  * 带红色原因标签——这是「缺员」在编辑器里的样子。
  *
+ * 【所属岗位】产品优化需求-202611 R13 起只读：展示引用本团的岗位名，绑定在岗位详情「专家与专家团」页签维护；
+ * 新建时不再选岗位，保存不再提交 positionIds。
+ *
  * 【发布】编辑态底部【发布】= 先校验并静默保存，再收抽屉，交给列表页做发布前检查并打开版本管理侧栏（emit publish）。
- * 发布前检查（成员均已发布、岗位匹配）在列表页统一处理，列表【发布】与本处走同一条路。
+ * 发布前检查（成员均已发布）在列表页统一处理，列表【发布】与本处走同一条路；
+ * 原「岗位匹配」一项 R13 起挪到岗位发布前检查。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -111,18 +115,23 @@ const view = computed(() => {
   return { label: tri.label, tagType: tri.type }
 })
 
-/* ==================== 所属岗位（仅岗位私有团） ==================== */
-const publishedPositions = ref([])
-async function loadPublishedPositions() {
+/* ==================== 所属岗位（仅岗位私有团；只读，产品优化需求-202611 R13） ====================
+ * 绑定关系改由岗位侧「专家与专家团」页签引用维护，这里只把引用本团的岗位（form.positionIds）解析成岗位名展示，
+ * 新建时不再选岗位、保存不再提交 positionIds。引用方岗位可能是任意状态，所以取全部岗位。 */
+const positionNames = ref(new Map()) // positionId → 岗位名
+async function loadPositionNames() {
   try {
     // 动态引：避免 api/position → api/request → router 链条进入引用本组件的单测模块图（同 ExpertEditor）
     const { listPositions } = await import('@/api/position')
-    const res = await listPositions({ status: 'published' })
-    publishedPositions.value = res.list || []
+    const res = await listPositions({ size: 1000 })
+    positionNames.value = new Map((res.list || []).map((p) => [String(p.positionId), p.name]))
   } catch {
-    publishedPositions.value = []
+    positionNames.value = new Map()
   }
 }
+const boundPositions = computed(() =>
+  form.positionIds.map((id) => ({ id, name: positionNames.value.get(String(id)) || `岗位 #${id}` }))
+)
 
 /* ==================== 成员候选 / 已选 ==================== */
 const candidates = ref([])
@@ -266,7 +275,7 @@ const aiQuestions = useAiLiveGenerate({
 let loadSeq = 0
 async function load() {
   const seq = ++loadSeq
-  loadPublishedPositions()
+  loadPositionNames()
   hydrating = true
   try {
     if (!isEdit.value) {
@@ -328,7 +337,7 @@ function buildPayload() {
   return {
     name: form.name.trim(),
     type: form.type,
-    positionIds: form.type === EXPERT_TYPE.POSITION ? [...form.positionIds] : [],
+    // 不提交 positionIds：所属岗位由岗位侧引用维护（R13）
     avatar: form.avatar,
     category: form.category,
     intro: form.intro,
@@ -462,7 +471,7 @@ const metaItems = computed(() => {
               class="et-type-seg"
               :disabled="disabled || isEdit"
               data-testid="team-type-seg"
-              @change="errors.type = ''; if (form.type !== EXPERT_TYPE.POSITION) form.positionIds = []"
+              @change="errors.type = ''"
             >
               <el-radio-button v-for="t in TEAM_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</el-radio-button>
             </el-radio-group>
@@ -477,20 +486,15 @@ const metaItems = computed(() => {
               <el-option v-for="c in CATEGORY_OPTIONS" :key="c" :label="c" :value="c" />
             </el-select>
           </el-form-item>
+          <!-- 所属岗位（只读，R13）：标签展示引用本团的岗位名，不能在这里增减 -->
           <el-form-item v-if="form.type === EXPERT_TYPE.POSITION" label="所属岗位" class="et-full">
-            <el-select
-              v-model="form.positionIds"
-              multiple
-              collapse-tags
-              collapse-tags-tooltip
-              clearable
-              placeholder="选择已发布的岗位（可多选）"
-              :disabled="disabled"
-              style="width: 100%"
-            >
-              <el-option v-for="pos in publishedPositions" :key="pos.positionId" :label="pos.name" :value="pos.positionId" />
-            </el-select>
-            <div v-if="isEdit && !form.positionIds.length" class="et-hint">未绑定岗位</div>
+            <div class="et-pos-field" data-testid="team-positions">
+              <div class="et-pos-tags">
+                <span v-for="p in boundPositions" :key="p.id" class="et-pos-tag">{{ p.name }}</span>
+                <span v-if="!boundPositions.length" class="et-pos-empty">暂无岗位引用</span>
+              </div>
+              <div class="et-hint">在岗位详情「专家与专家团」页签维护</div>
+            </div>
           </el-form-item>
           <el-form-item label="图标" required :error="errors.avatar" class="et-full">
             <IconField :icon="form.avatar" :name="form.name" :readonly="disabled" placeholder="—" @pick="onPickIcon" />
@@ -784,6 +788,30 @@ const metaItems = computed(() => {
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   line-height: 18px;
+}
+/* 所属岗位只读标签（R13，样式同 ExpertEditor .ee-pos-*） */
+.et-pos-field {
+  width: 100%;
+}
+.et-pos-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: 24px;
+  align-items: center;
+}
+.et-pos-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--c-text);
+  font-size: var(--fs-xs);
+  line-height: 20px;
+}
+.et-pos-empty {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
 }
 .et-req {
   color: var(--c-danger);

@@ -97,6 +97,18 @@ describe('knowledgeBaseMock —— 知识库状态机（md §三.3-§三.6）', 
     expect(again.status).toBe('DRAFT')
   })
 
+  it('R3 删除专家 → 从专家知识库的可见范围里摘掉它，其余专家保留', async () => {
+    // 两个 mock 都在用例内动态取、取同一份模块表：deleteExpert 内部是动态 import 知识库 mock 的，文末持久化组
+    // vi.resetModules() 之后，静态导入的知识库实例和它取到的不是同一个，清理会落到另一个实例上
+    const { create, list } = await import('../knowledgeBaseMock')
+    const { createExpert, deleteExpert } = await import('../domainExpertMock')
+    const x = await createExpert({ name: uniq('待删专家'), type: 'POSITION' })
+    const kb = await create({ name: uniq('删专家库'), kbType: 'EXPERT', scopeRefIds: [x.id, 201], description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
+    await deleteExpert(x.id)
+    const row = (await list({ keyword: kb.name })).list[0]
+    expect(row.scopeRefIds.map(String)).toEqual(['201'])
+  })
+
   it('yuepu#62⑧ 发布完整校验：专家库所选专家全都不存在（查无此专家）被拦、不进审核中；换成存在的专家后放行', async () => {
     const kb = await create({ name: uniq('失效可见对象库'), kbType: 'EXPERT', scopeRefIds: [9991, 9992], description: '测试用', icon: '🧪', sourceIds: ['ks_1a'] })
     await expect(transition(kb.id, 'publish')).rejects.toMatchObject({ message: '可见范围无有效专家，请重新选择后再发布' })

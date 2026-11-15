@@ -39,6 +39,10 @@ describe('审核联动全链路：提交 → 两张表有行 → 通过/驳回/�
   it('岗位：已发布岗位提交新版本 → 驳回 → 仍是已发布、线上版本不变（不再被打回未发布）；再提交 → 通过 → 版本推进', async () => {
     const pos = await import('../positionMock')
     pos.__resetPositionMock()
+    // 种子 401 引用了未发布的「法务审阅专家」(203) 与「岗位协同团」(303)（存量数据样例），发布前检查会阻断
+    // （产品优化需求-202611 修改点 2）；本用例测的是审核联动，不是引用校验，先解除这两个引用
+    ;(await import('../domainExpertMock')).unbindExpertFromPosition(203, 401)
+    ;(await import('../expertTeamMock')).unbindTeamFromPosition(303, 401)
     const before = await pos.getPosition(401) // 种子：published v2.1.0
     expect(before.status).toBe('published')
 

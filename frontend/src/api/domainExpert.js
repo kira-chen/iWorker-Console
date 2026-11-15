@@ -4,12 +4,12 @@ import * as mock from './domainExpertMock'
 /**
  * 「专家」模块 API 层（系统配置员 SYS_CONFIG）。落 /api/fde/experts。
  *
- * 专家 = 把多个「市场技能」归类整合成一个可交付单元。整体机制与岗位一致（发布 + 版本号 + 下架/重上），
- * 但只引用市场技能，与 FDE 技能数据隔离——引用非市场技能后端一律 404。
+ * 专家 = 把多个技能归类整合成一个可交付单元。整体机制与岗位一致（发布 + 版本号 + 下架/重上）。
+ * 可引用的技能按专家类型定（2026-11-10）：岗位私有专家 = 岗位私有 + 市场 + 通用技能；市场、通用专家 = 市场 + 通用技能。
  *
  * 【demo mock（2026-09-01 PRD 对齐改造）】项目已降级为纯前端 demo，本模块数据默认走内存 mock
  * （domainExpertMock.js；`VITE_EXPERT_MOCK=0` 可关闭走真实接口路径，模式同 apiConnector.js / position.js）。
- * 市场技能候选（编辑抽屉内嵌选择器）由 mock 自带种子，不依赖 platformSkill.js。
+ * 技能候选（编辑抽屉内嵌选择器）由 mock 实时读技能模块，不依赖 platformSkill.js。
  *
  * 注意与「岗位」无关：岗位走 /api/fde/positions（api/position.js）。两者仅因历史承接而在物理表名上同源
  * （岗位物理表名就叫 expert），业务上完全独立，不要混用两套 API。
@@ -30,21 +30,15 @@ export function listExperts(params) {
   return request.get('/fde/experts', { params })
 }
 
-// 专家可见范围的知识库 scopeRefId（2026-09-04：编辑抽屉只读「知识库」区块按可见范围过滤用）。
-// mock 路径走 domainExpertMock 的桥接映射种子（知识库 mock 专家 id 自成体系）；真实接口路径
-// 暂无端点——知识库批次并行改造中，接通后应由后端按专家过滤，此函数随之退役。同步函数、不发请求。
-export function getExpertKbScopeRefId(expertId) {
-  if (USE_MOCK) return mock.getExpertKbScopeRefId(expertId)
-  return null
-}
 
-// 详情（含引用的市场技能清单 skills[] + 示例问题 exampleQuestions[3]）。
+// 详情（含引用的技能清单 skills[]（带 type）+ 示例问题 exampleQuestions[3]）。
 export function getExpert(expertId) {
   if (USE_MOCK) return mock.getExpert(expertId)
   return request.get(`/fde/experts/${expertId}`)
 }
 
-// 新建（body: { name, category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
+// 新建（body: { name, type, category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
+// 所属岗位不在这里写（R13：由岗位侧「专家与专家团」页签引用维护）。
 export function createExpert(payload) {
   if (USE_MOCK) return mock.createExpert(payload)
   return request.post('/fde/experts', payload, W)
@@ -70,21 +64,21 @@ export function deleteExpert(expertId, confirmName) {
   return request.delete(`/fde/experts/${expertId}`, { params: { confirmName }, ...W })
 }
 
-/* ---------- 市场技能候选 / 引用 ---------- */
+/* ---------- 技能候选 / 引用 ---------- */
 
-// 市场技能候选（编辑抽屉内嵌选择器）。params: { keyword?（按名称/描述/分类） }。返回数组。
+// 技能候选（编辑抽屉内嵌选择器）。params: { expertType（按专家类型定范围）, keyword?（按名称/描述/分类） }。返回数组（每项带 type）。
 export function listExpertSkillCandidates(params) {
   if (USE_MOCK) return mock.listExpertSkillCandidates(params)
   return request.get('/fde/experts/skill-candidates', { params })
 }
 
-// 引用一个市场技能（幂等）。返回更新后的详情。
+// 引用一个技能（幂等；须在该专家类型可引用的范围内）。返回更新后的详情。
 export function addExpertSkill(expertId, skillId) {
   if (USE_MOCK) return mock.addExpertSkill(expertId, skillId)
   return request.post(`/fde/experts/${expertId}/skills`, { skillId }, W)
 }
 
-// 解除引用（幂等）。技能本体不动——同一市场技能可能还被别的专家引用着。
+// 解除引用（幂等）。技能本体不动——同一技能可能还被别的专家、岗位引用着。
 export function removeExpertSkill(expertId, skillId) {
   if (USE_MOCK) return mock.removeExpertSkill(expertId, skillId)
   return request.delete(`/fde/experts/${expertId}/skills/${skillId}`, W)

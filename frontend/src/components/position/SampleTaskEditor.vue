@@ -31,6 +31,12 @@
  *   其中「提示词非必填」已被 2026-09-21 负责人拍板推翻——提示词现为必填（与任务名称 / 一句话指令同为保存必填）；
  * - K6 / K8 / J6：保存与创建 toast、搜索占位与空态、基本信息三处占位逐字照 md（§7.2 / §7.5 / §7.6 / §7.7）。
  *
+ * 2026-11-09 负责人定（产品优化需求-202611）：「引用平台技能」改名「引用技能」，候选由只含市场技能扩为
+ * 已发布的通用技能、市场技能 + 本岗位「技能」页签引用的岗位私有技能；执行动作选专家 / 专家团时的候选同一范围
+ * （通用、市场专家（团）+ 本岗位引用的岗位私有专家（团））。两份候选都由数据层按岗位算好。
+ * 修改点 3：选了专家 / 专家团却没选具体对象，与「缺指令」同样在保存时拦截；所选对象已不可用时下拉显示「名称（不可用）」。
+ * 脏检查改快照比对（见 markDirty）：md-editor-v3 回填后会原样回抛一次提示词，旧的事件法会让没改过的任务也误报有修改。
+ *
  * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（不设定点时间，只定执行次数 + 执行时段，由系统
  * 择机执行），删除原「空闲时段提前准备」勾选框（preKick 字段随之退役，§7.3）；同日新增「执行位置」
  * 只读展示（云端 / Web 端 / 本地，无法改变，由 scheduleMode 派生：闲时模式为云端 + Web 端，其余三个
@@ -44,7 +50,7 @@ import {
   updateSampleTask,
   previewSampleSchedule
 } from '@/api/sampleTask'
-import { listToolPicker, listPlatformSkillCandidates } from '@/api/position'
+import { listToolPicker, listTaskSkillCandidates, listTaskExecTargetCandidates } from '@/api/position'
 import { ApiError } from '@/api/request'
 import { usePositionStore } from '@/stores/position'
 import SchedulePicker from '@/components/task/SchedulePicker.vue'
@@ -94,7 +100,7 @@ function blankSchedule() {
     endDate: ''
   }
 }
-// 执行动作默认值：技能（按引用平台技能执行）；新建态、存量无该字段、payload 兜底共用这一处
+// 执行动作默认值：技能（按「引用技能」执行）；新建态、存量无该字段、payload 兜底共用这一处
 const EXEC_TYPE_DEFAULT = 'SKILL'
 
 const form = reactive({
@@ -106,13 +112,62 @@ const form = reactive({
   schedule: blankSchedule(),
   sopDoc: '',
   toolRefs: [], // { type, code, requiresConfirmation }（ToolPicker selected 结构）
-  skillRefs: [], // { platformSkillId, name }（引用平台技能）
-  // 执行动作：触发时由谁来办（AGENT=整个交给某个 Agent；SKILL=按引用技能执行）
+  skillRefs: [], // { platformSkillId, name }（引用技能；字段名沿用后端契约，2026-11-09 起也可以是通用 / 岗位私有技能的 id）
+  // 执行动作（产品优化需求-202611 R13 §4）：触发时由谁来办——SKILL=按「引用技能」执行；
+  // EXPERT / TEAM=整个交给本岗位引用的某位专家 / 某个专家团（2026-11-09 起取代已取消的 AGENT）
   execType: EXEC_TYPE_DEFAULT,
-  execAgentId: null, // execType === 'AGENT' 时指定的 Agent（引用该岗位下 Agent 的 agentId）
+  execTargetId: null, // execType 为 EXPERT / TEAM 时选中的专家 id / 团 id
   // 执行模型：空字符串 = 跟随平台默认模型
   execModel: ''
 })
+
+/* 执行对象候选（R13 §4；2026-11-09 负责人定：与「引用技能」同一范围）：已发布、未回收的通用 / 市场专家（团），
+ * 加上本岗位「专家与专家团」页签里状态正常的岗位私有专家（团），由数据层 listTaskExecTargetCandidates 算好；
+ * 没设主理人的团列出但置灰——没设主理人要员工确认安排后才开始，定时任务无人值守，等不到确认。 */
+const execCandidates = ref({ experts: [], teams: [] })
+const execCandidatesLoaded = ref(false)
+async function loadExecCandidates() {
+  if (store.positionId == null) return
+  try {
+    execCandidates.value = (await listTaskExecTargetCandidates(store.positionId)) || { experts: [], teams: [] }
+  } catch {
+    execCandidates.value = { experts: [], teams: [] } /* 读接口全局已提示 */
+  } finally {
+    execCandidatesLoaded.value = true
+  }
+}
+const expertOptions = computed(() => execCandidates.value.experts || [])
+const teamOptions = computed(() => execCandidates.value.teams || [])
+// 执行方式选了专家 / 专家团时才要选具体对象；下拉清空回 undefined，也算没选
+const needsExecTarget = computed(() => form.execType === 'EXPERT' || form.execType === 'TEAM')
+const hasExecTarget = computed(() => form.execTargetId != null && form.execTargetId !== '')
+// 已选对象不在可选范围里（被移除 / 停用 / 回收 / 缺员）：任务触发时会被挂起，提示重新选（候选回来之前不判）
+const execTargetLost = computed(() => {
+  if (!execCandidatesLoaded.value || !needsExecTarget.value || !hasExecTarget.value) return false
+  const ids = form.execType === 'EXPERT'
+    ? expertOptions.value.map((x) => x.expertId)
+    : teamOptions.value.filter((t) => t.leaderId != null).map((t) => t.teamId)
+  return !ids.some((id) => String(id) === String(form.execTargetId))
+})
+/* 已选对象不在候选里时补一个置灰选项，下拉框显示「名称（不可用）」而不是裸 id（产品优化需求-202611 修改点 3）。
+ * 名称取数据层回的 names（覆盖全部专家 / 团），查不到的是已被删除的对象；没设主理人的团本身就在候选里（置灰），不用补。 */
+const lostTargetOption = computed(() => {
+  if (!execTargetLost.value) return null
+  const isTeam = form.execType === 'TEAM'
+  if (isTeam && teamOptions.value.some((t) => String(t.teamId) === String(form.execTargetId))) return null
+  const name = execCandidates.value.names?.[form.execType]?.[String(form.execTargetId)] || (isTeam ? '已删除的专家团' : '已删除的专家')
+  return { value: form.execTargetId, label: name + '（不可用）' }
+})
+// 切换执行方式时清空已选对象（专家 id 与团 id 不通用）
+function onExecTypeChange() {
+  form.execTargetId = null
+  clearError('execTarget')
+  markDirty()
+}
+function onExecTargetChange() {
+  clearError('execTarget')
+  markDirty()
+}
 
 // 任务名称上限：一览表「名称类统一规则 64」（2026-09-12 负责人决策 1）。计数器与 maxlength 共用它。
 const NAME_MAX = 64
@@ -124,18 +179,25 @@ const SOP_MAX = SAMPLE_TASK_PROMPT_MAX_LEN
 // 与 NAME_MAX/PROMPT_MAX 已经在用的「计数器与 maxlength 共用同一常量」模式看齐）
 const REMARK_MAX = 500
 
-const errors = reactive({ name: '', prompt: '', schedule: '', sopDoc: '', tools: '', skills: '' })
+const errors = reactive({ name: '', prompt: '', schedule: '', sopDoc: '', tools: '', skills: '', execTarget: '' })
 const saving = ref(false)
 
-/* ---- 脏检查基线（对齐 PositionDataTableStage 快照法） ---- */
+/* ---- 脏检查（快照法，对齐 PositionDataTableStage）：回填后记下表单快照作基线，markDirty 时拿当前快照比一次 ----
+ * 只看「值变没变」，不看「事件来没来」：md-editor-v3 在程序赋值（回填提示词）后会把同一段文本原样回抛一次
+ * update:modelValue，原先「来事件就算脏」会把没动过的任务也标成有修改，切换任务时误弹「有未保存的修改」。
+ * 所以 markDirty 须在改完表单之后调；改回原值也随之算干净。 */
 const dirty = ref(false)
+let baseline = ''
+const formSnapshot = () => JSON.stringify(form)
 function markDirty() {
-  if (!dirty.value) {
-    dirty.value = true
-    emit('dirty-change', true)
+  const next = formSnapshot() !== baseline
+  if (next !== dirty.value) {
+    dirty.value = next
+    emit('dirty-change', next)
   }
 }
 function clearDirty() {
+  baseline = formSnapshot()
   dirty.value = false
   emit('dirty-change', false)
 }
@@ -240,9 +302,8 @@ function removeToolRef(row) {
   markDirty()
 }
 
-/* ============================ 引用平台技能（origin=PLATFORM 已发布给 FDE；候选接口天然排除 FDE 技能） ============================ */
-// 候选 VO（PlatformSkillCandidateVO）：{ id | skillId, code, name, description, category, updatedAt }。
-// 候选接口只返回「系统配置员发布给 FDE」的平台技能，FDE 自建技能不在候选内。
+/* ============================ 引用技能（2026-11-09 起：通用技能 + 市场技能 + 本岗位引用的岗位私有技能） ============================ */
+// 候选 VO：{ id | skillId, code, name, description, category, type, typeLabel }，已发布才在候选里，由数据层按岗位算好。
 const skillKeyword = ref('')
 const skillCandidates = ref([])
 const skillsLoading = ref(false)
@@ -259,10 +320,10 @@ const selectedSkillIdSet = computed(() => new Set(form.skillRefs.map((s) => s.pl
 async function loadSkillCandidates() {
   skillsLoading.value = true
   try {
-    const list = await listPlatformSkillCandidates(skillKeyword.value.trim() || undefined)
+    const list = await listTaskSkillCandidates(store.positionId, skillKeyword.value.trim() || undefined)
     skillCandidates.value = Array.isArray(list) ? list : []
   } catch (e) {
-    /* 读接口全局已提示；平台技能非必填，不阻塞 */
+    /* 读接口全局已提示；引用技能非必填，不阻塞 */
   } finally {
     skillsLoading.value = false
   }
@@ -283,19 +344,19 @@ function toggleSkill(c) {
   const id = candId(c)
   if (id == null) return
   clearError('skills')
-  markDirty()
   if (selectedSkillIdSet.value.has(id)) {
     form.skillRefs = form.skillRefs.filter((s) => s.platformSkillId !== id)
   } else {
     form.skillRefs = [...form.skillRefs, { platformSkillId: id, name: c.name || '' }]
   }
+  markDirty() // 快照法：改完再比
 }
 
 // 从已选 chip 移除
 function removeSkillRef(platformSkillId) {
   clearError('skills')
-  markDirty()
   form.skillRefs = form.skillRefs.filter((s) => s.platformSkillId !== platformSkillId)
+  markDirty()
 }
 
 // #22：候选列表默认收起，点卡底「＋ 添加技能」才展开（原型把输入框文字直接变 chip 属缺陷，不搬）
@@ -478,6 +539,12 @@ function validate() {
     errors.sopDoc = `提示词最多 ${SOP_MAX} 个字符`
     ok = false
   }
+
+  // 执行方式选了专家 / 专家团却没选具体对象：与「缺指令」同样处理，保存时拦截（产品优化需求-202611 修改点 3）
+  if (needsExecTarget.value && !hasExecTarget.value) {
+    errors.execTarget = form.execType === 'TEAM' ? '请选择要执行的专家团' : '请选择要执行的专家'
+    ok = false
+  }
   return ok
 }
 
@@ -489,7 +556,7 @@ function buildToolRefs() {
   }))
 }
 
-// 提交用平台技能引用（只留后端契约字段 { platformSkillId, name }）
+// 提交用技能引用（只留后端契约字段 { platformSkillId, name }）
 function buildSkillRefs() {
   return form.skillRefs.map((s) => ({
     platformSkillId: s.platformSkillId,
@@ -504,6 +571,7 @@ function resetErrors() {
   errors.sopDoc = ''
   errors.tools = ''
   errors.skills = ''
+  errors.execTarget = ''
 }
 
 /* ---- 保存（显式，单按钮；对齐 TaskEditor.submit 但去启用/草稿双态） ---- */
@@ -535,7 +603,7 @@ async function save() {
     toolRefs: buildToolRefs(),
     skillRefs: buildSkillRefs(),
     execType: form.execType || EXEC_TYPE_DEFAULT,
-    execAgentId: form.execType === 'AGENT' ? (form.execAgentId ?? undefined) : undefined,
+    execTargetId: form.execType !== 'SKILL' ? (form.execTargetId ?? undefined) : undefined,
     execModel: form.execModel || undefined
     // 无 enable / status：样例默认启用（后端缺省 ENABLED），列表不呈现运行态。
   }
@@ -570,6 +638,7 @@ function handleSubmitError(e) {
     else if (field === 'sopDoc') errors.sopDoc = e.message
     else if (field === 'tools' || field === 'toolRefs') errors.tools = e.message
     else if (field === 'skills' || field === 'skillRefs') errors.skills = e.message
+    else if (field === 'execTarget' || field === 'execTargetId') errors.execTarget = e.message
     else ElMessage.error(e.message || '保存失败，请检查后重试')
   } else {
     ElMessage.error('保存失败，请稍后重试')
@@ -588,7 +657,7 @@ function fillFrom(sample) {
     form.toolRefs = []
     form.skillRefs = []
     form.execType = EXEC_TYPE_DEFAULT
-    form.execAgentId = null
+    form.execTargetId = null
     form.execModel = ''
   } else {
     form.name = sample.name || ''
@@ -618,7 +687,7 @@ function fillFrom(sample) {
       bizName: t.bizName,
       requiresConfirmation: false
     }))
-    // 平台技能引用回填（后端 SampleTaskVO.skillRefs: [{ platformSkillId, name }]）
+    // 技能引用回填（后端 SampleTaskVO.skillRefs: [{ platformSkillId, name }]）
     form.skillRefs = (sample.skillRefs || [])
       .map((s) => ({
         platformSkillId: s.platformSkillId ?? s.id ?? s.skillId,
@@ -626,7 +695,7 @@ function fillFrom(sample) {
       }))
       .filter((s) => s.platformSkillId != null)
     form.execType = sample.execType || EXEC_TYPE_DEFAULT
-    form.execAgentId = sample.execAgentId ?? null
+    form.execTargetId = sample.execTargetId ?? null
     form.execModel = sample.execModel || ''
   }
   clearDirty()
@@ -643,7 +712,7 @@ watch(
 )
 
 onMounted(async () => {
-  await Promise.all([loadTools(), loadSkillCandidates()])
+  await Promise.all([loadTools(), loadSkillCandidates(), loadExecCandidates()])
   fillFrom(props.sample)
 })
 </script>
@@ -741,9 +810,9 @@ onMounted(async () => {
           <span class="te-card-dot"></span> 提示词 <span class="req">*</span>
         </div>
         <div class="te-card-body">
-          <!-- 引导文案逐字照 md §7.4 L407 -->
+          <!-- 引导文案逐字照 md §7.4 L407；产品优化需求-202611 修改点 1 取消 Agent，「Agent」改「数字员工」 -->
           <p class="te-card-guide">
-            使用自然语言描述任务目标、产出格式和推送方式。定时触发时，Agent 读取该内容作为任务指令执行业务。
+            使用自然语言描述任务目标、产出格式和推送方式。定时触发时，数字员工读取该内容作为任务指令执行业务。
           </p>
           <MarkdownEditor
             v-model="form.sopDoc"
@@ -806,37 +875,93 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 分区 5：执行动作（触发时由谁来办：整个交给某个 Agent，或按下面指定的技能执行） -->
+      <!-- 分区 5：执行动作（产品优化需求-202611 R13 §4：按技能执行，或整个交给某位专家、某个专家团） -->
       <section class="te-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 执行动作
         </div>
         <div class="te-card-body">
           <p class="te-card-guide">
-            触发时由谁来办：整个交给某个 <b>Agent</b>，或按下面指定的<b>技能</b>执行。
+            触发时由谁来办：按下面指定的<b>技能</b>执行，或整个交给某位<b>专家</b>、某个<b>专家团</b>。
           </p>
-          <el-radio-group v-model="form.execType" :disabled="readonly" class="te-exec-type-group" @change="markDirty">
+          <el-radio-group v-model="form.execType" :disabled="readonly" class="te-exec-type-group" @change="onExecTypeChange">
             <el-radio value="SKILL">技能</el-radio>
-            <el-radio value="AGENT">Agent</el-radio>
+            <el-radio value="EXPERT">专家</el-radio>
+            <el-radio value="TEAM">专家团</el-radio>
           </el-radio-group>
-          <div v-if="form.execType === 'AGENT'" class="te-field te-exec-agent">
+          <div v-if="form.execType === 'EXPERT'" class="te-field te-exec-target" data-testid="exec-expert">
             <el-select
-              v-model="form.execAgentId"
-              placeholder="选择要执行的 Agent"
+              v-model="form.execTargetId"
+              placeholder="选择要执行的专家"
               :disabled="readonly"
               clearable
-              class="te-exec-agent-select"
-              @change="markDirty"
+              no-data-text="没有可选的专家。岗位私有专家要先在「专家与专家团」页签添加"
+              class="te-exec-target-select"
+              :class="{ 'is-err': errors.execTarget }"
+              @change="onExecTargetChange"
+            >
+              <!-- 所选对象已不可用：置灰项显示「名称（不可用）」，不露裸 id（修改点 3） -->
+              <el-option
+                v-if="lostTargetOption"
+                :key="'lost-' + lostTargetOption.value"
+                :label="lostTargetOption.label"
+                :value="lostTargetOption.value"
+                disabled
+              />
+              <el-option v-for="x in expertOptions" :key="x.expertId" :label="x.name" :value="x.expertId">
+                <span class="te-exec-team-opt">
+                  {{ x.name }}
+                  <small>{{ x.typeLabel }}</small>
+                </span>
+              </el-option>
+            </el-select>
+            <p class="te-card-guide te-exec-target-hint">任务整个交给该专家，专家用自己引用的技能和知识库执行。</p>
+            <p v-if="errors.execTarget" class="te-err">{{ errors.execTarget }}</p>
+          </div>
+          <div v-if="form.execType === 'TEAM'" class="te-field te-exec-target" data-testid="exec-team">
+            <el-select
+              v-model="form.execTargetId"
+              placeholder="选择要执行的专家团"
+              :disabled="readonly"
+              clearable
+              no-data-text="没有可选的专家团。岗位私有专家团要先在「专家与专家团」页签添加"
+              class="te-exec-target-select"
+              :class="{ 'is-err': errors.execTarget }"
+              @change="onExecTargetChange"
             >
               <el-option
-                v-for="a in store.agents"
-                :key="a.agentId"
-                :label="a.name"
-                :value="a.agentId"
+                v-if="lostTargetOption"
+                :key="'lost-' + lostTargetOption.value"
+                :label="lostTargetOption.label"
+                :value="lostTargetOption.value"
+                disabled
               />
+              <!-- 没设主理人的团置灰；存量任务若已选了它，框里同样标「（不可用）」 -->
+              <el-option
+                v-for="t in teamOptions"
+                :key="t.teamId"
+                :label="t.leaderId == null ? t.name + '（不可用）' : t.name"
+                :value="t.teamId"
+                :disabled="t.leaderId == null"
+              >
+                <el-tooltip
+                  :disabled="t.leaderId != null"
+                  content="没设主理人的专家团需要员工确认安排，不能用于自动化任务"
+                  placement="right"
+                >
+                  <span class="te-exec-team-opt">
+                    {{ t.name }}
+                    <small>{{ t.typeLabel }} · {{ t.leaderName ? '主理人：' + t.leaderName : '未设主理人' }}</small>
+                  </span>
+                </el-tooltip>
+              </el-option>
             </el-select>
-            <p class="te-card-guide te-exec-agent-hint">下发时会自动带上该 Agent 名下的已发布技能。</p>
+            <p class="te-card-guide te-exec-target-hint">任务整个交给该专家团，由主理人拆解分派。</p>
+            <p v-if="errors.execTarget" class="te-err">{{ errors.execTarget }}</p>
           </div>
+          <p v-if="execTargetLost" class="te-card-guide te-exec-target-hint te-exec-target-warn" data-testid="exec-target-lost">
+            所选对象已停用、被回收、缺员或已从本岗位移除，任务触发时会被挂起，请重新选择。
+          </p>
         </div>
       </section>
 
@@ -867,19 +992,19 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 分区 7：引用平台技能（#22：chips + 搜索 + 卡底「＋ 添加技能」） -->
+      <!-- 分区 7：引用技能（#22：chips + 搜索 + 卡底「＋ 添加技能」；2026-11-09 由「引用平台技能」改名并扩大候选） -->
       <section class="te-card">
         <div class="te-card-title">
-          <span class="te-card-dot"></span> 引用平台技能
+          <span class="te-card-dot"></span> 引用技能
         </div>
         <div class="te-card-body">
           <p class="te-card-guide">
-            引用<b>平台技能</b>（由系统配置员发布），让这条样例复用现成能力；你自建的 FDE 技能不在此列。
+            引用已发布的<b>通用技能</b>、<b>市场技能</b>，以及本岗位「技能」页签里引用的<b>岗位私有技能</b>，让这条任务复用现成能力。
           </p>
 
           <!-- 无已选技能空态逐字照 md §7.6 L425（2026-09-12 审计 K8） -->
           <div v-if="!form.skillRefs.length" class="sk-none">暂无引用技能，点击下方添加</div>
-          <!-- 已选平台技能 chips（名称 + 可移除） -->
+          <!-- 已选技能 chips（名称 + 可移除） -->
           <div v-else class="sk-chips">
             <span v-for="s in form.skillRefs" :key="s.platformSkillId" class="sk-chip">
               <span class="sk-chip-name">{{ s.name || `技能 #${s.platformSkillId}` }}</span>
@@ -897,7 +1022,7 @@ onMounted(async () => {
           <!-- 占位逐字照 md §7.6 L422（2026-09-12 审计 K8） -->
           <el-input
             v-model="skillKeyword"
-            placeholder="搜索平台技能名称或描述"
+            placeholder="搜索技能名称或描述"
             clearable
             class="sk-search"
             @input="onSkillSearch"
@@ -911,10 +1036,10 @@ onMounted(async () => {
           <div v-if="skillPickerOpen" v-loading="skillsLoading" class="sk-list">
             <div v-if="!skillsLoading && !skillCandidates.length" class="sk-empty">
               <template v-if="skillKeyword.trim()">
-                没有匹配「{{ skillKeyword.trim() }}」的平台技能。
+                没有匹配「{{ skillKeyword.trim() }}」的技能。
               </template>
               <template v-else>
-                没有可引用的平台技能（仅展示系统配置员发布给 FDE 的平台技能）。
+                没有可引用的技能（已发布的通用技能、市场技能，以及本岗位引用的岗位私有技能）。
               </template>
             </div>
             <div
@@ -932,6 +1057,7 @@ onMounted(async () => {
               <div class="sk-main">
                 <div class="sk-name-line">
                   <span class="sk-name">{{ c.name }}</span>
+                  <span v-if="c.typeLabel" class="sk-type">{{ c.typeLabel }}</span>
                   <el-tooltip
                     v-if="hasCategory(c.category)"
                     :content="categoryLabel(c.category)"
@@ -1208,7 +1334,8 @@ onMounted(async () => {
   line-height: var(--lh-base);
 }
 .is-err :deep(.el-input__wrapper),
-.is-err :deep(.el-textarea__inner) {
+.is-err :deep(.el-textarea__inner),
+.is-err :deep(.el-select__wrapper) {
   box-shadow: 0 0 0 1px var(--c-danger) inset;
 }
 
@@ -1217,7 +1344,7 @@ onMounted(async () => {
   font-weight: var(--fw-semibold);
 }
 
-/* ── 引用平台技能：无已选技能空态（md §7.6 L425），视觉同工具空态 .tl-empty ── */
+/* ── 引用技能：无已选技能空态（md §7.6 L425），视觉同工具空态 .tl-empty ── */
 .sk-none {
   padding: var(--space-5);
   margin-bottom: var(--space-3);
@@ -1228,7 +1355,7 @@ onMounted(async () => {
   border-radius: var(--radius-md);
 }
 
-/* ── 引用平台技能：已选 chips ── */
+/* ── 引用技能：已选 chips ── */
 .sk-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1272,7 +1399,7 @@ onMounted(async () => {
   color: var(--bg-surface);
 }
 
-/* ── 引用平台技能：搜索 + 候选列表（对齐 PlatformSkillRefPicker 视觉） ── */
+/* ── 引用技能：搜索 + 候选列表（对齐 PlatformSkillRefPicker 视觉） ── */
 .sk-search {
   width: 100%;
   margin-bottom: var(--space-2);
@@ -1333,6 +1460,17 @@ onMounted(async () => {
   flex-shrink: 0;
   cursor: default;
 }
+/* 技能类型标签：通用技能 / 市场技能 / 岗位私有（样式同 ExpertEditor .ee-kb-type） */
+.sk-type {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular, 400);
+  line-height: 18px;
+}
 .sk-code {
   flex-shrink: 0;
   font-family: var(--font-mono);
@@ -1348,21 +1486,34 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-/* 执行动作：「技能 / Agent」两个单选横排 */
+/* 执行动作：「技能 / 专家 / 专家团」三个单选横排 */
 .te-exec-type-group {
   display: flex;
   margin-bottom: 12px;
 }
-.te-exec-agent {
+.te-exec-target {
   margin-top: 4px;
 }
-.te-exec-agent-select {
+.te-exec-target-select {
   width: 100%;
 }
-.te-exec-agent-hint {
+.te-exec-target-hint {
   margin-top: 4px;
   color: var(--c-text-muted);
   font-size: var(--fs-sm);
+}
+.te-exec-target-warn {
+  color: var(--c-danger);
+}
+.te-exec-team-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+}
+.te-exec-team-opt small {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
 }
 
 /* 执行模型 */

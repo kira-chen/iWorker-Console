@@ -26,8 +26,7 @@ const api = {
   getExpert: vi.fn(),
   createExpert: vi.fn(),
   updateExpert: vi.fn(),
-  listExpertSkillCandidates: vi.fn(),
-  getExpertKbScopeRefId: vi.fn(() => null)
+  listExpertSkillCandidates: vi.fn()
 }
 vi.mock('@/api/domainExpert', () => api)
 vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn().mockResolvedValue({ list: [], total: 0 }) }))

@@ -51,8 +51,7 @@ const expertApi = vi.hoisted(() => ({
   getExpert: vi.fn(),
   createExpert: vi.fn(),
   updateExpert: vi.fn(),
-  listExpertSkillCandidates: vi.fn(),
-  getExpertKbScopeRefId: vi.fn(() => null)
+  listExpertSkillCandidates: vi.fn()
 }))
 vi.mock('@/api/domainExpert', () => expertApi)
 vi.mock('@/api/knowledgeBase', () => ({ listKnowledgeBases: vi.fn().mockResolvedValue({ list: [], total: 0 }) }))

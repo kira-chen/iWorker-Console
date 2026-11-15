@@ -13,10 +13,9 @@ import { pinyinOf } from './pinyinTable'
 
 /* ============================ 上限 / 软上限（交互规格 §12） ============================ */
 export const LIMITS = {
-  AGENT_MAX: 20, // 单岗位 Agent 上限（硬）；api/positionMock.js 直接引用本常量
-  // 单 Agent 技能引用上限（硬）：2026-09-09 负责人 Q378 决议由 20 放宽到 100，
-  // 落点改为 Agent 抽屉内「引用技能」勾选区（达上限未勾选项置灰），md §6.4 同口径。
-  // api/positionMock.js 直接引用本常量。
+  // 单岗位技能引用上限（硬）：2026-09-09 负责人 Q378 决议单 Agent 由 20 放宽到 100；
+  // 2026-11-09 产品优化需求-202611 R1 取消 Agent 后改为每个岗位最多 100 个，
+  // 落点为「添加技能」抽屉的勾选区（达上限未勾选项置灰）。api/positionMock.js 直接引用本常量。
   SKILL_MAX: 100,
   INTAKE_MAX: 10, // 采集字段上限（硬）
   TRIGGER_MAX: 10, // 触发词个数上限（硬）
@@ -139,6 +138,8 @@ export const EXAMPLE_Q_COUNT = 3
 export const EXAMPLE_Q_MAX_LEN = BIZ_QUESTION_MAX // 示例问题 300 的单一来源在 defValidate.js，各处只引用不另写
 // 岗位 SOP：必填，最多 4000 字。
 export const SOP_MAX_LEN = 4000
+// SOP 简版（产品优化需求-202611 修改点 18）：选填，最多 200 字，给客户端岗位卡片展示；数字员工执行仍按完整版
+export const SOP_BRIEF_MAX_LEN = 200
 // 自动化任务「提示词」：必填，最多 8000 字（md §7.4）。UI 校验 / 字数计数与 sampleTaskMock 共用这一处，
 // 别再各写裸数字（前科：示例问题 mock 卡 60、UI 放 300，见 待办 yuepu#19②）。
 export const SAMPLE_TASK_PROMPT_MAX_LEN = 8000
@@ -205,11 +206,41 @@ export function genPositionSop(name, description) {
   const subject = shortText(description || name, 48)
   const sop =
     `1. 理解用户意图，并结合岗位描述"${subject}"确认任务目标与范围。\n` +
-    '2. 选择完成任务所需的 Agent、技能、知识库与工具，必要时向用户补充提问。\n' +
+    '2. 选择完成任务所需的技能、专家、知识库与工具，必要时向用户补充提问。\n' +
     '3. 按选定能力执行任务，逐步推进并记录关键中间结果。\n' +
     '4. 核对关键结果与数据口径，确认结论可靠、无遗漏。\n' +
     '5. 输出结论、依据和后续建议，交付用户可直接使用的结果。'
   return limitLen(sop, SOP_MAX_LEN)
+}
+
+const SOP_BRIEF_MAX_STEPS = 5 // 简版最多 5 步
+const SOP_BRIEF_STEP_MAX_LEN = 20 // 每步不超过 20 字
+
+/**
+ * 由完整版岗位 SOP 本地生成 SOP 简版（产品优化需求-202611 修改点 18；demo 无后端，真实产品走模型，
+ * 提示词见《AI生成按钮Prompt规范.md》）。按 PRD 生成要求：保留编号步骤，3–5 步，每步一句、不超过 20 字，全文不超过 200 字。
+ * 本地做法：
+ * 1. 拆步骤——有编号 / 列表行就只取这些行（标题、引言不要）；没有就按行拆，只有一段时按句号拆；
+ * 2. 去掉「第 N 步：」这类序号前缀，每步只留第一个逗号 / 句号 / 冒号前的主干，再截到 20 字；
+ * 3. 超过 5 步时均匀抽 5 步，首尾两步必留（怎么接活、最后交付什么）；不足 3 步的有几步留几步；
+ * 4. 重新编号，全文再按 200 字兜底截断。
+ */
+export function genPositionSopBrief(fullSop) {
+  const text = String(fullSop || '').trim()
+  const STEP_MARK = /^(\d+\s*[.、．)）]|[-*•])\s*/
+  let items = text.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+  const marked = items.filter((l) => STEP_MARK.test(l))
+  if (marked.length) items = marked
+  else if (items.length <= 1) items = text.split(/[。；;]/)
+  let steps = items
+    .map((l) => l.trim().replace(STEP_MARK, '').replace(/^第\s*\d+\s*步\s*[：:、.．]?\s*/, ''))
+    .map((l) => limitLen(l.split(/[，,。；;：:]/)[0].trim(), SOP_BRIEF_STEP_MAX_LEN))
+    .filter(Boolean)
+  if (steps.length > SOP_BRIEF_MAX_STEPS) {
+    const last = steps.length - 1
+    steps = Array.from({ length: SOP_BRIEF_MAX_STEPS }, (_, i) => steps[Math.round((i * last) / (SOP_BRIEF_MAX_STEPS - 1))])
+  }
+  return limitLen(steps.map((s, i) => `${i + 1}. ${s}`).join('\n'), SOP_BRIEF_MAX_LEN)
 }
 
 /* ============================ 岗位展示版本号（语义化 vX.Y.Z） ============================ */
@@ -475,14 +506,58 @@ export const POSITION_BUMP_OPTIONS = [
 
 /* ============================ 完整性校验（md §9.1，2026-09-09 Q11 新决策） ============================ */
 /**
- * md §9.1 第 8 条：至少配置 1 个 Agent，且**该 Agent** 至少引用 1 个技能。
- * 口径取「存在某个 Agent 其技能数 ≥ 1」（不要求每个 Agent 都有技能——md 用的是「该 Agent」单数指代）。
+ * md §9.1 第 8 条（产品优化需求-202611 R1 改后）：岗位至少引用 1 个技能。
  * 悬空引用（skillRefVO 标 deleted:true，技能本体已被删除）不算数——否则技能被删后发布门仍放行
  * （2026-09-23 待办 yuepu#9⑤）。
  */
-export function agentsWithSkillOk(agents) {
-  const list = Array.isArray(agents) ? agents : []
-  return list.some((a) => Array.isArray(a?.skills) && a.skills.some((s) => !s?.deleted))
+export function skillsRefOk(skills) {
+  return Array.isArray(skills) && skills.some((s) => !s?.deleted)
+}
+
+/**
+ * 引用的专家 / 专家团里不可用的对象（产品优化需求-202611 R13 §3）：每条是发布前检查里的一行动态阻断项。
+ * - 专家 / 团未发布、已停用、已回收 → 「引用的「名称」已停用（已被回收），请移除后再发布」；
+ * - 团缺员 → 「专家团「名称」缺员 N 人，请移除后再发布」；
+ * - 团里的岗位私有成员没加入本岗位 → 「专家团「团名」的成员「专家名」没有加入本岗位，该岗位员工将无法使用，请添加或调整」。
+ * - 自动化任务的执行对象不能用了（2026-11-09 执行对象放开到通用、市场专家（团）后，它们不在页签里，单列一类）→
+ *   「自动化任务「任务名」的执行对象「名称」已不可用（停用、回收、缺员或没设主理人），请重新选择」。
+ * 入参是 getPositionExperts 回的 experts[] / teams[] / execTargetIssues[]（unavailable / missingCount / unboundMembers 由数据层算好）。
+ */
+export function positionExpertIssues(experts, teams, execTargetIssues) {
+  const out = []
+  const unavailableText = (reason) => (reason === '已回收' ? '已被回收' : reason)
+  for (const x of Array.isArray(experts) ? experts : []) {
+    if (x?.unavailable) out.push({ name: x.name, detail: '引用的「' + x.name + '」' + unavailableText(x.unavailable) + '，请移除后再发布' })
+  }
+  for (const t of Array.isArray(teams) ? teams : []) {
+    if (t?.unavailable) {
+      out.push({ name: t.name, detail: '引用的「' + t.name + '」' + unavailableText(t.unavailable) + '，请移除后再发布' })
+      continue
+    }
+    if (t?.missingCount > 0) out.push({ name: t.name, detail: '专家团「' + t.name + '」缺员 ' + t.missingCount + ' 人，请移除后再发布' })
+    for (const m of t?.unboundMembers || []) {
+      out.push({ name: t.name, detail: '专家团「' + t.name + '」的成员「' + m.name + '」没有加入本岗位，该岗位员工将无法使用，请添加或调整' })
+    }
+  }
+  for (const s of Array.isArray(execTargetIssues) ? execTargetIssues : []) {
+    out.push({
+      name: s.targetName,
+      label: '自动化任务「' + s.taskName + '」',
+      detail: '自动化任务「' + s.taskName + '」的执行对象「' + s.targetName + '」已不可用（停用、回收、缺员或没设主理人），请重新选择'
+    })
+  }
+  return out
+}
+
+/**
+ * 专家 / 专家团停用、强制回收确认窗口的影响范围（产品优化需求-202611 R13 §5）。
+ * 入参是 getExpertUsage 回的 { positionCount, taskCount }；都为 0 返回空串（窗口里不出这句）。
+ */
+export function expertUsageImpactText({ positionCount = 0, taskCount = 0 } = {}) {
+  const parts = []
+  if (positionCount > 0) parts.push('已被 ' + positionCount + ' 个岗位引用，这些岗位再发布前要先移除它')
+  if (taskCount > 0) parts.push(taskCount + ' 条自动化任务由它执行，停用后这些任务将被挂起')
+  return parts.length ? parts.join('；') + '。' : ''
 }
 
 /**
@@ -502,7 +577,7 @@ export const COMPLETENESS_ITEMS = [
   { key: 'exampleQuestions', label: '3 条示例问题', tab: 'persona' },
   { key: 'positionSop', label: '岗位 SOP', tab: 'persona' },
   { key: 'intakeSchema', label: '采集字段', tab: 'intake' },
-  { key: 'agents', label: 'Agent 与技能', tab: 'agents' },
+  { key: 'skills', label: '技能', tab: 'skills' },
   // tab 标识 `tasks` 照 md §1.3 L160（2026-09-12 审计 J8③；key 为完整性内部键不随之改）
   { key: 'sampleTasks', label: '自动化任务', tab: 'tasks' }
 ]
@@ -517,7 +592,7 @@ export function computeCompletenessMissing(detail) {
     exampleQuestions: exampleQuestionsComplete(d.exampleQuestions),
     positionSop: !!String(d.positionSop || '').trim(),
     intakeSchema: intakeFieldCount(d.intakeSchema) > 0,
-    agents: agentsWithSkillOk(d.agents),
+    skills: skillsRefOk(d.skills),
     sampleTasks: Number(d.sampleTaskCount || 0) > 0
   }
   return COMPLETENESS_ITEMS.filter((i) => !okMap[i.key])
@@ -526,12 +601,12 @@ export function computeCompletenessMissing(detail) {
 /* ============================ 发布前检查（md §9.2 · 原型 openPub L2132） ============================ */
 /**
  * 计算发布前检查清单 + 完成度。输入岗位详情
- * （name/description/exampleQuestions/positionSop + agents[] + sampleTaskCount）。
+ * （name/description/exampleQuestions/positionSop + skills[] + experts[] / teams[] + sampleTaskCount）。
  * 返回 { items:[{ key,label,ok,blocking,warning,detail }], blockingPassed, doneRatio, warnings }
  *
  * 2026-09-09 PRD 复核（A1 / Q11 负责人新决策，推翻 2026-09-08 的「阻断四项」口径）：
  * md §9.1 阻断 6 项 = 岗位名称 / 岗位描述 / 示例问题 3 条 / 岗位 SOP /
- * Agent 与技能（至少 1 个 Agent 且该 Agent 至少引用 1 个技能）/ 自动化任务（至少 1 条）。
+ * 技能（R1 改后：至少引用 1 个技能）/ 自动化任务（至少 1 条）。
  * 2026-09-21 负责人拍板追加：岗位图标（已选择）、领用页文案（至少 1 条）、采集字段（至少 1 个）→ 共 9 项。
  * 清单条目对应 md §9.2：
  * - 岗位名称与描述（硬）——「必填内容已填写」；
@@ -540,7 +615,7 @@ export function computeCompletenessMissing(detail) {
  * - 示例问题（硬）——「3 条示例问题已填写」；
  * - 岗位 SOP（硬）——「岗位能力综述已填写」；
  * - 采集字段（硬，2026-09-21 新增）——至少 1 个有效字段（原「采集字段不参与发布阻断」已被推翻）；
- * - Agent 与技能（硬，md §6.5）——至少 1 个 Agent 且该 Agent 至少引用 1 个技能；
+ * - 技能（硬，md §6.5；R1 改后）——至少引用 1 个技能；
  *   未验证工具降级为该条目上的附注（不影响 ok），仍计入 warnings 供弹窗提示行使用；
  * - 自动化任务（硬，md §7.6）——至少 1 条。
  * warnings 仅在确有告警（未验证工具）时非空，供弹窗提示行「存在告警项（不阻断）…」判定。
@@ -556,7 +631,7 @@ export function computePublishCheck(detail) {
   const sopOk = !!String(d.positionSop || '').trim()
   const intakeCount = intakeFieldCount(d.intakeSchema)
   const intakeOk = intakeCount > 0
-  const agentsOk = agentsWithSkillOk(d.agents)
+  const skillsOk = skillsRefOk(d.skills)
   const taskCount = Number(d.sampleTaskCount || 0)
   const tasksOk = taskCount > 0
 
@@ -616,27 +691,27 @@ export function computePublishCheck(detail) {
     detail: intakeOk ? `已配置 ${intakeCount} 个` : '至少配置 1 个采集字段'
   })
 
-  // 7. Agent 与技能（硬，md §6.5 / §9.1 第 8 条）
+  // 7. 技能（硬，md §6.5 / §9.1 第 8 条；产品优化需求-202611 R1 改为「至少引用 1 个技能」）
   const hasUnhealthy = unhealthyTools.length > 0
   items.push({
-    key: 'agents',
-    label: 'Agent 与技能',
-    ok: agentsOk,
+    key: 'skills',
+    label: '技能',
+    ok: skillsOk,
     blocking: true,
     warning: hasUnhealthy,
     // 仅确有未验证工具时计入 warnings（弹窗据此出「存在告警项」提示行）
     actionable: hasUnhealthy,
-    detail: agentsOk
+    detail: skillsOk
       ? hasUnhealthy
         ? `存在 ${unhealthyTools.length} 个工具未验证，不阻断发布`
-        : '已配置 Agent 与技能'
-      : '至少配置 1 个 Agent，且该 Agent 至少引用 1 个技能'
+        : '已引用技能'
+      : '至少引用 1 个技能'
   })
 
   // 7.1 引用已被强制回收的技能 / 连接器（硬，岗位 PRD §6.4 / §8「被强制回收」）：每个已回收对象一行；
   // 没有已回收对象时不出行（不改变原有清单条数与完成度口径）。连接器名由调用方传入 revokedConnectors。
   const revokedNames = [
-    ...(Array.isArray(d.agents) ? d.agents : []).flatMap((a) => (a?.skills || []).filter((s) => s?.revoked).map((s) => s.name)),
+    ...(Array.isArray(d.skills) ? d.skills : []).filter((s) => s?.revoked).map((s) => s.name),
     ...(Array.isArray(d.revokedConnectors) ? d.revokedConnectors : [])
   ]
   revokedNames.forEach((name, i) => {
@@ -646,6 +721,17 @@ export function computePublishCheck(detail) {
       ok: false,
       blocking: true,
       detail: '引用的「' + name + '」已被回收，请移除后再发布'
+    })
+  })
+
+  // 7.2 引用的专家 / 专家团不可用（硬，产品优化需求-202611 R13 §3）：每个问题一行；没有问题时不出行
+  positionExpertIssues(d.experts, d.teams, d.execTargetIssues).forEach((issue, i) => {
+    items.push({
+      key: 'expertRef_' + i,
+      label: issue.label || '引用「' + issue.name + '」',
+      ok: false,
+      blocking: true,
+      detail: issue.detail
     })
   })
 
@@ -668,8 +754,7 @@ export function computePublishCheck(detail) {
 }
 
 /* ============================ 整体保存 payload 归一（决议 9：调序/迁移走整体 PUT） ============================ */
-// 把白板当前结构归一为后端可接受的 agents/skills 顺序。本期工作台对 Agent/技能的增删改
-// 走各自 REST 接口（POST/PUT/DELETE），调序与归属变更通过逐条 PUT 提交（见 store）。
+// 工作台对技能 / 专家引用的增删走各自 REST 接口（见 store）。
 // 此处提供「采集 schema 归一」：把行编辑器的字段行转成契约 intakeSchema 项。
 export function normalizeIntakeForSubmit(rows) {
   return (rows || [])

@@ -20,7 +20,8 @@ import {
   listExpertPublications,
   delistExpertPublication,
   relistExpertPublication,
-  getExpertKbScopeRefId,
+  bindExpertToPosition,
+  unbindExpertFromPosition,
   __resetExpertMock
 } from '../domainExpertMock'
 import { opsRecords, resetAccessAuditMock } from '../accessAuditMock'
@@ -33,15 +34,17 @@ beforeEach(() => __resetExpertMock())
 // 2026-09-12 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §二.2 排序 / §二.3.3 发布 /
 // §二.3.4 撤回 / §二.3.5 停用 / §二.3.7 删除 / §四.3 版本历史；提交快照的写销见 reviewSnapshot.test.js
 describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮）', () => {
-  it('种子 4 条照原型：默认按最近更新时间降序，含分类/技能数/最新版本；法务审阅专家无版本', async () => {
+  // 2026-11-09 产品优化需求-202611 R13：补种子 205「经营数据核查专家」（岗位私有、已发布、被 401 引用），共 5 条
+  it('种子 5 条：默认按最近更新时间降序，含分类/技能数/最新版本；法务审阅专家无版本', async () => {
     const { list, total } = await listExperts()
-    expect(total).toBe(4)
-    expect(list.map((e) => e.name)).toEqual(['经营分析专家', '研究报告专家', '企业知识助手', '法务审阅专家'])
-    const [biz] = list
+    expect(total).toBe(5)
+    expect(list.map((e) => e.name)).toEqual(['经营数据核查专家', '经营分析专家', '研究报告专家', '企业知识助手', '法务审阅专家'])
+    const biz = list[1]
     expect(biz).toMatchObject({ category: '投资', skillCount: 2, latestVersionLabel: 'v2.3.0', status: 'published', pendingAction: null })
-    // 法务审阅专家：未发布无版本；研究报告专家：已发布 + 新版审核中
-    expect(list[3]).toMatchObject({ status: 'draft', latestVersionLabel: '' })
-    expect(list[1]).toMatchObject({ status: 'published', pendingAction: 'PUBLISH' })
+    // 法务审阅专家：未发布无版本；研究报告专家：已发布 + 新版审核中；经营数据核查专家：岗位私有已发布样本
+    expect(list[4]).toMatchObject({ status: 'draft', latestVersionLabel: '' })
+    expect(list[2]).toMatchObject({ status: 'published', pendingAction: 'PUBLISH' })
+    expect(list[0]).toMatchObject({ type: 'POSITION', status: 'published', positionIds: [401] })
     // 升序
     const asc = await listExperts({ sort: 'asc' })
     expect(asc.list[0].name).toBe('法务审阅专家')
@@ -52,7 +55,7 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect((await listExperts({ keyword: '投资' })).list).toHaveLength(2) // 分类命中
     expect((await listExperts({ category: '法律' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
     expect((await listExperts({ status: 'review' })).list.map((e) => e.name)).toEqual(['研究报告专家'])
-    expect((await listExperts({ status: 'published' })).list.map((e) => e.name)).toEqual(['经营分析专家', '企业知识助手'])
+    expect((await listExperts({ status: 'published' })).list.map((e) => e.name)).toEqual(['经营数据核查专家', '经营分析专家', '企业知识助手'])
     expect((await listExperts({ status: 'draft' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
   })
 
@@ -64,18 +67,19 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(byName['企业知识助手']).toMatchObject({ type: 'SYSTEM_DEFAULT', positionIds: [], positionCount: 0 })
     expect(byName['法务审阅专家']).toMatchObject({ type: 'POSITION', positionIds: [401, 402], positionCount: 2 })
     expect(byName['法务审阅专家']).not.toHaveProperty('positionId')
-    expect((await listExperts({ type: 'POSITION' })).list.map((e) => e.name)).toEqual(['法务审阅专家'])
+    expect(byName['经营数据核查专家']).toMatchObject({ type: 'POSITION', positionIds: [401], positionCount: 1 })
+    expect((await listExperts({ type: 'POSITION' })).list.map((e) => e.name)).toEqual(['经营数据核查专家', '法务审阅专家'])
     expect((await listExperts({ type: 'PLATFORM' })).list.map((e) => e.name)).toEqual(['经营分析专家', '研究报告专家'])
     expect((await listExperts({ type: 'SYSTEM_DEFAULT' })).total).toBe(1)
   })
 
-  it('专家类型：新建落 type，岗位私有可先不绑岗位（4229ae6）、可多选绑定多个岗位（去空去重）、非岗位私有丢弃 positionIds；非法 type 字段级报错', async () => {
+  // 产品优化需求-202611 R13 §2：所属岗位改由岗位侧「专家与专家团」页签引用维护，新建时不再选岗位，
+  // createExpert / updateExpert 不再接收 payload.positionIds（取代原「新建可多选绑定 / 编辑时可增减」口径）
+  it('专家类型：新建落 type；新建时不再选岗位，payload.positionIds 带了也忽略（R13）；非法 type 字段级报错', async () => {
     const pos = await createExpert({ name: '私有专家', type: 'POSITION' })
     expect(pos).toMatchObject({ type: 'POSITION', positionIds: [], positionCount: 0 })
-    const bound = await createExpert({ name: '私有专家2', type: 'POSITION', positionIds: [402, 401] })
-    expect(bound).toMatchObject({ type: 'POSITION', positionIds: [402, 401], positionCount: 2 })
-    const dirty = await createExpert({ name: '私有专家3', type: 'POSITION', positionIds: [401, 401, null, 402] })
-    expect(dirty).toMatchObject({ positionIds: [401, 402], positionCount: 2 })
+    const withIds = await createExpert({ name: '私有专家2', type: 'POSITION', positionIds: [402, 401] })
+    expect(withIds).toMatchObject({ type: 'POSITION', positionIds: [], positionCount: 0 })
     const plat = await createExpert({ name: '市场专家', type: 'PLATFORM', positionIds: [402] })
     expect(plat).toMatchObject({ type: 'PLATFORM', positionIds: [], positionCount: 0 })
     // 缺省回落市场专家（与连接器三件套 mock 同口径，必选由表单把关）
@@ -83,52 +87,110 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await expect(createExpert({ name: '坏类型', type: 'WHATEVER' })).rejects.toMatchObject({ field: 'type' })
   })
 
-  it('专家类型创建后不可改；所属岗位（多选）编辑时可增减，仅岗位私有生效、其它类型带了也忽略', async () => {
-    const bound = await createExpert({ name: '可改岗位专家', type: 'POSITION', positionIds: [402] })
-    // 类型不可改：带 type 也忽略；岗位可改：增到两个、再减回一个、再清空
-    const added = await updateExpert(bound.id, { type: 'PLATFORM', positionIds: [401, 402], intro: 'x' })
-    expect(added).toMatchObject({ type: 'POSITION', positionIds: [401, 402], positionCount: 2, intro: 'x' })
-    expect(await updateExpert(bound.id, { positionIds: [401] })).toMatchObject({ positionIds: [401], positionCount: 1 })
-    expect(await updateExpert(bound.id, { positionIds: [] })).toMatchObject({ positionIds: [], positionCount: 0 })
-    // 不传 positionIds 则不动
-    await updateExpert(bound.id, { positionIds: [402] })
-    expect(await updateExpert(bound.id, { intro: 'y' })).toMatchObject({ positionIds: [402] })
-    // 市场专家带 positionIds 也忽略
-    const plat = await createExpert({ name: '不可绑岗位的市场专家', type: 'PLATFORM' })
-    expect(await updateExpert(plat.id, { positionIds: [401] })).toMatchObject({ type: 'PLATFORM', positionIds: [], positionCount: 0 })
+  it('专家类型创建后不可改；updateExpert 带 positionIds 也不改所属岗位（R13）；岗位侧引用后详情的所属岗位随之变化', async () => {
+    // 203 被 401 / 402 引用：带 type / positionIds 都忽略，其它字段照改
+    const updated = await updateExpert(203, { type: 'PLATFORM', positionIds: [999], intro: 'x' })
+    expect(updated).toMatchObject({ type: 'POSITION', positionIds: [401, 402], positionCount: 2, intro: 'x' })
+    expect(await updateExpert(203, { positionIds: [] })).toMatchObject({ positionIds: [401, 402], positionCount: 2 })
+    // 绑定关系只从岗位侧写入（bindExpertToPosition）；专家编辑页只读展示的就是这里的 positionIds
+    const created = await createExpert({ name: '待岗位引用专家', type: 'POSITION' })
+    bindExpertToPosition(created.id, 402)
+    expect(await getExpert(created.id)).toMatchObject({ positionIds: [402], positionCount: 1 })
   })
 
-  it('详情：含职责描述 / 3 条示例问题 / 引用技能明细（实时取市场技能本体）与时间元信息', async () => {
+  it('详情：含职责描述 / 3 条示例问题 / 引用技能明细（实时取技能本体，带技能类型）与时间元信息', async () => {
     const d = await getExpert(201)
     expect(d.roleDesc).toContain('经营分析专家')
     expect(d.exampleQuestions).toHaveLength(3)
     expect(d.skills.map((s) => s.name)).toEqual(['经营数据分析', '合同风险检查'])
     expect(d.createdAt).toBeTruthy()
     expect(d.publishedAt).toBeTruthy()
+    // 2026-11-10：岗位私有专家 205 同时引用市场技能 302 与岗位私有技能 301，明细逐项带技能类型（编辑抽屉卡片标签用）
+    expect((await getExpert(205)).skills.map((s) => [s.name, s.type])).toEqual([
+      ['经营数据分析', 'PLATFORM'],
+      ['日报周报生成', 'POSITION']
+    ])
   })
 
   // 2026-09-04 PRD-20260903 对齐：背景色种子 + 归一化（读写路径均回落默认 #DCF5E4）
   it('背景色：种子/详情出参带 backgroundColor；create/update 归一化，非法值回落默认 #DCF5E4', async () => {
     const { list } = await listExperts()
-    expect(list.every((e) => e.backgroundColor === '#DCF5E4')).toBe(true) // 种子=原型归一化结果（默认色）
+    // 原型种子 201-204 = 原型归一化结果（默认色）；2026-11-09 新种子 205 用 7 色板里的 #DCECF7
+    expect(list.filter((e) => e.id !== 205).every((e) => e.backgroundColor === '#DCF5E4')).toBe(true)
+    expect(list.find((e) => e.id === 205).backgroundColor).toBe('#DCECF7')
     expect((await getExpert(201)).backgroundColor).toBe('#DCF5E4')
     // create：合法 7 色板值大写落库；update 非法值回落默认
     const created = await createExpert({ name: '带色专家', backgroundColor: '#fae9df' })
     expect(created.backgroundColor).toBe('#FAE9DF')
     const updated = await updateExpert(created.id, { backgroundColor: 'not-a-color' })
     expect(updated.backgroundColor).toBe('#DCF5E4')
-    // 专家 ↔ 知识库可见范围桥接映射种子（编辑抽屉只读「知识库」区块用）
-    expect(getExpertKbScopeRefId(201)).toBe('ex_1')
-    expect(getExpertKbScopeRefId(203)).toBeNull()
   })
 
-  it('市场技能候选：实时读已发布市场技能（2026-09-23 待办 yuepu#10③，此前是脱钩的静态 3 条）', async () => {
-    // 市场技能（PLATFORM）种子 302/304/307/309 中，307 是草稿——候选只算已发布的 302/304/309；
-    // 分类也改为技能模块的真实分类（此前静态候选的分类与技能模块本身对不上）
-    const candidates = await listExpertSkillCandidates()
-    expect(candidates.map((s) => s.id).sort((a, b) => a - b)).toEqual([302, 304, 309])
-    expect((await listExpertSkillCandidates({ keyword: '数据分析' })).map((s) => s.id)).toEqual([302])
-    expect((await listExpertSkillCandidates({ keyword: '行业专业' })).map((s) => s.id)).toEqual([304])
+  /* 技能候选（2026-11-10 专家按类型引用技能；2026-09-23 待办 yuepu#10③ 起实时读 unifiedSkillMock，此前是脱钩的静态 3 条）：
+   * 岗位私有专家 = 已发布的岗位私有 + 市场 + 通用技能；市场专家、通用专家 = 已发布的市场 + 通用技能。
+   * 技能种子里已发布的：301 / 305 岗位私有，302 / 304 / 309 市场，303 通用；306（通用，已回收）/ 307（市场）/ 308（岗位私有）未发布，不进候选。 */
+  it('技能候选 · 岗位私有专家：已发布的岗位私有 + 市场 + 通用技能，每项带技能类型', async () => {
+    const candidates = await listExpertSkillCandidates({ expertType: 'POSITION' })
+    expect(Object.fromEntries(candidates.map((s) => [s.id, s.type]))).toEqual({
+      301: 'POSITION',
+      302: 'PLATFORM',
+      303: 'SYSTEM_DEFAULT',
+      304: 'PLATFORM',
+      305: 'POSITION',
+      309: 'PLATFORM'
+    })
+    // 分类取技能模块的真实分类（此前静态候选的分类与技能模块本身对不上）
+    expect(candidates.find((s) => s.id === 305)).toMatchObject({ name: '客户拜访准备', category: '办公效率' })
+  })
+
+  it('技能候选 · 市场专家、通用专家：只有已发布的市场 + 通用技能，不含岗位私有技能', async () => {
+    for (const expertType of ['PLATFORM', 'SYSTEM_DEFAULT']) {
+      const candidates = await listExpertSkillCandidates({ expertType })
+      expect(candidates.map((s) => s.id).sort((a, b) => a - b)).toEqual([302, 303, 304, 309])
+      expect(candidates.map((s) => s.type)).not.toContain('POSITION')
+    }
+  })
+
+  it('技能候选 · 没给专家类型（新建还没选类型）或类型非法 → 空列表', async () => {
+    expect(await listExpertSkillCandidates()).toEqual([])
+    expect(await listExpertSkillCandidates({ keyword: '数据分析' })).toEqual([])
+    expect(await listExpertSkillCandidates({ expertType: 'WHATEVER' })).toEqual([])
+  })
+
+  it('技能候选 · keyword 在该类型范围内按名称 / 描述 / 分类过滤', async () => {
+    expect((await listExpertSkillCandidates({ expertType: 'PLATFORM', keyword: '数据分析' })).map((s) => s.id)).toEqual([302])
+    expect((await listExpertSkillCandidates({ expertType: 'PLATFORM', keyword: '行业专业' })).map((s) => s.id)).toEqual([304])
+    // 「拜访」只命中岗位私有技能 305：岗位私有专家搜得到，市场专家搜不到
+    expect((await listExpertSkillCandidates({ expertType: 'POSITION', keyword: '拜访' })).map((s) => s.id)).toEqual([305])
+    expect(await listExpertSkillCandidates({ expertType: 'PLATFORM', keyword: '拜访' })).toEqual([])
+  })
+
+  it('市场专家不能引用岗位私有技能：addExpertSkill 拒绝，专家引用与技能的专家引用名都不变', async () => {
+    await expect(addExpertSkill(201, 301)).rejects.toMatchObject({ code: 404, message: '技能不存在或不在本专家可引用的范围内' })
+    expect((await getExpert(201)).skillIds).toEqual([302, 304])
+    expect(getRawSkill('sk_301').expertRefNames).not.toContain('经营分析专家')
+  })
+
+  it('市场 / 通用专家新建或保存时带岗位私有技能 → skillIds 字段级报错，不落库', async () => {
+    const msg = '只能引用本专家类型可引用的已发布技能，请刷新候选后重试'
+    await expect(createExpert({ name: '越界市场专家', type: 'PLATFORM', skillIds: [302, 301] })).rejects.toMatchObject({ field: 'skillIds', message: msg })
+    await expect(createExpert({ name: '越界通用专家', type: 'SYSTEM_DEFAULT', skillIds: [305] })).rejects.toMatchObject({ field: 'skillIds', message: msg })
+    await expect(updateExpert(202, { skillIds: [302, 303, 301] })).rejects.toMatchObject({ field: 'skillIds', message: msg })
+    expect((await listExperts({ keyword: '越界' })).total).toBe(0)
+    expect((await getExpert(202)).skillIds).toEqual([302, 303])
+  })
+
+  it('岗位私有专家可引用岗位私有技能：技能的 expertRefNames 追加专家名，岗位引用 refNames 不动', async () => {
+    // 显式基线（unifiedSkillMock 跨用例不重置）
+    resetSkillRaw('sk_305', { refNames: ['客户成功岗', '市场研究岗'], expertRefNames: [] })
+    const d = await addExpertSkill(203, 305)
+    expect(d.skills.map((s) => [s.skillId, s.type])).toEqual([[304, 'PLATFORM'], [305, 'POSITION']])
+    expect(getRawSkill('sk_305').expertRefNames).toEqual(['法务审阅专家'])
+    expect(getRawSkill('sk_305').refNames).toEqual(['客户成功岗', '市场研究岗'])
+    // 新建时一次性带岗位私有技能同样放行
+    const created = await createExpert({ name: '带岗位私有技能的新专家', type: 'POSITION', skillIds: [305] })
+    expect(created.skillIds).toEqual([305])
+    expect(getRawSkill('sk_305').expertRefNames).toEqual(['法务审阅专家', '带岗位私有技能的新专家'])
   })
 
   it('新建：落草稿并支持一次性带 skillIds（新建态即可勾选）；重名按 name 字段级报错', async () => {
@@ -148,7 +210,7 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await expect(updateExpert(204, { intro: 'x' })).rejects.toMatchObject({ code: 409 })
   })
 
-  // 待办 yuepu#57⑤：整批 skillIds 须在候选内（已发布的市场技能）；存量引用不因技能后来被回收而被拒（md §3.5.1 专家自身的技能引用不受影响）
+  // 待办 yuepu#57⑤：整批 skillIds 须在该专家类型的候选内（已发布技能，2026-11-10 起按类型定范围）；存量引用不因技能后来被回收而被拒（md §3.5.1 专家自身的技能引用不受影响）
   it('skillIds 整批校验：新增未发布 / 不存在的技能被拒（create / update 都拦）；存量引用的技能被回收后，保存其它字段与原引用不被拒', async () => {
     await expect(updateExpert(201, { skillIds: [302, 307] })).rejects.toMatchObject({ field: 'skillIds' }) // 307 竞品信息汇总：未发布
     await expect(updateExpert(201, { skillIds: [302, 99999] })).rejects.toMatchObject({ field: 'skillIds' })
@@ -176,12 +238,20 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
 
   // 2026-09-12 测试审计 T55：md §二.3.7「【删除】仅在"未发布"且无审核中操作时展示」——
   // 原用例拿已发布的 201 删，等于把「已发布可删」锁进用例；改用唯一的草稿种子 203。
+  it('被岗位引用的专家不能删（R13 §5）：203 是草稿、被 401 / 402 引用 → 拦并列出岗位，专家仍在', async () => {
+    await expect(deleteExpert(203)).rejects.toThrow('该专家被 2 个岗位引用（经营分析岗、客户成功岗），需先从岗位中移除后再删除')
+    expect((await listExperts()).list.map((e) => e.name)).toContain('法务审阅专家')
+  })
+
   it('删除未发布专家 203：返回解除的引用数并移除本体；delete-impact 接口保留可用（md §二.3.7）', async () => {
     const impact = await getExpertDeleteImpact(203)
     expect(impact).toMatchObject({ name: '法务审阅专家', skillRefCount: 1, published: false })
+    // 先从岗位侧解除引用（被岗位引用的专家不能删，见上一条）
+    unbindExpertFromPosition(203, 401)
+    unbindExpertFromPosition(203, 402)
     expect(await deleteExpert(203)).toBe(1)
     const { list, total } = await listExperts()
-    expect(total).toBe(3)
+    expect(total).toBe(4)
     expect(list.map((e) => e.name)).not.toContain('法务审阅专家')
   })
 
@@ -190,7 +260,7 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     await expect(deleteExpert(201)).rejects.toMatchObject({ code: 409 })
     await expect(deleteExpert(204)).rejects.toMatchObject({ code: 409 })
     const { total, list } = await listExperts()
-    expect(total).toBe(4)
+    expect(total).toBe(5)
     expect(list.map((e) => e.name)).toEqual(expect.arrayContaining(['经营分析专家', '研究报告专家']))
   })
 
@@ -204,39 +274,50 @@ describe('domainExpertMock —— 专家模块 mock（2026-09-01 PRD 对齐轮�
     expect(d.skillIds).toEqual([309, 304])
     d = await removeExpertSkill(203, 304)
     expect(d.skillIds).toEqual([309])
-    expect(await listExpertSkillCandidates()).toHaveLength(3) // 技能本体不受影响
+    // 技能本体不受影响：304 仍是已发布、仍在岗位私有专家的候选里
+    expect((await listExpertSkillCandidates({ expertType: 'POSITION' })).map((s) => s.id)).toContain(304)
   })
 
-  it('引用变化回写技能 refNames：add/remove/改名/删专家 都同步（2026-09-23 待办 yuepu#10③）', async () => {
-    // unifiedSkillMock 是模块级共享内存，跨用例不重置（同文件其它用例可能已经改动过 refNames）：
-    // 显式 _reset 建立已知基线，不依赖种子/其它用例的历史状态
-    resetSkillRaw('sk_304', { refNames: ['经营分析专家', '法务审阅专家'] })
-    resetSkillRaw('sk_309', { refNames: [] })
+  /* 引用变化回写技能的专家引用名（2026-09-23 待办 yuepu#10③；2026-11-10 起专家引用名单独存 expertRefNames，
+   * 技能 refNames 只放岗位名）。unifiedSkillMock 是模块级共享内存，跨用例不重置：各例显式 _reset 建立已知基线。 */
+  it('引用变化回写技能 expertRefNames：add / remove / 删专家 都同步，技能的岗位引用 refNames 不受影响', async () => {
+    resetSkillRaw('sk_304', { refNames: [], expertRefNames: ['经营分析专家', '法务审阅专家'] })
+    resetSkillRaw('sk_309', { refNames: [], expertRefNames: [] })
 
-    // add：sk_309 此前未被任何专家引用，引用后 refNames 追加专家名
-    expect(getRawSkill('sk_309').refNames).toEqual([])
+    // add：sk_309 此前未被任何专家引用，引用后 expertRefNames 追加专家名
     await addExpertSkill(203, 309)
-    expect(getRawSkill('sk_309').refNames).toEqual(['法务审阅专家'])
-
-    // 改名：sk_304 已引用 203（法务审阅专家），改名后 refNames 里同步换成新名
-    expect(getRawSkill('sk_304').refNames).toContain('法务审阅专家')
-    await updateExpert(203, { name: '法务审阅专家改名' })
-    expect(getRawSkill('sk_304').refNames).toContain('法务审阅专家改名')
-    expect(getRawSkill('sk_304').refNames).not.toContain('法务审阅专家')
-    expect(getRawSkill('sk_309').refNames).toEqual(['法务审阅专家改名'])
-
-    // remove：解除引用摘掉 refNames
-    await removeExpertSkill(203, 309)
+    expect(getRawSkill('sk_309').expertRefNames).toEqual(['法务审阅专家'])
     expect(getRawSkill('sk_309').refNames).toEqual([])
 
-    // 删专家：级联摘掉该专家在所有已引用技能上的 refNames（此前 bug：删专家 203 后 sk_304 引用清单仍列它）
+    // remove：解除引用摘掉 expertRefNames
+    await removeExpertSkill(203, 309)
+    expect(getRawSkill('sk_309').expertRefNames).toEqual([])
+
+    // 删专家：级联摘掉该专家在所有已引用技能上的专家引用名（此前 bug：删专家 203 后 sk_304 引用清单仍列它）
+    unbindExpertFromPosition(203, 401) // 被岗位引用的专家不能删（R13），先解除
+    unbindExpertFromPosition(203, 402)
     await deleteExpert(203)
-    expect(getRawSkill('sk_304').refNames).not.toContain('法务审阅专家改名')
+    expect(getRawSkill('sk_304').expertRefNames).toEqual(['经营分析专家'])
+    expect(getRawSkill('sk_304').refNames).toEqual([])
+  })
+
+  // 改名同步的前提：203 已引用 sk_304，且改名本身成功（与下一条拆开，各守一条规则）
+  it('改名前提：203 法务审阅专家引用 sk_304，改名成功后详情用新名', async () => {
+    resetSkillRaw('sk_304', { refNames: [], expertRefNames: ['经营分析专家', '法务审阅专家'] })
+    expect((await getExpert(203)).skillIds).toContain(304)
+    expect((await updateExpert(203, { name: '法务审阅专家改名' })).name).toBe('法务审阅专家改名')
+  })
+
+  // 2026-11-10 修复：updateExpert 改名时原先改的是技能的 refNames（岗位名组），改名后技能「引用情况 / 停用拦截」里还是旧专家名
+  it('专家改名后，所引用技能的 expertRefNames 换成新名、不再留旧名', async () => {
+    resetSkillRaw('sk_304', { refNames: [], expertRefNames: ['经营分析专家', '法务审阅专家'] })
+    await updateExpert(203, { name: '法务审阅专家改名' })
+    expect(getRawSkill('sk_304').expertRefNames).toEqual(['经营分析专家', '法务审阅专家改名'])
   })
 
   it('发布流：无技能拦发布；升级说明必填（md §二.3.1 L230，2026-09-18 待办 yuepu#13·专家 E4：此前数据层不拦）；提交发布进审核（语义化版本号）；撤回清 pending*', async () => {
     await updateExpert(203, { skillIds: [] })
-    await expect(publishExpert(203)).rejects.toMatchObject({ message: expect.stringContaining('至少引用 1 个市场技能') })
+    await expect(publishExpert(203)).rejects.toMatchObject({ message: '至少引用 1 个技能才能发布' })
     await updateExpert(203, { skillIds: [304] })
     await expect(publishExpert(203, { bump: 'NONE' })).rejects.toMatchObject({ message: expect.stringContaining('升级说明必填') })
     await expect(publishExpert(203, { bump: 'NONE', releaseNotes: '   ' })).rejects.toMatchObject({ message: expect.stringContaining('升级说明必填') })
@@ -341,7 +422,7 @@ describe('unpublishExpert({ forceRevoke }) —— 强制回收（停用勾选项
     expect(list.find((e) => e.id === 201).revoked).toEqual(detail.revoked)
     expect((await listExpertPublications(201)).length).toBe(2)
     expect((await getExpert(202)).revoked).toBeNull() // 未回收的行 revoked 为 null
-    expect((await getExpert(201)).skillIds).toEqual([302, 304]) // 专家自身对市场技能的引用不受影响
+    expect((await getExpert(201)).skillIds).toEqual([302, 304]) // 专家自身对技能的引用不受影响
 
     const rec = opsRecords.find((x) => x.action === '强制回收' && x.target === '经营分析专家')
     expect(rec).toMatchObject({ module: '专家', detail: '召唤链路异常', version: 'v2.3.0', live: true })
@@ -435,7 +516,7 @@ describe('unpublishExpert({ forceRevoke }) —— 强制回收（停用勾选项
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/专家/prd.专家.md §三.7（创建专家后列表可见）；写法照 unifiedSkillMock.test.js 同名块：
  * jsdom 下 globalThis.localStorage 为 undefined，注入内存版存储 + vi.resetModules + 动态 import 模拟刷新。
  * 本文件其余用例走顶部静态导入（导入时无存储 → 纯内存），不受本块影响。 */
-describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-demo-mock:domainExpert）', () => {
+describe('domainExpertMock · 持久化读回（mockPersist v10；key iworker-demo-mock:domainExpert）', () => {
   const KEY = 'iworker-demo-mock:domainExpert'
   const makeStorage = () => {
     const map = new Map()
@@ -457,10 +538,10 @@ describe('domainExpertMock · 持久化读回（mockPersist v8；key iworker-dem
     vi.resetModules()
   })
 
-  it('createExpert 落盘（v=8）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
+  it('createExpert 落盘（v=10）→ 重新 import 模块（模拟刷新）→ 列表与详情仍有新建专家', async () => {
     const first = await import('@/api/domainExpertMock')
     const created = await first.createExpert({ name: '读回验证专家', type: 'PLATFORM', category: '通用', avatar: '☆', intro: '读回', roleDesc: '你是读回专家', exampleQuestions: ['一', '二', '三'] })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(8)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(10)
     vi.resetModules()
     const fresh = await import('@/api/domainExpertMock')
     const { list } = await fresh.listExperts({ keyword: '读回验证专家' })

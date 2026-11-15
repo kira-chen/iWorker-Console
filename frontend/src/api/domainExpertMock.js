@@ -9,8 +9,10 @@
  * 专家 4 条 —— 经营分析专家 v2.3.0 已发布 / 企业知识助手 v1.6.0 已发布 /
  * 法务审阅专家 未发布无版本 / 研究报告专家 已发布 v1.1.0 + 新版审核中。
  *
- * 【市场技能候选】专家只引用「市场技能」（md §三.4：已发布的 type=PLATFORM 技能），候选不在本文件另存种子，
- * 实时读 unifiedSkillMock（名称 / 分类 / 状态与技能模块同源，见 marketSkillCandidates；待办 yuepu#10③、#19①）。
+ * 【技能候选】2026-11-10 起按专家类型给（见 skillCandidatesFor）：岗位私有专家可引用已发布的岗位私有 / 市场 / 通用技能，
+ * 市场专家、通用专家可引用已发布的市场 / 通用技能。候选不在本文件另存种子，实时读 unifiedSkillMock（待办 yuepu#10③、#19①）。
+ * 【所属岗位】R13 起由岗位侧「专家与专家团」页签引用维护（bindExpertToPosition / unbindExpertFromPosition），
+ * createExpert / updateExpert 不再接收 positionIds，专家编辑页只读展示。
  * 专家分类选项不在本文件重复定义——同源取 fieldDictMock 的 expertCategory（字段字典单一真相源）。
  *
  * 状态口径（与岗位 positionMock 同构，展示层三态映射在页面做）：
@@ -31,8 +33,8 @@ import { nextSnapshotKey, archiveSnapshot, findSnapshot } from './reviewSnapshot
 import { enrollReview, unenrollReview, publishActionOf, reviewActionMatches } from './reviewEnroll'
 // 2026-09-20 待办 yuepu#6②：专家类型 / 所属岗位落数据层（口径同连接器三件套 mcpConnectorMock 等）
 import { EXPERT_TYPE } from './expertTypes'
-// 2026-09-23 待办 yuepu#10③（专家→技能方向）：市场技能候选/已引用技能详情改实时读 unifiedSkillMock，
-// 不再是与技能模块脱钩的静态 SKILL_CANDIDATES；引用变化回写技能 refNames（口径同
+// 2026-09-23 待办 yuepu#10③（专家→技能方向）：技能候选/已引用技能详情改实时读 unifiedSkillMock，
+// 不再是与技能模块脱钩的静态 SKILL_CANDIDATES；引用变化回写技能 expertRefNames（口径同
 // positionMock.addSkillRefName/removeSkillRefNameIfUnused）。listSkillsSync 用同步导出——
 // 本文件 toDetail 会被 seedReviewSnapshots 在模块初始化阶段同步调用，用不了 async。
 // 2026-09-30 强制回收：回收原因校验 / 回收信息构造（共享底座）+ 落访问审计「管理端操作」
@@ -44,7 +46,7 @@ import { listSkillsSync, _getRaw as getRawSkill, _reset as resetSkillRaw } from 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const err = (message, field = null, code = 40000) => new ApiError({ code, message, field })
 
-let expertSeq = 205
+let expertSeq = 206
 
 /* ---------------- 背景色（2026-09-04 PRD-20260903 新增字段，原型 expert-background-color 覆写） ----------------
  * 固定 7 色板；safeBackground 归一化（非法/缺失一律回落默认 #DCF5E4——旧持久化快照无此字段时
@@ -54,45 +56,46 @@ export const EXPERT_BACKGROUND_FALLBACK = '#DCF5E4'
 const safeBackground = (v) =>
   /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toUpperCase() : EXPERT_BACKGROUND_FALLBACK
 
-/* ---------------- 专家 ↔ 知识库可见范围映射种子（2026-09-04） ----------------
- * 【注明】编辑抽屉只读「知识库」区块按「专家可见范围」过滤：企业级知识库全可见 +
- * EXPERT 型且 scopeRefId 命中本专家。但 knowledgeBaseMock 的专家 id 自成体系（ex_1/ex_2），
- * 与本模块 201-204 不同源——mock 数据不够，故在本侧做桥接映射种子（demo 演示用；
- * 真实后端应由知识库接口按专家过滤，接通后删除本映射）。 */
-const EXPERT_KB_SCOPE_SEED = { 201: 'ex_1', 202: 'ex_2' }
-export function getExpertKbScopeRefId(expertId) {
-  return EXPERT_KB_SCOPE_SEED[String(expertId)] || null
-}
-
-/* ---------------- 市场技能候选（md §三.4「专家仅引用已发布的市场技能」，2026-09-23 待办 yuepu#10③） ---------------- */
+/* ---------------- 技能候选（2026-11-10 起按专家类型给；2026-09-23 待办 yuepu#10③ 起实时读技能模块） ---------------- */
 // e.skillIds 历史上是数字（沿用旧 SKILL_CANDIDATES 的 id 口径）；unifiedSkillMock 真实 id 为
 // 'sk_302' 形式，两侧靠 sk_ 前缀换算——本模块新建技能 id 均为 sk_${数字}（idSeq 起 400），换算安全。
 const skillNumId = (rawId) => Number(String(rawId).replace(/^sk_/, ''))
 const skillRawId = (numId) => `sk_${numId}`
 
-/** 市场技能候选：已发布的市场技能（type=PLATFORM），实时读 unifiedSkillMock。 */
-function marketSkillCandidates() {
-  return listSkillsSync()
-    .filter((s) => s.type === 'PLATFORM' && s.status === 'published')
-    .map((s) => ({ id: skillNumId(s.id), name: s.name, description: s.description, category: s.displayCategoryName || '' }))
+/**
+ * 各专家类型可引用的技能类型。面向全员的市场专家、通用专家不引用岗位私有技能——否则等于把只给某些岗位用的技能开放给所有员工。
+ * 岗位私有专家能引用全部已发布的岗位私有技能，不限所属岗位引用的那些（岗位引用技能与专家引用技能是两套独立的引用关系）。
+ */
+const SKILL_TYPES_BY_EXPERT = {
+  [EXPERT_TYPE.POSITION]: ['POSITION', 'PLATFORM', 'SYSTEM_DEFAULT'],
+  [EXPERT_TYPE.PLATFORM]: ['PLATFORM', 'SYSTEM_DEFAULT'],
+  [EXPERT_TYPE.SYSTEM_DEFAULT]: ['PLATFORM', 'SYSTEM_DEFAULT']
 }
 
-/** 引用变化后把专家名同步进技能 refNames（unifiedSkillMock 单一真相，不复制本体）。 */
+/** 技能候选：该专家类型可引用的已发布技能，实时读 unifiedSkillMock。没给专家类型（新建还没选）返回空。 */
+function skillCandidatesFor(expertType) {
+  const allowed = SKILL_TYPES_BY_EXPERT[expertType] || []
+  return listSkillsSync()
+    .filter((s) => allowed.includes(s.type) && s.status === 'published')
+    .map((s) => ({ id: skillNumId(s.id), name: s.name, description: s.description, category: s.displayCategoryName || '', type: s.type }))
+}
+
+/** 引用变化后把专家名同步进技能 expertRefNames（unifiedSkillMock 单一真相，不复制本体）。 */
 function addSkillRefName(skillId, expertName) {
   const raw = getRawSkill(skillRawId(skillId))
-  if (raw && !(raw.refNames || []).includes(expertName)) {
-    resetSkillRaw(skillRawId(skillId), { refNames: [...(raw.refNames || []), expertName] })
+  if (raw && !(raw.expertRefNames || []).includes(expertName)) {
+    resetSkillRaw(skillRawId(skillId), { expertRefNames: [...(raw.expertRefNames || []), expertName] })
   }
 }
-/** 本专家已不再引用该技能时，把专家名从技能 refNames 摘掉。 */
+/** 本专家已不再引用该技能时，把专家名从技能 expertRefNames 摘掉。 */
 function removeSkillRefNameIfUnused(e, skillId, stillUsed) {
   if (stillUsed) return
   const raw = getRawSkill(skillRawId(skillId))
-  if (raw && (raw.refNames || []).includes(e.name)) {
-    resetSkillRaw(skillRawId(skillId), { refNames: raw.refNames.filter((n) => n !== e.name) })
+  if (raw && (raw.expertRefNames || []).includes(e.name)) {
+    resetSkillRaw(skillRawId(skillId), { expertRefNames: raw.expertRefNames.filter((n) => n !== e.name) })
   }
 }
-/** 整批同步：把 e.skillIds 从 from 改为 to，新增的补 refNames、去掉的摘 refNames。 */
+/** 整批同步：把 e.skillIds 从 from 改为 to，新增的补 expertRefNames、去掉的摘 expertRefNames。 */
 function syncSkillRefNames(e, fromIds, toIds) {
   const from = new Set((fromIds || []).map(Number))
   const to = new Set((toIds || []).map(Number))
@@ -133,7 +136,7 @@ function seedExperts() {
       category: '通用',
       roleDesc: '你负责准确回答企业知识问题，引用知识来源，并在信息不足时说明限制。',
       exampleQuestions: ['帮我查一下公司的差旅报销制度', '帮我解释这个业务流程', '帮我整理相关制度依据'],
-      skillIds: [302],
+      skillIds: [302, 303], // 303 会议纪要整理是通用技能（2026-11-10 起通用专家可引用市场 + 通用技能）
       status: 'published',
       pendingAction: null,
       latestVersionLabel: 'v1.6.0',
@@ -182,6 +185,27 @@ function seedExperts() {
       createdAt: '2026-08-18T14:05:00+08:00',
       updatedAt: '2026-08-24T09:18:00+08:00',
       publishedAt: '2026-08-22T17:20:00+08:00'
+    },
+    {
+      // 产品优化需求-202611 R13：岗位「专家与专家团」页签需要一个「已发布」的岗位私有专家样本
+      // （203 是草稿样本、不能改状态），绑定 401 经营分析岗，也是岗位私有团 304 的主理人
+      id: 205,
+      name: '经营数据核查专家',
+      intro: '核对经营数据口径，定位指标异常的来源',
+      avatar: '◇',
+      backgroundColor: '#DCECF7',
+      type: EXPERT_TYPE.POSITION,
+      positionIds: [401],
+      category: '审计',
+      roleDesc: '你负责核对经营数据的取数口径与计算过程，指出异常指标的来源，并说明需要业务确认的地方。',
+      exampleQuestions: ['帮我核对本月营收的取数口径', '这个毛利异常是哪里来的', '列出需要业务确认的数据问题'],
+      skillIds: [302, 301], // 301 日报周报生成是岗位私有技能（2026-11-10 起岗位私有专家可引用岗位私有技能）
+      status: 'published',
+      pendingAction: null,
+      latestVersionLabel: 'v1.0.0',
+      createdAt: '2026-09-15T10:00:00+08:00',
+      updatedAt: '2026-09-18T16:20:00+08:00',
+      publishedAt: '2026-09-18T16:20:00+08:00'
     }
   ]
 }
@@ -202,6 +226,9 @@ function seedPublications() {
     204: [
       { id: 841, version: 2, versionLabel: 'v1.1.0', status: 'ACTIVE', sizeBytes: 8602, publishedBy: '管理员', publishedAt: '2026-08-22T17:20:00+08:00', delistedAt: null, releaseNotes: '当前线上版本' },
       { id: 840, version: 1, versionLabel: 'v1.0.0', status: 'DELISTED', sizeBytes: 8294, publishedBy: '管理员', publishedAt: '2026-08-18T15:00:00+08:00', delistedAt: '2026-08-22T17:20:00+08:00', releaseNotes: '首个版本' }
+    ],
+    205: [
+      { id: 851, version: 1, versionLabel: 'v1.0.0', status: 'ACTIVE', sizeBytes: 6120, publishedBy: '管理员', publishedAt: '2026-09-18T16:20:00+08:00', delistedAt: null, releaseNotes: '首个版本' }
     ]
   }
 }
@@ -228,7 +255,9 @@ const persist = attachPersist('domainExpert', {
   // v5：所属岗位由单选 positionId 改为多选 positionIds（一个专家可绑定多个岗位），旧快照丢弃重播种子。
   // v7（2026-10-12）：行新增 pendingRevokeReason（停用时勾选强制回收的在审原因），旧快照丢弃重播种子。
   // v8（2026-10-19 待办 yuepu#76）：新增 snapshotArchive（审核快照历史归档）与快照 key，旧快照丢弃重播种子。
-  version: 8,
+  // v9（2026-11-09 产品优化需求-202611 R13）：新增已发布的岗位私有专家种子 205（绑定 401），旧快照丢弃重播种子。
+  // v10（2026-11-10 专家按类型引用技能）：202 补引通用技能 303、205 补引岗位私有技能 301，旧快照丢弃重播种子。
+  version: 10,
   snapshot: () => ({ expertSeq, experts, publications, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.expertSeq) || !Array.isArray(d.experts) || typeof d.publications !== 'object' || d.publications === null) {
@@ -269,14 +298,14 @@ function assertExpertQuestions(qs) {
 }
 
 /**
- * 整批 skillIds 须在候选内（已发布的市场技能；待办 yuepu#57⑤）：此前只有 addExpertSkill 逐个校验，整批写入可塞入未发布 / 不存在的技能。
- * keep = 该专家当前已引用的 id——存量引用即使技能后来被停用 / 强制回收也保留（md 专家 §3.5.1「专家自身对市场技能的引用不受影响」），
+ * 整批 skillIds 须在该专家类型的候选内（待办 yuepu#57⑤）：此前只有 addExpertSkill 逐个校验，整批写入可塞入未发布 / 不存在的技能。
+ * keep = 该专家当前已引用的 id——存量引用即使技能后来被停用 / 强制回收也保留（md 专家 §3.5.1「专家自身对技能的引用不受影响」），
  * 不因保存其它字段而被拒；只有「新增」的引用必须在候选内。
  */
-function assertSkillIdsInCandidates(skillIds, keep = []) {
-  const ok = new Set([...marketSkillCandidates().map((c) => String(c.id)), ...keep.map(String)])
+function assertSkillIdsInCandidates(skillIds, expertType, keep = []) {
+  const ok = new Set([...skillCandidatesFor(expertType).map((c) => String(c.id)), ...keep.map(String)])
   const bad = skillIds.filter((id) => !ok.has(String(id)))
-  if (bad.length) throw err('只能引用已发布的市场技能，请刷新候选后重试', 'skillIds')
+  if (bad.length) throw err('只能引用本专家类型可引用的已发布技能，请刷新候选后重试', 'skillIds')
 }
 
 /** 所属岗位 id 列表归一：非数组当空、去掉空值、去重（多选下拉理论上不会重复，兜底防脏数据）。 */
@@ -290,8 +319,8 @@ function toRow(e) {
     intro: e.intro,
     avatar: e.avatar,
     backgroundColor: safeBackground(e.backgroundColor), // 读路径归一化（旧快照无此字段 → 默认色）
-    // 专家类型 / 所属岗位：类型创建后不可改；所属岗位仅岗位私有有值，可多选（一个专家可绑定多个岗位），
-    // 编辑时可增减。列表「引用情况」按 type 分支——岗位私有显 positionCount（绑定的岗位数，未绑 0）、
+    // 专家类型 / 所属岗位：类型创建后不可改；所属岗位仅岗位私有有值，可多个（一个专家可被多个岗位引用），
+    // 由岗位侧引用维护（R13），专家编辑页只读。列表「引用情况」按 type 分支——岗位私有显 positionCount（引用它的岗位数，未被引用 0）、
     // 市场专家显 skillCount、通用专家显「—」
     type: e.type || EXPERT_TYPE.PLATFORM,
     positionIds: e.type === EXPERT_TYPE.POSITION ? normPositionIds(e.positionIds) : [],
@@ -324,7 +353,7 @@ function toDetail(e) {
     skills: e.skillIds
       .map((id) => getRawSkill(skillRawId(id)))
       .filter(Boolean)
-      .map((s) => ({ skillId: skillNumId(s.id), name: s.name, description: s.description, category: s.category || '' }))
+      .map((s) => ({ skillId: skillNumId(s.id), name: s.name, description: s.description, category: s.category || '', type: s.type }))
   }
 }
 
@@ -363,7 +392,7 @@ export async function getExpert(id) {
   return toDetail(e)
 }
 
-// 新建（payload: { name, type, positionIds[], category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
+// 新建（payload: { name, type, category, avatar, intro, roleDesc, exampleQuestions[3], skillIds[] }）。初始 draft。
 export async function createExpert(payload = {}) {
   await delay()
   const name = String(payload.name || '').trim()
@@ -371,18 +400,19 @@ export async function createExpert(payload = {}) {
   if (name.length > 64) throw err('专家名最多 64 个字符', 'name')
   if (experts.some((e) => e.name === name)) throw err('专家名已存在', 'name', 1005)
   // 专家类型（md 专家 §三 L167 必选，由表单把关；mock 与连接器三件套同口径——缺省回落市场专家，
-  // 传了非法值才按字段级报错）。所属岗位（多选）仅岗位私有时落值，按 PRD 字面允许先不绑（4229ae6 拍板）。
-  // 类型创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰；所属岗位可在编辑时增减（见 updateExpert）。
+  // 传了非法值才按字段级报错）。类型创建后不可更改，只在这里从 payload 落一次，updateExpert 不碰。
+  // 所属岗位：产品优化需求-202611 R13 起新建时不再选岗位，payload.positionIds 带了也忽略——
+  // 发布后到岗位详情「专家与专家团」页签引用（bindExpertToPosition）。
   const type = payload.type ? String(payload.type) : EXPERT_TYPE.PLATFORM
   if (!Object.values(EXPERT_TYPE).includes(type)) throw err('请选择专家类型', 'type')
   if (payload.exampleQuestions !== undefined) assertExpertQuestions(payload.exampleQuestions)
-  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds)
+  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds, type)
   const now = nowIso()
   const e = {
     id: expertSeq++,
     name,
     type,
-    positionIds: type === EXPERT_TYPE.POSITION ? normPositionIds(payload.positionIds) : [],
+    positionIds: [],
     intro: String(payload.intro || '').trim(),
     avatar: String(payload.avatar || '').trim(),
     backgroundColor: safeBackground(payload.backgroundColor),
@@ -399,31 +429,31 @@ export async function createExpert(payload = {}) {
   }
   experts.unshift(e)
   publications[e.id] = []
-  e.skillIds.forEach((id) => addSkillRefName(id, e.name)) // 新建即带勾选时同步技能 refNames（yuepu#10③）
+  e.skillIds.forEach((id) => addSkillRefName(id, e.name)) // 新建即带勾选时同步技能 expertRefNames（yuepu#10③）
   persist()
   return toDetail(e)
 }
 
-// 编辑（部分更新：只传的字段才改；type 创建后不可改，payload 里带了也忽略；positionIds 仅岗位私有专家可增减，
-// 其它类型带了也忽略）。审核中锁定（审核对象=提交那刻的快照）。
+// 编辑（部分更新：只传的字段才改；type 创建后不可改，payload 里带了也忽略；positionIds 由岗位侧维护
+// （R13），payload 里带了也忽略）。审核中锁定（审核对象=提交那刻的快照）。
 export async function updateExpert(id, payload = {}) {
   await delay()
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('审核中，专家已锁定不可修改', null, 409)
   if (payload.exampleQuestions !== undefined) assertExpertQuestions(payload.exampleQuestions)
-  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds, e.skillIds)
+  if (Array.isArray(payload.skillIds)) assertSkillIdsInCandidates(payload.skillIds, e.type, e.skillIds)
   if (payload.name !== undefined) {
     const name = String(payload.name || '').trim()
     if (!name) throw err('请填写专家名', 'name')
     if (experts.some((x) => x !== e && x.name === name)) throw err('专家名已存在', 'name', 1005)
-    // 改名同步：已引用技能的 refNames 里把旧名换成新名（2026-09-23 待办 yuepu#10③，
-    // 口径同 positionMock 改岗位名时对 refNames 的同步）
+    // 改名同步：已引用技能的 expertRefNames 里把旧名换成新名（2026-09-23 待办 yuepu#10③，
+    // 口径同 positionMock 改岗位名时对 refNames 的同步；2026-11-10 起专家引用名单独存 expertRefNames）
     if (name !== e.name) {
       e.skillIds.forEach((id) => {
         const raw = getRawSkill(skillRawId(id))
-        if (raw && (raw.refNames || []).includes(e.name)) {
-          resetSkillRaw(skillRawId(id), { refNames: raw.refNames.map((n) => (n === e.name ? name : n)) })
+        if (raw && (raw.expertRefNames || []).includes(e.name)) {
+          resetSkillRaw(skillRawId(id), { expertRefNames: raw.expertRefNames.map((n) => (n === e.name ? name : n)) })
         }
       })
       e.name = name
@@ -433,12 +463,11 @@ export async function updateExpert(id, payload = {}) {
   if (payload.avatar !== undefined) e.avatar = String(payload.avatar || '').trim()
   if (payload.backgroundColor !== undefined) e.backgroundColor = safeBackground(payload.backgroundColor)
   if (payload.category !== undefined) e.category = String(payload.category || '').trim()
-  if (payload.positionIds !== undefined && e.type === EXPERT_TYPE.POSITION) e.positionIds = normPositionIds(payload.positionIds)
   if (payload.roleDesc !== undefined) e.roleDesc = String(payload.roleDesc || '')
   if (payload.exampleQuestions !== undefined) e.exampleQuestions = normQuestions(payload.exampleQuestions)
   if (payload.skillIds !== undefined) {
     const nextIds = Array.isArray(payload.skillIds) ? [...payload.skillIds] : []
-    syncSkillRefNames(e, e.skillIds, nextIds) // 整批增删同步技能 refNames（yuepu#10③）
+    syncSkillRefNames(e, e.skillIds, nextIds) // 整批增删同步技能 expertRefNames（yuepu#10③）
     e.skillIds = nextIds
   }
   e.updatedAt = nowIso()
@@ -472,10 +501,20 @@ export async function deleteExpert(id) {
   const { listTeamsReferencingExpert } = await import('./expertTeamMock')
   const refTeams = listTeamsReferencingExpert(e.id)
   if (refTeams.length) throw err(`该专家被 ${refTeams.length} 个专家团引用（${refTeams.map((t) => t.name).join('、')}），需先从团中移除后再删除`, null, 409)
+  // 被岗位引用时拦截（产品优化需求-202611 R13 §5，与技能被引用时同口径）；动态 import 同上，避免与 positionMock 成环
+  const boundIds = normPositionIds(e.positionIds)
+  if (boundIds.length) {
+    const { getPositionNameById } = await import('./positionMock')
+    const names = boundIds.map((pid) => getPositionNameById(pid) || `岗位 #${pid}`)
+    throw err(`该专家被 ${names.length} 个岗位引用（${names.join('、')}），需先从岗位中移除后再删除`, null, 409)
+  }
   const removed = e.skillIds.length
-  // 删专家级联：把本专家名从所引用技能的 refNames 摘掉，避免删专家后 sk_304 之类的引用清单
+  // 删专家级联：把本专家名从所引用技能的 expertRefNames 摘掉，避免删专家后 sk_304 之类的引用清单
   // 仍显示该专家（2026-09-23 待办 yuepu#10③）
   e.skillIds.forEach((id) => removeSkillRefNameIfUnused(e, id, false))
+  // 从专家知识库的可见范围里摘掉本专家（R3：删除后从所有知识库的可见范围中移除）；动态 import 避免与 knowledgeBaseMock 成环
+  const { clearExpertScope } = await import('./knowledgeBaseMock')
+  clearExpertScope(e.id)
   experts = experts.filter((x) => x !== e)
   appendOpsRecord({ operator: currentDemoUsername(), module: '专家', action: '删除', target: e.name, version: e.latestVersionLabel })
   delete publications[e.id]
@@ -483,23 +522,23 @@ export async function deleteExpert(id) {
   return removed
 }
 
-/* ============================ 市场技能候选 / 引用 ============================ */
+/* ============================ 技能候选 / 引用 ============================ */
 
-// 市场技能候选（编辑抽屉内嵌选择器）。params: { keyword?（按名称/描述/分类过滤） }
+// 技能候选（编辑抽屉内嵌选择器）。params: { expertType（必给，按它定候选范围）, keyword?（按名称/描述/分类过滤） }
 export async function listExpertSkillCandidates(params = {}) {
   await delay(120)
   const kw = String(params.keyword || '').trim().toLowerCase()
-  return marketSkillCandidates().filter(
+  return skillCandidatesFor(params.expertType).filter(
     (s) => !kw || [s.name, s.description, s.category].some((v) => String(v).toLowerCase().includes(kw))
   )
 }
 
-// 引用一个市场技能（幂等）。返回更新后的详情。
+// 引用一个技能（幂等；须在该专家类型的候选内）。返回更新后的详情。
 export async function addExpertSkill(id, skillId) {
   await delay()
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
-  if (!marketSkillCandidates().some((s) => String(s.id) === String(skillId))) throw err('市场技能不存在', null, 404)
+  if (!skillCandidatesFor(e.type).some((s) => String(s.id) === String(skillId))) throw err('技能不存在或不在本专家可引用的范围内', null, 404)
   if (!e.skillIds.some((x) => String(x) === String(skillId))) {
     e.skillIds.push(Number(skillId))
     addSkillRefName(skillId, e.name)
@@ -589,7 +628,7 @@ export async function publishExpert(id, payload = {}) {
   const e = findExpert(id)
   if (!e) throw err('专家不存在', null, 404)
   if (e.pendingAction) throw err('该专家已有在途审核，请先撤回')
-  if (!e.skillIds.length) throw err('至少引用 1 个市场技能才能发布')
+  if (!e.skillIds.length) throw err('至少引用 1 个技能才能发布')
   // md §二.3.1 L230「升级说明：必填」；此前只在 VersionDrawer.vue 前端拦，数据层不拦
   // （2026-09-18 待办 yuepu#13·专家 E4，口径同 unifiedSkillMock.publishSkill）
   if (!String(payload.releaseNotes || '').trim()) throw err('升级说明必填，简述本次更新项', 'releaseNotes')
@@ -787,6 +826,29 @@ export function listExpertsBoundToPosition(positionId) {
 }
 
 /**
+ * 岗位「专家与专家团」页签（产品优化需求-202611 R13）：岗位侧引用 / 解除岗位私有专家。
+ * 改的就是专家的 positionIds——同一份绑定关系只存一处，专家编辑页的「所属岗位」改为只读展示。
+ * 候选口径（已发布、未回收、不在审核中）由 positionMock 把关，这里只做类型兜底。
+ */
+export function bindExpertToPosition(expertId, positionId) {
+  const e = findExpert(expertId)
+  if (!e) throw err('专家不存在或已被删除', null, 404)
+  if (e.type !== EXPERT_TYPE.POSITION) throw err('岗位只能引用岗位私有专家')
+  const ids = normPositionIds(e.positionIds)
+  if (ids.some((id) => String(id) === String(positionId))) return toRow(e)
+  e.positionIds = [...ids, Number(positionId)]
+  persist()
+  return toRow(e)
+}
+
+export function unbindExpertFromPosition(expertId, positionId) {
+  const e = findExpert(expertId)
+  if (!e) return
+  e.positionIds = normPositionIds(e.positionIds).filter((id) => String(id) !== String(positionId))
+  persist()
+}
+
+/**
  * 岗位被删后把它从岗位私有专家的 positionIds 摘掉（2026-09-23 待办 yuepu#23⑤，positionMock.deletePosition 调用）：
  * 否则专家列表「N 个岗位引用」虚高，引用的还是已不存在的岗位。专家本体不删，摘空后即「暂无引用」。
  */
@@ -802,7 +864,7 @@ export function removePositionFromExperts(positionId) {
 
 /** 测试辅助：重置种子（vitest 模块级单例，跨用例复位）。 */
 export function __resetExpertMock() {
-  expertSeq = 205
+  expertSeq = 206
   experts = seedExperts()
   publications = seedPublications()
   // 审核快照表一并回种子（2026-09-12 测试审计 T23）：此前不清，前一用例提交/撤回留下的快照会跨用例残留

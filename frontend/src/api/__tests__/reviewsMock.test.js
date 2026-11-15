@@ -217,6 +217,10 @@ describe('reviewsMock · 审核结论联动业务对象与我的申请（J12）'
   it('通过 POSITION 新版本发布行 → 岗位已发布、latestVersion 推进到在审号、新版本唯一启用（md `prd.岗位.md` §3.3 L78/§八 L117）', async () => {
     const posMock = await import('../positionMock')
     posMock.__resetPositionMock()
+    // 种子 401 引用了未发布的「法务审阅专家」(203) 与「岗位协同团」(303)（存量数据样例），发布前检查会阻断
+    // （产品优化需求-202611 修改点 2）；本用例测的是审核联动，不是引用校验，先解除这两个引用
+    ;(await import('../domainExpertMock')).unbindExpertFromPosition(203, 401)
+    ;(await import('../expertTeamMock')).unbindTeamFromPosition(303, 401)
     await posMock.publishPosition(401, { bump: 'MINOR', releaseNotes: '联动验证' })
     const row = enroll({ type: 'POSITION', refId: 401, name: '经营分析岗', requestAction: 'VERSION_PUBLISH', version: 'v2.2.0' })
 
