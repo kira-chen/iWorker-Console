@@ -30,11 +30,6 @@ export function fmtChange(v, unit = '%') {
   return `${v > 0 ? '↑' : '↓'} ${Math.abs(v)}${unit}`
 }
 
-/** 首响耗时「P50 / P95」，如 "1.2s / 4.8s"。 */
-export function fmtLatency(p50, p95) {
-  return p50 == null ? '—' : `${p50.toFixed(1)}s / ${p95.toFixed(1)}s`
-}
-
 /** 趋势图纵轴取整上界：向上取到 1 / 2 / 5 × 10^n，保证网格线刻度好读。 */
 export function niceMax(max) {
   if (!(max > 0)) return 1

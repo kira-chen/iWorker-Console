@@ -62,14 +62,14 @@ export const POSITION_NAMES = POSITIONS.map((p) => p.name)
 const FAIL_REASONS = ['超时', '上游限流', '鉴权失败', '额度不足', '响应格式异常']
 
 // share：被选为会话主模型的权重；failRate：单次调用失败概率；dislikeP：有反馈时给点踩的基础概率；
-// p50 / p95：首响耗时（秒）；reasons：失败原因权重（与 FAIL_REASONS 同序）
+// reasons：失败原因权重（与 FAIL_REASONS 同序）
 const MODELS = [
-  { name: 'DeepSeek V3', category: '文本生成', isDefault: true, share: 0.4, failRate: 0.028, dislikeP: 0.1, p50: 1.1, p95: 3.6, reasons: [5, 3, 0, 0, 1] },
-  { name: 'Qwen3-Max', category: '文本生成', isDefault: false, share: 0.22, failRate: 0.035, dislikeP: 0.09, p50: 1.4, p95: 4.2, reasons: [4, 4, 0, 1, 0] },
-  { name: 'GLM-4.6', category: '文本生成', isDefault: false, share: 0.14, failRate: 0.046, dislikeP: 0.13, p50: 1.3, p95: 4.8, reasons: [6, 2, 1, 0, 1] },
-  { name: 'Kimi K2', category: '文本生成', isDefault: false, share: 0.12, failRate: 0.072, dislikeP: 0.15, p50: 1.8, p95: 6.1, reasons: [3, 6, 0, 2, 0] },
-  { name: 'Qwen3-VL', category: '图像理解', isDefault: false, share: 0.07, failRate: 0.115, dislikeP: 0.21, p50: 2.6, p95: 9.4, reasons: [7, 1, 0, 0, 4] },
-  { name: 'MiniMax-M2', category: '多模态', isDefault: false, share: 0.05, failRate: 0.058, dislikeP: 0.16, p50: 1.9, p95: 5.7, reasons: [3, 2, 0, 3, 2] }
+  { name: 'DeepSeek V3', category: '文本生成', isDefault: true, share: 0.4, failRate: 0.028, dislikeP: 0.1, reasons: [5, 3, 0, 0, 1] },
+  { name: 'Qwen3-Max', category: '文本生成', isDefault: false, share: 0.22, failRate: 0.035, dislikeP: 0.09, reasons: [4, 4, 0, 1, 0] },
+  { name: 'GLM-4.6', category: '文本生成', isDefault: false, share: 0.14, failRate: 0.046, dislikeP: 0.13, reasons: [6, 2, 1, 0, 1] },
+  { name: 'Kimi K2', category: '文本生成', isDefault: false, share: 0.12, failRate: 0.072, dislikeP: 0.15, reasons: [3, 6, 0, 2, 0] },
+  { name: 'Qwen3-VL', category: '图像理解', isDefault: false, share: 0.07, failRate: 0.115, dislikeP: 0.21, reasons: [7, 1, 0, 0, 4] },
+  { name: 'MiniMax-M2', category: '多模态', isDefault: false, share: 0.05, failRate: 0.058, dislikeP: 0.16, reasons: [3, 2, 0, 3, 2] }
 ]
 
 // share：被会话调用的权重；ok：单次调用成功概率。share 为 0 = 已发布但没人用（演示「零使用」）；
@@ -331,7 +331,6 @@ function aggregate(filter) {
   const modelRows = MODELS.map((m, mi) => {
     const b = perModel[mi]
     const topIdx = b.reasons.reduce((best, c, i) => (c > b.reasons[best] ? i : best), 0)
-    const jitter = 1 + (((mi * 7 + range) % 5) - 2) * 0.02
     return {
       name: m.name,
       category: m.category,
@@ -342,8 +341,6 @@ function aggregate(filter) {
       activeUsers: b.users.size,
       failRate: b.calls ? round1((b.fails / b.calls) * 100) : null,
       topReason: b.fails ? { label: FAIL_REASONS[topIdx], pct: Math.round((b.reasons[topIdx] / b.fails) * 100) } : null,
-      p50: round1(m.p50 * jitter),
-      p95: round1(m.p95 * jitter),
       likes: b.likes,
       dislikes: b.dislikes,
       dislikeRate: rateOf(b.likes, b.dislikes)

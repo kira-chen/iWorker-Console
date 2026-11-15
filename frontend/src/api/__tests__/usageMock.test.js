@@ -146,7 +146,6 @@ describe('usageMock · 按模型 / 按能力（PRD §七.4 / §七.5）', () => 
       expect(Number.isInteger(m.topReason.pct)).toBe(true)
       expect(m.topReason.pct).toBeGreaterThan(0)
       expect(m.topReason.pct).toBeLessThanOrEqual(100)
-      expect(m.p95).toBeGreaterThan(m.p50) // 首响 P95 一定不低于 P50
     }
   })
 

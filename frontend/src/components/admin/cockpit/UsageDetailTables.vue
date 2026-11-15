@@ -8,6 +8,7 @@
  *
  * 2026-11-10：四个维度的工具栏都有名称搜索（原只有按用户有）。
  * 2026-11-11：删掉「点赞」列，与点踩统计一致不展示点赞（点赞数只参与点踩率计算）。
+ * 2026-11-15：按模型删掉「首响 P50 / P95」列。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
@@ -17,7 +18,7 @@ import { useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { terminalLabel } from '@/utils/versionMeta'
-import { fmtCount, fmtLatency, fmtPct, fmtTokens } from '@/utils/usageFormat'
+import { fmtCount, fmtPct, fmtTokens } from '@/utils/usageFormat'
 
 const props = defineProps({
   data: { type: Object, required: true }
@@ -66,7 +67,6 @@ const COLS = {
     { key: 'activeUsers', label: '活跃用户', num: true, sort: true, w: 84 },
     { key: 'failRate', label: '失败率', num: true, sort: true, w: 72 },
     { key: 'topReason', label: '失败原因 Top', w: 112 },
-    { key: 'p50', label: '首响 P50 / P95', num: true, sort: true, w: 124 },
     ...FEEDBACK_COLS,
     { key: 'op', label: '操作', w: 64 }
   ],
@@ -267,7 +267,6 @@ function viewModel(row) {
               <td class="dash-num">{{ r.activeUsers }}</td>
               <td class="dash-num" :class="failClass(r.failRate)">{{ fmtPct(r.failRate) }}</td>
               <td>{{ r.topReason ? `${r.topReason.label} ${r.topReason.pct}%` : '—' }}</td>
-              <td class="dash-num">{{ fmtLatency(r.p50, r.p95) }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
               <td><button class="mini-btn" @click="viewModel(r)">查看</button></td>

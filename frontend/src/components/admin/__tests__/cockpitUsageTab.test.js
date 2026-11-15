@@ -446,10 +446,10 @@ describe('CockpitUsageTab · 使用明细 · 按岗位（PRD §七.3，取代岗
 })
 
 describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => {
-  it('列含失败原因 Top、首响 P50 / P95、点踩 / 点踩率与操作', async () => {
+  it('列含失败原因 Top、点踩 / 点踩率与操作，不再有「首响 P50 / P95」（2026-11-15 删）', async () => {
     await mount()
     await pickDim('按模型')
-    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '首响 P50 / P95', '点踩', '点踩率', '操作'])
+    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '点踩', '点踩率', '操作'])
     expect(rowsOf()).toHaveLength(6)
   })
 
@@ -465,7 +465,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
     expect(textOf(tags[0].closest('td'))).toContain('文本生成')
   })
 
-  it('失败率高于 5% 用警告色、高于 10% 用危险色；失败原因 Top 写成「原因 占比%」；首响耗时「1.1s / 3.5s」格式', async () => {
+  it('失败率高于 5% 用警告色、高于 10% 用危险色；失败原因 Top 写成「原因 占比%」', async () => {
     await mount()
     const r = await mockSummary({ range: 30 })
     await pickDim('按模型')
@@ -479,7 +479,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
     const ds = r.models.find((m) => m.name === 'DeepSeek V3')
     expect(rowOf('DeepSeek V3').children[5].className).not.toMatch(/is-warn|is-danger/)
     expect(textOf(rowOf('DeepSeek V3').children[6])).toBe(`${ds.topReason.label} ${ds.topReason.pct}%`)
-    expect(textOf(rowOf('DeepSeek V3').children[7])).toBe(`${ds.p50.toFixed(1)}s / ${ds.p95.toFixed(1)}s`)
+    expect(detail().textContent).not.toMatch(/\d\.\ds \/ \d\.\ds/) // 首响耗时不再展示
   })
 
   it('搜索模型名称，不区分大小写：输入「kimi」只剩 Kimi K2', async () => {
