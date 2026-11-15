@@ -6,13 +6,15 @@
  * 2026-11-02：原驾驶舱「用户端点踩统计」整块迁入本组件。
  * 2026-11-10：保留原来的两格点踩统计，不展示点赞（维持 2026-09-17 裁决）；点赞数只参与点踩率计算。
  * 两格数字随页签筛选条取数，趋势按「较上一周期」比较（原概览版是写死的「本月 vs 上月」）。
- * 点踩明细弹窗里的 52 条样例记录是静态样例，不随页签筛选条变化（PRD 第八节）。
+ * 点踩明细弹窗里的 52 条样例记录是静态样例，不随页签筛选条变化（PRD 第八节），数据在 api/dislikeSampleMock.js。
+ * 产品优化需求-202611 修改点 20：对话明细里被点踩的回复下方展示它生成的文件，可预览、下载；点踩明细表格加「生成文件」列。
  *
  * @prop {{likes:number,dislikes:number,rate:number|null,prevRate:number|null}} feedback 当前筛选范围的反馈汇总
  * @prop {number} range 页签顶部的时间范围（7 / 30 / 90），点踩明细弹窗的时间范围下拉打开时跟随它
  */
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElImageViewer } from 'element-plus'
+import { listDislikeSamples, getDislikeConversation } from '@/api/usage'
 import { fmtCount, fmtPct } from '@/utils/usageFormat'
 
 const props = defineProps({
@@ -28,36 +30,11 @@ const trend = computed(() => {
 })
 
 /* ---------- 点踩明细 / 对话明细（原型 openDlModal / openConvModal 复刻） ---------- */
-const DL_POS = ['销售顾问', '经营分析师', '项目经理助手', '产品经理助手', '公文写作', '生产计划员']
-const DL_USERS = ['张**', '李**', '王**', '陈**', '刘**', '杨**', '赵**', '黄**']
-const DL_SNIPPETS = [
-  '请帮我分析这份销售数据并给出建议', '需要生成一份项目汇报周报模板', '帮我起草客户拜访前的确认邮件',
-  '分析本季度产线排班优化方案', '帮我整理这份会议纪要并提炼要点', '生成合同摘要并标注主要风险条款',
-  '我需要最新的产品报价单及折扣规则', '帮我分析竞品的市场定价策略', '请生成本月的经营分析报告摘要',
-  '帮我优化这段公文的措辞和格式'
-]
-const DL_TIMES = [
-  '2026-09-15 14:32', '2026-09-15 11:18', '2026-09-14 16:47', '2026-09-14 09:23', '2026-09-13 18:05',
-  '2026-09-13 14:33', '2026-09-12 20:11', '2026-09-12 15:44', '2026-09-11 10:22', '2026-09-11 08:57',
-  '2026-09-10 17:36', '2026-09-10 11:09', '2026-09-09 19:48', '2026-09-09 14:21', '2026-09-08 16:33',
-  '2026-09-08 10:54', '2026-09-07 18:22', '2026-09-07 13:41', '2026-09-06 15:19', '2026-09-06 09:37',
-  '2026-09-05 20:44', '2026-09-05 16:08', '2026-09-04 17:55', '2026-09-04 12:30', '2026-09-03 19:14',
-  '2026-09-03 08:46', '2026-09-02 21:03', '2026-09-02 14:17', '2026-09-01 16:29', '2026-09-01 10:52',
-  '2026-08-31 18:37', '2026-08-31 13:05', '2026-08-30 20:18', '2026-08-30 11:43', '2026-08-29 17:02',
-  '2026-08-29 09:28', '2026-08-28 19:51', '2026-08-28 14:16', '2026-08-27 16:44', '2026-08-27 10:09',
-  '2026-08-26 18:27', '2026-08-26 13:53', '2026-08-25 20:06', '2026-08-25 11:35', '2026-08-24 17:49',
-  '2026-08-24 09:14', '2026-08-23 18:33', '2026-08-23 14:07', '2026-08-22 16:21', '2026-08-22 10:48',
-  '2026-08-21 19:03', '2026-08-21 13:29'
-]
-// 样例记录（原型口径：52 条抽样明细，代表点踩总量的样例子集，非逐条落库）
-// 点踩数据按用户维度采集，不区分云端 / 客户端本地；每条记录只含被点踩的单轮（用户提问 + 被点踩回复）
-const allDlRecords = DL_TIMES.map((t, i) => ({
-  id: 'D-' + (1031 - i),
-  time: t,
-  position: DL_POS[i % DL_POS.length],
-  user: DL_USERS[i % DL_USERS.length],
-  snippet: DL_SNIPPETS[i % DL_SNIPPETS.length]
-}))
+// 样例记录：52 条抽样明细，数据在 api/dislikeSampleMock.js（经 api/usage.js 取）。
+// 点踩数据按用户维度采集，不区分云端 / 客户端本地；每条记录只含被点踩的单轮（用户提问 + 被点踩回复），
+// 被点踩回复里生成的文件随这一轮留存，可预览、下载（产品优化需求-202611 修改点 20）
+const allDlRecords = ref([])
+const dlLoading = ref(false)
 
 const dlVisible = ref(false)
 // 原型口径：时间范围仅展示，不参与实际过滤。
@@ -66,69 +43,76 @@ const dlFilterDate = ref('30')
 const dlPage = ref(1)
 const DL_PAGE_SIZE = 10
 
-const dlTotalPages = computed(() => Math.max(1, Math.ceil(allDlRecords.length / DL_PAGE_SIZE)))
+const dlTotalPages = computed(() => Math.max(1, Math.ceil(allDlRecords.value.length / DL_PAGE_SIZE)))
 const dlPageClamped = computed(() => Math.min(dlPage.value, dlTotalPages.value))
 const dlSlice = computed(() => {
   const p = dlPageClamped.value
-  return allDlRecords.slice((p - 1) * DL_PAGE_SIZE, p * DL_PAGE_SIZE)
+  return allDlRecords.value.slice((p - 1) * DL_PAGE_SIZE, p * DL_PAGE_SIZE)
 })
 
-function openDislikeModal() {
+async function openDislikeModal() {
   dlPage.value = 1
   dlFilterDate.value = String(props.range) // 弹窗时间范围跟随页签顶部的时间范围（PRD 第八节第 1 条）
   dlVisible.value = true
+  if (allDlRecords.value.length) return // 样例集不随筛选变化，取过一次即可
+  dlLoading.value = true
+  try {
+    allDlRecords.value = (await listDislikeSamples()).list
+  } catch (e) {
+    ElMessage.error(e?.message || '点踩明细加载失败，请稍后重试')
+  } finally {
+    dlLoading.value = false
+  }
 }
 function exportDlCsv() {
   ElMessage({ message: '已生成点踩明细 CSV，正在下载…', plain: true })
 }
 
-const ASST_REPLIES = [
-  '根据您的需求，我进行了初步分析，主要发现如下：① 核心指标同比有所变化，建议重点关注转化率和客单价；② 当前数据缺少部分维度，建议补充采集后再做深度分析。',
-  '已为您生成所需模板，包含标准章节结构和填写说明。请注意第三部分的格式要求，并根据实际情况修改后使用。',
-  '已起草完成，核心内容包含三个部分：背景说明、主要诉求和后续行动建议。建议在发送前确认联系人信息和时间节点是否准确。',
-  '根据现有数据，优化方案涉及以下几点：① 调整班次结构，② 优化设备利用率，③ 引入弹性排班机制。预计可提升效率约 12%~18%，具体效果需结合实际验证。',
-  '会议纪要已整理完毕，共提炼出 5 项核心决议和 3 项后续行动项，各项均已标注责任人和截止时间。如需调整格式，请告知。',
-  '合同摘要已生成，共标注 4 处主要风险条款，建议重点关注第 7 条（违约责任）和第 12 条（知识产权归属）。',
-  '已整理最新产品报价单及折扣规则，共包含 23 个 SKU。部分产品近期调价，已用标注提示，请注意核对。',
-  '根据公开信息，竞品定价策略主要体现在差异化定价、动态调价机制和地区价格分层三个维度，具体数据如下……',
-  '本月经营分析报告摘要已生成，核心数据涵盖营收、成本、利润率和客户留存四项指标，整体表现略低于预期，主要受季节性因素影响。',
-  '公文已优化，主要调整了措辞正式度、段落逻辑衔接及格式问题。修改处已加括号注释，方便您对比审阅。'
-]
-
-function pad2(n) {
-  return String(n).padStart(2, '0')
-}
-// 由点踩记录还原被点踩的单轮对话（用户提问 + 被点踩回复）；同一条记录每次打开内容恒定，靠 id 做种子
-function buildConvTurns(rec) {
-  const seed = parseInt(rec.id.replace('D-', ''), 10) || 0
-  const date = rec.time.slice(0, 11)
-  const hh = parseInt(rec.time.slice(11, 13), 10)
-  const mm = parseInt(rec.time.slice(14, 16), 10)
-  // 回复时间 = 提问时间 + 1 分钟
-  let h = hh
-  let m = mm + 1
-  if (m >= 60) { m -= 60; h++ }
-  const replyTs = date + pad2(Math.min(23, h)) + ':' + pad2(m)
-  return [
-    { role: 'user', ts: rec.time.slice(0, 16), text: rec.snippet },
-    { role: 'asst', ts: replyTs, text: ASST_REPLIES[seed % ASST_REPLIES.length], disliked: true }
-  ]
-}
-
 const cvVisible = ref(false)
 const cvRecord = ref(null)
 const cvTurns = ref([])
+const cvLoading = ref(false)
 
 // 点踩明细表格【查看】：关掉点踩明细弹窗、打开对话明细弹窗（原型两个弹窗互斥，非叠加）
-function openConvModal(rec) {
+async function openConvModal(rec) {
   dlVisible.value = false
   cvRecord.value = rec
-  cvTurns.value = buildConvTurns(rec)
+  cvTurns.value = []
   cvVisible.value = true
+  cvLoading.value = true
+  try {
+    cvTurns.value = (await getDislikeConversation(rec.id)).turns
+  } catch (e) {
+    ElMessage.error(e?.message || '对话明细加载失败，请稍后重试')
+  } finally {
+    cvLoading.value = false
+  }
 }
 // 对话明细关闭（【关闭】/ 右上角 × / Esc / 点遮罩）：回到点踩明细弹窗；不走 openDislikeModal，故保留原页码（2026-10-14 负责人裁决）
 function backToDislikeModal() {
   dlVisible.value = true
+}
+
+/* ---------- 助手生成的文件：预览 / 下载（修改点 20） ---------- */
+function fmtSize(bytes) {
+  if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB'
+  return bytes + ' B'
+}
+const FILE_ICON = { image: '🖼', pdf: '📕', txt: '📄', docx: '📘', xlsx: '📗' }
+
+// 图片：大图预览（Element Plus 图片查看器）；PDF / 文本：预览弹窗（demo 只放几行示意内容）
+const imageViewerUrl = ref('')
+const textPreview = ref(null)
+function previewFile(f) {
+  if (f.expired || !f.previewable) return
+  if (f.kind === 'image') imageViewerUrl.value = f.url
+  else textPreview.value = f
+}
+// 下载：demo 不生成真实文件，与「导出 CSV」同样只给提示
+function downloadFile(f) {
+  if (f.expired) return
+  ElMessage({ message: `正在下载「${f.name}」…`, plain: true })
 }
 </script>
 
@@ -190,15 +174,18 @@ function backToDislikeModal() {
             <th style="width:110px">岗位</th>
             <th style="width:80px">用户</th>
             <th>对话内容摘要</th>
+            <th style="width:76px;text-align:center">生成文件</th>
             <th style="width:68px;text-align:center">操作</th>
           </tr>
         </thead>
         <tbody>
+          <tr v-if="dlLoading"><td colspan="6" class="dl-empty">加载中…</td></tr>
           <tr v-for="r in dlSlice" :key="r.id">
             <td class="dash-num">{{ r.time }}</td>
             <td><span class="dash-name-main">{{ r.position }}</span></td>
             <td class="dl-user">{{ r.user }}</td>
             <td><span class="dl-snippet" :title="r.snippet">{{ r.snippet }}</span></td>
+            <td class="dl-files" style="text-align:center">{{ r.fileCount ? r.fileCount + ' 个' : '—' }}</td>
             <td style="text-align:center"><button class="mini-btn" @click="openConvModal(r)">查看</button></td>
           </tr>
         </tbody>
@@ -227,6 +214,7 @@ function backToDislikeModal() {
         <span class="cv-meta-item">点踩时间 <b>{{ cvRecord?.time }}</b></span>
       </div>
       <div class="cv-body">
+        <div v-if="cvLoading" class="cv-loading">加载中…</div>
         <div
           v-for="(t, i) in cvTurns"
           :key="i"
@@ -235,6 +223,36 @@ function backToDislikeModal() {
         >
           <div class="cv-who">{{ t.role === 'user' ? cvRecord?.user : cvRecord?.position }}</div>
           <div class="cv-bubble">{{ t.text }}</div>
+          <!-- 被点踩回复里生成的文件（修改点 20）：图片显示缩略图；图片 / PDF / 文本可预览，其余只能下载；失效的置灰 -->
+          <div v-if="t.files?.length" class="cv-files">
+            <div
+              v-for="f in t.files"
+              :key="f.id"
+              class="cv-file"
+              :class="{ expired: f.expired }"
+              data-testid="cv-file"
+            >
+              <img
+                v-if="f.kind === 'image' && !f.expired"
+                class="cv-file-thumb"
+                :src="f.url"
+                :alt="f.name"
+                @click="previewFile(f)"
+              />
+              <span v-else class="cv-file-icon">{{ FILE_ICON[f.kind] || '📄' }}</span>
+              <div class="cv-file-info">
+                <div class="cv-file-name" :title="f.name">{{ f.name }}</div>
+                <div class="cv-file-meta">
+                  <template v-if="f.expired">文件已失效</template>
+                  <template v-else>{{ f.kindLabel }} · {{ fmtSize(f.sizeBytes) }}</template>
+                </div>
+              </div>
+              <div v-if="!f.expired" class="cv-file-ops">
+                <button v-if="f.previewable" class="mini-btn" @click="previewFile(f)">预览</button>
+                <button class="mini-btn" @click="downloadFile(f)">下载</button>
+              </div>
+            </div>
+          </div>
           <div class="cv-ts-row">
             <span>{{ t.ts }}</span>
             <span v-if="t.disliked" class="cv-disliked-tag">点踩</span>
@@ -243,6 +261,25 @@ function backToDislikeModal() {
       </div>
       <template #footer>
         <button class="mini-btn" @click="cvVisible = false">关闭</button>
+      </template>
+    </el-dialog>
+
+    <!-- 文件预览（修改点 20）：图片走 Element Plus 图片查看器；PDF / 文本开预览弹窗（demo 只放几行示意内容） -->
+    <ElImageViewer v-if="imageViewerUrl" :url-list="[imageViewerUrl]" teleported @close="imageViewerUrl = ''" />
+    <el-dialog
+      :model-value="!!textPreview"
+      class="admin-dialog"
+      width="560px"
+      append-to-body
+      :title="textPreview?.name"
+      @update:model-value="(v) => { if (!v) textPreview = null }"
+    >
+      <div class="fp-body" data-testid="file-preview">
+        <p v-for="(line, i) in textPreview?.previewText || []" :key="i" :class="{ 'fp-title': i === 0 }">{{ line }}</p>
+      </div>
+      <template #footer>
+        <button class="mini-btn" @click="downloadFile(textPreview)">下载</button>
+        <button class="mini-btn" @click="textPreview = null">关闭</button>
       </template>
     </el-dialog>
   </section>
@@ -337,6 +374,23 @@ function backToDislikeModal() {
   color: #354039;
   border-radius: 10px 10px 10px 2px;
 }
+/* 助手生成的文件（修改点 20） */
+.cv-files { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; width: 100%; }
+.cv-file {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-surface);
+}
+.cv-file.expired { opacity: 0.55; }
+.cv-file-thumb { width: 64px; height: 40px; object-fit: cover; border-radius: 4px; cursor: zoom-in; border: 1px solid var(--border-base); }
+.cv-file-icon { width: 32px; text-align: center; font-size: 22px; }
+.cv-file-info { flex: 1; min-width: 0; }
+.cv-file-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-file-meta { font-size: 12px; color: var(--c-text-muted); }
+.cv-file-ops { display: flex; gap: 6px; flex-shrink: 0; }
+.dl-table td.dash-num { white-space: nowrap; }
+.cv-loading, .dl-empty { color: var(--c-text-muted); font-size: 13px; text-align: center; padding: 16px 0; }
+.fp-body p { margin: 0 0 8px; line-height: 1.7; font-size: 14px; }
+.fp-body .fp-title { font-weight: 600; font-size: 15px; }
 .cv-msg.asst.disliked .cv-bubble { border-color: #f0c7c4; background: #fff8f7; }
 .cv-ts-row {
   display: flex;

@@ -235,6 +235,8 @@ const skills = [
     id: 'sk_307', type: 'PLATFORM', name: '竞品信息汇总', icon: '▤',
     description: '汇总公开渠道的竞品动态', category: '数据分析',
     expertRefNames: ['研究报告专家'], // 与 domainExpertMock 实际引用同源
+    // R14 演示样本（可编辑）：只给「研究报告专家」用；sk_304 在审核中，编辑页锁定看不到开关，这条打开编辑页能直接看到
+    hideFromMarket: true,
     status: 'draft', version: '',
     createdAt: '2026-08-19 14:26', updatedAt: '2026-08-19 14:26', publishedAt: '',
     exampleQuestion: '帮我汇总本周主要竞品的产品动态',
@@ -1189,7 +1191,8 @@ const persistRaw = attachPersist('unifiedSkill', {
   //    checkStatus 由 DISABLED 改为真实连接状态（种子在审的 sk_302 / sk_308 引用了审核中的人力资源系统）；
   //    sk_305 的 SKILL.md 补上邮件中心 MCP 引用（与 toolRefs 对齐）。旧快照弃用回种子。
   // v13（2026-11-11 产品优化需求-202611 R14）：技能行新增 hideFromMarket（不在市场展示），sk_304 作演示样本打开，旧快照弃用回种子。
-  version: 13,
+  // v14（2026-11-15）：sk_307「竞品信息汇总」也打开 hideFromMarket，作可编辑的演示样本，旧快照弃用回种子。
+  version: 14,
   snapshot: () => ({ idSeq, skills, exampleCursor, reviewSnapshots, snapshotArchive }),
   restore: (d) => {
     if (
