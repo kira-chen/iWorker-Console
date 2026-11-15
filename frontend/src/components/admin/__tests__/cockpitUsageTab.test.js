@@ -273,9 +273,18 @@ describe('CockpitUsageTab · 使用明细 · 按用户（PRD §七.2）', () => 
     expect(textOf(detail().querySelector('.el-radio-button.is-active'))).toBe('按用户')
   })
 
-  it('列：用户 / 终端 / 活跃天数 / 会话数 / 输入 Token / 输出 Token / 最近使用时间 / 点赞 / 点踩 / 点踩率', async () => {
+  it('列：用户 / 终端 / 活跃天数 / 会话数 / 输入 Token / 输出 Token / 最近使用时间 / 点踩 / 点踩率', async () => {
     await mount()
-    expect(headers()).toEqual(['用户', '终端', '活跃天数', '会话数', '输入 Token', '输出 Token', '最近使用时间', '点赞', '点踩', '点踩率'])
+    expect(headers()).toEqual(['用户', '终端', '活跃天数', '会话数', '输入 Token', '输出 Token', '最近使用时间', '点踩', '点踩率'])
+  })
+
+  it('按用户 / 按岗位 / 按模型三张表都不展示点赞（2026-11-11 浦月定，同第六节不展示点赞）', async () => {
+    await mount()
+    for (const dim of ['按用户', '按岗位', '按模型']) {
+      await pickDim(dim)
+      expect(headers()).not.toContain('点赞')
+      expect(detail().textContent).not.toContain('点赞')
+    }
   })
 
   it('默认按 Token 合计（输入 + 输出）由高到低，每页 10 条，「第 1 / 25 页，共 241 条」', async () => {
@@ -369,7 +378,7 @@ describe('CockpitUsageTab · 使用明细 · 按岗位（PRD §七.3，取代岗
   it('列与「领用岗位员工数量 241 人」副标题；列出全部已发布岗位（不再限前 5 名）', async () => {
     await mount()
     await pickDim('按岗位')
-    expect(headers()).toEqual(['岗位', '领用人数', '活跃人数', '活跃率', '会话数', '人均 Token', '点赞', '点踩', '点踩率'])
+    expect(headers()).toEqual(['岗位', '领用人数', '活跃人数', '活跃率', '会话数', '人均 Token', '点踩', '点踩率'])
     expect(textOf(detail().querySelector('.ux-toolbar'))).toContain('领用岗位员工数量 241 人')
     expect(rowsOf()).toHaveLength(9)
     expect(footText()).toContain('共 9 条')
@@ -437,10 +446,10 @@ describe('CockpitUsageTab · 使用明细 · 按岗位（PRD §七.3，取代岗
 })
 
 describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => {
-  it('列含失败原因 Top、首响 P50 / P95、点赞 / 点踩 / 点踩率与操作', async () => {
+  it('列含失败原因 Top、首响 P50 / P95、点踩 / 点踩率与操作', async () => {
     await mount()
     await pickDim('按模型')
-    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '首响 P50 / P95', '点赞', '点踩', '点踩率', '操作'])
+    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '首响 P50 / P95', '点踩', '点踩率', '操作'])
     expect(rowsOf()).toHaveLength(6)
   })
 
@@ -493,7 +502,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
 })
 
 describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => {
-  it('列只有能力 / 调用次数 / 使用人数 / 成功率 / 最近调用时间，不带点赞点踩（反馈挂在对话轮次上，归不到技能）', async () => {
+  it('列只有能力 / 调用次数 / 使用人数 / 成功率 / 最近调用时间，不带点踩 / 点踩率（反馈挂在对话轮次上，归不到技能）', async () => {
     await mount()
     await pickDim('按能力')
     expect(headers()).toEqual(['能力', '调用次数', '使用人数', '成功率', '最近调用时间'])
@@ -553,7 +562,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
     await flushAll(4)
     expect(textOf(detail().querySelector('.ux-empty'))).toBe('暂无数据')
-    expect(headers()).toHaveLength(10) // 表头还在
+    expect(headers()).toHaveLength(9) // 表头还在（按用户 9 列）
     expect(footText()).toContain('第 1 / 1 页，共 0 条')
     expect(footBtn('上一页').disabled).toBe(true)
     expect(footBtn('下一页').disabled).toBe(true)

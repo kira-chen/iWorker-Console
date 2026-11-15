@@ -4,9 +4,10 @@
  * 按用户 / 按岗位 / 按模型 / 按能力四个维度切换的明细表，共用页签顶部的筛选条（数据由父组件按筛选聚合好传入）。
  *
  * 2026-11-02：「按岗位」取代原驾驶舱「岗位领用 Top 5」（只列已发布岗位，默认按领用人数倒序）；
- * 按用户 / 按岗位 / 按模型末尾带点赞 / 点踩 / 点踩率，按能力不带（点赞点踩挂在对话轮次上，归不到某个技能）。
+ * 按用户 / 按岗位 / 按模型末尾带点踩 / 点踩率，按能力不带（点踩挂在对话轮次上，归不到某个技能）。
  *
  * 2026-11-10：四个维度的工具栏都有名称搜索（原只有按用户有）。
+ * 2026-11-11：删掉「点赞」列，与点踩统计一致不展示点赞（点赞数只参与点踩率计算）。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
@@ -33,7 +34,6 @@ const dim = ref('user')
 
 // 列定义：sort = 可点列头排序；w = 列宽（表格有最小宽度，窄屏横向滚动）
 const FEEDBACK_COLS = [
-  { key: 'likes', label: '点赞', num: true, sort: true, w: 64 },
   { key: 'dislikes', label: '点踩', num: true, sort: true, w: 64 },
   { key: 'dislikeRate', label: '点踩率', num: true, sort: true, w: 72 }
 ]
@@ -221,7 +221,6 @@ function viewModel(row) {
               <td class="dash-num">{{ fmtTokens(r.inputTokens) }}</td>
               <td class="dash-num">{{ fmtTokens(r.outputTokens) }}</td>
               <td class="ux-time" :class="{ 'is-muted': !r.lastUsedAt }">{{ r.lastUsedAt || '从未使用' }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
             </tr>
@@ -244,7 +243,6 @@ function viewModel(row) {
               <td class="dash-num">{{ fmtPct(r.activeRate) }}</td>
               <td class="dash-num">{{ fmtCount(r.sessions) }}</td>
               <td class="dash-num">{{ fmtTokens(r.avgTokens) }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
             </tr>
@@ -267,7 +265,6 @@ function viewModel(row) {
               <td class="dash-num" :class="failClass(r.failRate)">{{ fmtPct(r.failRate) }}</td>
               <td>{{ r.topReason ? `${r.topReason.label} ${r.topReason.pct}%` : '—' }}</td>
               <td class="dash-num">{{ fmtLatency(r.p50, r.p95) }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
               <td><button class="mini-btn" @click="viewModel(r)">查看</button></td>
