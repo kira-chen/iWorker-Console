@@ -596,3 +596,57 @@ describe('CockpitUsageTab · 驾驶舱刷新（PRD §一.3）', () => {
     expect(spy).toHaveBeenLastCalledWith({ range: 30, terminal: '', position: '' })
   })
 })
+
+describe('CockpitUsageTab · 使用明细 · 时间列排序箭头（PRD §七，2026-11-15）', () => {
+  const arrow = (label) => th(label).querySelector('.ux-sort-arrow')
+
+  it('「最近使用时间」没在排序时也显示浅色 ↓；点一下按时间由近到远（↓ 变实色），再点由远到近（↑），「从未使用」始终在最后', async () => {
+    await mount()
+    const r = await mockSummary({ range: 30 })
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↓')
+    expect(arrow('最近使用时间').className).toContain('is-idle')
+
+    th('最近使用时间').click()
+    await flushAll(2)
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↓')
+    expect(arrow('最近使用时间').className).not.toContain('is-idle')
+    const used = r.users.map((u) => u.lastUsedAt).filter(Boolean)
+    const desc = [...used].sort().reverse()
+    expect(rowsOf().map((tr) => textOf(tr.children[6]))).toEqual(desc.slice(0, 10))
+
+    th('最近使用时间').click()
+    await flushAll(2)
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↑')
+    expect(rowsOf().map((tr) => textOf(tr.children[6]))).toEqual([...used].sort().slice(0, 10))
+    // 末页：从未使用的排在最后，不随升降序翻转
+    for (let i = 0; i < 30 && !footBtn('下一页').disabled; i++) {
+      footBtn('下一页').click()
+      await flushAll(1)
+    }
+    const last = rowsOf().at(-1)
+    if (r.users.some((u) => !u.lastUsedAt)) expect(textOf(last.children[6])).toBe('从未使用')
+  })
+
+  it('换别的列排序后，时间列箭头回到浅色 ↓；其他没在排序的数值列不显示箭头', async () => {
+    await mount()
+    th('最近使用时间').click()
+    await flushAll(2)
+    th('会话数').click()
+    await flushAll(2)
+    expect(arrow('最近使用时间').className).toContain('is-idle')
+    expect(textOf(th('活跃天数'))).toBe('活跃天数')
+  })
+
+  it('按能力「最近调用时间」同样常显箭头，点击按时间由近到远排序', async () => {
+    await mount()
+    const r = await mockSummary({ range: 30 })
+    await pickDim('按能力')
+    expect(textOf(th('最近调用时间'))).toBe('最近调用时间 ↓')
+    expect(arrow('最近调用时间').className).toContain('is-idle')
+    th('最近调用时间').click()
+    await flushAll(2)
+    expect(arrow('最近调用时间').className).not.toContain('is-idle')
+    const desc = r.abilities.map((a) => a.lastCalledAt).filter(Boolean).sort().reverse()
+    expect(rowsOf().map((tr) => textOf(tr.children[4]))).toEqual(desc.slice(0, 10))
+  })
+})

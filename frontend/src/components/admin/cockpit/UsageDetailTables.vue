@@ -9,6 +9,7 @@
  * 2026-11-10：四个维度的工具栏都有名称搜索（原只有按用户有）。
  * 2026-11-11：删掉「点赞」列，与点踩统计一致不展示点赞（点赞数只参与点踩率计算）。
  * 2026-11-15：按模型删掉「首响 P50 / P95」列。
+ * 2026-11-15：「最近使用时间」「最近调用时间」列头始终显示排序箭头（同访问审计时间列），没按该列排序时箭头浅色，提示可以点。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
@@ -34,7 +35,7 @@ const DIMS = [
 ]
 const dim = ref('user')
 
-// 列定义：sort = 可点列头排序；w = 列宽（表格有最小宽度，窄屏横向滚动）
+// 列定义：sort = 可点列头排序；idleArrow = 没按该列排序时也显示浅色箭头（时间列，同访问审计）；w = 列宽（表格有最小宽度，窄屏横向滚动）
 const FEEDBACK_COLS = [
   { key: 'dislikes', label: '点踩', num: true, sort: true, w: 64 },
   { key: 'dislikeRate', label: '点踩率', num: true, sort: true, w: 72 }
@@ -47,7 +48,7 @@ const COLS = {
     { key: 'sessions', label: '会话数', num: true, sort: true, w: 84 },
     { key: 'inputTokens', label: '输入 Token', num: true, sort: true, w: 108 },
     { key: 'outputTokens', label: '输出 Token', num: true, sort: true, w: 108 },
-    { key: 'lastUsedAt', label: '最近使用时间', sort: true, w: 150 },
+    { key: 'lastUsedAt', label: '最近使用时间', sort: true, idleArrow: true, w: 150 },
     ...FEEDBACK_COLS
   ],
   position: [
@@ -75,7 +76,7 @@ const COLS = {
     { key: 'calls', label: '调用次数', num: true, sort: true, w: 110 },
     { key: 'users', label: '使用人数', num: true, sort: true, w: 110 },
     { key: 'successRate', label: '成功率', num: true, sort: true, w: 100 },
-    { key: 'lastCalledAt', label: '最近调用时间', sort: true, w: 170 }
+    { key: 'lastCalledAt', label: '最近调用时间', sort: true, idleArrow: true, w: 170 }
   ]
 }
 const DEFAULT_SORT = {
@@ -145,7 +146,12 @@ function toggleSort(col) {
   else { s.key = col.key; s.dir = 'desc' }
   pages[dim.value] = 1
 }
-const sortMark = (col) => (sorts[dim.value].key === col.key ? (sorts[dim.value].dir === 'desc' ? ' ↓' : ' ↑') : '')
+const isSortedBy = (col) => sorts[dim.value].key === col.key
+/** 列头箭头：正在按该列排序时显示当前方向；时间列没在排序时显示浅色「↓」（点一下就是由近到远） */
+function sortArrow(col) {
+  if (isSortedBy(col)) return sorts[dim.value].dir === 'desc' ? '↓' : '↑'
+  return col.idleArrow ? '↓' : ''
+}
 
 const maxClaimed = computed(() => Math.max(1, ...props.data.positions.map((p) => p.claimed)))
 const failClass = (v) => (v == null ? '' : v > 10 ? 'is-danger' : v > 5 ? 'is-warn' : '')
@@ -203,7 +209,7 @@ function viewModel(row) {
               :class="{ 'dash-num': col.num, sortable: col.sort }"
               :style="{ width: col.w + 'px' }"
               @click="toggleSort(col)"
-            >{{ col.label }}{{ sortMark(col) }}</th>
+            >{{ col.label }}<span v-if="sortArrow(col)" class="ux-sort-arrow" :class="{ 'is-idle': !isSortedBy(col) }">{{ ' ' + sortArrow(col) }}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -300,6 +306,11 @@ function viewModel(row) {
 </template>
 
 <style scoped>
+/* 时间列没在排序时的提示箭头：浅色，点了才变成当前排序 */
+.ux-sort-arrow.is-idle {
+  color: var(--c-text-faint);
+}
+
 .ux-toolbar {
   display: flex;
   align-items: center;
