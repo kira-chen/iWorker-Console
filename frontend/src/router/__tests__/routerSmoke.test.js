@@ -26,7 +26,7 @@ vi.mock('vue-router', async (importOriginal) => {
 const stub = { default: { name: 'StubPage', render: () => null } }
 vi.mock('@/layouts/AdminLayout.vue', () => stub)
 vi.mock('@/views/admin/AdminCockpit.vue', () => stub)
-vi.mock('@/views/admin/AdminComingSoonPlaceholder.vue', () => stub)
+vi.mock('@/views/admin/AdminQuotaThrottle.vue', () => stub)
 vi.mock('@/views/admin/AdminConnector.vue', () => stub)
 vi.mock('@/views/admin/AdminExperts.vue', () => stub)
 vi.mock('@/views/admin/AdminFeedback.vue', () => stub)

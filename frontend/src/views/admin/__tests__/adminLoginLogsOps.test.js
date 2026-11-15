@@ -173,16 +173,16 @@ describe('访问审计 · 管理端操作 · 强制回收与用户技能审核�
     return [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
   }
 
-  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量 / 修改默认容量 / 修改磁盘总量 / 授权 / 收回 / 通过申请 / 驳回申请（§6.1，共 18 项，撤回不记故不在其中）', async () => {
-    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 18 项
+  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量 / 修改默认容量 / 修改磁盘总量 / 修改配置 / 授权 / 收回 / 通过申请 / 驳回申请（§6.1，共 19 项，撤回不记故不在其中）', async () => {
+    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 19 项
     const labels = await openDropdown(1)
-    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 18)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量', '授权', '收回', '通过申请', '驳回申请'])
+    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 19)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量', '修改配置', '授权', '收回', '通过申请', '驳回申请'])
   })
 
-  it('模块筛选完整顺序里「存储空间」「用户访问权限」依次在「运行规格」之后、「审核中心」之前（§6.1 第 3 条）', async () => {
+  it('模块筛选完整顺序里「存储空间」「配额与限流」「用户访问权限」依次在「运行规格」之后、「审核中心」之前（§6.1 第 3 条）', async () => {
     const labels = await openDropdown(0)
     const i = labels.indexOf('岗位')
-    expect(labels.slice(i, i + 16)).toEqual(['岗位', '岗位分配', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '运行规格', '存储空间', '用户访问权限', '审核中心', '用户技能审核', '版本管理'])
+    expect(labels.slice(i, i + 17)).toEqual(['岗位', '岗位分配', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '运行规格', '存储空间', '配额与限流', '用户访问权限', '审核中心', '用户技能审核', '版本管理'])
   })
 
   it('模块筛选含「用户技能审核」', async () => {
@@ -418,3 +418,45 @@ describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09，�
   })
 })
 
+describe('访问审计 · 管理端操作 · 配额与限流记录（2026-11-15，§6.1 / §6.2 / §6.3 / §6.4）', () => {
+  // 夹具里没有这类记录（不动夹具条数，免得「12 条」类用例变义），用例前追加一条、用例后移除
+  const added = []
+  beforeEach(async () => {
+    const pad = (n) => String(n).padStart(2, '0')
+    const t = new Date()
+    const { opsRecords } = await import('@/api/accessAuditMock')
+    const rec = { id: 400, time: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} 07:00`, operator: 'demo', module: '配额与限流', action: '修改配置', target: '消息合并等待时长', detail: '5 秒 → 8 秒' }
+    opsRecords.push(rec)
+    added.push(rec)
+    await h.remountAtHeight(2000)
+    await h.switchTab('管理端操作')
+  })
+  afterEach(async () => {
+    const { opsRecords } = await import('@/api/accessAuditMock')
+    for (const rec of added.splice(0)) opsRecords.splice(opsRecords.indexOf(rec), 1)
+  })
+
+  it('模块「配额与限流」灰色、动作「修改配置」绿；变更内容「原值 → 新值」，操作对象为配置项名称且不附版本号', () => {
+    const tr = rowOf('消息合并等待时长', '修改配置')
+    expect(tagOf(tr, '配额与限流').className).toContain('tag-gray')
+    expect(tagOf(tr, '修改配置').className).toContain('tag-green')
+    expect(detailCell(tr).textContent.trim()).toBe('5 秒 → 8 秒')
+    expect(tr.querySelector('.ops-target-name').textContent).toBe('消息合并等待时长')
+    expect(tr.querySelector('.ops-version')).toBeNull()
+  })
+
+  it('模块筛选选「配额与限流」→ 只剩这一条', async () => {
+    pane().querySelectorAll('.lt-filter')[0].querySelector('.el-select__wrapper').click()
+    await flushAll(4)
+    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === '配额与限流').click()
+    await flushAll(4)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].textContent).toContain('消息合并等待时长')
+  })
+
+  it('【查看】跳转到配额与限流页，不注入关键词（该页没有列表）（§6.3）', async () => {
+    ;[...rowOf('消息合并等待时长', '修改配置').querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
+    await vi.waitFor(() => expect(h.router.currentRoute.value.name).toBe('AdminQuotaThrottle'))
+    expect(h.router.currentRoute.value.query.keyword).toBeUndefined()
+  })
+})
