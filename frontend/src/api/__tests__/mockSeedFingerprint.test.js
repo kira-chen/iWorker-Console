@@ -39,7 +39,7 @@ const FINGERPRINTS = {
   dataTable: { version: 2, fp: '592831be' },
   domainExpert: { version: 8, fp: '9d672c7d' },
   expertTeam: { version: 8, fp: '14f9a0ac' },
-  fieldDict: { version: 4, fp: '40d8527d' },
+  fieldDict: { version: 5, fp: '84da6096' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
   knowledgeBase: { version: 9, fp: '04ba3a72' },
   mcpConnector: { version: 13, fp: '7b5fd33d' },

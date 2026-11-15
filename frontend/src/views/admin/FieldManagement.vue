@@ -14,6 +14,9 @@
  *   列表容器末尾、上加 1px 分隔线（.fm5-option-add）；弹窗点遮罩可关（md §三「关闭弹窗，放弃本次未保存修改」）。
  * 2026-09-12 删除确认的两次反复（以 md 为准）：审计 J19/K32 曾按当时 md「仅从当前编辑草稿中移除」撤掉确认弹窗；
  *   同日 PRD 方 ad4abbe 把 md §三 L48 改为「点击删除按钮弹出确认弹窗，确认后从当前编辑草稿中移除」，故按新 md 恢复。
+ * 2026-11-10 产品优化需求-202611 修改点 15（R11）：技能分类、专家分类末尾加系统保留选项「其他」（接口给的选项带
+ *   reserved: true）。编辑弹窗里这一行输入框与删除钮置灰、悬停提示「系统保留选项，不可修改」，【＋ 添加选项】插在它前面，
+ *   保证它固定排最后；专家分类说明补「通用」「其他」的含义。
  */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -37,7 +40,8 @@ const FIELDS = [
     category: '专家',
     categoryDesc: '专家相关的可配置字段',
     name: '专家分类',
-    desc: '专家列表与编辑页使用的业务分类'
+    // R11：说明补「通用」「其他」的区别——两个都像兜底项，不写清楚管理员容易混用
+    desc: '专家列表与编辑页使用的业务分类。「通用」指不限领域的通用能力，「其他」指不属于已列领域'
   }
 ]
 
@@ -93,28 +97,31 @@ const groups = computed(() => {
 /* ============ 编辑弹窗（草稿编辑，【完成】统一保存 —— 原型 openFieldEditor） ============ */
 const dialogVisible = ref(false)
 const dialogField = ref(null) // 当前编辑的字段声明
-const draft = ref([]) // 草稿行 [{ name }]
+const draft = ref([]) // 草稿行 [{ name, reserved }]，reserved=系统保留选项（R11，只读、固定最后一行）
 const dialogError = ref('') // 弹窗内联错误（完成时统一校验）
 const saving = ref(false)
 const optionInputs = ref([]) // 行输入框实例（「添加选项」后聚焦末行）
 
 function openEdit(row) {
   dialogField.value = FIELDS.find((f) => f.key === row.key)
-  draft.value = (optionsByField[row.key] || []).map((o) => ({ name: o.name }))
+  draft.value = (optionsByField[row.key] || []).map((o) => ({ name: o.name, reserved: !!o.reserved }))
   dialogError.value = ''
   optionInputs.value = []
   dialogVisible.value = true
 }
 
+// 新行插在系统保留选项之前（R11：保留项固定排最后），没有保留项时追加到末尾
 async function addOption() {
-  draft.value.push({ name: '' })
+  const at = draft.value.at(-1)?.reserved ? draft.value.length - 1 : draft.value.length
+  draft.value.splice(at, 0, { name: '', reserved: false })
   dialogError.value = ''
   await nextTick()
-  optionInputs.value[draft.value.length - 1]?.focus?.()
+  optionInputs.value[at]?.focus?.()
 }
 
 // 删除仅从当前编辑草稿中移除，但先弹二次确认说明影响面（2026-09-12 对齐 md §三 L48，审计 J19/K32）；保存在【完成】时统一发生
 async function removeOption(idx) {
+  if (draft.value[idx]?.reserved) return // 系统保留选项不可删（按钮已置灰，这里兜底）
   const name = draft.value[idx]?.name?.trim() || '该选项'
   const impact =
     dialogField.value?.key === 'skillCategory'
@@ -226,17 +233,33 @@ onMounted(fetchAll)
 
       <!-- 原型 renderFieldOptions L1626：行 + 「＋ 添加选项」+ 错误行同在 #fiveFieldOptions 容器内（限高 310 滚动） -->
       <div class="fm-opt-list">
-        <div v-for="(row, i) in draft" :key="i" class="fm-opt-row">
-          <span class="fm-opt-idx">{{ i + 1 }}</span>
-          <el-input
-            :ref="(el) => (optionInputs[i] = el)"
-            v-model="row.name"
-            maxlength="30"
-            class="fm-opt-input"
-            @input="dialogError = ''"
-          />
-          <button type="button" class="fm-opt-del" title="删除" @click="removeOption(i)">×</button>
-        </div>
+        <!-- R11：系统保留选项（「其他」）这一行输入框与删除钮置灰，整行悬停提示；其他行 tooltip 关闭 -->
+        <el-tooltip
+          v-for="(row, i) in draft"
+          :key="i"
+          :disabled="!row.reserved"
+          content="系统保留选项，不可修改"
+          placement="top"
+        >
+          <div class="fm-opt-row" :class="{ 'is-reserved': row.reserved }">
+            <span class="fm-opt-idx">{{ i + 1 }}</span>
+            <el-input
+              :ref="(el) => (optionInputs[i] = el)"
+              v-model="row.name"
+              maxlength="30"
+              class="fm-opt-input"
+              :disabled="row.reserved"
+              @input="dialogError = ''"
+            />
+            <button
+              type="button"
+              class="fm-opt-del"
+              :title="row.reserved ? '' : '删除'"
+              :disabled="row.reserved"
+              @click="removeOption(i)"
+            >×</button>
+          </div>
+        </el-tooltip>
 
         <div class="fm-opt-add">
           <el-button plain @click="addOption">＋ 添加选项</el-button>
@@ -375,6 +398,13 @@ onMounted(fetchAll)
 .fm-opt-del:hover {
   background: var(--bg-hover);
   color: var(--el-color-danger);
+}
+/* R11 系统保留选项：删除钮置灰不可点 */
+.fm-opt-del:disabled,
+.fm-opt-del:disabled:hover {
+  background: transparent;
+  color: var(--c-text-faint);
+  cursor: not-allowed;
 }
 /* 「＋ 添加选项」（原型 .fm5-option-add{margin-top:16px;padding-top:14px;border-top:1px solid line}） */
 .fm-opt-add {

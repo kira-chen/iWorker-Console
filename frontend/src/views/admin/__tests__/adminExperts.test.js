@@ -394,12 +394,13 @@ describe('AdminExperts（2026-09-01 PRD 对齐）', () => {
     expect(listExperts).toHaveBeenCalledTimes(3)
   })
 
-  it('分类下拉 8 项 = 字段字典 expertCategory，且与 md §一.1 列举逐一相等', async () => {
+  // 2026-11-10 产品优化需求-202611 修改点 15（R11）：字段字典末尾加系统保留选项「其他」，8 项变 9 项
+  it('分类下拉 9 项 = 字段字典 expertCategory（md §一.1 列举 + R11 末尾「其他」）', async () => {
     await mount()
     const [, category, status] = [...container.querySelectorAll('select.el-select')]
     const labels = [...category.querySelectorAll('option')].map((o) => o.textContent)
     expect(labels).toEqual(getFieldOptionNames('expertCategory'))
-    expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权'])
+    expect(labels).toEqual(['通用', '法律', '财税', '政务', '供应链', '投资', '审计', '知识产权', '其他'])
     expect([...status.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['未发布', '审核中', '已发布'])
     expect(category.dataset.placeholder).toBe('全部专家分类')
     expect(status.dataset.placeholder).toBe('全部状态')
