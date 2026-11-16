@@ -40,7 +40,7 @@ import { mkRequestMapRows, mkRequestMapExampleRows, mkResponseMapRows, mkMcpResp
  *   §六.1.1 API KEY 多参数表 / Bearer、§六.2-§六.3 映射预设行与递归子字段、§六.4 改配置重置未验证、
  *   §七.2 MCP 传输方式（endpoint / 鉴权 Header 名 / stdio Command 枚举与 envVars）、§七.3 工具 ≥1、§七.4 超时 1000～120000、
  *   §七.5 改工具重置、§八.1 列表概要（未验证 / 已连通 / 连接失败）、§五.3 文档解析流转。
- * - 持久化（mockPersist v11，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
+ * - 持久化（mockPersist v12，11 个写点）读回 / 旧版本回种子 / 坏形状兜底（文末一组，vi.resetModules 隔离）。
  * K40（2026-09-12 闭环）：引用已停用数据源被数据层拒绝（md §三.3.2 L94）；UPLOAD 源三必填 + 文档类型校验（md §五.1）。
  * 2026-10-08 对齐同一 md §三.4（审核结果落地：发布通过→已发布、停用通过→未发布、驳回保持原状、申请方向不符拒绝落地）、
  *   §三.2 / §八.1（「已发布」筛选不含待停用行）、§四.2（删上传源连带删文档与索引）、§五.3（删文档后计数下降）、
@@ -60,12 +60,10 @@ const apiConfig = (over = {}) => ({
   ...over
 })
 const mcpResponseMap = () => mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : 'text' }))
-// 一个检索工具的映射配置（产品优化需求-202611 R7 方案 A：每个已选工具一份）；路径按 R6 口径从结果数据写起
-const mcpToolConfig = (over = {}) => ({ requestMap: mkRequestMapRows(), resultArrayPath: '$.items[*]', responseMap: mcpResponseMap(), ...over })
-// 演示 MCP 服务三个工具各自的返回结构对应的结果数组路径（knowledgeBaseMock.mockMcpToolResult），连接测试才能取到数组
-const TOOL_PATHS = { search_documents: '$.items[*]', search_chunks: '$.data.list[*]', hybrid_search: '$.results[*]' }
-/** 勾选若干检索工具：tools + 每个工具一份路径正确的映射配置 */
-const withTools = (...tools) => ({ tools, toolConfigs: Object.fromEntries(tools.map((t) => [t, mcpToolConfig({ resultArrayPath: TOOL_PATHS[t] })])) })
+// 一个检索工具的映射配置（产品优化需求-202611 R7 方案 A：每个已选工具一份）；路径用 md §七.5 示例值（修改点 9 已撤回）
+const mcpToolConfig = (over = {}) => ({ requestMap: mkRequestMapRows(), resultArrayPath: '$.content[0].items[*]', responseMap: mcpResponseMap(), ...over })
+/** 勾选若干检索工具：tools + 每个工具一份完整的映射配置 */
+const withTools = (...tools) => ({ tools, toolConfigs: Object.fromEntries(tools.map((t) => [t, mcpToolConfig()])) })
 const mcpConfig = (over = {}) => ({
   transport: 'streamable-http',
   endpoint: 'https://mcp.example.com/mcp',
@@ -409,16 +407,17 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
 
-  it('MCP 种子：每个已选检索工具各带一份请求 / 响应映射与结果数组路径（R7 方案 A；md §七.4 / §七.5）', async () => {
-    const seeded = (await listSources({ sourceType: 'MCP' })).list
-    expect(seeded.length).toBeGreaterThan(0)
+  it('MCP 种子：每个已选检索工具各带一份请求 / 响应映射与结果数组路径 $.content[0].items[*]（R7 方案 A；md §七.4 / §七.5；修改点 9 已撤回）', async () => {
+    // 只看种子两条（ks_1c / ks_3c）：同文件其他用例会新建 MCP 数据源并改路径，乱序跑在前面时会混进列表
+    const seeded = (await listSources({ sourceType: 'MCP' })).list.filter((s) => ['ks_1c', 'ks_3c'].includes(s.id))
+    expect(seeded.map((s) => s.id).sort()).toEqual(['ks_1c', 'ks_3c'])
     for (const s of seeded) {
       expect(Object.keys(s.config.toolConfigs)).toEqual(s.config.tools)
       for (const tool of s.config.tools) {
         const tc = s.config.toolConfigs[tool]
         expect(tc.requestMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['query', 'topK'])
         expect(tc.responseMap.filter((r) => r.preset).map((r) => r.name)).toEqual(['title', 'content', 'sourceName'])
-        expect(tc.resultArrayPath).toBeTruthy()
+        expect(tc.resultArrayPath).toBe('$.content[0].items[*]')
       }
     }
     const s = await createSource({ sourceType: 'MCP', name: uniq('带映射MCP'), config: mcpConfig() })
@@ -452,7 +451,7 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
     await testSource('MCP', { sourceId: s.id, config: mcpConfig() })
     let cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('SUCCESS')
-    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.items' }) } }) })
+    await updateSource(s.id, { sourceType: 'MCP', name: s.name, config: mcpConfig({ toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.content[0].list[*]' }) } }) })
     cur = (await listSources({ keyword: s.name })).list[0]
     expect(cur.verifyStatus).toBe('UNVERIFIED')
   })
@@ -600,57 +599,63 @@ describe('knowledgeBaseMock —— 数据源（md §四～§八）', () => {
 })
 
 /**
- * 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）的数据层行为：
- * - R6「连接测试按路径取不到数组时，提示"按结果数组路径未取到数组，请检查路径"；text 不是合法 JSON 时，提示"工具返回内容不是 JSON，
- *   无法按路径取值"」——mock 用模拟的工具原始返回（{ content: [{ type: 'text', text }], structuredContent? }）真实按路径取值；
- * - R7 方案 A「连接测试逐个工具执行，结果按工具分别展示」「保存时逐个工具校验」「检索时调用全部已选工具，结果合并后……取前 topK 条」；
+ * 产品优化需求-202611 修改点 10 / 11（R7 / R8）的数据层行为：
+ * - R7 方案 A「连接测试逐个工具执行，结果按工具分别展示。任一工具未通过，整个连接测试判为失败，提示"检索工具「工具名」测试未通过"」
+ *   「保存时逐个工具校验」「检索时调用全部已选工具，结果合并后……取前 topK 条」；
+ *   演示约定：服务地址或启动参数里带 partial，已勾选工具里最后一个模拟调用超时失败，其余通过；不带 partial 全部通过。
  * - R8「连接测试时接口返回的不是 JSON，提示"接口返回的不是 JSON，暂不支持该接口"」（演示约定：请求地址里带 html）。
+ * 修改点 9（R6，按结果数组路径从工具返回里取值）已于 2026-11-16 撤回：连接测试不看路径写法。
  * 草稿态 testSource 会记 lastTest（审计 T17），本组每条都用独占的服务地址，不与别的用例的配置撞签名。
  */
-describe('knowledgeBaseMock —— MCP 按工具配置与结果数组路径 / API 只支持 JSON（R6 / R7 / R8）', () => {
+describe('knowledgeBaseMock —— MCP 按工具配置与逐工具连接测试 / API 只支持 JSON（R7 / R8）', () => {
   beforeEach(() => vi.stubGlobal('setTimeout', (fn) => { queueMicrotask(fn); return 0 }))
   afterEach(() => vi.unstubAllGlobals())
   const probe = (name, over = {}) => mcpConfig({ endpoint: `https://mcp-${name}.example.com/mcp`, ...over })
 
-  it('R6 种子 MCP 数据源按新取值口径配的路径：连接测试两个工具都取到数组、整体通过', async () => {
+  it('R7 种子 MCP 数据源（地址不带 partial）：两个工具逐个测试都通过、整体通过', async () => {
     const seed = await getSource('ks_1c')
     const r = await testSource('MCP', { config: { ...seed.config, endpoint: 'https://mcp-seed-probe.example.com/mcp' } })
     expect(r.verifyStatus).toBe('SUCCESS')
+    expect(r.verifyError).toBeNull()
     expect(r.toolResults).toEqual([
-      { tool: 'search_documents', ok: true, itemCount: 2 },
-      { tool: 'hybrid_search', ok: true, itemCount: 2 }
+      { tool: 'search_documents', ok: true },
+      { tool: 'hybrid_search', ok: true }
     ])
   })
 
-  it('R6 路径写进协议层（$.content[0].items[*]）→ 该工具「按结果数组路径未取到数组，请检查路径」，测试未通过', async () => {
-    const cfg = probe('protocol-path', { toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.content[0].items[*]' }) } })
+  it('修改点 9 已撤回：连接测试不按结果数组路径取值——路径写成什么都不影响该工具通过', async () => {
+    const cfg = probe('any-path', { toolConfigs: { search_documents: mcpToolConfig({ resultArrayPath: '$.not.exist[*]' }) } })
     const r = await testSource('MCP', { config: cfg })
-    expect(r.verifyStatus).toBe('FAILED')
-    expect(r.toolResults).toEqual([{ tool: 'search_documents', ok: false, error: '按结果数组路径未取到数组，请检查路径' }])
+    expect(r.verifyStatus).toBe('SUCCESS')
+    expect(r.toolResults).toEqual([{ tool: 'search_documents', ok: true }])
   })
 
-  it('R6 工具返回带 structuredContent（hybrid_search）：从它写起的 $.results[*] 取到数组，text 是摘要也不影响', async () => {
-    const r = await testSource('MCP', { config: probe('structured', withTools('hybrid_search')) })
-    expect(r.toolResults).toEqual([{ tool: 'hybrid_search', ok: true, itemCount: 2 }])
-  })
-
-  it('R6 服务只回纯文本（演示地址带 plain）→「工具返回内容不是 JSON，无法按路径取值」', async () => {
-    const r = await testSource('MCP', { config: probe('plain-text') })
-    expect(r.verifyStatus).toBe('FAILED')
-    expect(r.toolResults).toEqual([{ tool: 'search_documents', ok: false, error: '工具返回内容不是 JSON，无法按路径取值' }])
-  })
-
-  it('R7 连接测试逐个工具执行：一个通过一个没通过 → 结果按工具分别返回，整体未通过并点名没通过的工具', async () => {
-    const cfg = probe('per-tool', withTools('search_documents', 'search_chunks'))
-    cfg.toolConfigs.search_chunks.resultArrayPath = '$.list[*]' // 实际在 data.list 下
-    const r = await testSource('MCP', { config: cfg })
+  it('R7 地址带 partial：已勾选工具里最后一个超时失败、其余通过 → 结果按工具分别返回，整体未通过并点名该工具', async () => {
+    const r = await testSource('MCP', { config: probe('partial', withTools('search_documents', 'search_chunks', 'hybrid_search')) })
     expect(r.toolResults).toEqual([
-      { tool: 'search_documents', ok: true, itemCount: 2 },
-      { tool: 'search_chunks', ok: false, error: '按结果数组路径未取到数组，请检查路径' }
+      { tool: 'search_documents', ok: true },
+      { tool: 'search_chunks', ok: true },
+      { tool: 'hybrid_search', ok: false, error: '工具调用超时（10000 ms）' }
     ])
     expect(r.verifyStatus).toBe('FAILED')
-    expect(r.verifyError).toBe('检索工具「search_chunks」测试未通过') // 修改点 10 文案：工具名带书名号
+    expect(r.verifyError).toBe('检索工具「hybrid_search」测试未通过') // 修改点 10 文案：工具名带书名号
     expect(r.tools).toEqual(MCP_TEST_TOOLS) // 服务连上了，工具清单照样返回
+  })
+
+  it('R7「最后一个」按勾选顺序算：勾选顺序换了，失败的工具跟着换', async () => {
+    const r = await testSource('MCP', { config: probe('partial-order', withTools('hybrid_search', 'search_documents')) })
+    expect(r.toolResults.map((x) => [x.tool, x.ok])).toEqual([['hybrid_search', true], ['search_documents', false]])
+    expect(r.verifyError).toBe('检索工具「search_documents」测试未通过')
+  })
+
+  it('R7 stdio 启动参数里带 partial 同样触发最后一个工具失败', async () => {
+    const cfg = probe('stdio-args', { transport: 'stdio', command: 'npx', args: ['-y', 'kb-mcp', '--partial'], ...withTools('search_documents', 'search_chunks') })
+    const r = await testSource('MCP', { config: cfg })
+    expect(r.verifyStatus).toBe('FAILED')
+    expect(r.toolResults).toEqual([
+      { tool: 'search_documents', ok: true },
+      { tool: 'search_chunks', ok: false, error: '工具调用超时（10000 ms）' }
+    ])
   })
 
   it('R7 刚连上、还没勾选工具时只拿工具清单，测试通过且没有逐工具结果', async () => {
@@ -670,7 +675,7 @@ describe('knowledgeBaseMock —— MCP 按工具配置与结果数组路径 / AP
   })
 
   it('R7 保存时只留已勾选工具的映射配置：载荷里多带的未勾选工具配置不落库', async () => {
-    const cfg = mcpConfig({ toolConfigs: { search_documents: mcpToolConfig(), hybrid_search: mcpToolConfig({ resultArrayPath: '$.results[*]' }) } })
+    const cfg = mcpConfig({ toolConfigs: { search_documents: mcpToolConfig(), hybrid_search: mcpToolConfig() } })
     const s = await createSource({ sourceType: 'MCP', name: uniq('多带配置'), config: cfg })
     expect(Object.keys(s.config.toolConfigs)).toEqual(['search_documents'])
   })
@@ -903,13 +908,13 @@ describe('knowledgeBaseMock —— 补缺口：图标 / 基本信息校验 / 发
 })
 
 /**
- * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（当前 mockPersist v11；11 个写点：
+ * 2026-09-12 测试审计补缺口（F5）：knowledgeBaseMock 持久化零用例（当前 mockPersist v12；11 个写点：
  * create / update / remove / transition / createSource / updateSource / removeSource / testSource(带 sourceId) /
  * listDocs(状态流转时) / uploadDoc / deleteDoc）。
  * 本仓 jsdom 下 globalThis.localStorage 为 undefined → 注入内存版存储 + vi.resetModules 动态 import；
  * mock 接口都 `await delay()`，把 setTimeout 桩成立即回调免真等。
  */
-describe('knowledgeBaseMock · 持久化（mockPersist v11）', () => {
+describe('knowledgeBaseMock · 持久化（mockPersist v12）', () => {
   const KEY = 'iworker-demo-mock:knowledgeBase'
   const makeStorage = () => {
     const map = new Map()
@@ -1006,11 +1011,11 @@ describe('knowledgeBaseMock · 持久化（mockPersist v11）', () => {
     expect(done.pendingAction).toBe('PUBLISH')
   })
 
-  it('新建知识库落盘（v=11，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
+  it('新建知识库落盘（v=12，含 icon）→ 重新 import（模拟刷新）→ 列表仍有该库、图标仍在、种子 seq 延续', async () => {
     const first = await import('../knowledgeBaseMock')
     const kb = await first.create({ name: '刷新后还在', kbType: 'ENTERPRISE', description: 'd', icon: '🧪', sourceIds: ['ks_1a'] })
     const snap = JSON.parse(globalThis.localStorage.getItem(KEY))
-    expect(snap.v).toBe(11) // v11：MCP 数据源映射改为每个检索工具一份 toolConfigs（产品优化需求-202611 R7）
+    expect(snap.v).toBe(12) // v12：撤回修改点 9，MCP 种子工具结果数组路径退回 $.content[0].items[*]
     expect(snap.data.rows.find((r) => r.id === kb.id)).toMatchObject({ name: '刷新后还在', icon: '🧪' })
     vi.resetModules()
     const fresh = await import('../knowledgeBaseMock')
@@ -1031,8 +1036,8 @@ describe('knowledgeBaseMock · 持久化（mockPersist v11）', () => {
     expect((await fresh.get(kb.id)).scopeRefNames).toEqual(['客户成功岗', '财务审核岗'])
   })
 
-  it('旧版本快照（v=10，上一版）→ 丢弃并回种子（7 个知识库 / 12 个数据源，不带入旧行）', async () => {
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 10, data: { seq: 1, sources: [], rows: [{ id: 'kb_old', name: '旧库', sourceIds: [] }], docsBySource: {}, seedDocCount: {} } }))
+  it('旧版本快照（v=11，上一版）→ 丢弃并回种子（7 个知识库 / 12 个数据源，不带入旧行）', async () => {
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 11, data: { seq: 1, sources: [], rows: [{ id: 'kb_old', name: '旧库', sourceIds: [] }], docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     const { list: rows, total } = await m.list()
     expect(total).toBe(7)
@@ -1042,7 +1047,7 @@ describe('knowledgeBaseMock · 持久化（mockPersist v11）', () => {
 
   it('坏形状快照（rows 不是数组）→ restore 抛「knowledgeBase 快照形状不合法」被兜底，回种子 + console.warn', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 11, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
+    globalThis.localStorage.setItem(KEY, JSON.stringify({ v: 12, data: { seq: 1, sources: [], rows: 'oops', docsBySource: {}, seedDocCount: {} } }))
     const m = await import('../knowledgeBaseMock')
     expect((await m.list()).total).toBe(7)
     const call = warn.mock.calls.find((c) => String(c[0]).includes('knowledgeBase'))

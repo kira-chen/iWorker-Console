@@ -36,11 +36,11 @@
  * 跳过并记录：D4 鉴权区按 md 多参数表（Q56/Q57，现状即 md）；D9 检索工具保持平铺复选框（md §七.3 字面「多选复选框形式」）、
  *   不加原型「拉取工具」按钮（清单由测试连接返回，md §七.3）。
  *
- * 【2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）】
+ * 【2026-11-10 产品优化需求-202611 修改点 10 / 11（R7 / R8）】
  *   R7 方案 A：检索工具仍多选（≥1），但映射改为每个已勾选工具一张可折叠配置卡（卡片标题 = 工具名），卡内是该工具自己的
  *     请求参数映射 + 结果数组路径 + 响应字段（mcpToolConfigs）；新勾选的工具默认展开；取消勾选先确认「映射配置将清空」；
  *     配置不全的卡片标题旁标「未配置完成」；保存逐个工具校验，展开并滚到第一张出错的卡片；连接测试结果按工具分别展示。
- *   R6：新建时结果数组路径留空（示例只作占位）；路径的取值口径见 knowledgeBaseMeta.evalMcpResultArray。
+ *   修改点 9（R6，结果数组路径取值口径）已于 2026-11-16 撤回：新勾选工具的结果数组路径仍预填 $.content[0].items[*]。
  *   R8：API 字段名统一为「请求地址」，输入框下方常驻说明「仅支持返回 JSON 的检索接口」。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
@@ -267,7 +267,7 @@ function normalizeResponseRows(rows, mkDefaults = mkResponseMapRows) {
 }
 
 /* ---------- MCP 检索工具配置卡（修改点 10 方案 A：每个已勾选工具一张卡） ---------- */
-/** 一个工具的编辑态配置：编辑时回填已存配置；新勾选时用空白配置（结果数组路径留空，示例只作占位，修改点 9）。 */
+/** 一个工具的编辑态配置：编辑时回填已存配置；新勾选时用默认配置（结果数组路径预填 $.content[0].items[*]，见 mkMcpToolConfig）。 */
 function mkToolDraft(saved = mkMcpToolConfig()) {
   return {
     requestRows: normalizeRequestRows(saved.requestMap),
@@ -1045,11 +1045,11 @@ function close() {
         <el-button :loading="testing" @click="doTest">{{ verify?.verifyStatus === 'SUCCESS' ? '重新测试' : '测试连接' }}</el-button>
         <span v-if="verifyLine" class="ksrc-verify" :class="verify?.verifyStatus === 'SUCCESS' ? 'ok' : 'bad'">● {{ verifyLine }}</span>
         <span v-else-if="!viewMode" class="ksrc-hint">修改连接配置后需要重新测试</span>
-        <!-- MCP：逐个检索工具的测试结果（修改点 9 / 10） -->
+        <!-- MCP：逐个检索工具的测试结果（修改点 10） -->
         <ul v-if="toolResults.length" class="ksrc-tool-results">
           <li v-for="r in toolResults" :key="r.tool" :class="r.ok ? 'ok' : 'bad'">
             <code>{{ r.tool }}</code>
-            <span>{{ r.ok ? `按结果数组路径取到 ${r.itemCount} 条结果` : r.error }}</span>
+            <span>{{ r.ok ? '测试通过' : r.error }}</span>
           </li>
         </ul>
       </section>

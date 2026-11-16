@@ -39,7 +39,7 @@ const PERMISSION_GROUPS = [
       { name: '01 总览', pages: ['驾驶舱'] },
       { name: '02 岗位', pages: ['岗位', '岗位管理'] },
       { name: '03 能力', pages: ['专家', '技能', '知识库', '连接器', '模型'] },
-      { name: '04 运行', pages: ['实例管理', '运行规格', '存储空间', '配额与限流'] },
+      { name: '04 运行', pages: ['实例管理', '运行规格', '配额与限流', '渠道', '存储空间'] },
       { name: '05 治理', pages: ['我的申请', '审核中心', '用户技能审核', '访问审计', '工具调用审计', '用户反馈', '字段字典', '版本管理'] },
       { name: '06 组织', pages: ['用户', '角色与权限', '用户访问权限'] }
     ]
@@ -101,8 +101,9 @@ let users = seedUsers()
 // version 5（2026-10-09）：04运行新增「存储空间」页面，系统管理员种子随之多一项，旧快照弃用回种子。
 // version 6（2026-10-13）：06组织新增「用户访问权限」页面，系统管理员种子随之多一项，旧快照弃用回种子。
 // version 7（2026-10-16）：05治理权限树补「工具调用审计」（J26，此前侧边栏有页而权限树授不出），系统管理员种子随之多一项，旧快照弃用回种子。
+// version 8（2026-11-16）：04运行新增「渠道」页面（列于配额与限流之后、存储空间之前，与侧边栏同序），系统管理员种子随之多一项，旧快照弃用回种子。
 const persist = attachPersist('adminUser', {
-  version: 7,
+  version: 8,
   snapshot: () => ({ userSeq, roleSeq, roles, users }),
   restore: (d) => {
     if (!d || !Number.isFinite(d.userSeq) || !Number.isFinite(d.roleSeq) || !Array.isArray(d.roles) || !Array.isArray(d.users)) {

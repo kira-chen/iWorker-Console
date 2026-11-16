@@ -26,7 +26,9 @@ vi.mock('vue-router', async (importOriginal) => {
 const stub = { default: { name: 'StubPage', render: () => null } }
 vi.mock('@/layouts/AdminLayout.vue', () => stub)
 vi.mock('@/views/admin/AdminCockpit.vue', () => stub)
-vi.mock('@/views/admin/AdminQuotaThrottle.vue', () => stub)
+// 04 运行：配额与限流挂「开发中」占位页、渠道是真实页——给不同名字的空组件，便于断言落到了哪个组件
+vi.mock('@/views/admin/AdminComingSoonPlaceholder.vue', () => ({ default: { name: 'ComingSoonStub', render: () => null } }))
+vi.mock('@/views/admin/AdminChannel.vue', () => ({ default: { name: 'ChannelStub', render: () => null } }))
 vi.mock('@/views/admin/AdminConnector.vue', () => stub)
 vi.mock('@/views/admin/AdminExperts.vue', () => stub)
 vi.mock('@/views/admin/AdminFeedback.vue', () => stub)
@@ -179,6 +181,20 @@ describe('旧链接 / 收藏重定向落点', () => {
   it('/admin/user-skill-reviews/88/view（旧查看技能整页）→ 用户技能审核列表 ?view=88 自动开抽屉', async () => {
     await router.push('/admin/user-skill-reviews/88/view')
     expect(landed()).toEqual({ name: 'SysConfigUserSkillReviews', query: { view: '88' } })
+  })
+
+  it('/admin/quota-throttle → 配额与限流，挂「开发中」占位页（2026-11-16 消息合并等待时长移到渠道）', async () => {
+    await router.push('/admin/quota-throttle')
+    expect(landed()).toEqual({ name: 'AdminQuotaThrottle', query: {} })
+    expect(router.currentRoute.value.meta.title).toBe('配额与限流')
+    expect(router.currentRoute.value.matched.at(-1).components.default.name).toBe('ComingSoonStub')
+  })
+
+  it('/admin/channel → 渠道页 AdminChannel（PRD 渠道，2026-11-16 新增），仅 ADMIN', async () => {
+    await router.push('/admin/channel?tab=group&keyword=销售华东区')
+    expect(landed()).toEqual({ name: 'AdminChannel', query: { tab: 'group', keyword: '销售华东区' } })
+    expect(router.currentRoute.value.meta).toMatchObject({ title: '渠道', roles: ['ADMIN'] })
+    expect(router.currentRoute.value.matched.at(-1).components.default.name).toBe('ChannelStub')
   })
 
   it('敲错的地址 /no/such/page → 兜底回岗位管理 AdminPositions', async () => {

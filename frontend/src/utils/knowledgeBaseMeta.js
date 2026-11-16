@@ -20,12 +20,12 @@
  *   延续改造前行为）、MCP 预设 title/content/sourceName（sourceField 默认留空，由管理员按工具实际返回填写）；
  *   validateResponseMap 收口两者校验，MCP 侧另经 validateMcpResponseMap 多校验一个「结果数组路径」必填字段
  *   （工具返回结构无统一形状，需 JSONPath 定位结果数组，API 无此概念）。
- * 2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8）：
+ * 2026-11-10 产品优化需求-202611 修改点 10 / 11（R7 / R8）：
  * - R7 方案 A：MCP 数据源的映射改为「每个已选检索工具一份」（config.toolConfigs，见 mkMcpToolConfig），
  *   不再整个数据源共用一套请求参数映射 / 结果数组路径 / 响应字段；
- * - R6：写清结果数组路径从哪里写起（resolveMcpResultRoot / pickResultArray / evalMcpResultArray），
- *   新建不再预填示例路径（MCP_DEFAULTS 去掉 resultArrayPath）；
  * - R8：API 数据源只支持返回 JSON 的检索接口（API_NOT_JSON_ERROR）。
+ * 修改点 9（R6，结果数组路径取值口径）已于 2026-11-16 撤回：新勾选工具仍预填 $.content[0].items[*]，
+ *   连接测试不按路径取值。
  *
  * 状态三态：status ∈ DRAFT / PENDING_REVIEW / PUBLISHED；待发布与待停用由
  * pendingAction（PUBLISH / DELIST）标记，列表统一展示「审核中」（md §八.1），
@@ -307,9 +307,11 @@ export function validateMcpResponseMap(rows, resultArrayPath) {
  *   config.toolConfigs = { search_documents: { requestMap, resultArrayPath, responseMap }, hybrid_search: { … } }
  * 每份配置的三项内容与改造前整个数据源那一套完全相同（请求参数映射 §七.4、结果数组路径 + 响应字段 §七.5）。 */
 
-/** 新勾选工具的空白配置：请求参数预设 query / topK；结果数组路径留空（示例只作占位，不预填，修改点 9）；响应字段预设三行待填。 */
+/** 结果数组路径示例值，新勾选工具默认展示（md §七.5；改造前是 MCP_DEFAULTS.resultArrayPath）。 */
+export const MCP_DEFAULT_RESULT_ARRAY_PATH = '$.content[0].items[*]'
+/** 新勾选工具的默认配置：请求参数预设 query / topK；结果数组路径预填示例值；响应字段预设三行待填。 */
 export function mkMcpToolConfig() {
-  return { requestMap: mkRequestMapRows(), resultArrayPath: '', responseMap: mkMcpResponseMapRows() }
+  return { requestMap: mkRequestMapRows(), resultArrayPath: MCP_DEFAULT_RESULT_ARRAY_PATH, responseMap: mkMcpResponseMapRows() }
 }
 /**
  * 校验一个检索工具的映射配置（编辑器标「未配置完成」/ 保存定位卡片、mock 保存校验共用）。
@@ -320,77 +322,6 @@ export function validateMcpToolConfig(toolConfig) {
     request: validateRequestMap(toolConfig?.requestMap),
     response: validateMcpResponseMap(toolConfig?.responseMap, toolConfig?.resultArrayPath)
   }
-}
-
-/* ---------------- MCP 结果数组路径的取值口径（产品优化需求-202611 修改点 9（R6）；口径【待研发确认 R6-1～R6-3】） ----------------
- * MCP 工具的原始返回是协议层结构：{ content: [{ type: 'text', text: '<一段 JSON 字符串>' }, …], structuredContent?: { … } }。
- * 结果数组路径不从这一层写，而是从「结果数据」写起，根按下面的顺序取：
- *   ① 返回带 structuredContent 时，以 structuredContent 为根；
- *   ② 否则取第一个 type 为 text 的内容块，把它的 text 按 JSON 解析，解析结果为根（解析不了 → 工具返回内容不是 JSON）。
- * 路径从根写起，如 $.items[*]、$.data.list[*]。本 demo 只支持「点分字段 + [下标] + [*]」这一小段写法
- * （是否支持完整 JSONPath 待研发确认 R6-3）；多个 text 块、isError 为 true 的处理也待研发确认（R6-2），demo 只看第一个 text 块。 */
-export const MCP_PATH_ERRORS = Object.freeze({
-  NO_ARRAY: '按结果数组路径未取到数组，请检查路径',
-  NOT_JSON: '工具返回内容不是 JSON，无法按路径取值'
-})
-
-/** 取结果数据的根：成功返回 { root }；没有 structuredContent 且 text 不是合法 JSON（或根本没有 text 块）返回 { error }。 */
-export function resolveMcpResultRoot(toolResult) {
-  if (toolResult?.structuredContent != null) return { root: toolResult.structuredContent }
-  const textBlock = (toolResult?.content || []).find((c) => c?.type === 'text')
-  try {
-    return { root: JSON.parse(textBlock?.text) }
-  } catch (e) {
-    return { error: MCP_PATH_ERRORS.NOT_JSON }
-  }
-}
-
-/** 把「$.data.list[*]」拆成 ['data', 'list', '*']（下标拆成数字）；不以 $ 开头或写法不合规返回 null。 */
-function parseResultArrayPath(path) {
-  const s = String(path || '').trim()
-  if (!s.startsWith('$')) return null
-  const step = /\.([^.[\]\s]+)|\[(\d+|\*)\]/y // 一段：.字段名 / [下标] / [*]
-  const tokens = []
-  let i = 1
-  while (i < s.length) {
-    step.lastIndex = i
-    const m = step.exec(s)
-    if (!m) return null
-    tokens.push(m[1] !== undefined ? m[1] : m[2] === '*' ? '*' : Number(m[2]))
-    i = step.lastIndex
-  }
-  return tokens
-}
-
-/**
- * 按结果数组路径从根里取结果数组：取到返回数组，取不到（写法不对 / 中途没有该字段 / 终点不是数组）返回 null。
- * [*] 表示「这一层是数组，取出它的全部元素」；路径末尾不写 [*]、但终点本身就是数组时同样认（如 $.items）。
- */
-export function pickResultArray(root, path) {
-  const tokens = parseResultArrayPath(path)
-  if (!tokens) return null
-  let nodes = [root]
-  let spread = false // 走过 [*] 之后，nodes 本身就是取出来的结果数组
-  for (const t of tokens) {
-    if (t === '*') {
-      if (!nodes.every(Array.isArray)) return null
-      nodes = nodes.flat()
-      spread = true
-    } else {
-      nodes = nodes.map((n) => (n !== null && typeof n === 'object' ? n[t] : undefined))
-      if (nodes.some((n) => n === undefined)) return null
-    }
-  }
-  if (spread) return nodes
-  return nodes.length === 1 && Array.isArray(nodes[0]) ? nodes[0] : null
-}
-
-/** 连接测试用：按结果数组路径从一次工具返回里取结果数组，返回 { items } 或 { error }（错误文案见 MCP_PATH_ERRORS）。 */
-export function evalMcpResultArray(toolResult, path) {
-  const { root, error } = resolveMcpResultRoot(toolResult)
-  if (error) return { error }
-  const items = pickResultArray(root, path)
-  return items ? { items } : { error: MCP_PATH_ERRORS.NO_ARRAY }
 }
 
 export const API_DEFAULTS = Object.freeze({
@@ -410,7 +341,7 @@ export const MCP_DEFAULTS = Object.freeze({
   authHeaderName: '', // API Key 模式 Header 名：≤128，仅字母数字连字符（md §七.2.1）
   command: 'npx', // stdio：npx | uvx | node | python3 | docker（md §七.2.2）
   timeoutMs: 10000 // 必填，使用系统默认值可直接修改；默认 10000，范围 1000～120000（md §七.6，取值维持现实现）
-  // 结果数组路径不在这里：改为每个检索工具各配一份（mkMcpToolConfig，修改点 10），且新建留空、示例只作占位（修改点 9）
+  // 结果数组路径不在这里：改为每个检索工具各配一份（mkMcpToolConfig，修改点 10），新勾选预填 MCP_DEFAULT_RESULT_ARRAY_PATH
 })
 /** 各文档类型可接受的文件格式（md §五.2） */
 export const ACCEPT_BY_DOC_KIND = Object.freeze({

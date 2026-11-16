@@ -64,7 +64,7 @@ export function createLoginLogsHarness(AdminLoginLogs) {
         { path: '/admin/position-assignments', name: 'AdminPositionAssignments', component: { template: '<div />' } },
         { path: '/admin/runtime-specs', name: 'AdminRuntimeSpecs', component: { template: '<div />' } },
         { path: '/admin/storage-space', name: 'AdminStorageSpace', component: { template: '<div />' } },
-        { path: '/admin/quota-throttle', name: 'AdminQuotaThrottle', component: { template: '<div />' } }
+        { path: '/admin/channel', name: 'AdminChannel', component: { template: '<div />' } }
       ]
     })
     await router.push('/admin/login-logs')

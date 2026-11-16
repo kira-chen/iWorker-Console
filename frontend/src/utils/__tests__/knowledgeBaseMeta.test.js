@@ -18,9 +18,7 @@ import {
   validateMcpResponseMap,
   mkMcpToolConfig,
   validateMcpToolConfig,
-  resolveMcpResultRoot,
-  pickResultArray,
-  evalMcpResultArray
+  MCP_DEFAULT_RESULT_ARRAY_PATH
 } from '@/utils/knowledgeBaseMeta'
 
 /**
@@ -42,7 +40,7 @@ describe('knowledgeBaseMeta · API_DEFAULTS / MCP_DEFAULTS 默认值方向（md 
   })
 
   it('MCP 新建默认：鉴权 none（无鉴权）、传输 streamable-http、Command npx、超时 10000ms（md §七.2.1 / §七.6）', () => {
-    // 结果数组路径不在数据源级默认值里：改为每个检索工具各配一份，且新建留空（产品优化需求-202611 修改点 9 / 10）
+    // 结果数组路径不在数据源级默认值里：改为每个检索工具各配一份，新勾选预填示例值（产品优化需求-202611 修改点 10；修改点 9 已撤回）
     expect(MCP_DEFAULTS).toEqual({
       transport: 'streamable-http',
       endpoint: '',
@@ -224,59 +222,21 @@ describe('knowledgeBaseMeta · 响应字段映射（2026-09-18 推翻 09-08 决�
 /**
  * MCP 检索工具的映射配置（产品优化需求-202611 修改点 10（R7）方案 A）：
  * 「每个已勾选的工具单独一张配置卡……卡内是该工具的请求参数映射、结果数组路径和响应字段映射」；
- * 修改点 9（R6）：「新建数据源时结果数组路径留空，示例只作占位提示，不预填」。
+ * 结果数组路径新勾选时预填 md §七.5 示例 $.content[0].items[*]（修改点 9「新建留空、只作占位」已于 2026-11-16 撤回）。
  */
-describe('knowledgeBaseMeta · MCP 检索工具配置（R7 方案 A / R6）', () => {
-  it('mkMcpToolConfig：新勾选工具的空白配置——请求预设 query/topK、结果数组路径留空（不预填示例）、响应预设三行待填', () => {
+describe('knowledgeBaseMeta · MCP 检索工具配置（R7 方案 A）', () => {
+  it('mkMcpToolConfig：新勾选工具的默认配置——请求预设 query/topK、结果数组路径预填 $.content[0].items[*]、响应预设三行待填', () => {
     const tc = mkMcpToolConfig()
-    expect(tc.resultArrayPath).toBe('')
+    expect(tc.resultArrayPath).toBe('$.content[0].items[*]')
+    expect(MCP_DEFAULT_RESULT_ARRAY_PATH).toBe('$.content[0].items[*]')
     expect(tc.requestMap.map((r) => r.name)).toEqual(['query', 'topK'])
     expect(tc.responseMap.map((r) => [r.name, r.sourceField])).toEqual([['title', ''], ['content', ''], ['sourceName', '']])
   })
-  it('validateMcpToolConfig：空白配置不完整（缺结果数组路径），补齐路径与 title / content 后两段错误都为空', () => {
-    expect(validateMcpToolConfig(mkMcpToolConfig())).toEqual({ request: '', response: '请填写结果数组路径' })
-    const filled = { ...mkMcpToolConfig(), resultArrayPath: '$.items[*]' }
+  it('validateMcpToolConfig：默认配置路径已预填，只差 title / content 字段名；补齐后两段错误都为空；清空路径报「请填写结果数组路径」', () => {
+    expect(validateMcpToolConfig(mkMcpToolConfig())).toEqual({ request: '', response: '响应字段：title 需填写接口返回字段名' })
+    const filled = mkMcpToolConfig()
     filled.responseMap = filled.responseMap.map((r) => ({ ...r, sourceField: r.name === 'sourceName' ? '' : r.name }))
     expect(validateMcpToolConfig(filled)).toEqual({ request: '', response: '' })
-  })
-})
-
-/**
- * 结果数组路径的取值口径（产品优化需求-202611 修改点 9（R6），口径待研发确认，demo 按草案建议口径）：
- * 「工具返回带 structuredContent 时以它为根；否则取第一个 type 为 text 的内容块，把 text 按 JSON 解析后作为根。
- *  路径从根写起，如 $.items[*]、$.data.list[*]」；
- * 「按路径取不到数组时，提示"按结果数组路径未取到数组，请检查路径"；text 不是合法 JSON 时，提示"工具返回内容不是 JSON，无法按路径取值"」。
- */
-describe('knowledgeBaseMeta · MCP 结果数组路径取值（R6）', () => {
-  const textResult = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }] })
-
-  it('无 structuredContent：取第一个 text 块解析出的 JSON 为根，$.items[*] 取到数组', () => {
-    expect(evalMcpResultArray(textResult({ items: [{ t: 1 }, { t: 2 }] }), '$.items[*]')).toEqual({ items: [{ t: 1 }, { t: 2 }] })
-  })
-  it('多个内容块时跳过非 text 块，取第一个 type 为 text 的块', () => {
-    const r = { content: [{ type: 'image', data: 'xx' }, { type: 'text', text: '{"data":{"list":[1,2,3]}}' }, { type: 'text', text: '{"data":{"list":[9]}}' }] }
-    expect(resolveMcpResultRoot(r)).toEqual({ root: { data: { list: [1, 2, 3] } } })
-  })
-  it('带 structuredContent：以它为根，text 即使不是 JSON 也不影响取值', () => {
-    const r = { content: [{ type: 'text', text: '命中 2 条' }], structuredContent: { results: [{ a: 1 }, { a: 2 }] } }
-    expect(evalMcpResultArray(r, '$.results[*]')).toEqual({ items: [{ a: 1 }, { a: 2 }] })
-  })
-  it('路径写进协议层（$.content[0].items[*]）→ 从结果数据的根取不到 →「按结果数组路径未取到数组，请检查路径」', () => {
-    expect(evalMcpResultArray(textResult({ items: [1] }), '$.content[0].items[*]')).toEqual({ error: '按结果数组路径未取到数组，请检查路径' })
-  })
-  it('无 structuredContent 且 text 不是合法 JSON →「工具返回内容不是 JSON，无法按路径取值」', () => {
-    expect(evalMcpResultArray({ content: [{ type: 'text', text: '共找到 2 条结果' }] }, '$.items[*]')).toEqual({ error: '工具返回内容不是 JSON，无法按路径取值' })
-  })
-  it('pickResultArray：点分多层 + [下标] + [*] 都能取；终点本身是数组时不写 [*] 也认', () => {
-    const root = { data: { list: [{ id: 1 }, { id: 2 }] }, pages: [{ rows: ['a'] }, { rows: ['b', 'c'] }] }
-    expect(pickResultArray(root, '$.data.list[*]')).toEqual([{ id: 1 }, { id: 2 }])
-    expect(pickResultArray(root, '$.pages[1].rows[*]')).toEqual(['b', 'c'])
-    expect(pickResultArray(root, '$.data.list')).toEqual([{ id: 1 }, { id: 2 }])
-  })
-  it('pickResultArray：终点不是数组 / 中途字段不存在 / 不以 $ 开头 → 取不到（null）', () => {
-    const root = { total: 2, data: { list: [1, 2] } }
-    expect(pickResultArray(root, '$.total')).toBeNull()
-    expect(pickResultArray(root, '$.data.rows[*]')).toBeNull()
-    expect(pickResultArray(root, 'data.list[*]')).toBeNull()
+    expect(validateMcpToolConfig({ ...filled, resultArrayPath: '' })).toEqual({ request: '', response: '请填写结果数组路径' })
   })
 })

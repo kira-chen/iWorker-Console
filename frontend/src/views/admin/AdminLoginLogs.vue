@@ -211,7 +211,7 @@ const MOD_CLS = {
   模型: 'tag-orange',
   运行规格: 'tag-gray',
   存储空间: 'tag-gray',
-  配额与限流: 'tag-gray',
+  渠道: 'tag-gray',
   用户访问权限: 'tag-purple',
   审核中心: 'tag-green',
   用户技能审核: 'tag-orange',
@@ -228,6 +228,11 @@ const ACT_CLS = {
   修改默认容量: 'tag-green',
   修改磁盘总量: 'tag-green',
   修改配置: 'tag-green',
+  新建: 'tag-green',
+  编辑: 'tag-green',
+  启用: 'tag-green',
+  更换应用: 'tag-orange',
+  移出群: 'tag-orange',
   授权: 'tag-green',
   收回: 'tag-orange',
   通过申请: 'tag-green',
@@ -255,7 +260,7 @@ const MODULE_ROUTE = {
   模型:       { name: 'AdminModels' },
   运行规格:   { name: 'AdminRuntimeSpecs' },
   存储空间:   { name: 'AdminStorageSpace' },
-  配额与限流: { name: 'AdminQuotaThrottle' },
+  渠道:       { name: 'AdminChannel' },
   用户访问权限: { name: 'AdminUserAccess' },
   审核中心:   { name: 'UnifiedReview' },
   用户技能审核: { name: 'SysConfigUserSkillReviews' },
@@ -271,10 +276,14 @@ function opsGoto(row) {
   // 存储空间：调整容量、修改默认容量 / 磁盘总量落在容量分配页签（默认页签），同意 / 拒绝扩容落在扩容申请页签（访问审计 §6.3）；
   // 用户访问权限：授权 / 收回 / 通过申请 / 驳回申请四类记录都落在授权名单（权限申请已并入授权名单，无单独页签），走默认跳转。
   // 修改默认容量 / 磁盘总量的对象是全局设置而非员工，不注入关键词（否则员工列表会被滤空）；
-  // 配额与限流页没有列表，对象是配置项名称，同样不注入（访问审计 §6.3）
-  const extra = row.module === '存储空间' && ['同意扩容', '拒绝扩容'].includes(row.action) ? { tab: 'request' } : def.extraQuery
+  // 渠道（PRD 渠道 第十章）：机器人记录注入机器人名称进【机器人】页签；移出群记录注入群名称并切到【群聊治理】；
+  // 修改配置（消息合并等待时长）的对象是配置项名称，不注入关键词
+  let extra = def.extraQuery
+  if (row.module === '存储空间' && ['同意扩容', '拒绝扩容'].includes(row.action)) extra = { tab: 'request' }
+  if (row.module === '渠道' && row.action === '移出群') extra = { tab: 'group' }
   const globalSetting =
-    row.module === '配额与限流' || (row.module === '存储空间' && ['修改默认容量', '修改磁盘总量'].includes(row.action))
+    (row.module === '渠道' && row.action === '修改配置') ||
+    (row.module === '存储空间' && ['修改默认容量', '修改磁盘总量'].includes(row.action))
   router.push({
     name: def.name,
     query: { ...(extra || {}), ...(globalSetting ? {} : { keyword: row.target }) }
@@ -485,11 +494,11 @@ function opsGoto(row) {
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-select v-model="opsModule" placeholder="全部模块" clearable class="lt-filter">
-          <el-option v-for="m in ['岗位','岗位分配','专家','专家团','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','配额与限流','用户访问权限','审核中心','用户技能审核','版本管理']"
+          <el-option v-for="m in ['岗位','岗位分配','专家','专家团','技能','知识库','MCP','API','业务系统','模型','运行规格','存储空间','渠道','用户访问权限','审核中心','用户技能审核','版本管理']"
             :key="m" :label="m" :value="m" />
         </el-select>
         <el-select v-model="opsAction" placeholder="全部动作" clearable class="lt-filter">
-          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量','修改默认容量','修改磁盘总量','修改配置','授权','收回','通过申请','驳回申请']"
+          <el-option v-for="a in ['发布','个人配置','分配','变更','停用','强制回收','删除','审核通过','审核驳回','同意扩容','拒绝扩容','调整容量','修改默认容量','修改磁盘总量','修改配置','新建','编辑','启用','更换应用','移出群','授权','收回','通过申请','驳回申请']"
             :key="a" :label="a" :value="a" />
         </el-select>
         <el-button @click="opsList.search">查询</el-button>

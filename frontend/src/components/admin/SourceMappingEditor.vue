@@ -10,8 +10,8 @@
  * （工具返回结构无统一形状，需 JSONPath 定位结果数组，API 侧无此概念）。
  * 请求参数映射两种 variant 完全一致（复用 SourceMapParamRows，含预设 query/topK、object/array 递归嵌套），
  * 仅副标题文案随 variant 切换。
- * 2026-11-10 产品优化需求-202611：MCP 数据源每个检索工具各用一个本组件（修改点 10，见 KnowledgeSourceEditor 的工具配置卡）；
- * 结果数组路径的示例改为从结果数据写起（$.items[*]、$.data.list[*]），只作占位不预填，输入框下方补字段说明（修改点 9）。
+ * 2026-11-10 产品优化需求-202611：MCP 数据源每个检索工具各用一个本组件（修改点 10，见 KnowledgeSourceEditor 的工具配置卡）。
+ * 修改点 9（结果数组路径取值口径）已于 2026-11-16 撤回：占位仍是 $.content[0].items[*]，输入框下方不加字段说明。
  *
  * 卡片骨架照原型 kmcp-card / api-param-* / api-resp-*：白卡 + 「标题 + 弱色副注」行 + 灰底表头 + 卡底说明行（右侧添加按钮）。
  * 行字段与父共享引用；增删行 emit update:*；任何交互 emit interact。校验在父层
@@ -76,16 +76,13 @@ function sourceFieldPlaceholder(row) {
       <strong>{{ isMcp ? '响应字段' : '响应字段映射' }} <em class="req">*</em></strong>
       <span>{{ isMcp ? '工具返回数组 → 标准知识检索结果' : '下游 API 返回 → 标准知识检索结果' }}</span>
     </div>
-    <!-- 路径从结果数据写起：工具返回带 structuredContent 时以它为根，否则以第一个 text 内容块解析出的 JSON 为根
-         （修改点 9，取值口径见 utils/knowledgeBaseMeta.evalMcpResultArray） -->
     <el-form-item v-if="isMcp" label="结果数组路径" required class="sme-array-path">
       <el-input
         :model-value="resultArrayPath"
         :disabled="readonly"
-        placeholder="JSONPath，如 $.items[*]、$.data.list[*]"
+        placeholder="JSONPath，如 $.content[0].items[*]"
         @update:model-value="emit('update:resultArrayPath', $event); emit('interact')"
       />
-      <div class="sme-help">从工具返回的结果数据写起，不包含 content、text 等协议层结构</div>
     </el-form-item>
     <div class="sme-resp-head">
       <span>参数名</span>
@@ -166,14 +163,6 @@ function sourceFieldPlaceholder(row) {
   padding: 0;
   text-align: left;
   line-height: 1.4;
-}
-/* 控件下方说明（同 KnowledgeSourceEditor 的 .ksrc-help） */
-.sme-help {
-  width: 100%;
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--c-text-muted);
 }
 .sme-resp-head {
   padding: 7px 9px;

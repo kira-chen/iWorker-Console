@@ -1,0 +1,64 @@
+/* 渠道两个页签（机器人 / 群聊治理）共用的列表样式：说明条、表格卡片、第二行弱字、底部汇总、清空筛选。
+ * 形态照运行规格页（AdminRuntimeSpecs.vue 的 .rs-note / .rs-card / .rs-foot），只用站内令牌。 */
+.ch-note {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--c-text-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--c-success);
+  border-radius: var(--radius-sm);
+}
+.ch-note b {
+  color: var(--c-text-strong);
+}
+.ch-card {
+  margin-top: var(--space-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.ch-card-title {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ch-name {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-strong);
+}
+.ch-sub {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.ch-sub.is-danger {
+  color: var(--c-danger);
+}
+.ch-muted {
+  color: var(--c-text-muted);
+}
+.ch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.ch-foot {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  border-top: 1px solid var(--border-soft);
+}
+.ch-empty-actions {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4) var(--space-5);
+  margin-top: calc(-1 * var(--space-6));
+}
