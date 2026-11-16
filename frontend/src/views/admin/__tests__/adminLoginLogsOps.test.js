@@ -6,7 +6,7 @@ import { createLoginLogsHarness } from './helpers/loginLogsHarness'
 /**
  * AdminLoginLogs.vue「管理端操作」页签单测（2026-09-20 新增，版本管理接入访问审计）。
  *
- * 【主题】管理端操作页签各块：版本管理 / 运行规格 / 岗位分配 / 强制回收 / 用户技能审核 / 存储空间记录，以及该页签的动态分页。
+ * 【主题】管理端操作页签各块：版本管理 / 运行规格 / 岗位分配 / 强制回收 / 用户技能审核 / 存储空间 / 渠道记录，以及该页签的动态分页。
  * 【拆分】2026-10-10 测试审计 J45：原文件同时含「用户端文件下载」「30 天跨度」「页签条件独立」，名实不符，
  * 现拆出 adminLoginLogsDownload.test.js 专管那三块；两文件共用 helpers/loginLogsHarness.js 的夹具与挂载流程。
  * 对齐 docs/PRD/数字员工管理端PRD/05治理/访问审计/prd.访问审计.md：
@@ -173,16 +173,17 @@ describe('访问审计 · 管理端操作 · 强制回收与用户技能审核�
     return [...document.body.querySelectorAll('.el-select-dropdown__item')].map((i) => i.textContent.trim())
   }
 
-  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量 / 修改默认容量 / 修改磁盘总量 / 修改配置 / 授权 / 收回 / 通过申请 / 驳回申请（§6.1，共 19 项，撤回不记故不在其中）', async () => {
-    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 19 项
+  it('动作筛选完整顺序：发布 / 个人配置 / 分配 / 变更 / 停用 / 强制回收 / 删除 / 审核通过 / 审核驳回 / 同意扩容 / 拒绝扩容 / 调整容量 / 修改默认容量 / 修改磁盘总量 / 修改配置 / 新建 / 编辑 / 启用 / 更换应用 / 移出群 / 授权 / 收回 / 通过申请 / 驳回申请（§6.1；渠道的五个新动作 2026-11-16 接在「修改配置」之后，共 24 项，撤回不记故不在其中）', async () => {
+    // 下拉项挂在 body 上，其它页签的下拉也在，故从动作列表的第一项「发布」起取 24 项
     const labels = await openDropdown(1)
-    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 19)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量', '修改配置', '授权', '收回', '通过申请', '驳回申请'])
+    expect(labels.slice(labels.indexOf('发布'), labels.indexOf('发布') + 24)).toEqual(['发布', '个人配置', '分配', '变更', '停用', '强制回收', '删除', '审核通过', '审核驳回', '同意扩容', '拒绝扩容', '调整容量', '修改默认容量', '修改磁盘总量', '修改配置', '新建', '编辑', '启用', '更换应用', '移出群', '授权', '收回', '通过申请', '驳回申请'])
   })
 
-  it('模块筛选完整顺序里「存储空间」「配额与限流」「用户访问权限」依次在「运行规格」之后、「审核中心」之前（§6.1 第 3 条）', async () => {
+  it('模块筛选完整顺序里「存储空间」「渠道」「用户访问权限」依次在「运行规格」之后、「审核中心」之前，不再有「配额与限流」（§6.1 第 3 条）', async () => {
     const labels = await openDropdown(0)
     const i = labels.indexOf('岗位')
-    expect(labels.slice(i, i + 17)).toEqual(['岗位', '岗位分配', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '运行规格', '存储空间', '配额与限流', '用户访问权限', '审核中心', '用户技能审核', '版本管理'])
+    expect(labels.slice(i, i + 17)).toEqual(['岗位', '岗位分配', '专家', '专家团', '技能', '知识库', 'MCP', 'API', '业务系统', '模型', '运行规格', '存储空间', '渠道', '用户访问权限', '审核中心', '用户技能审核', '版本管理'])
+    expect(labels).not.toContain('配额与限流')
   })
 
   it('模块筛选含「用户技能审核」', async () => {
@@ -418,16 +419,27 @@ describe('访问审计 · 管理端操作 · 存储空间记录（2026-10-09，�
   })
 })
 
-describe('访问审计 · 管理端操作 · 配额与限流记录（2026-11-15，§6.1 / §6.2 / §6.3 / §6.4）', () => {
-  // 夹具里没有这类记录（不动夹具条数，免得「12 条」类用例变义），用例前追加一条、用例后移除
+describe('访问审计 · 管理端操作 · 渠道记录（2026-11-16，PRD 渠道 第十章；§6.1 / §6.3 / §6.4）', () => {
+  // 夹具里没有这类记录（不动夹具条数，免得「12 条」类用例变义），用例前追加、用例后移除
   const added = []
+  const BOT = '飞书助手'
   beforeEach(async () => {
     const pad = (n) => String(n).padStart(2, '0')
     const t = new Date()
+    const day = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`
     const { opsRecords } = await import('@/api/accessAuditMock')
-    const rec = { id: 400, time: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} 07:00`, operator: 'demo', module: '配额与限流', action: '修改配置', target: '消息合并等待时长', detail: '5 秒 → 8 秒' }
-    opsRecords.push(rec)
-    added.push(rec)
+    const base = { operator: 'demo', module: '渠道' }
+    const recs = [
+      { id: 401, time: `${day} 07:06`, ...base, action: '修改配置', target: '消息合并等待时长', detail: '5 秒 → 8 秒' },
+      { id: 402, time: `${day} 07:05`, ...base, action: '移出群', target: '销售华东区', detail: '' },
+      { id: 403, time: `${day} 07:04`, ...base, action: '更换应用', target: BOT, detail: 'cli_a1b2 → cli_c3d4' },
+      { id: 404, time: `${day} 07:03`, ...base, action: '启用', target: BOT, detail: '' },
+      { id: 405, time: `${day} 07:02`, ...base, action: '停用', target: BOT, detail: '' },
+      { id: 406, time: `${day} 07:01`, ...base, action: '编辑', target: BOT, detail: '用途说明：— → 飞书上的统一入口；App Secret 已更新' },
+      { id: 407, time: `${day} 07:00`, ...base, action: '新建', target: BOT, detail: '飞书 · 长连接' }
+    ]
+    opsRecords.push(...recs)
+    added.push(...recs)
     await h.remountAtHeight(2000)
     await h.switchTab('管理端操作')
   })
@@ -435,28 +447,60 @@ describe('访问审计 · 管理端操作 · 配额与限流记录（2026-11-15�
     const { opsRecords } = await import('@/api/accessAuditMock')
     for (const rec of added.splice(0)) opsRecords.splice(opsRecords.indexOf(rec), 1)
   })
+  const clickView = (tr) => [...tr.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
 
-  it('模块「配额与限流」灰色、动作「修改配置」绿；变更内容「原值 → 新值」，操作对象为配置项名称且不附版本号', () => {
-    const tr = rowOf('消息合并等待时长', '修改配置')
-    expect(tagOf(tr, '配额与限流').className).toContain('tag-gray')
-    expect(tagOf(tr, '修改配置').className).toContain('tag-green')
-    expect(detailCell(tr).textContent.trim()).toBe('5 秒 → 8 秒')
-    expect(tr.querySelector('.ops-target-name').textContent).toBe('消息合并等待时长')
-    expect(tr.querySelector('.ops-version')).toBeNull()
+  it('模块「渠道」灰色（§6.4）', () => {
+    expect(tagOf(rowOf(BOT, '新建'), '渠道').className).toContain('tag-gray')
   })
 
-  it('模块筛选选「配额与限流」→ 只剩这一条', async () => {
+  it.each([
+    ['新建', 'tag-green'],
+    ['编辑', 'tag-green'],
+    ['启用', 'tag-green'],
+    ['停用', 'tag-orange'],
+    ['更换应用', 'tag-orange']
+  ])('动作「%s」标签色 %s', (action, cls) => {
+    expect(tagOf(rowOf(BOT, action), action).className).toContain(cls)
+  })
+
+  it('动作「移出群」橙色，操作对象为群名称', () => {
+    const tr = rowOf('销售华东区', '移出群')
+    expect(tagOf(tr, '移出群').className).toContain('tag-orange')
+    expect(tr.querySelector('.ops-target-name').textContent).toBe('销售华东区')
+  })
+
+  it('变更内容按第十章：新建「渠道 · 连接方式」、编辑为变更摘要、更换应用「原 → 新」、修改配置「原值 → 新值」，停用为空显示「—」；不附版本号', () => {
+    expect(detailCell(rowOf(BOT, '新建')).textContent.trim()).toBe('飞书 · 长连接')
+    expect(detailCell(rowOf(BOT, '编辑')).textContent.trim()).toBe('用途说明：— → 飞书上的统一入口；App Secret 已更新')
+    expect(detailCell(rowOf(BOT, '更换应用')).textContent.trim()).toBe('cli_a1b2 → cli_c3d4')
+    expect(detailCell(rowOf('消息合并等待时长', '修改配置')).textContent.trim()).toBe('5 秒 → 8 秒')
+    expect(detailCell(rowOf(BOT, '停用')).textContent.trim()).toBe('—')
+    expect(rowOf(BOT, '新建').querySelector('.ops-version')).toBeNull()
+  })
+
+  it('模块筛选选「渠道」→ 只剩这 7 条', async () => {
     pane().querySelectorAll('.lt-filter')[0].querySelector('.el-select__wrapper').click()
     await flushAll(4)
-    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === '配额与限流').click()
+    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].find((i) => i.textContent.trim() === '渠道').click()
     await flushAll(4)
-    expect(rows()).toHaveLength(1)
-    expect(rows()[0].textContent).toContain('消息合并等待时长')
+    expect(rows()).toHaveLength(7)
   })
 
-  it('【查看】跳转到配额与限流页，不注入关键词（该页没有列表）（§6.3）', async () => {
-    ;[...rowOf('消息合并等待时长', '修改配置').querySelectorAll('button')].find((b) => b.textContent.trim() === '查看').click()
-    await vi.waitFor(() => expect(h.router.currentRoute.value.name).toBe('AdminQuotaThrottle'))
-    expect(h.router.currentRoute.value.query.keyword).toBeUndefined()
+  it('机器人记录【查看】→ 渠道页，注入机器人名称，不带页签参数（默认【机器人】）', async () => {
+    clickView(rowOf(BOT, '编辑'))
+    await vi.waitFor(() => expect(h.router.currentRoute.value.name).toBe('AdminChannel'))
+    expect(h.router.currentRoute.value.query).toEqual({ keyword: BOT })
+  })
+
+  it('移出群记录【查看】→ 渠道页【群聊治理】（tab=group），注入群名称', async () => {
+    clickView(rowOf('销售华东区', '移出群'))
+    await vi.waitFor(() => expect(h.router.currentRoute.value.name).toBe('AdminChannel'))
+    expect(h.router.currentRoute.value.query).toEqual({ tab: 'group', keyword: '销售华东区' })
+  })
+
+  it('修改配置记录【查看】→ 渠道页，不注入关键词', async () => {
+    clickView(rowOf('消息合并等待时长', '修改配置'))
+    await vi.waitFor(() => expect(h.router.currentRoute.value.name).toBe('AdminChannel'))
+    expect(h.router.currentRoute.value.query).toEqual({})
   })
 })

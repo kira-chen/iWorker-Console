@@ -208,11 +208,18 @@ const adminChildren = [
     meta: { title: '存储空间', roles: ['ADMIN'], module: 'SYSCONFIG' }
   },
   {
-    // 04 运行 → 配额与限流（PRD prd.配额与限流.md；本期只有 IM 消息合并等待时长）。
+    // 04 运行 → 配额与限流（规划中；2026-11-16 IM 消息合并等待时长移到「渠道」，本页回到开发中占位）。
     path: 'quota-throttle',
     name: 'AdminQuotaThrottle',
-    component: () => import('@/views/admin/AdminQuotaThrottle.vue'),
+    component: () => import('@/views/admin/AdminComingSoonPlaceholder.vue'),
     meta: { title: '配额与限流', roles: ['ADMIN'], module: 'SYSCONFIG' }
+  },
+  {
+    // 04 运行 → 渠道（PRD prd.渠道.md，2026-11-16）：接入飞书 / 钉钉 / 企业微信机器人、群聊治理、消息设置，仅 ADMIN。
+    path: 'channel',
+    name: 'AdminChannel',
+    component: () => import('@/views/admin/AdminChannel.vue'),
+    meta: { title: '渠道', roles: ['ADMIN'], module: 'SYSCONFIG' }
   }
 ]
 
