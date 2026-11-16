@@ -28,11 +28,11 @@
  * 2026-11-09 产品优化需求-202611 R3：专家、岗位知识库的可见范围改为多选（scopeRefId → scopeRefIds[]），
  *   一个知识库可给多位专家或多个岗位使用；专家候选改读专家模块（domainExpertMock）真实数据，不再写死 ex_1/ex_2。
  *   被删的专家 / 岗位不再解析出名称（vo.scopeRefs 只含仍存在的对象），一个都不剩时列表标「无有效专家 / 岗位」、发布前检查阻断。
- * 2026-11-10 产品优化需求-202611 修改点 9 / 10 / 11（R6 / R7 / R8），只动数据源：
+ * 2026-11-10 产品优化需求-202611 修改点 10 / 11（R7 / R8），只动数据源：
  *   - R7 方案 A：MCP config 的 requestMap / responseMap / resultArrayPath 改为每个已选检索工具一份（config.toolConfigs），
- *     保存时逐个工具校验；检索测试调用全部已选工具后合并取 topK（合并规则待研发确认，见 snippetsOf）。
- *   - R6：MCP 连接测试按各工具自己的结果数组路径，从模拟的工具原始返回（mockMcpToolResult）里真实取值，
- *     取不到数组 / text 不是 JSON 时给出两种提示（取值口径见 knowledgeBaseMeta.evalMcpResultArray）。
+ *     保存时逐个工具校验；检索测试调用全部已选工具后合并取 topK（合并规则待研发确认，见 snippetsOf）；
+ *     连接测试逐个工具执行、结果按工具返回（演示约定：地址或启动参数里带 partial，最后一个已选工具超时失败，见 mockMcpTest）。
+ *   - 修改点 9（R6，按结果数组路径从工具原始返回里真实取值）已于 2026-11-16 撤回，连接测试不按路径取值。
  *   - R8：API 连接测试遇到返回不是 JSON 的接口提示「接口返回的不是 JSON，暂不支持该接口」（演示约定：地址里带 html）。
  * 2026-09-09 PRD 复核 G3+G6 · A6（Q265③「知识库也需要发布审核，逻辑同 MCP/API/模型」）：
  *   transition() 的 publish / delist 同时向 reviewsMock + myApplicationsMock 写审核行与申请行，
@@ -60,7 +60,7 @@ import {
   validateRequestMap,
   validateResponseMap,
   validateMcpToolConfig,
-  evalMcpResultArray,
+  MCP_DEFAULT_RESULT_ARRAY_PATH,
   API_NOT_JSON_ERROR
 } from '@/utils/knowledgeBaseMeta'
 import { MCP_TRANSPORTS, isHttpTransport, MCP_COMMAND_OPTIONS } from '@/utils/defValidate'
@@ -105,41 +105,6 @@ const upl = (id, name, over = {}) =>
   })
 // MCP 测试连接成功后返回的固定工具清单（md §七.3：工具清单在连接测试成功后获得）
 export const MCP_TEST_TOOLS = ['search_documents', 'search_chunks', 'hybrid_search']
-/**
- * 演示用的 MCP 工具原始返回（产品优化需求-202611 修改点 9（R6））。MCP 协议里工具结果形如
- * { content: [{ type: 'text', text }], structuredContent? }，结果数据要么在 structuredContent，要么是 text 里的一段 JSON。
- * 三个演示工具各用一种常见写法、字段名也各不相同（这正是每个工具要单独配映射的原因，修改点 10），对应的结果数组路径：
- * - search_documents：text 里是 {"items":[{title,text}]}                       → $.items[*]
- * - search_chunks：   text 里是 {"data":{"list":[{heading,chunk_text}]}}       → $.data.list[*]
- * - hybrid_search：   带 structuredContent {"results":[{doc_title,chunk}]}，text 只是给人看的摘要（不是 JSON）→ $.results[*]
- * plainText = true（服务地址或启动参数里带 plain 的演示服务）：所有工具只回一句纯文本，用来演示「工具返回内容不是 JSON」。
- */
-function mockMcpToolResult(tool, plainText) {
-  if (plainText) return { content: [{ type: 'text', text: '共找到 2 条相关条文：《安全生产法》第二十一条、第二十五条。' }] }
-  if (tool === 'hybrid_search') {
-    return {
-      content: [{ type: 'text', text: '混合检索命中 2 条结果' }],
-      structuredContent: {
-        results: [
-          { doc_title: '安全生产法', chunk: '生产经营单位的主要负责人是本单位安全生产第一责任人，对本单位的安全生产工作全面负责。', score: 0.91 },
-          { doc_title: '安全生产许可证条例', chunk: '企业未取得安全生产许可证的，不得从事生产活动。', score: 0.84 }
-        ]
-      }
-    }
-  }
-  if (tool === 'search_chunks') {
-    const list = [
-      { heading: '第二十一条', chunk_text: '生产经营单位的主要负责人对本单位安全生产工作负有建立健全安全生产责任制等职责。' },
-      { heading: '第二十五条', chunk_text: '安全生产管理机构以及安全生产管理人员应当组织或者参与拟订本单位安全生产规章制度。' }
-    ]
-    return { content: [{ type: 'text', text: JSON.stringify({ data: { list, total: list.length } }) }] }
-  }
-  const items = [
-    { title: '安全生产法 第二十一条', text: '生产经营单位的主要负责人对本单位安全生产工作负有下列职责……' },
-    { title: '安全生产法 第二十五条', text: '生产经营单位的安全生产管理机构以及安全生产管理人员履行下列职责……' }
-  ]
-  return { content: [{ type: 'text', text: JSON.stringify({ items, total: items.length }) }] }
-}
 const apiSrc = (id, name, over = {}) =>
   mkSrc(
     id,
@@ -160,12 +125,13 @@ const apiSrc = (id, name, over = {}) =>
     'SUCCESS'
   )
 /**
- * 一个检索工具的种子映射配置（修改点 10：每个工具一份）。结果数组路径与字段名照 mockMcpToolResult 的真实返回填写，
- * 连接测试能按路径取到数组；sourceName 留空演示「取数据源名称」。键顺序与编辑器组装的载荷一致，原样保存不会被当成改了配置。
+ * 一个检索工具的种子映射配置（修改点 10：每个工具一份）。结果数组路径统一为 md §七.5 示例 $.content[0].items[*]；
+ * 字段名各工具不同，演示每个工具要单独配映射；sourceName 留空演示「取数据源名称」。
+ * 键顺序与编辑器组装的载荷一致，原样保存不会被当成改了配置。
  */
-const mcpToolSeed = (resultArrayPath, fields) => ({
+const mcpToolSeed = (fields) => ({
   requestMap: mkRequestMapRows(), // 与 API 同构，预设 query/topK（md §七.4）
-  resultArrayPath,
+  resultArrayPath: MCP_DEFAULT_RESULT_ARRAY_PATH, // md §七.5：结果数组路径必填
   responseMap: mkMcpResponseMapRows().map((r) => ({ ...r, sourceField: fields[r.name] ?? '' }))
 })
 // 原「引用现有 MCP」种子（2026-09-07 PRD-20260904 删除该模式）改为直接填写等价配置
@@ -186,8 +152,8 @@ const mcpSrc = (id, name, over = {}) =>
       tools: ['search_documents', 'hybrid_search'], // 检索工具多选（md §七.3：≥1）
       // 每个已选工具各一份请求参数映射 / 结果数组路径 / 响应字段（产品优化需求-202611 修改点 10（R7）方案 A）
       toolConfigs: {
-        search_documents: mcpToolSeed('$.items[*]', { title: 'title', content: 'text' }),
-        hybrid_search: mcpToolSeed('$.results[*]', { title: 'doc_title', content: 'chunk' })
+        search_documents: mcpToolSeed({ title: 'title', content: 'text' }),
+        hybrid_search: mcpToolSeed({ title: 'doc_title', content: 'chunk' })
       },
       timeoutMs: 10000, // md §七.6：必填，系统默认值可直接修改
       ...over
@@ -265,8 +231,9 @@ const seedDocCount = { ks_2a: 46, ks_4a: 312, ks_5a: 168, ks_6a: 52 }
 // kb_6 的专家可见范围由写死的 'ex_1' 改为专家模块真实 id；旧快照结构不兼容，弃用回种子。
 // v11（2026-11-10 产品优化需求-202611 R7 / R6）：MCP 数据源的 requestMap / responseMap / resultArrayPath 改为每个检索工具
 // 一份（config.toolConfigs），种子结果数组路径按新取值口径改为 $.items[*] / $.results[*]；旧快照结构不兼容，弃用回种子。
+// v12（2026-11-16）：撤回修改点 9，MCP 种子工具结果数组路径退回 $.content[0].items[*]，旧快照弃用回种子
 const persist = attachPersist('knowledgeBase', {
-  version: 11,
+  version: 12,
   snapshot: () => ({ seq, sources, rows, docsBySource, seedDocCount }),
   restore: (d) => {
     if (
@@ -891,20 +858,19 @@ function mockApiTest(cfg) {
 /**
  * MCP 连接测试（服务已连通之后）：
  * ① 返回服务提供的工具清单（md §七.3：直接填写时需先完成连接测试以获取工具列表）；
- * ② 对每个已勾选的检索工具各调一次，按该工具自己的结果数组路径从工具原始返回里取结果数组，结果按工具分别返回
- *    （toolResults，修改点 9 / 10）。任一工具没取到数组，整次测试算未通过（md §七.5：路径无效或取不到数组时展示具体错误）。
- * 刚连上、还没勾选工具时只有 ①，算测试通过。
+ * ② 对每个已勾选的检索工具各模拟调用一次，结果按工具分别返回（toolResults，修改点 10）；
+ *    任一工具未通过，整次测试判失败，提示「检索工具「工具名」测试未通过」（多个用「、」分隔）。
+ * 演示约定：MCP 服务地址或启动参数里带 partial 时，已勾选工具里的最后一个模拟调用超时失败（MCP_TOOL_TIMEOUT_ERROR），
+ * 其余工具通过；不带 partial 时全部通过。（连接本身失败的演示仍是地址里带 fail / timeout，见 testSource。）
+ * 修改点 9 已撤回：不按结果数组路径从工具返回里取值。刚连上、还没勾选工具时只有 ①，算测试通过。
  */
+export const MCP_TOOL_TIMEOUT_ERROR = '工具调用超时（10000 ms）'
 function mockMcpTest(cfg) {
-  const plainText = /plain/i.test([cfg.endpoint, ...(cfg.args || [])].join(' '))
-  const toolResults = (cfg.tools || [])
-    .filter((tool) => MCP_TEST_TOOLS.includes(tool)) // 服务清单里已没有的工具不测，编辑器拿到新清单后会把它移出已选
-    .map((tool) => {
-      const path = String(cfg.toolConfigs?.[tool]?.resultArrayPath || '').trim()
-      if (!path) return { tool, ok: false, error: '请填写结果数组路径' }
-      const { items, error } = evalMcpResultArray(mockMcpToolResult(tool, plainText), path)
-      return error ? { tool, ok: false, error } : { tool, ok: true, itemCount: items.length }
-    })
+  const partial = /partial/i.test([cfg.endpoint, ...(cfg.args || [])].join(' '))
+  const tested = (cfg.tools || []).filter((tool) => MCP_TEST_TOOLS.includes(tool)) // 服务清单里已没有的工具不测，编辑器拿到新清单后会把它移出已选
+  const toolResults = tested.map((tool, i) =>
+    partial && i === tested.length - 1 ? { tool, ok: false, error: MCP_TOOL_TIMEOUT_ERROR } : { tool, ok: true }
+  )
   const failedTools = toolResults.filter((r) => !r.ok).map((r) => r.tool)
   return {
     verifyStatus: failedTools.length ? 'FAILED' : 'SUCCESS',

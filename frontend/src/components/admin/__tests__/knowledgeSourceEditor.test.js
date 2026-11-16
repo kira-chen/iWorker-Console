@@ -19,9 +19,10 @@ import { mountReal, flushAll, makeDrawerProbes } from '../../../views/admin/__te
  *   §七.2.3 切换到 stdio 按各自字段清空；§七.3 检索工具 ≥1、先测试再出工具清单；§七.6 超时默认 10000
  *   §八.2 保存失败保留表单不关抽屉；敏感信息保存后遮罩、编辑态留空=保留
  *   以及《各模块必填选填字段一览表.md》§10.1～§10.3 的必填项。
- * 2026-11-10 另对齐 docs/PRD/数字员工管理端PRD/产品优化需求-202611.md（草案）修改点 9 / 10 / 11：
+ * 2026-11-10 另对齐 docs/PRD/数字员工管理端PRD/产品优化需求-202611.md（草案）修改点 10 / 11：
  *   R7 方案 A MCP 每个已勾选检索工具一张可折叠配置卡（新勾选默认展开 / 取消勾选先确认 / 未配置完成标记 /
- *   保存逐个工具校验并定位卡片 / 测试结果按工具展示）；R6 新建结果数组路径留空；R8 API「请求地址」常驻 JSON 说明。
+ *   保存逐个工具校验并定位卡片 / 测试结果按工具展示）；R8 API「请求地址」常驻 JSON 说明。
+ *   修改点 9（R6）已于 2026-11-16 撤回：新勾选工具的结果数组路径预填 $.content[0].items[*]（改动前口径）。
  *
  * 写法：真挂载 Element Plus（mountReal），api 层整体 vi.mock；表单标量经 el-form 的 model 写入，
  * 组件内部行状态（Token、工具勾选、Arguments、映射行）一律走 DOM 输入。
@@ -100,7 +101,7 @@ const toolBoxes = () => [...drawer().querySelectorAll('.ksrc-card .el-checkbox')
 const toolBox = (tool) => toolBoxes().find((b) => b.textContent.trim() === tool)
 const toolCard = (tool) => drawer().querySelector(`.ksrc-tool-card[data-tool="${tool}"]`)
 /** 在某个检索工具的配置卡里填结果数组路径与 title / content 的接口返回字段名 */
-async function fillToolCard(tool, { path = '$.items[*]', title = 'title', content = 'text' } = {}) {
+async function fillToolCard(tool, { path = '$.content[0].items[*]', title = 'title', content = 'text' } = {}) {
   const card = toolCard(tool)
   typeInto(card.querySelector('.sme-array-path input'), path)
   const respRows = [...card.querySelectorAll('.sme-resp-row')]
@@ -636,7 +637,7 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
 
     toolBoxes()[0].querySelector('input').click()
     await flushAll(4)
-    await fillToolCard('search_documents', { path: '$.items[*]', title: 'meta.title', content: 'text' })
+    await fillToolCard('search_documents', { path: '$.content[0].items[*]', title: 'meta.title', content: 'text' })
 
     await save()
 
@@ -652,7 +653,7 @@ describe('KnowledgeSourceEditor · MCP 数据源（md §七）', () => {
       envVars: []
     })
     const tc = payload.config.toolConfigs.search_documents
-    expect(tc.resultArrayPath).toBe('$.items[*]')
+    expect(tc.resultArrayPath).toBe('$.content[0].items[*]')
     expect(tc.responseMap.map((r) => [r.name, r.sourceField])).toEqual([
       ['title', 'meta.title'],
       ['content', 'text'],
@@ -797,9 +798,9 @@ describe('KnowledgeSourceEditor · API 数据源只支持 JSON 接口（R8）', 
  * 产品优化需求-202611 修改点 10（R7）方案 A：「每个已勾选的工具单独一张配置卡，卡片标题为工具名，可以折叠。卡内是该工具的
  * 请求参数映射、结果数组路径和响应字段映射。新勾选的工具默认展开」「取消勾选工具时弹出确认"取消后该工具的映射配置将清空，确认取消？"」
  * 「配置不全的工具卡在标题旁标"未配置完成"；保存时逐个工具校验，错误定位到对应卡片」「连接测试逐个工具执行，结果按工具分别展示」；
- * 修改点 9（R6）：「新建数据源时结果数组路径留空，示例只作占位提示，不预填」。
+ * 修改点 9（R6，新建结果数组路径留空）已于 2026-11-16 撤回：新勾选工具的路径预填 $.content[0].items[*]。
  * ====================================================================== */
-describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 方案 A / R6）', () => {
+describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 方案 A）', () => {
   /** 新建 MCP、填服务地址并测试连接，拿到工具清单（未勾选任何工具） */
   async function mountMcpTested(tools = ['search_documents', 'search_chunks']) {
     api.testKnowledgeSource.mockResolvedValue({ verifyStatus: 'SUCCESS', verifiedAt: null, verifyError: null, tools, toolCount: tools.length, toolResults: [] })
@@ -825,12 +826,14 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
     expect(toolCard('search_documents').classList.contains('is-active')).toBe(true)
   })
 
-  it('R6 新勾选工具的结果数组路径留空，示例 $.items[*]、$.data.list[*] 只作占位', async () => {
+  it('新勾选工具的结果数组路径预填 $.content[0].items[*]，占位「JSONPath，如 $.content[0].items[*]」，下方无字段说明（修改点 9 已撤回）', async () => {
     await mountMcpTested()
     await clickTool('search_documents')
-    const pathInput = toolCard('search_documents').querySelector('.sme-array-path input')
-    expect(pathInput.value).toBe('')
-    expect(pathInput.placeholder).toBe('JSONPath，如 $.items[*]、$.data.list[*]')
+    const pathItem = toolCard('search_documents').querySelector('.sme-array-path')
+    const pathInput = pathItem.querySelector('input')
+    expect(pathInput.value).toBe('$.content[0].items[*]')
+    expect(pathInput.placeholder).toBe('JSONPath，如 $.content[0].items[*]')
+    expect(pathItem.textContent).not.toContain('从工具返回的结果数据写起')
   })
 
   it('配置不全的卡片标题旁标「未配置完成」，补齐路径与 title / content 后标记消失', async () => {
@@ -847,31 +850,31 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
     await mountMcpTested()
     await clickTool('search_documents')
     await clickTool('search_chunks')
-    await fillToolCard('search_documents', { path: '$.items[*]', title: 'title', content: 'text' })
-    await fillToolCard('search_chunks', { path: '$.data.list[*]', title: 'heading', content: 'chunk_text' })
-    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.items[*]')
-    expect(toolCard('search_chunks').querySelector('.sme-array-path input').value).toBe('$.data.list[*]')
+    await fillToolCard('search_documents', { path: '$.content[0].items[*]', title: 'title', content: 'text' })
+    await fillToolCard('search_chunks', { path: '$.content[0].list[*]', title: 'heading', content: 'chunk_text' })
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.content[0].items[*]')
+    expect(toolCard('search_chunks').querySelector('.sme-array-path input').value).toBe('$.content[0].list[*]')
 
     await save()
 
     const cfg = api.createKnowledgeSource.mock.calls[0][0].config
     expect(cfg.tools).toEqual(['search_documents', 'search_chunks'])
-    expect(cfg.toolConfigs.search_documents.resultArrayPath).toBe('$.items[*]')
-    expect(cfg.toolConfigs.search_chunks.resultArrayPath).toBe('$.data.list[*]')
+    expect(cfg.toolConfigs.search_documents.resultArrayPath).toBe('$.content[0].items[*]')
+    expect(cfg.toolConfigs.search_chunks.resultArrayPath).toBe('$.content[0].list[*]')
     expect(cfg.toolConfigs.search_chunks.responseMap.map((r) => r.sourceField)).toEqual(['heading', 'chunk_text', ''])
   })
 
   it('取消勾选先弹确认「取消后该工具的映射配置将清空，确认取消？」；选保留 → 仍勾选，卡片与已填内容都在', async () => {
     await mountMcpTested()
     await clickTool('search_documents')
-    await fillToolCard('search_documents', { path: '$.items[*]' })
+    await fillToolCard('search_documents', { path: '$.content[0].list[*]' })
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel')
 
     await clickTool('search_documents')
 
     expect(confirm).toHaveBeenCalledWith('取消后该工具的映射配置将清空，确认取消？', expect.any(String), expect.any(Object))
     expect(toolBox('search_documents').classList.contains('is-checked')).toBe(true)
-    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.items[*]')
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.content[0].list[*]')
   })
 
   it('选保留后再点一次取消勾选，仍会弹确认（复选框不会卡在「点了没反应」）', async () => {
@@ -886,10 +889,10 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
     expect(confirm).toHaveBeenCalledTimes(2)
   })
 
-  it('确认取消勾选 → 卡片消失、该工具配置清空：重新勾选回来是空白配置', async () => {
+  it('确认取消勾选 → 卡片消失、该工具配置清空：重新勾选回来是默认配置（路径回到预填值、字段名清空）', async () => {
     await mountMcpTested()
     await clickTool('search_documents')
-    await fillToolCard('search_documents', { path: '$.items[*]' })
+    await fillToolCard('search_documents', { path: '$.content[0].list[*]' })
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValueOnce('confirm')
 
     await clickTool('search_documents')
@@ -897,7 +900,9 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
     expect(toolCard('search_documents')).toBeNull()
 
     await clickTool('search_documents')
-    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('')
+    expect(toolCard('search_documents').querySelector('.sme-array-path input').value).toBe('$.content[0].items[*]')
+    const respRows = [...toolCard('search_documents').querySelectorAll('.sme-resp-row')]
+    expect(respRows[0].querySelectorAll('input')[0].value).toBe('')
   })
 
   it('保存逐个工具校验：第二个工具缺结果数组路径 → 不保存，错误标在它的卡片里，该卡展开并滚动到它', async () => {
@@ -930,7 +935,7 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
     }
   })
 
-  it('连接测试结果按工具分别展示：每个工具一行，通过的显示取到几条，没通过的显示原因', async () => {
+  it('连接测试结果按工具分别展示：每个工具一行，通过的显示「测试通过」，没通过的显示原因', async () => {
     await mountMcpTested()
     await clickTool('search_documents')
     await clickTool('search_chunks')
@@ -941,8 +946,8 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
       tools: ['search_documents', 'search_chunks'],
       toolCount: 2,
       toolResults: [
-        { tool: 'search_documents', ok: true, itemCount: 2 },
-        { tool: 'search_chunks', ok: false, error: '按结果数组路径未取到数组，请检查路径' }
+        { tool: 'search_documents', ok: true },
+        { tool: 'search_chunks', ok: false, error: '工具调用超时（10000 ms）' }
       ]
     })
 
@@ -951,8 +956,8 @@ describe('KnowledgeSourceEditor · MCP 检索工具按工具分别配置（R7 �
 
     const lines = [...drawer().querySelectorAll('.ksrc-tool-results li')]
     expect(lines.map((li) => [li.querySelector('code').textContent.trim(), li.querySelector('span').textContent.trim()])).toEqual([
-      ['search_documents', '按结果数组路径取到 2 条结果'],
-      ['search_chunks', '按结果数组路径未取到数组，请检查路径']
+      ['search_documents', '测试通过'],
+      ['search_chunks', '工具调用超时（10000 ms）']
     ])
     expect(lines.map((li) => li.className)).toEqual(['ok', 'bad'])
     expect(drawer().querySelector('.ksrc-verify.bad').textContent).toContain('连接失败：检索工具「search_chunks」测试未通过')

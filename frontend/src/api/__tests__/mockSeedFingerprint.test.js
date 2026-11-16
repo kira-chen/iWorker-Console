@@ -41,7 +41,7 @@ const FINGERPRINTS = {
   expertTeam: { version: 9, fp: '784505d5' },
   fieldDict: { version: 5, fp: '84da6096' },
   instanceManagement: { version: 2, fp: '3d5cfb68' },
-  knowledgeBase: { version: 11, fp: 'e07bd39b' },
+  knowledgeBase: { version: 12, fp: '9231e2ef' },
   mcpConnector: { version: 13, fp: '7b5fd33d' },
   myApplications: { version: 8, fp: 'b8042447' },
   position: { version: 14, fp: '76dc7922' },
