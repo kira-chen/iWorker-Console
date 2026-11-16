@@ -4,18 +4,22 @@
  * 按用户 / 按岗位 / 按模型 / 按能力四个维度切换的明细表，共用页签顶部的筛选条（数据由父组件按筛选聚合好传入）。
  *
  * 2026-11-02：「按岗位」取代原驾驶舱「岗位领用 Top 5」（只列已发布岗位，默认按领用人数倒序）；
- * 按用户 / 按岗位 / 按模型末尾带点赞 / 点踩 / 点踩率，按能力不带（点赞点踩挂在对话轮次上，归不到某个技能）。
+ * 按用户 / 按岗位 / 按模型末尾带点踩 / 点踩率，按能力不带（点踩挂在对话轮次上，归不到某个技能）。
  *
  * 2026-11-10：四个维度的工具栏都有名称搜索（原只有按用户有）。
+ * 2026-11-11：删掉「点赞」列，与点踩统计一致不展示点赞（点赞数只参与点踩率计算）。
+ * 2026-11-15：按模型删掉「首响 P50 / P95」列。
+ * 2026-11-15：「最近使用时间」「最近调用时间」列头始终显示排序箭头（同访问审计时间列），没按该列排序时箭头浅色，提示可以点。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
  */
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Search } from '@element-plus/icons-vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { terminalLabel } from '@/utils/versionMeta'
-import { fmtCount, fmtLatency, fmtPct, fmtTokens } from '@/utils/usageFormat'
+import { fmtCount, fmtPct, fmtTokens } from '@/utils/usageFormat'
 
 const props = defineProps({
   data: { type: Object, required: true }
@@ -31,9 +35,8 @@ const DIMS = [
 ]
 const dim = ref('user')
 
-// 列定义：sort = 可点列头排序；w = 列宽（表格有最小宽度，窄屏横向滚动）
+// 列定义：sort = 可点列头排序；idleArrow = 没按该列排序时也显示浅色箭头（时间列，同访问审计）；w = 列宽（表格有最小宽度，窄屏横向滚动）
 const FEEDBACK_COLS = [
-  { key: 'likes', label: '点赞', num: true, sort: true, w: 64 },
   { key: 'dislikes', label: '点踩', num: true, sort: true, w: 64 },
   { key: 'dislikeRate', label: '点踩率', num: true, sort: true, w: 72 }
 ]
@@ -45,7 +48,7 @@ const COLS = {
     { key: 'sessions', label: '会话数', num: true, sort: true, w: 84 },
     { key: 'inputTokens', label: '输入 Token', num: true, sort: true, w: 108 },
     { key: 'outputTokens', label: '输出 Token', num: true, sort: true, w: 108 },
-    { key: 'lastUsedAt', label: '最近使用时间', sort: true, w: 150 },
+    { key: 'lastUsedAt', label: '最近使用时间', sort: true, idleArrow: true, w: 150 },
     ...FEEDBACK_COLS
   ],
   position: [
@@ -65,7 +68,6 @@ const COLS = {
     { key: 'activeUsers', label: '活跃用户', num: true, sort: true, w: 84 },
     { key: 'failRate', label: '失败率', num: true, sort: true, w: 72 },
     { key: 'topReason', label: '失败原因 Top', w: 112 },
-    { key: 'p50', label: '首响 P50 / P95', num: true, sort: true, w: 124 },
     ...FEEDBACK_COLS,
     { key: 'op', label: '操作', w: 64 }
   ],
@@ -74,7 +76,7 @@ const COLS = {
     { key: 'calls', label: '调用次数', num: true, sort: true, w: 110 },
     { key: 'users', label: '使用人数', num: true, sort: true, w: 110 },
     { key: 'successRate', label: '成功率', num: true, sort: true, w: 100 },
-    { key: 'lastCalledAt', label: '最近调用时间', sort: true, w: 170 }
+    { key: 'lastCalledAt', label: '最近调用时间', sort: true, idleArrow: true, w: 170 }
   ]
 }
 const DEFAULT_SORT = {
@@ -144,7 +146,12 @@ function toggleSort(col) {
   else { s.key = col.key; s.dir = 'desc' }
   pages[dim.value] = 1
 }
-const sortMark = (col) => (sorts[dim.value].key === col.key ? (sorts[dim.value].dir === 'desc' ? ' ↓' : ' ↑') : '')
+const isSortedBy = (col) => sorts[dim.value].key === col.key
+/** 列头箭头：正在按该列排序时显示当前方向；时间列没在排序时显示浅色「↓」（点一下就是由近到远） */
+function sortArrow(col) {
+  if (isSortedBy(col)) return sorts[dim.value].dir === 'desc' ? '↓' : '↑'
+  return col.idleArrow ? '↓' : ''
+}
 
 const maxClaimed = computed(() => Math.max(1, ...props.data.positions.map((p) => p.claimed)))
 const failClass = (v) => (v == null ? '' : v > 10 ? 'is-danger' : v > 5 ? 'is-warn' : '')
@@ -165,17 +172,19 @@ function viewModel(row) {
       </el-radio-group>
     </div>
 
-    <!-- 工具栏：左侧名称搜索四个维度都有，右侧随维度变化 -->
+    <!-- 工具栏：左侧名称搜索四个维度都有（写法同列表页：放大镜前缀 + .lt-search 宽 + 标准【查询】按钮），右侧随维度变化 -->
     <div class="ux-toolbar">
       <el-input
         v-model="keywords[dim]"
-        class="ux-search"
+        class="ux-search lt-search"
         :placeholder="SEARCH_PLACEHOLDER[dim]"
         clearable
         @keyup.enter="applyKeyword"
         @clear="applyKeyword"
-      />
-      <button class="mini-btn" @click="applyKeyword">查询</button>
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <el-button @click="applyKeyword">查询</el-button>
       <span class="spacer"></span>
       <template v-if="dim === 'user'">
         <el-switch v-model="onlySilent" size="small" @change="pages.user = 1" />
@@ -200,7 +209,7 @@ function viewModel(row) {
               :class="{ 'dash-num': col.num, sortable: col.sort }"
               :style="{ width: col.w + 'px' }"
               @click="toggleSort(col)"
-            >{{ col.label }}{{ sortMark(col) }}</th>
+            >{{ col.label }}<span v-if="sortArrow(col)" class="ux-sort-arrow" :class="{ 'is-idle': !isSortedBy(col) }">{{ ' ' + sortArrow(col) }}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -221,7 +230,6 @@ function viewModel(row) {
               <td class="dash-num">{{ fmtTokens(r.inputTokens) }}</td>
               <td class="dash-num">{{ fmtTokens(r.outputTokens) }}</td>
               <td class="ux-time" :class="{ 'is-muted': !r.lastUsedAt }">{{ r.lastUsedAt || '从未使用' }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
             </tr>
@@ -244,7 +252,6 @@ function viewModel(row) {
               <td class="dash-num">{{ fmtPct(r.activeRate) }}</td>
               <td class="dash-num">{{ fmtCount(r.sessions) }}</td>
               <td class="dash-num">{{ fmtTokens(r.avgTokens) }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
             </tr>
@@ -266,8 +273,6 @@ function viewModel(row) {
               <td class="dash-num">{{ r.activeUsers }}</td>
               <td class="dash-num" :class="failClass(r.failRate)">{{ fmtPct(r.failRate) }}</td>
               <td>{{ r.topReason ? `${r.topReason.label} ${r.topReason.pct}%` : '—' }}</td>
-              <td class="dash-num">{{ fmtLatency(r.p50, r.p95) }}</td>
-              <td class="dash-num">{{ r.likes }}</td>
               <td class="dash-num">{{ r.dislikes }}</td>
               <td class="dash-num">{{ fmtPct(r.dislikeRate) }}</td>
               <td><button class="mini-btn" @click="viewModel(r)">查看</button></td>
@@ -301,38 +306,42 @@ function viewModel(row) {
 </template>
 
 <style scoped>
+/* 时间列没在排序时的提示箭头：浅色，点了才变成当前排序 */
+.ux-sort-arrow.is-idle {
+  color: var(--c-text-faint);
+}
+
 .ux-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 8px 18px;
-  border-bottom: 1px solid var(--border-soft);
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border-admin-row);
 }
-.ux-search { width: 220px; }
-.ux-switch-label { color: #4a5650; font-size: 12px; }
-.ux-hint { color: #7f8984; font-size: 12px; }
+.ux-switch-label { color: var(--c-text); font-size: 13px; }
+.ux-hint { color: var(--c-admin-sub); font-size: 12px; }
 .ux-table-wrap { overflow-x: auto; }
 .ux-table { min-width: 1000px; }
 .ux-table th.sortable { cursor: pointer; user-select: none; }
 .ux-table th.sortable:hover { color: var(--c-accent); }
 .ux-table th.dash-num { text-align: right; }
-.ux-empty { text-align: center; color: #94a09a; height: 96px; }
-.ux-time { color: #4a5650; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
-.is-muted { color: #94a09a; }
+.ux-empty { text-align: center; color: var(--c-text-faint); height: 96px; }
+.ux-time { color: var(--c-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.is-muted { color: var(--c-text-faint); }
 .ux-name-row { display: flex; align-items: center; gap: 6px; }
 .ux-default { flex: none; }
 .is-warn { color: var(--c-warning, #e6921e); font-weight: 650; }
 .is-danger { color: var(--c-danger); font-weight: 650; }
 .is-zero .dash-name-main,
-.is-zero .dash-num { color: #94a09a; }
+.is-zero .dash-num { color: var(--c-text-faint); }
 .ux-foot {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  border-top: 1px solid var(--border-soft);
-  color: #7a8580;
-  font-size: 12px;
+  border-top: 1px solid var(--border-admin-row);
+  color: var(--c-admin-sub);
+  font-size: 13px;
 }
 </style>

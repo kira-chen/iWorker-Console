@@ -1,7 +1,7 @@
 <script setup>
 /**
  * 驾驶舱（01 总览）—— 全局概览，分「概览」「使用情况」两个页签（2026-11-02）。
- * - 概览：用户端当前下发版本（含升级进度）、异常与待办、各模块发布状态。
+ * - 概览：用户端当前下发版本、异常与待办、各模块发布状态（2026-11-16 删去版本卡上的升级进度）。
  * - 使用情况（仅 ADMIN）：使用量、用户端点踩统计、按用户 / 岗位 / 模型 / 能力的使用明细，见 CockpitUsageTab。
  *
  * 数据静态 mock，对应原型 renderDashboard 内容（2026-09-17 负责人裁决：删去本月成本卡）。
@@ -9,7 +9,7 @@
  * 2026-11-02：原「岗位领用 Top 5」并入使用情况页签的「按岗位」明细；原「用户端点踩统计」迁入使用情况页签
  * （2026-11-10：仍是原来的两格点踩统计，不展示点赞，见 UsageFeedbackPanel）。
  * 唯一例外是「用户端当前下发版本」面板：取自版本管理（api/version 的 getVersionOverview，与版本管理页
- * 概览条同一数据源），版本管理里发布 / 停用经审核通过后，这里随之变化；其升级进度人数是静态示例。
+ * 概览条同一数据源），版本管理里发布 / 停用经审核通过后，这里随之变化。
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -18,7 +18,6 @@ import PageHeader from '@/components/PageHeader.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import CockpitUsageTab from '@/components/admin/cockpit/CockpitUsageTab.vue'
 import { getVersionOverview } from '@/api/version'
-import { getVersionAdoption } from '@/api/usage'
 import { useUserStore } from '@/stores/user'
 import { fmtTime } from '@/utils/docMeta'
 import { TERMINAL_OPTIONS } from '@/utils/versionMeta'
@@ -73,19 +72,9 @@ function assetPcts(item) {
 // verOverview 为 null = 尚未取回（骨架屏）；{ WINDOWS: 版本行|null, MAC: 版本行|null }，null 表示该终端暂无下发版本。
 const verOverview = ref(null)
 const verError = ref(false)
-// 升级进度（静态示例）：{ WINDOWS: { upgraded, behind }, MAC: ... }；取数失败只是不展示进度，不影响版本卡片本身
-const adoption = ref(null)
 const verLoading = computed(() => refreshing.value || !verOverview.value)
 const verCards = computed(() =>
-  TERMINAL_OPTIONS.map((t) => {
-    const a = adoption.value?.[t.value]
-    const total = a ? a.upgraded + a.behind : 0
-    return {
-      ...t,
-      row: verOverview.value?.[t.value] ?? null,
-      adoption: a && total ? { ...a, rate: (a.upgraded / total * 100).toFixed(1) } : null
-    }
-  })
+  TERMINAL_OPTIONS.map((t) => ({ ...t, row: verOverview.value?.[t.value] ?? null }))
 )
 
 async function loadVerOverview() {
@@ -96,22 +85,11 @@ async function loadVerOverview() {
     verError.value = true
   }
 }
-async function loadAdoption() {
-  try {
-    adoption.value = await getVersionAdoption()
-  } catch {
-    adoption.value = null
-  }
-}
-onMounted(() => {
-  loadVerOverview()
-  loadAdoption()
-})
+onMounted(loadVerOverview)
 
 function doRefresh() {
   refreshing.value = true
   loadVerOverview()
-  loadAdoption()
   usageRefreshToken.value++
   setTimeout(() => {
     refreshing.value = false
@@ -138,7 +116,7 @@ function openAlertAction(item) {
 
     <el-tabs v-model="activeTab" class="cockpit-tabs" :class="{ 'single-tab': !showUsageTab }">
       <el-tab-pane label="概览" name="overview">
-        <!-- 用户端当前下发版本：Windows / Mac 各一张只读卡片，版本号 + 发布时间 + 升级进度 + 更新说明（版本数据同版本管理概览条） -->
+        <!-- 用户端当前下发版本：Windows / Mac 各一张只读卡片，版本号 + 发布时间 + 更新说明（版本数据同版本管理概览条） -->
         <section class="dash-panel first-panel" aria-label="用户端当前下发版本">
           <div class="dash-panel-head">
             <h2 class="dash-panel-title">用户端当前下发版本</h2>
@@ -156,14 +134,6 @@ function openAlertAction(item) {
                 <div class="ver-line">
                   <span class="ver-version">{{ c.row.version }}</span>
                   <span class="ver-time">发布于 {{ fmtTime(c.row.publishedAt) }}</span>
-                </div>
-                <!-- 升级进度：近 7 天有检测上报的用户里，已升到下发版本的占比（用户端每次检测更新都上报终端 + 当前版本号） -->
-                <div v-if="c.adoption" class="ver-adopt" data-testid="ver-adopt">
-                  <div class="ver-adopt-text">
-                    <span>已升级 <b>{{ c.adoption.upgraded }}</b> 人 · 未升到该版本 <b>{{ c.adoption.behind }}</b> 人</span>
-                    <span class="ver-adopt-rate">升级率 {{ c.adoption.rate }}%</span>
-                  </div>
-                  <div class="dash-bar-track"><i :style="`width:${c.adoption.rate}%`"></i></div>
                 </div>
                 <div class="ver-notes-label">更新说明</div>
                 <div class="ver-notes">{{ c.row.releaseNotes }}</div>
@@ -269,7 +239,7 @@ function openAlertAction(item) {
   border: 1px solid var(--border-base);
   border-left: 4px solid var(--c-warning, #e6921e);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
 }
@@ -280,18 +250,18 @@ function openAlertAction(item) {
   justify-content: space-between;
   gap: 10px;
 }
-.dash-todo-source { color: #65716b; font-size: 12px; font-weight: 600; }
+.dash-todo-source { color: var(--c-text-muted); font-size: 12px; font-weight: 600; }
 .dash-todo-number {
   margin-top: 11px;
-  color: #26312b;
+  color: var(--c-text-strong);
   font: 700 28px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .dash-todo-number small {
   margin-left: 4px;
-  color: #77827c;
+  color: var(--c-text-muted);
   font: 500 12px system-ui, sans-serif;
 }
-.dash-todo-meta { min-height: 35px; margin-top: 5px; color: #76817b; font-size: 12px; line-height: 1.5; flex: 1; }
+.dash-todo-meta { min-height: 35px; margin-top: 5px; color: var(--c-text-muted); font-size: 12px; line-height: 1.5; flex: 1; }
 .dash-todo-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
 .dash-severity {
   display: inline-flex;
@@ -318,7 +288,7 @@ function openAlertAction(item) {
   justify-content: flex-end;
   gap: 16px;
   margin-bottom: 10px;
-  color: #727d77;
+  color: var(--c-text-muted);
   font-size: 12px;
 }
 .dash-asset-rows {
@@ -338,8 +308,8 @@ function openAlertAction(item) {
   gap: 12px;
   min-height: 39px;
 }
-.dash-asset-name { font-weight: 600; color: #414a45; }
-.dash-asset-total { color: #6f7a74; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+.dash-asset-name { font-weight: 600; color: var(--c-text-strong); }
+.dash-asset-total { color: var(--c-text-muted); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
 .dash-stack {
   height: 10px;
   display: flex;
@@ -355,11 +325,11 @@ function openAlertAction(item) {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  color: #7a8580;
+  color: var(--c-text-muted);
   font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
   white-space: nowrap;
 }
-.dash-asset-detail b { color: #3e4a44; font-weight: 600; }
+.dash-asset-detail b { color: var(--c-text-strong); font-weight: 600; }
 
 /* 用户端当前下发版本 */
 .ver-grid {
@@ -374,41 +344,29 @@ function openAlertAction(item) {
   border: 1px solid var(--border-base);
   border-left: 4px solid var(--c-accent);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 .ver-line { display: flex; align-items: baseline; gap: 10px; margin-top: 11px; }
 .ver-version {
-  color: #26312b;
+  color: var(--c-text-strong);
   font: 700 24px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
-.ver-time { color: #7f8984; font-size: 12px; }
-.ver-adopt { width: 100%; margin-top: 10px; }
-.ver-adopt-text {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 5px;
-  color: #5b6760;
-  font-size: 12px;
-}
-.ver-adopt-text b { color: #26312b; font-weight: 650; font-variant-numeric: tabular-nums; }
-.ver-adopt-rate { color: var(--c-accent); font-weight: 650; white-space: nowrap; }
-.ver-notes-label { margin-top: 10px; color: #68736d; font-size: 12px; font-weight: 600; }
+.ver-time { color: var(--c-text-muted); font-size: 12px; }
+.ver-notes-label { margin-top: 10px; color: var(--c-text-muted); font-size: 12px; font-weight: 600; }
 .ver-notes {
   width: 100%;
   max-height: 132px;
   margin-top: 4px;
   overflow: auto;
-  color: #455049;
+  color: var(--c-text);
   font-size: 13px;
   line-height: 1.65;
   white-space: pre-line; /* 更新说明保留换行 */
 }
-.ver-empty { margin-top: 11px; color: #94a09a; font-size: 13px; line-height: 32px; }
+.ver-empty { margin-top: 11px; color: var(--c-text-faint); font-size: 13px; line-height: 32px; }
 .ver-skeleton {
   width: 100%;
   height: 88px;
@@ -418,7 +376,7 @@ function openAlertAction(item) {
   background-size: 200% 100%;
   animation: shimmer 1s linear infinite;
 }
-.ver-error { padding: 14px 18px; color: #68736d; font-size: 13px; }
+.ver-error { padding: 14px 18px; color: var(--c-text-muted); font-size: 13px; }
 
 /* shimmer loading */
 .loading .dash-alert-list,

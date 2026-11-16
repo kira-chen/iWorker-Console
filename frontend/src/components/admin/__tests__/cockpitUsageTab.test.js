@@ -273,9 +273,18 @@ describe('CockpitUsageTab · 使用明细 · 按用户（PRD §七.2）', () => 
     expect(textOf(detail().querySelector('.el-radio-button.is-active'))).toBe('按用户')
   })
 
-  it('列：用户 / 终端 / 活跃天数 / 会话数 / 输入 Token / 输出 Token / 最近使用时间 / 点赞 / 点踩 / 点踩率', async () => {
+  it('列：用户 / 终端 / 活跃天数 / 会话数 / 输入 Token / 输出 Token / 最近使用时间 / 点踩 / 点踩率', async () => {
     await mount()
-    expect(headers()).toEqual(['用户', '终端', '活跃天数', '会话数', '输入 Token', '输出 Token', '最近使用时间', '点赞', '点踩', '点踩率'])
+    expect(headers()).toEqual(['用户', '终端', '活跃天数', '会话数', '输入 Token', '输出 Token', '最近使用时间', '点踩', '点踩率'])
+  })
+
+  it('按用户 / 按岗位 / 按模型三张表都不展示点赞（2026-11-11 浦月定，同第六节不展示点赞）', async () => {
+    await mount()
+    for (const dim of ['按用户', '按岗位', '按模型']) {
+      await pickDim(dim)
+      expect(headers()).not.toContain('点赞')
+      expect(detail().textContent).not.toContain('点赞')
+    }
   })
 
   it('默认按 Token 合计（输入 + 输出）由高到低，每页 10 条，「第 1 / 25 页，共 241 条」', async () => {
@@ -369,7 +378,7 @@ describe('CockpitUsageTab · 使用明细 · 按岗位（PRD §七.3，取代岗
   it('列与「领用岗位员工数量 241 人」副标题；列出全部已发布岗位（不再限前 5 名）', async () => {
     await mount()
     await pickDim('按岗位')
-    expect(headers()).toEqual(['岗位', '领用人数', '活跃人数', '活跃率', '会话数', '人均 Token', '点赞', '点踩', '点踩率'])
+    expect(headers()).toEqual(['岗位', '领用人数', '活跃人数', '活跃率', '会话数', '人均 Token', '点踩', '点踩率'])
     expect(textOf(detail().querySelector('.ux-toolbar'))).toContain('领用岗位员工数量 241 人')
     expect(rowsOf()).toHaveLength(9)
     expect(footText()).toContain('共 9 条')
@@ -437,10 +446,10 @@ describe('CockpitUsageTab · 使用明细 · 按岗位（PRD §七.3，取代岗
 })
 
 describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => {
-  it('列含失败原因 Top、首响 P50 / P95、点赞 / 点踩 / 点踩率与操作', async () => {
+  it('列含失败原因 Top、点踩 / 点踩率与操作，不再有「首响 P50 / P95」（2026-11-15 删）', async () => {
     await mount()
     await pickDim('按模型')
-    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '首响 P50 / P95', '点赞', '点踩', '点踩率', '操作'])
+    expect(headers()).toEqual(['模型', '调用次数', '输入 Token', '输出 Token', '活跃用户', '失败率', '失败原因 Top', '点踩', '点踩率', '操作'])
     expect(rowsOf()).toHaveLength(6)
   })
 
@@ -456,7 +465,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
     expect(textOf(tags[0].closest('td'))).toContain('文本生成')
   })
 
-  it('失败率高于 5% 用警告色、高于 10% 用危险色；失败原因 Top 写成「原因 占比%」；首响耗时「1.1s / 3.5s」格式', async () => {
+  it('失败率高于 5% 用警告色、高于 10% 用危险色；失败原因 Top 写成「原因 占比%」', async () => {
     await mount()
     const r = await mockSummary({ range: 30 })
     await pickDim('按模型')
@@ -470,7 +479,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
     const ds = r.models.find((m) => m.name === 'DeepSeek V3')
     expect(rowOf('DeepSeek V3').children[5].className).not.toMatch(/is-warn|is-danger/)
     expect(textOf(rowOf('DeepSeek V3').children[6])).toBe(`${ds.topReason.label} ${ds.topReason.pct}%`)
-    expect(textOf(rowOf('DeepSeek V3').children[7])).toBe(`${ds.p50.toFixed(1)}s / ${ds.p95.toFixed(1)}s`)
+    expect(detail().textContent).not.toMatch(/\d\.\ds \/ \d\.\ds/) // 首响耗时不再展示
   })
 
   it('搜索模型名称，不区分大小写：输入「kimi」只剩 Kimi K2', async () => {
@@ -493,7 +502,7 @@ describe('CockpitUsageTab · 使用明细 · 按模型（PRD §七.4）', () => 
 })
 
 describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => {
-  it('列只有能力 / 调用次数 / 使用人数 / 成功率 / 最近调用时间，不带点赞点踩（反馈挂在对话轮次上，归不到技能）', async () => {
+  it('列只有能力 / 调用次数 / 使用人数 / 成功率 / 最近调用时间，不带点踩 / 点踩率（反馈挂在对话轮次上，归不到技能）', async () => {
     await mount()
     await pickDim('按能力')
     expect(headers()).toEqual(['能力', '调用次数', '使用人数', '成功率', '最近调用时间'])
@@ -553,7 +562,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
     await flushAll(4)
     expect(textOf(detail().querySelector('.ux-empty'))).toBe('暂无数据')
-    expect(headers()).toHaveLength(10) // 表头还在
+    expect(headers()).toHaveLength(9) // 表头还在（按用户 9 列）
     expect(footText()).toContain('第 1 / 1 页，共 0 条')
     expect(footBtn('上一页').disabled).toBe(true)
     expect(footBtn('下一页').disabled).toBe(true)
@@ -585,5 +594,59 @@ describe('CockpitUsageTab · 驾驶舱刷新（PRD §一.3）', () => {
     await loaded()
     expect(spy).toHaveBeenCalledTimes(2)
     expect(spy).toHaveBeenLastCalledWith({ range: 30, terminal: '', position: '' })
+  })
+})
+
+describe('CockpitUsageTab · 使用明细 · 时间列排序箭头（PRD §七，2026-11-15）', () => {
+  const arrow = (label) => th(label).querySelector('.ux-sort-arrow')
+
+  it('「最近使用时间」没在排序时也显示浅色 ↓；点一下按时间由近到远（↓ 变实色），再点由远到近（↑），「从未使用」始终在最后', async () => {
+    await mount()
+    const r = await mockSummary({ range: 30 })
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↓')
+    expect(arrow('最近使用时间').className).toContain('is-idle')
+
+    th('最近使用时间').click()
+    await flushAll(2)
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↓')
+    expect(arrow('最近使用时间').className).not.toContain('is-idle')
+    const used = r.users.map((u) => u.lastUsedAt).filter(Boolean)
+    const desc = [...used].sort().reverse()
+    expect(rowsOf().map((tr) => textOf(tr.children[6]))).toEqual(desc.slice(0, 10))
+
+    th('最近使用时间').click()
+    await flushAll(2)
+    expect(textOf(th('最近使用时间'))).toBe('最近使用时间 ↑')
+    expect(rowsOf().map((tr) => textOf(tr.children[6]))).toEqual([...used].sort().slice(0, 10))
+    // 末页：从未使用的排在最后，不随升降序翻转
+    for (let i = 0; i < 30 && !footBtn('下一页').disabled; i++) {
+      footBtn('下一页').click()
+      await flushAll(1)
+    }
+    const last = rowsOf().at(-1)
+    if (r.users.some((u) => !u.lastUsedAt)) expect(textOf(last.children[6])).toBe('从未使用')
+  })
+
+  it('换别的列排序后，时间列箭头回到浅色 ↓；其他没在排序的数值列不显示箭头', async () => {
+    await mount()
+    th('最近使用时间').click()
+    await flushAll(2)
+    th('会话数').click()
+    await flushAll(2)
+    expect(arrow('最近使用时间').className).toContain('is-idle')
+    expect(textOf(th('活跃天数'))).toBe('活跃天数')
+  })
+
+  it('按能力「最近调用时间」同样常显箭头，点击按时间由近到远排序', async () => {
+    await mount()
+    const r = await mockSummary({ range: 30 })
+    await pickDim('按能力')
+    expect(textOf(th('最近调用时间'))).toBe('最近调用时间 ↓')
+    expect(arrow('最近调用时间').className).toContain('is-idle')
+    th('最近调用时间').click()
+    await flushAll(2)
+    expect(arrow('最近调用时间').className).not.toContain('is-idle')
+    const desc = r.abilities.map((a) => a.lastCalledAt).filter(Boolean).sort().reverse()
+    expect(rowsOf().map((tr) => textOf(tr.children[4]))).toEqual(desc.slice(0, 10))
   })
 })
