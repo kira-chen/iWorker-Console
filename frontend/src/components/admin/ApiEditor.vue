@@ -127,7 +127,7 @@ function onIconPick(payload) {
     delete fieldErrors.icon
   }
 }
-// 服务提供系统下拉选项：[{ id, name }]，必选其一
+// 服务提供系统下拉选项：[{ id, name }]；选填（2026-11-16），不选归入列表「未分组」
 const providerSystems = ref([])
 const psLoading = ref(false)
 async function loadProviderSystems() {
@@ -332,7 +332,7 @@ function validate() {
   else if (form.name.trim().length > API_NAME_MAX) errors.name = `名称最多 ${API_NAME_MAX} 个字符`
   if (!form.icon) errors.icon = '请选择或上传图标'
   if (!form.type) errors.type = '请选择连接器类型'
-  if (form.providerSystemId == null) errors.providerSystemId = '必须选择所属服务提供系统'
+  // 所属服务提供系统选填（2026-11-16），不校验
   if (!form.description.trim()) errors.description = 'API 描述必填'
   // 描述上限 2000：此前只有输入框 maxlength、保存不校验，粘贴绕过即可超长（待办 yuepu#31③；MCP / 业务系统早有）
   else if (form.description.trim().length > API_DESC_MAX) errors.description = `API 描述最多 ${API_DESC_MAX} 个字符`
@@ -375,7 +375,7 @@ function buildPayload() {
     icon: form.icon,
     type: form.type,
     description: form.description.trim(),
-    providerSystemId: form.providerSystemId,
+    providerSystemId: form.providerSystemId || null, // 清空后 el-select 给 ''，统一成 null（= 未分组）
     url: form.url.trim(),
     method: form.method,
     enabled: form.enabled,
@@ -483,13 +483,15 @@ async function save() {
             <el-form-item label="名称" :error="fieldErrors.name" required>
               <el-input v-model="form.name" :maxlength="API_NAME_MAX" placeholder="如 报销查询 API" />
             </el-form-item>
-            <el-form-item label="所属服务提供系统" :error="fieldErrors.providerSystemId" required>
+            <!-- 2026-11-16 改选填、可清空：不选则归入列表「未分组」 -->
+            <el-form-item label="所属服务提供系统" :error="fieldErrors.providerSystemId">
               <el-select
                 v-model="form.providerSystemId"
                 class="ad-w"
                 filterable
+                clearable
                 :loading="psLoading"
-                placeholder="请选择所属服务提供系统"
+                placeholder="请选择所属服务提供系统（选填）"
               >
                 <el-option
                   v-for="ps in providerSystems"
@@ -498,9 +500,9 @@ async function save() {
                   :label="ps.name"
                 />
               </el-select>
-              <!-- 兜底：下拉无任何分组时明确提示先建分组（正常路径由列表页零分组禁建前置拦住） -->
-              <div v-if="!psLoading && !providerSystems.length" class="ad-ps-empty">
-                当前没有任何服务提供系统，请先在 API 列表页新建服务提供系统后再新建 API。
+              <!-- 一个系统都没有时说明去哪儿建（字段选填，不阻断保存；同 McpEditor） -->
+              <div v-if="!readonly && !psLoading && !providerSystems.length" class="ad-ps-empty">
+                当前没有服务提供系统，可在 API 列表页新建；不选则归入「未分组」。
               </div>
             </el-form-item>
           </div>

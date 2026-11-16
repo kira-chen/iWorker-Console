@@ -18,9 +18,12 @@
  *   负向状态操作（撤回/停用）=warning、危险操作（删除）=danger。
  *
  * 【按服务提供系统分组（产品优化需求-202611 修改点 14（R9））】参照 API 列表改成两层：
- *   分组头（展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】）→ 组内 MCP 表格（列与操作不变）。
- *   - 服务提供系统与 API 共用（listProviderSystems）；系统的新建 / 编辑 / 删除仍只在 API 页签（待确认，暂按此），本页分组头不放这两个按钮；
- *   - 没选系统的 MCP 归入末尾「未分组」（仅在确有这类 MCP 时出现）；
+ *   分组头（展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】【编辑系统】【删除系统】）→ 组内 MCP 表格（列与操作不变）。
+ *   - 服务提供系统 MCP 单独一套（2026-11-16 确认，listMcpProviderSystems），与 API 的系统互不影响；
+ *     本页导航栏【＋ 新建服务提供系统】与分组头【编辑系统】【删除系统】维护，弹窗同 API（ProviderSystemEditor kind=MCP）；
+ *     系统下有 MCP 时【删除系统】置灰，空系统删除前二次确认；
+ *   - 没选系统的 MCP 归入末尾「未分组」：无描述、无编辑 / 删除，带【＋ 在未分组下新建 MCP】（不预选系统）；
+ *     无搜索筛选时始终展示（组内为空给空态），有搜索筛选时只在有命中时展示；
  *   - 排序在各组内独立；按服务提供系统分页（计数单位「个」），规则同 API 列表；
  *   - 搜索 / 筛选后只展示有匹配 MCP 的分组；无条件时展示全部系统（含空系统，便于从分组头新建）。
  *   顶栏【新建 MCP】保留（系统选填，新建时不预选）。
@@ -29,8 +32,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { queryString } from '@/utils/routeQuery'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listMcp, deleteMcp, healthCheckTool } from '@/api/admin'
-import { listProviderSystems } from '@/api/apiConnector'
+import { listMcp, deleteMcp, healthCheckTool, listMcpProviderSystems, deleteMcpProviderSystem } from '@/api/admin'
+import { providerSystemDeleteBlockReason } from '@/utils/providerSystemMeta'
 import {
   getMcpServicePublishStatus,
   publishMcpService,
@@ -53,6 +56,7 @@ import RevokedTag from '@/components/admin/RevokedTag.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import HealthTag from '@/components/HealthTag.vue'
 import McpEditor from '@/components/admin/McpEditor.vue'
+import ProviderSystemEditor from '@/components/admin/ProviderSystemEditor.vue'
 import { iconIsUrl } from '@/utils/iconDisplay'
 
 // 「最近更新时间」排序：R9 起在各分组内独立进行（每组表头各有排序箭头，见下方 groupSorts），不再下发 mock 统一排序。
@@ -261,7 +265,7 @@ const loading = ref(true)
 const loadError = ref(false)
 // 失败原因（ListStates 的 error-message；口径同 useAdminList，待办 yuepu#74）
 const loadErrorMessage = ref('')
-const providerSystems = ref([]) // [{ id, name, description, mcpCount }]：与 API 共用的服务提供系统
+const providerSystems = ref([]) // [{ id, name, description, mcpCount }]：MCP 自己的服务提供系统
 const rows = ref([]) // 当前条件下的全部 MCP（含 providerSystemId），客户端按系统归并
 const ungroupedTotal = ref(null) // 「未分组」MCP 总数（不随筛选变），分组头计数用
 // 请求序号：只认最后一次发起的请求，丢弃过期响应（同 useAdminList，防快速切筛选时旧响应覆盖新响应）
@@ -276,7 +280,7 @@ async function fetchList() {
     // 只下发有值的筛选项（同 useAdminList：空串不入参）
     const params = {}
     for (const k of ['keyword', 'type', 'state']) if (applied[k]) params[k] = applied[k]
-    const [psData, mcpData] = await Promise.all([listProviderSystems({}), listMcp(params)])
+    const [psData, mcpData] = await Promise.all([listMcpProviderSystems({}), listMcp(params)])
     if (seq !== reqSeq) return
     providerSystems.value = psData?.list || []
     rows.value = mcpData?.list || []
@@ -337,7 +341,8 @@ const filtering = computed(() => !!(applied.keyword || applied.type || applied.s
  * 两层数据：[{ key, ps, mcps }]，真实系统在前（顺序同 API 列表），「未分组」垫底（ps=null）。
  * - 无筛选：展示全部系统（含空系统，分组头可直接「在本系统下新建 MCP」）；
  * - 搜索 / 筛选后：只展示有命中 MCP 的分组（R9，同 API 列表 md §一.2）；
- * - 「未分组」只在确有没选系统的 MCP 时出现；指向已不存在系统的 MCP 也兜进这里，不让它从列表里凭空消失。
+ * - 「未分组」（2026-11-16 新口径）：无搜索 / 筛选时始终展示（组内为空也展示，便于从分组头新建），
+ *   搜索 / 筛选后同样只在有命中时展示；指向已不存在系统的 MCP 也兜进这里，不让它从列表里凭空消失。
  */
 const groups = computed(() => {
   const known = new Set(providerSystems.value.map((p) => p.id))
@@ -346,19 +351,20 @@ const groups = computed(() => {
     const key = m.providerSystemId && known.has(m.providerSystemId) ? m.providerSystemId : UNGROUPED
     ;(byKey[key] ||= []).push(m)
   }
-  const list = providerSystems.value
-    .map((ps) => ({ key: ps.id, ps, mcps: sortRows(byKey[ps.id] || [], ps.id) }))
-    .filter((g) => !filtering.value || g.mcps.length > 0)
-  if (byKey[UNGROUPED]?.length) {
-    list.push({ key: UNGROUPED, ps: null, mcps: sortRows(byKey[UNGROUPED], UNGROUPED) })
-  }
-  return list
+  const list = providerSystems.value.map((ps) => ({ key: ps.id, ps, mcps: sortRows(byKey[ps.id] || [], ps.id) }))
+  list.push({ key: UNGROUPED, ps: null, mcps: sortRows(byKey[UNGROUPED] || [], UNGROUPED) })
+  return list.filter((g) => !filtering.value || g.mcps.length > 0)
 })
 
 // 分组头「N 个 MCP」：该系统下 MCP 总数，不随搜索 / 筛选变（同 API 列表 apiCount 口径）；后端没给就回退本组命中数
 function groupMcpCount(g) {
   const total = g.ps ? g.ps.mcpCount : ungroupedTotal.value
   return total ?? g.mcps.length
+}
+
+// 【删除系统】置灰原因：系统下还有 MCP 不可删（只查 MCP）。空串 = 可删。文案与 mock 兜底拒绝同源。
+function psDeleteBlockReason(g) {
+  return providerSystemDeleteBlockReason(groupMcpCount(g), 'MCP')
 }
 
 /* 分页：按服务提供系统分页（R9「规则同 API 列表」，见 prd-API.md §二.1 分页规则）——
@@ -375,7 +381,8 @@ watch([() => groups.value.length, psPageSize], () => {
   if (psPage.value > max) psPage.value = max
 })
 
-// 没有任何分组可展示（非加载中、非失败）：无条件 = 首次暂无数据；有条件 = 无查询结果
+// 没有任何分组可展示（非加载中、非失败）。无搜索筛选时「未分组」始终在（2026-11-16），所以只会在「有条件、无查询结果」时出现；
+// 首次暂无数据由「未分组」组内空态承接（"暂无未分组的 MCP · 点「在未分组下新建 MCP」添加"）
 const isEmpty = computed(() => !loading.value && !loadError.value && !groups.value.length)
 
 /**
@@ -432,6 +439,43 @@ function openView(row) {
   editorDefaultPsId.value = null
   editorVisible.value = true
 }
+/* ---------------- 服务提供系统 新建 / 编辑 / 删除（2026-11-16：MCP 单独一套，弹窗同 API） ---------------- */
+const psEditorVisible = ref(false)
+const psEditingId = ref(null)
+const psDelBusy = ref(null) // 删除中的服务提供系统 id
+function openCreatePs() {
+  psEditingId.value = null
+  psEditorVisible.value = true
+}
+function openEditPs(ps) {
+  psEditingId.value = ps.id
+  psEditorVisible.value = true
+}
+function onPsSaved() {
+  // 保存成功后关闭弹窗并刷新列表，不跳转页面（md §二.7）；停在当前页
+  fetchList()
+}
+async function removePs(g) {
+  if (psDeleteBlockReason(g)) return // 按钮已置灰，双保险
+  try {
+    // md §二.7：空系统删除前二次确认
+    await ElMessageBox.confirm('删除后该 MCP 分组不可恢复，确认删除？', '删除服务提供系统', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      confirmButtonClass: 'el-button--danger'
+    })
+    psDelBusy.value = g.ps.id
+    await deleteMcpProviderSystem(g.ps.id)
+    ElMessage.success('已删除')
+    fetchList()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error(e?.message || '删除失败')
+  } finally {
+    psDelBusy.value = null
+  }
+}
+
 function onSaved() {
   // 新建/编辑保存后回第 1 页刷新（新建项常在首页，且避免停在越界页）
   reload()
@@ -627,6 +671,10 @@ async function remove(row) {
            唯一触发方式（原 300ms 防抖自动刷新已删，两套并存的口径冲突消解） -->
       <el-button @click="search">查询</el-button>
       <template #right>
+        <!-- 维护 MCP 自己的服务提供系统（md §一「查询区右侧展示【＋ 新建服务提供系统】」，弹窗同 API） -->
+        <el-button class="lt-create" @click="openCreatePs">
+          <el-icon><Plus /></el-icon> 新建服务提供系统
+        </el-button>
         <!-- 顶栏新建不预选系统（R9：系统选填）；须写成 openCreate()，否则点击事件对象会被当成系统 id 传入 -->
         <el-button type="primary" class="lt-create" @click="openCreate()">
           <el-icon><Plus /></el-icon> 新建 MCP
@@ -641,13 +689,13 @@ async function remove(row) {
       :error="loadError"
       :error-message="loadErrorMessage"
       :empty="isEmpty"
-      :empty-text="filtering ? '没有符合条件的 MCP 服务' : '还没有 MCP 服务 · 点「新建 MCP」登记第一个'"
+      empty-text="没有符合条件的 MCP 服务"
       @retry="fetchList"
     >
       <!-- 两层（产品优化需求-202611 修改点 14（R9））：服务提供系统分组 → 其下 MCP 表格；分组壳与 API 列表同款 -->
       <div v-for="g in pagedGroups" :key="g.key" class="mc-group" :data-group="g.key">
-        <!-- 分组头：展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】。
-             系统的编辑 / 删除仍在 API 页签（待确认），这里不放；「未分组」不是真实系统，只有名称与数量 -->
+        <!-- 分组头：展开/折叠 · 系统名称 · 系统描述 · 该系统下 MCP 数 ·【＋ 在本系统下新建 MCP】【编辑系统】【删除系统】。
+             「未分组」不是真实系统：无描述、无编辑 / 删除，只带【＋ 在未分组下新建 MCP】（不预选系统） -->
         <div class="mc-group-head">
           <el-button
             link
@@ -661,17 +709,35 @@ async function remove(row) {
           <span v-if="g.ps?.description" class="mc-group-desc" :title="g.ps.description">{{ g.ps.description }}</span>
           <span class="mc-group-count">{{ groupMcpCount(g) }} 个 MCP</span>
           <span class="mc-group-sp"></span>
-          <div v-if="g.ps" class="mc-group-actions">
+          <div v-if="!g.ps" class="mc-group-actions">
+            <el-button link type="primary" @click="openCreate()">
+              <el-icon><Plus /></el-icon> 在未分组下新建 MCP
+            </el-button>
+          </div>
+          <div v-else class="mc-group-actions">
             <el-button link type="primary" @click="openCreate(g.ps.id)">
               <el-icon><Plus /></el-icon> 在本系统下新建 MCP
             </el-button>
+            <el-button link type="primary" @click="openEditPs(g.ps)">编辑系统</el-button>
+            <el-tooltip placement="top" :disabled="!psDeleteBlockReason(g)" :content="psDeleteBlockReason(g)">
+              <!-- 置灰按钮不触发悬停事件，套一层 span 承接 tooltip（同 API 列表 .aps-del-wrap） -->
+              <span class="mc-del-wrap">
+                <el-button
+                  link
+                  type="danger"
+                  :loading="psDelBusy === g.ps.id"
+                  :disabled="!!psDeleteBlockReason(g)"
+                  @click="removePs(g)"
+                >删除系统</el-button>
+              </span>
+            </el-tooltip>
           </div>
         </div>
 
         <!-- 组内表格：列与操作和分组前一致（R9「组内的列和操作与现有 MCP 列表一致」） -->
         <div v-if="!isCollapsed(g.key)" class="mc-group-body">
           <div v-if="!g.mcps.length" class="mc-group-empty">
-            该系统下暂无 MCP · 点「在本系统下新建 MCP」添加
+            {{ g.ps ? '该系统下暂无 MCP · 点「在本系统下新建 MCP」添加' : '暂无未分组的 MCP · 点「在未分组下新建 MCP」添加' }}
           </div>
           <div v-else class="table-wrap mc-table-wrap">
             <el-table :data="g.mcps" row-key="id">
@@ -936,6 +1002,14 @@ async function remove(row) {
       @probed="onProbed"
     />
 
+    <!-- 服务提供系统弹窗：与 API 同一个组件，kind=MCP 存到 MCP 自己的那一套 -->
+    <ProviderSystemEditor
+      v-model:visible="psEditorVisible"
+      :system-id="psEditingId"
+      kind="MCP"
+      @saved="onPsSaved"
+    />
+
     <!-- 引用清单弹窗（M2：正文为引用方名称列表，按钮【关闭】；与 API / 业务系统页同款。
          标题与内容按行类型分流：岗位私有=被岗位引用/岗位名，市场连接器=被技能引用/技能名） -->
     <el-dialog v-model="refsDialog.visible" :title="refsDialog.title" width="440px">
@@ -1005,6 +1079,9 @@ async function remove(row) {
   align-items: center;
   gap: var(--space-1);
   flex-shrink: 0;
+}
+.mc-del-wrap {
+  display: inline-flex;
 }
 .mc-group .mc-table-wrap {
   border: 0;

@@ -1084,7 +1084,7 @@ function boundExpertRefs(positionId) {
 /**
  * 自动化任务执行对象候选（R13 §4；2026-11-09 负责人定：与「引用技能」同一范围）：
  * 已发布、未回收的通用 / 市场专家（团），加上本岗位「专家与专家团」页签里状态正常的岗位私有专家（团）。
- * 专家团另须不缺员、岗位私有成员都已加入本岗位；没设主理人的团照常列出（leaderId 为 null），由编辑页置灰。
+ * 专家团另须不缺员、岗位私有成员都已加入本岗位；没设主理人的团同样可选（leaderId 为 null，R13-6，2026-11-16 确认）。
  */
 function execTargetCandidates(positionId) {
   const open = (row) => row.type !== EXPERT_TYPE.POSITION && row.status === 'published' && !row.revoked
@@ -1097,12 +1097,12 @@ function execTargetCandidates(positionId) {
   }
 }
 
-/** 执行对象已不能用的任务（停用、回收、缺员、没设主理人、被删除或已从本岗位移除）：岗位发布前检查逐条阻断。 */
+/** 执行对象已不能用的任务（停用、回收、缺员、被删除或已从本岗位移除；没设主理人不算，R13-6）：岗位发布前检查逐条阻断。 */
 function execTargetIssues(positionId) {
   const { experts, teams } = execTargetCandidates(positionId)
   const usable = {
     EXPERT: new Set(experts.map((x) => String(x.expertId))),
-    TEAM: new Set(teams.filter((t) => t.leaderId != null).map((t) => String(t.teamId)))
+    TEAM: new Set(teams.map((t) => String(t.teamId)))
   }
   return listTasksWithExecTarget(positionId)
     .filter((s) => !usable[s.execType].has(String(s.execTargetId)))

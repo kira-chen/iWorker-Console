@@ -221,14 +221,14 @@ describe('ApiEditor · 必填红星统一标注（2026-09-21 负责人拍板）'
 })
 
 describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
-  it('新建全空点【保存】 → 名称/所属系统/连接器类型/图标/描述/地址 6 个表单项标红 + 示例问题区标红，warning「请先修正标红项」，不调 createApi', async () => {
+  it('新建全空点【保存】 → 名称/连接器类型/图标/描述/地址 5 个表单项标红 + 示例问题区标红（所属系统 2026-11-16 起选填，不标红），warning「请先修正标红项」，不调 createApi', async () => {
     const el = await mountEditor(null)
     findBtn(el, '保存').click()
     await flush()
     const red = [...el.querySelectorAll('.el-form-item')].filter((it) => it.getAttribute('data-error'))
-    expect(red.map((it) => it.dataset.label)).toEqual(['名称', '所属服务提供系统', '连接器类型', '图标', 'API 描述', 'API 地址'])
+    expect(red.map((it) => it.dataset.label)).toEqual(['名称', '连接器类型', '图标', 'API 描述', 'API 地址'])
     expect(itemByLabel(el, '名称').dataset.error).toBe('名称不能为空')
-    expect(itemByLabel(el, '所属服务提供系统').dataset.error).toBe('必须选择所属服务提供系统')
+    expect(itemByLabel(el, '所属服务提供系统').dataset.error).toBeUndefined()
     expect(itemByLabel(el, 'API 地址').dataset.error).toBe('API 地址必须为合法的 HTTP 或 HTTPS URL')
     expect(el.querySelector('.ad-eq-err-msg').textContent).toContain('示例问题必填，请填满 3 条')
     expect(msg.warning).toHaveBeenCalledWith('请先修正标红项')
@@ -347,6 +347,48 @@ describe('ApiEditor · 保存校验（md §三.7 L183-189）', () => {
     expect(conn.updateApi).toHaveBeenCalled()
     expect(readWriteItem(el).getAttribute('data-error')).toBe('读/写属性不合法')
     expect(msg.error).toHaveBeenCalledWith('读/写属性不合法')
+  })
+})
+
+describe('ApiEditor · 所属服务提供系统选填（2026-11-16：不选归入列表「未分组」）', () => {
+  it('「所属服务提供系统」不标必填红星，下拉可清空', async () => {
+    const el = await mountEditor(null)
+    expect(itemByLabel(el, '所属服务提供系统').dataset.required).toBe('')
+  })
+
+  it('不选所属系统也能保存：createApi 收到 providerSystemId=null', async () => {
+    const el = await mountEditor(null)
+    await fillValidNew(el)
+    const ps = itemByLabel(el, '所属服务提供系统').querySelector('select')
+    ps.value = ''
+    ps.dispatchEvent(new Event('change'))
+    await flush()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(msg.warning).not.toHaveBeenCalled()
+    expect(conn.createApi).toHaveBeenCalledWith(expect.objectContaining({ providerSystemId: null }))
+  })
+
+  it('编辑态清空所属系统后保存 → updateApi 收到 providerSystemId=null（移出原系统、归入未分组）', async () => {
+    const el = await mountEditor('api_1')
+    expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
+    const ps = itemByLabel(el, '所属服务提供系统').querySelector('select')
+    ps.value = ''
+    ps.dispatchEvent(new Event('change'))
+    await flush()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(conn.updateApi).toHaveBeenCalledWith('api_1', expect.objectContaining({ providerSystemId: null }))
+  })
+
+  it('一个服务提供系统都没有：提示「当前没有服务提供系统，可在 API 列表页新建；不选则归入「未分组」。」，仍可保存', async () => {
+    conn.listProviderSystems.mockResolvedValue({ list: [] })
+    const el = await mountEditor(null)
+    expect(el.textContent).toContain('当前没有服务提供系统，可在 API 列表页新建；不选则归入「未分组」。')
+    await fillValidNew(el)
+    findBtn(el, '保存').click()
+    await flush()
+    expect(conn.createApi).toHaveBeenCalledWith(expect.objectContaining({ providerSystemId: null }))
   })
 })
 
@@ -548,7 +590,7 @@ describe('ApiEditor · watcher immediate 防回归（5303c7c）', () => {
     expect(conn.listProviderSystems).toHaveBeenCalled()
     expect(inputOf(el, '名称').value).toBe('报销查询')
     expect(itemByLabel(el, '所属服务提供系统').querySelector('select').value).toBe('pv_1')
-    expect(el.textContent).not.toContain('当前没有任何服务提供系统')
+    expect(el.textContent).not.toContain('当前没有服务提供系统')
   })
 })
 

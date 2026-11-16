@@ -27,12 +27,14 @@ vi.mock('@/api/admin', () => ({
   getMcp: vi.fn(),
   testMcpConn: vi.fn(),
   fetchMcpTools: vi.fn(),
-  fetchMcpToolsDraft: vi.fn()
-}))
-
-// 服务提供系统（R9，与 API 共用）：一个系统挂报销系统 MCP，其余两条没选系统 → 落「未分组」
-vi.mock('@/api/apiConnector', () => ({
-  listProviderSystems: vi.fn(() => Promise.resolve({ list: [{ id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口', mcpCount: 1 }] }))
+  fetchMcpToolsDraft: vi.fn(),
+  // MCP 自己的服务提供系统（2026-11-16 起与 API 的分开）：一个系统挂报销系统 MCP，其余两条没选系统 → 落「未分组」
+  listMcpProviderSystems: vi.fn(() => Promise.resolve({ list: [{ id: 'mps_1', name: '财务服务系统', description: '报销、合同等财务类业务的 MCP 服务', mcpCount: 1 }] })),
+  deleteMcpProviderSystem: vi.fn(),
+  // ProviderSystemEditor（页内常驻挂载、未打开）的依赖
+  getMcpProviderSystem: vi.fn(),
+  createMcpProviderSystem: vi.fn(),
+  updateMcpProviderSystem: vi.fn()
 }))
 
 const AGG = { mcp_1: 'PUBLISHED', mcp_2: 'PENDING_REVIEW', mcp_3: 'NOT_PUBLISHED' }
@@ -46,7 +48,7 @@ vi.mock('@/api/market', () => ({
 const AdminMcp = (await import('@/views/admin/AdminMcp.vue')).default
 
 const ROWS = [
-  { id: 'mcp_1', name: '报销系统 MCP', icon: '¥', description: '查询和提交员工报销单', type: 'PLATFORM', providerSystemId: 'pv_1', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 2, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-24T16:10:00+08:00', updatedAt: '2026-08-24T16:10:00+08:00' },
+  { id: 'mcp_1', name: '报销系统 MCP', icon: '¥', description: '查询和提交员工报销单', type: 'PLATFORM', providerSystemId: 'mps_1', transport: 'streamable-http', toolCount: 3, referencedBySkillCount: 2, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-24T16:10:00+08:00', updatedAt: '2026-08-24T16:10:00+08:00' },
   { id: 'mcp_2', name: '本地文件 MCP', icon: '▱', description: '读取工作区文件', type: 'SYSTEM_DEFAULT', transport: 'stdio', toolCount: 1, referencedBySkillCount: 0, referencedBySkills: [], displayStatus: 'HEALTHY', lastCheckedAt: '2026-08-23T10:00:00+08:00', updatedAt: '2026-08-23T10:00:00+08:00' },
   { id: 'mcp_3', name: '天气查询 MCP', icon: '', description: '', type: 'POSITION', transport: 'sse', toolCount: 0, positionCount: 0, referencedByPositions: [], displayStatus: 'UNKNOWN', lastCheckedAt: null, updatedAt: '2026-08-20T09:00:00+08:00' }
 ]
@@ -74,6 +76,7 @@ describe('AdminMcp · 真实 Element Plus 挂载冒烟', () => {
     // 工具栏：搜索占位 + 新建入口
     expect(el.querySelector('input[placeholder="搜索服务名称或描述"]')).toBeTruthy()
     expect([...el.querySelectorAll('.el-button')].some((b) => b.textContent.trim() === '新建 MCP')).toBe(true)
+    expect([...el.querySelectorAll('.el-button')].some((b) => b.textContent.trim() === '新建服务提供系统')).toBe(true)
     expect(listMcp).toHaveBeenCalledTimes(1)
 
     // 分组头（R9）：财务服务系统在前、未分组垫底

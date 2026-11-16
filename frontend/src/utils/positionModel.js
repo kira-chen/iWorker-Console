@@ -520,7 +520,7 @@ export function skillsRefOk(skills) {
  * - 团缺员 → 「专家团「名称」缺员 N 人，请移除后再发布」；
  * - 团里的岗位私有成员没加入本岗位 → 「专家团「团名」的成员「专家名」没有加入本岗位，该岗位员工将无法使用，请添加或调整」。
  * - 自动化任务的执行对象不能用了（2026-11-09 执行对象放开到通用、市场专家（团）后，它们不在页签里，单列一类）→
- *   「自动化任务「任务名」的执行对象「名称」已不可用（停用、回收、缺员或没设主理人），请重新选择」。
+ *   「自动化任务「任务名」的执行对象「名称」已不可用（停用、回收或缺员），请重新选择」（没设主理人不算不可用，R13-6）。
  * 入参是 getPositionExperts 回的 experts[] / teams[] / execTargetIssues[]（unavailable / missingCount / unboundMembers 由数据层算好）。
  */
 export function positionExpertIssues(experts, teams, execTargetIssues) {
@@ -543,7 +543,7 @@ export function positionExpertIssues(experts, teams, execTargetIssues) {
     out.push({
       name: s.targetName,
       label: '自动化任务「' + s.taskName + '」',
-      detail: '自动化任务「' + s.taskName + '」的执行对象「' + s.targetName + '」已不可用（停用、回收、缺员或没设主理人），请重新选择'
+      detail: '自动化任务「' + s.taskName + '」的执行对象「' + s.targetName + '」已不可用（停用、回收或缺员），请重新选择'
     })
   }
   return out

@@ -2,8 +2,9 @@
  * API 连接器页内存 mock（demo 数据层，模式同 knowledgeBaseMock.js；开关见 apiConnector.js 头注释）。
  *
  * 模型与状态机对齐 PRD-20260828《03能力/连接器/API/prd-API.md》：
- * - 服务提供系统：纯聚合容器（名称≤64 平台内唯一 + 描述），不设启用/停用；空系统才可删。
- *   产品优化需求-202611 修改点 14（R9）起与 MCP 共用：「空」= 其下既无 API 也无 MCP（MCP 归属见 mcpConnectorMock.providerSystemId）。
+ * - 服务提供系统：纯聚合容器（名称≤64 平台内唯一 + 描述），不设启用/停用；空系统（其下没有 API）才可删。
+ *   只管 API：MCP 另有自己的一套（mcpConnectorMock，2026-11-16 起分开），两边互不影响。
+ *   API 所属系统选填（2026-11-16）：不选 → API 列表归入末尾「未分组」。
  * - API 三态：未发布 NOT_PUBLISHED / 审核中 PENDING_REVIEW / 已发布 PUBLISHED；
  *   pendingAction 区分待审类型（PUBLISH 发布审核 / DEACTIVATE 停用审核），撤回按其恢复：
  *   待审发布撤回 → 未发布；待审停用撤回 → 已发布（PRD §二.4）。
@@ -548,31 +549,12 @@ function toRow(a) {
 }
 
 /* ================= 服务提供系统 ================= */
-/**
- * 各服务提供系统下的 MCP 名称：{ [系统 id]: [MCP 名称, …] }。
- * 产品优化需求-202611 修改点 14（R9）：服务提供系统由 API 与 MCP 共用，删除系统时除 API 外也要看其下 MCP。
- * MCP 数据在 mcpConnectorMock，它保存时也要反查本模块校验系统是否存在 —— 两个模块互相要读对方，
- * 故这里用动态 import，不形成静态循环依赖（同 skillRefsLoader 的做法）。
- */
-async function mcpNamesByProviderSystem() {
-  const { listMcpSync } = await import('./mcpConnectorMock')
-  const byPs = {}
-  for (const m of listMcpSync()) {
-    if (m.providerSystemId) (byPs[m.providerSystemId] ||= []).push(m.name)
-  }
-  return byPs
-}
-
 export async function listProviderSystems() {
   await delay(150)
-  const mcpNames = await mcpNamesByProviderSystem()
   return {
     list: providerSystems.map((p) => ({
       ...p,
-      apiCount: apis.filter((a) => a.providerSystemId === p.id).length,
-      // R9：其下 MCP 数与名称 —— MCP 列表分组头的「N 个 MCP」、API 列表【删除系统】置灰提示都用它
-      mcpCount: (mcpNames[p.id] || []).length,
-      mcpNames: mcpNames[p.id] || []
+      apiCount: apis.filter((a) => a.providerSystemId === p.id).length
     }))
   }
 }
@@ -617,11 +599,8 @@ export async function updateProviderSystem(id, payload) {
 
 export async function deleteProviderSystem(id) {
   await delay(200)
-  // 系统下有 API 或 MCP 都不能删（R9：除 API 外也要检查 MCP）；文案与 API 列表【删除系统】置灰提示同源
-  const blocked = providerSystemDeleteBlockReason({
-    apiCount: apis.filter((a) => a.providerSystemId === id).length,
-    mcpNames: (await mcpNamesByProviderSystem())[id] || []
-  })
+  // 系统下还有 API 不能删（只查 API，MCP 有自己的一套系统）；文案与 API 列表【删除系统】置灰提示同源
+  const blocked = providerSystemDeleteBlockReason(apis.filter((a) => a.providerSystemId === id).length, 'API')
   if (blocked) throw err(blocked)
   providerSystems = providerSystems.filter((p) => p.id !== id)
   persist()
@@ -655,7 +634,10 @@ export async function listApis(params = {}) {
   }
   if (params.state) list = list.filter((a) => a.status === params.state)
   if (params.type) list = list.filter((a) => a.type === params.type)
-  return { list: list.map(toRow) }
+  // 「未分组」API 总数（不随搜索 / 筛选变化）：真实系统的总数由 listProviderSystems 的 apiCount 给出，
+  // 「未分组」不是真实系统，只能从这里带（2026-11-16 API 所属系统改选填，同 MCP 列表口径）
+  const ungroupedTotal = apis.filter((a) => !a.providerSystemId).length
+  return { list: list.map(toRow), ungroupedTotal }
 }
 
 export async function getApi(id) {
@@ -670,8 +652,9 @@ function validateApiPayload(payload) {
   if (!(payload.name || '').trim()) throw err('名称不能为空', 'name')
   // 名称上限 64（2026-09-12 对齐《各模块必填选填字段一览表》§6.2 · 审计 K36；与 ApiEditor.validate 同口径）
   if (payload.name.trim().length > 64) throw err('名称最多 64 个字符', 'name')
-  if (!payload.providerSystemId || !findPs(payload.providerSystemId)) {
-    throw err('必须选择所属服务提供系统', 'providerSystemId')
+  // 所属服务提供系统选填（2026-11-16）：不选 = 归入列表「未分组」；选了就必须是 API 这一套里已有的系统
+  if (payload.providerSystemId && !findPs(payload.providerSystemId)) {
+    throw err('所选服务提供系统不存在，请重新选择', 'providerSystemId')
   }
   // 描述必填 ≤2000（一览表 §6.2；待办 yuepu#31③ / #37②：此前只有 ApiEditor 表单校验，绕过表单的调用能存下空描述 / 超长描述）
   if (!(payload.description || '').trim()) throw err('API 描述必填', 'description')
@@ -726,7 +709,7 @@ function applyApiPayload(a, payload) {
   a.name = payload.name.trim()
   a.icon = payload.icon || ''
   a.description = (payload.description || '').trim()
-  a.providerSystemId = payload.providerSystemId
+  a.providerSystemId = payload.providerSystemId || null // 空串 / 未选都归 null（= 未分组）
   a.method = payload.method
   a.enabled = payload.enabled !== false
   a.readWrite = payload.readWrite === 'write' ? 'write' : 'read'

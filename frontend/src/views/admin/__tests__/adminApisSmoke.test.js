@@ -100,12 +100,14 @@ describe('AdminApis · 真实 Element Plus 挂载冒烟', () => {
     expect(text).toContain('新建服务提供系统')
     expect(listApis).toHaveBeenCalledWith({})
 
-    // 两个分组头：名称 + 描述 + 「N 个 API」
+    // 两个系统分组头（名称 + 描述 + 「N 个 API」）+ 末尾「未分组」（无条件时始终展示，2026-11-16）
     const groups = [...container.querySelectorAll('.aps-group')]
-    expect(groups.length).toBe(2)
+    expect(groups.length).toBe(3)
     expect(groups[0].querySelector('.aps-group-name').textContent).toBe('财务服务系统')
     expect(groups[0].querySelector('.aps-group-count').textContent.trim()).toBe('2 个 API')
     expect(groups[1].textContent).toContain('该系统下暂无 API · 点「在本系统下新建 API」添加')
+    expect(groups[2].querySelector('.aps-group-name').textContent).toBe('未分组')
+    expect(groups[2].textContent).toContain('暂无未分组的 API · 点「在未分组下新建 API」添加')
 
     // 行数据真的进了 el-table
     expect(groups[0].querySelectorAll('.el-table__row').length).toBe(2)
@@ -115,6 +117,6 @@ describe('AdminApis · 真实 Element Plus 挂载冒烟', () => {
 
     // 分页条（站内统一 ListPagination → .list-pager；按系统计数，单位「个」）
     expect(container.querySelector('.list-pager')).toBeTruthy()
-    expect(container.querySelector('.list-pager').textContent).toContain('共 2 个数据')
+    expect(container.querySelector('.list-pager').textContent).toContain('共 3 个数据')
   })
 })

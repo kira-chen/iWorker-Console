@@ -8,7 +8,7 @@ import { explainMcpError } from '@/utils/mcpVerify'
  *   §二.3 连通性验证（连接配置变更后原验证结果失效 / 未验证不允许发布）
  *   §二.4 发布 / 撤回 / 停用 状态机（撤回按待审类型恢复）
  *   §二.5 服务提供系统（名称必填 ≤64 平台内唯一、描述必填 ≤2000；含 API 不可删；
- *         产品优化需求-202611 修改点 14（R9）起与 MCP 共用，含 MCP 亦不可删、列表带 mcpCount / mcpNames）
+ *         2026-11-16 起只管 API（MCP 另有一套），删除只查 API；API 所属系统改选填，不选归「未分组」）
  *   §一.1 搜索按名称或描述 / 状态筛选
  *   §三.3 鉴权密钥保存后遮罩、查看态不明文（出参 valueMasked、留空保留）
  *   §4 强制回收（停用时勾选，同走审核；操作人=提交申请的管理员；旧快照缺回收字段按普通停用）
@@ -231,33 +231,63 @@ describe('④ 服务提供系统校验（md §二.5 L78）', () => {
   })
 })
 
-describe('⑤ 含 API 或 MCP 的系统不可删（md §二.5 L81；产品优化需求-202611 修改点 14（R9）：除 API 外也要检查其下 MCP）', () => {
-  it('pv_1 下有 2 个 API、2 个 MCP → 拒并点名「该系统下有 2 个 API、2 个 MCP（报销系统 MCP、合同系统 MCP），需先迁移或删除后才能删除系统」；空系统 pv_3 可删', async () => {
-    await expect(run(m.deleteProviderSystem('pv_1'))).rejects.toThrow(
-      '该系统下有 2 个 API、2 个 MCP（报销系统 MCP、合同系统 MCP），需先迁移或删除后才能删除系统'
-    )
+describe('⑤ 含 API 的系统不可删（md §二.5；2026-11-16 起服务提供系统只管 API，删除只查 API，不查 MCP）', () => {
+  it('pv_1 下有 2 个 API → 拒「该系统下有 2 个 API，需先迁移或删除后才能删除系统」；空系统 pv_3 可删', async () => {
+    await expect(run(m.deleteProviderSystem('pv_1'))).rejects.toThrow('该系统下有 2 个 API，需先迁移或删除后才能删除系统')
     await expect(run(m.deleteProviderSystem('pv_3'))).resolves.toEqual({})
     const { list } = await run(m.listProviderSystems())
     expect(list.some((p) => p.id === 'pv_3')).toBe(false)
   })
 
-  it('系统下没有 API、只挂了 MCP，同样不可删：拒「该系统下有 1 个 MCP（项目管理 MCP），需先迁移或删除后才能删除系统」，系统仍在', async () => {
-    // MCP 保存时会动态 import 本模块校验系统、再走一次 delay —— 假定时器推不到那一步，本例改用真定时器（全程约 0.7s）
-    vi.useRealTimers()
-    const ps = await m.createProviderSystem({ name: '只有 MCP 的系统', description: '测试用' })
+  it('与 MCP 的系统互不影响：API 系统可与有 MCP 的 MCP 系统同名，删除这个 API 系统只查 API、照删不误，MCP 那边的同名系统与其下 MCP 不受影响', async () => {
+    vi.useRealTimers() // 本例要调 mcpConnectorMock（自带 delay），假定时器推不动跨模块的等待，改用真定时器
     const mcp = await import('../mcpConnectorMock')
-    await mcp.updateMcp('project_hub', { providerSystemId: ps.id })
-    await expect(m.deleteProviderSystem(ps.id)).rejects.toThrow('该系统下有 1 个 MCP（项目管理 MCP），需先迁移或删除后才能删除系统')
-    const { list } = await m.listProviderSystems()
-    expect(list.some((p) => p.id === ps.id)).toBe(true)
+    const mcpPs = await mcp.createMcpProviderSystem({ name: '同名系统', description: 'MCP 这边的' })
+    await mcp.updateMcp('project_hub', { providerSystemId: mcpPs.id })
+    const apiPs = await m.createProviderSystem({ name: '同名系统', description: 'API 这边的' })
+    await expect(m.deleteProviderSystem(apiPs.id)).resolves.toEqual({})
+    expect((await m.listProviderSystems()).list.some((p) => p.id === apiPs.id)).toBe(false)
+    expect((await mcp.listMcpProviderSystems()).list.find((p) => p.id === mcpPs.id)).toMatchObject({ name: '同名系统', mcpCount: 1 })
   })
 
-  it('列表带聚合 mcpCount / mcpNames（pv_1 两个：报销系统 MCP、合同系统 MCP；pv_3 零个）——API 列表【删除系统】置灰提示与 MCP 列表分组头计数都用它', async () => {
+  it('listProviderSystems 只带 apiCount，不再聚合 MCP 数 / MCP 名称', async () => {
     const { list } = await run(m.listProviderSystems())
     const pv1 = list.find((p) => p.id === 'pv_1')
-    expect(pv1.mcpCount).toBe(2)
-    expect([...pv1.mcpNames].sort()).toEqual(['合同系统 MCP', '报销系统 MCP'].sort())
-    expect(list.find((p) => p.id === 'pv_3')).toMatchObject({ mcpCount: 0, mcpNames: [] })
+    expect(pv1.apiCount).toBe(2)
+    expect(pv1).not.toHaveProperty('mcpCount')
+    expect(pv1).not.toHaveProperty('mcpNames')
+  })
+})
+
+describe('⑤-b 所属服务提供系统选填（2026-11-16：不选 → 列表「未分组」）', () => {
+  it('新建不带系统 / 带空串 → 成功，providerSystemId 落 null、providerSystemName 为空', async () => {
+    const a = await run(m.createApi({ ...NEW_API, providerSystemId: null }))
+    expect(a).toMatchObject({ providerSystemId: null, providerSystemName: '' })
+    const b = await run(m.createApi({ ...NEW_API, name: '新接口二', providerSystemId: '' }))
+    expect(b.providerSystemId).toBeNull()
+  })
+
+  it('编辑时清空系统 → 移入未分组；listApis 带「未分组」总数 ungroupedTotal，不随搜索变化', async () => {
+    expect((await run(m.listApis())).ungroupedTotal).toBe(0)
+    const a = await run(m.getApi('api_1101'))
+    await run(m.updateApi('api_1101', { ...PAYLOAD_1101, name: a.name, providerSystemId: null }))
+    expect((await run(m.getApi('api_1101'))).providerSystemId).toBeNull()
+    expect((await run(m.listApis())).ungroupedTotal).toBe(1)
+    const filtered = await run(m.listApis({ keyword: '不会命中的关键词' }))
+    expect(filtered.list).toHaveLength(0)
+    expect(filtered.ungroupedTotal).toBe(1)
+    expect((await run(m.listProviderSystems())).list.find((p) => p.id === 'pv_1').apiCount).toBe(1)
+  })
+
+  it('选了不存在的系统仍拒「所选服务提供系统不存在，请重新选择」（field=providerSystemId）', async () => {
+    await expect(run(m.createApi({ ...NEW_API, providerSystemId: 'pv_999' }))).rejects.toMatchObject({
+      field: 'providerSystemId',
+      message: '所选服务提供系统不存在，请重新选择'
+    })
+  })
+
+  it('API 不能挂 MCP 那一套的系统（mps_1）→ 拒', async () => {
+    await expect(run(m.createApi({ ...NEW_API, providerSystemId: 'mps_1' }))).rejects.toMatchObject({ field: 'providerSystemId' })
   })
 })
 

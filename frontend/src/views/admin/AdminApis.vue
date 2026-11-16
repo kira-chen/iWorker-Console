@@ -14,6 +14,10 @@
  *
  * 【查询（PRD §一）】搜索名称或描述 + 状态筛选，点【查询】按当前条件刷新（Enter 同）；
  *   搜索/筛选后只展示存在匹配 API 的分组，无筛选时展示全部分组（含空分组）。
+ *
+ * 【未分组（2026-11-16）】API 所属系统改选填：没选系统的 API 归入末尾「未分组」，规则同 MCP 列表——
+ *   无描述、无【编辑系统】【删除系统】，带【＋ 在未分组下新建 API】（不预选系统）；无搜索筛选时始终展示，
+ *   有搜索筛选时只在有命中时展示；分页时算一个分组。服务提供系统只管 API，删除时只查 API。
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -54,6 +58,7 @@ const loading = ref(true)
 const loadError = ref(false)
 const providerSystems = ref([]) // [{ id, name, description, apiCount }]
 const apis = ref([]) // 当前条件下的 API（含 providerSystemId/providerSystemName），客户端按分组归并
+const ungroupedTotal = ref(null) // 「未分组」API 总数（不随筛选变），分组头计数用
 // 输入区（暂存）与已应用条件分离：点【查询】才生效（PRD §一.2）
 const query = reactive({ keyword: '', type: '', state: '' })
 const applied = reactive({ keyword: '', type: '', state: '' })
@@ -150,9 +155,6 @@ function verifyTip(row) {
   return when
 }
 
-// 零分组前置约束：无任何服务提供系统时禁建 API（每个 API 必落真实分组）。加载中不算零分组。
-const hasNoGroups = computed(() => !loading.value && providerSystems.value.length === 0)
-
 // 排序状态：每个分组独立排序
 const groupSorts = ref({}) // { [psId]: 'desc' | 'asc' }
 
@@ -181,28 +183,37 @@ function sortApis(apis, psId) {
   })
 }
 
-// 两层数据：每个分组 + 其下 API。搜索/筛选时只展示有命中 API 的分组（PRD §一.2）。
+// 「未分组」不是真实系统，用固定 key 占位；分组 key 同时用于折叠态与组内排序方向（2026-11-16 API 所属系统改选填）
+const UNGROUPED = '__ungrouped__'
+
+/**
+ * 两层数据：[{ key, ps, apis }]，真实系统在前，「未分组」垫底（ps=null）。
+ * - 无搜索 / 筛选：展示全部系统（含空系统）+「未分组」（始终展示，组内为空也展示，便于从分组头新建）；
+ * - 搜索 / 筛选后：只展示有命中 API 的分组（PRD §一.2），「未分组」同样只在有命中时出现；
+ * - 指向已不存在系统的 API 也兜进「未分组」，不让它从列表里凭空消失。
+ */
 const groups = computed(() => {
-  const byPs = {}
+  const known = new Set(providerSystems.value.map((p) => p.id))
+  const byKey = {}
   for (const a of apis.value) {
-    const k = a.providerSystemId ?? '__none__'
-    ;(byPs[k] ||= []).push(a)
+    const key = a.providerSystemId && known.has(a.providerSystemId) ? a.providerSystemId : UNGROUPED
+    ;(byKey[key] ||= []).push(a)
   }
   const searching = !!applied.keyword || !!applied.state || !!applied.type
-  return providerSystems.value
-    .map((ps) => ({ ps, apis: sortApis(byPs[ps.id] || [], ps.id) }))
-    .filter((g) => !searching || g.apis.length > 0)
+  const list = providerSystems.value.map((ps) => ({ key: ps.id, ps, apis: sortApis(byKey[ps.id] || [], ps.id) }))
+  list.push({ key: UNGROUPED, ps: null, apis: sortApis(byKey[UNGROUPED] || [], UNGROUPED) })
+  return list.filter((g) => !searching || g.apis.length > 0)
 })
 
-// 分组下 API 数：优先后端聚合 apiCount，缺失回退本页归并数。
+// 分组下 API 数（总数，不随搜索 / 筛选变）：真实系统取后端聚合 apiCount，「未分组」取 listApis 带回的 ungroupedTotal；缺失回退本组命中数。
 function groupApiCount(g) {
-  return g.ps.apiCount ?? g.apis.length
+  const total = g.ps ? g.ps.apiCount : ungroupedTotal.value
+  return total ?? g.apis.length
 }
 
-// 【删除系统】置灰原因：系统下有 API 或 MCP 都不可删（产品优化需求-202611 修改点 14（R9）：服务提供系统与 MCP 共用，
-// 除 API 外也要看其下 MCP；mcpNames 由 listProviderSystems 聚合）。空串 = 可删。文案与 mock 兜底拒绝同源。
+// 【删除系统】置灰原因：系统下还有 API 不可删（只查 API，MCP 有自己的一套系统）。空串 = 可删。文案与 mock 兜底拒绝同源。
 function psDeleteBlockReason(g) {
-  return providerSystemDeleteBlockReason({ apiCount: groupApiCount(g), mcpNames: g.ps.mcpNames || [] })
+  return providerSystemDeleteBlockReason(groupApiCount(g), 'API')
 }
 
 /* ---------------- 分页：按「服务提供系统」分页（2026-09-09 负责人裁决） ----------------
@@ -235,6 +246,7 @@ async function fetchAll() {
     const [psData, apiData] = await Promise.all([listProviderSystems({}), listApis(apiParams)])
     providerSystems.value = psData?.list || []
     apis.value = apiData?.list || []
+    ungroupedTotal.value = apiData?.ungroupedTotal ?? null
   } catch (e) {
     // md 未要求展示失败原因，故不接入 loadErrorMessage（只显示「加载失败」+【重试】；测试审计 J63，2026-10-10 浦月选 A）
     loadError.value = true
@@ -283,11 +295,8 @@ function isCollapsed(psId) {
 }
 
 /* ---------------- API 新建/编辑/查看 ---------------- */
+/** 新建：系统分组头传入该系统 id 预选；「未分组」分组头不预选（2026-11-16 所属系统选填，没有系统也能建）。 */
 function openCreateApi(psId = null) {
-  if (hasNoGroups.value) {
-    ElMessage.warning('请先创建一个服务提供系统，再在其下新建 API')
-    return
-  }
   editingId.value = null
   editorReadonly.value = false
   editorDefaultPsId.value = psId
@@ -502,7 +511,7 @@ async function removeApi(row) {
       </el-select>
       <el-button @click="search">查询</el-button>
       <template #right>
-        <!-- 顶栏不设「新建 API」：API 必属某服务提供系统，统一走节头「在本系统下新建 API」入口 -->
+        <!-- 顶栏不设「新建 API」：统一走分组头入口（系统分组头预选该系统；「未分组」分组头不预选） -->
         <el-button type="primary" class="lt-create" @click="openCreatePs">
           <el-icon><Plus /></el-icon> 新建服务提供系统
         </el-button>
@@ -514,35 +523,32 @@ async function removeApi(row) {
            loadError=false，故其 v-if="error" 与原「!loading && loadError」逐帧等价；empty 恒 false（默认），
            页内多分支空态原样留在默认插槽 -->
       <ListStates :loading="loading" :error="loadError" @retry="fetchAll">
-        <!-- 零分组空态：明确引导先建分组才能建 API（PRD §四） -->
+        <!-- 搜索/筛选无命中（PRD §四：保留当前条件）。无条件时「未分组」始终在，不会走到这里；
+             原「零服务提供系统时禁建 API」空态已随所属系统改选填撤掉（2026-11-16）——没有系统也能在「未分组」下新建 -->
         <el-empty
-          v-if="!loading && hasNoGroups"
-          :image-size="96"
-          description="还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API"
-        >
-          <el-button type="primary" @click="openCreatePs">
-            <el-icon><Plus /></el-icon> 新建服务提供系统
-          </el-button>
-        </el-empty>
-        <!-- 搜索/筛选无命中（PRD §四：保留当前条件） -->
-        <el-empty
-          v-else-if="!loading && !groups.length"
+          v-if="!loading && !groups.length"
           :image-size="96"
           description="没有匹配的 API"
         />
 
-        <!-- 两层：服务提供系统分组 → 其下 API 表格 -->
-        <div v-for="g in pagedGroups" :key="g.ps.id" class="aps-group">
-          <!-- 分组节头（系统仅作聚合容器，不含启用/停用） -->
+        <!-- 两层：服务提供系统分组 → 其下 API 表格；「未分组」（g.ps=null）垫底 -->
+        <div v-for="g in pagedGroups" :key="g.key" class="aps-group" :data-group="g.key">
+          <!-- 分组节头（系统仅作聚合容器，不含启用/停用）。「未分组」不是真实系统：无描述、无【编辑系统】【删除系统】，
+               只带【＋ 在未分组下新建 API】（不预选系统） -->
           <div class="aps-group-head">
-            <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.ps.id)">
-              <el-icon><component :is="isCollapsed(g.ps.id) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
+            <el-button link class="aps-collapse-btn" @click="toggleCollapse(g.key)">
+              <el-icon><component :is="isCollapsed(g.key) ? 'ArrowRight' : 'ArrowDown'" /></el-icon>
             </el-button>
-            <span class="aps-group-name">{{ g.ps.name }}</span>
-            <span v-if="g.ps.description" class="aps-group-desc">{{ g.ps.description }}</span>
+            <span class="aps-group-name">{{ g.ps ? g.ps.name : '未分组' }}</span>
+            <span v-if="g.ps?.description" class="aps-group-desc">{{ g.ps.description }}</span>
             <span class="aps-group-count">{{ groupApiCount(g) }} 个 API</span>
             <span class="aps-group-sp"></span>
-            <div class="aps-group-actions">
+            <div v-if="!g.ps" class="aps-group-actions">
+              <el-button link type="primary" @click="openCreateApi()">
+                <el-icon><Plus /></el-icon> 在未分组下新建 API
+              </el-button>
+            </div>
+            <div v-else class="aps-group-actions">
               <el-button link type="primary" @click="openCreateApi(g.ps.id)">
                 <el-icon><Plus /></el-icon> 在本系统下新建 API
               </el-button>
@@ -566,9 +572,9 @@ async function removeApi(row) {
           </div>
 
           <!-- 分组内 API 表格（列结构对齐 PRD §二.1）；表格套 .table-wrap（原型 L781），卡内去描边圆角（L727） -->
-          <div v-if="!isCollapsed(g.ps.id)" class="aps-group-body">
+          <div v-if="!isCollapsed(g.key)" class="aps-group-body">
             <div v-if="!g.apis.length" class="aps-group-empty">
-              该系统下暂无 API · 点「在本系统下新建 API」添加
+              {{ g.ps ? '该系统下暂无 API · 点「在本系统下新建 API」添加' : '暂无未分组的 API · 点「在未分组下新建 API」添加' }}
             </div>
             <div v-else class="table-wrap aps-table-wrap">
             <el-table :data="g.apis" row-key="id">
@@ -660,8 +666,8 @@ async function removeApi(row) {
               <!-- 最近更新时间：自定义排序按钮（对齐 05治理 UnifiedReview 风格），默认降序 -->
               <el-table-column :width="COL.TIME + 24" class-name="col-nowrap" label-class-name="col-nowrap">
                 <template #header>
-                  <button type="button" class="time-sort" @click="toggleGroupSort(g.ps.id)">
-                    最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.ps.id) }}</span>
+                  <button type="button" class="time-sort" @click="toggleGroupSort(g.key)">
+                    最近更新时间 <span class="time-sort-arrow">{{ sortArrow(g.key) }}</span>
                   </button>
                 </template>
                 <template #default="{ row }">

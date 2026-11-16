@@ -8,15 +8,28 @@
  * 保存成功后关闭弹窗并刷新列表，不跳转页面。
  *
  * 字段级错误（ApiError.field，含 mock 的重名校验）→ 红框回显。
+ *
+ * 2026-11-16 起 API 与 MCP 各有一套服务提供系统（prd-连接器-MCP.md §二.7「弹窗同 API」）：
+ * 弹窗长相、字段与校验完全一样，只是存到哪一套不同 —— 用 kind 选数据层，API 页签不传（默认 API），MCP 页签传 kind="MCP"。
  */
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createProviderSystem, updateProviderSystem, getProviderSystem } from '@/api/apiConnector'
+import { createMcpProviderSystem, updateMcpProviderSystem, getMcpProviderSystem } from '@/api/admin'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  systemId: { type: [Number, String], default: null }
+  systemId: { type: [Number, String], default: null },
+  /** 哪一套服务提供系统：API（默认）/ MCP，两套数据互不影响 */
+  kind: { type: String, default: 'API', validator: (v) => v === 'API' || v === 'MCP' }
 })
+
+// 按 kind 取对应那一套的读写接口
+const DATA_LAYER = {
+  API: { get: getProviderSystem, create: createProviderSystem, update: updateProviderSystem },
+  MCP: { get: getMcpProviderSystem, create: createMcpProviderSystem, update: updateMcpProviderSystem }
+}
+const dataLayer = computed(() => DATA_LAYER[props.kind])
 const emit = defineEmits(['update:visible', 'saved'])
 
 const isEdit = computed(() => props.systemId != null)
@@ -46,7 +59,7 @@ async function load() {
   }
   loading.value = true
   try {
-    const d = await getProviderSystem(props.systemId)
+    const d = await dataLayer.value.get(props.systemId)
     form.name = d.name || ''
     form.description = d.description || ''
   } catch (e) {
@@ -96,8 +109,8 @@ async function save() {
   try {
     const payload = { name: form.name.trim(), description: form.description.trim() }
     const data = isEdit.value
-      ? await updateProviderSystem(props.systemId, payload)
-      : await createProviderSystem(payload)
+      ? await dataLayer.value.update(props.systemId, payload)
+      : await dataLayer.value.create(payload)
     ElMessage.success('已保存')
     emit('saved', { id: isEdit.value ? props.systemId : data?.id })
     close()
