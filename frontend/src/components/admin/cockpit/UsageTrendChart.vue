@@ -117,12 +117,12 @@ const readout = computed(() => {
   min-height: 24px;
   margin-bottom: 8px;
 }
-.trend-readout { color: #4a5650; font-size: 12px; font-variant-numeric: tabular-nums; }
-.trend-legend { display: inline-flex; gap: 12px; color: #727d77; font-size: 12px; }
+.trend-readout { color: var(--c-text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.trend-legend { display: inline-flex; gap: 12px; color: var(--c-text-muted); font-size: 12px; }
 .trend-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .trend-legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--c-accent); }
 .trend-legend i.out { background: #b7d9cc; }
-.trend-empty { height: 168px; display: flex; align-items: center; justify-content: center; color: #94a09a; font-size: 13px; }
+.trend-empty { height: 168px; display: flex; align-items: center; justify-content: center; color: var(--c-text-faint); font-size: 13px; }
 
 .trend-plot { display: grid; grid-template-columns: 44px 1fr; gap: 8px; height: 168px; }
 .trend-axis {
@@ -130,7 +130,7 @@ const readout = computed(() => {
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-end;
-  color: #8a948f;
+  color: var(--c-text-faint);
   font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .trend-bars {
@@ -150,6 +150,6 @@ const readout = computed(() => {
 .trend-col.hover .seg.out { background: #9ccbb9; }
 
 .trend-x { display: flex; gap: 2px; margin: 6px 0 0 52px; }
-.trend-tick { flex: 1; min-width: 0; height: 14px; position: relative; color: #8a948f; font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.trend-tick { flex: 1; min-width: 0; height: 14px; position: relative; color: var(--c-text-faint); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .trend-tick > * , .trend-tick { white-space: nowrap; }
 </style>

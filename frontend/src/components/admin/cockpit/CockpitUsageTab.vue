@@ -141,6 +141,10 @@ const HELP = [
         <el-option v-for="p in positionOptions" :key="p" :label="p" :value="p" />
       </el-select>
       <span class="uf-note">统计截止昨日；点踩明细弹窗里的样例记录不随筛选变化</span>
+      <span class="spacer"></span>
+      <div v-if="!error" class="help-entry">
+        <el-button link type="primary" @click="helpOpen = !helpOpen">统计口径</el-button>
+      </div>
     </div>
 
     <div v-if="error" class="usage-error">
@@ -149,6 +153,10 @@ const HELP = [
     </div>
 
     <template v-else>
+      <div v-if="helpOpen" class="help-body">
+        <p v-for="(t, i) in HELP" :key="i">{{ t }}</p>
+      </div>
+
       <!-- 四张使用概览卡（仅展示，不可点击） -->
       <div class="kpi-grid">
         <div v-for="c in cards" :key="c.key" class="kpi-card" :data-kpi="c.key">
@@ -157,12 +165,6 @@ const HELP = [
           <div class="kpi-sub">{{ c.sub }}</div>
           <div class="kpi-change" :class="changeClass(c)">{{ c.changeText }}<span> 较上一周期</span></div>
         </div>
-      </div>
-      <div class="help-entry">
-        <el-button link type="primary" @click="helpOpen = !helpOpen">统计口径</el-button>
-      </div>
-      <div v-if="helpOpen" class="help-body">
-        <p v-for="(t, i) in HELP" :key="i">{{ t }}</p>
       </div>
 
       <UsageTrendChart :points="view.trend" />
@@ -173,17 +175,19 @@ const HELP = [
 </template>
 
 <style scoped>
+/* 与概览页签首块面板同距（AdminCockpit .first-panel 的 14px），不贴页签分隔线 */
 .usage-filters {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  margin-top: 14px;
 }
 .uf-select { width: 130px; }
 .uf-wide { width: 160px; }
-.uf-note { margin-left: 4px; color: #94a09a; font-size: 12px; }
+.uf-note { margin-left: 4px; color: var(--c-text-faint); font-size: 12px; }
 
-.usage-error { margin-top: 18px; padding: 28px 18px; text-align: center; color: #68736d; font-size: 13px; border: 1px dashed var(--border-base); border-radius: 8px; background: #fff; }
+.usage-error { margin-top: 18px; padding: 28px 18px; text-align: center; color: var(--c-text-muted); font-size: 13px; border: 1px dashed var(--border-base); border-radius: 8px; background: var(--bg-surface); }
 
 .kpi-grid {
   display: grid;
@@ -191,35 +195,37 @@ const HELP = [
   gap: 12px;
   margin-top: 14px;
 }
+/* 左侧强调色条，同概览页签的版本卡 / 待办卡写法 */
 .kpi-card {
   padding: 14px 16px;
-  background: #fff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-base);
-  border-top: 3px solid var(--c-accent);
+  border-left: 4px solid var(--c-accent);
   border-radius: 6px;
 }
-.kpi-card[data-kpi='fail'] { border-top-color: var(--c-warning, #e6921e); }
-.kpi-label { color: #68736d; font-size: 12px; margin-bottom: 5px; }
+.kpi-card[data-kpi='fail'] { border-left-color: var(--c-warning, #e6921e); }
+.kpi-label { color: var(--c-text-muted); font-size: 12px; margin-bottom: 5px; }
 .kpi-value {
   font: 700 28px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
-  color: #26312b;
+  color: var(--c-text-strong);
   letter-spacing: -0.03em;
 }
-.kpi-value small { margin-left: 3px; color: #7a8580; font: 500 13px system-ui, sans-serif; letter-spacing: 0; }
-.kpi-sub { margin-top: 4px; color: #76817b; font-size: 12px; }
-.kpi-change { margin-top: 8px; color: #7f8984; font-size: 12px; font-variant-numeric: tabular-nums; }
-.kpi-change span { color: #a0aaa5; }
-.kpi-change.is-good { color: #197b59; }
+.kpi-value small { margin-left: 3px; color: var(--c-text-muted); font: 500 13px system-ui, sans-serif; letter-spacing: 0; }
+.kpi-sub { margin-top: 4px; color: var(--c-text-muted); font-size: 12px; }
+.kpi-change { margin-top: 8px; color: var(--c-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.kpi-change span { color: var(--c-text-faint); }
+.kpi-change.is-good { color: var(--c-success); }
 .kpi-change.is-bad { color: var(--c-danger); }
 
-.help-entry { margin-top: 4px; }
+/* 「统计口径」放在筛选条最右，展开的说明落在筛选条下方 */
+.help-entry { flex: none; }
 .help-body {
-  margin-top: 4px;
+  margin-top: 10px;
   padding: 10px 14px;
-  background: #f7f9f8;
+  background: var(--bg-sunken);
   border: 1px solid var(--border-soft);
   border-radius: 6px;
-  color: #5b6760;
+  color: var(--c-text);
   font-size: 12px;
   line-height: 1.7;
 }

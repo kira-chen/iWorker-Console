@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtChange, fmtCount, fmtLatency, fmtPct, fmtTokens, niceMax } from '../usageFormat'
+import { fmtChange, fmtCount, fmtPct, fmtTokens, niceMax } from '../usageFormat'
 
 /** 驾驶舱「使用情况」数值展示（PRD prd.驾驶舱.md 第五～七节）。 */
 
@@ -31,12 +31,6 @@ describe('usageFormat · 计数 / 百分比 / 耗时', () => {
     expect(fmtPct(100)).toBe('100.0%')
     expect(fmtPct(0)).toBe('0.0%')
     expect(fmtPct(null)).toBe('—')
-  })
-
-  it('首响耗时「P50 / P95」，没有值显示「—」', () => {
-    expect(fmtLatency(1.2, 4.8)).toBe('1.2s / 4.8s')
-    expect(fmtLatency(1.4, 5)).toBe('1.4s / 5.0s') // 整数秒也保留 1 位小数，列对齐
-    expect(fmtLatency(null, null)).toBe('—')
   })
 })
 

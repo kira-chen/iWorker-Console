@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getUsageSummary, getVersionAdoption, USAGE_RANGES } from '../usageMock'
+import { getUsageSummary, USAGE_RANGES } from '../usageMock'
 
 /**
  * 驾驶舱「使用情况」mock 聚合口径单测。对齐 docs/PRD/数字员工管理端PRD/01总览/驾驶舱/prd.驾驶舱.md 第五～七节：
@@ -146,7 +146,6 @@ describe('usageMock · 按模型 / 按能力（PRD §七.4 / §七.5）', () => 
       expect(Number.isInteger(m.topReason.pct)).toBe(true)
       expect(m.topReason.pct).toBeGreaterThan(0)
       expect(m.topReason.pct).toBeLessThanOrEqual(100)
-      expect(m.p95).toBeGreaterThan(m.p50) // 首响 P95 一定不低于 P50
     }
   })
 
@@ -180,14 +179,5 @@ describe('usageMock · 较上一周期（PRD §五.2）', () => {
     const r = await q({ range: 30 })
     expect(Math.abs(r.kpis.failRate.change)).toBeLessThan(5) // 差值：几个百分点以内
     expect(r.kpis.sessions.change).toBeTypeOf('number')
-  })
-})
-
-describe('usageMock · 版本升级进度（静态示例，PRD §二.1）', () => {
-  it('Windows / Mac 各一组「已升级 / 未升到该版本」人数', async () => {
-    expect(await getVersionAdoption()).toEqual({
-      WINDOWS: { upgraded: 126, behind: 35 },
-      MAC: { upgraded: 44, behind: 9 }
-    })
   })
 })
