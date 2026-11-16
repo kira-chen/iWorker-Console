@@ -987,6 +987,13 @@ describe('上传技能包更新已有技能（产品优化需求-202611 R5 草�
 })
 
 describe('市场技能「不在市场展示」（产品优化需求-202611 R14）', () => {
+  // 演示样本：sk_304 在审核中（编辑页锁定、开关不展示），另需一条可编辑的样本，打开编辑页就能看到开关
+  it('种子里有可编辑的演示样本：sk_307「竞品信息汇总」不在市场展示、不在审核中', async () => {
+    const d = await mock.getSkillDetail('sk_307')
+    expect(d.hideFromMarket).toBe(true)
+    expect(mock._getRaw('sk_307').pendingAction || null).toBe(null)
+  })
+
   it('市场技能打开后：详情和列表都带 hideFromMarket，默认安装随之关掉', async () => {
     const id = await mkSkill({ name: 'R14 市场技能隐藏' })
     await mock.updateSkill(id, { defaultInstall: true })
@@ -1052,10 +1059,10 @@ describe('unifiedSkillMock · 持久化读回（mockPersist v12，2026-11-10 产
     vi.resetModules()
   })
 
-  it('createSkill 落盘（v=13）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
+  it('createSkill 落盘（v=14）→ 重新 import 模块（模拟刷新）→ 列表仍含新建技能', async () => {
     const first = await import('@/api/unifiedSkillMock')
     const { skillId } = await first.createSkill({ name: '读回验证技能', type: 'PLATFORM', categoryName: CAT })
-    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(13)
+    expect(JSON.parse(globalThis.localStorage.getItem(KEY)).v).toBe(14)
     vi.resetModules()
     const fresh = await import('@/api/unifiedSkillMock')
     const { list } = await fresh.listUnifiedSkills({ keyword: '读回验证技能', size: 10 })

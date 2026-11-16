@@ -25,7 +25,13 @@ import { useUserStore } from '@/stores/user'
 
 const api = { getVersionOverview: vi.fn() }
 vi.mock('@/api/version', () => api)
-const apiUsage = { getUsageSummary: vi.fn(), getVersionAdoption: vi.fn() }
+// 点踩明细 / 对话明细走真实样例数据（api/dislikeSampleMock.js，修改点 20 由组件内挪出）
+const apiUsage = {
+  getUsageSummary: vi.fn(),
+  getVersionAdoption: vi.fn(),
+  listDislikeSamples: (...a) => import('@/api/dislikeSampleMock').then((m) => m.listDislikeSamples(...a)),
+  getDislikeConversation: (...a) => import('@/api/dislikeSampleMock').then((m) => m.getDislikeConversation(...a))
+}
 vi.mock('@/api/usage', () => apiUsage)
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal()
@@ -427,6 +433,8 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §八 / §九�
     await openUsageTab()
     ;[...mounted.container.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看点踩明细').click()
     await flushAll(6)
+    // 样例列表经 api/usage 异步取（mock 有延迟），等表格行渲染出来
+    await vi.waitFor(() => expect(dlBody().querySelectorAll('tbody tr button').length).toBeGreaterThan(0))
   }
 
   it('打开点踩明细 → 第 1 页 10 条，「第 1 / 6 页，共 52 条」，【上一页】置灰、【下一页】可点', async () => {
@@ -480,7 +488,7 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §八 / §九�
     const row = dlBody().querySelector('tbody tr')
     const snippet = row.querySelector('.dl-snippet').textContent.trim()
     row.querySelector('button').click()
-    await vi.waitFor(() => expect(shown(cvBody())).toBe(true))
+    await vi.waitFor(() => expect(cvBody()?.querySelectorAll('.cv-msg').length).toBe(2))
     const msgs = [...cvBody().querySelectorAll('.cv-msg')]
     expect(msgs).toHaveLength(2)
     expect(msgs[0].classList.contains('user')).toBe(true)
@@ -488,6 +496,77 @@ describe('AdminCockpit · 点踩明细 / 对话明细弹窗（PRD §八 / §九�
     expect(msgs[1].classList.contains('asst')).toBe(true)
     expect(msgs[1].querySelector('.cv-disliked-tag')).not.toBeNull()
     expect(cvBody().querySelector('.cv-ctx-toggle')).toBeNull()
+  })
+
+  /* ---------- 产品优化需求-202611 修改点 20：被点踩回复里生成的文件 ---------- */
+  // 样例口径见 api/dislikeSampleMock.js：第 1 页第 1 行 D-1031 生成 xlsx + png；第 3 行 D-1029 没生成文件；
+  // 第 4 行 D-1028 生成 PDF；第 7 行 D-1025 的文件已失效
+  async function openConvAt(rowIndex) {
+    await openDl()
+    dlBody().querySelectorAll('tbody tr')[rowIndex].querySelector('button').click()
+    await vi.waitFor(() => expect(cvBody()?.querySelectorAll('.cv-msg').length).toBe(2))
+    await flushAll(4)
+  }
+  const fileCards = () => [...cvBody().querySelectorAll('[data-testid="cv-file"]')]
+  const cardBtn = (card, label) => [...card.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
+
+  it('修改点 20 点踩明细表格有「生成文件」列：有文件显示「N 个」，没生成文件显示「—」', async () => {
+    await openDl()
+    const heads = [...dlBody().querySelectorAll('thead th')].map((th) => th.textContent.trim())
+    expect(heads).toContain('生成文件')
+    const cells = [...dlBody().querySelectorAll('tbody tr')].map((tr) => tr.querySelector('.dl-files').textContent.trim())
+    expect(cells[0]).toBe('2 个')
+    expect(cells[2]).toBe('—')
+  })
+
+  it('修改点 20 对话明细：文件卡只挂在被点踩的回复下，显示文件名与「类型 · 大小」；Excel 只能下载，图片有缩略图、可预览可下载', async () => {
+    await openConvAt(0)
+    const [userMsg, asstMsg] = cvBody().querySelectorAll('.cv-msg')
+    expect(userMsg.querySelector('[data-testid="cv-file"]')).toBeNull()
+    expect(asstMsg.querySelectorAll('[data-testid="cv-file"]')).toHaveLength(2)
+    const [xlsx, png] = fileCards()
+    expect(xlsx.querySelector('.cv-file-name').textContent.trim()).toBe('销售数据分析.xlsx')
+    expect(xlsx.querySelector('.cv-file-meta').textContent.trim()).toBe('Excel · 48 KB')
+    expect(cardBtn(xlsx, '预览')).toBeUndefined()
+    expect(cardBtn(xlsx, '下载')).toBeTruthy()
+    expect(png.querySelector('img.cv-file-thumb')).not.toBeNull()
+    expect(cardBtn(png, '预览')).toBeTruthy()
+    expect(cardBtn(png, '下载')).toBeTruthy()
+  })
+
+  it('修改点 20 图片【预览】→ 打开图片查看器', async () => {
+    await openConvAt(0)
+    cardBtn(fileCards()[1], '预览').click()
+    await vi.waitFor(() => expect(document.body.querySelector('.el-image-viewer__wrapper')).not.toBeNull())
+  })
+
+  it('修改点 20 PDF【预览】→ 预览弹窗标题为文件名、展示内容', async () => {
+    await openConvAt(3)
+    const pdf = fileCards()[0]
+    expect(pdf.querySelector('.cv-file-name').textContent.trim()).toBe('排班优化方案.pdf')
+    cardBtn(pdf, '预览').click()
+    await vi.waitFor(() => expect(document.body.querySelector('[data-testid="file-preview"]')?.textContent).toContain('排班优化方案'))
+    const dialog = document.body.querySelector('[data-testid="file-preview"]').closest('.el-dialog')
+    expect(dialog.querySelector('.el-dialog__title').textContent.trim()).toBe('排班优化方案.pdf')
+  })
+
+  it('修改点 20【下载】→ 提示「正在下载「文件名」…」', async () => {
+    const { ElMessage } = await import('element-plus')
+    await openConvAt(0)
+    ElMessage.mockClear()
+    cardBtn(fileCards()[0], '下载').click()
+    expect(ElMessage).toHaveBeenCalledWith(expect.objectContaining({ message: '正在下载「销售数据分析.xlsx」…' }))
+  })
+
+  it('修改点 20 文件已失效：卡片显示「文件已失效」，没有【预览】【下载】', async () => {
+    await openConvAt(6)
+    const cards = fileCards()
+    expect(cards.length).toBeGreaterThan(0)
+    for (const c of cards) {
+      expect(c.classList.contains('expired')).toBe(true)
+      expect(c.querySelector('.cv-file-meta').textContent.trim()).toBe('文件已失效')
+      expect(c.querySelectorAll('button')).toHaveLength(0)
+    }
   })
 
   it('点踩明细筛选行只有「时间范围」，没有用户筛选（按用户维度采集仅是数据口径，PRD §八.3）', async () => {

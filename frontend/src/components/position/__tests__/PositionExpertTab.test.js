@@ -77,7 +77,8 @@ async function mount() {
   app.component('el-table', elTable)
   app.component('el-table-column', elTableColumn)
   app.component('el-input', { props: ['modelValue'], template: '<input :value="modelValue" />' })
-  app.component('el-tooltip', passthrough('el-tooltip'))
+  // 悬停内容落到 data-content 上供断言（缺员、成员未加入、不可用状态的说明都走 el-tooltip）
+  app.component('el-tooltip', { props: ['content'], template: '<div class="el-tooltip" :data-content="content"><slot /></div>' })
   app.directive('loading', {})
   app.mount(container)
   await flush()
@@ -113,6 +114,26 @@ describe('引用对象不可用：行内只标「已停用」或红色「已回�
     expect(statusCell('专家', 0).querySelector('.status-tag')).toBeNull()
     expect(statusCell('专家', 1).textContent.replace(/\s+/g, '')).toBe('已停用')
     expect(statusCell('专家团', 0).textContent.replace(/\s+/g, '')).toBe('已回收')
+  })
+})
+
+describe('存量的未发布 / 已停用引用：状态标签悬停说明发布时会被拦下（修改点 2）', () => {
+  const tipOf = (cell) => cell.querySelector('.el-tooltip')?.getAttribute('data-content') || ''
+  it('未发布的专家 / 专家团 → 悬停「该专家还没发布，岗位发布时会被拦下…」；已停用 → 「该专家已停用，岗位发布时会被拦下，请移除」', async () => {
+    store.experts = [expertRow({ unavailable: '未发布' }), expertRow({ expertId: 206, name: '停用专家', unavailable: '已停用' })]
+    store.teams = [teamRow({ unavailable: '未发布' })]
+    await mount()
+    expect(statusCell('专家', 0).textContent.replace(/\s+/g, '')).toBe('未发布')
+    expect(tipOf(statusCell('专家', 0))).toBe('该专家还没发布，岗位发布时会被拦下。请移除，或等专家发布后再发布岗位')
+    expect(tipOf(statusCell('专家', 1))).toBe('该专家已停用，岗位发布时会被拦下，请移除')
+    expect(tipOf(statusCell('专家团', 0))).toBe('该专家团还没发布，岗位发布时会被拦下。请移除，或等专家团发布后再发布岗位')
+  })
+
+  it('已发布的不带悬停说明', async () => {
+    store.experts = [expertRow({ unavailable: '' })]
+    await mount()
+    expect(statusCell('专家', 0).textContent.replace(/\s+/g, '')).toBe('已发布')
+    expect(tipOf(statusCell('专家', 0))).toBe('')
   })
 })
 
