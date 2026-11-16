@@ -27,6 +27,8 @@ afterEach(() => {
   mounted?.unmount()
   mounted = null
   vi.restoreAllMocks()
+  // restoreAllMocks 不清 vi.fn 的调用记录：A12 鉴权用例断 updateModel 恰好 1 次，乱序时别的用例的调用会串进来
+  Object.values(api).forEach((fn) => fn.mockClear())
 })
 
 const { drawer, formModel, errorTexts } = makeDrawerProbes(() => mounted.container)
