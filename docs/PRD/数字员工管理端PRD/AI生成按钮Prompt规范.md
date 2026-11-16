@@ -401,6 +401,41 @@ API描述：{{description}}
 
 ---
 
+## 12. 岗位人格 — SOP 简版
+
+**按钮位置**：岗位详情 > 人格 Tab > SOP 简版区 `AI 生成` 按钮（来源是完整版岗位 SOP，岗位 SOP 为空时置灰，悬停提示"请先填写岗位 SOP"；生成完提示"已生成 SOP 简版"，重复点击重新生成并覆盖当前内容）
+**参数覆盖**：`max-tokens` 300，`max-length` 200（SOP 简版字段上限）
+
+### system
+
+```
+你是企业 AI 助手平台的配置助理。把一份岗位 SOP 压缩成给员工看的简版。
+1. 保留编号步骤，3–5 步，每步一句话，不超过 20 个汉字
+2. 只保留关键动作，去掉解释、举例和套话
+3. 全文不超过 200 个汉字
+4. 不要前后缀、引言或总结
+5. 简体中文
+```
+
+### user
+
+```
+岗位名称：{{name}}
+完整版岗位 SOP：{{positionSop}}
+请输出 SOP 简版。
+```
+
+### 变量来源
+
+| 变量 | 数据来源 |
+|------|----------|
+| `name` | `positionRows[i].name` |
+| `positionSop` | `positionRows[i].positionSop`（完整版岗位 SOP） |
+
+> 完整版不足 3 步时有几步留几步，不凑数。
+
+---
+
 ## 汇总速查
 
 | #   | 页面       | data-action            | 生成字段   | 条数  | 上下文变量                                |
@@ -416,3 +451,4 @@ API描述：{{description}}
 | 9   | 专家团编辑器   | `team-leader-duty-ai`  | 主理人职责   | 1 段 | `name`、`leader`、`leaderIntro`、`members` |
 | 10  | 专家团编辑器   | `team-collab-ai`       | 团队协作关系 | 1 段 | `name`、`intro`、`leader`、`members`    |
 | 11  | 专家团编辑器   | `team-example-ai`      | 示例问题   | 3 条 | `name`、`intro`、`memberNames`         |
+| 12  | 岗位人格 Tab | `sop-brief-ai`         | SOP 简版 | 1 段 | `name`、`positionSop`                 |

@@ -26,8 +26,8 @@
  *   表头「变量名 / 描述（客户端可见）/ 填写方式 / 平台值」+ 行卡片 + 空态「暂无环境变量」；
  * - M6 测试连接结果改原型 `.result` 单行提示框（成功绿 / 失败红），文案照原型逐字。
  *
- * 产品优化需求-202611 修改点 14（R9）：基本信息新增「服务提供系统」单选下拉，选项 = 连接器里已有的服务提供系统
- * （与 API 共用一份，取 apiConnector.listProviderSystems）。必填还是选填待确认，暂按选填（可清空 = 归入列表「未分组」）；
+ * 产品优化需求-202611 修改点 14（R9）：基本信息新增「服务提供系统」单选下拉。2026-11-16 起选项只列 MCP 自己的那一套系统
+ * （admin.listMcpProviderSystems，不含 API 的系统）；选填，可清空 = 归入列表「未分组」；
  * 列表分组头【＋ 在本系统下新建 MCP】经 defaultProviderSystemId 预选该系统。
  */
 import { ref, reactive, computed, watch, nextTick } from 'vue'
@@ -62,7 +62,7 @@ import { mergeFetchedTools, connMeta } from '@/utils/mcpMeta'
 import { fmtTime } from '@/utils/docMeta'
 import { nowIsoLocal } from '@/utils/datetime'
 import { CONNECTOR_TYPE_LABEL, CONNECTOR_TYPE_OPTIONS } from '@/api/connectorTypes'
-import { listProviderSystems } from '@/api/apiConnector'
+import { listMcpProviderSystems } from '@/api/admin'
 
 
 const props = defineProps({
@@ -89,7 +89,7 @@ const form = reactive({
   name: '', // 必填 ≤64（PRD §三.3）
   description: '', // 服务描述（必填 ≤2000，PRD §三.3）
   type: '', // 连接器类型：岗位私有/市场连接器/通用连接器（创建后不可改；岗位私有不在此绑定岗位，由岗位侧引用）
-  providerSystemId: null, // 服务提供系统（R9，选填）：与 API 共用；null = 未选，列表归「未分组」
+  providerSystemId: null, // 服务提供系统（选填）：MCP 自己的那一套；null = 未选，列表归「未分组」
   icon: '', // 图标（必填，PRD §三.3）：emoji 字符 或 /api/public/icons/<文件名>
   timeoutMs: 10000, // 超时（必填，PRD §三.4）：默认 10000 ms，1000～120000
   transport: 'streamable-http',
@@ -106,13 +106,13 @@ const form = reactive({
   // 示例问题（2026-09-04 PRD-20260903 对齐：新原型 MCP 抽屉末尾示例问题区，固定 3 条）
   exampleQuestions: ['', '', '']
 })
-// 服务提供系统下拉选项（R9）：[{ id, name }]，与 API 编辑器同源。加载失败只是下拉为空（字段选填，不阻断保存）
+// 服务提供系统下拉选项：[{ id, name }]，只列 MCP 自己的系统（与 API 的互不相通）。加载失败只是下拉为空（字段选填，不阻断保存）
 const providerSystems = ref([])
 const psLoading = ref(false)
 async function loadProviderSystems() {
   psLoading.value = true
   try {
-    const data = await listProviderSystems({})
+    const data = await listMcpProviderSystems({})
     providerSystems.value = data?.list || []
   } catch (e) {
     providerSystems.value = []
@@ -797,8 +797,8 @@ async function save() {
               </el-select>
               <div v-if="isEdit" class="md-type-hint">连接器类型创建后不可更改</div>
             </el-form-item>
-            <!-- 服务提供系统（产品优化需求-202611 修改点 14（R9））：单选，选项与 API 共用；选填（待确认）故不标必填、可清空。
-                 系统的新建 / 编辑 / 删除仍在 API 页签维护（待确认），这里只选不建 -->
+            <!-- 服务提供系统（md §三.3）：单选，选项为 MCP 页签维护的系统（不含 API 的）；选填故不标必填、可清空。
+                 系统在 MCP 列表页新建 / 编辑 / 删除，这里只选不建 -->
             <el-form-item label="服务提供系统" :error="fieldErrors.providerSystemId" class="md-half-item">
               <el-select
                 v-model="form.providerSystemId"
@@ -812,7 +812,7 @@ async function save() {
               </el-select>
               <!-- 兜底：一个系统都没有时说明去哪儿建（同 ApiEditor .ad-ps-empty；字段选填，不阻断保存） -->
               <div v-if="!props.readonly && !psLoading && !providerSystems.length" class="md-type-hint">
-                当前没有服务提供系统，可先到 API 页签新建；不选则归入「未分组」。
+                当前没有服务提供系统，可在 MCP 列表页新建；不选则归入「未分组」。
               </div>
             </el-form-item>
           </div>

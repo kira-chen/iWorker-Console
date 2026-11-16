@@ -7,7 +7,9 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 对齐 docs/PRD/数字员工管理端PRD/03能力/连接器/API/prd-API.md §二.5 L78 + 一览表 §6.1：
  *   弹窗展示系统名称（必填，最多 64 个字符，平台内不可重复）和系统描述（必填，最多 2000 个字符）；
  *   保存成功后关闭弹窗并刷新列表，不跳转页面。
- * 桩：api/apiConnector、element-plus（ElMessage）、el-dialog（露 title）/ el-form-item（露 error）等最小桩。
+ * 桩：api/apiConnector、api/admin、element-plus（ElMessage）、el-dialog（露 title）/ el-form-item（露 error）等最小桩。
+ * 2026-11-16：MCP 的服务提供系统单独一套、弹窗同 API（prd-连接器-MCP.md §二.7）——同一组件 kind="MCP" 时读写 MCP 那一套
+ *   （api/admin 的 xxxMcpProviderSystem），不碰 API 的接口；用例见文末。
  */
 
 const conn = {
@@ -16,6 +18,12 @@ const conn = {
   getProviderSystem: vi.fn()
 }
 vi.mock('@/api/apiConnector', () => conn)
+const adminApi = {
+  createMcpProviderSystem: vi.fn(),
+  updateMcpProviderSystem: vi.fn(),
+  getMcpProviderSystem: vi.fn()
+}
+vi.mock('@/api/admin', () => adminApi)
 
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg }))
@@ -51,14 +59,14 @@ async function flush(n = 5) {
     await nextTick()
   }
 }
-async function mountEditor(systemId = null) {
+async function mountEditor(systemId = null, extraProps = {}) {
   const { default: Editor } = await import('@/components/admin/ProviderSystemEditor.vue')
   container = document.createElement('div')
   document.body.appendChild(container)
   visible = ref(false)
   saved = vi.fn()
   app = createApp({
-    render: () => h(Editor, { visible: visible.value, systemId, 'onUpdate:visible': (v) => (visible.value = v), onSaved: saved })
+    render: () => h(Editor, { visible: visible.value, systemId, ...extraProps, 'onUpdate:visible': (v) => (visible.value = v), onSaved: saved })
   })
   for (const [n, c] of Object.entries(stubs)) app.component(n, c)
   app.directive('loading', {})
@@ -263,5 +271,60 @@ describe('ProviderSystemEditor · 服务提供系统弹窗（md §二.5 L78）',
     findBtn(el, '保存').click()
     await flush()
     expect(conn.updateProviderSystem).toHaveBeenCalledWith('pv_1', { name: '财务服务系统', description: '聚合报销、付款与财务单据接口' })
+  })
+})
+
+describe('ProviderSystemEditor · kind="MCP"：存到 MCP 自己的那一套（prd-连接器-MCP.md §二.7「弹窗同 API」）', () => {
+  beforeEach(() => {
+    adminApi.getMcpProviderSystem.mockResolvedValue({ id: 'mps_1', name: '财务服务系统', description: 'MCP 这边的财务系统' })
+    adminApi.createMcpProviderSystem.mockResolvedValue({ id: 'mps_9', name: 'x', description: 'y' })
+    adminApi.updateMcpProviderSystem.mockResolvedValue({ id: 'mps_1' })
+  })
+
+  it('新建：弹窗与 API 一致（标题、两字段、校验同口径）；保存走 createMcpProviderSystem，不调 API 的 createProviderSystem', async () => {
+    const el = await mountEditor(null, { kind: 'MCP' })
+    expect(el.querySelector('.el-dialog').dataset.title).toBe('新建服务提供系统')
+    findBtn(el, '保存').click()
+    await flush()
+    expect(item(el, '系统名称').dataset.error).toBe('系统名称必填')
+    expect(item(el, '系统描述').dataset.error).toBe('系统描述必填')
+    setInput(inputOf(el, '系统名称'), ' 办公协同平台 ')
+    setInput(item(el, '系统描述').querySelector('input.el-input'), '日程、邮件')
+    await nextTick()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(adminApi.createMcpProviderSystem).toHaveBeenCalledWith({ name: '办公协同平台', description: '日程、邮件' })
+    expect(conn.createProviderSystem).not.toHaveBeenCalled()
+    expect(saved).toHaveBeenCalledWith({ id: 'mps_9' })
+    expect(visible.value).toBe(false)
+  })
+
+  it('编辑：从 getMcpProviderSystem 回填，保存走 updateMcpProviderSystem(id, payload)，不碰 API 的接口', async () => {
+    const el = await mountEditor('mps_1', { kind: 'MCP' })
+    expect(adminApi.getMcpProviderSystem).toHaveBeenCalledWith('mps_1')
+    expect(conn.getProviderSystem).not.toHaveBeenCalled()
+    expect(inputOf(el, '系统名称').value).toBe('财务服务系统')
+    findBtn(el, '保存').click()
+    await flush()
+    expect(adminApi.updateMcpProviderSystem).toHaveBeenCalledWith('mps_1', { name: '财务服务系统', description: 'MCP 这边的财务系统' })
+    expect(conn.updateProviderSystem).not.toHaveBeenCalled()
+  })
+
+  it('MCP 系统重名（数据层回 field=name「系统名称不可重复」）→ 名称标红回显、弹窗仍开', async () => {
+    adminApi.createMcpProviderSystem.mockRejectedValueOnce({ field: 'name', message: '系统名称不可重复' })
+    const el = await mountEditor(null, { kind: 'MCP' })
+    setInput(inputOf(el, '系统名称'), '财务服务系统')
+    setInput(item(el, '系统描述').querySelector('input.el-input'), 'x')
+    await nextTick()
+    findBtn(el, '保存').click()
+    await flush()
+    expect(item(el, '系统名称').dataset.error).toBe('系统名称不可重复')
+    expect(visible.value).toBe(true)
+  })
+
+  it('不传 kind（API 页签）→ 仍走 API 那一套', async () => {
+    await mountEditor('pv_1')
+    expect(conn.getProviderSystem).toHaveBeenCalledWith('pv_1')
+    expect(adminApi.getMcpProviderSystem).not.toHaveBeenCalled()
   })
 })

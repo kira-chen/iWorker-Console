@@ -12,7 +12,8 @@ import {
   claimNotesComplete,
   intakeFieldCount,
   skillsRefOk,
-  normalizePublishWarnings
+  normalizePublishWarnings,
+  positionExpertIssues
 } from '@/utils/positionModel'
 
 describe('展示版本号（2026-09-02 起语义化 vX.Y.Z，取代旧 v001~v999 口径）', () => {
@@ -270,5 +271,14 @@ describe('skillsRefOk（md §9.1 第 8 条，产品优化需求-202611 修改点
   it('悬空引用（技能本体已被删除，VO 标 deleted）不算数：只剩悬空引用 → false，另有一个有效引用 → true（待办 yuepu#9⑤）', () => {
     expect(skillsRefOk([{ skillId: 9, deleted: true }])).toBe(false)
     expect(skillsRefOk([{ skillId: 9, deleted: true }, { skillId: 1, deleted: false }])).toBe(true)
+  })
+})
+
+describe('positionExpertIssues：自动化任务执行对象不可用的动态阻断行（md §9.1 末段，R13-6 去掉「没设主理人」）', () => {
+  it('执行对象不可用 → 一行「自动化任务「任务名」的执行对象「名称」已不可用（停用、回收或缺员），请重新选择」，不再写「没设主理人」', () => {
+    const rows = positionExpertIssues([], [], [{ taskName: '周度复盘', targetName: '经营复盘团' }])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].detail).toBe('自动化任务「周度复盘」的执行对象「经营复盘团」已不可用（停用、回收或缺员），请重新选择')
+    expect(rows[0].detail).not.toContain('主理人')
   })
 })

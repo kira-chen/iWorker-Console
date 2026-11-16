@@ -35,6 +35,10 @@
  * 已发布的通用技能、市场技能 + 本岗位「技能」页签引用的岗位私有技能；执行动作选专家 / 专家团时的候选同一范围
  * （通用、市场专家（团）+ 本岗位引用的岗位私有专家（团））。两份候选都由数据层按岗位算好。
  * 修改点 3：选了专家 / 专家团却没选具体对象，与「缺指令」同样在保存时拦截；所选对象已不可用时下拉显示「名称（不可用）」。
+ * 2026-11-16 确认（产品优化需求-202611 R13-6 / R13-7，§7.6 / §7.8）：
+ * - R13-6：没设主理人的专家团同样可选、不置灰，下拉项展示主理人（没设的展示「无主理人」）；选中后提示按有无主理人分两种；
+ *   「不可用」只剩停用、回收、缺员、已删除或已从本岗位移除，不再因没设主理人判不可用；
+ * - R13-7：执行方式为专家 / 专家团时「引用技能」区隐藏、不随任务下发；切换前已选了技能时提示保存时清空，保存时清空引用技能。
  * 脏检查改快照比对（见 markDirty）：md-editor-v3 回填后会原样回抛一次提示词，旧的事件法会让没改过的任务也误报有修改。
  *
  * 2026-09-23 负责人拍板：执行频率新增「闲时」模式（不设定点时间，只定执行次数 + 执行时段，由系统
@@ -123,7 +127,7 @@ const form = reactive({
 
 /* 执行对象候选（R13 §4；2026-11-09 负责人定：与「引用技能」同一范围）：已发布、未回收的通用 / 市场专家（团），
  * 加上本岗位「专家与专家团」页签里状态正常的岗位私有专家（团），由数据层 listTaskExecTargetCandidates 算好；
- * 没设主理人的团列出但置灰——没设主理人要员工确认安排后才开始，定时任务无人值守，等不到确认。 */
+ * 没设主理人的团同样可选（R13-6，2026-11-16 确认）：自动化任务里不等员工确认，由系统按团队协作关系拆解后直接执行。 */
 const execCandidates = ref({ experts: [], teams: [] })
 const execCandidatesLoaded = ref(false)
 async function loadExecCandidates() {
@@ -146,18 +150,25 @@ const execTargetLost = computed(() => {
   if (!execCandidatesLoaded.value || !needsExecTarget.value || !hasExecTarget.value) return false
   const ids = form.execType === 'EXPERT'
     ? expertOptions.value.map((x) => x.expertId)
-    : teamOptions.value.filter((t) => t.leaderId != null).map((t) => t.teamId)
+    : teamOptions.value.map((t) => t.teamId)
   return !ids.some((id) => String(id) === String(form.execTargetId))
 })
 /* 已选对象不在候选里时补一个置灰选项，下拉框显示「名称（不可用）」而不是裸 id（产品优化需求-202611 修改点 3）。
- * 名称取数据层回的 names（覆盖全部专家 / 团），查不到的是已被删除的对象；没设主理人的团本身就在候选里（置灰），不用补。 */
+ * 名称取数据层回的 names（覆盖全部专家 / 团），查不到的是已被删除的对象。 */
 const lostTargetOption = computed(() => {
   if (!execTargetLost.value) return null
   const isTeam = form.execType === 'TEAM'
-  if (isTeam && teamOptions.value.some((t) => String(t.teamId) === String(form.execTargetId))) return null
   const name = execCandidates.value.names?.[form.execType]?.[String(form.execTargetId)] || (isTeam ? '已删除的专家团' : '已删除的专家')
   return { value: form.execTargetId, label: name + '（不可用）' }
 })
+// 选中的专家团（候选里查得到才有）：执行提示按它有没有设主理人分两种（§7.6）
+const selectedTeam = computed(() =>
+  form.execType === 'TEAM' && hasExecTarget.value
+    ? teamOptions.value.find((t) => String(t.teamId) === String(form.execTargetId)) || null
+    : null
+)
+// 执行方式选专家 / 专家团时「引用技能」不随任务下发（R13-7，§7.6）：已选了技能就提示保存时会清空
+const skillRefsWillClear = computed(() => needsExecTarget.value && form.skillRefs.length > 0)
 // 切换执行方式时清空已选对象（专家 id 与团 id 不通用）
 function onExecTypeChange() {
   form.execTargetId = null
@@ -601,7 +612,8 @@ async function save() {
     schedule: buildSchedule(),
     sopDoc: form.sopDoc,
     toolRefs: buildToolRefs(),
-    skillRefs: buildSkillRefs(),
+    // 执行方式不是「技能」时引用技能不下发，保存时清空（R13-7，§7.6 / §7.8）；切回「技能」要重新选
+    skillRefs: form.execType === 'SKILL' ? buildSkillRefs() : [],
     execType: form.execType || EXEC_TYPE_DEFAULT,
     execTargetId: form.execType !== 'SKILL' ? (form.execTargetId ?? undefined) : undefined,
     execModel: form.execModel || undefined
@@ -936,31 +948,27 @@ onMounted(async () => {
                 :value="lostTargetOption.value"
                 disabled
               />
-              <!-- 没设主理人的团置灰；存量任务若已选了它，框里同样标「（不可用）」 -->
-              <el-option
-                v-for="t in teamOptions"
-                :key="t.teamId"
-                :label="t.leaderId == null ? t.name + '（不可用）' : t.name"
-                :value="t.teamId"
-                :disabled="t.leaderId == null"
-              >
-                <el-tooltip
-                  :disabled="t.leaderId != null"
-                  content="没设主理人的专家团需要员工确认安排，不能用于自动化任务"
-                  placement="right"
-                >
-                  <span class="te-exec-team-opt">
-                    {{ t.name }}
-                    <small>{{ t.typeLabel }} · {{ t.leaderName ? '主理人：' + t.leaderName : '未设主理人' }}</small>
-                  </span>
-                </el-tooltip>
+              <!-- 没设主理人的团同样可选、不置灰（R13-6）；下拉项另展示主理人，没设的展示「无主理人」 -->
+              <el-option v-for="t in teamOptions" :key="t.teamId" :label="t.name" :value="t.teamId">
+                <span class="te-exec-team-opt">
+                  {{ t.name }}
+                  <small>{{ t.typeLabel }} · {{ t.leaderId != null ? '主理人：' + (t.leaderName || '') : '无主理人' }}</small>
+                </span>
               </el-option>
             </el-select>
-            <p class="te-card-guide te-exec-target-hint">任务整个交给该专家团，由主理人拆解分派。</p>
+            <!-- 执行提示按所选团有没有设主理人分两种（§7.6）；还没选或所选已不可用时不出 -->
+            <p v-if="selectedTeam" class="te-card-guide te-exec-target-hint" data-testid="exec-team-hint">
+              {{ selectedTeam.leaderId != null
+                ? '任务整个交给该专家团，由主理人拆解分派。'
+                : '任务整个交给该专家团，由系统按团队协作关系拆解后直接执行。' }}
+            </p>
             <p v-if="errors.execTarget" class="te-err">{{ errors.execTarget }}</p>
           </div>
           <p v-if="execTargetLost" class="te-card-guide te-exec-target-hint te-exec-target-warn" data-testid="exec-target-lost">
             所选对象已停用、被回收、缺员或已从本岗位移除，任务触发时会被挂起，请重新选择。
+          </p>
+          <p v-if="skillRefsWillClear" class="te-card-guide te-exec-target-hint te-exec-target-warn" data-testid="skill-refs-will-clear">
+            切换后已选的引用技能将在保存时清空
           </p>
         </div>
       </section>
@@ -992,8 +1000,9 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 分区 7：引用技能（#22：chips + 搜索 + 卡底「＋ 添加技能」；2026-11-09 由「引用平台技能」改名并扩大候选） -->
-      <section class="te-card">
+      <!-- 分区 7：引用技能（#22：chips + 搜索 + 卡底「＋ 添加技能」；2026-11-09 由「引用平台技能」改名并扩大候选）。
+           仅执行方式为「技能」时展示（R13-7，§7.8） -->
+      <section v-if="form.execType === 'SKILL'" class="te-card" data-testid="skill-refs-card">
         <div class="te-card-title">
           <span class="te-card-dot"></span> 引用技能
         </div>

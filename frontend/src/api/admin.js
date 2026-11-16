@@ -46,6 +46,29 @@ export function deleteMcp(id) {
   return request.delete(`/fde/connectors/mcp/${id}`, W)
 }
 
+/* ---- MCP 的服务提供系统（2026-11-16：MCP 单独一套，只给 MCP 用，与 API 的系统互不影响；字段与弹窗同 API） ---- */
+const MCP_PS = '/fde/connectors/mcp-provider-systems'
+export function listMcpProviderSystems(params = {}) {
+  if (MCP_MOCK) return mcpMock.listMcpProviderSystems(params)
+  return request.get(MCP_PS, { params })
+}
+export function getMcpProviderSystem(id) {
+  if (MCP_MOCK) return mcpMock.getMcpProviderSystem(id)
+  return request.get(`${MCP_PS}/${id}`)
+}
+export function createMcpProviderSystem(payload) {
+  if (MCP_MOCK) return mcpMock.createMcpProviderSystem(payload)
+  return request.post(MCP_PS, payload, W)
+}
+export function updateMcpProviderSystem(id, payload) {
+  if (MCP_MOCK) return mcpMock.updateMcpProviderSystem(id, payload)
+  return request.put(`${MCP_PS}/${id}`, payload, W)
+}
+export function deleteMcpProviderSystem(id) {
+  if (MCP_MOCK) return mcpMock.deleteMcpProviderSystem(id)
+  return request.delete(`${MCP_PS}/${id}`, W)
+}
+
 /* ---- MCP 真实运行时（真实运行时契约 §5；数秒外呼，编辑器自处理错误） ---- */
 // 测试连接（草稿/已存）：仅做 initialize 握手，不返工具列表（契约 §2）
 export function testMcpConn(payload) {

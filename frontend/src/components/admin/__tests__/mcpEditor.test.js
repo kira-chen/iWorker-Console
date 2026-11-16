@@ -31,7 +31,8 @@ import { createApp, h, nextTick, ref, reactive } from 'vue'
  * - §三.6「重新进入 MCP 编辑页、查看页或重新拉取工具后，全部工具入参恢复为默认折叠状态」（§三.6.2）及工具清单默认收起：
  *   重新进入（切 mcpId 或关开抽屉）后工具清单收起、入参恢复折叠。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
- * 2026-11-10 产品优化需求-202611 修改点 14（R9）：基本信息「服务提供系统」单选（选填，选项与 API 共用），用例见文末。
+ * 2026-11-10 产品优化需求-202611 修改点 14（R9）：基本信息「服务提供系统」单选（选填），用例见文末；
+ * 2026-11-16 起选项只列 MCP 自己的那一套系统（admin.listMcpProviderSystems，md §三.3「不含 API 的服务提供系统」）。
  */
 const msg = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 vi.mock('element-plus', () => ({ ElMessage: msg, ElMessageBox: { confirm: vi.fn() } }))
@@ -54,15 +55,17 @@ const adminApi = {
   getMcp: vi.fn(),
   testMcpConn: vi.fn(),
   fetchMcpTools: vi.fn(),
-  fetchMcpToolsDraft: vi.fn()
+  fetchMcpToolsDraft: vi.fn(),
+  // 服务提供系统下拉选项：MCP 自己的那一套（2026-11-16 起与 API 的分开）
+  listMcpProviderSystems: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
-// 服务提供系统下拉选项（产品优化需求-202611 修改点 14（R9）：与 API 共用 apiConnector.listProviderSystems）
 const PS_LIST = [
-  { id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口' },
-  { id: 'pv_2', name: '客户数据平台', description: '客户资料、商机和跟进记录接口' }
+  { id: 'mps_1', name: '财务服务系统', description: '报销、合同等财务类业务的 MCP 服务' },
+  { id: 'mps_2', name: '客户数据平台', description: '客户资料、商机查询类 MCP 服务' }
 ]
-const connApi = { listProviderSystems: vi.fn() }
+// API 那一套的系统：本组件不该去读它（读了就是把 API 的系统混进 MCP 下拉）
+const connApi = { listProviderSystems: vi.fn(async () => ({ list: [{ id: 'pv_9', name: 'API 专属系统', description: 'x' }] })) }
 vi.mock('@/api/apiConnector', () => connApi)
 
 const McpEditor = (await import('@/components/admin/McpEditor.vue')).default
@@ -156,7 +159,7 @@ afterEach(() => {
 })
 beforeEach(() => {
   vi.clearAllMocks()
-  connApi.listProviderSystems.mockImplementation(async () => ({ list: PS_LIST.map((p) => ({ ...p })) }))
+  adminApi.listMcpProviderSystems.mockImplementation(async () => ({ list: PS_LIST.map((p) => ({ ...p })) }))
 })
 
 /* ---------------- DOM 取值助手 ---------------- */
@@ -1051,8 +1054,8 @@ describe('重新进入后工具清单与入参恢复默认折叠（md §三.6 L3
 
 /* ================= 服务提供系统（产品优化需求-202611 修改点 14（R9）） ================= */
 /**
- * 产品优化需求-202611.md §14「编辑页：MCP 基本信息增加「服务提供系统」，单选下拉，选项为连接器里已有的服务提供系统，
- * 与 API 共用一份。必填还是选填【待确认】」——暂按选填落地；列表分组头【＋ 在本系统下新建 MCP】预选该系统。
+ * md §三.3「服务提供系统：选填，单选下拉……选项为 MCP 页签维护的服务提供系统（见 §二.7），不含 API 的服务提供系统；
+ * 可以清空，清空后该 MCP 归入列表"未分组"。从分组头【＋ 在本系统下新建 MCP】进入时预选该系统」。
  */
 describe('服务提供系统（产品优化需求-202611 修改点 14（R9））', () => {
   async function fillValidNew() {
@@ -1066,9 +1069,10 @@ describe('服务提供系统（产品优化需求-202611 修改点 14（R9））
     for (let i = 0; i < 3; i++) await setInput(qs[i], `示例问题 ${i + 1}`)
   }
 
-  it('基本信息有「服务提供系统」单选下拉，选项 = 与 API 共用的服务提供系统；不标必填（选填）', async () => {
+  it('基本信息有「服务提供系统」单选下拉，选项只列 MCP 自己的服务提供系统、不含 API 的；不标必填（选填）', async () => {
     await mount()
-    expect(connApi.listProviderSystems).toHaveBeenCalled()
+    expect(adminApi.listMcpProviderSystems).toHaveBeenCalled()
+    expect(connApi.listProviderSystems).not.toHaveBeenCalled()
     const fi = item('服务提供系统')
     expect(fi).toBeTruthy()
     expect(fi.dataset.required).toBe('')
@@ -1091,32 +1095,32 @@ describe('服务提供系统（产品优化需求-202611 修改点 14（R9））
     adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
     await mount()
     await fillValidNew()
-    await setSelect(selectOf('服务提供系统'), 'pv_2')
+    await setSelect(selectOf('服务提供系统'), 'mps_2')
     footerBtn('登记').click()
     await flush()
-    expect(adminApi.createMcp.mock.calls[0][0].providerSystemId).toBe('pv_2')
+    expect(adminApi.createMcp.mock.calls[0][0].providerSystemId).toBe('mps_2')
   })
 
-  it('从分组头新建（defaultProviderSystemId=pv_1）：不动下拉直接登记，payload 带预选的 pv_1', async () => {
+  it('从分组头新建（defaultProviderSystemId=mps_1）：不动下拉直接登记，payload 带预选的 mps_1', async () => {
     adminApi.createMcp.mockResolvedValue({ id: 'mcp_new' })
-    await mount({ defaultProviderSystemId: 'pv_1' })
+    await mount({ defaultProviderSystemId: 'mps_1' })
     await fillValidNew()
     footerBtn('登记').click()
     await flush()
-    expect(adminApi.createMcp.mock.calls[0][0].providerSystemId).toBe('pv_1')
+    expect(adminApi.createMcp.mock.calls[0][0].providerSystemId).toBe('mps_1')
   })
 
   it('编辑态回显详情里的系统：不改直接保存仍带原系统（编辑以详情为准，不吃 defaultProviderSystemId）', async () => {
-    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, providerSystemId: 'pv_1' })
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, providerSystemId: 'mps_1' })
     adminApi.updateMcp.mockResolvedValue({})
-    await mount({ mcpId: 'mcp_1', defaultProviderSystemId: 'pv_2' })
+    await mount({ mcpId: 'mcp_1', defaultProviderSystemId: 'mps_2' })
     footerBtn('保存').click()
     await flush()
-    expect(adminApi.updateMcp.mock.calls[0][1].providerSystemId).toBe('pv_1')
+    expect(adminApi.updateMcp.mock.calls[0][1].providerSystemId).toBe('mps_1')
   })
 
   it('编辑态清空服务提供系统后保存 → providerSystemId=null（移出原系统、归入未分组）', async () => {
-    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, providerSystemId: 'pv_1' })
+    adminApi.getMcp.mockResolvedValue({ ...HTTP_DETAIL, providerSystemId: 'mps_1' })
     adminApi.updateMcp.mockResolvedValue({})
     await mount({ mcpId: 'mcp_1' })
     await setSelect(selectOf('服务提供系统'), '')

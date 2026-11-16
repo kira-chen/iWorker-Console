@@ -371,7 +371,10 @@ function normalizeUpsert(payload = {}) {
     },
     sopDoc: String(payload.sopDoc || ''),
     toolRefs: (payload.toolRefs || []).map((t) => ({ type: t.type, code: t.code, bizName: t.bizName || t.code })),
-    skillRefs: (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' })),
+    // 执行方式不是「技能」时引用技能不随任务下发，保存时清空（R13-7，2026-11-16 确认）；编辑页已先清，这里数据层兜底
+    skillRefs: normExecType(payload.execType) === 'SKILL'
+      ? (payload.skillRefs || []).map((r) => ({ platformSkillId: r.platformSkillId, name: r.name || '' }))
+      : [],
     execType: normExecType(payload.execType),
     // 下拉清空可能回 '' / undefined，统一记 null（= 没选执行对象，由 assertUpsert 拦）
     execTargetId: EXEC_TARGET_TYPES.includes(payload.execType) && payload.execTargetId != null && payload.execTargetId !== ''
@@ -570,8 +573,9 @@ export function listTasksUsingExecTarget(positionId, execType, targetId) {
  * 岗位私有技能要被本岗位引用，才能出现在本岗位任务的「引用技能」里）。
  */
 export function listTasksUsingSkill(positionId, skillId) {
+  // 只认执行方式为「技能」的任务：专家 / 专家团执行的任务引用技能不下发（R13-7），保存时已清空，这里再兜一层旧快照
   return listOf(positionId)
-    .filter((s) => (s.skillRefs || []).some((r) => String(r.platformSkillId) === String(skillId)))
+    .filter((s) => normExecType(s.execType) === 'SKILL' && (s.skillRefs || []).some((r) => String(r.platformSkillId) === String(skillId)))
     .map((s) => s.name)
 }
 

@@ -24,6 +24,9 @@ import { createApp, h, nextTick, ref } from 'vue'
  * 2026-10-12 强制回收并入停用（负责人拍板）：不再有独立【强制回收】按钮，改为【停用】弹窗（真 DeactivateDialog）里的
  *  「强制回收」勾选项，勾选后与普通停用同走审核、无二次确认；本文件验页面接线（弹窗入参 / 提交载荷 / toast / 按钮集合），
  *  弹窗自身的交互另见 components/admin/__tests__/deactivateDialog.test.js。
+ * 2026-11-16：服务提供系统只管 API（MCP 另有一套），删除只查 API；API 所属系统改选填，列表末尾加「未分组」
+ *  （无描述、无编辑 / 删除，带【＋ 在未分组下新建 API】不预选；无条件时始终展示、有条件时只在有命中时展示；分页算一个分组）；
+ *  原「零服务提供系统禁建 API」空态撤掉。夹具 9 个系统无条件时 +「未分组」= 10 个分组。
  * 注：用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  */
 
@@ -270,13 +273,13 @@ afterEach(() => {
 })
 
 describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「本页按服务提供系统分页，不按 API 分页」）', () => {
-  it('9 个系统、每页 3 个 → 首屏只有 3 个分组，分页条计数单位是「个」：「共 9 个数据」', async () => {
+  it('9 个系统 +「未分组」、每页 3 个 → 首屏只有 3 个分组，分页条计数单位是「个」且「未分组」算一个：「共 10 个数据」', async () => {
     await mount()
     expect(groupNames()).toEqual(['系统1号', '系统2号', '系统3号'])
     // 首页两个分组下的 API 全部展示（5 条），远超「每页 3」——切片单位是系统不是 API
     expect(rows().length).toBe(5)
     expect(pager()).toBeTruthy()
-    expect(pager().textContent).toContain('共 9 个数据')
+    expect(pager().textContent).toContain('共 10 个数据')
   })
 
   it('点 › 翻到第 2 页 → 展示 ps_4 ~ ps_6 三个系统', async () => {
@@ -306,7 +309,7 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('1')
   })
 
-  it('停在第 3 页时把每页个数改成 10 → 只剩 1 页，页码钳回第 1 页并展示全部 9 个系统', async () => {
+  it('停在第 3 页时把每页个数改成 10 → 只剩 1 页，页码钳回第 1 页并展示全部 9 个系统 +「未分组」', async () => {
     await mount()
     pager().querySelector('[aria-label="下一页"]').click()
     await flush()
@@ -317,7 +320,8 @@ describe('AdminApis · 按服务提供系统分页（md §二.1 分页规则「�
     sizeSel.value = '10'
     sizeSel.dispatchEvent(new Event('change'))
     await flush()
-    expect(groups().length).toBe(9)
+    expect(groups().length).toBe(10)
+    expect(groupNames().at(-1)).toBe('未分组')
     expect(pager().querySelector('.page-btn.active').textContent.trim()).toBe('1')
   })
 
@@ -516,18 +520,18 @@ describe('AdminApis · 服务提供系统分组头（md §二.1「分组头」/ 
     expect(del.disabled).toBe(true)
     expect(tipsOf(g1)).toContain('该系统下有 2 个 API，需先迁移或删除后才能删除系统')
   })
-  it('系统下没有 API、但挂着 MCP（产品优化需求-202611 修改点 14（R9）：服务提供系统与 MCP 共用）：【删除系统】同样置灰，提示点名 MCP 数量与名称', async () => {
+  it('删除只查 API（2026-11-16 起 MCP 有自己的系统）：系统下没有 API 时，即便数据里带着 MCP 数 / MCP 名称，【删除系统】也可点、没有拦截提示', async () => {
     conn.listProviderSystems.mockImplementation(async () => ({
       list: psWithCounts().map((p) => (p.id === 'ps_3' ? { ...p, mcpCount: 1, mcpNames: ['报销系统 MCP'] } : p))
     }))
     await mount()
     const g3 = groupByName('系统3号')
     const del = [...g3.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '删除系统')
-    expect(del.disabled).toBe(true)
-    expect(tipsOf(g3)).toContain('该系统下有 1 个 MCP（报销系统 MCP），需先迁移或删除后才能删除系统')
+    expect(del.disabled).toBe(false)
+    expect(tipsOf(g3).some((t) => (t || '').includes('MCP'))).toBe(false)
     del.click()
     await flush()
-    expect(conn.deleteProviderSystem).not.toHaveBeenCalled()
+    expect(conn.deleteProviderSystem).toHaveBeenCalledWith('ps_3')
   })
 
   it('空系统删除：二次确认「删除后该 API 分组不可恢复，确认删除？」→ deleteProviderSystem + 「已删除」', async () => {
@@ -577,14 +581,22 @@ describe('AdminApis · 服务提供系统分组头（md §二.1「分组头」/ 
 })
 
 describe('AdminApis · 空态（md §一.1「无匹配结果时展示"没有匹配的 API"」/ §四）', () => {
-  it('没有任何服务提供系统 → 「还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API」+【新建服务提供系统】', async () => {
+  it('没有任何服务提供系统也能新建 API（2026-11-16 撤掉零分组禁建）：不出「先创建服务提供系统」空态，只剩「未分组」，点【在未分组下新建 API】打开编辑器且不预选', async () => {
     conn.listProviderSystems.mockResolvedValue({ list: [] })
-    conn.listApis.mockResolvedValue({ list: [] })
+    conn.listApis.mockResolvedValue({ list: [], ungroupedTotal: 0 })
     await mount()
-    const empty = container.querySelector('.el-empty')
-    expect(empty.textContent).toContain('还没有服务提供系统 · 请先创建服务提供系统分组，再在其下新建 API')
-    expect(empty.querySelector('.el-button').textContent).toContain('新建服务提供系统')
-    expect(pager()).toBeNull()
+    expect(container.querySelector('.el-empty')).toBeNull()
+    expect(container.textContent).not.toContain('请先创建服务提供系统')
+    expect(groupNames()).toEqual(['未分组'])
+    const g = groupByName('未分组')
+    expect(g.querySelector('.aps-group-empty').textContent.trim()).toBe('暂无未分组的 API · 点「在未分组下新建 API」添加')
+    ;[...g.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '在未分组下新建 API').click()
+    await nextTick()
+    const ed = container.querySelector('.stub-api-editor')
+    expect(ed.dataset.visible).toBe('1')
+    expect(ed.dataset.readonly).toBe('0')
+    expect(ed.dataset.ps).toBeUndefined() // 不预选：defaultProviderSystemId 为 null，不渲染该属性
+    expect(msg.warning).not.toHaveBeenCalled()
   })
 
   it('查询无结果 → 「没有匹配的 API」，输入框保留当前条件', async () => {
@@ -858,5 +870,93 @@ describe('AdminApis · 强制回收（prd-API.md「强制回收（停用时勾�
   it('未发布但从未被回收（无回收信息）→ 不出现「已回收」标签', async () => {
     await mount()
     expect(rowByName('未发布接口').querySelector('.revoked-tag')).toBeNull()
+  })
+})
+
+describe('AdminApis · 未分组（2026-11-16：API 所属系统改选填，规则同 MCP 列表的「未分组」）', () => {
+  const UNGROUPED = [
+    mkApi({ id: 'a_ug1', name: '散装接口', ps: null, updatedAt: '2026-08-21T10:00:00+08:00' }),
+    mkApi({ id: 'a_ug2', name: '游离接口', updatedAt: '2026-08-11T10:00:00+08:00' }) // providerSystemId 为 undefined 的存量行
+  ]
+  beforeEach(() => {
+    conn.listApis.mockImplementation(async (params = {}) => {
+      let list = [...APIS, ...UNGROUPED]
+      const kw = (params.keyword || '').toLowerCase()
+      if (kw) list = list.filter((a) => a.name.toLowerCase().includes(kw) || a.description.toLowerCase().includes(kw))
+      return { list: list.map((a) => ({ ...a })), ungroupedTotal: UNGROUPED.length }
+    })
+  })
+  const lastPage = async () => {
+    await mount()
+    for (let i = 0; i < 3; i++) {
+      pager().querySelector('[aria-label="下一页"]').click()
+      await flush()
+    }
+  }
+  const search = async (kw) => {
+    const input = container.querySelector('.lt-search')
+    input.value = kw
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    toolbarBtn('查询').click()
+    await flush(6)
+  }
+
+  it('没选系统的 API（null 或缺键）归入列表末尾「未分组」：数量为未分组总数，无描述，只带【在未分组下新建 API】，无【编辑系统】【删除系统】', async () => {
+    await lastPage()
+    expect(groupNames()).toEqual(['未分组'])
+    const g = groupByName('未分组')
+    expect([...g.querySelectorAll('.t-row .api-cell-name')].map((e) => e.textContent.trim())).toEqual(['散装接口', '游离接口'])
+    expect(g.querySelector('.aps-group-count').textContent.trim()).toBe('2 个 API')
+    expect(g.querySelector('.aps-group-desc')).toBeNull()
+    const acts = [...g.querySelectorAll('.aps-group-actions .el-button')].map((b) => b.textContent.trim())
+    expect(acts).toEqual(['在未分组下新建 API'])
+  })
+
+  it('【在未分组下新建 API】→ 编辑器以新建态打开，不预选系统（先在别的系统下新建过也会清掉预选）', async () => {
+    await mount()
+    ;[...groupByName('系统2号').querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '在本系统下新建 API').click()
+    await nextTick()
+    expect(container.querySelector('.stub-api-editor').dataset.ps).toBe('ps_2')
+    pager().querySelector('[aria-label="下一页"]').click()
+    await flush()
+    pager().querySelector('[aria-label="下一页"]').click()
+    await flush()
+    pager().querySelector('[aria-label="下一页"]').click()
+    await flush()
+    ;[...groupByName('未分组').querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '在未分组下新建 API').click()
+    await nextTick()
+    const ed = container.querySelector('.stub-api-editor')
+    expect(ed.dataset.visible).toBe('1')
+    expect(ed.dataset.id).toBeUndefined()
+    expect(ed.dataset.ps).toBeUndefined()
+  })
+
+  it('有搜索时「未分组」只在有命中时展示：命中散装接口 → 只有「未分组」；命中系统里的 API → 不出现「未分组」；数量仍是总数', async () => {
+    await mount()
+    await search('散装')
+    expect(groupNames()).toEqual(['未分组'])
+    expect(groupByName('未分组').querySelector('.aps-group-count').textContent.trim()).toBe('2 个 API')
+    await search('尾巴')
+    expect(groupNames()).toEqual(['系统9号'])
+  })
+
+  it('无搜索筛选时「未分组」始终展示：没有未分组的 API 时也在末尾，组内提示「暂无未分组的 API · 点「在未分组下新建 API」添加」', async () => {
+    conn.listApis.mockImplementation(async () => ({ list: APIS.map((a) => ({ ...a })), ungroupedTotal: 0 }))
+    await lastPage()
+    expect(groupNames()).toEqual(['未分组'])
+    const g = groupByName('未分组')
+    expect(g.querySelector('.t-row')).toBeNull()
+    expect(g.querySelector('.aps-group-count').textContent.trim()).toBe('0 个 API')
+    expect(g.querySelector('.aps-group-empty').textContent.trim()).toBe('暂无未分组的 API · 点「在未分组下新建 API」添加')
+  })
+
+  it('「未分组」组内排序独立：默认由近到远，点它的时间列头 → 反转', async () => {
+    await lastPage()
+    const names = () => [...groupByName('未分组').querySelectorAll('.t-row .api-cell-name')].map((e) => e.textContent.trim())
+    expect(names()).toEqual(['散装接口', '游离接口'])
+    groupByName('未分组').querySelector('.time-sort').click()
+    await flush()
+    expect(names()).toEqual(['游离接口', '散装接口'])
   })
 })

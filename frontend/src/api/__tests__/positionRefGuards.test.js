@@ -19,6 +19,7 @@ import {
   unbindPositionTeam,
   listTaskExecTargetCandidates,
   getPosition,
+  getPositionExperts,
   __resetPositionMock
 } from '../positionMock'
 import { updateSampleTask, getSampleTask, __resetSampleTaskMock } from '../sampleTaskMock'
@@ -106,5 +107,34 @@ describe('岗位「技能」页签的技能分类（修改点 15：删除分类�
       await saveFieldOptions('skillCategory', before)
     }
     expect((await rowOf()).displayCategoryName).toBe(cat)
+  })
+})
+
+describe('没设主理人的专家团可作执行对象（R13-6，md §7.6 / §9.1）', () => {
+  it('通用团 302「知识问答团」没设主理人 → 照样在执行对象候选里（leaderId 为 null）', async () => {
+    const team = (await listTaskExecTargetCandidates(401)).teams.find((t) => t.teamId === 302)
+    expect(team).toMatchObject({ name: '知识问答团', leaderId: null })
+  })
+
+  it('任务交给 302 执行 → 发布前检查不出「执行对象不可用」阻断行', async () => {
+    const t = await getSampleTask(401, 7002)
+    await updateSampleTask(401, 7002, { ...t, execType: 'TEAM', execTargetId: 302 })
+    expect((await getSampleTask(401, 7002)).execTargetId).toBe(302) // 前提：确实改成了 302
+    expect((await getPositionExperts(401)).execTargetIssues).toEqual([])
+  })
+})
+
+describe('执行方式为专家 / 专家团时引用技能不下发（R13-7，md §7.6 / §7.8 / §6.3）', () => {
+  it('专家团执行的任务带着引用技能保存 → 落库的 skillRefs 为空；岗位移除该技能不再被拦', async () => {
+    const t = await getSampleTask(401, 7002)
+    expect(t.execType).toBe('TEAM') // 前提：7002 交给团 304 执行
+    await updateSampleTask(401, 7002, { ...t, skillRefs: [{ platformSkillId: 'sk_301', name: '日报周报生成' }] })
+    expect((await getSampleTask(401, 7002)).skillRefs).toEqual([])
+    expect(await checkDetachPositionSkill(401, 'sk_301')).toBe('')
+  })
+
+  it('执行方式为技能的任务 → 引用技能照常保存（对照）', async () => {
+    await letTaskUseSkill301()
+    expect((await getSampleTask(401, 7001)).skillRefs.map((r) => r.platformSkillId)).toContain('sk_301')
   })
 })

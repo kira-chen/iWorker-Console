@@ -32,23 +32,37 @@ import { fmtTime } from '@/utils/docMeta'
  * 注：下方用例名 / 注释里残留的「Lxx」为 2026-09-12 版 md 行号，md 已改版漂移，以 § 节号与引用原句为准。
  * 2026-11-10 产品优化需求-202611 修改点 14（R9）：列表按服务提供系统分组 —— 翻页 / 回第 1 页 / 排序用例改为「按系统分页、组内排序」
  *   口径（每页个数固定 PAGE_SIZE）；分组本身的用例见文末 describe。
+ * 2026-11-16 MCP 的服务提供系统单独一套（api/admin.listMcpProviderSystems），本页可新建 / 编辑 / 删除系统；「未分组」无条件时始终展示
+ *   并带【＋ 在未分组下新建 MCP】——原「首次暂无数据」整页空态因此不再出现，改由「未分组」组内空态承接（用例已按新口径改写）。
  *
  * 切断 api/admin、api/market 与 element-plus；el-* 用轻量桩（el-table 桩按行渲染 default 插槽）。
  * StatusTag / HealthTag / ListToolbar / ListStates / ListPagination 为组件局部 import 的**真组件**
  * （全局同名桩对其无效），断言直接读它们渲染出的文案 / 类名。
  */
 
+// listMcpProviderSystems / deleteMcpProviderSystem：MCP 自己的服务提供系统（2026-11-16 起与 API 的分开，数据层在 api/admin）。
+// 各 describe 的 beforeEach 复位为「没有任何系统」→ 夹具 MCP 都没选系统，全部落进「未分组」一组，
+// 分组前写的用例照常按行断言；分组相关用例自己给系统（见文末「按服务提供系统分组」）。
 const adminApi = {
   listMcp: vi.fn(),
   deleteMcp: vi.fn(),
-  healthCheckTool: vi.fn()
+  healthCheckTool: vi.fn(),
+  listMcpProviderSystems: vi.fn(),
+  deleteMcpProviderSystem: vi.fn()
 }
 vi.mock('@/api/admin', () => adminApi)
-// 服务提供系统（产品优化需求-202611 修改点 14（R9）：MCP 列表按它分组，数据与 API 共用 apiConnector）。
-// 各 describe 的 beforeEach 复位为「没有任何系统」→ 夹具 MCP 都没选系统，全部落进「未分组」一组，
-// 分组前写的用例照常按行断言；分组相关用例自己给系统（见文末「按服务提供系统分组」）。
-const connApi = { listProviderSystems: vi.fn() }
-vi.mock('@/api/apiConnector', () => connApi)
+// 服务提供系统弹窗桩：露出 visible / systemId / kind，按钮模拟保存成功（弹窗自身的交互见 providerSystemEditor.test.js）
+vi.mock('@/components/admin/ProviderSystemEditor.vue', () => ({
+  default: {
+    name: 'ProviderSystemEditor',
+    props: ['visible', 'systemId', 'kind'],
+    emits: ['saved', 'update:visible'],
+    template:
+      '<div class="stub-ps-editor" :data-visible="visible" :data-id="systemId ?? \'\'" :data-kind="kind">' +
+      '<button type="button" class="stub-ps-saved" @click="$emit(\'saved\', { id: systemId })">saved</button>' +
+      '</div>'
+  }
+}))
 const NO_SYSTEMS = async () => ({ list: [] })
 // 每页个数固定为 5：R9 起按服务提供系统分页，真实页面按窗口高度动态算（useDynPageSize），jsdom 下高度不可控，固定掉便于断言翻页
 const PAGE_SIZE = 5
@@ -262,7 +276,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     routeState.query = {}
     AGG = { ...AGG_SEED }
     PENDING = { ...PENDING_SEED }
-    connApi.listProviderSystems.mockImplementation(NO_SYSTEMS)
+    adminApi.listMcpProviderSystems.mockImplementation(NO_SYSTEMS)
     // 页面会就地改写行对象（检活回写 displayStatus / lastCheckedAt），故每次调用都给夹具的浅拷贝，用例间不串
     adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
@@ -488,10 +502,13 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     })
 
     it('删掉第 2 页仅剩的 1 条且不在第 1 页 → 自动返回上一页（md §二.3.7；R9 起按服务提供系统分页）', async () => {
-      // 第 1 页铺满 5 个系统（各 1 条）、第 2 页只剩「未分组」里的「末页服务」一条；删掉后未分组不再出现，页数缩回 1 页
+      // 第 1 页铺满 5 个系统（各 1 条）、第 2 页只剩「未分组」里的「末页服务」一条。
+      // 无搜索筛选时「未分组」始终展示、删空了也不会消失（2026-11-16），所以带一个全命中的关键词进页（深链 ?keyword=），
+      // 有条件时空组不展示 → 删掉后未分组不再出现，页数缩回 1 页
+      routeState.query = { keyword: '服务' }
       const { systems, mcps } = systemsFixture(PAGE_SIZE)
       let lastRow = [{ ...LIST[0], id: 'mc_last', name: '末页服务' }]
-      connApi.listProviderSystems.mockResolvedValue({ list: systems })
+      adminApi.listMcpProviderSystems.mockResolvedValue({ list: systems })
       adminApi.listMcp.mockImplementation(async () => ({ list: [...mcps, ...lastRow].map((r) => ({ ...r })) }))
       adminApi.deleteMcp.mockImplementation(async () => { lastRow = [] })
       await mount()
@@ -765,7 +782,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     it('点【查询】才把关键词下发，并回到第 1 页', async () => {
       // 两页分组（5 个系统 + 未分组），先翻到第 2 页再查询
       const { systems, mcps } = systemsFixture(PAGE_SIZE)
-      connApi.listProviderSystems.mockResolvedValue({ list: systems })
+      adminApi.listMcpProviderSystems.mockResolvedValue({ list: systems })
       adminApi.listMcp.mockImplementation(async () => ({ list: [...mcps, { ...LIST[0], id: 'mc_last', name: '末页服务' }] }))
       await mount()
       container.querySelector('.list-pager [aria-label="下一页"]').click()
@@ -846,7 +863,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     it('切换状态筛选 → 立即按 state 刷新并回到第 1 页（md §一.2 L26）；清空 → 不再下发 state', async () => {
       // 两页分组（5 个系统 + 未分组），先翻到第 2 页再切筛选（mock 桩不按 state 过滤，只验下发与回页）
       const { systems, mcps } = systemsFixture(PAGE_SIZE)
-      connApi.listProviderSystems.mockResolvedValue({ list: systems })
+      adminApi.listMcpProviderSystems.mockResolvedValue({ list: systems })
       adminApi.listMcp.mockImplementation(async () => ({ list: [...mcps, { ...LIST[0], id: 'mc_last', name: '末页服务' }] }))
       await mount()
       const activePage = () => container.querySelector('.list-pager .page-btn.active').textContent.trim()
@@ -886,11 +903,15 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
       expect(adminApi.listMcp.mock.calls.length).toBeGreaterThan(callsBefore)
     })
 
-    it('首次暂无数据：空态「还没有 MCP 服务 · 点「新建 MCP」登记第一个」（md §一.3 L33）', async () => {
-      adminApi.listMcp.mockResolvedValue({ list: [], total: 0 })
+    it('首次暂无数据（无系统、无 MCP、无条件）：不出整页空态，「未分组」照常展示并给组内空态与【＋ 在未分组下新建 MCP】（2026-11-16「未分组」始终展示）', async () => {
+      adminApi.listMcp.mockResolvedValue({ list: [], total: 0, ungroupedTotal: 0 })
       await mount()
-      expect(container.querySelector('[data-testid="list-empty"]').textContent.trim()).toBe('还没有 MCP 服务 · 点「新建 MCP」登记第一个')
-      expect(container.querySelector('.list-pager')).toBeNull() // 空态不出分页条
+      expect(container.querySelector('[data-testid="list-empty"]')).toBeNull()
+      const groups = [...container.querySelectorAll('.mc-group')]
+      expect(groups.map((g) => g.querySelector('.mc-group-name').textContent.trim())).toEqual(['未分组'])
+      expect(groups[0].querySelector('.mc-group-count').textContent.trim()).toBe('0 个 MCP')
+      expect(groups[0].querySelector('.mc-group-empty').textContent.trim()).toBe('暂无未分组的 MCP · 点「在未分组下新建 MCP」添加')
+      expect([...groups[0].querySelectorAll('.mc-group-head .el-button')].map((b) => b.textContent.trim()).filter(Boolean)).toEqual(['在未分组下新建 MCP'])
     })
 
     it('无查询结果：空态改显「没有符合条件的 MCP 服务」，搜索框保留关键词（md §一.3 L34；文案 md 无字面，照代码）', async () => {
@@ -1028,7 +1049,7 @@ describe('AdminMcp · MCP 列表页（md §一 / §二）', () => {
     it('先翻到第 2 页，编辑器保存成功（saved）→ 重拉列表并回到第 1 页，分页高亮回到 1', async () => {
       // 两页分组（5 个系统 + 未分组「第二页服务」）
       const { systems, mcps } = systemsFixture(PAGE_SIZE)
-      connApi.listProviderSystems.mockResolvedValue({ list: systems })
+      adminApi.listMcpProviderSystems.mockResolvedValue({ list: systems })
       adminApi.listMcp.mockImplementation(async () => ({ list: [...mcps, { ...LIST[0], id: 'mc_p2', name: '第二页服务' }] }))
       await mount()
       container.querySelector('.list-pager [aria-label="下一页"]').click()
@@ -1064,7 +1085,7 @@ describe('AdminMcp · 强制回收（md §三.6.1：停用弹窗里的勾选项�
   beforeEach(() => {
     vi.clearAllMocks()
     routeState.query = {}
-    connApi.listProviderSystems.mockImplementation(NO_SYSTEMS)
+    adminApi.listMcpProviderSystems.mockImplementation(NO_SYSTEMS)
     adminApi.listMcp.mockImplementation(async () => ({ list: LIST.map((r) => ({ ...r })), total: LIST.length }))
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
       Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: AGG_SEED[id], pendingAction: null }] })
@@ -1207,18 +1228,21 @@ describe('AdminMcp · 强制回收（md §三.6.1：停用弹窗里的勾选项�
 })
 
 /**
- * 产品优化需求-202611 修改点 14（R9）：MCP 列表按服务提供系统分组（docs/PRD/数字员工管理端PRD/产品优化需求-202611.md §14）。
- * 「参照 API 列表，按服务提供系统分组展示」：分组头（展开/折叠、系统名称、系统描述、该系统下 MCP 数量、【＋ 在本系统下新建 MCP】）、
- * 没选系统的归末尾「未分组」、组内排序独立、按系统分页、搜索筛选后只展示有匹配 MCP 的分组；系统的新建/编辑/删除仍在 API 页签（待确认）。
+ * MCP 列表按服务提供系统分组（prd-连接器-MCP.md §二.1「分组头」、§二.7「服务提供系统」）。
+ * - 2026-11-10 R9：分组头（展开/折叠、系统名称、系统描述、该系统下 MCP 数量、【＋ 在本系统下新建 MCP】）、组内排序独立、按系统分页、
+ *   搜索筛选后只展示有匹配 MCP 的分组；
+ * - 2026-11-16：MCP 的服务提供系统单独一套（数据层 api/admin.listMcpProviderSystems），本页维护：导航栏【＋ 新建服务提供系统】、
+ *   分组头【编辑系统】【删除系统】（有 MCP 时置灰并悬停提示、空系统二次确认）；
+ *   「未分组」无描述、无编辑 / 删除，带【＋ 在未分组下新建 MCP】（不预选），无搜索筛选时始终展示（空也展示），有条件时只在有命中时展示。
  */
-describe('AdminMcp · 按服务提供系统分组（产品优化需求-202611 修改点 14（R9））', () => {
+describe('AdminMcp · 按服务提供系统分组（R9 / 2026-11-16 MCP 单独一套服务提供系统）', () => {
   const SYSTEMS = [
-    { id: 'pv_1', name: '财务服务系统', description: '聚合报销、付款与财务单据接口', mcpCount: 2 },
-    { id: 'pv_3', name: '内容服务中心', description: '内容审核与素材服务', mcpCount: 0 }
+    { id: 'mps_1', name: '财务服务系统', description: '报销、合同等财务类业务的 MCP 服务', mcpCount: 2 },
+    { id: 'mps_4', name: '办公协同平台', description: '日程、邮件等日常办公类 MCP 服务', mcpCount: 0 }
   ]
   const ROWS = [
-    { ...LIST[0], id: 'mc_exp', name: '报销服务', providerSystemId: 'pv_1', updatedAt: '2026-08-20T09:00:00+08:00' },
-    { ...LIST[0], id: 'mc_con', name: '合同服务', providerSystemId: 'pv_1', updatedAt: '2026-08-10T09:00:00+08:00' },
+    { ...LIST[0], id: 'mc_exp', name: '报销服务', providerSystemId: 'mps_1', updatedAt: '2026-08-20T09:00:00+08:00' },
+    { ...LIST[0], id: 'mc_con', name: '合同服务', providerSystemId: 'mps_1', updatedAt: '2026-08-10T09:00:00+08:00' },
     { ...LIST[0], id: 'mc_cal', name: '日历服务', providerSystemId: null, updatedAt: '2026-08-15T09:00:00+08:00' },
     { ...LIST[0], id: 'mc_mail', name: '邮件服务', updatedAt: '2026-08-05T09:00:00+08:00' } // 无 providerSystemId 键的存量行
   ]
@@ -1227,48 +1251,155 @@ describe('AdminMcp · 按服务提供系统分组（产品优化需求-202611 �
   const groupByName = (name) => groupEls().find((g) => g.querySelector('.mc-group-name').textContent.trim() === name)
   const namesIn = (g) => [...g.querySelectorAll('.t-row .mc-name')].map((e) => e.textContent.trim())
   const headBtns = (g) => [...g.querySelectorAll('.mc-group-head .el-button')].map((b) => b.textContent.trim()).filter(Boolean)
+  const headBtn = (g, text) => [...g.querySelectorAll('.mc-group-head .el-button')].find((b) => b.textContent.trim() === text)
+  const toolbarBtn = (text) => [...container.querySelectorAll('.list-toolbar .el-button')].find((b) => b.textContent.trim() === text)
+  const psEditor = () => container.querySelector('.stub-ps-editor')
+  const searchKeyword = async (kw) => {
+    const input = container.querySelector('.lt-search')
+    input.value = kw
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    toolbarBtn('查询').click()
+    await flush()
+  }
 
   beforeEach(() => {
     vi.clearAllMocks()
     routeState.query = {}
-    connApi.listProviderSystems.mockImplementation(async () => ({ list: SYSTEMS.map((s) => ({ ...s })) }))
+    adminApi.listMcpProviderSystems.mockImplementation(async () => ({ list: SYSTEMS.map((s) => ({ ...s })) }))
     adminApi.listMcp.mockImplementation(async () => ({ list: ROWS.map((r) => ({ ...r })), ungroupedTotal: 2 }))
+    adminApi.deleteMcpProviderSystem.mockResolvedValue({})
     marketApi.getMcpServicePublishStatus.mockImplementation((id) =>
       Promise.resolve({ mcpId: id, targets: [{ target: 'USER_END', aggregateStatus: 'NOT_PUBLISHED', pendingAction: null }] })
     )
+    msgBox.confirm.mockResolvedValue('confirm')
   })
   afterEach(() => {
     app?.unmount()
     container?.remove()
   })
 
-  it('分组头：系统名称 + 系统描述 + 「N 个 MCP」 + 唯一操作【在本系统下新建 MCP】（系统的编辑 / 删除仍在 API 页签，不在这里）', async () => {
+  it('分组数据取 MCP 自己的服务提供系统（listMcpProviderSystems），不读 API 那一套', async () => {
     await mount()
-    const g = groupByName('财务服务系统')
-    expect(g.querySelector('.mc-group-desc').textContent.trim()).toBe('聚合报销、付款与财务单据接口')
-    expect(g.querySelector('.mc-group-count').textContent.trim()).toBe('2 个 MCP')
-    expect(headBtns(g)).toEqual(['在本系统下新建 MCP'])
+    expect(adminApi.listMcpProviderSystems).toHaveBeenCalled()
+    expect(groupNames()).toEqual(['财务服务系统', '办公协同平台', '未分组'])
   })
 
-  it('MCP 落在所选系统的组里；没选系统的（null 或缺键）归入列表末尾「未分组」，未分组头只有名称和数量、没有新建按钮', async () => {
+  it('分组头：系统名称 + 系统描述 + 「N 个 MCP」 + 【在本系统下新建 MCP】【编辑系统】【删除系统】', async () => {
     await mount()
-    expect(groupNames()).toEqual(['财务服务系统', '内容服务中心', '未分组'])
+    const g = groupByName('财务服务系统')
+    expect(g.querySelector('.mc-group-desc').textContent.trim()).toBe('报销、合同等财务类业务的 MCP 服务')
+    expect(g.querySelector('.mc-group-count').textContent.trim()).toBe('2 个 MCP')
+    expect(headBtns(g)).toEqual(['在本系统下新建 MCP', '编辑系统', '删除系统'])
+  })
+
+  it('MCP 落在所选系统的组里；没选系统的（null 或缺键）归入列表末尾「未分组」：无描述，只带【在未分组下新建 MCP】，无编辑 / 删除', async () => {
+    await mount()
+    expect(groupNames()).toEqual(['财务服务系统', '办公协同平台', '未分组'])
     expect(namesIn(groupByName('财务服务系统')).sort()).toEqual(['合同服务', '报销服务'].sort())
     const ungrouped = groupByName('未分组')
     expect(namesIn(ungrouped).sort()).toEqual(['日历服务', '邮件服务'].sort())
     expect(ungrouped.querySelector('.mc-group-count').textContent.trim()).toBe('2 个 MCP')
-    expect(headBtns(ungrouped)).toEqual([])
+    expect(ungrouped.querySelector('.mc-group-desc')).toBeNull()
+    expect(headBtns(ungrouped)).toEqual(['在未分组下新建 MCP'])
   })
 
-  it('所有 MCP 都选了系统时，不出现「未分组」', async () => {
+  it('无搜索筛选时「未分组」始终展示：所有 MCP 都选了系统，未分组仍在末尾，组内提示「暂无未分组的 MCP · 点「在未分组下新建 MCP」添加」', async () => {
     adminApi.listMcp.mockImplementation(async () => ({ list: ROWS.slice(0, 2).map((r) => ({ ...r })), ungroupedTotal: 0 }))
     await mount()
-    expect(groupByName('未分组')).toBeUndefined()
+    expect(groupNames()).toEqual(['财务服务系统', '办公协同平台', '未分组'])
+    const g = groupByName('未分组')
+    expect(g.querySelector('.t-row')).toBeNull()
+    expect(g.querySelector('.mc-group-count').textContent.trim()).toBe('0 个 MCP')
+    expect(g.querySelector('.mc-group-empty').textContent.trim()).toBe('暂无未分组的 MCP · 点「在未分组下新建 MCP」添加')
+  })
+
+  it('有搜索时「未分组」只在有命中时展示：命中未分组里的 MCP → 出现；无命中 → 不出现', async () => {
+    adminApi.listMcp.mockImplementation(async ({ keyword } = {}) => ({
+      list: ROWS.filter((r) => !keyword || r.name.includes(keyword)).map((r) => ({ ...r })),
+      ungroupedTotal: 2
+    }))
+    await mount()
+    await searchKeyword('日历')
+    expect(groupNames()).toEqual(['未分组'])
+    expect(namesIn(groupByName('未分组'))).toEqual(['日历服务'])
+    await searchKeyword('合同')
+    expect(groupNames()).toEqual(['财务服务系统'])
+  })
+
+  it('点【在未分组下新建 MCP】→ 编辑器以新建态打开，不预选系统', async () => {
+    await mount()
+    const editor = () => container.querySelector('.stub-mcp-editor')
+    headBtn(groupByName('财务服务系统'), '在本系统下新建 MCP').click() // 先预选一次，确认未分组会把预选清掉
+    await nextTick()
+    expect(editor().getAttribute('data-default-ps')).toBe('mps_1')
+    headBtn(groupByName('未分组'), '在未分组下新建 MCP').click()
+    await nextTick()
+    expect(editor().getAttribute('data-visible')).toBe('true')
+    expect(editor().getAttribute('data-id')).toBeNull()
+    expect(editor().getAttribute('data-default-ps')).toBe('')
+  })
+
+  it('导航栏【＋ 新建服务提供系统】→ 打开 MCP 那一套的服务提供系统弹窗（kind=MCP、新建态）；保存后重拉列表', async () => {
+    await mount()
+    expect(psEditor().getAttribute('data-visible')).toBe('false')
+    toolbarBtn('新建服务提供系统').click()
+    await nextTick()
+    expect(psEditor().getAttribute('data-visible')).toBe('true')
+    expect(psEditor().getAttribute('data-kind')).toBe('MCP')
+    expect(psEditor().getAttribute('data-id')).toBe('')
+    const calls = adminApi.listMcpProviderSystems.mock.calls.length
+    psEditor().querySelector('.stub-ps-saved').click()
+    await flush()
+    expect(adminApi.listMcpProviderSystems.mock.calls.length).toBeGreaterThan(calls)
+  })
+
+  it('分组头【编辑系统】→ 弹窗以编辑态打开该系统（kind=MCP）', async () => {
+    await mount()
+    headBtn(groupByName('财务服务系统'), '编辑系统').click()
+    await nextTick()
+    expect(psEditor().getAttribute('data-visible')).toBe('true')
+    expect(psEditor().getAttribute('data-id')).toBe('mps_1')
+    expect(psEditor().getAttribute('data-kind')).toBe('MCP')
+  })
+
+  it('系统下有 MCP：【删除系统】置灰，悬停提示「该系统下有 2 个 MCP，需先迁移或删除后才能删除系统」，点了也不删', async () => {
+    await mount()
+    const g = groupByName('财务服务系统')
+    const del = headBtn(g, '删除系统')
+    expect(del.disabled).toBe(true)
+    expect(del.closest('.el-tooltip').getAttribute('data-tip')).toBe('该系统下有 2 个 MCP，需先迁移或删除后才能删除系统')
+    del.click()
+    await flush()
+    expect(msgBox.confirm).not.toHaveBeenCalled()
+    expect(adminApi.deleteMcpProviderSystem).not.toHaveBeenCalled()
+  })
+
+  it('空系统删除：二次确认「删除后该 MCP 分组不可恢复，确认删除？」→ deleteMcpProviderSystem + 「已删除」并重拉列表', async () => {
+    await mount()
+    const del = headBtn(groupByName('办公协同平台'), '删除系统')
+    expect(del.disabled).toBe(false)
+    const calls = adminApi.listMcpProviderSystems.mock.calls.length
+    del.click()
+    await flush()
+    expect(msgBox.confirm).toHaveBeenCalledWith('删除后该 MCP 分组不可恢复，确认删除？', '删除服务提供系统', expect.any(Object))
+    expect(adminApi.deleteMcpProviderSystem).toHaveBeenCalledWith('mps_4')
+    expect(msg.success).toHaveBeenCalledWith('已删除')
+    expect(adminApi.listMcpProviderSystems.mock.calls.length).toBeGreaterThan(calls)
+  })
+
+  it('空系统删除：二次确认点取消 → 不删', async () => {
+    msgBox.confirm.mockRejectedValueOnce('cancel')
+    await mount()
+    headBtn(groupByName('办公协同平台'), '删除系统').click()
+    await flush()
+    expect(adminApi.deleteMcpProviderSystem).not.toHaveBeenCalled()
+    expect(msg.error).not.toHaveBeenCalled()
   })
 
   it('无筛选时空系统也展示，组内提示「该系统下暂无 MCP · 点「在本系统下新建 MCP」添加」', async () => {
     await mount()
-    const g = groupByName('内容服务中心')
+    const g = groupByName('办公协同平台')
     expect(g).toBeTruthy()
     expect(g.querySelector('.t-row')).toBeNull()
     expect(g.querySelector('.mc-group-empty').textContent.trim()).toBe('该系统下暂无 MCP · 点「在本系统下新建 MCP」添加')
@@ -1298,8 +1429,8 @@ describe('AdminMcp · 按服务提供系统分组（产品优化需求-202611 �
     await nextTick()
     expect(editor().getAttribute('data-visible')).toBe('true')
     expect(editor().getAttribute('data-id')).toBeNull()
-    expect(editor().getAttribute('data-default-ps')).toBe('pv_1')
-    container.querySelector('.lt-create').click()
+    expect(editor().getAttribute('data-default-ps')).toBe('mps_1')
+    toolbarBtn('新建 MCP').click()
     await nextTick()
     expect(editor().getAttribute('data-default-ps')).toBe('')
   })
@@ -1327,19 +1458,19 @@ describe('AdminMcp · 按服务提供系统分组（产品优化需求-202611 �
     expect(namesIn(groupByName('未分组'))).toEqual(['日历服务', '邮件服务'])
   })
 
-  it('按服务提供系统分页：分页条计「个」（系统数），同一系统的 MCP 不拆到两页', async () => {
-    // 6 个系统，第 6 个系统挂 3 条 MCP；每页 5 个系统 → 共 2 页，第 2 页只有第 6 个系统且 3 条都在
+  it('按服务提供系统分页：分页条计「个」（系统数，「未分组」算一个），同一系统的 MCP 不拆到两页', async () => {
+    // 6 个系统 +「未分组」（无条件时始终展示）= 7 个分组，第 6 个系统挂 3 条 MCP；每页 5 个 → 共 2 页，第 2 页是第 6 个系统（3 条都在）+ 未分组
     const { systems, mcps } = systemsFixture(PAGE_SIZE + 1)
     const big = systems[PAGE_SIZE].id
     const extra = [1, 2].map((i) => ({ ...LIST[0], id: `mc_big${i}`, name: `大系统服务${i}`, providerSystemId: big }))
-    connApi.listProviderSystems.mockResolvedValue({ list: systems })
+    adminApi.listMcpProviderSystems.mockResolvedValue({ list: systems })
     adminApi.listMcp.mockImplementation(async () => ({ list: [...mcps, ...extra].map((r) => ({ ...r })), ungroupedTotal: 0 }))
     await mount()
-    expect(container.querySelector('.list-pager-info').textContent.trim()).toBe(`共 ${PAGE_SIZE + 1} 个数据`)
+    expect(container.querySelector('.list-pager-info').textContent.trim()).toBe(`共 ${PAGE_SIZE + 2} 个数据`)
     expect(groupEls().length).toBe(PAGE_SIZE)
     container.querySelector('.list-pager [aria-label="下一页"]').click()
     await flush()
-    expect(groupNames()).toEqual([`系统${PAGE_SIZE}`])
+    expect(groupNames()).toEqual([`系统${PAGE_SIZE}`, '未分组'])
     expect(namesIn(groupEls()[0]).length).toBe(3)
   })
 })

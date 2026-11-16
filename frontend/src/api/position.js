@@ -339,7 +339,7 @@ export function listTaskSkillCandidates(positionId, keyword) {
 }
 
 // 「执行动作」选专家 / 专家团时的候选：{ experts, teams, names }
-// （已发布的通用、市场专家（团）+ 本岗位引用的岗位私有专家（团），均须状态正常；没设主理人的团带 leaderId=null）；
+// （已发布的通用、市场专家（团）+ 本岗位引用的岗位私有专家（团），均须状态正常；没设主理人的团同样可选，带 leaderId=null）；
 // names = { EXPERT: { id: 名称 }, TEAM: { id: 名称 } } 覆盖全部专家 / 团，所选对象已不可用时下拉仍显示名称
 export function listTaskExecTargetCandidates(positionId) {
   if (USE_MOCK) return mock.listTaskExecTargetCandidates(positionId)
