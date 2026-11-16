@@ -28,7 +28,6 @@ vi.mock('@/api/version', () => api)
 // 点踩明细 / 对话明细走真实样例数据（api/dislikeSampleMock.js，修改点 20 由组件内挪出）
 const apiUsage = {
   getUsageSummary: vi.fn(),
-  getVersionAdoption: vi.fn(),
   listDislikeSamples: (...a) => import('@/api/dislikeSampleMock').then((m) => m.listDislikeSamples(...a)),
   getDislikeConversation: (...a) => import('@/api/dislikeSampleMock').then((m) => m.getDislikeConversation(...a))
 }
@@ -51,7 +50,6 @@ const MAC = versionRow({
   id: 6, terminal: 'MAC', version: 'v1.1.0', publishedAt: '2026-08-20T10:32:00+08:00',
   releaseNotes: '与 Windows 端同步：引用来源一键复制、任务完成桌面通知。'
 })
-const ADOPTION = { WINDOWS: { upgraded: 126, behind: 35 }, MAC: { upgraded: 44, behind: 9 } }
 
 /** 使用情况汇总的最小夹具：字段形状同 usageMock 的 aggregate()，数值随意（区块规则在 cockpitUsageTab.test.js 里测）。 */
 const usageSummary = () => ({
@@ -114,7 +112,6 @@ async function openUsageTab() {
 beforeEach(() => {
   api.getVersionOverview.mockReset().mockResolvedValue({ WINDOWS: WIN, MAC })
   apiUsage.getUsageSummary.mockReset().mockImplementation(async () => usageSummary())
-  apiUsage.getVersionAdoption.mockReset().mockResolvedValue(ADOPTION)
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -200,14 +197,13 @@ describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
     expect(ElMessage).not.toHaveBeenCalled()
   })
 
-  it('某终端没有下发中版本：该卡片显示「暂无下发版本」且不展示升级进度，另一终端不受影响', async () => {
+  it('某终端没有下发中版本：该卡片显示「暂无下发版本」，另一终端不受影响', async () => {
     api.getVersionOverview.mockResolvedValue({ WINDOWS: WIN, MAC: null })
     await mount()
     expect(cardOf('MAC').textContent).toContain('暂无下发版本')
     expect(cardOf('MAC').querySelector('.ver-version')).toBeNull()
-    expect(cardOf('MAC').querySelector('[data-testid="ver-adopt"]')).toBeNull()
     expect(cardOf('WINDOWS').querySelector('.ver-version').textContent).toBe('v1.2.0')
-    expect(cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')).not.toBeNull()
+    expect(cardOf('WINDOWS').querySelector('.ver-notes').textContent).toBe(WIN.releaseNotes)
   })
 
   it('停用审核期间该版本仍在下发：概览仍带它，卡片照常显示版本号与更新说明', async () => {
@@ -231,30 +227,16 @@ describe('AdminCockpit · 用户端当前下发版本（PRD §二）', () => {
   })
 })
 
-describe('AdminCockpit · 升级进度（PRD §二.1）', () => {
-  it('每张有下发版本的卡片展示「已升级 N 人 · 未升到该版本 M 人」与「升级率 xx.x%」', async () => {
+describe('AdminCockpit · 版本卡不展示升级进度（PRD §二.1，2026-11-16 删去）', () => {
+  it('有下发版本的卡片只有版本号、发布时间、更新说明，没有「已升级 / 未升到该版本」人数、进度条与升级率', async () => {
     await mount()
-    const win = cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')
-    expect(win.textContent.replace(/\s+/g, ' ')).toContain('已升级 126 人 · 未升到该版本 35 人')
-    expect(win.textContent).toContain('升级率 78.3%') // 126 ÷ 161
-    const mac = cardOf('MAC').querySelector('[data-testid="ver-adopt"]')
-    expect(mac.textContent.replace(/\s+/g, ' ')).toContain('已升级 44 人 · 未升到该版本 9 人')
-    expect(mac.textContent).toContain('升级率 83.0%') // 44 ÷ 53
-    expect(win.querySelector('.dash-bar-track i').style.width).toBe('78.3%') // 进度条宽度 = 升级率
-  })
-
-  it('文案是「未升到该版本」而不是「旧版」（下发版本回退后，更高版本的用户也算未升到该版本）', async () => {
-    await mount()
-    expect(text()).toContain('未升到该版本')
-    expect(text()).not.toContain('旧版')
-  })
-
-  it('升级进度取数失败：只是不展示进度，版本卡片本身照常（不影响版本号与更新说明）', async () => {
-    apiUsage.getVersionAdoption.mockRejectedValue(new Error('boom'))
-    await mount()
-    expect(cardOf('WINDOWS').querySelector('[data-testid="ver-adopt"]')).toBeNull()
-    expect(cardOf('WINDOWS').querySelector('.ver-version').textContent).toBe('v1.2.0')
-    expect(cardOf('WINDOWS').querySelector('.ver-notes').textContent).toBe(WIN.releaseNotes)
+    for (const t of ['WINDOWS', 'MAC']) {
+      const card = cardOf(t)
+      expect(card.querySelector('.ver-version')).not.toBeNull()
+      expect(card.querySelector('.ver-notes')).not.toBeNull()
+      expect(card.querySelector('.dash-bar-track')).toBeNull()
+      expect(card.textContent).not.toMatch(/已升级|未升到该版本|升级率/)
+    }
   })
 })
 

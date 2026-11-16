@@ -14,7 +14,6 @@
  * - 失败率 = 失败调用 ÷ 全部调用；Token 只算成功调用；点踩率 = 点踩 ÷（点踩 + 点赞）。
  * - 最近使用时间 / 最近调用时间不受时间范围限制（取全部历史），仍受终端 / 岗位筛选。
  *
- * 版本升级进度（getVersionAdoption）是静态示例，不随版本管理的发布联动。
  */
 
 const DAY_MS = 86400000
@@ -368,13 +367,4 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 export async function getUsageSummary(filter = {}) {
   await delay(300)
   return aggregate(filter)
-}
-
-/**
- * 各终端版本升级进度（静态示例）：近 7 天有检测上报的用户中，已升到下发版本 / 未升到的人数。
- * 真实口径见 PRD 第二节：用户端每次检测更新都上报「终端 + 当前版本号」，已升级 = 版本号与下发版本一致。
- */
-export async function getVersionAdoption() {
-  await delay(120)
-  return { WINDOWS: { upgraded: 126, behind: 35 }, MAC: { upgraded: 44, behind: 9 } }
 }
