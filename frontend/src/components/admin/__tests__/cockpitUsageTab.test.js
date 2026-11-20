@@ -509,7 +509,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     expect(detail().textContent).not.toContain('点踩率')
   })
 
-  it('范围是已发布的技能与专家（副标题标类型），默认按调用次数由高到低', async () => {
+  it('范围是已发布的技能 / 专家 / 专家团 / 连接器 / 知识库（副标题标类型），默认按调用次数由高到低', async () => {
     await mount()
     const r = await mockSummary({ range: 30 })
     await pickDim('按能力')
@@ -519,8 +519,29 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     const top = [...r.abilities].sort((a, b) => b.calls - a.calls)[0]
     expect(textOf(first.querySelector('.dash-name-main'))).toBe(top.name)
     const subs = new Set([...detail().querySelectorAll('tbody .dash-name-sub')].map(textOf))
-    expect([...subs].every((s) => ['技能', '专家'].includes(s))).toBe(true)
+    expect([...subs].every((s) => ['技能', '专家', '专家团', '连接器', '知识库'].includes(s))).toBe(true)
     expect(subs.has('专家')).toBe(true)
+  })
+
+  it('「类型」下拉：按类型筛选，零使用个数随类型统计，并与「仅看零使用」叠加生效', async () => {
+    await mount()
+    const r = await mockSummary({ range: 30 })
+    await pickDim('按能力')
+    const sel = detail().querySelector('.ux-toolbar .ux-type-select')
+    expect(sel).toBeTruthy()
+    sel.querySelector('.el-select__wrapper').click()
+    await flushAll(2)
+    const options = [...document.body.querySelectorAll('.el-select-dropdown__item')].map(textOf)
+    expect(options.slice(-5)).toEqual(['技能', '专家', '专家团', '连接器', '知识库']) // body 里还留着页签顶部下拉的选项，类型下拉是最后弹出的
+    ;[...document.body.querySelectorAll('.el-select-dropdown__item')].reverse().find((i) => textOf(i) === '知识库').click()
+    await flushAll(4)
+    const kbs = r.abilities.filter((a) => a.type === '知识库')
+    expect(kbs.length).toBeGreaterThanOrEqual(3)
+    expect(firstCol().sort()).toEqual(kbs.map((a) => a.name).sort())
+    expect(textOf(detail().querySelector('.ux-toolbar'))).toContain(`零使用 ${kbs.filter((a) => a.calls === 0).length} 个`)
+    detail().querySelector('.ux-toolbar .el-switch').click()
+    await flushAll(4)
+    expect(firstCol().sort()).toEqual(kbs.filter((a) => a.calls === 0).map((a) => a.name).sort())
   })
 
   it('「仅看零使用」：旁边标「零使用 N 个」，打开后只剩时间范围内一次都没被调用的能力，从未使用的显示「从未使用」', async () => {
