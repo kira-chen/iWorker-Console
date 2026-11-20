@@ -160,9 +160,9 @@ describe('usageMock · 按模型 / 按能力（PRD §七.4 / §七.5）', () => 
     }
   })
 
-  it('能力包含技能 / 专家 / 专家团 / 连接器 / 知识库五种类型；低频能力在更短的时间范围里更容易落成零使用', async () => {
+  it('能力包含技能 / 专家 / 专家团 / MCP / API / 业务系统 / 知识库七种类型；低频能力在更短的时间范围里更容易落成零使用', async () => {
     const [d7, d90] = await Promise.all([q({ range: 7 }), q({ range: 90 })])
-    expect(new Set(d90.abilities.map((a) => a.type))).toEqual(new Set(['技能', '专家', '专家团', '连接器', '知识库']))
+    expect(new Set(d90.abilities.map((a) => a.type))).toEqual(new Set(['技能', '专家', '专家团', 'MCP', 'API', '业务系统', '知识库']))
     const zeroCount = (r) => r.abilities.filter((a) => a.calls === 0).length
     expect(zeroCount(d7)).toBeGreaterThanOrEqual(zeroCount(d90))
   })
