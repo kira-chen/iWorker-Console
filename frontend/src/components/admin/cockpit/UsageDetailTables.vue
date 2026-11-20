@@ -12,6 +12,8 @@
  * 2026-11-15：「最近使用时间」「最近调用时间」列头始终显示排序箭头（同访问审计时间列），没按该列排序时箭头浅色，提示可以点。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
+ * 2026-11-20：按能力范围扩到技能 / 专家 / 专家团 / 连接器 / 知识库，工具栏加「类型」下拉筛选。
+ *
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
  */
 import { computed, reactive, ref } from 'vue'
@@ -95,6 +97,9 @@ const keywords = reactive({ user: '', position: '', model: '', ability: '' }) //
 const applied = reactive({ user: '', position: '', model: '', ability: '' }) // 已生效的
 const onlySilent = ref(false)
 const onlyZero = ref(false)
+// 按能力的类型筛选（空 = 全部），与搜索、仅看零使用叠加生效
+const ABILITY_TYPES = ['技能', '专家', '专家团', '连接器', '知识库']
+const abilityType = ref('')
 
 function applyKeyword() {
   applied[dim.value] = keywords[dim.value].trim()
@@ -102,7 +107,8 @@ function applyKeyword() {
 }
 
 const silentCount = computed(() => props.data.users.filter((u) => u.sessions === 0).length)
-const zeroCount = computed(() => props.data.abilities.filter((a) => a.calls === 0).length)
+// 零使用个数随类型筛选统计（不受搜索词影响）
+const zeroCount = computed(() => props.data.abilities.filter((a) => a.calls === 0 && (!abilityType.value || a.type === abilityType.value)).length)
 
 function sortRows(rows, { key, dir }) {
   const sign = dir === 'asc' ? 1 : -1
@@ -128,7 +134,9 @@ const rows = computed(() => {
   } else if (dim.value === 'model') {
     list = d.models
   } else {
-    list = onlyZero.value ? d.abilities.filter((a) => a.calls === 0) : d.abilities
+    list = d.abilities
+    if (abilityType.value) list = list.filter((a) => a.type === abilityType.value)
+    if (onlyZero.value) list = list.filter((a) => a.calls === 0)
   }
   const kw = applied[dim.value].toLowerCase()
   if (kw) list = list.filter((r) => r.name.toLowerCase().includes(kw))
@@ -185,6 +193,9 @@ function viewModel(row) {
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-button @click="applyKeyword">查询</el-button>
+      <el-select v-if="dim === 'ability'" v-model="abilityType" class="ux-type-select" clearable placeholder="全部类型" @change="pages.ability = 1">
+        <el-option v-for="t in ABILITY_TYPES" :key="t" :label="t" :value="t" />
+      </el-select>
       <span class="spacer"></span>
       <template v-if="dim === 'user'">
         <el-switch v-model="onlySilent" size="small" @change="pages.user = 1" />
@@ -320,6 +331,7 @@ function viewModel(row) {
   border-bottom: 1px solid var(--border-admin-row);
 }
 .ux-switch-label { color: var(--c-text); font-size: 13px; }
+.ux-type-select { width: 130px; }
 .ux-hint { color: var(--c-admin-sub); font-size: 12px; }
 .ux-table-wrap { overflow-x: auto; }
 .ux-table { min-width: 1000px; }
