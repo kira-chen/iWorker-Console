@@ -12,7 +12,7 @@
  * 2026-11-15：「最近使用时间」「最近调用时间」列头始终显示排序箭头（同访问审计时间列），没按该列排序时箭头浅色，提示可以点。
  *
  * @prop {object} data 使用情况汇总，用到 { claimedUsers, users, positions, models, abilities }（字段见 usageMock.js）
- * 2026-11-20：按能力范围扩到技能 / 专家 / 专家团 / 连接器 / 知识库，工具栏加「类型」下拉筛选。
+ * 2026-11-20：按能力范围扩到技能 / 专家 / 专家团 / MCP / API / 业务系统 / 知识库，工具栏加「类型」下拉筛选。
  *
  * 每个维度各自保留排序、翻页与搜索词；切换维度不重置。
  */
@@ -98,7 +98,7 @@ const applied = reactive({ user: '', position: '', model: '', ability: '' }) // 
 const onlySilent = ref(false)
 const onlyZero = ref(false)
 // 按能力的类型筛选（空 = 全部），与搜索、仅看零使用叠加生效
-const ABILITY_TYPES = ['技能', '专家', '专家团', '连接器', '知识库']
+const ABILITY_TYPES = ['技能', '专家', '专家团', 'MCP', 'API', '业务系统', '知识库']
 const abilityType = ref('')
 
 function applyKeyword() {

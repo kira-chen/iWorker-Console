@@ -509,7 +509,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     expect(detail().textContent).not.toContain('点踩率')
   })
 
-  it('范围是已发布的技能 / 专家 / 专家团 / 连接器 / 知识库（副标题标类型），默认按调用次数由高到低', async () => {
+  it('范围是已发布的技能 / 专家 / 专家团 / MCP / API / 业务系统 / 知识库（副标题标类型），默认按调用次数由高到低', async () => {
     await mount()
     const r = await mockSummary({ range: 30 })
     await pickDim('按能力')
@@ -519,7 +519,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     const top = [...r.abilities].sort((a, b) => b.calls - a.calls)[0]
     expect(textOf(first.querySelector('.dash-name-main'))).toBe(top.name)
     const subs = new Set([...detail().querySelectorAll('tbody .dash-name-sub')].map(textOf))
-    expect([...subs].every((s) => ['技能', '专家', '专家团', '连接器', '知识库'].includes(s))).toBe(true)
+    expect([...subs].every((s) => ['技能', '专家', '专家团', 'MCP', 'API', '业务系统', '知识库'].includes(s))).toBe(true)
     expect(subs.has('专家')).toBe(true)
   })
 
@@ -532,7 +532,7 @@ describe('CockpitUsageTab · 使用明细 · 按能力（PRD §七.5）', () => 
     sel.querySelector('.el-select__wrapper').click()
     await flushAll(2)
     const options = [...document.body.querySelectorAll('.el-select-dropdown__item')].map(textOf)
-    expect(options.slice(-5)).toEqual(['技能', '专家', '专家团', '连接器', '知识库']) // body 里还留着页签顶部下拉的选项，类型下拉是最后弹出的
+    expect(options.slice(-7)).toEqual(['技能', '专家', '专家团', 'MCP', 'API', '业务系统', '知识库']) // body 里还留着页签顶部下拉的选项，类型下拉是最后弹出的
     ;[...document.body.querySelectorAll('.el-select-dropdown__item')].reverse().find((i) => textOf(i) === '知识库').click()
     await flushAll(4)
     const kbs = r.abilities.filter((a) => a.type === '知识库')
